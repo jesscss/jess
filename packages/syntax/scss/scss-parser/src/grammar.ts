@@ -38,33 +38,33 @@ type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
   VariableDeclaration: Combinator<VariableDeclaration>;
   DirectScssComment: Combinator<Comment>;
-  DirectScssVarReference: Combinator<VariableReference>;
+  VariableReference: Combinator<VariableReference>;
   SassInterpolation: Combinator<Interpolation>;
-  DirectScssQuoted: Combinator<Quoted | Interpolation>;
-  DirectScssStaticQuoted: Combinator<Quoted>;
+  Quoted: Combinator<Quoted | Interpolation>;
+  StaticQuoted: Combinator<Quoted>;
   Keyword: Combinator<Keyword>;
-  DirectScssCustomPropertyValue: Combinator<Keyword>;
+  CustomPropertyValue: Combinator<Keyword>;
   Color: Combinator<Color>;
-  DirectScssUnicodeRange: Combinator<ValueNode>;
+  UnicodeRange: Combinator<ValueNode>;
   Dimension: Combinator<Dimension>;
-  DirectScssInterpolatedUrlValue: Combinator<Interpolation>;
-  DirectScssInterpolatedValue: Combinator<Interpolation>;
-  DirectScssParen: Combinator<ValueNode>;
+  InterpolatedUrlValue: Combinator<Interpolation>;
+  InterpolatedValue: Combinator<Interpolation>;
+  Paren: Combinator<ValueNode>;
   MapEntry: Combinator<Declaration>;
   Map: Combinator<Collection>;
   DirectScssReturn: Combinator<Declaration>;
   DirectScssFunction: Combinator<VariableDeclaration>;
-  DirectScssSquare: Combinator<ValueNode>;
+  Square: Combinator<ValueNode>;
   ScssValueAtom: Combinator<ValueNode>;
-  DirectScssMathUnary: Combinator<ValueNode>;
-  DirectScssMathProduct: Combinator<ValueNode>;
-  DirectScssMathSum: Combinator<ValueNode>;
-  DirectScssMathTopProduct: Combinator<ValueNode>;
-  DirectScssMathTopSum: Combinator<ValueNode>;
+  MathUnary: Combinator<ValueNode>;
+  MathProduct: Combinator<ValueNode>;
+  MathSum: Combinator<ValueNode>;
+  MathTopProduct: Combinator<ValueNode>;
+  MathTopSum: Combinator<ValueNode>;
   ValueTerm: Combinator<ValueSlot>;
   ValuePair: Combinator<ScssValuePair>;
   Value: Combinator<ValueSlot>;
-  DirectScssImportant: Combinator<true>;
+  Important: Combinator<true>;
   DirectScssInterpolatedProperty: Combinator<Interpolation>;
   DirectScssCustomPropertyName: Combinator<string | Interpolation>;
   DirectScssCustomPart: Combinator<unknown>;
@@ -1108,8 +1108,8 @@ export const scssFactory = (g: ScssInputRules) => {
    */
   const directDoubleQuotedText = regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))*/);
   const directSingleQuotedText = regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))*/);
-  const DirectScssVarReference = node<VariableReference>(
-    'DirectScssVarReference',
+  const VariableReference = node<VariableReference>(
+    'VariableReference',
     scssVarSigilName,
     children => variableReference(
       requireToken(children[1]).value,
@@ -1125,8 +1125,8 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     children => interpolation([{ ref: requireValue(children[1]), unquote: true }])
   );
-  const DirectScssQuoted = node<Quoted | Interpolation>(
-    'DirectScssQuoted',
+  const Quoted = node<Quoted | Interpolation>(
+    'Quoted',
     choice(
       sequence(
         literal('"'),
@@ -1197,8 +1197,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * comment. Both arms are closed regex/literal, so disabling trivia here
    * cannot propagate into a shared rule.
    */
-  const DirectScssStaticQuoted = node<Quoted>(
-    'DirectScssStaticQuoted',
+  const StaticQuoted = node<Quoted>(
+    'StaticQuoted',
     choice(
       noTrivia(sequence(
         literal('"'),
@@ -1256,8 +1256,8 @@ export const scssFactory = (g: ScssInputRules) => {
     g.CssSyntaxKeyword,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectScssCustomPropertyValue = node<Keyword>(
-    'DirectScssCustomPropertyValue',
+  const CustomPropertyValue = node<Keyword>(
+    'CustomPropertyValue',
     g.CssSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
@@ -1272,8 +1272,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * keyword atom: `U+0-7F` split at the `+` leaves `+0`/`-7F` to be folded as
    * SCSS arithmetic, which serializes valid CSS back out as `U + 0 - 7F`.
    */
-  const DirectScssUnicodeRange = node<ValueNode>(
-    'DirectScssUnicodeRange',
+  const UnicodeRange = node<ValueNode>(
+    'UnicodeRange',
     g.CssSyntaxUnicodeRange,
     children => any(requireToken(children[0]).value)
   );
@@ -1307,8 +1307,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * while retaining CSS URL escaping and ordinary `#` bytes as literal text.
    */
   const directScssUrlInterpolatedChunk = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F#]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#(?!\{))+/);
-  const DirectScssInterpolatedUrlValue = node<Interpolation>(
-    'DirectScssInterpolatedUrlValue',
+  const InterpolatedUrlValue = node<Interpolation>(
+    'InterpolatedUrlValue',
     sequence(
       optional(directScssUrlInterpolatedChunk),
       g.SassInterpolation,
@@ -1332,8 +1332,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * cannot capture a `--name#{...}` token, which the old leading-identifier arm
    * had to exclude with a dedicated `not(--\u2026#{)` guard.
    */
-  const DirectScssInterpolatedValue = node<Interpolation>(
-    'DirectScssInterpolatedValue',
+  const InterpolatedValue = node<Interpolation>(
+    'InterpolatedValue',
     sequence(
       g.SassInterpolation,
       many(choice(
@@ -1352,12 +1352,12 @@ export const scssFactory = (g: ScssInputRules) => {
    * branch is deliberately separate so `(1 2)` stays a paren Block around a list
    * rather than being invented as math.
    */
-  const DirectScssParen = node<ValueNode>(
-    'DirectScssParen',
+  const Paren = node<ValueNode>(
+    'Paren',
     choice(
       noTrivia(sequence(
         literal('('),
-        g.DirectScssMathSum,
+        g.MathSum,
         literal(')')
       )),
       noTrivia(sequence(
@@ -1373,8 +1373,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * Sass bracketed lists carry the square delimiter as a first-class Block fact;
    * the inner value uses the same separator-aware list grammar as ordinary values.
    */
-  const DirectScssSquare = node<ValueNode>(
-    'DirectScssSquare',
+  const Square = node<ValueNode>(
+    'Square',
     noTrivia(sequence(
       literal('['),
       g.Value,
@@ -1395,7 +1395,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const MapEntry = node<Declaration>(
     'MapEntry',
     noTrivia(sequence(
-      g.DirectScssMathTopSum,
+      g.MathTopSum,
       optional(valueTrivia),
       literal(':'),
       optional(valueTrivia),
@@ -1411,7 +1411,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * A Sass map literal `(a: 1, b: 2)` lowers to the shared `Collection` (the same
    * key/value-entries node used for SCSS nested properties), disambiguated from a
    * paren value-list `(1 2 3)` by the `key: value` entry shape. Empty `()` and a
-   * single `(a: 1)` are both maps. This arm sits before `DirectScssParen` in the
+   * single `(a: 1)` are both maps. This arm sits before `Paren` in the
    * value-atom choice; when no entry carries a colon it backtracks to the paren
    * list/arithmetic form.
    */
@@ -1458,8 +1458,8 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       routed(),
       optional(choice(
-        g.DirectScssQuoted,
-        g.DirectScssInterpolatedUrlValue,
+        g.Quoted,
+        g.InterpolatedUrlValue,
         staticUrlInner
       )),
       literal(')')
@@ -1518,7 +1518,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * A bare `#{…}` is already owned by `DirectScssInterpolatedValue`: its
+   * A bare `#{…}` is already owned by `InterpolatedValue`: its
    * trailing `many` matches zero chunks, so an interpolation with no following
    * identifier reduces to the identical `Interpolation` value. A standalone
    * `SassInterpolation` arm after it is therefore unreachable.
@@ -1526,17 +1526,17 @@ export const scssFactory = (g: ScssInputRules) => {
   const ScssValueAtom = node<ValueNode>(
     'ScssValueAtom',
     choice(
-      g.DirectScssQuoted,
-      g.DirectScssInterpolatedValue,
-      g.DirectScssVarReference,
+      g.Quoted,
+      g.InterpolatedValue,
+      g.VariableReference,
       g.Color,
       g.Dimension,
-      g.DirectScssCustomPropertyValue,
-      g.DirectScssUnicodeRange,
+      g.CustomPropertyValue,
+      g.UnicodeRange,
       IdentifierOrFunction,
       g.Map,
-      g.DirectScssParen,
-      g.DirectScssSquare
+      g.Paren,
+      g.Square
     ),
     children => requireValue(children[0])
   );
@@ -1547,8 +1547,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * The sign may have trailing whitespace (`- $x`, `+ ($x)`), but it must be
    * at the current expression start: `1 -2` is still a space-list boundary.
    */
-  const DirectScssMathUnary = node<ValueNode>(
-    'DirectScssMathUnary',
+  const MathUnary = node<ValueNode>(
+    'MathUnary',
     choice(
       noTrivia(sequence(
         regex(/-(?=[ \t\n\r\f]*[\$(])/),
@@ -1587,46 +1587,46 @@ export const scssFactory = (g: ScssInputRules) => {
    * including slash division. At top level slash remains a Sass slash-list
    * separator, so the top-level product intentionally excludes it below.
    */
-  const DirectScssMathProduct = node<ValueNode>(
-    'DirectScssMathProduct',
+  const MathProduct = node<ValueNode>(
+    'MathProduct',
     noTrivia(sequence(
-      g.DirectScssMathUnary,
+      g.MathUnary,
       many(sequence(
         productOperator,
-        g.DirectScssMathUnary
+        g.MathUnary
       ))
     )),
     foldOperation
   );
-  const DirectScssMathSum = node<ValueNode>(
-    'DirectScssMathSum',
+  const MathSum = node<ValueNode>(
+    'MathSum',
     noTrivia(sequence(
-      g.DirectScssMathProduct,
+      g.MathProduct,
       many(sequence(
         sumOperator,
-        g.DirectScssMathProduct
+        g.MathProduct
       ))
     )),
     foldOperation
   );
-  const DirectScssMathTopProduct = node<ValueNode>(
-    'DirectScssMathTopProduct',
+  const MathTopProduct = node<ValueNode>(
+    'MathTopProduct',
     noTrivia(sequence(
-      g.DirectScssMathUnary,
+      g.MathUnary,
       many(sequence(
         topProductOperator,
-        g.DirectScssMathUnary
+        g.MathUnary
       ))
     )),
     foldOperation
   );
-  const DirectScssMathTopSum = node<ValueNode>(
-    'DirectScssMathTopSum',
+  const MathTopSum = node<ValueNode>(
+    'MathTopSum',
     noTrivia(sequence(
-      g.DirectScssMathTopProduct,
+      g.MathTopProduct,
       many(sequence(
         sumOperator,
-        g.DirectScssMathTopProduct
+        g.MathTopProduct
       ))
     )),
     foldOperation
@@ -1636,13 +1636,13 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       sequence(
         valueTrivia,
-        g.DirectScssMathTopSum
+        g.MathTopSum
       ),
       sequence(
         optional(space),
         literal('/'),
         optional(space),
-        g.DirectScssMathTopSum
+        g.MathTopSum
       )
     ),
     (children) => {
@@ -1660,7 +1660,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const ValueTerm = node<ValueSlot>(
     'ValueTerm',
     noTrivia(sequence(
-      g.DirectScssMathTopSum,
+      g.MathTopSum,
       many(ValueTail)
     )),
     (children) => {
@@ -1770,15 +1770,15 @@ export const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
-  const DirectScssImportant = node<true>(
-    'DirectScssImportant',
+  const Important = node<true>(
+    'Important',
     sequence(
       literal('!'),
       g.CssSyntaxImportant
     ),
     (children) => {
       if (children.length !== 2 || requireToken(children[0]).value !== '!') {
-        throw new TypeError('DirectScssImportant produced unexpected children.');
+        throw new TypeError('Important produced unexpected children.');
       }
       return true;
     }
@@ -1928,7 +1928,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.DirectScssCustomPropertyName,
       literal(':'),
       g.DirectScssCustomValue,
-      optional(g.DirectScssImportant),
+      optional(g.Important),
       optional(literal(';'))
     ),
     (children) => {
@@ -1964,7 +1964,7 @@ export const scssFactory = (g: ScssInputRules) => {
         ),
         literal(':'),
         g.Value,
-        optional(g.DirectScssImportant),
+        optional(g.Important),
         optional(literal(';'))
       )
     ),
@@ -2062,7 +2062,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(g.DirectScssStaticNestedPropertyLeaf),
       literal('}'),
-      optional(g.DirectScssImportant),
+      optional(g.Important),
       optional(literal(';'))
     )),
     (children) => {
@@ -2115,7 +2115,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       g.CssSyntaxUrlOpen,
       optional(choice(
-        g.DirectScssQuoted,
+        g.Quoted,
         staticUrlInner
       )),
       literal(')')
@@ -2382,7 +2382,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       choice(
-        g.DirectScssQuoted,
+        g.Quoted,
         g.DirectScssStaticImportUrl
       ),
       optional(g.DirectScssStaticImportTail),
@@ -2420,7 +2420,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssUse',
     sequence(
       regex(/@use(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.DirectScssStaticQuoted,
+      g.StaticQuoted,
       optional(g.DirectScssUseAs),
       literal(';')
     ),
@@ -2461,7 +2461,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssForward',
     sequence(
       regex(/@forward(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.DirectScssStaticQuoted,
+      g.StaticQuoted,
       literal(';')
     ),
     (children) => {
@@ -2885,12 +2885,12 @@ export const scssFactory = (g: ScssInputRules) => {
        * evaluator already evaluates both bounds before iterating.
        */
       regex(/from(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.DirectScssMathTopSum,
+      g.MathTopSum,
       choice(
         regex(/through(?![-_a-zA-Z0-9\u0080-\uffff])/i),
         regex(/to(?![-_a-zA-Z0-9\u0080-\uffff])/i)
       ),
-      g.DirectScssMathTopSum,
+      g.MathTopSum,
       literal('{'),
       directScssNestedBody,
       literal('}')
@@ -2927,7 +2927,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const DirectScssIfComparison = node<GuardNode>(
     'DirectScssIfComparison',
     sequence(
-      g.DirectScssMathTopSum,
+      g.MathTopSum,
       choice(
         literal('=='),
         literal('!='),
@@ -2936,7 +2936,7 @@ export const scssFactory = (g: ScssInputRules) => {
         literal('>'),
         literal('<')
       ),
-      g.DirectScssMathTopSum
+      g.MathTopSum
     ),
     (children) => {
       const left = requireValue(children[0]);
@@ -3172,12 +3172,12 @@ export const scssFactory = (g: ScssInputRules) => {
   const QueryValue = node<ValueNode>(
     'DirectScssQueryValue',
     noTrivia(sequence(
-      g.DirectScssMathTopSum,
+      g.MathTopSum,
       optional(sequence(
         optional(space),
         literal('/'),
         optional(space),
-        g.DirectScssMathTopSum
+        g.MathTopSum
       ))
     )),
     (children) => {
@@ -3284,7 +3284,7 @@ export const scssFactory = (g: ScssInputRules) => {
         { skip: [balanced(
           '(',
           ')'
-        ), g.DirectScssQuoted] }
+        ), g.Quoted] }
       ),
       expect(
         literal(')'),
@@ -3411,7 +3411,7 @@ export const scssFactory = (g: ScssInputRules) => {
       StaticValueQuoted,
       g.Color,
       g.Dimension,
-      g.DirectScssCustomPropertyValue,
+      g.CustomPropertyValue,
       g.Keyword
     ),
     children => requireValue(children[0])
@@ -4241,7 +4241,7 @@ export const scssFactory = (g: ScssInputRules) => {
 
   /*
    * Keyframe names do not participate in the module-path classification that
-   * deliberately keeps `DirectScssStaticQuoted` escape-free. They are ordinary
+   * deliberately keeps `StaticQuoted` escape-free. They are ordinary
    * static quoted values, so they reuse the escape-preserving
    * `StaticValueQuoted` production (identical grammar and reducer)
    * while still leaving a real `#{` opener for the rejected dynamic path.
@@ -4934,33 +4934,33 @@ export const scssFactory = (g: ScssInputRules) => {
     Stylesheet,
     VariableDeclaration,
     DirectScssComment,
-    DirectScssVarReference,
+    VariableReference,
     SassInterpolation,
-    DirectScssQuoted,
-    DirectScssStaticQuoted,
+    Quoted,
+    StaticQuoted,
     Keyword,
-    DirectScssCustomPropertyValue,
+    CustomPropertyValue,
     Color,
-    DirectScssUnicodeRange,
+    UnicodeRange,
     Dimension,
-    DirectScssInterpolatedUrlValue,
-    DirectScssInterpolatedValue,
-    DirectScssParen,
+    InterpolatedUrlValue,
+    InterpolatedValue,
+    Paren,
     MapEntry,
     Map,
     DirectScssReturn,
     DirectScssFunction,
-    DirectScssSquare,
+    Square,
     ScssValueAtom,
-    DirectScssMathUnary,
-    DirectScssMathProduct,
-    DirectScssMathSum,
-    DirectScssMathTopProduct,
-    DirectScssMathTopSum,
+    MathUnary,
+    MathProduct,
+    MathSum,
+    MathTopProduct,
+    MathTopSum,
     ValueTerm,
     ValuePair,
     Value,
-    DirectScssImportant,
+    Important,
     DirectScssInterpolatedProperty,
     DirectScssCustomPropertyName,
     DirectScssCustomPart,
