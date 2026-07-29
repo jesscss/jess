@@ -18,6 +18,32 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  * and each carries a reason. Everything else must error.
  */
 const TD = resolveLessTestDataRoot();
+const fixtureTimeoutMs = 8000;
+
+class FixtureTimeoutError extends Error {
+  constructor(file: string) {
+    super(`${file} timed out before surfacing a diagnostic or render result.`);
+    this.name = 'FixtureTimeoutError';
+  }
+}
+
+async function withFixtureTimeout<T>(
+  file: string,
+  work: () => Promise<T>,
+  timeoutMs = fixtureTimeoutMs
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new FixtureTimeoutError(file)), timeoutMs);
+  });
+  try {
+    return await Promise.race([work(), timeout]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
 
 // With Less-4-parity error surfacing ON (functionMode:'error', unitMode:'strict'
 // — see makeCompiler), the function/unit "divergences" now ERROR like Less, so
@@ -79,9 +105,12 @@ function makeCompiler() {
 
 async function renderErrors(lessPath: string): Promise<Array<{ code?: string; phase?: string }>> {
   try {
-    const r = await makeCompiler().renderToResult(lessPath, { breakOnError: false } as any);
+    const r = await withFixtureTimeout(lessPath, () => makeCompiler().renderToResult(lessPath, { breakOnError: false }));
     return r.errors ?? [];
   } catch (error) {
+    if (error instanceof FixtureTimeoutError) {
+      throw error;
+    }
     // A thrown JessError is also a structured error result for this corpus.
     return [error as { code?: string; phase?: string }];
   }
@@ -117,5 +146,22 @@ describe('Less error corpus (Jess must error where Less errors)', () => {
         expect(errored, `${file} should error (Less rejects it)`).toBe(true);
       }
     }, 8000);
+  });
+});
+
+describe('Less error corpus harness diagnostics', () => {
+  it('surfaces fixture timeouts as harness failures', async () => {
+    await expect(
+      withFixtureTimeout(
+        'tests-error/eval/import-timeout.less',
+        () => new Promise<never>(() => {
+          // Deliberately unsettled to exercise the harness timeout branch.
+        }),
+        1
+      )
+    ).rejects.toMatchObject({
+      name: 'FixtureTimeoutError',
+      message: 'tests-error/eval/import-timeout.less timed out before surfacing a diagnostic or render result.'
+    });
   });
 });

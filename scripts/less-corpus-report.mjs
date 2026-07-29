@@ -222,3 +222,14 @@ const md = L.join('\n');
 writeFileSync(path.join(reportDir, 'CORPUS-REPORT.md'), md, 'utf8');
 writeFileSync(path.join(reportDir, 'CORPUS-REPORT.json'), JSON.stringify({ provenance, render, error }, null, 2), 'utf8');
 process.stdout.write('\n' + md.split('\n').slice(0, 26).join('\n') + '\n\n→ packages/jess/test/less/CORPUS-REPORT.md\n');
+
+const blocked = [
+  ...render.filter(r => r.outcome === 'timeout' || r.outcome === 'crash'),
+  ...error.filter(r => r.outcome === 'timeout' || r.outcome === 'crash')
+];
+if (blocked.length > 0) {
+  process.stderr.write(
+    `\nLess corpus report hit ${blocked.length} timeout/crash result(s); see packages/jess/test/less/CORPUS-REPORT.md for the stuck fixture(s).\n`
+  );
+  process.exitCode = 1;
+}
