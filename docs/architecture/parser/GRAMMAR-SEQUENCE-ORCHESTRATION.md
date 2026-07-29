@@ -92,6 +92,24 @@ structure. In the same pass, keep burning down false migration prefixes and use
 `dispatch(...)` only when `choice(...)` is truly re-reading one broad routed
 opener with known cases plus a same-family generic fallback.
 
+Current scanner-skip inventory, 2026-07-29: CSS custom/value scans are now mostly
+reduced to local balanced-group exceptions, with `customSlash` kept only inside
+the reusable balanced helpers. The remaining CSS pseudo raw-argument scan still
+uses a local quote/balanced/comment policy and should be reviewed separately
+against the pseudo argument grammar, not swept together with custom values.
+`packages/parser-shared/src/opaque-at-rule.ts` remains the shared opaque
+at-rule capture hotspot: its CSS and preprocessor bodies are accepted opaque
+exceptions for now, but they should move toward a trivia-aware structured
+unknown-at-rule helper before adding more scanner policy there. Less still has
+local string/comment skip lists in `lessOpaqueBodyBrace`,
+`lessOpaqueBodyCapture`, and `atPreludeGroup` even though the Less root already
+declares the same ambient `scanSkip`; those are next-tier deletion candidates
+and require Less parser gates plus the named Less oracle if behavior can move.
+SCSS `QueryFunction` and Jess generic pseudo raw arguments are separate
+follow-ups: SCSS has ambient scan skips but also routes through composed quoted
+syntax, while Jess currently lacks a root `scanSkip` policy and must decide that
+grammar shape before shrinking the pseudo scanner.
+
 Live alpha evidence, 2026-07-27: registry `parseman@0.41.0` is installed;
 dependency-order parser/plugin/jess builds pass; `pnpm run check:macro` and
 `pnpm run verify:compose-integrity` both pass with 0 interpreter fallbacks.
