@@ -633,7 +633,7 @@ function requireExpressionFact(value: unknown): ExpressionFact {
  * An arithmetic/comparison operator boundary carries two facts: the operator
  * symbol itself and the exact authored bytes around it. They are identical for a
  * plain whitespace-flanked operator token, and differ only when the boundary
- * also carries a block comment, which `DirectJessExpressionOperator` recognizes
+ * also carries a block comment, which the operator-boundary productions recognize
  * as grammar structure rather than trimming out of a token.
  */
 function requireOperatorFact(value: unknown): JessOperatorFact {
@@ -2660,10 +2660,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * fact, not a parse decision — `a:totally-made-up(1)` and `:lang("en-US")` lost
    * the whole stylesheet. The selector arm is tried first so every argument that
    * already parsed keeps its structured `SelectorList` byte-for-byte; only what
-   * previously rejected reaches the delimiter-aware verbatim scan the other three
-   * dialects already run for this class (css `pseudoRawArgument`, scss's chunk
-   * grammar, less `DirectLessStaticNonSelectorPseudo`). A top-level `$` ends the
-   * scan, so the required `)` then fails: a Jess interpolation in a pseudo
+   * previously rejected reaches the delimiter-aware verbatim scan the other
+   * dialects already run for this class. A top-level `$` ends the scan, so the
+   * required `)` then fails: a Jess interpolation in a pseudo
    * argument still rejects rather than being flattened into opaque text.
    */
   const jessPseudoRawDoubleQuoted = sequence(
@@ -4070,9 +4069,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
   /*
    * Shared block-body statement set for the at-rule-bearing blocks (`@supports`,
-   * generic at-rules): identical 16-rule choice plus a bare `;` arm. Mirrors the
-   * less-parser `directLessBlockStatement` const so the macro fuses a single
-   * shared choice instead of re-emitting it per block.
+   * generic at-rules): identical 16-rule choice plus a bare `;` arm. Keep this
+   * as one local const so the macro fuses a single shared choice instead of
+   * re-emitting it per block.
    *
    * The `@`-headed cluster is placed AFTER DirectJessRule: a rule requires a
    * selector (never `@`) and every at-rule requires `@`, so the two are disjoint
@@ -4654,12 +4653,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * artifact owns every balanced/string/comment boundary; the Jess reduction
    * only records raw facts and keeps `$` out of an unquoted dynamic header.
    * Wrap the two raw captures in their own nodes so this family's child count is
-   * fixed: `JessAstOpaqueStaticPrelude` is an `optional(scanTo(...))` that emits
-   * NO child when the prelude is empty, which shifted every positional index
-   * below by one and silently reduced `@foo { … }` to `prelude: '{'` /
-   * `rawBody: '}'`. A node always emits exactly one child. Mirrors the
-   * `DirectScssOpaquePrelude`/`DirectScssOpaqueBody` and css `CssAstOpaqueAtPrelude`/
-   * `CssAstOpaqueBody` spellings.
+   * fixed: the shared optional prelude capture emits NO child when the prelude is
+   * empty, which shifted every positional index below by one and silently reduced
+   * `@foo { … }` to `prelude: '{'` / `rawBody: '}'`. A node always emits exactly
+   * one child, matching the explicit wrapper shape the other dialects use for
+   * optional opaque captures.
    */
   const DirectJessOpaquePrelude = node<string | null>(
     'DirectJessOpaquePrelude',
