@@ -4797,7 +4797,7 @@ export const scssFactory = (g: ScssInputRules) => {
    */
   const DirectScssOpaquePrelude = node<string | null>(
     'OpaquePrelude',
-    g.ScssAstOpaqueStaticPrelude,
+    g.ScssOpaqueStaticPrelude,
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
       return text === '' ? null : text;
@@ -4805,7 +4805,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const DirectScssOpaqueBody = node<string>(
     'OpaqueBody',
-    g.ScssAstOpaqueBody,
+    g.ScssOpaqueBody,
     children => children.length === 0 ? '' : requireToken(children[0]).value
   );
   const DirectScssOpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(

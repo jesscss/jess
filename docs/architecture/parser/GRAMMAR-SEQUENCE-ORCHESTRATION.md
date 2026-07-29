@@ -4001,6 +4001,29 @@ verify:compose-integrity` passed. The renamed `StaticValueAtom`,
 warnings are existing left-factor/dispatch-review debt now reported under the
 semantic owner names.
 
+Shared opaque at-rule name cleanup, 2026-07-29: parser-shared's preprocessor
+opaque capture terminals are no longer mode-labelled `JessAstOpaque*` /
+`ScssAstOpaque*`. They are now `JessOpaqueStaticPrelude`, `JessOpaqueBody`,
+`ScssOpaqueStaticPrelude`, and `ScssOpaqueBody`, with Jess/SCSS grammar
+call-sites updated to consume those semantic keys. The dialect prefixes are
+intentional because these captures add preprocessor line-comment skipping and
+top-level `$` sentinels beyond the plain CSS opaque capture contract; `Ast` was
+the false part.
+
+Evidence for the shared opaque at-rule name cleanup: `pnpm --filter
+@jesscss/parser-shared build` passed; `pnpm --filter @jesscss/scss-parser test
+-- test/cst-public.test.ts test/ast-grammar.test.ts test/ast-macro-compiled.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed 4 files / 104 tests;
+`pnpm --filter @jesscss/jess-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts --reporter=dot`
+passed 3 files / 117 tests; `pnpm --filter @jesscss/scss-parser build` and
+`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; `pnpm run check:macro` passed with all parser packages fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. The remaining `CssOpaqueCapturePrelude#1`,
+`JessOpaqueStaticPrelude#1`, and shared balanced-capture warnings are the
+existing bounded-capture/trivia-aware-helper queue, not a naming contract.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman
