@@ -111,36 +111,36 @@ type ScssRules = {
   IfStaticRule: Combinator<Rule>;
   IfStaticConditionalBlock: Combinator<AtRuleBlock>;
   IfRule: Combinator<If>;
-  DirectScssQueryFeature: Combinator<ValueNode>;
-  DirectScssQueryFunction: Combinator<FunctionCall>;
-  DirectScssQueryInParens: Combinator<ValueNode>;
-  DirectScssQueryCondition: Combinator<ValueNode>;
-  DirectScssQueryClause: Combinator<ValueNode>;
-  DirectScssQueryPreludeTail: Combinator<ValueNode>;
-  DirectScssQueryPrelude: Combinator<ValueNode>;
-  DirectScssSupportsAtom: Combinator<ValueNode>;
-  DirectScssGeneralTemplate: Combinator<Interpolation>;
-  DirectScssGeneralTemplateParen: Combinator<Interpolation>;
-  DirectScssGeneralTemplateSquare: Combinator<Interpolation>;
-  DirectScssGeneralTemplateBrace: Combinator<Interpolation>;
-  DirectScssGeneralTemplateDoubleQuoted: Combinator<Interpolation>;
-  DirectScssGeneralTemplateSingleQuoted: Combinator<Interpolation>;
-  DirectScssGeneralEnclosed: Combinator<GeneralEnclosed>;
-  DirectScssSupportsFeature: Combinator<ValueNode>;
-  DirectScssSupportsInParens: Combinator<ValueNode>;
-  DirectScssSupportsNot: Combinator<Keyword>;
-  DirectScssSupportsAndOr: Combinator<Keyword>;
-  DirectScssSupportsCondition: Combinator<ValueNode>;
-  DirectScssSupportsPrelude: Combinator<ValueNode>;
-  DirectScssStaticMediaPrelude: Combinator<ValueNode>;
+  QueryFeature: Combinator<ValueNode>;
+  QueryFunction: Combinator<FunctionCall>;
+  QueryInParens: Combinator<ValueNode>;
+  QueryCondition: Combinator<ValueNode>;
+  QueryClause: Combinator<ValueNode>;
+  QueryPreludeTail: Combinator<ValueNode>;
+  QueryPrelude: Combinator<ValueNode>;
+  SupportsAtom: Combinator<ValueNode>;
+  SupportsGeneralTemplate: Combinator<Interpolation>;
+  SupportsGeneralTemplateParen: Combinator<Interpolation>;
+  SupportsGeneralTemplateSquare: Combinator<Interpolation>;
+  SupportsGeneralTemplateBrace: Combinator<Interpolation>;
+  SupportsGeneralTemplateDoubleQuoted: Combinator<Interpolation>;
+  SupportsGeneralTemplateSingleQuoted: Combinator<Interpolation>;
+  SupportsGeneralEnclosed: Combinator<GeneralEnclosed>;
+  SupportsFeature: Combinator<ValueNode>;
+  SupportsInParens: Combinator<ValueNode>;
+  SupportsNotKeyword: Combinator<Keyword>;
+  SupportsAndOrKeyword: Combinator<Keyword>;
+  SupportsCondition: Combinator<ValueNode>;
+  SupportsPrelude: Combinator<ValueNode>;
+  StaticMediaPrelude: Combinator<ValueNode>;
 
   /** Static-only generic CSS header capture for known passthrough blocks. */
-  DirectScssStaticAtPrelude: Combinator<ValueNode | null>;
-  DirectScssStaticAtPreludeAtom: Combinator<Token>;
-  DirectScssStaticAtPreludeParen: Combinator<Token>;
-  DirectScssStaticAtPreludeSquare: Combinator<Token>;
-  DirectScssStaticAtPreludeDoubleQuoted: Combinator<Token>;
-  DirectScssStaticAtPreludeSingleQuoted: Combinator<Token>;
+  StaticAtPrelude: Combinator<ValueNode | null>;
+  StaticAtPreludeAtom: Combinator<Token>;
+  StaticAtPreludeParen: Combinator<Token>;
+  StaticAtPreludeSquare: Combinator<Token>;
+  StaticAtPreludeDoubleQuoted: Combinator<Token>;
+  StaticAtPreludeSingleQuoted: Combinator<Token>;
   DirectScssAtRuleStatement: Combinator<AtRuleStatement>;
   DirectScssScopeBlock: Combinator<AtRuleBlock>;
   DirectScssNestedScopeBlock: Combinator<AtRuleBlock>;
@@ -2170,7 +2170,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       propertyName,
       literal(':'),
-      g.DirectScssSupportsAtom
+      g.SupportsAtom
     ),
     children => block(operation(
       ':',
@@ -2186,7 +2186,7 @@ export const scssFactory = (g: ScssInputRules) => {
         literal('(')
       )),
       choice(
-        g.DirectScssSupportsCondition,
+        g.SupportsCondition,
         g.StaticImportDeclaration
       ),
       literal(')')
@@ -2234,14 +2234,14 @@ export const scssFactory = (g: ScssInputRules) => {
         literal('('),
         propertyName,
         literal(':'),
-        g.DirectScssSupportsAtom,
+        g.SupportsAtom,
         literal(')')
       ),
       sequence(
         literal('('),
         propertyName,
         g.CssSyntaxQueryComparisonOperator,
-        g.DirectScssSupportsAtom,
+        g.SupportsAtom,
         literal(')')
       )
     ),
@@ -3064,7 +3064,7 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       sequence(
         supportsAtKeyword,
-        g.DirectScssSupportsPrelude,
+        g.SupportsPrelude,
         g.IfBody
       ),
       sequence(
@@ -3075,7 +3075,7 @@ export const scssFactory = (g: ScssInputRules) => {
             not(g.CssSyntaxQueryOnly)
           )
         ),
-        g.DirectScssQueryPrelude,
+        g.QueryPrelude,
         g.IfBody
       ),
       sequence(
@@ -3086,17 +3086,17 @@ export const scssFactory = (g: ScssInputRules) => {
             not(g.CssSyntaxQueryOnly)
           )
         ),
-        g.DirectScssStaticMediaPrelude,
+        g.StaticMediaPrelude,
         g.IfBody
       ),
       sequence(
         startingStyleAtKeyword,
-        g.DirectScssStaticAtPrelude,
+        g.StaticAtPrelude,
         g.IfBody
       ),
       sequence(
         layerAtKeyword,
-        g.DirectScssStaticAtPrelude,
+        g.StaticAtPrelude,
         g.IfBody
       )
     ),
@@ -3170,7 +3170,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * SCSS's value-position slash list, so every dialect carries one ratio shape.
    */
   const QueryValue = node<ValueNode>(
-    'DirectScssQueryValue',
+    'QueryValue',
     noTrivia(sequence(
       g.MathTopSum,
       optional(sequence(
@@ -3193,7 +3193,7 @@ export const scssFactory = (g: ScssInputRules) => {
           );
     }
   );
-  const directScssQueryComparisonOperator = g.CssSyntaxQueryComparisonOperator;
+  const queryComparisonOperator = g.CssSyntaxQueryComparisonOperator;
 
   /*
    * media-queries-4 §2.4.3 lets `<mf-range>` lead with the value rather than the
@@ -3205,8 +3205,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * Building it on QueryValue is what gives the range form `<ratio>`
    * bounds (`(16/9 < aspect-ratio < 2/1)`) without restating the ratio grammar.
    */
-  const DirectScssQueryFeature = node<ValueNode>(
-    'DirectScssQueryFeature',
+  const QueryFeature = node<ValueNode>(
+    'QueryFeature',
     choice(
       sequence(
         literal('('),
@@ -3223,17 +3223,17 @@ export const scssFactory = (g: ScssInputRules) => {
       sequence(
         literal('('),
         propertyName,
-        directScssQueryComparisonOperator,
+        queryComparisonOperator,
         QueryValue,
         literal(')')
       ),
       sequence(
         literal('('),
         QueryValue,
-        directScssQueryComparisonOperator,
+        queryComparisonOperator,
         propertyName,
         optional(sequence(
-          directScssQueryComparisonOperator,
+          queryComparisonOperator,
           QueryValue
         )),
         literal(')')
@@ -3274,8 +3274,8 @@ export const scssFactory = (g: ScssInputRules) => {
       ));
     }
   );
-  const DirectScssQueryFunction = node<FunctionCall>(
-    'DirectScssQueryFunction',
+  const QueryFunction = node<FunctionCall>(
+    'QueryFunction',
     sequence(
       g.CssSyntaxQueryFunctionName,
       literal('('),
@@ -3296,33 +3296,33 @@ export const scssFactory = (g: ScssInputRules) => {
       [any(children.length > 2 ? requireToken(children[2]).value : '')]
     )
   );
-  const DirectScssQueryInParens = node<ValueNode>(
-    'DirectScssQueryInParens',
+  const QueryInParens = node<ValueNode>(
+    'QueryInParens',
     choice(
       sequence(
         literal('('),
-        g.DirectScssQueryCondition,
+        g.QueryCondition,
         literal(')')
       ),
-      g.DirectScssQueryFeature,
-      g.DirectScssQueryFunction
+      g.QueryFeature,
+      g.QueryFunction
     ),
     children => children.length === 1
       ? requireValue(children[0])
       : block(requireValue(children[1]))
   );
-  const DirectScssQueryCondition = node<ValueNode>(
-    'DirectScssQueryCondition',
+  const QueryCondition = node<ValueNode>(
+    'QueryCondition',
     choice(
       sequence(
         g.CssSyntaxQueryNot,
-        g.DirectScssQueryInParens
+        g.QueryInParens
       ),
       sequence(
-        g.DirectScssQueryInParens,
+        g.QueryInParens,
         many(sequence(
           g.CssSyntaxQueryAndOr,
-          g.DirectScssQueryInParens
+          g.QueryInParens
         ))
       )
     ),
@@ -3334,11 +3334,11 @@ export const scssFactory = (g: ScssInputRules) => {
 
   /*
    * `only` modifies a media type; it cannot introduce a parenthesized query
-   * condition. Keep `not (...)` in DirectScssQueryCondition, where that form
+   * condition. Keep `not (...)` in QueryCondition, where that form
    * is structurally valid.
    */
   const QueryNonOnlyKeyword = node<Keyword>(
-    'DirectScssQueryNonOnlyKeyword',
+    'QueryNonOnlyKeyword',
     sequence(
       not(g.CssSyntaxQueryOnly),
       g.Keyword
@@ -3346,27 +3346,27 @@ export const scssFactory = (g: ScssInputRules) => {
     children => requireKeyword(children.at(-1))
   );
   const QueryOnlyClause = node<ValueNode>(
-    'DirectScssQueryOnlyClause',
+    'QueryOnlyClause',
     sequence(
       g.CssSyntaxQueryOnly,
       QueryNonOnlyKeyword,
       many(sequence(
         g.CssSyntaxQueryAndOr,
-        g.DirectScssQueryInParens
+        g.QueryInParens
       ))
     ),
     children => spaced(keywordizeValues(children))
   );
-  const DirectScssQueryClause = node<ValueNode>(
-    'DirectScssQueryClause',
+  const QueryClause = node<ValueNode>(
+    'QueryClause',
     choice(
       QueryOnlyClause,
       sequence(
         QueryNonOnlyKeyword,
         optional(g.CssSyntaxQueryAndOr),
-        g.DirectScssQueryInParens
+        g.QueryInParens
       ),
-      g.DirectScssQueryCondition,
+      g.QueryCondition,
       QueryNonOnlyKeyword
     ),
     (children) => {
@@ -3374,19 +3374,19 @@ export const scssFactory = (g: ScssInputRules) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const DirectScssQueryPreludeTail = node<ValueNode>(
-    'DirectScssQueryPreludeTail',
+  const QueryPreludeTail = node<ValueNode>(
+    'QueryPreludeTail',
     sequence(
       literal(','),
-      g.DirectScssQueryClause
+      g.QueryClause
     ),
     children => requireValue(children[1])
   );
-  const DirectScssQueryPrelude = node<ValueNode>(
-    'DirectScssQueryPrelude',
+  const QueryPrelude = node<ValueNode>(
+    'QueryPrelude',
     sequence(
-      g.DirectScssQueryClause,
-      many(g.DirectScssQueryPreludeTail)
+      g.QueryClause,
+      many(g.QueryPreludeTail)
     ),
     (children) => {
       const values = children.map(requireValue);
@@ -3401,12 +3401,12 @@ export const scssFactory = (g: ScssInputRules) => {
 
   /*
    * `@supports` is not the media/container query grammar: a general-enclosed
-   * function would otherwise reach DirectScssQueryFunction and be lowered to
+   * function would otherwise reach QueryFunction and be lowered to
    * FunctionCall(Any).  Keep this public direct route to facts the canonical
    * AST actually owns; dynamic SCSS values require their own semantic model.
    */
-  const DirectScssSupportsAtom = node<ValueNode>(
-    'DirectScssSupportsAtom',
+  const SupportsAtom = node<ValueNode>(
+    'SupportsAtom',
     choice(
       StaticValueQuoted,
       g.Color,
@@ -3416,76 +3416,76 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     children => requireValue(children[0])
   );
-  const DirectScssGeneralTemplateParen = node<Interpolation>(
-    'DirectScssGeneralTemplateParen',
+  const SupportsGeneralTemplateParen = node<Interpolation>(
+    'SupportsGeneralTemplateParen',
     sequence(
       literal('('),
-      g.DirectScssGeneralTemplate,
+      g.SupportsGeneralTemplate,
       literal(')')
     ),
     interpolationFromTemplateChildren
   );
-  const DirectScssGeneralTemplateSquare = node<Interpolation>(
-    'DirectScssGeneralTemplateSquare',
+  const SupportsGeneralTemplateSquare = node<Interpolation>(
+    'SupportsGeneralTemplateSquare',
     sequence(
       literal('['),
-      g.DirectScssGeneralTemplate,
+      g.SupportsGeneralTemplate,
       literal(']')
     ),
     interpolationFromTemplateChildren
   );
-  const DirectScssGeneralTemplateBrace = node<Interpolation>(
-    'DirectScssGeneralTemplateBrace',
+  const SupportsGeneralTemplateBrace = node<Interpolation>(
+    'SupportsGeneralTemplateBrace',
     sequence(
       literal('{'),
-      g.DirectScssGeneralTemplate,
+      g.SupportsGeneralTemplate,
       literal('}')
     ),
     interpolationFromTemplateChildren
   );
-  const DirectScssGeneralTemplateDoubleQuoted = node<Interpolation>(
-    'DirectScssGeneralTemplateDoubleQuoted',
+  const SupportsGeneralTemplateDoubleQuoted = node<Interpolation>(
+    'SupportsGeneralTemplateDoubleQuoted',
     sequence(
       literal('"'),
-      g.DirectScssGeneralTemplate,
+      g.SupportsGeneralTemplate,
       literal('"')
     ),
     interpolationFromTemplateChildren
   );
-  const DirectScssGeneralTemplateSingleQuoted = node<Interpolation>(
-    'DirectScssGeneralTemplateSingleQuoted',
+  const SupportsGeneralTemplateSingleQuoted = node<Interpolation>(
+    'SupportsGeneralTemplateSingleQuoted',
     sequence(
       literal('\''),
-      g.DirectScssGeneralTemplate,
+      g.SupportsGeneralTemplate,
       literal('\'')
     ),
     interpolationFromTemplateChildren
   );
-  const DirectScssGeneralTemplate = node<Interpolation>(
-    'DirectScssGeneralTemplate',
+  const SupportsGeneralTemplate = node<Interpolation>(
+    'SupportsGeneralTemplate',
     many(choice(
       g.SassInterpolation,
-      g.DirectScssGeneralTemplateParen,
-      g.DirectScssGeneralTemplateSquare,
-      g.DirectScssGeneralTemplateBrace,
-      g.DirectScssGeneralTemplateDoubleQuoted,
-      g.DirectScssGeneralTemplateSingleQuoted,
+      g.SupportsGeneralTemplateParen,
+      g.SupportsGeneralTemplateSquare,
+      g.SupportsGeneralTemplateBrace,
+      g.SupportsGeneralTemplateDoubleQuoted,
+      g.SupportsGeneralTemplateSingleQuoted,
       generalTemplateText
     )),
     interpolationFromTemplateChildren
   );
-  const DirectScssGeneralEnclosed = node<GeneralEnclosed>(
-    'DirectScssGeneralEnclosed',
+  const SupportsGeneralEnclosed = node<GeneralEnclosed>(
+    'SupportsGeneralEnclosed',
     choice(
       sequence(
         g.CssSyntaxKeyword,
         literal('('),
-        g.DirectScssGeneralTemplate,
+        g.SupportsGeneralTemplate,
         literal(')')
       ),
       sequence(
         literal('('),
-        g.DirectScssGeneralTemplate,
+        g.SupportsGeneralTemplate,
         literal(')')
       )
     ),
@@ -3501,8 +3501,8 @@ export const scssFactory = (g: ScssInputRules) => {
           requireInterpolation(children[1])
         )
   );
-  const DirectScssSupportsFeature = node<ValueNode>(
-    'DirectScssSupportsFeature',
+  const SupportsFeature = node<ValueNode>(
+    'SupportsFeature',
     choice(
       sequence(
         literal('('),
@@ -3513,7 +3513,7 @@ export const scssFactory = (g: ScssInputRules) => {
         literal('('),
         propertyName,
         literal(':'),
-        g.DirectScssSupportsAtom,
+        g.SupportsAtom,
         literal(')')
       )
     ),
@@ -3529,16 +3529,16 @@ export const scssFactory = (g: ScssInputRules) => {
           ));
     }
   );
-  const DirectScssSupportsInParens = node<ValueNode>(
-    'DirectScssSupportsInParens',
+  const SupportsInParens = node<ValueNode>(
+    'SupportsInParens',
     choice(
       sequence(
         literal('('),
-        g.DirectScssSupportsCondition,
+        g.SupportsCondition,
         literal(')')
       ),
-      g.DirectScssSupportsFeature,
-      g.DirectScssGeneralEnclosed
+      g.SupportsFeature,
+      g.SupportsGeneralEnclosed
     ),
     (children) => {
       const value = children.find(isValue);
@@ -3548,28 +3548,28 @@ export const scssFactory = (g: ScssInputRules) => {
       return isValue(children[0]) ? value : block(value);
     }
   );
-  const DirectScssSupportsNot = node<Keyword>(
-    'DirectScssSupportsNot',
+  const SupportsNotKeyword = node<Keyword>(
+    'SupportsNotKeyword',
     g.CssSyntaxQueryNot,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectScssSupportsAndOr = node<Keyword>(
-    'DirectScssSupportsAndOr',
+  const SupportsAndOrKeyword = node<Keyword>(
+    'SupportsAndOrKeyword',
     g.CssSyntaxQueryAndOr,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectScssSupportsCondition = node<ValueNode>(
-    'DirectScssSupportsCondition',
+  const SupportsCondition = node<ValueNode>(
+    'SupportsCondition',
     choice(
       sequence(
-        g.DirectScssSupportsNot,
-        g.DirectScssSupportsInParens
+        g.SupportsNotKeyword,
+        g.SupportsInParens
       ),
       sequence(
-        g.DirectScssSupportsInParens,
+        g.SupportsInParens,
         many(sequence(
-          g.DirectScssSupportsAndOr,
-          g.DirectScssSupportsInParens
+          g.SupportsAndOrKeyword,
+          g.SupportsInParens
         ))
       )
     ),
@@ -3581,13 +3581,13 @@ export const scssFactory = (g: ScssInputRules) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const DirectScssSupportsPrelude = node<ValueNode>(
-    'DirectScssSupportsPrelude',
-    g.DirectScssSupportsCondition,
+  const SupportsPrelude = node<ValueNode>(
+    'SupportsPrelude',
+    g.SupportsCondition,
     children => requireValue(children[0])
   );
-  const DirectScssStaticMediaPrelude = node<ValueNode>(
-    'DirectScssStaticMediaPrelude',
+  const StaticMediaPrelude = node<ValueNode>(
+    'StaticMediaPrelude',
     noTrivia(oneOrMore(g.ScssSyntaxStaticMediaModifier)),
     children => any(children.map(requireToken).map(token => token.value).join('').trim())
   );
@@ -3600,9 +3600,9 @@ export const scssFactory = (g: ScssInputRules) => {
    * inside quotes and nested paren/square groups. Dynamic headers remain held
    * until they have an interpolation-bearing prelude model.
    */
-  const directScssStaticAtPreludeText = regex(/(?:[^#()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?!\*))+/);
-  const DirectScssStaticAtPreludeDoubleQuoted = node<Token>(
-    'DirectScssStaticAtPreludeDoubleQuoted',
+  const staticAtPreludeText = regex(/(?:[^#()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?!\*))+/);
+  const StaticAtPreludeDoubleQuoted = node<Token>(
+    'StaticAtPreludeDoubleQuoted',
     sequence(
       literal('"'),
       directDoubleQuotedText,
@@ -3610,8 +3610,8 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     joinTokenValue
   );
-  const DirectScssStaticAtPreludeSingleQuoted = node<Token>(
-    'DirectScssStaticAtPreludeSingleQuoted',
+  const StaticAtPreludeSingleQuoted = node<Token>(
+    'StaticAtPreludeSingleQuoted',
     sequence(
       literal('\''),
       directSingleQuotedText,
@@ -3619,40 +3619,40 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     joinTokenValue
   );
-  const DirectScssStaticAtPreludeParen = node<Token>(
-    'DirectScssStaticAtPreludeParen',
+  const StaticAtPreludeParen = node<Token>(
+    'StaticAtPreludeParen',
     sequence(
       literal('('),
-      many(g.DirectScssStaticAtPreludeAtom),
+      many(g.StaticAtPreludeAtom),
       literal(')')
     ),
     joinTokenValue
   );
-  const DirectScssStaticAtPreludeSquare = node<Token>(
-    'DirectScssStaticAtPreludeSquare',
+  const StaticAtPreludeSquare = node<Token>(
+    'StaticAtPreludeSquare',
     sequence(
       literal('['),
-      many(g.DirectScssStaticAtPreludeAtom),
+      many(g.StaticAtPreludeAtom),
       literal(']')
     ),
     joinTokenValue
   );
-  const DirectScssStaticAtPreludeAtom = node<Token>(
-    'DirectScssStaticAtPreludeAtom',
+  const StaticAtPreludeAtom = node<Token>(
+    'StaticAtPreludeAtom',
     choice(
-      g.DirectScssStaticAtPreludeParen,
-      g.DirectScssStaticAtPreludeSquare,
-      g.DirectScssStaticAtPreludeDoubleQuoted,
-      g.DirectScssStaticAtPreludeSingleQuoted,
+      g.StaticAtPreludeParen,
+      g.StaticAtPreludeSquare,
+      g.StaticAtPreludeDoubleQuoted,
+      g.StaticAtPreludeSingleQuoted,
       g.CssSyntaxBlockComment,
       g.ScssSyntaxLineComment,
-      directScssStaticAtPreludeText
+      staticAtPreludeText
     ),
     children => ({ value: requireToken(children[0]).value })
   );
-  const DirectScssStaticAtPrelude = node<ValueNode | null>(
-    'DirectScssStaticAtPrelude',
-    noTrivia(many(g.DirectScssStaticAtPreludeAtom)),
+  const StaticAtPrelude = node<ValueNode | null>(
+    'StaticAtPrelude',
+    noTrivia(many(g.StaticAtPreludeAtom)),
     (children) => {
       const text = children.map(requireToken).map(token => token.value).join('').trim();
       return text.length === 0 ? null : any(text);
@@ -3667,10 +3667,10 @@ export const scssFactory = (g: ScssInputRules) => {
   const DirectScssStaticStatementPrelude = node<ValueNode | null>(
     'DirectScssStaticStatementPrelude',
     noTrivia(many(choice(
-      g.DirectScssStaticAtPreludeParen,
-      g.DirectScssStaticAtPreludeSquare,
-      g.DirectScssStaticAtPreludeDoubleQuoted,
-      g.DirectScssStaticAtPreludeSingleQuoted,
+      g.StaticAtPreludeParen,
+      g.StaticAtPreludeSquare,
+      g.StaticAtPreludeDoubleQuoted,
+      g.StaticAtPreludeSingleQuoted,
       g.CssSyntaxBlockComment,
       g.ScssSyntaxLineComment,
       directScssStaticStatementPreludeText
@@ -3706,13 +3706,13 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * `@scope` is an existing CSS at-rule fact: its static header remains a
    * grammar-owned prelude and its SCSS body remains typed statements. Dynamic
-   * interpolation is intentionally outside DirectScssStaticAtPrelude.
+   * interpolation is intentionally outside StaticAtPrelude.
    */
   const DirectScssScopeBlock = node<AtRuleBlock>(
     'DirectScssScopeBlock',
     sequence(
       scopeAtKeyword,
-      g.DirectScssStaticAtPrelude,
+      g.StaticAtPrelude,
       literal('{'),
       many(choice(
         g.DirectScssComment,
@@ -3756,7 +3756,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssNestedScopeBlock',
     sequence(
       scopeAtKeyword,
-      g.DirectScssStaticAtPrelude,
+      g.StaticAtPrelude,
       literal('{'),
       nestedBody,
       literal('}')
@@ -3778,7 +3778,7 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       sequence(
         supportsAtKeyword,
-        g.DirectScssSupportsPrelude,
+        g.SupportsPrelude,
         literal('{'),
         conditionalBlockBody,
         literal('}')
@@ -3791,7 +3791,7 @@ export const scssFactory = (g: ScssInputRules) => {
             not(g.CssSyntaxQueryOnly)
           )
         ),
-        g.DirectScssQueryPrelude,
+        g.QueryPrelude,
         literal('{'),
         conditionalBlockBody,
         literal('}')
@@ -3804,7 +3804,7 @@ export const scssFactory = (g: ScssInputRules) => {
             not(g.CssSyntaxQueryOnly)
           )
         ),
-        g.DirectScssStaticMediaPrelude,
+        g.StaticMediaPrelude,
         literal('{'),
         conditionalBlockBody,
         literal('}')
@@ -3823,7 +3823,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssStartingStyleBlock',
     sequence(
       startingStyleAtKeyword,
-      g.DirectScssStaticAtPrelude,
+      g.StaticAtPrelude,
       literal('{'),
       startingLayerBlockBody,
       literal('}')
@@ -3841,7 +3841,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssLayerBlock',
     sequence(
       layerAtKeyword,
-      g.DirectScssStaticAtPrelude,
+      g.StaticAtPrelude,
       literal('{'),
       startingLayerBlockBody,
       literal('}')
@@ -3867,7 +3867,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssDocumentBlock',
     sequence(
       documentAtKeyword,
-      g.DirectScssStaticAtPrelude,
+      g.StaticAtPrelude,
       literal('{'),
       many(choice(
         g.DirectScssComment,
@@ -3932,13 +3932,13 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * The shared AST deliberately retains a static page selector as an existing
    * grammar-owned Any, just as the direct CSS route does. `#{...}` remains
-   * excluded by DirectScssStaticAtPrelude rather than being flattened.
+   * excluded by StaticAtPrelude rather than being flattened.
    */
   const DirectScssPageBlock = node<AtRuleBlock>(
     'DirectScssPageBlock',
     sequence(
       pageAtKeyword,
-      g.DirectScssStaticAtPrelude,
+      g.StaticAtPrelude,
       literal('{'),
       many(choice(
         g.DirectScssComment,
@@ -3992,7 +3992,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssFontFeatureValuesBlock',
     sequence(
       fontFeatureValuesAtKeyword,
-      g.DirectScssStaticAtPrelude,
+      g.StaticAtPrelude,
       literal('{'),
       many(choice(
         g.DirectScssComment,
@@ -4014,7 +4014,7 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       sequence(
         supportsAtKeyword,
-        g.DirectScssSupportsPrelude,
+        g.SupportsPrelude,
         literal('{'),
         nestedKeyframesBody,
         literal('}')
@@ -4027,7 +4027,7 @@ export const scssFactory = (g: ScssInputRules) => {
             not(g.CssSyntaxQueryOnly)
           )
         ),
-        g.DirectScssQueryPrelude,
+        g.QueryPrelude,
         literal('{'),
         nestedKeyframesBody,
         literal('}')
@@ -4040,7 +4040,7 @@ export const scssFactory = (g: ScssInputRules) => {
             not(g.CssSyntaxQueryOnly)
           )
         ),
-        g.DirectScssStaticMediaPrelude,
+        g.StaticMediaPrelude,
         literal('{'),
         nestedKeyframesBody,
         literal('}')
@@ -4062,7 +4062,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssNestedStartingStyleBlock',
     sequence(
       startingStyleAtKeyword,
-      g.DirectScssStaticAtPrelude,
+      g.StaticAtPrelude,
       literal('{'),
       nestedKeyframesBody,
       literal('}')
@@ -4083,7 +4083,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssNestedLayerBlock',
     sequence(
       layerAtKeyword,
-      g.DirectScssStaticAtPrelude,
+      g.StaticAtPrelude,
       literal('{'),
       nestedKeyframesBody,
       literal('}')
@@ -5007,34 +5007,34 @@ export const scssFactory = (g: ScssInputRules) => {
     IfStaticRule,
     IfStaticConditionalBlock,
     IfRule,
-    DirectScssQueryFeature,
-    DirectScssQueryFunction,
-    DirectScssQueryInParens,
-    DirectScssQueryCondition,
-    DirectScssQueryClause,
-    DirectScssQueryPreludeTail,
-    DirectScssQueryPrelude,
-    DirectScssSupportsAtom,
-    DirectScssGeneralTemplate,
-    DirectScssGeneralTemplateParen,
-    DirectScssGeneralTemplateSquare,
-    DirectScssGeneralTemplateBrace,
-    DirectScssGeneralTemplateDoubleQuoted,
-    DirectScssGeneralTemplateSingleQuoted,
-    DirectScssGeneralEnclosed,
-    DirectScssSupportsFeature,
-    DirectScssSupportsInParens,
-    DirectScssSupportsNot,
-    DirectScssSupportsAndOr,
-    DirectScssSupportsCondition,
-    DirectScssSupportsPrelude,
-    DirectScssStaticMediaPrelude,
-    DirectScssStaticAtPrelude,
-    DirectScssStaticAtPreludeAtom,
-    DirectScssStaticAtPreludeParen,
-    DirectScssStaticAtPreludeSquare,
-    DirectScssStaticAtPreludeDoubleQuoted,
-    DirectScssStaticAtPreludeSingleQuoted,
+    QueryFeature,
+    QueryFunction,
+    QueryInParens,
+    QueryCondition,
+    QueryClause,
+    QueryPreludeTail,
+    QueryPrelude,
+    SupportsAtom,
+    SupportsGeneralTemplate,
+    SupportsGeneralTemplateParen,
+    SupportsGeneralTemplateSquare,
+    SupportsGeneralTemplateBrace,
+    SupportsGeneralTemplateDoubleQuoted,
+    SupportsGeneralTemplateSingleQuoted,
+    SupportsGeneralEnclosed,
+    SupportsFeature,
+    SupportsInParens,
+    SupportsNotKeyword,
+    SupportsAndOrKeyword,
+    SupportsCondition,
+    SupportsPrelude,
+    StaticMediaPrelude,
+    StaticAtPrelude,
+    StaticAtPreludeAtom,
+    StaticAtPreludeParen,
+    StaticAtPreludeSquare,
+    StaticAtPreludeDoubleQuoted,
+    StaticAtPreludeSingleQuoted,
     DirectScssAtRuleStatement,
     DirectScssScopeBlock,
     DirectScssNestedScopeBlock,
