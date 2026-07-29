@@ -13,11 +13,11 @@ test('canonical Jess AST grammar macro-fuses recognition with no runtime import'
     const transformed = await server.transformRequest('/src/grammar.ts');
     expect(transformed?.code).not.toContain('@jesscss/parser-shared');
     expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
-    expect(transformed?.code).toContain('DirectJessStaticPseudoArgument');
-    expect(transformed?.code).toContain('DirectJessGuardCall');
-    expect(transformed?.code).toContain('DirectJessDollarValue');
-    expect(transformed?.code).toContain('DirectJessUnwrappedProductRest');
-    expect(transformed?.code).toContain('DirectJessCallComponent');
+    expect(transformed?.code).toContain('StaticPseudoArgument');
+    expect(transformed?.code).toContain('GuardCall');
+    expect(transformed?.code).toContain('DollarValue');
+    expect(transformed?.code).toContain('ExpressionProduct');
+    expect(transformed?.code).toContain('CallComponent');
     expect(transformed?.code).toContain('CssImportTarget');
     expect(transformed?.code).toContain('CssSyntaxStaticUrlInner');
   } finally {
@@ -28,7 +28,7 @@ test('canonical Jess AST grammar macro-fuses recognition with no runtime import'
 test('macro-compiled Jess call components retain modern CSS slash separators structurally', () => {
   const valid = '.card { box-shadow: rgb(15 23 42 / 0.22); }';
   const cst = parseJessCst(valid);
-  const direct = run(jessAstGrammar.JessAstDocument, valid, { trivia: jessAstGrammar.whitespace });
+  const direct = run(jessAstGrammar.Stylesheet, valid, { trivia: jessAstGrammar.whitespace });
   expect(cst.errors).toHaveLength(0);
   expect(cst.unconsumedFrom).toBeNull();
   expect(direct.ok && direct.unconsumedFrom === null && direct.value?.type === 'Stylesheet').toBe(true);
@@ -39,7 +39,7 @@ test('macro-compiled Jess call components retain modern CSS slash separators str
     '.card { color: rgb(15 23 42 / 0.22 / 1); }'
   ]) {
     const cst = parseJessCst(invalid);
-    const result = run(jessAstGrammar.JessAstDocument, invalid, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
     expect(cst.errors.length + Number(cst.unconsumedFrom !== null), invalid).toBeGreaterThan(0);
     expect(result.ok && result.unconsumedFrom === null, invalid).toBe(false);
   }

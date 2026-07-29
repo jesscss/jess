@@ -1,7 +1,7 @@
 /**
  * Recognition-only terminal capture for opaque at-rule blocks.
  *
- * The direct CSS, SCSS and Jess AST grammars compose this source artifact at
+ * The CSS, SCSS and Jess grammars compose this source artifact at
  * macro build time, then perform their own local AST reductions.  It
  * deliberately owns no nodes, callbacks, or dialect evaluation semantics.
  */
@@ -57,7 +57,7 @@ export const opaqueAtRuleRecognition = rules(_g => ({
    * enclosing Jess grammar must subsequently require `{`, rejecting dynamic
    * headers without treating raw body bytes as Jess syntax.
    */
-  JessAstOpaqueStaticPrelude: optional(scanTo(
+  JessOpaqueStaticPrelude: optional(scanTo(
     choice(
       literal('$'),
       literal('{'),
@@ -65,7 +65,7 @@ export const opaqueAtRuleRecognition = rules(_g => ({
     ),
     { skip: preprocessorSkip }
   )),
-  JessAstOpaqueBody: noTrivia(scanTo(
+  JessOpaqueBody: noTrivia(scanTo(
     literal('}'),
     { skip: preprocessorSkip }
   )),
@@ -75,7 +75,7 @@ export const opaqueAtRuleRecognition = rules(_g => ({
    * prelude rejects instead of becoming opaque text, and `#{…}` interpolation
    * is reserved the same way by the enclosing grammar's own `{` requirement.
    */
-  ScssAstOpaqueStaticPrelude: optional(scanTo(
+  ScssOpaqueStaticPrelude: optional(scanTo(
     choice(
       literal('$'),
       literal('{'),
@@ -83,7 +83,7 @@ export const opaqueAtRuleRecognition = rules(_g => ({
     ),
     { skip: preprocessorSkip }
   )),
-  ScssAstOpaqueBody: noTrivia(scanTo(
+  ScssOpaqueBody: noTrivia(scanTo(
     literal('}'),
     { skip: preprocessorSkip }
   ))

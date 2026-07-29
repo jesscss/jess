@@ -22,6 +22,16 @@ function stats(tree: CstNode) {
   return { leaves, grammarTypes, types };
 }
 
+function isModeLabel(type: string): boolean {
+  return type.startsWith('Direct') || type.includes('Ast') || type.includes('Cst');
+}
+
+function expectNoModeLabels(tree: CstNode) {
+  const { grammarTypes, types } = stats(tree);
+  expect([...grammarTypes.keys()].filter(isModeLabel)).toEqual([]);
+  expect([...types].filter(isModeLabel)).toEqual([]);
+}
+
 describe('@jesscss/jess-parser/cst', () => {
   it('parses Jess through the public core-free CST entry', () => {
     const result = parseJessCst('$color: red; .x { color: $color; }');
@@ -29,7 +39,8 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
-    expect(result.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'DirectJessVarDeclaration')).toBe(true);
+    expect(result.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
+    expectNoModeLabels(result.tree);
   });
 
   it('keeps collapse mode from dropping leaves or inventing Unknown nodes', () => {
@@ -46,9 +57,11 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(collapsed.errors).toHaveLength(0);
     expect([...stats(expanded.tree).types]).not.toContain('Unknown');
     expect([...stats(collapsed.tree).types]).not.toContain('Unknown');
-    expect(stats(expanded.tree).types).toContain('DirectJessVarDeclaration');
+    expect(stats(expanded.tree).types).toContain('VariableDeclaration');
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
-    expect(collapsed.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'DirectJessVarDeclaration')).toBe(true);
+    expect(collapsed.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
+    expectNoModeLabels(expanded.tree);
+    expectNoModeLabels(collapsed.tree);
   });
 
   it('uses structural interpolation nodes in selector interpolation', () => {
@@ -56,8 +69,8 @@ describe('@jesscss/jess-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(stats(result.tree).grammarTypes.get('DirectJessInterpolatedSimple')).toBe(1);
-    expect(stats(result.tree).grammarTypes.get('DirectJessDollarBrace')).toBe(2);
+    expect(stats(result.tree).grammarTypes.get('InterpolatedSimple')).toBe(1);
+    expect(stats(result.tree).grammarTypes.get('DollarBrace')).toBe(2);
   });
 
   /*
@@ -66,13 +79,13 @@ describe('@jesscss/jess-parser/cst', () => {
    * interpolation are SEPARATE routes because they occupy disjoint positions — the editor has to
    * reject what the compiler rejects, not merely accept what it accepts.
    */
-  it('uses structural DirectJessDollarBrace nodes for the ${…} interpolation form', () => {
+  it('uses structural DollarBrace nodes for the ${…} interpolation form', () => {
     const result = parseJessCst('.widget-${side}-${[theme]} { color: red; }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(stats(result.tree).grammarTypes.get('DirectJessInterpolatedSimple')).toBe(1);
-    expect(stats(result.tree).grammarTypes.get('DirectJessDollarBrace')).toBe(2);
+    expect(stats(result.tree).grammarTypes.get('InterpolatedSimple')).toBe(1);
+    expect(stats(result.tree).grammarTypes.get('DollarBrace')).toBe(2);
   });
 
   // The position split, in the route the editor actually uses.
@@ -102,14 +115,14 @@ describe('@jesscss/jess-parser/cst', () => {
 
     expect(interpolated.errors).toHaveLength(0);
     expect(interpolated.unconsumedFrom).toBeNull();
-    expect(stats(interpolated.tree).grammarTypes.get('DirectJessDollarBrace')).toBe(1);
+    expect(stats(interpolated.tree).grammarTypes.get('DollarBrace')).toBe(1);
 
     // A lone `$` that opens nothing stays literal text inside the flat string.
     const plain = parseJessCst('.a { content: "costs $5 and $x too"; }');
 
     expect(plain.errors).toHaveLength(0);
     expect(plain.unconsumedFrom).toBeNull();
-    expect(stats(plain.tree).grammarTypes.get('DirectJessDollarBrace')).toBeUndefined();
+    expect(stats(plain.tree).grammarTypes.get('DollarBrace')).toBeUndefined();
   });
 
   it('uses structural interpolation nodes in ordinary and @import url targets', () => {
@@ -117,23 +130,26 @@ describe('@jesscss/jess-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(stats(result.tree).grammarTypes.get('DirectJessInterpolatedUrl')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('DirectJessUrlInterpolatedValue')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('InterpolatedUrl')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('UrlInterpolatedValue')).toBeGreaterThan(0);
   });
 
-  it('keeps the documented unwrapped variable-led arithmetic syntax in the public CST route', () => {
-    const result = parseJessCst('$w: 2px; .card { width: $w * 2 + 1px; slash: $w / 2; }');
+  it('keeps documented expression arithmetic in the public CST route', () => {
+    const result = parseJessCst('$w: 2px; .card { width: $($w * 2 + 1px); slash: $($w / 2); }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
 
     /*
-     * CST labels its operation node by output type, while the direct AST route
-     * has the named DirectJessUnwrappedArithmetic reduction. This confirms the
-     * historical public CST still recognizes the authored spelling.
+     * Expression operators belong behind `$()`. A normal value position should
+     * not accept this arithmetic grammar directly.
      */
-    expect(stats(result.tree).grammarTypes.get('DirectJessUnwrappedProductRest')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('DirectJessExpressionAtom')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ExpressionProduct')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ExpressionAtom')).toBeGreaterThan(0);
+    expectNoModeLabels(result.tree);
+
+    const normalValue = parseJessCst('$w: 2px; .card { width: $w * 2 + 1px; }');
+    expect(normalValue.errors.length + Number(normalValue.unconsumedFrom !== null)).toBeGreaterThan(0);
   });
 
   it('uses unprefixed structural nodes for documented $for loops', () => {
@@ -142,7 +158,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(stats(result.tree).grammarTypes.get('For')).toBe(1);
-    expect(stats(result.tree).grammarTypes.get('DirectJessFor')).toBeUndefined();
+    expectNoModeLabels(result.tree);
   });
 
   it('rejects malformed selector interpolation instead of swallowing it as a token', () => {

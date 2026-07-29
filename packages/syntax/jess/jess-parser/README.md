@@ -83,19 +83,32 @@ Parsing `$brand: #3366ff;` yields:
 {
   "_tag": "node", "type": "StyleSheet", "grammarType": "Stylesheet", "span": { "start": 0, "end": 16 },
   "children": [
-    { "_tag": "node", "type": "DirectJessVarDeclaration", "grammarType": "DirectJessVarDeclaration", "span": { "start": 0, "end": 16 },
+    { "_tag": "node", "type": "VariableDeclaration", "grammarType": "VariableDeclaration", "span": { "start": 0, "end": 16 },
       "children": [
-        { "_tag": "leaf", "value": "$brand", "span": { "start": 0, "end": 6 } },
+        { "_tag": "leaf", "value": "$", "span": { "start": 0, "end": 1 } },
+        { "_tag": "leaf", "value": "brand", "span": { "start": 1, "end": 6 } },
         { "_tag": "leaf", "value": ":", "span": { "start": 6, "end": 7 } },
-        { "_tag": "node", "type": "DirectJessColor", "grammarType": "DirectJessColor", "span": { "start": 8, "end": 15 },
-          "children": [ { "_tag": "leaf", "value": "#3366ff", "span": { "start": 8, "end": 15 } } ] },
+        { "_tag": "node", "type": "Value", "grammarType": "Value", "span": { "start": 8, "end": 15 },
+          "children": [
+            { "_tag": "node", "type": "ValueTerm", "grammarType": "ValueTerm", "span": { "start": 8, "end": 15 },
+              "children": [
+                { "_tag": "node", "type": "ValueSpaceGroup", "grammarType": "ValueSpaceGroup", "span": { "start": 8, "end": 15 },
+                  "children": [
+                    { "_tag": "node", "type": "ValueAtom", "grammarType": "ValueAtom", "span": { "start": 8, "end": 15 },
+                      "children": [
+                        { "_tag": "node", "type": "Color", "grammarType": "Color", "span": { "start": 8, "end": 15 },
+                          "children": [ { "_tag": "leaf", "value": "#3366ff", "span": { "start": 8, "end": 15 } } ] }
+                      ] }
+                  ] }
+              ] }
+          ] },
         { "_tag": "leaf", "value": ";", "span": { "start": 15, "end": 16 } }
       ] }
   ]
 }
 ```
 
-Jess-specific grammar rules include `DirectJessVarDeclaration` (`$x: …`), `DirectJessVarReference` / `DirectJessReferenceCall` (`$x`, `$x.prop`, `$x[0]`, callable chains), `DirectJessExpression*` (inside `$(…)`), `DirectJessMixinDef`, `DirectJessMixinCall`, `DirectJessInterpolatedSimple` (`.widget-${side}`), and the `@-compose`/`@-export`/`@-from`/`@-use` import at-rules.
+Jess-specific grammar rules include `VariableDeclaration` (`$x: …`), `VariableReference` / `ReferenceCall` (`$x`, `$x.prop`, `$x[0]`, callable chains), `Expression*` (inside `$(…)`), `MixinDef`, `MixinCall`, `InterpolatedSimple` (`.widget-${side}`), and the `@-compose`/`@-export`/`@-from`/`@-use` import at-rules.
 
 Pass `{ collapse: true }` to request parseman's transparent-wrapper collapse while preserving source leaves and grammar ownership.
 

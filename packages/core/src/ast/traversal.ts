@@ -610,6 +610,7 @@ function walkNode(
     case 'SelectorCapture':
     case 'Dimension':
     case 'VariableReference':
+    case 'DeclarationReference':
     case 'PropertyReference':
     case 'RawInline':
       break;
