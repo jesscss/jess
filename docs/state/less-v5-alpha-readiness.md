@@ -233,30 +233,32 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `da9da016`,
+evidence: branch `less-5-alpha.1` at `4abb411c`,
 clean worktree, PR open/non-draft. The branch merges `upstream/alpha`
 (`330e9d71`) into the Less 5 alpha branch, resolves the release-automation
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior, and routes `lessc` parse/eval failures through the generic
-Jess/Linecraft diagnostic renderer. Local verification on `da9da016` passed the
+Jess/Linecraft diagnostic renderer. Local verification on `4abb411c` passed the
 Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
 and packed-consumer proof. The packed-consumer proof derives its expected Jess
 runtime version from the committed Less manifest. The Less compatibility error
 wrapper now forwards
 canonical Jess diagnostic messages unchanged while still exposing Less-style
 fields such as `type`, `line`, `column`, `extract`, and `jessErrors`. GitHub
-evidence on 2026-07-29 reported PR #19 mergeable at head `da9da016`; CodeRabbit
-was green on that head and release-PR automation jobs were skipped as expected.
-CI was green across ubuntu/macOS/windows current and ubuntu LTS, LTS-1, and
-LTS-2.
+evidence on 2026-07-29 reported PR #19 at head `4abb411c`, open/non-draft, with
+CodeRabbit green and release-PR automation jobs skipped as expected. Merge state
+was `UNSTABLE` while macOS/windows/current and some LTS CI jobs were still in
+progress; do not claim the remote head is fully green until those finish.
 
 Current package/release gates are registry-backed against the published direct
-Jess runtime closure at `2.0.0-alpha.11`: on PR head `da9da016`, the external
+Jess runtime closure at `2.0.0-alpha.11`: on PR head `4abb411c`, the external
 Less commit hook reran the full `pnpm run test:alpha` gate, including
 typecheck, build, `lessc` smoke tests, alpha support contract, alpha fixtures,
-publish dry-run tests, and the packed-consumer proof. The packed-consumer
-verifier now derives the expected Jess alpha version from the committed Less
-manifest. The `lessc` smoke tests pin
+publish dry-run tests, and the packed-consumer proof. The alpha fixture harness
+also supports focused `node test/alpha-fixtures.mjs --fixture ...` runs for
+render, error, warning, and skipped fixture groups, and fails a non-matching
+filter loudly. The packed-consumer verifier derives the expected Jess alpha
+version from the committed Less manifest. The `lessc` smoke tests pin
 Linecraft-formatted colored diagnostics by default, source framing, `--silent`
 suppression, `--no-color` control-sequence stripping, and absence of
 alternate-screen / live-region terminal controls. The PR branch also routes
@@ -797,6 +799,15 @@ earlier, before a manual publish attempt.
   the commit hook also reran the root alpha / publish dry-run / packed-consumer
   proof. GitHub CI was green for `da9da016` across ubuntu/macOS/windows current
   and ubuntu LTS, LTS-1, and LTS-2; CodeRabbit was green.
+- 2026-07-29: Updated external Less PR #19 through `4abb411c`. The external
+  alpha fixture harness now honors `--fixture` filters, reports selected skipped
+  fixtures accurately, and throws when a requested filter matches no fixture.
+  Verification passed focused `node test/alpha-fixtures.mjs --fixture
+  tests-unit/import/import.less`, focused skipped remote-import selection,
+  the intentional no-match failure probe, `npm --prefix packages/less run lint`,
+  `npm --prefix packages/less run test:alpha`, and the commit hook's root alpha
+  / publish dry-run / packed-consumer proof. GitHub PR #19 was open/non-draft at
+  head `4abb411c`; remote CI was still in progress at the time of this note.
 - 2026-07-28: Repaired the Jess alpha fixture harness so
   `tests-unit/import/import.less` keeps surfacing its settled
   `resolve/name-not-found` expected failure instead of timing out at Vitest's
