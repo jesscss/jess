@@ -6,8 +6,8 @@
  *   - `AtRuleBlock`  — a block-bearing at-rule (`@media`, `@font-face`,
  *     `@keyframes`, `@page`, `@supports`, `@counter-style`, unknown block
  *     at-rules). Carries a `name` (`@media`), an optional `prelude` value node
- *     (media query / keyframes name / selector), and a `body` of statements.
- *     The body is a fresh nesting/output context: its direct declarations emit
+ *     (media query / keyframes name / selector), and `rules` statements.
+ *     The rules form a fresh nesting/output context: direct declarations emit
  *     inside the block, nested rulesets compose among themselves (collapse-
  *     nesting within the block), nested at-rules stay nested. v5 does NOT merge
  *     sibling `@media` blocks — each stays its own block.

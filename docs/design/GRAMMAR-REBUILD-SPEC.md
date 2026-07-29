@@ -600,8 +600,8 @@ check the same semantic node names. The divergence is in **grammar rule names**,
 not in a need to redesign the AST — which is exactly why a byte-identity oracle
 cannot gate pure private-rule renames (§8.1).
 
-Core's vocabulary is `Rule`, `AtRuleBlock`/`AtRuleStatement`, `SelectorList` —
-there is no `Ruleset` and no `AtRule` node type. Use core's names.
+Core's vocabulary is `Ruleset`, `AtRuleBlock`/`AtRuleStatement`, `SelectorList`
+— there is no generic `Rule` and no `AtRule` node type. Use core's names.
 
 ### 2.2 Four costs already paid
 

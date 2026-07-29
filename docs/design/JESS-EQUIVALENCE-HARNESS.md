@@ -108,8 +108,8 @@ as a persistent output tree."
 
 There is therefore **no evaluated tree to walk**. The only persistent tree is the
 parsed one, which retains the abstractions — a parsed Less tree carries
-`VariableDeclaration`, `VariableReference`, `MixinDef`, `MixinCall` nodes. An
-emitter has no choice but to walk that, so `@color: red` must emit as
+`VariableDeclaration`, `VariableReference`, `MixinDefinition`, `MixinCall` nodes.
+An emitter has no choice but to walk that, so `@color: red` must emit as
 `$color: red` and mixins must stay mixins.
 
 The cost of the same property is the real engineering estimate: because eval and

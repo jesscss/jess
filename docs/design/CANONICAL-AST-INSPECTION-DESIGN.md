@@ -134,10 +134,10 @@ export type AstVisitNode =
 
 export type AstEdge =
   | 'root'
-  | 'stylesheet.children'
+  | 'stylesheet.rules'
   | 'rule.selector'
   | 'rule.guard'
-  | 'rule.body'
+  | 'rule.rules'
   | 'declaration.value'
   | 'value-slot.item'
   | 'value.list.item'
@@ -230,8 +230,8 @@ Core must own the child-edge table. Consumers must never recurse with
 | `Reference` | `value.reference.base` for `ValueNode` or `MixinCall`; `value.reference.bracket-key` for value keys; `value.reference.call-arg` for call args using the shared `CallValue` rule |
 | `Range` | `value.range.start`, `value.range.end`, `value.range.step` when present |
 | `Collection` | `value.collection.base` when present; `value.collection.entry` for each value-keyed entry |
-| `CollectionEntry` | `value.collection.entry.key`, `value.collection.entry.value` |
-| `AnonymousMixin` | `value.anonymous-mixin.param-default`, `value.anonymous-mixin.param-pattern`, `value.anonymous-mixin.body` |
+| `CollectionEntry` | `value.collection.key`, `value.collection.value` |
+| `AnonymousMixin` | `value.anonymous-mixin.param-default`, `value.anonymous-mixin.param-pattern`, `value.anonymous-mixin.rules` |
 
 ### Call Values
 
@@ -262,18 +262,18 @@ Guards are not `node.type` nodes. They are traversed through `enterGuard` and
 
 | Shape | Authored child edges |
 |---|---|
-| `Stylesheet` | `stylesheet.children` |
-| `Rule` | `rule.selector`, `rule.guard` when present, `rule.extend.target`, `rule.extend.subject` when present, `rule.body` |
+| `Stylesheet` | `stylesheet.rules` |
+| `Ruleset` | `rule.selector`, `rule.guard` when present, `rule.extend.target`, `rule.extend.subject` when present, `rule.rules` |
 | `Declaration` | `declaration.name` when name is `Interpolation`; `declaration.value` |
 | `VariableDeclaration` | `variable.value` using the shared `CallValue` rule |
-| `MixinDef` | param defaults/patterns, `mixin.guard`, `mixin.body` |
+| `MixinDefinition` | param defaults/patterns, `mixin.guard`, `mixin.rules` |
 | `MixinCall` | `mixin-call.arg` for each arg using the shared `CallValue` rule; path segments are raw selector/name facts and an AST-pressure item for Less visitor facades |
 | `Apply` | `apply.selector` |
-| `For` | `for.iterable` using the shared `CallValue` rule, `for.body` |
-| `If` | `if.branch.guard`, `if.branch.body` |
+| `For` | `for.iterable` using the shared `CallValue` rule, `for.rules` |
+| `If` | `if.branch.guard`, `if.branch.rules` |
 | `StyleImport` | `style-import.path`; namespace/forward/mode are facts |
 | `ModuleImport` | `module-import.path`; import specifier names/aliases are raw facts |
-| `AtRuleBlock` | `atrule.prelude` when present, `atrule.body` |
+| `AtRuleBlock` | `atrule.prelude` when present, `atrule.rules` |
 | `AtRuleStatement` | `atrule-statement.prelude` when present |
 | `ImportAtRule` | `import.options`, `import.target`, `import.alias`, `import.tail` when present |
 | `Plugin` | `plugin.target`, `plugin.options` when present |
@@ -301,7 +301,7 @@ findings that must be resolved before a Less visitor bridge claims support:
 
 | Shape | Pressure | Current decision |
 |---|---|---|
-| `Rule.extendInstructions` hoisted off body | good for serializer/extend planning, but Less may expose body-form `Extend` in source-order `rules` | add selector edges now; pre-Slice-1 must prove whether lazy synthetic `Extend` facades are acceptable or AST needs source-order extend placement |
+| `Ruleset.extendInstructions` hoisted off `.rules` | good for serializer/extend planning, but Less may expose body-form `Extend` in source-order `rules` | add selector edges now; pre-Slice-1 must prove whether lazy synthetic `Extend` facades are acceptable or AST needs source-order extend placement |
 | `MixinCall.name` / `MixinCall.path[].sel` raw strings | fine for current eval, but may force selector reconstruction for Less `Element`/mixin visitor surfaces | block Less visitor bridge until observed plugins prove raw strings are enough or AST carries structured selector/path facts |
 | Selector model `SelectorList -> ComplexSelector -> CompoundSelector -> SimpleToken` | modern and parser-friendly, but Less exposes `Selector.elements` / `Element.combinator` / `Element.value` | pre-Slice-1 proof must show `visitSelector` / `visitElement` can be lazy without source reparse or eager synthetic subtree conversion |
 
@@ -325,11 +325,11 @@ Current evidence:
 |---|---|
 | CSS `Dimension` | natural: the grammar already reduces number plus optional unit directly to `dimension(Number(numberText), unit, src)` |
 | CSS `Declaration` | natural: the grammar already reduces property/custom-property name and structured value into `decl(name, valueSlot(...))` |
-| `Rule` statement from ruleset syntax | natural for core AST: selector, guard, body statements, and extend facts are all available in ruleset reductions |
+| `Ruleset` statement from ruleset syntax | natural for core AST: selector, guard, rules statements, and extend facts are all available in ruleset reductions |
 | `SelectorList` / `ComplexSelector` / `CompoundSelector` | mostly natural: selector grammar already produces selector facts directly; Less `Element` compatibility should be a lazy facade over these edges, not a parser obligation |
 | `Collection` maps | natural: map grammars already see `key: value` boundaries and should reduce them directly to `CollectionEntry` records with typed value keys |
 | SCSS nested properties | natural but role-specific: the grammar sees declaration-shaped leaf names, but this is the structural nested-property role of `Collection`, not evidence that data-map entries should be declarations |
-| `Rule.extendInstructions` | natural to parse as selector facts, but hoisting body-form extends off `Rule.body` loses the source-order node shape Less visitors may expect |
+| `Ruleset.extendInstructions` | natural to parse as selector facts, but hoisting body-form extends off `Ruleset.rules` loses the source-order node shape Less visitors may expect |
 | `MixinCall.path` / `name` | current parsers deliberately preserve raw selector/name strings for dispatch; if Less plugins need element-level path visitation, the parser can carry structured facts, but the AST must ask for them explicitly |
 
 The rule for implementation: if a desired traversal edge asks a parser to
@@ -806,7 +806,7 @@ Findings accepted into this revision:
   bridge-owned equivalent that consults the interest table before adaptation or
   callback.
 - The edge matrix missed real authored structure. Section 6 now includes
-  `Declaration.name` interpolation, `Rule.extend` selector edges,
+  `Declaration.name` interpolation, `Ruleset.extend` selector edges,
   `CollectionEntry` key/value edges, `VariableReference` / `PropertyReference`,
   and shared
   `CallValue` traversal for nested `MixinCall` values.

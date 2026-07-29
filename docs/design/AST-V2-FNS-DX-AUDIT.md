@@ -21,13 +21,18 @@ Implemented in `codex/ast-v2-dx-fns`:
 - SCSS nested-property grammar labels are internal construction labels, now
   `NestedPropertyDeclaration` / `NestedPropertyMember`, not public
   `Static...Leaf`-style names.
+- Statement containers now align on `.rules`; function definitions still use
+  `body` for executable callbacks because they are not AST statement containers.
+- Canonical authored traversal exists internally in `packages/core/src/ast/traversal.ts`
+  with explicit rules/value/selector/guard edges and no diagnostics-local object
+  crawls.
 - `@jesscss/core` no longer re-exports old tree helpers/utilities from its root
   package entrypoint.
 
-Still recommendations, not implemented here: finish statement-container `.rules`
-alignment where mixed container names remain, introduce a reviewed canonical
-visitor/facade shape, and continue deleting old tree internals rather than
-treating them as protected API.
+Still recommendations, not implemented here: decide whether/when to export the
+canonical traversal surface, add a first-class `RelativeSelector` if authored
+relative selectors need a distinct node, and continue deleting old tree internals
+rather than treating them as protected API.
 
 Context: this audit compares the current canonical AST v2 and `packages/fns`
 usage against Less 4.x tree naming, the public CSS/Less CST surface, and the
@@ -184,10 +189,10 @@ clear public shape. A Less bridge can then map it directly.
 
 ### Statement containers should align on `.rules`
 
-AST v2 currently mixes `body`, `children`, and `rules` for statement containers.
-That makes visitors and Less-compat facades carry avoidable special cases.
+Prior AST v2 mixed `body`, `children`, and `rules` for statement containers.
+That made visitors and Less-compat facades carry avoidable special cases.
 
-Recommendation: align statement-container payloads on `.rules`.
+Implemented recommendation: align statement-container payloads on `.rules`.
 
 This is not a new convention: AST v1 already established it. `For.rules` is
 already the preferred direction. Other block-like canonical nodes should move
@@ -274,7 +279,7 @@ shape fixes are pending.
 
 ## Recommended change list
 
-### P0: Fix map semantics before expanding visitor consumers
+### Implemented P0: Fix map semantics before expanding visitor consumers
 
 1. Port `packages/fns/src/sass/map/*` to `@jesscss/core/value`.
 2. Use `Collection.entries` and `collectionKeyIndex()` for value-equality keys.
@@ -282,7 +287,7 @@ shape fixes are pending.
 4. Add tests for typed keys: quoted vs unquoted string equality, numeric keys,
    color keys, nested maps, replacement order, and list-of-pairs behavior.
 
-### P0: Fix split-brained `Collection`
+### Implemented P0: Fix split-brained `Collection`
 
 1. Add AST `CollectionEntry { key: ValueSlot, value: ValueSlot, variable?,
    important? }`.
@@ -294,7 +299,7 @@ shape fixes are pending.
 
 ### P1: Clean remaining node and field names that affect visitation
 
-1. Align statement-container payload fields on `.rules`.
+1. Decide whether/when to export the internal canonical traversal surface.
 2. Model `ComplexSelector.value` as alternating selector-term/combinator-string
    pieces and `RelativeSelector.value` as the same sequence starting with a
    combinator string where relative selectors become first-class.
