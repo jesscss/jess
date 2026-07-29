@@ -1400,7 +1400,7 @@ const jessUrlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1
  * or captured as opaque bytes \u2014 their own typed productions own them, and a
  * malformed one must report its own error rather than silently degrade.
  */
-const jessCompilerAtRuleName = regex(/@-(?:use|compose|export|import|from)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const compilerAtRuleName = regex(/@-(?:use|compose|export|import|from)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 
 /*
  * The exclusion list is dispatch, not vocabulary: every name here HAS a typed
@@ -1412,14 +1412,14 @@ const jessCompilerAtRuleName = regex(/@-(?:use|compose|export|import|from)(?![-_
  * which at-rules exist is a language-service fact, so an ordinary vendor prefix
  * (`@-webkit-anything`, `@-moz-document`) is plain unknown CSS and passes.
  */
-const jessGenericCssAtRuleName = regex(/@(?!(?:charset|import|supports|property|media|container|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
-const jessCharsetAtRuleName = regex(/@charset(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessImportAtRuleName = regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessSupportsAtRuleName = regex(/@supports(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessPropertyAtRuleName = regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessScopeAtRuleName = regex(/@scope(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessKeyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessKeyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
+const genericAtRuleName = regex(/@(?!(?:charset|import|supports|property|media|container|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+const charsetAtRuleName = regex(/@charset(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const importAtRuleName = regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const supportsAtRuleName = regex(/@supports(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const propertyAtRuleName = regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const scopeAtRuleName = regex(/@scope(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 
 export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const jessCase = makeWhen({ caseInsensitive: true });
@@ -3701,7 +3701,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * running the media/container lookaheads at every rule. The former arm-2
    * `not(@media)` / `not(@container only)` guards are folded into the dedicated
    * media/container arms plus the `media`/`container` exclusion in
-   * `jessGenericCssAtRuleName`, preserving the exact accept/reject set.
+   * `genericAtRuleName`, preserving the exact accept/reject set.
    */
   const StaticAtRuleHeader = node<AtRuleHeaderFact>(
     'StaticAtRuleHeader',
@@ -3720,7 +3720,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.StaticAtPrelude
       ),
       sequence(
-        jessGenericCssAtRuleName,
+        genericAtRuleName,
         g.StaticAtPrelude
       )
     ),
@@ -4034,7 +4034,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const Charset = node<AtRuleStatement>(
     'Charset',
     sequence(
-      jessCharsetAtRuleName,
+      charsetAtRuleName,
       g.StaticQuoted,
       literal(';')
     ),
@@ -4172,7 +4172,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ImportStatement = node<AtRuleStatement>(
     'ImportStatement',
     sequence(
-      jessImportAtRuleName,
+      importAtRuleName,
       g.ImportPrelude,
       literal(';')
     ),
@@ -4241,7 +4241,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const SupportsAtRuleBlock = node<AtRuleBlock>(
     'SupportsAtRuleBlock',
     sequence(
-      jessSupportsAtRuleName,
+      supportsAtRuleName,
       g.SupportsCondition,
       literal('{'),
       many(atBlockStatement),
@@ -4296,7 +4296,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const PropertyAtRule = node<AtRuleBlock>(
     'PropertyAtRule',
     sequence(
-      jessPropertyAtRuleName,
+      propertyAtRuleName,
       g.PropertyName,
       literal('{'),
       many(g.StaticPropertyDescriptor),
@@ -4320,8 +4320,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const KeyframeSelector = node<SimpleSelector>(
     'KeyframeSelector',
     choice(
-      jessKeyframeEndpoint,
-      jessKeyframePercent
+      keyframeEndpoint,
+      keyframePercent
     ),
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -4708,7 +4708,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ScopeBlock = node<AtRuleBlock>(
     'ScopeBlock',
     sequence(
-      jessScopeAtRuleName,
+      scopeAtRuleName,
       noTrivia(sequence(
         g.OpaquePrelude,
         literal('{')
@@ -4790,7 +4790,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
     'OpaqueAtRuleBlock',
     sequence(
-      not(jessCompilerAtRuleName),
+      not(compilerAtRuleName),
       g.CssSyntaxGenericAtRuleName,
       noTrivia(sequence(
         g.OpaquePrelude,
