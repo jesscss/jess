@@ -152,6 +152,24 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(normalValue.errors.length + Number(normalValue.unconsumedFrom !== null)).toBeGreaterThan(0);
   });
 
+  it('keeps leading-dot declaration lookup expression-only in the public CST route', () => {
+    const result = parseJessCst('$tokens: { tone: blue; }; .card { value: $(.type.isnumber(.math.e)); root: $($.tokens.tone); ns: $($tokens.tone); decimal: $(.1); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stats(result.tree).grammarTypes.get('ExpressionDeclarationReference')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ReferenceDotTail')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ExpressionAtom')).toBeGreaterThan(0);
+    expectNoModeLabels(result.tree);
+
+    const normalLookup = parseJessCst('.card { value: .type.isnumber(.math.e); }');
+    expect(normalLookup.errors.length + Number(normalLookup.unconsumedFrom !== null)).toBeGreaterThan(0);
+
+    const normalDecimal = parseJessCst('.card { value: .1; }');
+    expect(normalDecimal.errors).toHaveLength(0);
+    expect(normalDecimal.unconsumedFrom).toBeNull();
+  });
+
   it('uses unprefixed structural nodes for documented $for loops', () => {
     const result = parseJessCst('$for ($item of $items) { .item { value: $item; } }');
 
