@@ -51,3 +51,7 @@ patterns. `ignoreFiles` excludes generated or vendored stylesheets.
 
 `reportSyntax` controls whether parser diagnostics are surfaced through lint.
 Per-code `diagnostics` values are `off`, `warn`, and `error`.
+
+Jess lint uses this policy on top of shared diagnostics. Detection itself lives
+below the lint package, so a diagnostic can be reused by the CLI and the
+language service instead of being implemented twice.

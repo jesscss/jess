@@ -121,6 +121,80 @@ The current stable rule set is intentionally small and migration-friendly:
 Use `STABLE_LINT_RULES`, `recommendedLintDiagnostics()`, or
 `stylelintComparisonDiagnostics()` when building migration reports.
 
+## Stylelint Comparison
+
+Stylelint is still the broad ecosystem linter. It has more than 100 built-in
+rules, plugins, shareable configs, autofix, cache behavior, custom syntaxes, and
+custom formatters. Jess lint does not try to clone that surface in its first
+stable rule set.
+
+Jess lint is strongest where the linter needs Jess's own understanding of the
+source:
+
+- `.less`, `.scss`, `.jess`, and modern CSS parsed by the same parser family
+  used by Jess tooling.
+- Diagnostics that can be shared with the language service instead of
+  reimplemented as CLI-only checks.
+- CSS metadata checks that know about dialect variables, interpolation, custom
+  properties, vendor prefixes, and Jess support boundaries.
+- Source diagnostics that run before rendering, so they point at the authored
+  stylesheet rather than a PostCSS approximation or emitted CSS.
+
+Use this split as the migration rule:
+
+| Need | Use |
+| --- | --- |
+| Existing broad CSS convention policy | Stylelint |
+| Jess/Less/SCSS support diagnostics | Jess lint |
+| Compile/editor parity for syntax and source semantics | Jess lint |
+| Autofix for large style-policy configs | Stylelint today |
+| CI warning budgets for Jess diagnostics | `jess lint --max-warnings 0` |
+| Comparing a small stable rule subset | `STYLELINT_COMPARISON_LINT_CONFIG` |
+
+Jess provides `STYLELINT_COMPARISON_LINT_CONFIG` only for apples-to-apples
+checks against rules that have a close native diagnostic. It intentionally
+excludes syntax diagnostics and Jess-only support diagnostics.
+
+The local comparison harness is opt-in:
+
+```sh
+pnpm --filter @jesscss/lint bench:stylelint
+```
+
+The harness times the same source through Jess lint's Stylelint-comparable
+diagnostics and through Stylelint configured with the comparable rule subset.
+It is a measurement and migration aid, not a product dependency.
+
+## Diagnostics Model
+
+Problem detection belongs below this package, in `@jesscss/diagnostics-core`
+and the parser/compiler/language-service facts it consumes. `@jesscss/lint`
+applies policy:
+
+- enable or disable diagnostics by code;
+- map default severities to `warn` or `error`;
+- choose file globs and ignore globs;
+- render compact text or JSON;
+- decide the process exit status.
+
+That boundary is what lets a new shared diagnostic improve both `jess lint` and
+the editor experience. If a check only exists in the CLI, it belongs lower in
+the diagnostics stack before it becomes a stable lint rule.
+
+## Priorities
+
+The near-term priority is diagnostic quality:
+
+1. Detect important authored-source problems with Jess parser and language facts.
+2. Share those diagnostics between CLI linting and the language service.
+3. Keep the rule codes, severities, and source spans stable enough for CI.
+4. Expand Stylelint-comparable coverage where Jess can report the same problem
+   natively.
+
+Formatting polish, custom formatter compatibility, and autofix should come
+after that. Autofix in particular needs a stable source-span contract and
+conflict-safe edit composition before `jess lint --fix` exists.
+
 ## Why Jess Lint?
 
 - One parser family for CSS, Less, SCSS, and Jess.

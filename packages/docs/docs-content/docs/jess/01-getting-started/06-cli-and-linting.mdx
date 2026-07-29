@@ -113,6 +113,71 @@ Jess's stable lint set is deliberately small:
 The lint package owns policy and reporting. Detection lives in the shared Jess
 diagnostics layer so CLI linting and editor diagnostics improve together.
 
+## Jess Lint and Stylelint
+
+Stylelint is the established CSS linter. It has a much broader rule catalog than
+Jess lint today, plus plugins, shareable configs, autofix, custom syntaxes,
+custom formatters, and mature ecosystem presets. Keep using it for broad CSS
+convention policy while you rely on Jess lint for diagnostics that need Jess's
+own parser and language facts.
+
+Jess lint is not a Stylelint adapter. It does not flatten Jess, Less, or SCSS
+into a PostCSS-shaped tree, and it does not lint rendered CSS. It reports
+diagnostics from Jess's source model so findings can line up with compile
+behavior and editor diagnostics.
+
+Use this split when migrating:
+
+| Need | Best fit today |
+| --- | --- |
+| Large existing Stylelint config | Keep Stylelint |
+| Unknown CSS property or at-rule checks in Jess-parsed files | Jess lint |
+| Syntax diagnostics shared with editor tooling | Jess lint |
+| SCSS support-boundary warnings | Jess lint |
+| Autofix-heavy style policy | Stylelint |
+| CI budget for Jess diagnostics | `jess lint --max-warnings 0` |
+
+The `@jesscss/lint` API exports a Stylelint-comparison policy for tool authors
+who want to measure the overlapping rule subset:
+
+```ts
+import {
+  STYLELINT_COMPARISON_LINT_CONFIG,
+  stylelintComparisonDiagnostics
+} from '@jesscss/lint'
+```
+
+That comparison set is intentionally narrower than the recommended Jess lint
+config. It includes only rules with close Stylelint equivalents and leaves out
+Jess-only parser/support diagnostics.
+
+## Diagnostics Story
+
+Jess lint is a policy layer over shared diagnostics:
+
+1. Parsers and diagnostics-core detect problems from the authored source.
+2. `@jesscss/lint` decides whether each diagnostic is off, a warning, or an
+   error.
+3. `jess lint` renders compact text or JSON and applies the exit policy.
+4. The language service can consume the same lower-level diagnostics for IDE
+   feedback.
+
+That means improvements to shared diagnostics should improve both CLI linting
+and editor feedback. CLI-only detectors are intentionally not the long-term
+shape.
+
+The product order is diagnostics first:
+
+1. Add useful native diagnostics with stable codes and source spans.
+2. Share them between `jess lint` and the language service.
+3. Make severity and CI policy easy to configure.
+4. Expand Stylelint-comparable coverage where Jess can detect the same issue
+   from its own source model.
+
+Formatting polish, custom formatter compatibility, and autofix are later
+layers. Jess will not expose `jess lint --fix` until fixes can be composed
+safely against authored source.
+
 ## API
 
 Tool authors can use `@jesscss/lint` directly:
