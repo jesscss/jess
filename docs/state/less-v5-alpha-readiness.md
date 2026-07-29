@@ -233,25 +233,25 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `be07428f`,
+evidence: branch `less-5-alpha.1` at `da9da016`,
 clean worktree, PR open/non-draft. The branch merges `upstream/alpha`
 (`330e9d71`) into the Less 5 alpha branch, resolves the release-automation
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior, and routes `lessc` parse/eval failures through the generic
-Jess/Linecraft diagnostic renderer. Local verification on `be07428f` passed the
+Jess/Linecraft diagnostic renderer. Local verification on `da9da016` passed the
 Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
 and packed-consumer proof. The packed-consumer proof derives its expected Jess
 runtime version from the committed Less manifest. The Less compatibility error
 wrapper now forwards
 canonical Jess diagnostic messages unchanged while still exposing Less-style
 fields such as `type`, `line`, `column`, `extract`, and `jessErrors`. GitHub
-evidence on 2026-07-29 reported PR #19 mergeable at head `be07428f`; CodeRabbit
+evidence on 2026-07-29 reported PR #19 mergeable at head `da9da016`; CodeRabbit
 was green on that head and release-PR automation jobs were skipped as expected.
 CI was green across ubuntu/macOS/windows current and ubuntu LTS, LTS-1, and
 LTS-2.
 
 Current package/release gates are registry-backed against the published direct
-Jess runtime closure at `2.0.0-alpha.11`: on PR head `be07428f`, the external
+Jess runtime closure at `2.0.0-alpha.11`: on PR head `da9da016`, the external
 Less commit hook reran the full `pnpm run test:alpha` gate, including
 typecheck, build, `lessc` smoke tests, alpha support contract, alpha fixtures,
 publish dry-run tests, and the packed-consumer proof. The packed-consumer
@@ -787,6 +787,16 @@ earlier, before a manual publish attempt.
   `node packages/less/benchmark/benchmark-runner.cjs packages/less/benchmark/benchmark.less --runs=1 --warmup=0`,
   `npm --prefix packages/less run test:alpha`, and the commit hook's root
   `pnpm run test:alpha` / publish dry-run / packed-consumer proof.
+- 2026-07-29: Updated external Less PR #19 through `da9da016`. Release metadata
+  defaults now ignore invalid registry-version strings only while choosing a
+  next-version default; explicit release validation remains strict. Release
+  package-version sync now receives the release base explicitly instead of
+  inferring it from the version string. Verification passed
+  `pnpm run test:release` (55 / 55), `npm --prefix packages/less run lint`,
+  `npm --prefix packages/less run test:alpha`, and root `pnpm run test:alpha`;
+  the commit hook also reran the root alpha / publish dry-run / packed-consumer
+  proof. GitHub CI was green for `da9da016` across ubuntu/macOS/windows current
+  and ubuntu LTS, LTS-1, and LTS-2; CodeRabbit was green.
 - 2026-07-28: Repaired the Jess alpha fixture harness so
   `tests-unit/import/import.less` keeps surfacing its settled
   `resolve/name-not-found` expected failure instead of timing out at Vitest's
