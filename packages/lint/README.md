@@ -112,7 +112,6 @@ The current stable rule set is intentionally small and migration-friendly:
 
 | Rule name | Jess diagnostic code | Stylelint comparison |
 | --- | --- | --- |
-| `parse/syntax-error` | `parse/syntax-error` | Parser error surface |
 | `block-no-empty` | `lint/empty-rules` | `block-no-empty` |
 | `property-no-unknown` | `lint/unknown-property` | near `property-no-unknown` |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | near `at-rule-no-unknown` |
@@ -125,6 +124,10 @@ Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
 `stylelintComparisonRules()` when building migration reports. The older
 diagnostic-code helpers remain available for tools that already consume Jess
 diagnostic codes.
+
+Parser syntax failures are not lint rules. `jess lint` can surface them as
+diagnostics when `reportSyntax` is enabled, but they are controlled separately
+from rule preferences.
 
 ## Stylelint Comparison
 

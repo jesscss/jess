@@ -20,7 +20,6 @@ describe('stable rule set', () => {
     const recommended = recommendedLintRules();
 
     expect(STABLE_LINT_RULES.map(rule => rule.code)).toEqual([
-      PARSE_SYNTAX_ERROR_CODE,
       LINT_CODES.emptyRules,
       LINT_CODES.unknownProperties,
       LINT_CODES.unknownAtRules,
@@ -30,7 +29,6 @@ describe('stable rule set', () => {
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
-      LINT_RULE_NAMES.syntaxError,
       LINT_RULE_NAMES.emptyRules,
       LINT_RULE_NAMES.unknownProperties,
       LINT_RULE_NAMES.unknownAtRules,
@@ -124,7 +122,7 @@ describe('lintText', () => {
   it('can surface only parser diagnostics', async () => {
     const result = await lintText(
       {
-        source: '.a { colr: red; }',
+        source: '.a { color: ; }',
         filePath: '/tmp/input.css'
       },
       {
@@ -133,7 +131,8 @@ describe('lintText', () => {
       }
     );
 
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([PARSE_SYNTAX_ERROR_CODE]);
+    expect(result.diagnostics[0]?.severity).toBe('error');
   });
 
   it('routes SCSS inputs through shared diagnostics policy', async () => {

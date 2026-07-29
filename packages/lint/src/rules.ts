@@ -5,10 +5,9 @@ export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
 export const STABLE_LINT_RULE_SET_VERSION = 1;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
-export type LintRuleTier = 'syntax' | 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
+export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
 
 export const LINT_RULE_NAMES = {
-  syntaxError: PARSE_SYNTAX_ERROR_CODE,
   emptyRules: 'block-no-empty',
   unknownProperties: 'property-no-unknown',
   unknownAtRules: 'at-rule-no-unknown',
@@ -32,7 +31,6 @@ export interface StableLintRule {
 }
 
 const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
-  [LINT_RULE_NAMES.syntaxError]: PARSE_SYNTAX_ERROR_CODE,
   [LINT_RULE_NAMES.emptyRules]: LINT_CODES.emptyRules,
   [LINT_RULE_NAMES.unknownProperties]: LINT_CODES.unknownProperties,
   [LINT_RULE_NAMES.unknownAtRules]: LINT_CODES.unknownAtRules,
@@ -43,7 +41,6 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
 };
 
 const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
-  [PARSE_SYNTAX_ERROR_CODE]: LINT_RULE_NAMES.syntaxError,
   [LINT_CODES.emptyRules]: LINT_RULE_NAMES.emptyRules,
   [LINT_CODES.unknownProperties]: LINT_RULE_NAMES.unknownProperties,
   [LINT_CODES.unknownAtRules]: LINT_RULE_NAMES.unknownAtRules,
@@ -54,7 +51,6 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
 };
 
 const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
-  [LINT_RULE_NAMES.syntaxError]: 'error',
   [LINT_RULE_NAMES.emptyRules]: 'warn',
   [LINT_RULE_NAMES.unknownProperties]: 'warn',
   [LINT_RULE_NAMES.unknownAtRules]: 'warn',
@@ -74,15 +70,6 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
 };
 
 export const STABLE_LINT_RULES: readonly StableLintRule[] = [
-  {
-    code: PARSE_SYNTAX_ERROR_CODE,
-    ruleName: LINT_RULE_NAMES.syntaxError,
-    title: 'Syntax error',
-    tier: 'syntax',
-    defaultPolicy: 'error',
-    comparison: 'jess-only',
-    notes: 'Parser diagnostic surfaced through lint policy; Stylelint reports parser errors through its own parser path.'
-  },
   {
     code: LINT_CODES.emptyRules,
     ruleName: LINT_RULE_NAMES.emptyRules,

@@ -224,7 +224,10 @@ function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfi
     const policy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
       ?? config.rules?.[diagnostic.code]
       ?? config.diagnostics?.[diagnostic.code];
-    if (policy === undefined || policy === null || policy === 'off') {
+    if (policy === null || policy === 'off') {
+      continue;
+    }
+    if (policy === undefined && diagnostic.phase !== 'parse') {
       continue;
     }
     out.push({
