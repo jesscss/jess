@@ -964,18 +964,18 @@ const whitespace = trivia(oneOrMore(choice(
  * A whitespace-before, no-whitespace-after minus (`1 -2`) remains a list whose
  * second item is the signed dimension, matching Dart Sass's current syntax.
  */
-const directScssProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
-const directScssTopProductOperator = regex(/[ \t\n\r\f]*[*%][ \t\n\r\f]*/);
-const directScssSumOperator = regex(/(?:\+[ \t\n\r\f]*|-[ \t\n\r\f]*|[ \t\n\r\f]+\+[ \t\n\r\f]*|[ \t\n\r\f]+-[ \t\n\r\f]+)/);
-const directScssSpace = regex(/[ \t\n\r\f]+/);
-const directScssValueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
-const directScssKeyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const productOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
+const topProductOperator = regex(/[ \t\n\r\f]*[*%][ \t\n\r\f]*/);
+const sumOperator = regex(/(?:\+[ \t\n\r\f]*|-[ \t\n\r\f]*|[ \t\n\r\f]+\+[ \t\n\r\f]*|[ \t\n\r\f]+-[ \t\n\r\f]+)/);
+const space = regex(/[ \t\n\r\f]+/);
+const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
+const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 
 /*
  * Keep the static SCSS slice aligned with the shared CSS keyframe-selector
  * shape: signed percentages and a trailing decimal point are valid selectors.
  */
-const directScssKeyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
+const keyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
 
 /*
  * The direct counterpart of the CST grammar's `InterpolatedSelector`: static
@@ -983,13 +983,13 @@ const directScssKeyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
  * namespace interpolation each need a different AST shape and stay outside
  * this simple-token fact.
  */
-const directScssSelectorTextRun = regex(/[-_a-zA-Z0-9]+/);
+const selectorTextRun = regex(/[-_a-zA-Z0-9]+/);
 
 /*
  * General-enclosed retains its body as an interpolation template. Delimiters
  * recurse below; this leaf owns every other byte without a source reparse.
  */
-const directScssGeneralTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
+const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
 
 /*
  * Grammar-local copies of the leading pseudo-colon, hex-color and number
@@ -1397,9 +1397,9 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssMapEntry',
     noTrivia(sequence(
       g.DirectScssMathTopSum,
-      optional(directScssValueTrivia),
+      optional(valueTrivia),
       literal(':'),
-      optional(directScssValueTrivia),
+      optional(valueTrivia),
       g.DirectScssValueTerm
     )),
     children => decl(
@@ -1421,24 +1421,24 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       noTrivia(sequence(
         literal('('),
-        optional(directScssValueTrivia),
+        optional(valueTrivia),
         g.DirectScssMapEntry,
         many(noTrivia(sequence(
-          optional(directScssValueTrivia),
+          optional(valueTrivia),
           literal(','),
-          optional(directScssValueTrivia),
+          optional(valueTrivia),
           g.DirectScssMapEntry
         ))),
         optional(noTrivia(sequence(
-          optional(directScssValueTrivia),
+          optional(valueTrivia),
           literal(',')
         ))),
-        optional(directScssValueTrivia),
+        optional(valueTrivia),
         literal(')')
       )),
       noTrivia(sequence(
         literal('('),
-        optional(directScssValueTrivia),
+        optional(valueTrivia),
         literal(')')
       ))
     ),
@@ -1483,12 +1483,12 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssCall',
     sequence(
       routed(),
-      optional(directScssValueTrivia),
+      optional(valueTrivia),
       optional(sequence(
         g.DirectScssValueTerm,
         many(g.DirectScssValuePair)
       )),
-      optional(directScssValueTrivia),
+      optional(valueTrivia),
       literal(')')
     ),
     children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
@@ -1553,12 +1553,12 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       noTrivia(sequence(
         regex(/-(?=[ \t\n\r\f]*[\$(])/),
-        optional(directScssSpace),
+        optional(space),
         g.ScssValueAtom
       )),
       noTrivia(sequence(
         regex(/\+(?=[ \t\n\r\f]*[\$(])/),
-        optional(directScssSpace),
+        optional(space),
         g.ScssValueAtom
       )),
       g.ScssValueAtom
@@ -1593,7 +1593,7 @@ export const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       g.DirectScssMathUnary,
       many(sequence(
-        directScssProductOperator,
+        productOperator,
         g.DirectScssMathUnary
       ))
     )),
@@ -1604,7 +1604,7 @@ export const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       g.DirectScssMathProduct,
       many(sequence(
-        directScssSumOperator,
+        sumOperator,
         g.DirectScssMathProduct
       ))
     )),
@@ -1615,7 +1615,7 @@ export const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       g.DirectScssMathUnary,
       many(sequence(
-        directScssTopProductOperator,
+        topProductOperator,
         g.DirectScssMathUnary
       ))
     )),
@@ -1626,7 +1626,7 @@ export const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       g.DirectScssMathTopProduct,
       many(sequence(
-        directScssSumOperator,
+        sumOperator,
         g.DirectScssMathTopProduct
       ))
     )),
@@ -1636,13 +1636,13 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssValueTail',
     choice(
       sequence(
-        directScssValueTrivia,
+        valueTrivia,
         g.DirectScssMathTopSum
       ),
       sequence(
-        optional(directScssSpace),
+        optional(space),
         literal('/'),
-        optional(directScssSpace),
+        optional(space),
         g.DirectScssMathTopSum
       )
     ),
@@ -1697,7 +1697,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssValuePair',
     noTrivia(sequence(
       literal(','),
-      optional(directScssValueTrivia),
+      optional(valueTrivia),
       g.DirectScssValueTerm
     )),
     (children) => {
@@ -3175,9 +3175,9 @@ export const scssFactory = (g: ScssInputRules) => {
     noTrivia(sequence(
       g.DirectScssMathTopSum,
       optional(sequence(
-        optional(directScssSpace),
+        optional(space),
         literal('/'),
-        optional(directScssSpace),
+        optional(space),
         g.DirectScssMathTopSum
       ))
     )),
@@ -3471,7 +3471,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.DirectScssGeneralTemplateBrace,
       g.DirectScssGeneralTemplateDoubleQuoted,
       g.DirectScssGeneralTemplateSingleQuoted,
-      directScssGeneralTemplateText
+      generalTemplateText
     )),
     interpolationFromTemplateChildren
   );
@@ -4198,8 +4198,8 @@ export const scssFactory = (g: ScssInputRules) => {
   const DirectScssKeyframeSelector = node<SimpleSelector>(
     'DirectScssKeyframeSelector',
     choice(
-      directScssKeyframeEndpoint,
-      directScssKeyframePercent
+      keyframeEndpoint,
+      keyframePercent
     ),
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -4287,11 +4287,11 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssInterpolatedSimple',
     noTrivia(sequence(
       optional(regex(/[.#]/)),
-      many(directScssSelectorTextRun),
+      many(selectorTextRun),
       g.SassInterpolation,
       many(choice(
         g.SassInterpolation,
-        directScssSelectorTextRun
+        selectorTextRun
       ))
     )),
     (children) => {
@@ -4459,7 +4459,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssStaticSelectorPseudoTail',
     sequence(
       literal(','),
-      optional(directScssSpace),
+      optional(space),
       g.DirectScssStaticSelectorPseudoItem
     ),
     children => `,${requireString(children.at(-1))}`
@@ -4614,7 +4614,7 @@ export const scssFactory = (g: ScssInputRules) => {
        */
     sequence(
       routed(),
-      optional(directScssSpace),
+      optional(space),
       expect(
         peek(sequence(
           g.DirectScssStaticSelectorPseudoArgument,
@@ -4623,7 +4623,7 @@ export const scssFactory = (g: ScssInputRules) => {
         'static selector pseudo argument'
       ),
       DirectScssSelectorOnlyPseudoArgument,
-      optional(directScssSpace),
+      optional(space),
       literal(')')
     ),
     children => pseudoSelector(
