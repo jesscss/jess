@@ -381,15 +381,10 @@ describe('Less parser errors through the public AST route', () => {
     }
   });
 
-  it('summarizes duplicate semicolon expectations without raw token lists', async () => {
-    const source = [
-      '',
-      '@unknown url( {',
-      '    50% {width: 20px;}',
-      '}'
-    ].join('\n');
+  it('summarizes semicolon expectations without raw token lists', async () => {
+    const source = '@namespace svg url(http://www.w3.org/2000/svg) .x {}';
     const result = await new Compiler().renderToResult(
-      { source, filePath: 'at-rules-unmatching-block.less', extension: '.less' },
+      { source, filePath: 'namespace.less', extension: '.less' },
       { breakOnError: false }
     );
 
@@ -400,11 +395,11 @@ describe('Less parser errors through the public AST route', () => {
       message: 'Missing semicolon.',
       reason: 'Less expected \';\' before this token.',
       fix: 'Add the missing \';\' or rewrite the statement.',
-      line: 2,
-      column: 10,
+      line: 1,
+      column: 48,
       file: { source }
     });
     expect(result.errors[0]?.message).not.toContain('Expected:');
-    expect(result.errors[0]?.reason).not.toContain('";", ";"');
+    expect(result.errors[0]?.reason).not.toContain('";"');
   });
 });

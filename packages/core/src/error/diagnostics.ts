@@ -151,8 +151,12 @@ function expectedValueSummary(
   const looksLikeValueProduction =
     hasExpected(expectedSet, 'CssSyntaxNumber')
     && hasExpected(expectedSet, 'CssSyntaxDimensionUnit')
-    && hasExpected(expectedSet, 'LessSyntaxKeyword')
-    && hasExpected(expectedSet, 'not(peek)');
+    && hasExpected(expectedSet, 'not(peek)')
+    && (
+      hasExpected(expectedSet, 'LessSyntaxKeyword')
+      || hasExpected(expectedSet, 'LessSyntaxNamedColor')
+      || hasExpected(expectedSet, 'CssSyntaxHexColor')
+    );
   if (!looksLikeValueProduction) {
     return undefined;
   }

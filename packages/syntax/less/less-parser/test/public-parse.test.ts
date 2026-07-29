@@ -236,6 +236,40 @@ describe("public Less parse()", () => {
     expect(thrown.expected).toContain('not(peek)');
   });
 
+  it('summarizes direct structural parse errors without hiding raw expected facts', () => {
+    const cases = [
+      {
+        source: '.entry { color: rgb(1,2; }',
+        message: 'Missing closing parenthesis.',
+        expected: '")"'
+      },
+      {
+        source: '@namespace svg url(http://www.w3.org/2000/svg) .x {}',
+        message: 'Missing semicolon.',
+        expected: '";"'
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      let thrown: unknown;
+
+      try {
+        parse(testCase.source);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(LessParseError);
+      if (!(thrown instanceof LessParseError)) {
+        throw new Error('expected a LessParseError');
+      }
+      expect(thrown.message).toBe(testCase.message);
+      expect(thrown.message).not.toContain('Expected:');
+      expect(thrown.message).not.toContain('/(?!');
+      expect(thrown.expected).toContain(testCase.expected);
+    }
+  });
+
   it("returns the canonical Stylesheet directly while named CST/document APIs remain available", () => {
     const source = "@tone: red;\n.card { color: @tone; }";
     const cst = parseLessCst(source);
