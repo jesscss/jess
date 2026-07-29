@@ -14,24 +14,32 @@ import {
 } from '@jesscss/core';
 import type {
   LintConfig,
+  LintRuleSetting,
   LintSeverity,
   StylesConfig
 } from 'styles-config';
 import { loadConfig, loadConfigFromPath } from 'styles-config';
 import {
-  RECOMMENDED_LINT_CONFIG
+  RECOMMENDED_LINT_CONFIG,
+  ruleNameForDiagnostic
 } from './rules.js';
 
-export type { LintConfig, LintSeverity };
+export type { LintConfig, LintRuleSetting, LintSeverity };
 export {
+  LINT_RULE_NAMES,
   PARSE_SYNTAX_ERROR_CODE,
   RECOMMENDED_LINT_CONFIG,
   STABLE_LINT_RULES,
   STABLE_LINT_RULE_SET_VERSION,
   STYLELINT_COMPARISON_LINT_CONFIG,
+  diagnosticCodeForRule,
   recommendedLintDiagnostics,
+  recommendedLintRules,
+  ruleNameForDiagnostic,
   stylelintComparisonDiagnostics,
+  stylelintComparisonRules,
   type LintRuleComparisonKind,
+  type LintRuleName,
   type LintRuleTier,
   type StableLintRule
 } from './rules.js';
@@ -151,11 +159,28 @@ function mergeLintConfig(base?: LintConfig, override?: LintConfig): LintConfig {
   return {
     ...base,
     ...override,
+    rules: {
+      ...base?.rules,
+      ...rulesFromDiagnostics(base?.diagnostics),
+      ...rulesFromDiagnostics(override?.diagnostics),
+      ...override?.rules
+    },
     diagnostics: {
       ...base?.diagnostics,
       ...override?.diagnostics
     }
   };
+}
+
+function rulesFromDiagnostics(diagnostics: Record<string, LintSeverity> | undefined): Record<string, LintRuleSetting> {
+  if (diagnostics === undefined) {
+    return {};
+  }
+  const rules: Record<string, LintRuleSetting> = {};
+  for (const [code, severity] of Object.entries(diagnostics)) {
+    rules[ruleNameForDiagnostic(code)] = severity;
+  }
+  return rules;
 }
 
 async function resolveLintConfig(options: LintOptions): Promise<LintConfig> {
@@ -196,8 +221,10 @@ function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfi
     if (config.reportSyntax === false && diagnostic.phase === 'parse') {
       continue;
     }
-    const policy = config.diagnostics?.[diagnostic.code];
-    if (policy === undefined || policy === 'off') {
+    const policy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
+      ?? config.rules?.[diagnostic.code]
+      ?? config.diagnostics?.[diagnostic.code];
+    if (policy === undefined || policy === null || policy === 'off') {
       continue;
     }
     out.push({

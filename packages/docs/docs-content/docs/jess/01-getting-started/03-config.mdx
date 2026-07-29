@@ -38,9 +38,10 @@ export default {
     files: ['src/**/*.{css,less,scss,jess}'],
     ignoreFiles: ['dist/**'],
     reportSyntax: true,
-    diagnostics: {
-      'lint/unknown-property': 'error',
-      'lint/zero-units': 'warn'
+    rules: {
+      'property-no-unknown': 'error',
+      'length-zero-no-unit': 'warn',
+      'jess/unsupported-sass-form': 'warn'
     }
   }
 }
@@ -50,7 +51,9 @@ export default {
 patterns. `ignoreFiles` excludes generated or vendored stylesheets.
 
 `reportSyntax` controls whether parser diagnostics are surfaced through lint.
-Per-code `diagnostics` values are `off`, `warn`, and `error`.
+Per-rule values are `off`, `warn`, and `error`; `null` also disables a rule.
+Jess uses Stylelint rule names where the rule intent is familiar and Jess-owned
+namespaces for Jess-only checks.
 
 Jess lint uses this policy on top of shared diagnostics. Detection itself lives
 below the lint package, so a diagnostic can be reused by the CLI and the

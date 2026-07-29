@@ -388,6 +388,7 @@ export interface OutputOptions extends FileMatchOptions {
 }
 
 export type LintSeverity = 'off' | 'warn' | 'error';
+export type LintRuleSetting = LintSeverity | null;
 
 export interface LintConfig {
   /**
@@ -409,8 +410,15 @@ export interface LintConfig {
   reportSyntax?: boolean;
 
   /**
-   * Per-diagnostic policy. `off` suppresses a diagnostic, `warn` and `error`
-   * override the detector's default severity.
+   * Per-rule policy. Jess uses Stylelint-familiar rule names where the rule
+   * intent matches, and names Jess-only diagnostics under Jess-owned namespaces.
+   * `null` and `off` suppress a rule; `warn` and `error` set its severity.
+   */
+  rules?: Record<string, LintRuleSetting>;
+
+  /**
+   * @deprecated Use `rules`. This compatibility alias accepts Jess diagnostic
+   * codes and maps them to the corresponding lint rule when one exists.
    */
   diagnostics?: Record<string, LintSeverity>;
 }

@@ -93,33 +93,38 @@ export default {
     files: ['src/**/*.{css,less,scss,jess}'],
     ignoreFiles: ['dist/**'],
     reportSyntax: true,
-    diagnostics: {
-      'lint/unknown-property': 'error',
-      'lint/zero-units': 'warn'
+    rules: {
+      'property-no-unknown': 'error',
+      'length-zero-no-unit': 'warn',
+      'jess/unsupported-sass-form': 'warn'
     }
   }
 }
 ```
 
-Severity values are `off`, `warn`, and `error`.
+Severity values are `off`, `warn`, and `error`; `null` also disables a rule.
+Jess uses Stylelint rule names where the rule intent is familiar and
+Jess-native names for Jess-only diagnostics.
 
 ## Stable Rules
 
 The current stable rule set is intentionally small and migration-friendly:
 
-| Jess code | Stylelint comparison |
-| --- | --- |
-| `parse/syntax-error` | Parser error surface |
-| `lint/empty-rules` | `block-no-empty` |
-| `lint/unknown-property` | near `property-no-unknown` |
-| `lint/unknown-at-rule` | near `at-rule-no-unknown` |
-| `lint/duplicate-property` | `declaration-block-no-duplicate-properties` |
-| `lint/hex-color-length` | `color-no-invalid-hex` |
-| `lint/zero-units` | `length-zero-no-unit` |
-| `unsupported/sass-form` | Jess dialect support diagnostic |
+| Rule name | Jess diagnostic code | Stylelint comparison |
+| --- | --- | --- |
+| `parse/syntax-error` | `parse/syntax-error` | Parser error surface |
+| `block-no-empty` | `lint/empty-rules` | `block-no-empty` |
+| `property-no-unknown` | `lint/unknown-property` | near `property-no-unknown` |
+| `at-rule-no-unknown` | `lint/unknown-at-rule` | near `at-rule-no-unknown` |
+| `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | `declaration-block-no-duplicate-properties` |
+| `color-no-invalid-hex` | `lint/hex-color-length` | `color-no-invalid-hex` |
+| `length-zero-no-unit` | `lint/zero-units` | `length-zero-no-unit` |
+| `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
 
-Use `STABLE_LINT_RULES`, `recommendedLintDiagnostics()`, or
-`stylelintComparisonDiagnostics()` when building migration reports.
+Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
+`stylelintComparisonRules()` when building migration reports. The older
+diagnostic-code helpers remain available for tools that already consume Jess
+diagnostic codes.
 
 ## Stylelint Comparison
 
@@ -171,7 +176,7 @@ Problem detection belongs below this package, in `@jesscss/diagnostics-core`
 and the parser/compiler/language-service facts it consumes. `@jesscss/lint`
 applies policy:
 
-- enable or disable diagnostics by code;
+- enable or disable rules by name;
 - map default severities to `warn` or `error`;
 - choose file globs and ignore globs;
 - render compact text or JSON;

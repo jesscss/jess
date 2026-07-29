@@ -85,30 +85,32 @@ export default {
     files: ['src/**/*.{css,less,scss,jess}'],
     ignoreFiles: ['dist/**'],
     reportSyntax: true,
-    diagnostics: {
-      'lint/unknown-property': 'error',
-      'lint/zero-units': 'warn'
+    rules: {
+      'property-no-unknown': 'error',
+      'length-zero-no-unit': 'warn',
+      'jess/unsupported-sass-form': 'warn'
     }
   }
 }
 ```
 
-Diagnostic severity values are `off`, `warn`, and `error`.
+Rule severity values are `off`, `warn`, and `error`; `null` also disables a
+rule.
 
 ## What Jess Checks Today
 
 Jess's stable lint set is deliberately small:
 
-| Jess code | What it catches |
-| --- | --- |
-| `parse/syntax-error` | Parser syntax errors |
-| `lint/empty-rules` | Empty rulesets |
-| `lint/unknown-property` | Unknown CSS properties |
-| `lint/unknown-at-rule` | Unknown CSS at-rules |
-| `lint/duplicate-property` | Duplicate declarations in one block |
-| `lint/hex-color-length` | Invalid hex color lengths |
-| `lint/zero-units` | Zero length values that do not need a unit |
-| `unsupported/sass-form` | SCSS forms Jess recognizes but does not support yet |
+| Rule name | Jess diagnostic code | What it catches |
+| --- | --- | --- |
+| `parse/syntax-error` | `parse/syntax-error` | Parser syntax errors |
+| `block-no-empty` | `lint/empty-rules` | Empty rulesets |
+| `property-no-unknown` | `lint/unknown-property` | Unknown CSS properties |
+| `at-rule-no-unknown` | `lint/unknown-at-rule` | Unknown CSS at-rules |
+| `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | Duplicate declarations in one block |
+| `color-no-invalid-hex` | `lint/hex-color-length` | Invalid hex color lengths |
+| `length-zero-no-unit` | `lint/zero-units` | Zero length values that do not need a unit |
+| `jess/unsupported-sass-form` | `unsupported/sass-form` | SCSS forms Jess recognizes but does not support yet |
 
 The lint package owns policy and reporting. Detection lives in the shared Jess
 diagnostics layer so CLI linting and editor diagnostics improve together.
@@ -143,7 +145,7 @@ who want to measure the overlapping rule subset:
 ```ts
 import {
   STYLELINT_COMPARISON_LINT_CONFIG,
-  stylelintComparisonDiagnostics
+  stylelintComparisonRules
 } from '@jesscss/lint'
 ```
 
