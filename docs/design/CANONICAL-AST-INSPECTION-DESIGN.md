@@ -135,9 +135,11 @@ export type AstVisitNode =
 export type AstEdge =
   | 'root'
   | 'stylesheet.rules'
-  | 'rule.selector'
-  | 'rule.guard'
-  | 'rule.rules'
+  | 'ruleset.selector'
+  | 'ruleset.guard'
+  | 'ruleset.extend.target'
+  | 'ruleset.extend.subject'
+  | 'ruleset.rules'
   | 'declaration.value'
   | 'value-slot.item'
   | 'value.list.item'
@@ -263,7 +265,7 @@ Guards are not `node.type` nodes. They are traversed through `enterGuard` and
 | Shape | Authored child edges |
 |---|---|
 | `Stylesheet` | `stylesheet.rules` |
-| `Ruleset` | `rule.selector`, `rule.guard` when present, `rule.extend.target`, `rule.extend.subject` when present, `rule.rules` |
+| `Ruleset` | `ruleset.selector`, `ruleset.guard` when present, `ruleset.extend.target`, `ruleset.extend.subject` when present, `ruleset.rules` |
 | `Declaration` | `declaration.name` when name is `Interpolation`; `declaration.value` |
 | `VariableDeclaration` | `variable.value` using the shared `CallValue` rule |
 | `MixinDefinition` | param defaults/patterns, `mixin.guard`, `mixin.rules` |
@@ -709,8 +711,8 @@ For Slice 1:
   root `ValueSlot[]` behavior, and exhaustive edge classification;
 - tests prove memo/cache/raw fields are not traversed;
 - guard tests prove `guard.g` traversal, not fake `node.type` traversal;
-- traversal tests cover `declaration.name` interpolation, `rule.extend.target` /
-  `rule.extend.subject`, `CollectionEntry` key/value traversal, and the shared
+- traversal tests cover `declaration.name` interpolation, `ruleset.extend.target` /
+  `ruleset.extend.subject`, `CollectionEntry` key/value traversal, and the shared
   `CallValue` rule for nested `MixinCall` values;
 - tests prove traversal does not require every leaf to carry a source span;
 - source-location tests cover duplicate values, substring traps, quoted strings,

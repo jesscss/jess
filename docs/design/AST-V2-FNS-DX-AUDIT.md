@@ -23,16 +23,15 @@ Implemented in `codex/ast-v2-dx-fns`:
   `Static...Leaf`-style names.
 - Statement containers now align on `.rules`; function definitions still use
   `body` for executable callbacks because they are not AST statement containers.
-- Canonical authored traversal exists internally in `packages/core/src/ast/traversal.ts`
-  with explicit rules/value/selector/guard edges and no diagnostics-local object
+- Canonical authored traversal is exported from `@jesscss/core/ast`, with
+  explicit ruleset/value/selector/guard edges and no diagnostics-local object
   crawls.
 - `@jesscss/core` no longer re-exports old tree helpers/utilities from its root
   package entrypoint.
 
-Still recommendations, not implemented here: decide whether/when to export the
-canonical traversal surface, add a first-class `RelativeSelector` if authored
-relative selectors need a distinct node, and continue deleting old tree internals
-rather than treating them as protected API.
+Still recommendations, not implemented here: add a first-class
+`RelativeSelector` if authored relative selectors need a distinct node, and
+continue deleting old tree internals rather than treating them as protected API.
 
 Context: this audit compares the current canonical AST v2 and `packages/fns`
 usage against Less 4.x tree naming, the public CSS/Less CST surface, and the
@@ -53,9 +52,9 @@ materialization. Those fields mostly have good DX:
 - `List.value` follows the repo rule that a single payload should be `.value`.
 - `Collection.entries` in the value domain is the right map model.
 
-The remaining problematic parts are the straddling/runtime surfaces: mixed
-statement-container names, old tree internals, and future visitor/facade needs.
-Accidental labels are not protected API during the AST v2 cutover.
+The remaining problematic parts are the straddling/runtime surfaces: old tree
+internals and future visitor/facade needs. Accidental labels are not protected
+API during the AST v2 cutover.
 
 ## What should intentionally deviate from Less 4.x
 

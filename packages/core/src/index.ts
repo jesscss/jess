@@ -40,13 +40,4 @@ export type { PreparedImports, PrepareStaticImportsOptions, SerializeOptions } f
 
 /** Construct the typed value evaluator used by the canonical AST-v2 execution path. */
 export { buildEvaluator } from './ast/evaluator.js';
-export {
-  alphaToNumber,
-  normalizeHue,
-  percentOf,
-  splitSequence,
-  toNumber,
-  type ConversionPlugin,
-  type PreprocessParams
-} from './conversions.js';
 export * from './types/index.js';

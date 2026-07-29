@@ -47,11 +47,11 @@ export type AstVisitParent =
 export type AstEdge =
   | 'root'
   | 'stylesheet.rules'
-  | 'rule.selector'
-  | 'rule.guard'
-  | 'rule.extend.target'
-  | 'rule.extend.subject'
-  | 'rule.rules'
+  | 'ruleset.selector'
+  | 'ruleset.guard'
+  | 'ruleset.extend.target'
+  | 'ruleset.extend.subject'
+  | 'ruleset.rules'
   | 'declaration.name'
   | 'declaration.value'
   | 'variable.value'
@@ -341,22 +341,22 @@ function walkFunctionCall(node: FunctionCall, hooks: AstVisitHooks, depth: numbe
   }
 }
 
-function walkRule(node: Ruleset, hooks: AstVisitHooks, depth: number): void {
-  walkNode(node.selector, hooks, 'rule.selector', node, 0, depth + 1);
+function walkRuleset(node: Ruleset, hooks: AstVisitHooks, depth: number): void {
+  walkNode(node.selector, hooks, 'ruleset.selector', node, 0, depth + 1);
   if (node.guard !== undefined) {
-    walkGuard(node.guard, hooks, 'rule.guard', node, 0, depth + 1);
+    walkGuard(node.guard, hooks, 'ruleset.guard', node, 0, depth + 1);
   }
   if (node.extendInstructions !== undefined) {
     for (let i = 0; i < node.extendInstructions.length; i++) {
       const instruction = node.extendInstructions[i]!;
-      walkNode(instruction.target, hooks, 'rule.extend.target', node, i, depth + 1);
+      walkNode(instruction.target, hooks, 'ruleset.extend.target', node, i, depth + 1);
       if (instruction.subject !== undefined) {
-        walkNode(instruction.subject, hooks, 'rule.extend.subject', node, i, depth + 1);
+        walkNode(instruction.subject, hooks, 'ruleset.extend.subject', node, i, depth + 1);
       }
     }
   }
   for (let i = 0; i < node.rules.length; i++) {
-    walkNode(node.rules[i]!, hooks, 'rule.rules', node, i, depth + 1);
+    walkNode(node.rules[i]!, hooks, 'ruleset.rules', node, i, depth + 1);
   }
 }
 
@@ -476,7 +476,7 @@ function walkNode(
       }
       break;
     case 'Ruleset':
-      walkRule(node, hooks, depth);
+      walkRuleset(node, hooks, depth);
       break;
     case 'Declaration':
       walkDeclaration(node, hooks, depth);

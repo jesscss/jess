@@ -120,9 +120,9 @@ describe('canonical authored AST traversal', () => {
     });
 
     expect(edges).toContain('declaration.name');
-    expect(edges).toContain('rule.guard');
-    expect(edges).toContain('rule.extend.target');
-    expect(edges).toContain('rule.extend.subject');
+    expect(edges).toContain('ruleset.guard');
+    expect(edges).toContain('ruleset.extend.target');
+    expect(edges).toContain('ruleset.extend.subject');
     expect(edges).toContain('value.collection.base');
     expect(edges).toContain('value.collection.entry');
     expect(edges).toContain('value.collection.key');
