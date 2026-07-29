@@ -3147,9 +3147,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // but lets the shared strict `@{…}` grammar surface interpolation as typed
   // AST facts.  Delimiters and strings are grammar children—not a captured
   // source span—while block comments stay in Parseman's trivia log.
-  // Gating note: the static and interpolated `--*` name arms share `-`. Do not
-  // left-factor this until the custom-value comment/trivia slice can remove
-  // grammar-owned comment text from the same family and bless the CST movement.
+  // Gating note: the static and interpolated `--*` name arms share `-`; keep the
+  // public name branches explicit until the custom-property family has a shared
+  // opener that preserves both AST construction and CST ownership.
   const CustomPropertyName = node<string | Interpolation>(
     'CustomPropertyName',
     choice(
@@ -3910,7 +3910,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // `BodyStatement` deliberately keep their own ordered arm sets
   // because they legitimately differ (comment-first root ordering; the
   // punctuation-map arm and Each/Ruleset reordering in body statements).
-  // `@`-led statement group. Every body context lists these ten arms in this
+  // `@`-led statement group. Every body context lists these eleven arms in this
   // exact contiguous order, so grouping them into one nested choice is
   // byte-identical to the flat listing (a bare `choice` passes its winning arm's
   // value through unchanged, and firstMatch order is preserved). This is the
