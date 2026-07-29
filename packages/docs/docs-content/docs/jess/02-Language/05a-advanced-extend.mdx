@@ -23,7 +23,7 @@ statement), and your selector is added *wherever the target already appears*.
     ```scss
     .animal { background: black; color: white; }
     .bear {
-      $extend .animal !exact;   // style .bear like .animal
+      $extend .animal;          // style .bear like .animal
       background: brown;
     }
     ```
@@ -84,22 +84,10 @@ nesting is resolved), not the source text.
 In Less, the body form `.a { &:extend(.b); }` is exactly equivalent to attaching
 `:extend(.b)` to every selector of the rule.
 
-## Exact match vs. `all`
+## Matching mode
 
-There are two matching modes:
-
-- **Exact** — matches only where the target is the *whole* selector.
-- **`all` (partial)** — matches the target *wherever it appears as part of* a
-  larger selector, and rewrites that spot in place. Think non-destructive
-  search-and-replace.
-
-:::note Jess flips the default
-
-In **Less**, `:extend(.b)` is exact and `:extend(.b all)` is partial. In
-**Jess**, the `$extend .b;` statement defaults to the partial (`all`) match, and
-you write `$extend .b !exact;` for an exact match.
-
-:::
+Jess `$extend .b;` uses partial matching by default. It matches `.b` wherever
+that selector appears, then rewrites that spot in place.
 
 <Tabs>
   <TabItem value="jess" label="Jess">
@@ -178,8 +166,8 @@ before the target.
   <TabItem value="jess" label="Jess">
     ```scss
     .a { color: black; }
-    .b { $extend .a !exact; }
-    .c { $extend .b !exact; }
+    .b { $extend .a; }
+    .c { $extend .b; }
     ```
   </TabItem>
   <TabItem value="css" label="CSS output">
@@ -195,6 +183,47 @@ before the target.
 
 Self-references and circular references are handled safely — they simply resolve
 and stop, never loop.
+
+## Exact matching with `!exact`
+
+Most extends do not need `!exact`. Use it when the target must be the whole
+selector, not a piece inside a larger selector.
+
+For `$extend .animal;`, these targets match differently:
+
+| Target rule | Default `$extend .animal;` | `$extend .animal !exact;` |
+| --- | --- | --- |
+| `.animal` | matches | matches |
+| `.animal:hover` | matches `.animal` inside the compound | no match |
+| `.card .animal` | matches `.animal` at the end | no match |
+| `.animal.large` | matches `.animal` inside the compound | no match |
+
+`!exact` can still target a complex selector. In this example, `.bear` only joins
+the rule whose whole selector is `.card .animal`:
+
+```scss
+.card .animal { color: black; }
+.panel .card .animal { color: gray; }
+.card .animal:hover { color: brown; }
+
+.bear { $extend .card .animal !exact; }
+```
+
+```css
+.card .animal,
+.bear {
+  color: black;
+}
+.panel .card .animal {
+  color: gray;
+}
+.card .animal:hover {
+  color: brown;
+}
+```
+
+Without `!exact`, the same target would also match the embedded
+`.card .animal` in the descendant and hover selectors.
 
 ## Nested selectors
 

@@ -9,17 +9,9 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 
-One of the ironies about the popularity of both Less and Sass is they became too popular, and their syntax was too intuitive. In the case of Less, this meant that useful functions like `if()` had syntax conflict as soon as a CSS-native `if()` was adopted (in 2025), as well as many other Less functions.
-
-Sass has had much bigger syntax conflicts, mostly in the space of at-rules. Sass has a huge number of at-rules, and some of those at-rules have been adopted by the CSS working group.
-
-:::info
-
-Many in the CSS community wanted to use Sass's `@if` as a new conditional rule, but ultimately settled on `@when` to avoid breaking existing Sass code. That caution makes sense: Sass syntax has had to carry a lot of historical compatibility weight, and that's why that syntax is discouraged. Jess is designed with more future-CSS headroom, so new native features are less likely to collide with compiler syntax.
-
-:::
-
-One of Jess's goals is to make the syntax as future-proof as possible. So, even in the case where Jess supports Less and Sass behavior, compiler at-rules are prefixed with dashes to not cause clashes.
+Jess compiler at-rules use a dash prefix: `@-compose`, `@-use`, `@-from`,
+`@-export`, and `@-import`. Bare CSS at-rules stay bare, so Jess can add
+compile-time behavior without taking names away from CSS.
 
 ## @-compose
 
@@ -342,7 +334,7 @@ You can also import and use Less and Sass functions.
 @-use '#sass/math';
 
 .box {
-  value: $(type.isnumber(math.e)); // true
+  value: $($type.isnumber($math.e)); // true
 }
 ```
 

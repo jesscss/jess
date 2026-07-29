@@ -4,7 +4,9 @@ audiences:
   - jess
 origin: jess
 ---
-Probably the best reason to convert your Sass and Less to Jess today is to use its elegant syntax that unifies the concepts of namespaces, collections, maps, and objects.
+Collections are Jess's map shape for design tokens and structured values. They
+look like small CSS blocks, read like objects, and work with the same value model
+Jess uses everywhere else.
 
 ## A Jess collection
 
@@ -26,15 +28,14 @@ $colors: {
 }
 ```
 
-You'll notice that the assigned namespace `theme` acts as a collection of values, and the `colors` variable is just another collection of values. Just like JavaScript objects, you can access the values in the collection using the dot (`.`) syntax.
+The composed module namespace `theme` is a collection, and `colors` is another
+collection inside it. Use dot access for ordinary identifier keys.
 
 Note that there is no `;` after the collection's closing brace. A block-valued
-assignment ends at its closing brace, so the semicolon is optional and the next token
-begins a new statement. See
-[block-valued assignments](./variables#block-valued-assignments-auto-terminate) for
-the full rule, including why nothing may appear before the block.
+assignment ends at its closing brace, so the semicolon is optional. See
+[block-valued assignments](./variables#block-valued-assignments) for the rule.
 
-Speaking of JavaScript objects... did you know you can use them in Jess?
+Collections can also come from JS/TS modules once module resolution is enabled:
 ```js
 // tokens.js
 export const sizes = {
@@ -54,7 +55,7 @@ export const sizes = {
 
 ### Sub-collections
 
-Collections can contain other collections.
+Collections can contain collections:
 
 ```less
 // theme.jess
@@ -79,7 +80,7 @@ $colors: {
 
 :::warning[Collections are not anonymous mixins]
 
-You may notice that collections look very similar to anonymous mixins without parameters, which can look like:
+Collections and anonymous mixins both use blocks:
 
 ```less
 $mixin: @{
@@ -87,11 +88,9 @@ $mixin: @{
 }
 ```
 
-This similarity is on purpose! And, in fact, you can access mixins and rulesets as collections, if you wish. But, the important difference is that
-
 **a collection is data; an anonymous mixin is code.**
 
-That split is the whole rule, and everything else follows from it:
+That split is the rule:
 
 1. a collection cannot contain rulesets, mixin definitions, or at-rules,
 2. a collection cannot contain **variable declarations** either — a binding inside
@@ -99,10 +98,8 @@ That split is the whole rule, and everything else follows from it:
    mixin, not a collection, and
 3. a collection is for arbitrary key/value pairs, not CSS properties & values.
 
-Rule 2 is what keeps map functions honest: if `$a: 1` could sit inside a
-collection, every one of them would first have to decide whether `$a` is a key or
-a binding. Nothing is lost by the split — a Less detached ruleset that declares
-variables simply *is* an anonymous mixin, and you can still read its members.
+That keeps map functions honest: `$a: 1` inside a collection would have to mean
+both "key named `$a`" and "binding named `a`." Jess keeps those roles separate.
 
 :::
 
@@ -127,7 +124,7 @@ not by a serialized property-name string. That means a map can distinguish the
 number `1`, the string `"1"`, and the color `red` when those keys arrive from
 SCSS input or from the value-domain map APIs.
 
-Jess collection literals currently author the common CSS-object shape directly:
+Jess collection literals author the common CSS-object shape directly:
 
 ```less
 $font-weights: {
@@ -137,10 +134,9 @@ $font-weights: {
 }
 ```
 
-Bracketed value-key entries are the intended spelling for non-identifier keys,
-but they are not public Jess syntax until the parser work lands. When that work
-is ready, non-identifier keys should use `[value]:` entries such as `[1px]: a`,
-`[red]: b`, and `[$key]: c`.
+Non-identifier keys can exist in Jess collections when they arrive from SCSS maps
+or map APIs. Native literal syntax for authoring those keys directly is still
+being held back until it is parser-tested.
 
 {/*
 Future runnable example:
@@ -170,19 +166,16 @@ footgun; this way you can read the source and know.
 
 :::caution[Numeric keys are not reachable by bracket]
 
-The trade-off is deliberate: if you use numbers as collection keys, numeric
-`[…]` will not reach them, because a numeric subscript is always a position. Use
-map functions such as `map.get($m, 1px)` for those until bracketed value-key
-lookup syntax is completed. Positional indexing is the common case and numeric
-keys are rare, so the rare case is the one that takes an explicit value-key
-operation.
+If you use numbers as collection keys, numeric `[…]` will not reach them because
+a numeric subscript is always positional. Use map functions such as
+`map.get($m, 1px)` for numeric keys.
 
 :::
 
 
 ## Lists and arrays
 
-Jess also borrows the concept of lists and array access from JavaScript.
+Lists use bracket access:
 
 ```less
 // theme.jess
@@ -192,7 +185,7 @@ $sizes: 10px, 20px, 30px;
   padding: $sizes[0]; // 10px
 }
 ```
-Jess also borrows a convenient syntax some languages use for accessing items from the end of the list, which is to use a negative index.
+Negative indexes read from the end:
 
 ```less
 .box {
@@ -202,7 +195,7 @@ Jess also borrows a convenient syntax some languages use for accessing items fro
 
 :::info
 
-You may never need to use it, but Jess also allows numeric indexed access to values of a ruleset or mixin.
+Rulesets and mixins also support numeric indexed access to their emitted values:
 
 ```less
 .mixin() {
@@ -220,11 +213,11 @@ You may never need to use it, but Jess also allows numeric indexed access to val
 
 :::
 
-## Other language approaches
+## Why this reads better
 
-### Less's approach to maps
+### Less maps
 
-Less's innovation is that it allows you to use rulesets and mixins as maps, and Jess takes a lot of inspiration from Less's syntax. Here's a Less example:
+Less lets rulesets and mixins act like maps:
 
 ```less
 #colors() {
@@ -245,28 +238,31 @@ Less's innovation is that it allows you to use rulesets and mixins as maps, and 
 }
 ```
 
-There are a few downsides of Less's syntax for maps.
+That gives Less a clever reuse story, but it blurs two jobs:
 
-1. There is semantic confusion between a map / collection and a "set of rules". An anonymous ruleset, for example, could contain real CSS properties, or it could contain arbitrary keys the developer has assigned. This makes it impossible for an IDE, for example, to give feedback to the developer about the contents of the ruleset. Is it a mis-typed CSS property? Or is it just a key in a map?
-2. Accessing variables in a map can look unintuitive e.g. `@map[@my-var]`. JavaScript developers may interpret this as saying the _property name_ is variable, and not that it is literally a variable named `@my-var`.
+1. A ruleset might be CSS output, map data, or both.
+2. Variable-looking keys can be hard to read, especially in forms like
+   `@map[@my-var]`.
 
 
-### Sass's approach to maps
+### Sass maps
 
-Sass's approach to maps is a bit of a syntactic mess. Even though CSS has a clearly-defined syntax for assigning values to properties, it opts to a) use quoted strings as property names, and b) separate property / value pairs with commas instead of CSS's standard semi-colon.
+Sass maps are real data, but the syntax is separate from normal CSS-shaped
+blocks:
 
 ```scss
 $font-weights: ("regular": 400, "medium": 500, "bold": 700);
 ```
 
-Similarly, even though Sass added the concept of namespaces, it doesn't use it for maps, instead using the `map-get` (or `map.get`) function.
+Reads usually go through `map-get` or `map.get`:
 
 ```scss
 value: map.get($font-weights, "medium"); // 500
 value: map.get($font-weights, "bold"); // 700
 ```
 
-Jess's approach makes this much cleaner and look more intuitive to a web developer familiar with CSS and JavaScript.
+Jess keeps the good part — maps are data — and gives the common case a shape
+that CSS and JavaScript developers already know:
 ```scss
 $font-weights: {
   regular: 400;
@@ -278,10 +274,9 @@ value: $font-weights.regular; // 400
 value: $font-weights.bold; // 700
 ```
 
-The practical DX difference is that Jess gives the common case the simple syntax:
-CSS-shaped data, JavaScript-shaped property access, and bracket lookup when the
-key is a value. You do not have to pretend a ruleset is data, and you do not have
-to wrap every ordinary read in `map.get(...)`.
+That is the practical DX win: CSS-shaped data, JavaScript-shaped property access,
+and bracket lookup when the key is a value. You do not have to pretend a ruleset
+is data, and you do not have to wrap ordinary reads in `map.get(...)`.
 
 ```scss
 $state: active;

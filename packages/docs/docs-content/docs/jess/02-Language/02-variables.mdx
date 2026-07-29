@@ -12,9 +12,6 @@ Jess has two explicit variable-reference modes.
 | `$foo` | Live reference: read the value currently bound for `foo` at evaluation time. |
 | `$$foo` | Scoped/final lookup. |
 
-`$!` is retired. Do not use it in new Jess source and do not treat it as a
-compatibility spelling.
-
 ## Choosing a reference
 
 Use `$foo` when the value should be live at the point the expression evaluates.
@@ -67,41 +64,13 @@ $theme: blue;       // creates both bindings (`$$theme: blue` does too)
 SCSS retains its own `$name: value`, `!default`, and `!global` syntax at the
 input boundary; see [Sass (SCSS) compatibility](/docs/guides/coming-from-sass/scss-compatibility).
 
-## Semicolons separate declarations
+## Block-valued assignments
 
-`$foo: value` **is a declaration**, and follows exactly the same rules as a CSS
-property declaration. There is no separate "variable assignment" syntax with its
-own termination rule.
-
-In CSS, `;` **separates** declarations — it does not terminate them. So a
-declaration that is **last** needs no `;`: last before `}`, before the end of the
-file, or before anything that is not another declaration, such as a rule or an
-at-rule. Jess is a superset of CSS, so this holds for `$foo:` and `color:` alike:
-
-```less
-.a {
-  color: red;
-  background: blue   // last in the block — no `;` needed
-}
-
-$brand: #06c         // followed by a rule, not a declaration — no `;` needed
-.b {
-  color: $brand;
-}
-```
-
-A trailing `;` is always allowed, and an empty declaration (`;;`, or `{ ; }`) is
-simply skipped. Two declarations still need the separator **between** them, so
-`$a: 1 $b: 2` is an error exactly as `color: red background: blue` is.
-
-## Block-valued assignments auto-terminate
-
-The one exception to the rule above: a variable can be bound to a **block** — a
-[collection](./namespaces-and-maps), an
-anonymous mixin, or a [function](./functions). When the value is a block, the
-assignment ends at the block's closing brace, so the trailing `;` is **optional** —
-including when another declaration follows, which is what the closing brace buys
-you over an ordinary value:
+Normally, adjacent declarations need semicolon separators. Block-valued
+assignments are the exception: a variable can be bound to a
+[collection](./namespaces-and-maps), an anonymous mixin, or a
+[function](./functions), and that assignment ends at the block's closing brace.
+The trailing `;` is optional even when another declaration follows:
 
 ```less
 $colors: {
@@ -118,45 +87,8 @@ $double: @($n) > {
 All three are also valid written with a `;` after the closing brace. Write whichever
 you prefer, but you never need one.
 
-### Whatever follows the brace begins a new statement
-
-Because the assignment is already complete at `}`, the next token starts a new
-statement — even on the same line. This is two statements, not one:
-
-```less
-$colors: {
-  primary: #06c;
-} $gap: 8px;
-
-.box {
-  color: $colors.primary;
-  gap: $gap;
-}
-```
-→
-```css
-.box {
-  color: #06c;
-  gap: 8px;
-}
-```
-
-### Nothing may precede the block
-
-A block can only ever be a value's **first** atom. Putting anything in front of it is
-a parse error — with or without a trailing `;`:
-
-```less
-$foo: bar {         // ✗ parse error
-  primary: #06c;
-}
-
-$foo: bar @() > { result: red; }; // ✗ parse error, semicolon or not
-```
-
-This is deliberate: it fails loudly at the source position rather than silently
-reading `bar { … }` as a two-value list. To combine a block with other values, bind
-the block first and compose from the binding:
+Block values stand on their own as the assigned value. To combine data from a
+block with other values, bind the block first and compose from the binding:
 
 ```less
 $shadow: {
@@ -175,28 +107,4 @@ $rule: 0 0 $shadow.blur #000;
 }
 ```
 
-:::info[Coming from Less]
-
-Less already applies this rule to a detached ruleset bound to a variable, so the
-behavior should feel familiar:
-
-```less
-@foo: {
-  color: red;
-}
-.box { @foo(); }
-```
-
-Jess extends the same rule to every block-valued assignment — collections, anonymous
-mixins, and function literals alike.
-
-:::
-
-{/*
-## Private and readonly names
-
-Private and readonly bindings are intentionally not part of the public Jess docs
-until the parser, evaluator, and SCSS compatibility tests prove the feature.
-When they land, the reference distinction should remain: `$name` is live and
-`$$name` is scoped/final.
-*/}
+The same rule applies to collections, anonymous mixins, and function literals.
