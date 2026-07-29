@@ -3,7 +3,11 @@
 **Branch base:** `origin/dev` @ `ad1bbd1bf05f6030e276a8b13cabab48ea07cf2f` (the brief cited
 `3202ff246`; that is the SHA of the main checkout at `~/git/oss/jess`, which had moved
 ahead by the time this audit ran — see §9.3).
-**Status:** read-only audit. No source file in `packages/fns/` was modified.
+**Status:** historical read-only audit snapshot. Its evidence and counts describe
+the branch named above, not the current `codex/ast-v2-dx-fns` implementation.
+The current branch has since moved Sass globals to the value-domain registry
+surface, including `type-of`, `comparable`, and `str-length`; use this file as
+the original evidence trail, not as a live status tracker.
 
 ## 0. The rule being applied
 

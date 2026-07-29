@@ -28,10 +28,14 @@ Implemented in `codex/ast-v2-dx-fns`:
   crawls.
 - `@jesscss/core` no longer re-exports old tree helpers/utilities from its root
   package entrypoint.
+- Relative selectors are first-class `RelativeSelector` branches; the former
+  leading-combinator side field is gone, and parser tests assert relative
+  selectors only in valid contexts.
+- Sass global `str-length` is exported from the Sass dialect index and therefore
+  participates in the derived Sass registry.
 
-Still recommendations, not implemented here: add a first-class
-`RelativeSelector` if authored relative selectors need a distinct node, and
-continue deleting old tree internals rather than treating them as protected API.
+Still recommended, not implemented here: continue deleting old tree internals
+rather than treating them as protected API.
 
 Context: this audit compares the current canonical AST v2 and `packages/fns`
 usage against Less 4.x tree naming, the public CSS/Less CST surface, and the
