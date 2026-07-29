@@ -32,11 +32,11 @@ type JessMixinCallArgument = MixinCall['args'][number];
 
 type JessRules = {
   Stylesheet: Combinator<Stylesheet>;
-  DirectJessVarDeclaration: Combinator<VariableDeclaration>;
-  DirectJessValueBlockDeclaration: Combinator<VariableDeclaration>;
-  DirectJessBlockLambda: Combinator<AnonymousMixin>;
-  DirectJessExprLambda: Combinator<AnonymousMixin>;
-  DirectJessValueBlock: Combinator<ValueNode>;
+  VariableDeclaration: Combinator<VariableDeclaration>;
+  ValueBlockDeclaration: Combinator<VariableDeclaration>;
+  BlockLambda: Combinator<AnonymousMixin>;
+  ExpressionLambda: Combinator<AnonymousMixin>;
+  ValueBlock: Combinator<ValueNode>;
   VariableReference: Combinator<VariableReference>;
   DeclarationReference: Combinator<DeclarationReference>;
   ReferenceTail: Combinator<JessReferenceTail>;
@@ -51,7 +51,7 @@ type JessRules = {
   ExpressionInterpolation: Combinator<ExpressionFact>;
   ExpressionQuoted: Combinator<ExpressionFact>;
   ExpressionDeclarationReference: Combinator<ExpressionFact>;
-  ExpressionCallArg: Combinator<JessMixinCallArgument>;
+  ExpressionCallArgument: Combinator<JessMixinCallArgument>;
   ExpressionReferenceCallTail: Combinator<JessReferenceTail>;
   ExpressionAtom: Combinator<ExpressionFact>;
   ExpressionProduct: Combinator<ExpressionFact>;
@@ -92,14 +92,14 @@ type JessRules = {
   DirectJessCustomValue: Combinator<ValueNode>;
   DirectJessCustomDeclaration: Combinator<Declaration>;
   DirectJessDeclaration: Combinator<Declaration>;
-  DirectJessMixinParam: Combinator<Param>;
-  DirectJessMixinParams: Combinator<Param[]>;
-  DirectJessMixinCallArg: Combinator<JessMixinCallArgument>;
-  DirectJessMixinCall: Combinator<MixinCall>;
-  DirectJessReferenceCall: Combinator<Reference>;
-  DirectJessApply: Combinator<Apply>;
-  DirectJessExtend: Combinator<ExtendInstruction[]>;
-  DirectJessMixinDef: Combinator<MixinDef>;
+  MixinParam: Combinator<Param>;
+  MixinParams: Combinator<Param[]>;
+  MixinCallArgument: Combinator<JessMixinCallArgument>;
+  MixinCall: Combinator<MixinCall>;
+  ReferenceCall: Combinator<Reference>;
+  Apply: Combinator<Apply>;
+  Extend: Combinator<ExtendInstruction[]>;
+  MixinDef: Combinator<MixinDef>;
   DirectJessSimple: Combinator<SimpleSelector>;
   DirectJessParent: Combinator<SimpleSelector>;
   DirectJessInterpolatedSimple: Combinator<SimpleSelector>;
@@ -1547,8 +1547,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       ), src: raw };
     }
   );
-  const ExpressionCallArg = node<JessMixinCallArgument>(
-    'ExpressionCallArg',
+  const ExpressionCallArgument = node<JessMixinCallArgument>(
+    'ExpressionCallArgument',
     choice(
       sequence(
         literal('$'),
@@ -1574,10 +1574,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       parser(
         { trivia: whitespace },
         optional(sequence(
-          g.ExpressionCallArg,
+          g.ExpressionCallArgument,
           many(sequence(
             literal(','),
-            g.ExpressionCallArg
+            g.ExpressionCallArgument
           ))
         ))
       ),
@@ -3025,10 +3025,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       parser(
         { trivia: whitespace },
         optional(sequence(
-          g.DirectJessMixinCallArg,
+          g.MixinCallArgument,
           many(sequence(
             literal(','),
-            g.DirectJessMixinCallArg
+            g.MixinCallArgument
           ))
         ))
       ),
@@ -3226,7 +3226,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    */
   const directJessNonBlockValueAtom = choice(
     g.DollarValue,
-    g.DirectJessExprLambda,
+    g.ExpressionLambda,
     g.InterpolatedValue,
     g.DirectJessSelectorCapture,
     g.Url,
@@ -4155,14 +4155,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * at-rule recognizers — only genuine `@` statements reach the cluster.
     */
   const directJessAtBlockStatement = choice(
-    g.DirectJessMixinCall,
-    g.DirectJessValueBlockDeclaration,
-    g.DirectJessVarDeclaration,
+    g.MixinCall,
+    g.ValueBlockDeclaration,
+    g.VariableDeclaration,
     g.DirectJessDeclaration,
-    g.DirectJessMixinDef,
-    g.DirectJessReferenceCall,
-    g.DirectJessApply,
-    g.DirectJessExtend,
+    g.MixinDef,
+    g.ReferenceCall,
+    g.Apply,
+    g.Extend,
     g.For,
     g.DirectJessIf,
     g.DirectJessRule,
@@ -4181,15 +4181,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     */
   const directJessNestedBodyStatement = choice(
     literal(';'),
-    g.DirectJessMixinCall,
-    g.DirectJessValueBlockDeclaration,
-    g.DirectJessVarDeclaration,
+    g.MixinCall,
+    g.ValueBlockDeclaration,
+    g.VariableDeclaration,
     g.DirectJessDeclaration,
-    g.DirectJessMixinDef,
+    g.MixinDef,
     g.For,
     g.DirectJessIf,
-    g.DirectJessReferenceCall,
-    g.DirectJessApply,
+    g.ReferenceCall,
+    g.Apply,
     g.DirectJessRule,
     g.DirectJessSupportsAtRuleBlock,
     g.DirectJessKeyframes,
@@ -4385,7 +4385,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * needs no `;`, so the terminator is optional here too; there is no separate
    * "variable assignment" termination category.
    */
-  const DirectJessVarDeclaration = node<VariableDeclaration>(
+  const VariableDeclaration = node<VariableDeclaration>(
     'VariableDeclaration',
     sequence(
       directJessAssignHead,
@@ -4401,15 +4401,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * `$foo: @() > { … }` need no `;` and whatever follows the brace begins a new
    * statement. Less has the same rule for a detached ruleset bound to a variable.
    * The block must be the WHOLE value — a value can never precede it (there is no
-   * `DirectJessValueBlock` arm in the space-group continuation), because that is
+   * `ValueBlock` arm in the space-group continuation), because that is
    * exactly the case where the value's end would be ambiguous. Compose instead:
    * bind the block first (`$foo: {}`), then use it (`$bar: $foo bar;`).
    */
-  const DirectJessValueBlockDeclaration = node<VariableDeclaration>(
+  const ValueBlockDeclaration = node<VariableDeclaration>(
     'ValueBlockDeclaration',
     sequence(
       directJessAssignHead,
-      g.DirectJessValueBlock,
+      g.ValueBlock,
       optional(literal(';'))
     ),
     reduceVarDeclaration
@@ -4780,7 +4780,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * already have the canonical CallArg fact and reduce directly to it.
    */
   const directJessMixinName = regex(/[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const DirectJessMixinParam = node<Param>(
+  const MixinParam = node<Param>(
     'MixinParam',
     sequence(
       literal('$'),
@@ -4797,23 +4797,23 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         : { name: requireToken(children[1]).value, default: defaultValue };
     }
   );
-  const DirectJessMixinParams = node<Param[]>(
+  const MixinParams = node<Param[]>(
     'MixinParams',
     sequence(
       literal('('),
       optional(sequence(
-        g.DirectJessMixinParam,
+        g.MixinParam,
         many(sequence(
           literal(','),
-          g.DirectJessMixinParam
+          g.MixinParam
         ))
       )),
       literal(')')
     ),
     children => children.filter((child): child is Param => typeof child === 'object' && child !== null && !('type' in child) && 'name' in child)
   );
-  const DirectJessMixinCallArg = node<JessMixinCallArgument>(
-    'MixinCallArg',
+  const MixinCallArgument = node<JessMixinCallArgument>(
+    'MixinCallArgument',
     choice(
       sequence(
         literal('$'),
@@ -4832,7 +4832,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return name === undefined ? { value } : { name: name.value, value };
     }
   );
-  const DirectJessMixinCall = node<MixinCall>(
+  const MixinCall = node<MixinCall>(
     'MixinCall',
     sequence(
       literal('$'),
@@ -4844,10 +4844,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       )),
       literal('('),
       optional(sequence(
-        g.DirectJessMixinCallArg,
+        g.MixinCallArgument,
         many(sequence(
           literal(','),
-          g.DirectJessMixinCallArg
+          g.MixinCallArgument
         ))
       )),
       literal(')'),
@@ -4879,7 +4879,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * A variable-held callable has an explicit target and empty argument array.
    * Argument-bearing syntax remains intentionally closed in the Jess grammar.
    */
-  const DirectJessReferenceCall = node<Reference>(
+  const ReferenceCall = node<Reference>(
     'ReferenceCall',
     sequence(
       literal('$'),
@@ -4900,11 +4900,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessMixinDef = node<MixinDef>(
+  const MixinDef = node<MixinDef>(
     'MixinDef',
     sequence(
       directJessMixinName,
-      g.DirectJessMixinParams,
+      g.MixinParams,
       optional(sequence(
         regex(/when(?![-_a-zA-Z0-9\u0080-\uffff])/),
         literal('('),
@@ -4941,7 +4941,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    */
   const directJessLambdaParams = parser(
     { trivia: whitespace },
-    g.DirectJessMixinParams
+    g.MixinParams
   );
 
   /*
@@ -4960,7 +4960,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * auto-terminates its assignment: `$f: @() > { }` needs no `;`, while
    * `$f: @() > expr;` does.
    */
-  const DirectJessBlockLambda = node<AnonymousMixin>(
+  const BlockLambda = node<AnonymousMixin>(
     'BlockLambda',
     sequence(
       literal('@'),
@@ -4988,13 +4988,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * uniformly "an anonymous mixin that assigns `result`", so evaluation never
    * has to know which spelling produced it.
    */
-  const DirectJessExprLambda = node<AnonymousMixin>(
-    'ExprLambda',
+  const ExpressionLambda = node<AnonymousMixin>(
+    'ExpressionLambda',
     parser(
       { trivia: whitespace },
       sequence(
         literal('@'),
-        g.DirectJessMixinParams,
+        g.MixinParams,
         literal('>'),
         not(literal('{')),
         g.Value
@@ -5018,10 +5018,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * terminate an assignment without a `;`, so it has its own rule: everything
    * that reaches this rule is brace-delimited and self-terminating.
    */
-  const DirectJessValueBlock = node<ValueNode>(
+  const ValueBlock = node<ValueNode>(
     'ValueBlock',
     choice(
-      g.DirectJessBlockLambda,
+      g.BlockLambda,
       g.Collection
     ),
     children => requireValueNode(children[0])
@@ -5381,7 +5381,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     reduceSelectorList
   );
-  const DirectJessApply = node<Apply>(
+  const Apply = node<Apply>(
     'Apply',
     sequence(
       regex(/\$apply(?![-\w])/),
@@ -5394,7 +5394,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     children => apply(children.filter(isCompound))
   );
-  const DirectJessExtend = node<ExtendInstruction[]>(
+  const Extend = node<ExtendInstruction[]>(
     'Extend',
     sequence(
       regex(/\$extend(?![-\w])/),
@@ -5416,16 +5416,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal('{'),
       many(choice(
         literal(';'),
-        g.DirectJessMixinCall,
-        g.DirectJessValueBlockDeclaration,
-        g.DirectJessVarDeclaration,
+        g.MixinCall,
+        g.ValueBlockDeclaration,
+        g.VariableDeclaration,
         g.DirectJessDeclaration,
-        g.DirectJessMixinDef,
+        g.MixinDef,
         g.For,
         g.DirectJessIf,
-        g.DirectJessReferenceCall,
-        g.DirectJessApply,
-        g.DirectJessExtend,
+        g.ReferenceCall,
+        g.Apply,
+        g.Extend,
         g.DirectJessRule,
         g.DirectJessSupportsAtRuleBlock,
         g.DirectJessOpaqueAtRuleBlock,
@@ -5468,21 +5468,21 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       many(choice(
         g.DirectJessStyleImport,
         g.DirectJessModuleImport,
-        g.DirectJessValueBlockDeclaration,
-        g.DirectJessVarDeclaration,
+        g.ValueBlockDeclaration,
+        g.VariableDeclaration,
         g.DirectJessCssImport
       )),
       many(choice(
-        g.DirectJessMixinCall,
+        g.MixinCall,
         g.DirectJessStyleImport,
         g.DirectJessModuleImport,
-        g.DirectJessValueBlockDeclaration,
-        g.DirectJessVarDeclaration,
-        g.DirectJessMixinDef,
+        g.ValueBlockDeclaration,
+        g.VariableDeclaration,
+        g.MixinDef,
         g.For,
         g.DirectJessIf,
-        g.DirectJessReferenceCall,
-        g.DirectJessApply,
+        g.ReferenceCall,
+        g.Apply,
         g.DirectJessRule,
         g.DirectJessSupportsAtRuleBlock,
         g.DirectJessPropertyAtRule,
@@ -5498,11 +5498,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
   return {
     Stylesheet,
-    DirectJessVarDeclaration,
-    DirectJessValueBlockDeclaration,
-    DirectJessBlockLambda,
-    DirectJessExprLambda,
-    DirectJessValueBlock,
+    VariableDeclaration,
+    ValueBlockDeclaration,
+    BlockLambda,
+    ExpressionLambda,
+    ValueBlock,
     VariableReference,
     DeclarationReference,
     ReferenceTail,
@@ -5516,7 +5516,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ExpressionInterpolation,
     ExpressionQuoted,
     ExpressionDeclarationReference,
-    ExpressionCallArg,
+    ExpressionCallArgument,
     ExpressionReferenceCallTail,
     ExpressionAtom,
     ExpressionProduct,
@@ -5611,14 +5611,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     DirectJessCustomValue,
     DirectJessCustomDeclaration,
     DirectJessDeclaration,
-    DirectJessMixinParam,
-    DirectJessMixinParams,
-    DirectJessMixinCallArg,
-    DirectJessMixinCall,
-    DirectJessReferenceCall,
-    DirectJessApply,
-    DirectJessExtend,
-    DirectJessMixinDef,
+    MixinParam,
+    MixinParams,
+    MixinCallArgument,
+    MixinCall,
+    ReferenceCall,
+    Apply,
+    Extend,
+    MixinDef,
     DirectJessSimple,
     DirectJessParent,
     DirectJessInterpolatedSimple,

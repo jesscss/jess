@@ -3964,7 +3964,7 @@ test/cst-public.test.ts -t '\$for' --reporter=dot` passed 1 test with 9 skipped.
 Jess expression-name cleanup, 2026-07-29: the folded Jess grammar's expression
 family now uses the same semantic rule keys as its public CST node labels:
 `Expression`, `ExpressionInterpolation`, `ExpressionQuoted`,
-`ExpressionDeclarationReference`, `ExpressionCallArg`,
+`ExpressionDeclarationReference`, `ExpressionCallArgument`,
 `ExpressionReferenceCallTail`, `ExpressionAtom`, `ExpressionProduct`,
 `ExpressionSum`, and `ExpressionCompare` instead of `DirectJessExpression*`.
 This is a naming cleanup only. Expression arithmetic still belongs only behind
@@ -4111,6 +4111,30 @@ parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
 fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
 passed. The old `DirectJessValueAtom#0/#2` gating debt now reports under the
 semantic `ValueAtom#0/#2` rule names.
+
+Jess declaration/block/mixin rule name cleanup, 2026-07-29: the Jess variable
+declaration, value-block/lambda, mixin parameter/call/definition, reference
+call, `$apply`, and `$extend` grammar keys now use semantic names
+(`VariableDeclaration`, `ValueBlockDeclaration`, `BlockLambda`,
+`ExpressionLambda`, `ValueBlock`, `MixinParam`, `MixinParams`,
+`MixinCallArgument`, `MixinCall`, `ReferenceCall`, `Apply`, `Extend`, and
+`MixinDef`) instead of `DirectJess*` mode labels. The public CST labels also
+spell out `ExpressionLambda`, `ExpressionCallArgument`, and
+`MixinCallArgument` rather than the older `ExprLambda` / `*CallArg`
+abbreviations. This is a naming-only cleanup: block-valued assignments still
+auto-terminate only at brace-delimited value blocks, expression-bodied lambdas
+still require the ordinary declaration terminator, and expression-only forms
+remain behind `$()`.
+
+Evidence for the Jess declaration/block/mixin rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed. Existing argument/value gating debt now reports under
+`ExpressionCallArgument` and `MixinCallArgument`.
 
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
