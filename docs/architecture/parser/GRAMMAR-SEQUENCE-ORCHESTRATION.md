@@ -355,13 +355,16 @@ block grammar cleanup on that primitive.
 CSS duplication audit, 2026-07-29: Hypatia's read-only audit found these
 highest-priority non-Parseman grammar surfaces:
 
-- Jess CSS `@import` is the clearest cleanup. Jess `@import` is CSS only; Jess
-  extends CSS and its module/script imports are the `@-...` family. The local
-  `CssImportTarget`, `CssImportPrelude`, and `CssImport` family in
-  `packages/syntax/jess/jess-parser/src/grammar.ts` should become CSS-owned or
-  shared import composition, with only real Jess holes parameterized
-  (`$`-reserved URL handling, `UrlInterpolatedValue`, and typed `supports()` /
-  `layer()` tails). Do not tune this as a Jess-local CSS import parser.
+- Jess CSS `@import` is the clearest remaining composition cleanup. Jess
+  `@import` is CSS only; Jess extends CSS and its module/script imports are the
+  `@-...` family. The first Jess-local cleanup removed the public
+  `CssImportTarget` / `CssImportPrelude` / `CssImport` labels in favor of
+  `ImportTarget`, `ImportPrelude`, and `ImportStatement`, and the import tail now
+  routes glued `supports(` / `layer(` openers instead of using `not(not(...))`.
+  The larger follow-up is still to make the import skeleton CSS-owned or shared,
+  with only real Jess holes parameterized (`$`-reserved URL handling,
+  `UrlInterpolatedValue`, and typed `supports()` / `layer()` tails). Do not tune
+  this as a Jess-local CSS import parser.
 - Custom-property values in Less, SCSS, and Jess repeat the same CSS
   declaration-value balanced-group frame. Replace that with a shared skeleton
   parameterized by dialect interpolation/reference leaves; comments remain

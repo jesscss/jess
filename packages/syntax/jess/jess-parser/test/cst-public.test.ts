@@ -130,8 +130,14 @@ describe('@jesscss/jess-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
+    expect(stats(result.tree).grammarTypes.get('ImportStatement')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ImportPrelude')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ImportTarget')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('InterpolatedUrl')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('UrlInterpolatedValue')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('CssImport')).toBeUndefined();
+    expect(stats(result.tree).grammarTypes.get('CssImportPrelude')).toBeUndefined();
+    expect(stats(result.tree).grammarTypes.get('CssImportTarget')).toBeUndefined();
   });
 
   it('keeps documented expression arithmetic in the public CST route', () => {

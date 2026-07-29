@@ -1286,6 +1286,18 @@ describe('Jess AST grammar facts', () => {
         { type: 'FunctionCall', name: 'LaYeR' }
       ] }
     });
+    expect(parse('@import "a.css" supports((display: grid) and (color));').children[0]).toMatchObject({
+      prelude: { parts: [
+        { type: 'Quoted' },
+        { type: 'FunctionCall', name: 'supports', args: [{ type: 'SpacedValue' }] }
+      ] }
+    });
+    expect(parse('@import "a.css" supports(not (display: grid));').children[0]).toMatchObject({
+      prelude: { parts: [
+        { type: 'Quoted' },
+        { type: 'FunctionCall', name: 'supports', args: [{ type: 'SpacedValue' }] }
+      ] }
+    });
     expect(parse('@import "a.css" supports (display: grid);').children[0]).toMatchObject({
       prelude: { parts: [
         { type: 'Quoted' },

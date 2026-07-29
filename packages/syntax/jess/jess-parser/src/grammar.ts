@@ -13,7 +13,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, field, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, composeLeaf, dispatch, field, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -172,11 +172,12 @@ type JessRules = {
   SupportsFeature: Combinator<ValueNode>;
   SupportsInParens: Combinator<ValueNode>;
   SupportsCondition: Combinator<ValueNode>;
-  CssImportTarget: Combinator<Quoted | Url>;
+  ImportTarget: Combinator<Quoted | Url>;
+  ImportSupportsArgument: Combinator<ValueNode>;
   ImportTailFunction: Combinator<FunctionCall>;
-  CssImportPrelude: Combinator<ValueNode>;
+  ImportPrelude: Combinator<ValueNode>;
   Charset: Combinator<AtRuleStatement>;
-  CssImport: Combinator<AtRuleStatement>;
+  ImportStatement: Combinator<AtRuleStatement>;
   SupportsAtRuleBlock: Combinator<AtRuleBlock>;
   PropertyName: Combinator<Keyword>;
   StaticPropertyDescriptor: Combinator<Declaration>;
@@ -909,6 +910,11 @@ function reduceColonFeature(children: readonly unknown[], lostMessage: string): 
         keyword(propertyName),
         value
       ));
+}
+
+function functionOpenName(child: unknown): string {
+  const value = requireToken(child).value;
+  return value.endsWith('(') ? value.slice(0, -1) : value;
 }
 
 function requireStatements(children: readonly unknown[]): Statement[] {
@@ -2384,7 +2390,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * simple selector and a sibling selector's interpolation never falsely admits
    * a plain one.
    */
-  const interpolatedSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
+  const interpolatedSimpleAhead = peek(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
   const InterpolatedSimple = node<SimpleSelector>(
     'InterpolatedSimple',
     noTrivia(sequence(
@@ -2439,7 +2445,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * the same fast reject `InterpolatedSimple` uses, so an ordinary `&`
    * compound member never pays a failed template scan.
    */
-  const interpolatedParentSuffixAhead = not(not(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
+  const interpolatedParentSuffixAhead = peek(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
   const InterpolatedParentSuffix = node<SimpleSelector>(
     'InterpolatedParentSuffix',
     noTrivia(sequence(
@@ -4037,8 +4043,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       requireStaticQuoted(children[1])
     )
   );
-  const CssImportTarget = node<Quoted | Url>(
-    'CssImportTarget',
+  const ImportTarget = node<Quoted | Url>(
+    'ImportTarget',
     choice(
       g.StaticQuoted,
       sequence(
@@ -4077,45 +4083,79 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Kept local to the import tail: the general at-rule value grammar is not
    * widened, so no other header gains a function-call spelling here.
    */
-  const importTailFunctionName = token(noTrivia(sequence(
+  const importTailFunctionOpen = token(noTrivia(sequence(
     g.CssSyntaxKeyword,
-    not(not(literal('(')))
+    literal('(')
   )));
+  const ImportSupportsArgument = node<ValueNode>(
+    'ImportSupportsArgument',
+    choice(
+      sequence(
+        g.SupportsCondition,
+        literal(')')
+      ),
+      sequence(
+        optional(rawWhitespace),
+        g.CssSyntaxKeyword,
+        optional(rawWhitespace),
+        literal(':'),
+        optional(rawWhitespace),
+        g.SupportsAtom,
+        optional(rawWhitespace),
+        literal(')')
+      ),
+      sequence(
+        optional(rawWhitespace),
+        g.CssSyntaxKeyword,
+        optional(rawWhitespace),
+        literal(')')
+      )
+    ),
+    (children) => {
+      if (isValueNode(children[0])) {
+        return children[0];
+      }
+      return reduceColonFeature(
+        children,
+        'Jess import supports argument lost its property name.'
+      );
+    }
+  );
   const ImportTailFunction = node<FunctionCall>(
     'ImportTailFunction',
     dispatch(
-      importTailFunctionName,
+      importTailFunctionOpen,
 
       /*
-       * `<supports-condition>` already owns its own parentheses, so the
-       * `supports(` opener IS the condition's leading paren — no second pair.
+       * The routed value is the glued CSS function opener. Nested/logical
+       * supports arguments reuse `SupportsCondition`; declaration-shaped
+       * `supports(display: grid)` is owned by `ImportSupportsArgument`.
        */
       jessCase(
-        'supports',
+        'supports(',
         sequence(
           routed(),
-          g.SupportsCondition
+          g.ImportSupportsArgument
         )
       ),
       jessCase(
-        'layer',
+        'layer(',
         sequence(
           routed(),
-          literal('('),
           g.Keyword,
           literal(')')
         )
       )
     ),
     children => funcCall(
-      requireToken(children[0]).value,
+      functionOpenName(children[0]),
       [requireValueNode(children.find(isValueNode))]
     )
   );
-  const CssImportPrelude = node<ValueNode>(
-    'CssImportPrelude',
+  const ImportPrelude = node<ValueNode>(
+    'ImportPrelude',
     noTrivia(sequence(
-      g.CssImportTarget,
+      g.ImportTarget,
       many(sequence(
         regex(/[ \t\n\r\f]+/),
         choice(
@@ -4129,11 +4169,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const CssImport = node<AtRuleStatement>(
-    'CssImport',
+  const ImportStatement = node<AtRuleStatement>(
+    'ImportStatement',
     sequence(
       jessImportAtRuleName,
-      g.CssImportPrelude,
+      g.ImportPrelude,
       literal(';')
     ),
     children => atRuleStatement(
@@ -4451,7 +4491,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
    * real interpolated property is never skipped.
    */
-  const interpolatedPropertyAhead = not(not(regex(/[^{};:]*\$[[{]/)));
+  const interpolatedPropertyAhead = peek(regex(/[^{};:]*\$[[{]/));
   const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     noTrivia(sequence(
@@ -5470,7 +5510,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.ModuleImport,
         g.ValueBlockDeclaration,
         g.VariableDeclaration,
-        g.CssImport
+        g.ImportStatement
       )),
       many(choice(
         g.MixinCall,
@@ -5567,12 +5607,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     SupportsFeature,
     SupportsInParens,
     SupportsCondition,
-    CssImportTarget,
+    ImportTarget,
+    ImportSupportsArgument,
     ImportTailFunction,
-    CssImportPrelude,
+    ImportPrelude,
     UrlInterpolatedValue,
     Charset,
-    CssImport,
+    ImportStatement,
     SupportsAtRuleBlock,
     PropertyName,
     StaticPropertyDescriptor,
