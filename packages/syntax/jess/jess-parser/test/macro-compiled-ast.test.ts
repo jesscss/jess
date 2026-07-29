@@ -17,7 +17,7 @@ test('canonical Jess AST grammar macro-fuses recognition with no runtime import'
     expect(transformed?.code).toContain('DirectJessGuardCall');
     expect(transformed?.code).toContain('DirectJessDollarValue');
     expect(transformed?.code).toContain('ExpressionProduct');
-    expect(transformed?.code).toContain('DirectJessCallComponent');
+    expect(transformed?.code).toContain('CallComponent');
     expect(transformed?.code).toContain('CssImportTarget');
     expect(transformed?.code).toContain('CssSyntaxStaticUrlInner');
   } finally {

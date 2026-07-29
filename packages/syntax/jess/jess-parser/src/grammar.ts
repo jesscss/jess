@@ -64,17 +64,17 @@ type JessRules = {
   DirectJessGuardAnd: Combinator<GuardNode>;
   DirectJessGuardOr: Combinator<GuardNode>;
   DirectJessMixinGuard: Combinator<GuardNode>;
-  DirectJessKeyword: Combinator<Keyword>;
+  Keyword: Combinator<Keyword>;
   DirectJessQuoted: Combinator<Quoted | Interpolation>;
   StaticQuoted: Combinator<Quoted>;
-  DirectJessDimension: Combinator<Dimension>;
-  DirectJessColor: Combinator<Color>;
-  DirectJessUrl: Combinator<Url>;
-  DirectJessInterpolatedUrl: Combinator<Url>;
-  DirectJessUrlInterpolatedValue: Combinator<Interpolation>;
-  DirectJessCallComponent: Combinator<ValueSlot>;
-  DirectJessCallArgument: Combinator<ValueSlot>;
-  DirectJessCall: Combinator<FunctionCall>;
+  Dimension: Combinator<Dimension>;
+  Color: Combinator<Color>;
+  Url: Combinator<Url>;
+  InterpolatedUrl: Combinator<Url>;
+  UrlInterpolatedValue: Combinator<Interpolation>;
+  CallComponent: Combinator<ValueSlot>;
+  CallArgument: Combinator<ValueSlot>;
+  Call: Combinator<FunctionCall>;
   DirectJessCollectionEntry: Combinator<Declaration>;
   DirectJessCollection: Combinator<Collection>;
   DirectJessValueAtom: Combinator<ValueNode>;
@@ -1628,8 +1628,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       )),
       g.ExpressionDeclarationReference,
       g.ExpressionDollarInterp,
-      g.DirectJessDimension,
-      g.DirectJessColor,
+      g.Dimension,
+      g.Color,
       g.ExpressionQuoted,
       sequence(
         literal('('),
@@ -1644,7 +1644,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        * make `default()` a legal condition. Dispatch reaches an expression only
        * through the `$fn(…)` reference tail above, which cannot spell `default()`.
        */
-      g.DirectJessKeyword
+      g.Keyword
     ),
     (children) => {
       if (isToken(children[0]) && requireToken(children[0]).value === '(') {
@@ -2248,12 +2248,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return { value, src: value.src };
     }
   );
-  const DirectJessKeyword = node<Keyword>(
+  const Keyword = node<Keyword>(
     'Keyword',
     g.CssSyntaxKeyword,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectJessDimension = node<Dimension>(
+  const Dimension = node<Dimension>(
     'Dimension',
     noTrivia(sequence(
       g.CssSyntaxNumber,
@@ -2269,12 +2269,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessColor = node<Color>(
+  const Color = node<Color>(
     'Color',
     g.CssSyntaxHexColor,
     children => color(requireToken(children[0]).value)
   );
-  const DirectJessUrlInterpolatedValue = node<Interpolation>(
+  const UrlInterpolatedValue = node<Interpolation>(
     'UrlInterpolatedValue',
     noTrivia(sequence(
       optional(jessUrlInterpolatedText),
@@ -2305,7 +2305,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Static CSS at-rule headers use this closed URL production. Dynamic URL
    * segments are admitted only by the value and CSS-import productions below.
    */
-  const DirectJessUrl = node<Url>(
+  const Url = node<Url>(
     'Url',
     sequence(
       g.CssSyntaxUrlOpen,
@@ -2328,13 +2328,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Ordinary Jess value URLs retain `$[…]` as typed interpolation, instead of
    * lowering it to opaque URL text or a generic function call.
    */
-  const DirectJessInterpolatedUrl = node<Url>(
+  const InterpolatedUrl = node<Url>(
     'InterpolatedUrl',
     sequence(
       g.CssSyntaxUrlOpen,
       choice(
         g.DirectJessQuoted,
-        g.DirectJessUrlInterpolatedValue
+        g.UrlInterpolatedValue
       ),
       literal(')')
     ),
@@ -2837,7 +2837,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * remains unavailable as unwrapped Jess arithmetic, and a second or dangling
    * separator cannot fall back to a generic function or raw value.
    */
-  const DirectJessCallComponent = node<ValueSlot>(
+  const CallComponent = node<ValueSlot>(
     'CallComponent',
     sequence(
       g.DirectJessValueSpaceGroup,
@@ -2868,12 +2868,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       throw new TypeError('Direct Jess AST call component produced unexpected children.');
     }
   );
-  const DirectJessCallArgument = node<ValueSlot>(
+  const CallArgument = node<ValueSlot>(
     'CallArgument',
     sequence(
       literal(','),
       optional(regex(/[ \t\n\r\f]+/)),
-      g.DirectJessCallComponent
+      g.CallComponent
     ),
     (children) => {
       if ((children.length !== 2 && children.length !== 3) || requireToken(children[0]).value !== ',') {
@@ -2892,15 +2892,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * `$[...]` interpolation and named arguments remain outside this slice until
    * they have typed reductions.
    */
-  const DirectJessCall = node<FunctionCall>(
+  const Call = node<FunctionCall>(
     'Call',
     sequence(
       not(regex(/url(?=\()/i)),
       g.CssSyntaxKeyword,
       literal('('),
       optional(sequence(
-        g.DirectJessCallComponent,
-        many(g.DirectJessCallArgument)
+        g.CallComponent,
+        many(g.CallArgument)
       )),
       literal(')')
     ),
@@ -2984,7 +2984,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           g.DirectJessVarReference,
           g.DirectJessQuoted,
           regex(/[+-]?\d+(?:\.\d+)?/),
-          g.DirectJessKeyword
+          g.Keyword
         ),
         literal(']')
       )),
@@ -3229,12 +3229,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.DirectJessExprLambda,
     g.DirectJessInterpolatedValue,
     g.DirectJessSelectorCapture,
-    g.DirectJessUrl,
-    g.DirectJessInterpolatedUrl,
-    g.DirectJessCall,
+    g.Url,
+    g.InterpolatedUrl,
+    g.Call,
     g.DirectJessQuoted,
-    g.DirectJessColor,
-    g.DirectJessDimension,
+    g.Color,
+    g.Dimension,
     KeywordLikeValue
   );
   const DirectJessValueAtom = node<ValueNode>(
@@ -3344,13 +3344,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const StaticValueAtom = node<ValueNode>(
     'StaticValueAtom',
     choice(
-      g.DirectJessUrl,
+      g.Url,
       g.StaticCall,
       g.StaticQuoted,
-      g.DirectJessColor,
-      g.DirectJessDimension,
+      g.Color,
+      g.Dimension,
       g.DirectJessCustomPropertyValue,
-      g.DirectJessKeyword
+      g.Keyword
     ),
     children => requireValueNode(children[0])
   );
@@ -3591,7 +3591,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'StaticAtNonOnlyKeyword',
     sequence(
       not(g.CssSyntaxQueryOnly),
-      g.DirectJessKeyword
+      g.Keyword
     ),
     children => requireKeyword(children.at(-1))
   );
@@ -4049,7 +4049,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.CssSyntaxUrlOpen,
         choice(
           g.DirectJessQuoted,
-          g.DirectJessUrlInterpolatedValue,
+          g.UrlInterpolatedValue,
           g.CssSyntaxStaticUrlInner
         ),
         literal(')')
@@ -4102,7 +4102,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         sequence(
           routed(),
           literal('('),
-          g.DirectJessKeyword,
+          g.Keyword,
           literal(')')
         )
       )
@@ -4321,7 +4321,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       g.CssSyntaxKeyframesAtKeyword,
       choice(
-        g.DirectJessKeyword,
+        g.Keyword,
         g.StaticQuoted
       ),
       literal('{'),
@@ -5084,7 +5084,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'ForRangeBound',
     choice(
       g.DirectJessVarReference,
-      g.DirectJessDimension
+      g.Dimension
     ),
     children => requireValueNode(children[0])
   );
@@ -5529,7 +5529,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     DirectJessGuardAnd,
     DirectJessGuardOr,
     DirectJessMixinGuard,
-    DirectJessKeyword,
+    Keyword,
     DirectJessQuoted,
     StaticQuoted,
     DirectJessStyleImport,
@@ -5570,7 +5570,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     CssImportTarget,
     DirectJessImportTailFunction,
     DirectJessCssImportPrelude,
-    DirectJessUrlInterpolatedValue,
+    UrlInterpolatedValue,
     DirectJessCharset,
     DirectJessCssImport,
     DirectJessSupportsAtRuleBlock,
@@ -5586,13 +5586,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     DirectJessScopeBlock,
     DirectJessAtRuleBlock,
     DirectJessAtRuleStatement,
-    DirectJessDimension,
-    DirectJessColor,
-    DirectJessUrl,
-    DirectJessInterpolatedUrl,
-    DirectJessCallComponent,
-    DirectJessCallArgument,
-    DirectJessCall,
+    Dimension,
+    Color,
+    Url,
+    InterpolatedUrl,
+    CallComponent,
+    CallArgument,
+    Call,
     DirectJessCollectionEntry,
     DirectJessCollection,
     DirectJessInterpolatedValue,

@@ -4038,6 +4038,24 @@ test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed.
 
+Jess value/call rule name cleanup, 2026-07-29: the Jess value-leaf and function
+call grammar keys now use semantic names (`Keyword`, `Dimension`, `Color`,
+`Url`, `InterpolatedUrl`, `UrlInterpolatedValue`, `CallComponent`,
+`CallArgument`, and `Call`) instead of `DirectJess*` mode labels. This aligns
+the grammar object names with their already-semantic AST/CST node labels and
+with the comparable CSS/Less/SCSS value concepts. The Jess README CST example
+was refreshed from built parser output so public docs no longer show
+`DirectJessVarDeclaration` / `DirectJessColor` as public node names.
+
+Evidence for the Jess value/call rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; built `parseJessCst("$brand: #3366ff;")` reported
+`VariableDeclaration` and `Color` CST node names; `pnpm run check:macro` passed
+with all parser packages fully compiled and 0 interpreter fallbacks; and
+`pnpm run verify:compose-integrity` passed.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman
