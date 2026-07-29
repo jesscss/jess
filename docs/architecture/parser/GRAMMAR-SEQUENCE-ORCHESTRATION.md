@@ -331,6 +331,17 @@ list-level concept named "value". Do not introduce
 replacement adjective stacks such as `DirectLess...`, `LessDirect...`, or
 mode-prefixed aliases.
 
+Less import routing audit, 2026-07-29: `.less` import spelling is `@import` or
+`@-import`; `@-export` is not implemented for Less and must not be accepted as a
+Less import synonym. The grammar currently preserves `@import` / `@-import` in
+one `ImportAtRule` fact with typed options, target, and tail. The later import
+bridge applies the CSS-pass-through versus source-fold heuristic from that fact,
+but it does not yet give `@-import` its distinct explicit source-fold route.
+That is the remaining fix: parse the import head once, keep option/target/tail
+facts typed, and route bare `@import` through the Less heuristic while routing
+`@-import` through the explicit-fold path. Do not re-scan source text to recover
+the distinction, and do not add Less `@-export` while doing this.
+
 Active orchestration note, 2026-07-27: keep roughly four current sidecars on
 disjoint grammar-polish slices when the tool pool allows. The current pool is
 Less dispatch cleanup, CSS gating cleanup, SCSS Less-composition cleanup, and

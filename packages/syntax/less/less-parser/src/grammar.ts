@@ -1855,7 +1855,7 @@ const lessTriviaGap = oneOrMore(choice(
 const whitespace = trivia(lessTriviaGap);
 const selectorAttributeModifierSpace = regex(/[ \t\n\r\f]+/);
 const importKeyword = keywords(
-  ['@-import', '@-export', '@import'],
+  ['@-import', '@import'],
   { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
 );
 const customValueAtKeyword = regex(/@(?:-import|-export|import|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w])/i);
