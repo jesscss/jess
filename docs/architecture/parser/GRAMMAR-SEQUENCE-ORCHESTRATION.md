@@ -4268,6 +4268,26 @@ check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed.
 
+SCSS opaque at-rule name cleanup, 2026-07-29: the remaining SCSS opaque/raw
+capture grammar keys now use their semantic AST/CST-aligned labels
+(`OpaquePrelude`, `OpaqueBody`, `OpaqueAtRuleBlock`, and
+`OpaqueAtRuleStatement`) instead of `DirectScss*` mode labels. This is a
+naming-only alignment: the shared recognition artifact still owns the bounded
+balanced/string/comment capture, and the statement-vs-block split remains a
+construct-family `choice(...)` at each body position because `{` vs `;` is the
+local tail decision after the generic at-keyword. After this pass, the only
+remaining SCSS `DirectScss*` grammar key is `DirectScssComment`; that is the
+separate comments-as-trivia migration, not a label-only cleanup.
+
+Evidence for the SCSS opaque at-rule name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman

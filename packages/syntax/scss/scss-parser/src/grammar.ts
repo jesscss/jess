@@ -183,10 +183,10 @@ type ScssRules = {
   SelectorTail: Combinator<ComplexSelector>;
   Selector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
-  DirectScssOpaquePrelude: Combinator<string | null>;
-  DirectScssOpaqueBody: Combinator<string>;
-  DirectScssOpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
-  DirectScssOpaqueAtRuleStatement: Combinator<AtRuleStatement>;
+  OpaquePrelude: Combinator<string | null>;
+  OpaqueBody: Combinator<string>;
+  OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
+  OpaqueAtRuleStatement: Combinator<AtRuleStatement>;
   Rule: Combinator<Rule>;
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
@@ -2618,8 +2618,8 @@ export const scssFactory = (g: ScssInputRules) => {
     g.DocumentBlock,
     g.PageBlock,
     g.FontFeatureValuesBlock,
-    g.DirectScssOpaqueAtRuleBlock,
-    g.DirectScssOpaqueAtRuleStatement
+    g.OpaqueAtRuleBlock,
+    g.OpaqueAtRuleStatement
   );
 
   /*
@@ -2709,8 +2709,8 @@ export const scssFactory = (g: ScssInputRules) => {
     g.PageBlock,
     g.FontFeatureValuesBlock,
     g.Keyframes,
-    g.DirectScssOpaqueAtRuleBlock,
-    g.DirectScssOpaqueAtRuleStatement,
+    g.OpaqueAtRuleBlock,
+    g.OpaqueAtRuleStatement,
     g.Rule
   ));
   const startingLayerBlockBody = many(choice(
@@ -2728,8 +2728,8 @@ export const scssFactory = (g: ScssInputRules) => {
     g.PageBlock,
     g.FontFeatureValuesBlock,
     g.Keyframes,
-    g.DirectScssOpaqueAtRuleBlock,
-    g.DirectScssOpaqueAtRuleStatement,
+    g.OpaqueAtRuleBlock,
+    g.OpaqueAtRuleStatement,
     g.Rule
   ));
   const MixinDefinitionRule = node<MixinDef>(
@@ -4795,7 +4795,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * fixed: an `optional(scanTo(...))` that matches nothing emits no child and
    * would otherwise shift every positional index in the reducers below.
    */
-  const DirectScssOpaquePrelude = node<string | null>(
+  const OpaquePrelude = node<string | null>(
     'OpaquePrelude',
     g.ScssOpaqueStaticPrelude,
     (children) => {
@@ -4803,19 +4803,19 @@ export const scssFactory = (g: ScssInputRules) => {
       return text === '' ? null : text;
     }
   );
-  const DirectScssOpaqueBody = node<string>(
+  const OpaqueBody = node<string>(
     'OpaqueBody',
     g.ScssOpaqueBody,
     children => children.length === 0 ? '' : requireToken(children[0]).value
   );
-  const DirectScssOpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
+  const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
     'OpaqueAtRuleBlock',
     sequence(
       scssGenericAtRuleName,
       noTrivia(sequence(
-        g.DirectScssOpaquePrelude,
+        g.OpaquePrelude,
         literal('{'),
-        g.DirectScssOpaqueBody,
+        g.OpaqueBody,
         literal('}')
       ))
     ),
@@ -4823,7 +4823,7 @@ export const scssFactory = (g: ScssInputRules) => {
       const prelude = children[1];
       const rawBody = children[3];
       if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
-        throw new TypeError('Direct SCSS opaque at-rule lost its grammar-owned raw facts.');
+        throw new TypeError('SCSS opaque at-rule lost its grammar-owned raw facts.');
       }
       return opaqueAtRuleBlock(
         requireToken(children[0]).value,
@@ -4838,19 +4838,19 @@ export const scssFactory = (g: ScssInputRules) => {
    * block's name recognizer, so the two are disjoint from every typed arm and
    * from each other — this one requires `;` where the block requires `{`.
    */
-  const DirectScssOpaqueAtRuleStatement = node<AtRuleStatement>(
+  const OpaqueAtRuleStatement = node<AtRuleStatement>(
     'OpaqueAtRuleStatement',
     sequence(
       scssGenericAtRuleName,
       noTrivia(sequence(
-        g.DirectScssOpaquePrelude,
+        g.OpaquePrelude,
         literal(';')
       ))
     ),
     (children) => {
       const prelude = children[1];
       if (prelude !== null && typeof prelude !== 'string') {
-        throw new TypeError('Direct SCSS opaque at-rule statement lost its grammar-owned raw facts.');
+        throw new TypeError('SCSS opaque at-rule statement lost its grammar-owned raw facts.');
       }
       return atRuleStatement(
         requireToken(children[0]).value,
@@ -4922,8 +4922,8 @@ export const scssFactory = (g: ScssInputRules) => {
         g.CounterStyle,
         g.PropertyAtRule,
         g.Keyframes,
-        g.DirectScssOpaqueAtRuleBlock,
-        g.DirectScssOpaqueAtRuleStatement,
+        g.OpaqueAtRuleBlock,
+        g.OpaqueAtRuleStatement,
         g.Rule
       ))
     ),
@@ -5056,10 +5056,10 @@ export const scssFactory = (g: ScssInputRules) => {
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,
-    DirectScssOpaquePrelude,
-    DirectScssOpaqueBody,
-    DirectScssOpaqueAtRuleBlock,
-    DirectScssOpaqueAtRuleStatement,
+    OpaquePrelude,
+    OpaqueBody,
+    OpaqueAtRuleBlock,
+    OpaqueAtRuleStatement,
     Simple,
     InterpolatedSimple,
     Placeholder,
