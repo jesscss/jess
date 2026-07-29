@@ -119,8 +119,40 @@ $m: {
 ```
 
 A bare name is unambiguous because `$` is what marks a variable: `small` is the
-string key, `$small` is the variable. So `$m[small]`, `$m["small"]` and
-`$m[$k]` (where `$k` holds `small`) all reach the same entry.
+string key, `$small` is the variable. So `$m.small`, `$m[small]`, `$m["small"]`,
+and `$m[$k]` (where `$k` holds `small`) all reach the same entry.
+
+The value model is the same one Sass maps use: keys are compared by their value,
+not by a serialized property-name string. That means a map can distinguish the
+number `1`, the string `"1"`, and the color `red` when those keys arrive from
+SCSS input or from the value-domain map APIs.
+
+Jess collection literals currently author the common CSS-object shape directly:
+
+```less
+$font-weights: {
+  regular: 400;
+  medium: 500;
+  bold: 700;
+}
+```
+
+Bracketed value-key entries are the intended spelling for non-identifier keys,
+but they are not public Jess syntax until the parser work lands. When that work
+is ready, non-identifier keys should use `[value]:` entries such as `[1px]: a`,
+`[red]: b`, and `[$key]: c`.
+
+{/*
+Future runnable example:
+
+```less
+$m: {
+  [1px]: a;
+  [red]: b;
+  [$key]: c;
+}
+```
+*/}
 
 ## Subscripts: the key's type decides
 
@@ -130,7 +162,7 @@ you get — **the subscript's own type, never the receiver's**:
 | Subscript | Meaning |
 | --- | --- |
 | a **number** — `$x[1]`, `$x[-1]` | **positional index**; negative counts from the end |
-| **anything else** — `$x[small]`, `$x[$k]`, `$x[red]`, `$x["a"]` | **key lookup** by value equality |
+| a **member key** — `$x[small]`, `$x[$k]`, `$x["a"]` | **key lookup** by value equality |
 
 `$x[1]` is positional whether `$x` turns out to be a list or a collection. A
 subscript whose meaning shifted with the receiver's runtime type would be a
@@ -138,10 +170,12 @@ footgun; this way you can read the source and know.
 
 :::caution[Numeric keys are not reachable by bracket]
 
-The trade-off is deliberate: if you use numbers as collection keys, `[…]` will
-not reach them, because a numeric subscript is always a position. Use
-`map.get($m, 1px)` for those. Positional indexing is the common case and numeric
-keys are rare, so the rare case is the one that takes a function.
+The trade-off is deliberate: if you use numbers as collection keys, numeric
+`[…]` will not reach them, because a numeric subscript is always a position. Use
+map functions such as `map.get($m, 1px)` for those until bracketed value-key
+lookup syntax is completed. Positional indexing is the common case and numeric
+keys are rare, so the rare case is the one that takes an explicit value-key
+operation.
 
 :::
 
@@ -193,21 +227,21 @@ You may never need to use it, but Jess also allows numeric indexed access to val
 Less's innovation is that it allows you to use rulesets and mixins as maps, and Jess takes a lot of inspiration from Less's syntax. Here's a Less example:
 
 ```less
-.mixin() {
-  color: #06c;
-  color: #e00;
+#colors() {
+  primary: #06c;
+  secondary: #e00;
 }
 
 .box {
-  color: .mixin[primary];
-  color: .mixin[secondary];
+  color: #colors[primary];
+  background: #colors[secondary];
 }
 ```
 →
 ```css
 .box {
   color: #06c;
-  color: #e00;
+  background: #e00;
 }
 ```
 
@@ -225,7 +259,7 @@ Sass's approach to maps is a bit of a syntactic mess. Even though CSS has a clea
 $font-weights: ("regular": 400, "medium": 500, "bold": 700);
 ```
 
-Simiarly, even though Sass added the concept of namespaces, it doesn't use it for maps, instead using the `map-get` (or `map.get`) function.
+Similarly, even though Sass added the concept of namespaces, it doesn't use it for maps, instead using the `map-get` (or `map.get`) function.
 
 ```scss
 value: map.get($font-weights, "medium"); // 500
@@ -242,4 +276,22 @@ $font-weights: {
 
 value: $font-weights.regular; // 400
 value: $font-weights.bold; // 700
+```
+
+The practical DX difference is that Jess gives the common case the simple syntax:
+CSS-shaped data, JavaScript-shaped property access, and bracket lookup when the
+key is a value. You do not have to pretend a ruleset is data, and you do not have
+to wrap every ordinary read in `map.get(...)`.
+
+```scss
+$state: active;
+$colors: {
+  active: #06c;
+  disabled: #999;
+}
+
+.button {
+  color: $colors[$state];
+  font-weight: $font-weights.bold;
+}
 ```

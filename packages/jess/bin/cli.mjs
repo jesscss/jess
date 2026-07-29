@@ -2,7 +2,7 @@
 import { parseArgs } from 'node:util';
 import { writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
-import { formatLintResult, lintFiles } from '@jesscss/lint';
+import { formatStyledLintResult, lintFiles } from '@jesscss/lint';
 
 function parseCliArgs(config) {
   try {
@@ -38,6 +38,7 @@ Options:
   --config <path>        Load a specific styles config file
   --format <text|json>  Output format (default: text)
   --max-warnings <n>    Exit non-zero when warnings exceed n
+  --no-color            Disable ANSI color and terminal hyperlinks
   --quiet               Suppress warnings in text output
   --syntax-only         Report parser diagnostics only
   -h, --help            Show this help
@@ -103,9 +104,11 @@ async function runLint(args) {
   const { values, positionals } = parseCliArgs({
     args,
     allowPositionals: true,
+    allowNegative: true,
     options: {
       config: { type: 'string', short: 'c' },
       format: { type: 'string' },
+      color: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
       'max-warnings': { type: 'string' },
       quiet: { type: 'boolean' },
@@ -135,13 +138,16 @@ async function runLint(args) {
   const result = await lintFiles(positionals, {
     configFile: values.config,
     maxWarnings,
+    includeLegacyDiagnostics: format === 'text',
     syntaxOnly: values['syntax-only'] === true
   });
 
   if (format === 'json') {
     console.log(JSON.stringify(result, null, 2));
   } else {
-    console.log(formatLintResult(values.quiet === true ? quietResult(result) : result));
+    console.log(formatStyledLintResult(values.quiet === true ? quietResult(result) : result, {
+      colors: values.color ?? true
+    }));
   }
 
   process.exit(result.errored ? 1 : 0);

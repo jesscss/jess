@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import lessSyntax from 'postcss-less';
+import { walkAuthoredAst } from '@jesscss/core/ast';
 import { parse } from '../lib/index.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '../../../../..');
@@ -35,28 +36,17 @@ function emptyFacts() {
 
 function collectJessFacts(value) {
   const facts = emptyFacts();
-  const visit = (node) => {
-    if (Array.isArray(node)) {
-      for (const child of node) {
-        visit(child);
+  walkAuthoredAst(value, {
+    enterNode(node) {
+      if (node.type === 'Rule') {
+        facts.rules += 1;
+      } else if (node.type === 'Declaration') {
+        facts.declarations += 1;
+      } else if (node.type === 'AtRuleBlock' || node.type === 'AtRuleStatement') {
+        facts.atRules += 1;
       }
-      return;
     }
-    if (typeof node !== 'object' || node === null) {
-      return;
-    }
-    if (node.type === 'Rule') {
-      facts.rules += 1;
-    } else if (node.type === 'Declaration') {
-      facts.declarations += 1;
-    } else if (node.type === 'AtRuleBlock' || node.type === 'AtRuleStatement') {
-      facts.atRules += 1;
-    }
-    for (const child of Object.values(node)) {
-      visit(child);
-    }
-  };
-  visit(value);
+  });
   return facts;
 }
 

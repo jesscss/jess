@@ -2897,7 +2897,29 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const mixinReferenceAhead = not(not(regex(/[.#][^;{}]*[([]/)));
   const Value = node<ValueNode>(
     'Value',
-    choice(sequence(mixinReferenceAhead, attempt(g.MixinReference)), g.InterpolatedValue, g.EscapedQuoted, g.Quoted, BacktickJavaScript, g.IndirectVariableReference, g.VariableReferenceChain, g.PropertyReference, g.CssCustomPropertyValue, g.Dimension, g.Color, g.NamedColor, g.FormatFunction, IdentifierOrFunction, g.SelectorCapture, g.EscapedParen, g.QueryColonFeature, g.Paren, gridLineName, g.EscapeValue, PercentEscape),
+    choice(
+      sequence(mixinReferenceAhead, attempt(g.MixinReference)),
+      g.InterpolatedValue,
+      g.EscapedQuoted,
+      g.Quoted,
+      BacktickJavaScript,
+      g.IndirectVariableReference,
+      g.VariableReferenceChain,
+      g.PropertyReference,
+      g.CssCustomPropertyValue,
+      g.Dimension,
+      g.Color,
+      g.NamedColor,
+      g.FormatFunction,
+      IdentifierOrFunction,
+      g.SelectorCapture,
+      g.EscapedParen,
+      g.QueryColonFeature,
+      g.Paren,
+      gridLineName,
+      g.EscapeValue,
+      PercentEscape
+    ),
     children => requireValueNode(children.find(isValueNode))
   );
   // Signed numerics are already one Dimension leaf (`-2px`).  Less unary minus
@@ -3147,9 +3169,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // but lets the shared strict `@{…}` grammar surface interpolation as typed
   // AST facts.  Delimiters and strings are grammar children—not a captured
   // source span—while block comments stay in Parseman's trivia log.
-  // Gating note: the static and interpolated `--*` name arms share `-`. Do not
-  // left-factor this until the custom-value comment/trivia slice can remove
-  // grammar-owned comment text from the same family and bless the CST movement.
+  // Gating note: the static and interpolated `--*` name arms share `-`; keep the
+  // public name branches explicit until the custom-property family has a shared
+  // opener that preserves both AST construction and CST ownership.
   const CustomPropertyName = node<string | Interpolation>(
     'CustomPropertyName',
     choice(
@@ -3910,7 +3932,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // `BodyStatement` deliberately keep their own ordered arm sets
   // because they legitimately differ (comment-first root ordering; the
   // punctuation-map arm and Each/Ruleset reordering in body statements).
-  // `@`-led statement group. Every body context lists these ten arms in this
+  // `@`-led statement group. Every body context lists these eleven arms in this
   // exact contiguous order, so grouping them into one nested choice is
   // byte-identical to the flat listing (a bare `choice` passes its winning arm's
   // value through unchanged, and firstMatch order is preserved). This is the
@@ -4633,9 +4655,16 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const MediaContainerBlock = node<AtRuleBlock>(
     'QueryAtRuleBlock',
-    choice(
-      sequence(g.CssSyntaxMediaAtKeyword, choice(MediaQueryPrelude, g.AtRuleInterpolation), g.MediaContainerBody),
-      sequence(g.CssSyntaxContainerAtKeyword, ContainerQueryPrelude, g.MediaContainerBody)
+    dispatch(
+      token(noTrivia(g.CssSyntaxMediaContainerAtKeyword)),
+      caseOf(
+        '@media',
+        sequence(routed(), choice(MediaQueryPrelude, g.AtRuleInterpolation), g.MediaContainerBody)
+      ),
+      caseOf(
+        '@container',
+        sequence(routed(), ContainerQueryPrelude, g.MediaContainerBody)
+      )
     ),
     (children, _fields, span) => {
       const body = children.find(Array.isArray);
@@ -4791,7 +4820,6 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const atPreludeWhitespace = noTrivia(regex(/[ \t\n\r\f]+/));
-  const atPreludeComment = noTrivia(blockComment);
   const atPreludeComma = noTrivia(literal(','));
   const atPreludeGroup = noTrivia(choice(
     balanced(
@@ -4829,15 +4857,14 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const lessOpaqueAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|@(?!\{)|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
-  const lessOpaqueAtPreludeCapture = noTrivia(many(choice(
+  const lessOpaqueAtPreludeCapture = many(choice(
     atPreludeWhitespace,
-    atPreludeComment,
     atPreludeComma,
     atPreludeGroup,
     atPreludeQuoted,
     BareVariableInterpolation,
     lessOpaqueAtPreludeText
-  )));
+  ));
   // CSS-defined statement at-rules have grammar-owned interpolation forms that
   // the generic at-rule subset intentionally does not accept. Keep the
   // namespace prefix and URI as ordinary typed values; this preserves
@@ -4912,9 +4939,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const OpaqueAtPrelude = node<string | null>(
     'OpaqueAtPrelude',
-    lessOpaqueAtPreludeCapture,
-    (children) => {
-      const text = children.length === 0 ? '' : staticText(children).trim();
+    parser(
+      { trivia: atPreludeCommentTrivia },
+      lessOpaqueAtPreludeCapture
+    ),
+    (children, _fields, _span, _rawChildren, triviaLog) => {
+      const text = children.length === 0 ? '' : staticTextWithTriviaGaps(children, triviaLog).trim();
       return text === '' ? null : text;
     }
   );

@@ -51,12 +51,15 @@ baseline only and never as a performance acceptance claim.
   topological order publishes `@jesscss/compiler` before `@jesscss/plugin-less`
   and `jess`.
 
-  Release status, verified 2026-07-28: `origin/alpha` is at `b1f276458` and
-  tagged `v2.0.0-alpha.10`. The alpha allowlist contains 21 packages including
-  `@jesscss/compiler`, and npm resolves both `jess@alpha` and
-  `@jesscss/compiler@alpha` to `2.0.0-alpha.10`. The `dev` manifests remain
-  placeholder `2.0.0-alpha.5`; future alpha releases still use the
-  registry-aware resolver from a controlled `alpha` snapshot.
+  Release status, verified 2026-07-29: the direct Jess runtime closure needed
+  by external Less is published and queryable at `2.0.0-alpha.11`
+  (`@jesscss/compiler`, `@jesscss/core`, `@jesscss/plugin-less`,
+  `@jesscss/plugin-less-compat`, `@jesscss/plugin-node-modules`, and optional
+  peer `@jesscss/plugin-js`). `jess@alpha` also resolves to
+  `2.0.0-alpha.11`, though Less deliberately depends on the direct runtime
+  closure rather than the batteries-included `jess` package. Future alpha
+  snapshots should use `pnpm run release:alpha:update-from-dev` from a clean
+  `alpha` worktree.
 
 Normal public parse/compile provides neither Parseman coverage nor trace
 instrumentation. Diagnostic coverage/trace uses a separate macro transform and
@@ -66,7 +69,7 @@ not land: direct parse was 62.881 ms versus its 59.502 ms baseline and compiler
 choice investigation is the opt-in stable choice-arm trace design in
 [`parseman-diagnostic-trace-design.md`](../design/parseman-diagnostic-trace-design.md).
 
-## Current alpha.1 stabilization snapshot (2026-07-28)
+## Current alpha.1 stabilization snapshot (2026-07-29)
 
 The active alpha.1 blocker has shifted from the grammar fold itself to
 CSS/Less stability, the public Less fixture flow, and parser/eval error quality.
@@ -84,28 +87,34 @@ memoizes loaded imports, `Context.getModule(...)` reuses ordinary script/JSON
 module resolution and loading within one compile context, `Compiler.compile()`
 exposes reusable prepared import plans, and compile-cycle/parsed-import caches
 are keyed by parse/parser
-identity. These are local session and prepared-static-import fixes; they do not
-change the remote URL import deferral, which remains excluded from the alpha
-lane pending an explicit network/security model.
+identity. Focused core tests pin repeated renders, caller-owned prepared
+imports, option-only import differences, script module reuse, and duplicate
+static imports in one stylesheet: prepare plus repeated render locates/parses
+the shared imported document once. These are local session and
+prepared-static-import fixes; they do not change the remote URL import
+deferral, which remains excluded from the alpha lane pending an explicit
+network/security model.
 
 Release tooling now has a narrow `pnpm run test:release` gate. The alpha
 publish-set scanner recurses through `packages/**`, so nested syntax packages
 are included in the same release plan as top-level runtime packages instead of
 being silently missed by the alpha allowlist validator.
 
-Current alpha readiness verification is green. Rerun 2026-07-28 after the
-latest Parseman-trivia transfer hardening, Less unsupported-variable CST
-recovery, Less grammar trivia cleanup, diagnostic-range work, compiler package
-entrypoint fix, and Less alpha verifier dependency-order fix, `pnpm run
-check:macro` reports parser-shared, CSS, Less, SCSS, and Jess fully compiled
-with 0 interpreter fallbacks; `pnpm run verify:compose-integrity` passes after
-a dependency-ordered rebuild; and `pnpm run verify:less-alpha` passes. The
-alpha gate now builds the parser-shared/CSS/Less parser chain, core/fns/config
+Current alpha readiness verification is green. Reruns through 2026-07-29 after
+Parseman-trivia transfer hardening, Less unsupported-variable CST recovery,
+Less grammar trivia cleanup, diagnostic-range work, compiler package entrypoint
+fixes, Less alpha verifier dependency-order fixes, parser diagnostic summary
+hardening, timeout-surfacing harness work, import loader failure diagnostics,
+and duplicate import-cache coverage show `pnpm run check:macro` with
+parser-shared, CSS, Less, SCSS, and Jess fully compiled with 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passing after a
+dependency-ordered rebuild; and `pnpm run verify:less-alpha` passing. The alpha
+gate now builds the parser-shared/CSS/Less parser chain, core/fns/config
 packages, Less plugin stack, `@jesscss/compiler`, and `jess` before running
 package exports, the public Jess API, path resolution, and the Less test-data
-lanes (`tests-unit/`: 79 / 79, `tests-config/`: 29 / 29). The remote URL
-import fixture is deliberately excluded from the alpha lane until resolver
-network access has an explicit allowlist/security model.
+lanes (`tests-unit/`: 79 / 79, `tests-config/`: 29 / 29). The remote URL import
+fixture is deliberately excluded from the alpha lane until resolver network
+access has an explicit allowlist/security model.
 
 Graduated in the current pass:
 
@@ -163,16 +172,18 @@ package path for context, override CSS rules through composition, and avoid
 restating the dialect name in every local production.
 
 Focused parser/eval error work also moved: `all-less-error.test.ts` now passes
-with **94 / 94**. Recursive variable/property fixtures are no longer skipped:
-unproductive cycles now throw `eval/recursive-reference`, while same-name
-references that can make progress to another in-scope definition remain legal.
-The duplicate unhandled `plugin/function-threw` rejection channel remains
-closed. Unit arithmetic errors now report `eval/invalid-unit-arithmetic`
-instead of leaking as `internal/unknown`, with public-route tests covering
-mixed-unit add/divide/multiply fixtures at the operator span. Error quality is
-still the next alpha-hardening lane: improve diagnostic locations,
-expected-token messages, and eval/runtime classification without weakening
-syntax conformance or adding compatibility catches around real parser failures.
+with **95 / 95**: 94 corpus checks plus a timeout sentinel proving hangs are
+harness failures, not expected-error evidence. Recursive variable/property
+fixtures are no longer skipped: unproductive cycles now throw
+`eval/recursive-reference`, while same-name references that can make progress
+to another in-scope definition remain legal. The duplicate unhandled
+`plugin/function-threw` rejection channel remains closed. Unit arithmetic errors
+now report `eval/invalid-unit-arithmetic` instead of leaking as
+`internal/unknown`, with public-route tests covering mixed-unit
+add/divide/multiply fixtures at the operator span. Error quality is still the
+next alpha-hardening lane: improve remaining generic parse/eval locations and
+runtime classification without weakening syntax conformance or adding
+compatibility catches around real parser failures.
 
 Current error-blocker audit (2026-07-27): the named Less error fixtures that
 recently mattered are not current acceptances. `color-func-invalid-color.less`
@@ -182,15 +193,14 @@ accepted color fixture is `color-func-invalid-color-2.less`, intentionally
 preserved because `darken(var(--x), ...)` cannot be evaluated at build time.
 The public plugin parse boundary converts generic `LessParseError` recognition
 facts into source-backed `parse/syntax-error` diagnostics with line, column,
-reason, fix, and code-frame lines. The remaining weakness is message quality,
-not raw offset leakage: broad parse failures now distinguish leading invalid
-syntax from trailing text after a complete stylesheet, but expected-token lists
-are still too raw. Next source targets are
-`packages/syntax/less/less-parser/src/parse-error.ts`,
-`packages/syntax/less/less-parser/src/index.ts`, and
-`packages/core/src/error/diagnostics.ts` for better Parseman failure labeling,
-plus continued auditing of unstructured eval/runtime diagnostics outside the
-now-structured unit arithmetic path.
+reason, fix, and code-frame lines. The remaining weakness is narrower message
+quality, not raw offset leakage: broad parse failures now distinguish leading
+invalid syntax from trailing text after a complete stylesheet; unterminated
+strings, common closing-delimiter expectations, semicolon expectations, and
+value-production expected sets are summarized without leaking raw Parseman
+token/regex names. Next source targets are the remaining generic
+`parse/syntax-error` fixtures and continued auditing of unstructured
+eval/runtime diagnostics outside the now-structured unit arithmetic path.
 
 Public parser diagnostics now preserve parser-provided end ranges on diagnostic
 records. `packages/jess/test/less/parser-error-public-semantics.test.ts`
@@ -208,7 +218,10 @@ The same public diagnostic boundary now summarizes generic unterminated string
 failures as `parse/unterminated-string` at the opening quote instead of a
 column-1 generic stylesheet failure. The direct Less `parse()` error path also
 keeps raw Parseman expected facts on `LessParseError.expected` for tooling while
-removing raw production/regex names from the thrown message.
+removing raw production/regex names from the thrown message. Direct parse now
+also summarizes common structural expectations such as missing `)`, `]`, `}`,
+and `;`; core diagnostics classify invalid value expected-sets from structured
+expected facts rather than by matching a parser error message string.
 
 `pnpm run oracle:less:byte-identity` remains red against the committed parser
 surface baseline. Current output is 711 corpus entries, AST
@@ -231,35 +244,40 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `4686065d20a553b1f1d91a39c9fa16ac5cf1aa57`,
+evidence: branch `less-5-alpha.1` at `d4cb7301`,
 clean worktree, PR open/non-draft. The branch merges `upstream/alpha`
 (`330e9d71`) into the Less 5 alpha branch, resolves the release-automation
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior, and routes `lessc` parse/eval failures through the generic
-Jess/Linecraft diagnostic renderer. Local verification on `4686065d` passed the
+Jess/Linecraft diagnostic renderer. Local verification on `d4cb7301` passed the
 Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
-and packed-consumer proof. The Less compatibility error wrapper now forwards
+and packed-consumer proof. The packed-consumer proof derives its expected Jess
+runtime version from the committed Less manifest. The Less compatibility error
+wrapper now forwards
 canonical Jess diagnostic messages unchanged while still exposing Less-style
 fields such as `type`, `line`, `column`, `extract`, and `jessErrors`. GitHub
-evidence on 2026-07-28 reports PR #19 merge-state `CLEAN`; CI is green across
-ubuntu/macOS/windows and Node current, LTS, LTS-1, and LTS-2; CodeRabbit is
-green; release-PR automation jobs are skipped as expected.
+evidence on 2026-07-29 reported PR #19 at head `d4cb7301`, open/non-draft,
+merge-clean, and green: CodeRabbit plus all CI matrix jobs succeeded, while
+release-PR automation and Copilot-request jobs were skipped as expected.
 
-Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: on PR head `4686065d`, `pnpm run test:alpha` passes the
-Less package typecheck, build, `lessc` smoke tests, alpha support contract,
-publish dry-run tests, and packed-consumer proof. The `lessc` smoke tests pin
+Current package/release gates are registry-backed against the published direct
+Jess runtime closure at `2.0.0-alpha.11`: on PR head `d4cb7301`, the external
+Less commit hook reran the full `pnpm run test:alpha` gate, including
+typecheck, build, `lessc` smoke tests, alpha support contract, alpha fixtures,
+publish dry-run tests, and the packed-consumer proof. The alpha fixture harness
+also supports focused `node test/alpha-fixtures.mjs --fixture ...` runs for
+render, error, warning, and skipped fixture groups, and fails a non-matching
+filter loudly. The packed-consumer verifier derives the expected Jess alpha
+version from the committed Less manifest. The `lessc` smoke tests pin
 Linecraft-formatted colored diagnostics by default, source framing, `--silent`
-suppression, and `--no-color` control-sequence stripping. The PR branch also
-routes successful Jess warnings to `stderr`, keeps CSS-only output on `stdout`,
-and suppresses warning output under `--quiet`. Linecraft-colored diagnostics are
-an alpha merge blocker: if a public `lessc` error path falls back to raw offsets,
-uncolored text, or a non-Linecraft frame, the package is not ready to merge.
-The remaining registry caveat is that PR #19 currently consumes published Jess
-`2.0.0-alpha.10`; the single-frame renderer fix on Jess `dev` must ship in the
-next Jess alpha and be consumed by the Less PR before the external package can
-prove that same behavior against the final registry closure. The alpha support
-contract now pins the upstream-sync fixture families that are green for alpha.1:
+suppression, `--no-color` control-sequence stripping, and absence of
+alternate-screen / live-region terminal controls. The PR branch also routes
+successful Jess warnings to `stderr`, keeps CSS-only output on `stdout`, and
+suppresses warning output under `--quiet`. Linecraft-colored diagnostics are an
+alpha merge blocker: if a public `lessc` error path falls back to raw offsets,
+uncolored text, or a non-Linecraft frame, the package is not ready to merge. The
+alpha support contract now pins the upstream-sync fixture families that are
+green for alpha.1:
 `at-rule-variable-interpolation`, `color-functions/modern`, `math-css-vars`,
 `mixins-guards`, and `mixins-named-args`. The packed consumer installs the
 direct Jess runtime closure and does not install the batteries-included `jess`
@@ -289,9 +307,10 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 (`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
 dependency or `optionalDependencies` entry.
 
-Current package-flow blockers, verified 2026-07-28, are owner/release sequencing
-decisions: publish the next Jess alpha from `dev`, bump PR #19 to that exact
-registry version, rerun the Less package alpha proofs, and then publish Less.
+Current package-flow blockers, verified 2026-07-29, are owner/release
+sequencing decisions: merge PR #19 if accepted, rerun the release dry-run from
+`alpha`, and then publish Less. PR #19 is already green on the `.11` dependency
+bump.
 They are not an unclassified upstream fixture gap. The missing
 `.widget.repositoriesresults` selector expansion and `scroll-state (`
 spacing comments in `container.css` are fixed on the PR branch and the external
@@ -309,7 +328,12 @@ external branch at `packages/test-data/UPSTREAM-FIXTURE-SYNC.md`. Replay upstrea
 changes into the Less 5 alpha branch as v5/Jess fixtures; do not copy upstream
 expected CSS blindly. Upstream `master` is the Less 4.x line; the Less 5 alpha
 branch succeeds that line and owns the Less 5 nesting, deprecation, parser, and
-output semantics. Current classification:
+output semantics. Verification on 2026-07-29 after fetching `origin` and
+`upstream` showed the PR branch remains caught up with `upstream/alpha`
+(`less-5-alpha.1...upstream/alpha` = `125 0`), while `upstream/master` remains
+40 commits ahead of the PR branch on the upstream side. The scoped
+`packages/test-data` / test-harness diff is 40 files, and its fixture-affecting
+commits are the scout entries below. Current classification:
 
 - **Ported or represented for alpha.1:** selector regressions (#4422),
   media-query parentheses (#4427), `not`/condition regressions (#4421),
@@ -473,12 +497,11 @@ are expressly advertised for a later alpha.
   numeric bar. Bootstrap import-reuse scout evidence from `512cf7837` found
   healthy stylesheet import reuse in one compile/render cycle: 88 Less parse
   calls for 88 unique parsed files, 87 stylesheet imports loaded once each, and
-  no duplicate stylesheet parses. The remaining duplicate signal is
-  script/plugin-side: Bootstrap requested 22 plugin modules for 11 unique
-  resolved modules, while the module cache still performed only 11 actual loads.
-  Next performance work should add a permanent import/plugin reuse probe and
-  investigate why `prepareBodyPlugins()` requests each imported plugin twice
-  before touching stylesheet parse caching.
+  no duplicate stylesheet parses. A follow-up structural cleanup removed the
+  Less compatibility plugin's second executable `@plugin` loader; script module
+  execution remains owned by the Less plugin, with `Context` still caching
+  resolved plugin modules. Next performance work should add a permanent
+  Bootstrap import/plugin reuse probe before making any timing claim.
 - `[~]` **Advertised `lessc` CLI behavior** (alpha gate). The built Less v5
   alpha binary must run safely and correctly for its documented command/options
   set. Unsupported Less 4.x flags or not-yet-matched advanced behavior are alpha
@@ -492,11 +515,11 @@ are expressly advertised for a later alpha.
   the API and fixture lanes are addressed. `.github/workflows/less-alpha-readiness.yml`
   runs `pnpm run verify:less-alpha` on pull requests, pushes to `main` and
   `alpha`, and manual dispatch.
-- `[?]` Browser-build spec is drafted in
-  [`less-v5-browser-build-spec.md`](../architecture/less-v5-browser-build-spec.md), but needs
-  owner acceptance before adding browser package exports or browser fixture
-  parity. Jess should support tree-shaken browser builds, but the alpha should
-  not imply that arbitrary `.less` files are parsed in the browser.
+- `[x]` Browser fixtures are explicitly excluded from the first alpha lane.
+  [`less-v5-browser-build-spec.md`](../architecture/less-v5-browser-build-spec.md)
+  defines the current contract: tree-shaken browser builds remain a future
+  goal, but alpha.1 does not promise browser-side `.less` file parsing, browser
+  imports, browser plugin execution, or upstream Less browser fixture parity.
 
 ## Controlled alpha refresh policy (verified 2026-07-22)
 
@@ -647,16 +670,21 @@ Known gaps to add or close:
   covers the alpha public method shapes for `render(...)`,
   `renderString(...)`, `renderToResult(...)`, and `dispose()`; the current rerun
   is 8/8 green.
-- `[~]` Convert fixture skips from broad comments into categorized expected
+- `[x]` Convert fixture skips from broad comments into categorized expected
   failures with reasons and owners.
   The active harness now has expected-failure reasons for runnable mismatches
   and skip reasons for helper/no-CSS, plugin-scope, source-map artifact, and
-  known hang fixtures. Owner/staging decisions still need release-note wording.
-- `[ ]` Keep browser fixtures excluded, with an explicit skip category that
-  points to the browser-build spec.
-- `[ ]` Decide whether plugin, preprocessor, postprocessor, visitor, and custom
-  file-manager fixtures are in the first alpha or staged after alpha. If staged,
-  document the unsupported surface in release notes.
+  fixture-specific timeout sentinels. Release-note classifications now point to
+  the corpus inventory and the Phase C/D/E entries in the release plan.
+- `[x]` Keep browser fixtures excluded, with an explicit skip category that
+  points to the browser-build spec. The Less 5 alpha README also says browser
+  compilation is not included in alpha.1.
+- `[x]` Stage Less 4.x plugin host compatibility APIs after alpha.1:
+  preprocessor, postprocessor, visitor, custom file-manager, legacy CommonJS
+  plugin graphs, and pre-eval/tree visitor behavior are Phase E items in
+  [`less-v5-release-plan.md`](../process/less-v5-release-plan.md). The active
+  alpha lane still covers ordinary Less `@plugin` function registration and
+  diagnostics through the Jess plugin route.
 - `[ ]` Add focused core tests when a Less fixture exposes a parser/runtime
   invariant gap, then use the package-level fixture as the compatibility proof.
 
@@ -717,6 +745,21 @@ earlier, before a manual publish attempt.
 
 ## Evidence Log
 
+- 2026-07-29: Pinned duplicate static import cache reuse on Jess `dev`
+  (`e55460e2c`). `packages/core/src/ast/__tests__/import-at-rule.test.ts`
+  now proves two identical `@import "tokens.less"` facts in one stylesheet
+  locate and parse the imported document once across static import preparation
+  and repeated render. Verification passed
+  `pnpm --filter @jesscss/core test -- import-at-rule.test.ts --run`,
+  `pnpm run verify:less-alpha`, and `git diff --check`.
+- 2026-07-29: Tightened Less parser diagnostic summaries on Jess `dev`
+  (`a5ccd1eb9`). Direct `LessParseError` messages now summarize common
+  delimiter and semicolon expected facts while preserving raw
+  `LessParseError.expected` for tooling, and core parser diagnostics classify
+  invalid value expected-sets structurally instead of relying on a direct
+  parser message string. Verification passed the Less parser public parse test,
+  the Jess parser-error public semantics test, the core `jess-error` test,
+  `pnpm run verify:less-alpha`, and `git diff --check`.
 - 2026-07-28: Added draft Jess `2.0.0-alpha.11` release notes on `dev` before
   the controlled alpha projection. The next Jess alpha is needed so Less PR #19
   can prove colored, single-frame Linecraft diagnostics against registry
@@ -737,6 +780,89 @@ earlier, before a manual publish attempt.
   CodeRabbit green on `c06338a4`, release-PR jobs skipped as expected. Jess
   `dev` commit `8b78b1afa` keeps the compiler script-plugin proxy generic and
   adds the canonical `deprecation/less-plugin` warning path for Less `@plugin`.
+- 2026-07-28: Prepared and pushed Jess `origin/alpha` at `dd6359ed3` for
+  `2.0.0-alpha.11`; `release:alpha:push-check` and `release:alpha:dry-run`
+  passed. Added `pnpm run release:alpha:update-from-dev` on Jess `dev`
+  (`57fcb27fa`) so future controlled alpha snapshots are scripted instead of a
+  manual two-tree patch recipe.
+- 2026-07-28: Updated external Less PR #19 to `36998a1d`, deriving release-test
+  Jess alpha assertions and the packed consumer's expected Jess version from
+  `packages/less/package.json` instead of hardcoding alpha.10. The commit hook
+  reran `pnpm run test:alpha`, including typecheck/build, `lessc`, alpha
+  support, alpha fixtures, publish dry-run tests, and packed-consumer proof
+  against published Jess `2.0.0-alpha.10`. This was superseded by the
+  `fa39abf8` `.11` bump below.
+- 2026-07-28: Updated external Less PR #19 to `fa39abf8`, bumping its direct
+  Jess runtime closure and optional `@jesscss/plugin-js` peer to published
+  `2.0.0-alpha.11`. The alpha fixture harness removed
+  `tests-unit/container/container.less` from expected render failures because
+  `.11` fixes that gap; the gate now reports 87 rendered and 20 expected render
+  failures. Local verification passed `pnpm install --frozen-lockfile
+  --ignore-scripts`, `pnpm run test:alpha`, `pnpm run test:release`,
+  `pnpm --dir packages/less run lint`, `npm test`, and `git diff --check`.
+  The packed-consumer proof installs Jess `2.0.0-alpha.11` from the registry.
+  GitHub CI is green for `fa39abf8` across ubuntu/macOS/windows and Node
+  current, LTS, LTS-1, and LTS-2; release-PR automation jobs are skipped as
+  expected.
+- 2026-07-29: Updated external Less PR #19 through `be07428f`. The alpha fixture
+  gate now treats fixture timeouts as hard failures instead of expected-failure
+  evidence, and `tests-unit/import/import.less` must surface its expected Jess
+  diagnostic in the external package. The CJS callback smoke test now fails if
+  the callback is never invoked, the benchmark plugin-free heuristic bails out
+  on unrecognized import forms, and benchmark comparison output no longer
+  claims same-machine parity without a loaded current-host historical baseline.
+  Verification passed `npm --prefix packages/less run test:module`,
+  `npm --prefix packages/less run lint`,
+  `node packages/less/benchmark/benchmark-runner.cjs packages/less/benchmark/benchmark.less --runs=1 --warmup=0`,
+  `npm --prefix packages/less run test:alpha`, and the commit hook's root
+  `pnpm run test:alpha` / publish dry-run / packed-consumer proof.
+- 2026-07-29: Updated external Less PR #19 through `da9da016`. Release metadata
+  defaults now ignore invalid registry-version strings only while choosing a
+  next-version default; explicit release validation remains strict. Release
+  package-version sync now receives the release base explicitly instead of
+  inferring it from the version string. Verification passed
+  `pnpm run test:release` (55 / 55), `npm --prefix packages/less run lint`,
+  `npm --prefix packages/less run test:alpha`, and root `pnpm run test:alpha`;
+  the commit hook also reran the root alpha / publish dry-run / packed-consumer
+  proof. GitHub CI was green for `da9da016` across ubuntu/macOS/windows current
+  and ubuntu LTS, LTS-1, and LTS-2; CodeRabbit was green.
+- 2026-07-29: Updated external Less PR #19 through `4abb411c`. The external
+  alpha fixture harness now honors `--fixture` filters, reports selected skipped
+  fixtures accurately, and throws when a requested filter matches no fixture.
+  Verification passed focused `node test/alpha-fixtures.mjs --fixture
+  tests-unit/import/import.less`, focused skipped remote-import selection,
+  the intentional no-match failure probe, `npm --prefix packages/less run lint`,
+  `npm --prefix packages/less run test:alpha`, and the commit hook's root alpha
+  / publish dry-run / packed-consumer proof. GitHub PR #19 is open/non-draft and
+  merge-clean at head `4abb411c`; CI is green across ubuntu/macOS/windows current
+  and ubuntu LTS, LTS-1, and LTS-2; CodeRabbit is green.
+- 2026-07-29: Updated external Less PR #19 through `d4cb7301`, recording the
+  upstream fixture-sync audit in `packages/test-data/UPSTREAM-FIXTURE-SYNC.md`.
+  The sibling checkout is clean at `less-5-alpha.1...origin/less-5-alpha.1`,
+  and GitHub reports PR #19 open/non-draft, merge-clean, with all CI matrix jobs
+  and CodeRabbit green. Jess `dev` also now wraps non-structured stylesheet
+  import loader failures as `import/load-failed` diagnostics at the importing
+  `@import` location, so a rejected import read/load cannot surface as a vague
+  `internal/unknown` eval failure. Verification passed the focused public API
+  regression, `pnpm --filter @jesscss/core test -- jess-error.test.ts --run`,
+  the core/compiler/jess build chain, `pnpm run check:macro`,
+  `pnpm run verify:compose-integrity`, and `pnpm run verify:less-alpha`.
+- 2026-07-29: Hardened the Jess alpha fixture harness timeout path. Fixture
+  renders now race a harness-owned timeout that reports
+  `FixtureTimeoutError`, and expected-failure fixtures rethrow that timeout
+  instead of counting it as "failed as expected". The focused
+  `tests-unit/import/import.less` run still surfaces the
+  `resolve/name-not-found` Linecraft diagnostic, and the full
+  `less/all-less.test.ts` lane passed 109 / 109.
+- 2026-07-28: Repaired the Jess alpha fixture harness so
+  `tests-unit/import/import.less` keeps surfacing its settled
+  `resolve/name-not-found` expected failure instead of timing out at Vitest's
+  default 5s sentinel during first-use JS plugin/import setup. The harness now
+  asserts the diagnostic code for that fixture, so this expected failure cannot
+  pass as an arbitrary mismatch or swallowed timeout. Verification passed the
+  focused fixture, `pnpm run test:less:test-data:unit` (79 / 79), `pnpm run
+  test:less:test-data:config` (29 / 29), and the full `pnpm run
+  verify:less-alpha` chain.
 - 2026-07-28: Committed the Parseman trivia-transfer hardening and adjacent
   parser cleanup through `2bb1674e8`. Verification passed
   `pnpm --filter @jesscss/core exec vitest --run src/ast/__tests__/provenance.test.ts src/ast/__tests__/import-at-rule.test.ts`,

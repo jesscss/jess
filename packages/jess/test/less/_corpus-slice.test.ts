@@ -21,8 +21,10 @@ import * as path from 'path';
 import { readFileSync, appendFileSync, writeFileSync } from 'fs';
 import { Compiler } from '../../src/index.js';
 import { getTestCases, resolveLessTestDataRoot, lessHarnessFunctionsPlugin } from '../test-utils.js';
+import type { TestCase } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import type { StylesConfig } from 'styles-config';
 
 const MODE = process.env.CORPUS_MODE;
 const testData = resolveLessTestDataRoot();
@@ -39,16 +41,15 @@ const KNOWN_HANG = new Set<string>([
 
 const PER_FIXTURE_TIMEOUT_MS = 8000;
 
-interface Job { kind: 'render' | 'error'; file: string; lessPath: string; expectedFile?: string; config?: any }
+interface Job { kind: 'render' | 'error'; file: string; lessPath: string; expectedFile?: string; config?: Partial<StylesConfig> }
 
 const baseCompiler = new Compiler({
   output: { collapseNesting: true },
   compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [lessHarnessFunctionsPlugin] })] }
 });
 
-function makeTestCompiler(config: any) {
-  const cc = (config?.compile || {}) as Record<string, any>;
-  const { plugins: testCasePlugins = [], ...restCompile } = cc;
+function makeTestCompiler(config: Partial<StylesConfig> = {}) {
+  const { plugins: testCasePlugins = [], ...restCompile } = config.compile ?? {};
   return new Compiler({
     ...baseCompiler.opts,
     ...config,
@@ -61,7 +62,14 @@ function makeTestCompiler(config: any) {
   });
 }
 
-const firstLine = (e: any) => String(e?.message ?? e).split('\n')[0];
+function firstLine(error: unknown): string {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && 'message' in error
+      ? String(error.message)
+      : String(error);
+  return message.split('\n')[0]!;
+}
 
 async function withTimeout<T>(work: () => Promise<T>, timeoutMs = PER_FIXTURE_TIMEOUT_MS) {
   let timer: NodeJS.Timeout | undefined;
@@ -100,14 +108,14 @@ function discover(): Job[] {
     ...glob.sync(path.join(testData, 'plugin/**/*.less'))
   ].filter(f => !KNOWN_HANG.has(rel(f)));
   for (const lessPath of renderFiles) {
-    let cases;
+    let cases: TestCase[];
     try {
       cases = getTestCases(lessPath);
     } catch {
       continue; // no expected output → import-target/helper
     }
     const file = rel(lessPath);
-    cases.forEach((tc: any, i: number) => {
+    cases.forEach((tc, i) => {
       jobs.push({
         kind: 'render',
         file: cases.length > 1 ? `${file} [${i + 1}/${cases.length}]` : file,
@@ -125,14 +133,14 @@ function discover(): Job[] {
 
 async function runJob(job: Job): Promise<{ file: string; kind: string; outcome: string; detail?: string }> {
   if (job.kind === 'error') {
-    const res = await withTimeout(() => makeTestCompiler({}).renderToResult(job.lessPath, { breakOnError: true } as any));
+    const res = await withTimeout(() => makeTestCompiler({}).renderToResult(job.lessPath, { breakOnError: true }));
     if ('timedOut' in res) {
       return { file: job.file, kind: 'error', outcome: 'timeout' };
     }
     if ('error' in res) {
       return { file: job.file, kind: 'error', outcome: 'errored', detail: firstLine(res.error) };
     }
-    const r: any = res.value;
+    const r = res.value;
     const errored = Array.isArray(r?.errors) && r.errors.length > 0;
     return { file: job.file, kind: 'error', outcome: errored ? 'errored' : 'accepted', detail: errored ? firstLine(r.errors[0]?.message ?? r.errors[0]) : undefined };
   }

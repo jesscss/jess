@@ -124,6 +124,68 @@ describe('ImportAtRule', () => {
     expect(plugin.parseCalls).toBe(2);
   });
 
+  it('loads duplicate static imports once during prepare and render', async () => {
+    const entryPath = '/virtual/entry.less';
+    const tokensPath = '/virtual/tokens.less';
+    const entry = stylesheet([
+      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      rule('.entry', [decl('color', keyword('red'))])
+    ]);
+    const tokens = stylesheet([
+      rule('.tokens', [decl('color', keyword('blue'))])
+    ]);
+
+    class MemoryLessPlugin extends AbstractPlugin {
+      name = 'memory-less';
+      supportedExtensions = ['.less'];
+      locateCalls = 0;
+      parseCalls = 0;
+      private readonly documents = new Map([
+        [entryPath, entry],
+        [tokensPath, tokens]
+      ]);
+
+      override locate(paths: string[]) {
+        this.locateCalls++;
+        return paths.find(candidate => this.documents.has(candidate)) ?? null;
+      }
+
+      override async getSource(filePath: string) {
+        return filePath === entryPath
+          ? '@import "tokens.less";\n@import "tokens.less";\n.entry { color: red; }\n'
+          : '.tokens { color: blue; }\n';
+      }
+
+      safeParse(filePath: string) {
+        this.parseCalls++;
+        const document = this.documents.get(filePath);
+        return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+      }
+    }
+
+    const plugin = new MemoryLessPlugin();
+    const context = new Context({}, [plugin]);
+    const loadedEntry = await context.getTree(entryPath);
+    expect(loadedEntry.node).toBe(entry);
+    expect(plugin.locateCalls).toBe(1);
+    expect(plugin.parseCalls).toBe(1);
+
+    const preparedImports = await context.withDocument(entry, () => prepareStaticImports(entry, { context }));
+    expect(plugin.locateCalls).toBe(2);
+    expect(plugin.parseCalls).toBe(2);
+
+    const render = () => Promise.resolve(context.withDocument(entry, () => serialize(entry, { context, preparedImports })));
+    await expect(render()).resolves.toEqual({
+      css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
+    });
+    await expect(render()).resolves.toEqual({
+      css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
+    });
+    expect(plugin.locateCalls).toBe(2);
+    expect(plugin.parseCalls).toBe(2);
+  });
+
   it('does not resolve or parse again when only render import options differ', async () => {
     const entryPath = '/virtual/entry.less';
     const tokensPath = '/virtual/tokens.less';
@@ -783,6 +845,21 @@ describe('ImportAtRule', () => {
         return Promise.reject(new Error('loader failed'));
       }
     })).rejects.toThrow('loader failed');
+    expect(loads).toBe(1);
+  });
+
+  it('surfaces Context loader failures during static import preparation', async () => {
+    const document = stylesheet([
+      importAtRule('@import', quoted('"broken.less"', 'broken.less', '"', false))
+    ]);
+    let loads = 0;
+
+    await expect(Promise.resolve(prepareStaticImports(document, {
+      importDocument: () => {
+        loads++;
+        return Promise.reject(new Error('loader failed during static prep'));
+      }
+    }))).rejects.toThrow('loader failed during static prep');
     expect(loads).toBe(1);
   });
 

@@ -71,6 +71,17 @@ function thrownMessage(err: unknown): string {
       : String(err);
 }
 
+async function readOptionalBinary(context: Context, specifier: string): Promise<Uint8Array | null> {
+  try {
+    return await context.readBinary(specifier);
+  } catch (error) {
+    if (error instanceof JessError && error.code === 'import/not-found') {
+      return null;
+    }
+    throw error;
+  }
+}
+
 /**
  * Build the `internal/unknown` diagnostic for a generic (non-`JessError`) error
  * that escaped eval. The eval dispatch stamps the offending node's source span
@@ -1061,7 +1072,7 @@ export class Compiler {
           collapseNesting: context.opts.output?.collapseNesting ?? false,
           context,
           pluginHost: context.pluginHost,
-          io: { readFile: specifier => context.readBinary(specifier).catch(() => null) }
+          io: { readFile: specifier => readOptionalBinary(context, specifier) }
         });
       })));
   }
@@ -1079,7 +1090,7 @@ export class Compiler {
           collapseNesting: context.opts.output?.collapseNesting ?? false,
           context,
           pluginHost: context.pluginHost,
-          io: { readFile: specifier => context.readBinary(specifier).catch(() => null) },
+          io: { readFile: specifier => readOptionalBinary(context, specifier) },
           preparedImports
         });
       })));

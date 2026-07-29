@@ -24,6 +24,9 @@ Phase C  CONFIG-LANE    — URL/import config features (standalone wiring; slots
 Phase D  SOURCE MAPS    — gated on the provenance / emit-context mechanism (the
                           M1 / sourcemap-prototype thread); sequenced behind the
                           flip + a settled emit-time provenance model.
+Phase E  LEGACY HOST    — Less 4.x plugin host compatibility APIs that expose
+                          preprocessors, postprocessors, visitors, custom file
+                          managers, or legacy tree mutation hooks.
 ```
 
 Rationale: Config-lane URL/import features are mostly standalone option-plumbing —
@@ -89,6 +92,24 @@ open design item (M1 / emit-context provenance); source maps are sequenced stric
 after it settles. The external Less wrapper currently rejects source-map options
 as unsupported in alpha; in Jess, `renderToResult` returns CSS/diagnostics only
 and does not expose a `map` artifact yet.
+
+## Phase E — legacy Less host APIs
+
+Less 5 alpha.1 supports the Jess plugin route and the Less `@plugin`
+function-registration path needed by the active fixture lane. It does **not**
+promise the full Less 4.x host API surface.
+
+| Fixture | Feature | Why deferred | Target |
+| --- | --- | --- | --- |
+| `filemanagerPlugin/filemanager` | custom Less file-manager plugin API | needs an explicit resolver/importer bridge and security model | Phase E |
+| `preProcessorPlugin/preProcessor` | Less preprocessor plugin hook | rewrites source before parsing; needs a reviewed pre-parse extension boundary | Phase E |
+| `postProcessorPlugin/postProcessor` | Less postprocessor plugin hook | rewrites emitted CSS after render; needs a reviewed output-extension boundary | Phase E |
+| `visitorPlugin/visitor` | Less visitor plugin API | legacy tree visitor ABI does not map directly to the canonical Jess tree/projection model | Phase E |
+| `plugin-module`, `plugin-preeval` | legacy CommonJS plugin graphs and pre-eval/tree visitor behavior | requires compatibility decisions beyond ordinary Less `@plugin` function registration | Phase E |
+
+These are release-note limitations for the first alpha, not silent fixture
+drops. When one graduates, add focused API/diagnostic tests before adding the
+upstream fixture to the public alpha lane.
 
 ## Related deferrals tracked elsewhere (not config-lane)
 

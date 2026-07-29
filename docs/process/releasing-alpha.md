@@ -87,21 +87,18 @@ for ordinary `dev` pushes.
 
 The Jess alpha and the external `less@5.0.0-alpha.1` package are separate
 releases. Publish and verify the Jess alpha's direct runtime closure first. The
-sibling Less repository keeps `link:` dependencies during local development;
-its alpha publish script requires `JESS_VERSION` and temporarily rewrites the
+sibling Less repository commits exact published Jess alpha dependencies for the
 direct Jess runtime closure (`@jesscss/compiler`, `@jesscss/core`,
 `@jesscss/plugin-less`, `@jesscss/plugin-less-compat`, and
-`@jesscss/plugin-node-modules`) to that exact registry version while
-packing/publishing, then restores the local manifest. `@jesscss/plugin-js`
-must remain an optional peer for script-module support, not a shipped runtime
-dependency. Publish Less only after the selected Jess alpha artifacts are
-queryable. As of 2026-07-28, Jess `2.0.0-alpha.10` is published and queryable
-for the direct runtime closure, including `@jesscss/compiler`, but the current
-Less.js PR #19 evidence needs the newer Jess diagnostic renderer from `dev`.
-Publish the next Jess alpha first, then use that exact version for Less:
+`@jesscss/plugin-node-modules`) and validates that manifest during publish.
+`@jesscss/plugin-js` must remain an optional peer for script-module support,
+not a shipped runtime dependency. Publish Less only after the selected Jess
+alpha artifacts are queryable. As of 2026-07-28, the external Less PR consumes
+published Jess `2.0.0-alpha.11` direct runtime packages. After merging that PR,
+publish Less from the external Less `alpha` branch:
 
 ```bash
-JESS_VERSION=2.0.0-alpha.11 npm publish --tag alpha --access public
+npm publish --tag alpha --access public
 ```
 
 The Less package's built `lessc` smoke test and typecheck are the publish
@@ -115,8 +112,28 @@ silently relabeled as passing.
 Do this only after the exact pushed `origin/dev` candidate has passed its intended readiness
 and release checks. The `alpha` and `dev` histories have independently added
 the same source paths, so a plain `git merge --squash origin/dev` is unsafe and
-must not be used. Follow the verified two-tree snapshot procedure recorded in
-the [Core Architecture Handoff](../architecture/core/HANDOFF.md):
+must not be used.
+
+Run the guarded updater from a clean `alpha` worktree:
+
+```bash
+pnpm run release:alpha:update-from-dev
+```
+
+To prepare and push the branch in one command after the full dry-run gate:
+
+```bash
+pnpm run release:alpha:update-from-dev -- --release-dry-run --push
+```
+
+The updater fetches the current pushed `origin/dev`, creates a recovery branch,
+imports the source tree with a binary two-tree patch, preserves only package
+manifest versions from the previous alpha snapshot, records source provenance,
+bumps the lockstep alpha version, runs `pnpm install`, commits the snapshot, and
+runs `release:alpha:push-check`. It prints the recovery branch name so the exact
+pre-refresh state remains reachable.
+
+The updater implements this controlled snapshot procedure:
 
 1. Fetch the current refs, create a recovery ref such as
    `alpha-pre-refresh` from `alpha`, and work in an isolated `alpha`

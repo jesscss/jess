@@ -28,6 +28,20 @@ For real project work, install locally:
 pnpm add -D jess
 ```
 
+Then use the local CLI from your package scripts:
+
+```json
+{
+  "scripts": {
+    "build:styles": "jess src/app.less dist/app.css",
+    "lint:styles": "jess lint \"src/**/*.{css,less,scss,jess}\" --max-warnings 0"
+  }
+}
+```
+
+`jess <input> [output]` compiles. `jess lint` reports diagnostics without
+writing CSS.
+
 ### Bundlers
 
 - `rollup-plugin-jess` is available and compiles `.jess` files through the current Jess compiler.

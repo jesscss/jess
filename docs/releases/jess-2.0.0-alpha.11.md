@@ -1,24 +1,19 @@
-# Jess 2.0.0-alpha.11 - draft release notes
-
-> **Draft for owner review.** This note describes the next registry-safe alpha
-> candidate after `2.0.0-alpha.10`. It is not a publish announcement: the
-> `alpha` branch still needs the controlled source refresh, release preflight,
-> owner approval, tag, and npm publish.
+# Jess 2.0.0-alpha.11
 
 ## Highlights
 
 ### Less alpha package unblocker
 
-This alpha is the Jess runtime closure intended to unblock the external
+This alpha is the Jess runtime closure that unblocks the external
 `less@5.0.0-alpha.1` PR from consuming current Jess package behavior through the
 registry instead of workspace links. The sibling Less PR already assembles the
 direct Less plugin stack through `@jesscss/compiler` and does not depend on the
 batteries-included `jess` package.
 
-After this Jess alpha is published and queryable, the Less PR should bump its
-Jess alpha dependencies to `2.0.0-alpha.11`, rerun its built `lessc` smoke
-tests, alpha fixture contract, publish dry-run tests, and packed-consumer proof,
-then use that evidence for the final Less alpha review.
+The Less PR now consumes published `2.0.0-alpha.11` direct Jess runtime
+packages, reruns its built `lessc` smoke tests, alpha fixture contract, publish
+dry-run tests, and packed-consumer proof, and uses that evidence for the final
+Less alpha review.
 
 ### Diagnostics
 

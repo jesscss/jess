@@ -658,23 +658,23 @@ section is the authoritative full-scope companion to the compact task goal.
   `composeLeaf()` shape, and historical feature equivalence independently.
   Optimize only with semantic/output proof and matched parse plus end-to-end
   measurements; never restore legacy architecture for speed.
-- Prepare the next Jess alpha from pushed `dev`. `2.0.0-alpha.10` is already
-  published; the next registry-safe lockstep publish is expected to be
-  `2.0.0-alpha.11` so the external Less alpha can consume the single-frame
-  Linecraft diagnostic renderer from `dev`. Validate final `dev`, keep
-  owner-reviewed release notes in the source tree, then use the controlled
-  alpha refresh flow; do not ordinary-merge/rebase shared alpha history or
+- Finish the external Less alpha release decision. The direct Jess runtime
+  closure consumed by Less is published and queryable at `2.0.0-alpha.11`; the
+  Less PR branch consumes that exact registry set, locally passes the alpha
+  package gates, and has green PR #19 CI on the `.11` bump. The remaining
+  decision is owner merge/publish authorization for Less. Future Jess
+  alpha snapshots should use `pnpm run release:alpha:update-from-dev` from a
+  clean `alpha` worktree; do not ordinary-merge/rebase shared alpha history or
   publish before every gate passes.
 
 ### Current Less v5 alpha readiness evidence
 
 Use [`docs/state/less-v5-alpha-readiness.md`](../../state/less-v5-alpha-readiness.md)
 as the current source of truth. As of 2026-07-28, the external Less branch has
-the desired direct compiler/plugin dependency shape and passes CI, but still
-resolves the direct Jess runtime closure from published `2.0.0-alpha.10`
-registry packages. Do not publish Less until the next Jess alpha is published,
-the PR branch consumes that exact dependency set, the final PR-head release
-preflight passes, and the owner authorizes the Less release flow.
+the desired direct compiler/plugin dependency shape, consumes the published
+`2.0.0-alpha.11` Jess runtime closure, passes local alpha package gates, and has
+green PR-head CI. Do not publish Less until the owner authorizes the Less release
+flow.
 
 ## Router
 

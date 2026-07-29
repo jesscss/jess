@@ -35,7 +35,7 @@ export class LessCompatPlugin extends AbstractPlugin {
       bridge = new LessApiBridge(this.opts.plugins ?? []);
       this.bridges.set(context, bridge);
     }
-    const bridgeHost = bridge.createPluginHost(({ specifier, options }) => context.getPluginModule(specifier, options));
+    const bridgeHost = bridge.createPluginHost();
     const functions = this.opts.functions;
     const host = context.pluginHost;
     const globalFns = [
@@ -46,22 +46,6 @@ export class LessCompatPlugin extends AbstractPlugin {
     context.pluginHost = {
       ...host,
       ...(globalFns.length === 0 ? {} : { globalFns }),
-      loadPlugin: bridgeHost.loadPlugin || host?.loadPlugin
-        ? (request) => {
-            const baseLoaded = host?.loadPlugin?.(request);
-            const bridgeLoaded = bridgeHost.loadPlugin?.(request);
-            const merge = (baseFns: readonly Fn[] | undefined, bridgeFns: readonly Fn[] | undefined) => [
-              ...(baseFns ?? []),
-              ...(bridgeFns ?? [])
-            ];
-            const baseThenable = baseLoaded && typeof baseLoaded === 'object' && 'then' in baseLoaded;
-            const bridgeThenable = bridgeLoaded && typeof bridgeLoaded === 'object' && 'then' in bridgeLoaded;
-            if (baseThenable || bridgeThenable) {
-              return Promise.all([baseLoaded ?? [], bridgeLoaded ?? []]).then(([baseFns, bridgeFns]) => merge(baseFns, bridgeFns));
-            }
-            return merge(baseLoaded, bridgeLoaded);
-          }
-        : undefined,
       invokeRawFunction: (fn, args, ctx) =>
         bridgeHost.invokeRawFunction?.(fn, args, ctx) ?? host?.invokeRawFunction?.(fn, args, ctx)
     };

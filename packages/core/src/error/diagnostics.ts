@@ -151,8 +151,12 @@ function expectedValueSummary(
   const looksLikeValueProduction =
     hasExpected(expectedSet, 'CssSyntaxNumber')
     && hasExpected(expectedSet, 'CssSyntaxDimensionUnit')
-    && hasExpected(expectedSet, 'LessSyntaxKeyword')
-    && hasExpected(expectedSet, 'not(peek)');
+    && hasExpected(expectedSet, 'not(peek)')
+    && (
+      hasExpected(expectedSet, 'LessSyntaxKeyword')
+      || hasExpected(expectedSet, 'LessSyntaxNamedColor')
+      || hasExpected(expectedSet, 'CssSyntaxHexColor')
+    );
   if (!looksLikeValueProduction) {
     return undefined;
   }
@@ -548,6 +552,13 @@ export const ERR = {
   importNotFound(args: Common & { meta: { specifier: string; from: string } }) {
     return makeJessError({
       code: 'import/not-found',
+      phase: 'import',
+      ...args
+    });
+  },
+  importLoadFailed(args: Common & { meta: { specifier: string; reason: string } }) {
+    return makeJessError({
+      code: 'import/load-failed',
       phase: 'import',
       ...args
     });

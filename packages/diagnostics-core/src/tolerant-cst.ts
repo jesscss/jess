@@ -2,7 +2,7 @@ import { parse as parseCssAst, parseCssDoc, type CssCstChild, type CssCstNode, t
 import { parseJessDoc } from '@jesscss/jess-parser/cst';
 import { parseLessDoc } from '@jesscss/less-parser/cst';
 import { parseScssDoc } from '@jesscss/scss-parser/cst';
-import { bodySpanOf, sourceSpanOf, type AstSourceSpan } from '@jesscss/core/ast';
+import { bodySpanOf, sourceSpanOf, walkAuthoredValue, type AstSourceSpan, type ValueSlot } from '@jesscss/core/ast';
 import { defaultCssDiagnosticMetadata } from './metadata.js';
 import type {
   CollectDiagnosticsInput,
@@ -74,6 +74,10 @@ function isCstNode(c: CssCstChild): c is CssCstNode {
 
 function isAstRecord(value: unknown): value is AstRecord & object {
   return typeof value === 'object' && value !== null;
+}
+
+function isValueSlot(value: unknown): value is ValueSlot {
+  return Array.isArray(value) || (isAstRecord(value) && typeof value.type === 'string');
 }
 
 function astChildrenOf(value: unknown, key: 'children' | 'body'): readonly unknown[] {
@@ -478,26 +482,16 @@ function visitValueDimensions(
   end: number,
   visit: (src: string, unit: string, span: AstSourceSpan | undefined) => void
 ): void {
-  if (Array.isArray(value)) {
-    for (const child of value) {
-      visitValueDimensions(child, source, start, end, visit);
-    }
+  if (!isValueSlot(value)) {
     return;
   }
-  if (!isAstRecord(value)) {
-    return;
-  }
-  if (value.type === 'Dimension'
-    && value.number === 0
-    && typeof value.unit === 'string'
-    && typeof value.src === 'string') {
-    visit(value.src, value.unit, findValueSource(source, value.src, start, end));
-  }
-  for (const child of Object.values(value)) {
-    if (isAstRecord(child) || Array.isArray(child)) {
-      visitValueDimensions(child, source, start, end, visit);
+  walkAuthoredValue(value, {
+    enterNode(node) {
+      if (node.type === 'Dimension' && node.number === 0) {
+        visit(node.src, node.unit, findValueSource(source, node.src, start, end));
+      }
     }
-  }
+  });
 }
 
 function cssAstLintDiagnostics(

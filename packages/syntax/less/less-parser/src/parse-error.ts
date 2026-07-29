@@ -2,9 +2,9 @@ function expectedIncludes(expected: ReadonlySet<string>, value: string): boolean
   return expected.has(value);
 }
 
-function expectedDetail(expected: readonly string[]): string {
+function expectedMessage(expected: readonly string[]): string {
   if (expected.length === 0) {
-    return '';
+    return 'Unexpected Less syntax.';
   }
   const expectedSet = new Set(expected);
   const hasValueCore =
@@ -19,9 +19,23 @@ function expectedDetail(expected: readonly string[]): string {
       || expectedIncludes(expectedSet, 'CssSyntaxHexColor')
     );
   if (looksLikeValueProduction) {
-    return ' Expected a Less value.';
+    return 'Unexpected Less syntax. Expected a Less value.';
   }
-  return ' Expected valid Less syntax here.';
+  if (expectedSet.size === 1) {
+    if (expectedIncludes(expectedSet, '")"')) {
+      return 'Missing closing parenthesis.';
+    }
+    if (expectedIncludes(expectedSet, '"]"')) {
+      return 'Missing closing bracket.';
+    }
+    if (expectedIncludes(expectedSet, '"}"')) {
+      return 'Missing closing brace.';
+    }
+  }
+  if (expectedIncludes(expectedSet, '";"')) {
+    return 'Missing semicolon.';
+  }
+  return 'Unexpected Less syntax. Expected valid Less syntax here.';
 }
 
 /** Structured failure from the public direct Less parser. */
@@ -37,8 +51,7 @@ export class LessParseError extends SyntaxError {
     expected: readonly string[],
     options: { message?: string; reason?: string; fix?: string } = {}
   ) {
-    const detail = expectedDetail(expected);
-    super(options.message ?? `Unexpected Less syntax.${detail}`);
+    super(options.message ?? expectedMessage(expected));
     this.name = 'LessParseError';
     this.offset = offset;
     this.expected = expected;

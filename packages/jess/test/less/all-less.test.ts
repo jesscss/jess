@@ -72,6 +72,33 @@ const fixtureFilter = envFixturePattern
   ? new RegExp(envFixturePattern)
   : undefined;
 
+const fixtureTimeoutMs = 4500;
+
+class FixtureTimeoutError extends Error {
+  constructor(file: string) {
+    super(`${file} timed out before surfacing a diagnostic or render result.`);
+    this.name = 'FixtureTimeoutError';
+  }
+}
+
+async function withFixtureTimeout<T>(
+  file: string,
+  work: () => Promise<T>,
+  timeoutMs = fixtureTimeoutMs
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new FixtureTimeoutError(file)), timeoutMs);
+  });
+  try {
+    return await Promise.race([work(), timeout]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 type SkippedFixture = {
   file: string;
   reason: string;
@@ -284,6 +311,17 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
 ]);
 
+const expectedFailureDiagnosticCodes = new Map<string, string>([
+  ['tests-unit/import/import.less', 'resolve/name-not-found']
+]);
+
+type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
+
+const diagnosticCodesFor = (result: RenderResult): string[] => [
+  ...result.errors.map(diagnostic => diagnostic.code),
+  ...result.warnings.map(diagnostic => diagnostic.code)
+];
+
 // Allow specific fixtures even when they are listed in shared invalidLess.
 const forcedIncludes = new Set<string>([]);
 
@@ -323,7 +361,7 @@ describe("Can render Less files to CSS", () => {
               ? ` (${path.basename(testCase.expectedFile)})`
               : "";
           const expectedFailureReason = expectedFailureFixtures.get(file);
-          const runFixture = async () => {
+          const renderFixture = async () => {
             const expectedCss = readFileSync(testCase.expectedFile, "utf8");
 
             // Merge test case config with base compiler config
@@ -352,19 +390,17 @@ describe("Can render Less files to CSS", () => {
               },
             });
 
-            let result:
-              | Awaited<ReturnType<Compiler["renderToResult"]>>
-              | undefined;
-            try {
-              result = await testCompiler.renderToResult(lessPath, {
-                outputFile: testCase.expectedFile,
-              });
-            } catch (error: any) {
-              throw error;
-            }
+            const result = await testCompiler.renderToResult(lessPath, {
+              outputFile: testCase.expectedFile
+            });
+            return { expectedCss, result };
+          };
+
+          const runFixture = async () => {
+            const { expectedCss, result } = await withFixtureTimeout(file, renderFixture);
             try {
               expect(result.css).toBe(expectedCss);
-            } catch (error: any) {
+            } catch (error: unknown) {
               // Output diagnostics if available
               if (
                 result &&
@@ -389,17 +425,32 @@ describe("Can render Less files to CSS", () => {
               return;
             }
 
+            const expectedDiagnosticCode =
+              expectedFailureDiagnosticCodes.get(file);
+            if (expectedDiagnosticCode !== undefined) {
+              const { result } = await withFixtureTimeout(file, renderFixture);
+              const actualDiagnosticCodes = diagnosticCodesFor(result);
+              expect(
+                actualDiagnosticCodes,
+                `${file} is expected to surface diagnostic ${expectedDiagnosticCode}`
+              ).toContain(expectedDiagnosticCode);
+              return;
+            }
+
             let failed = false;
             try {
               await runFixture();
-            } catch {
+            } catch (error: unknown) {
+              if (error instanceof FixtureTimeoutError) {
+                throw error;
+              }
               failed = true;
             }
             expect(
               failed,
               `${file} is expected to fail until: ${expectedFailureReason}`
             ).toBe(true);
-          }, 5000); // 5 second timeout to catch infinite loops
+          }, 5000); // Short hang sentinel: expected failures must still settle.
         });
       } catch (error: any) {
         // If getTestCases throws (no files found), create a failing test
@@ -408,4 +459,21 @@ describe("Can render Less files to CSS", () => {
         });
       }
     });
+});
+
+describe('Less fixture harness diagnostics', () => {
+  it('surfaces fixture timeouts as harness failures', async () => {
+    await expect(
+      withFixtureTimeout(
+        'tests-unit/import/import.less',
+        () => new Promise<never>(() => {
+          // Deliberately unsettled to exercise the harness timeout branch.
+        }),
+        1
+      )
+    ).rejects.toMatchObject({
+      name: 'FixtureTimeoutError',
+      message: 'tests-unit/import/import.less timed out before surfacing a diagnostic or render result.'
+    });
+  });
 });

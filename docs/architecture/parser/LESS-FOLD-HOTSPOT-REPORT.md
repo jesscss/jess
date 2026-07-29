@@ -96,18 +96,18 @@ Priority Less cleanup queue:
    `CustomInnerPart` / `CustomPart` admit `blockComment` as
    `CustomValuePart` and reduce it into custom-value text. Custom properties may
    need permissive token structure, but comments still belong to trivia.
-2. **Declaration-head comment facts are a render/trivia integration issue.**
-   `DirectLessDeclarationHeadBlockComment` captures comment bytes and appends
-   them into declaration-name construction. The target is source-span/trivia
-   replay, not semantic declaration-name bytes.
-3. **At-rule prelude comment capture is likely semantic debt.**
-   `directLessAtPreludeComment` participates in CSS/Less opaque at-rule prelude
-   capture. Unknown at-rules can opportunistically parse structure, but comments
-   should not be assembled into semantic prelude text.
-4. **General-enclosed raw comments are likely semantic debt.**
-   `DirectLessGeneralEnclosedRaw` includes `CssSyntaxBlockComment` as raw text;
-   preserve balanced recognition, but do not make comments part of interpolation
-   or general-enclosed payloads.
+2. **Opaque at-rule prelude comment capture is likely semantic debt.**
+   `atPreludeComment` still participates in `lessOpaqueAtPreludeCapture`.
+   Unknown at-rules can opportunistically parse structure, but comments should
+   not be assembled into semantic prelude text.
+3. **General-enclosed raw comments are likely semantic debt.**
+   `GeneralEnclosedRaw` includes `g.CssSyntaxBlockComment` as raw text; preserve
+   balanced recognition, but do not make comments part of interpolation or
+   general-enclosed payloads.
+
+Completed in the current grammar: declaration-head gaps now flow through
+`DeclarationHead` parser trivia instead of semantic declaration-name bytes. Do
+not reintroduce a declaration-head comment fact.
 
 Mostly legitimate exceptions:
 
@@ -143,28 +143,25 @@ Proof for that slice:
 - oracle movement, named before any baseline update:
   `pnpm run oracle:less:byte-identity`
 
-## Recommended fold order
+## Recommended cleanup order
 
-1. **Block/root statement container spine.** Collapse the duplicated
-   statement-choice bodies first: CST `declarationList` / at-rule bodies /
-   mixin-definition bodies / ordinary block bodies versus direct
-   `directLessBlockStatement` / `directLessBodyStatement` / ruleset body
-   variants. This deletes real duplicated grammar without deciding every
-   selector or value detail. Keep context-specific differences explicit: root,
-   ruleset body, detached-ruleset body, at-rule body, and `each()` callback are
-   not identical.
-2. **Selector plus inline `:extend()` ownership.** Parse each selector branch
-   once, with `ExtendPseudo` as the public CST owner and AST reducers collecting
-   branch-local extend facts. Do not preserve the current direct-AST selector
-   side channel, and do not reparse selectors to collect extends.
-3. **At-rule/query/import/keyframes family.** Fold known-vs-generic at-rule
-   routes only after CSS placement rules and Less deviations are explicit.
-   `@charset`, `@namespace`, `@import`, `@supports`, media/container, and
-   keyframes do not share one acceptance rule.
-4. **Value/function/math/argument spine.** Collapse the repeated value stack
-   after glued opener handling and math/division mode boundaries are clear.
-   Function openers such as `url(`, `calc(`, and `%(` should route through one
-   consumed opener, not keyword/function backtracking.
+1. **Comment trivia debt.** Remove semantic comment carriers from custom
+   property values, opaque at-rule preludes, and general-enclosed raw payloads.
+   Keep scanner-local comment skip sets only where balanced recognition needs
+   them.
+2. **Selector plus inline `:extend()` simplification.** Preserve the current
+   one-pass selector route: each branch parses once, `ExtendPseudo` owns the
+   authored pseudo, and reducers collect branch-local extend facts. Do not add
+   source reparse or a second selector grammar.
+3. **At-rule/query/import/keyframes routing.** Use Parseman `dispatch(...)`
+   where a routed same-family opener has already been consumed. Keep CSS
+   placement rules and Less deviations explicit; `@charset`, `@namespace`,
+   `@import`, `@supports`, media/container, and keyframes do not share one
+   acceptance rule.
+4. **Value/function/math/argument spine.** Continue shrinking the value stack
+   around glued openers and math/division boundaries. Function openers such as
+   `url(`, `calc(`, and `%(` should route through one consumed opener, not
+   keyword/function backtracking.
 5. **Less variable/mixin/reference/declaration family.** Keep this
    Less-specific; do not preserve it for SCSS. The dangerous boundaries are
    `@name:` versus at-rule, `@name(...)` variable call versus at-rule,
@@ -173,13 +170,13 @@ Proof for that slice:
 
 ## Naming cleanup rule for the fold
 
-`DirectLess*` is a migration namespace, not grammar vocabulary. As each family
-is folded into the single host-mode factory, delete the prefix from local consts
-and type keys unless the accepted language genuinely differs. Preserve or map
-public CST labels separately: `Declaration`, `CustomDeclaration`, `AtRuleBlock`,
-`AtRuleStatement`, `ImportAtRule`, `QueryAtRuleBlock`, `MixinCall`,
-`MixinOrQualifiedRule`, `VarCall`, selector node keys, and interpolation node
-keys are contract questions; local rule names are not.
+Old direct-AST migration prefixes were scaffolding, not grammar vocabulary. Do
+not reintroduce that namespace. Local const names should be the shortest stable
+spec-shaped concept unless the accepted language genuinely differs. Preserve or
+map public CST labels separately: `Declaration`, `CustomDeclaration`,
+`AtRuleBlock`, `AtRuleStatement`, `ImportAtRule`, `QueryAtRuleBlock`,
+`MixinCall`, `MixinOrQualifiedRule`, `VarCall`, selector node keys, and
+interpolation node keys are contract questions; local rule names are not.
 
 Preferred local vocabulary by region:
 
@@ -221,7 +218,7 @@ Apply these while folding each family, not as polish on duplicate bodies:
 - Selector list with inline extends: the ruleset fallback is paid. Preserve the
   context-aware selector-list route that parses each branch once, returns
   selector facts, and collects branch-local extend instructions.
-- Mixin statement router: the current broad `directLessMixinStatementAhead`
+- Mixin statement router: the current broad `mixinStatementAhead`
   skips repeated work but still leaves the same name/path family spread across
   definition/call/bare-call arms. The fold target is one consumed mixin opener
   with suffix routing.
@@ -233,22 +230,18 @@ Apply these while folding each family, not as polish on duplicate bodies:
 - Import media: route valid media-query tails through the same structured media
   grammar before any broad static-tail fallback.
 
-## First implementation slice
+## Historical first implementation slice
 
-Start with only the ordinary braced-block statement spine. Merge the CST
-`blockItem` / `declarationList` / `atRuleBody` family with the direct
-`directLessBlockStatement` / `directLessBlockBody` family. Do not include the
-root stylesheet, detached-ruleset body, `each()` callback body, selector
-inline-extend path, at-rule header family, import family, or keyframe family in
-this slice.
+The old ordinary braced-block statement-spine slice is paid. Less now has one
+host-mode grammar source, and the surviving statement families are
+`blockItem`, `BodyStatement`, `RulesetWithExtends`, and root `Stylesheet`.
+Their ordered choices still differ by context and should stay explicit unless a
+future patch proves the accept sets remain distinct.
 
-Recognition source of truth: the direct ordinary block choice is closer to the
-target because it already owns the intended Less disambiguation gates:
-`directLessAtStatement`, the mixin/ruleset gate, the declaration-vs-ruleset
-gate, and the ruleset-only extend body. The current CST `blockItem` remains the
-public CST concept name, but it is not the recognition model to preserve
-unchanged; it currently includes `ExtendStatement` in every block item, while
-the direct ruleset body keeps extend as a ruleset-body-only arm.
+Recognition source of truth: the ordinary block choice owns the intended Less
+disambiguation gates: `atStatement`, the mixin/ruleset gate, the
+declaration-vs-ruleset gate, and ruleset-only extend body handling. The current
+`blockItem` remains the public block concept name.
 
 Target shape:
 
@@ -268,50 +261,32 @@ abstraction, or moving either byte-identity aggregate.
 
 ## Selector reparse paths
 
-The current CST selector path parses inline extend as a selector-owned terminator:
+The current Less selector path parses inline extend as a selector-owned
+terminator in the single host-mode grammar:
 
 - `extendAhead` / `selectorBoundary` stop ordinary selector runs before
-  `:extend(` at `grammar.ts:405-415`.
-- `ComplexSelector` owns an optional `ExtendPseudo` at `grammar.ts:430-437`.
-- `ExtendPseudo` parses `:extend(...)` as grammar structure at
-  `grammar.ts:466-490`.
-- `ExtendStatement` handles the ruleset-body `&:extend(...)` form at
-  `grammar.ts:491-499`.
+  `:extend(`.
+- `ExtendComplex`, `ExtendTargetComplex`, and `ExtendTarget` keep inline
+  subjects and extend targets distinct from ordinary selector recognition.
+- `ExtendPseudo` parses `:extend(...)` as grammar structure.
+- `selectorListWithExtends` collects branch-local extend instructions and the
+  selector list in one fact.
+- `ExtendStatement` handles the ruleset-body `&:extend(...)` form.
+- `RulesetWithExtends` enters ruleset selectors through
+  `selectorListWithExtends` once.
 
-The direct AST path is still a duplicate body, but its inline-extend route has
-been narrowed into the shape the unified factory should preserve:
+Requirement: selector parsing must collect branch-local extend facts while
+parsing each selector branch once. The current route is the floor: no broad
+fallback, no AST-only selector side channel, and no selector source reparse.
 
-- `SelectorBranch` parses one static selector subject and then an explicit
-  continuation: either `DirectLessExtendPseudo` plus a selector-list
-  boundary, or just the boundary. Ordinary static branches no longer parse the
-  full subject once as an extend false start and again as an ordinary complex
-  selector.
-- `SelectorListWithExtends` collects branch-local extend instructions and the
-  selector list in one fact. That fact is still private to the direct AST body;
-  the fold target is to make this the shared host-mode selector-list shape
-  rather than a second AST-only route.
-- Inline-extend subjects use `DirectLessExtendComplex`, not the ordinary
-  `DirectLessComplex`; extend targets use another complex selector variant.
-  Preserve that distinction until the selector-family fold can prove which
-  interpolated subjects Less should accept or reject.
-- Ruleset bodies still add `DirectLessExtendStatement` separately from ordinary
-  body statements. Statement containers remain a separate fold blocker.
+Current hotspots to delete or contain during cleanup:
 
-Fold requirement: selector parsing should collect branch-local extend facts while
-parsing each selector branch once. The current direct AST rule is useful as an
-acceptance reference, not as the target shape.
-
-Current hotspots to delete or contain during the fold:
-
-- `DirectLessRuleset` now enters ruleset selectors directly through
-  `selectorListWithExtends`. Keep that as the floor: no broad fallback, no
-  AST-only selector side channel, and no selector source reparse.
-- `selectorListWithExtends` duplicates the public selector list instead of being
-  the public `SelectorList` recognition with different host-mode projection.
-- `DirectLessExtendComplex`, `DirectLessExtendTargetComplex`, and their
-  `*Tail` / `*Compound` helpers duplicate the selector family to stop before
-  flags and inline `:extend(...)`. These are context differences, not separate
-  grammars; fold them into a selector-list helper that receives context.
+- `selectorListWithExtends` still sits beside the public selector-list family
+  instead of being a context-aware projection of the same recognition.
+- `ExtendComplex`, `ExtendTargetComplex`, and their `*Tail` / `*Compound`
+  helpers duplicate selector-family structure to stop before flags and inline
+  `:extend(...)`. These are context differences, not separate grammars; fold
+  them only through a selector-list helper that receives context.
 - The local regex lookaheads `selectorBoundary`, `extendTailAhead`, and the
   duplicated terminal-flag regexes are allowed only as temporary evidence of
   boundaries. The surviving grammar should prefer Parseman words, routed pseudo
@@ -338,8 +313,7 @@ Existing tests that must stay green:
 
 Already pinned in the AST suite: the host-mode parity test for
 `.first, .inline:extend(.target all), .sibling { color: red; }` asserts AST
-branch ownership, one CST `ExtendPseudo`, and no `DirectLessInlineExtendRule`
-public node.
+branch ownership and one public CST `ExtendPseudo` owner.
 
 ## SCSS-only support seams in Less
 
@@ -385,31 +359,23 @@ Current SCSS proof:
 
 1. Selector and inline-extend ownership
 
-Current split: CST uses `ComplexSelector` plus optional `ExtendPseudo`; AST uses
-`SelectorBranch` / `SelectorListWithExtends` over direct selector productions.
-The AST shape is closer to the target, but it is still inside the duplicate
-direct body. Fold it into the host-mode factory instead of adding another
-selector path.
+Current state: Less is already on one host-mode grammar, and ruleset headers
+enter the inline-extend-aware route once via `selectorListWithExtends`.
+`ExtendPseudo` owns the authored pseudo and selector branches collect
+branch-local extend facts during the selector parse. Do not reintroduce a
+second selector grammar, selector source reparse, or broad fallback around
+ruleset headers.
 
 Pin with the existing inline extend AST/public tests listed above.
 
 2. Statement container ownership
 
-Current split: the CST body now keeps `stylesheetItem` and `blockItem` local
-rather than exporting them as dialect hooks, with `declarationList` and
-`atRuleBody` referencing those locals directly (`grammar.ts:184-193`,
-`:510-519`, and `:1345-1349`). The AST body is still separate:
-`directLessBlockStatement`, `directLessRulesetBody`, `DirectLessBodyStatement`,
-and a separate top-level `Stylesheet` at `grammar.ts:4599-4607`, `:4635-4650`,
-and `:5925-5931`.
-
-Do not start by merging `DirectLessBodyStatement` into
-`directLessBlockStatement`: that body intentionally carries the punctuation-map
-arm and callback/detached-ruleset ordering, while `directLessBlockStatement`
-owns ordinary braced block contexts. The first deletion target is the duplicated
-ordinary braced block choice (`blockItem` versus `directLessBlockStatement`);
-detached-ruleset and `each()` callback bodies stay context-specific until their
-accept sets are audited separately.
+Current state: `blockItem`, `BodyStatement`, `RulesetWithExtends`, and root
+`Stylesheet` all live in the same host-mode grammar, but their ordered arm sets
+still intentionally differ. `BodyStatement` carries the punctuation-map arm and
+callback/detached-ruleset ordering; `blockItem` owns ordinary braced block
+contexts. Do not collapse these through a generic helper unless the patch proves
+the context accept sets stay distinct.
 
 Pin with:
 
@@ -432,13 +398,9 @@ bodies without a CST-only or AST-only fallback.
 
 3. Selector simple/pseudo/interpolation ownership
 
-Current split: CST has `LessAmpersand`, `InterpolatedSelector`,
-`AttributeSelector`, `PseudoSelector`, and `SelectorList` at
-`grammar.ts:373-464`; AST has many direct selector-only reductions:
-`DirectLessStaticPseudo`, `DirectLessInterpolatedPseudo`,
-`DirectLessInterpolatedAttribute`, `DirectLessBareInterpolatedSelector*`,
-`DirectLessCompound`, `DirectLessComplex`, and `DirectLessSelector` at
-`grammar.ts:5462-5801`.
+Current state: Less selector recognition now lives in one grammar, but it still
+has several context-specific helper families for pseudo routing, interpolation,
+inline extend subjects, and extend targets.
 
 Pin with:
 
@@ -540,21 +502,17 @@ small. The important shape is the contract:
   use `routed()`. The selector-list branch itself should not be an outer
   `attempt(...)` fallback.
 
-Delete the direct-AST selector side channel when this lands:
-`directExtendAll`, `DirectLessStaticExtendCompound`,
-`DirectLessStaticExtendComplexTail`, `DirectLessExtendComplex`,
-`DirectLessExtendTargetComplexTail`, `DirectLessExtendTargetComplex`,
-`DirectLessExtendTarget`, `DirectLessExtendPseudo`,
-`directSelectorBranchBoundary`, `directSelectorBranchContinuation`,
-`DirectLessSelectorBranch`, `DirectLessDynamicSelectorBranch`,
-`selectorListWithExtends`, and the `attempt(selectorListWithExtends)` fallback
-in `DirectLessRuleset`.
+Simplify the remaining selector helpers only when the patch keeps one-pass
+ownership intact: `ExtendComplex`, `ExtendTargetComplex`, `ExtendTarget`,
+`ExtendPseudo`, `SelectorBranch`, `DynamicSelectorBranch`, and
+`selectorListWithExtends` should converge toward a context-aware selector-list
+helper instead of separate duplicated selector families.
 
-Do not preserve AST/CST acceptance differences by keeping two selector grammars.
+Do not preserve AST/CST acceptance differences by keeping two selector routes.
 The one open decision is dynamic inline-extend subjects such as
-`.@{name}:extend(.target)`: either the folded grammar adopts the CST accept set,
-or a single-parse semantic diagnostic rejects that case after recognition. Do
-not use source reparse, source scan, or broad `:extend(` lookahead.
+`.@{name}:extend(.target)`: either the grammar adopts that accept set, or a
+single-parse semantic diagnostic rejects that case after recognition. Do not use
+source reparse, source scan, or broad `:extend(` lookahead.
 
 The folded AST invariant is the existing core extend shape: inline extends set
 `subject: selist(the single complex branch)`, while body-form
@@ -563,45 +521,30 @@ should own the inline pseudo in both host modes; the direct selector branch
 facts are temporary reducer facts, not public owners.
 
 2026-07-27 update: the pseudo family now has the shared-opener dispatch shape.
-`DirectLessPseudo` and `DirectLessStaticPseudo` parse one `:name` / glued
-`:name(` opener, then route selector-function, generic-function,
-interpolation-argument, and bare-pseudo branches with `routed()`. The focused
-Less parser set passed 330 tests, `check:macro` and `verify:compose-integrity`
-passed, and the Less oracle stayed AST-neutral versus the prior dirty folded
-state. CST intentionally moved to
-`8880f56555332407b722652c7b48865746350bdb275dea4897ee5523991a1698` because
-the routed opener changes public pseudo leaf ownership. Treat remaining pseudo
-work as public CST/naming migration work, not as a reason to reintroduce
-function-opener fallback choices.
+`Pseudo` / `StaticPseudo` parse one `:name` / glued `:name(` opener, then route
+selector-function, generic-function, interpolation-argument, and bare-pseudo
+branches with `routed()`. The focused Less parser set passed, `check:macro` and
+`verify:compose-integrity` passed, and the Less oracle stayed AST-neutral
+versus the prior folded state. Treat remaining pseudo work as public CST/naming
+migration work, not as a reason to reintroduce function-opener fallback choices.
 
 This is not the first selector-branch tool; the first selector-branch tool is
 one branch parser with one AST reducer.
 
 ## Recommended next patch
 
-Collapse only the shared block-context statement spine into the host-mode
-factory:
+Remove the remaining comment-as-value carriers from Less grammar source:
 
-- The surviving public concept is `blockItem`, with the actual ordered choice
-  body now represented by `directLessBlockStatement`.
-- `declarationList`, generic at-rule bodies, mixin-definition bodies, and
-  ordinary block bodies should consume that same `blockItem` grammar.
-- Rulesets keep a context-specific `rulesetBody = many(choice(blockItem,
-ExtendStatement))`, because standalone `&:extend(...)` is ruleset-body-only.
-- Root `Stylesheet`, detached-ruleset bodies, and `each()` callback bodies are
-  not part of this first slice; they have real context differences.
+- custom-property `blockComment` parts in `CustomInnerPart` / `CustomPart`
+- opaque at-rule prelude comment text in `lessOpaqueAtPreludeCapture`
+- `GeneralEnclosedRaw` comment payloads
 
-Reject a cosmetic rename of `directLessBlockStatement` while the CST `blockItem`
-body still exists separately. Also reject a generic `statementItems(...)` helper
-that only hides duplication; the fold must delete one duplicated body and keep
-the macro output build-resolvable.
+Keep `blockComment` in scanner-local `scanSkip` / `balanced(...)` protection
+where needed so raw capture does not terminate inside comments. The semantic
+target is source/document trivia replay, not comment text children.
 
-2026-07-27 recheck: Less is now a single host-mode grammar. Inline
-`:extend(...)` ownership is already live in that grammar: `ExtendPseudo` owns
-the authored pseudo, selector branches collect extend facts during the selector
-parse, and public tests assert that the old `InlineExtendTail` owner is absent.
-The ruleset selector fallback is now paid too: `DirectLessRuleset` consumes
-`selectorListWithExtends` directly, so ruleset headers use the inline-extend-aware
-selector route once instead of retrying a plain selector route. Do not
-reintroduce a second selector grammar, selector source reparse, or broad
-fallback around ruleset headers.
+Focused proof:
+
+- `pnpm --filter @jesscss/less-parser test -- custom-property.test.ts --run`
+- `pnpm --filter @jesscss/less-parser test -- public-parse.test.ts --run --testNamePattern "custom-property|unknown CSS block|comments|pseudo|extend"`
+- `pnpm run verify:less-alpha` if parser source changes

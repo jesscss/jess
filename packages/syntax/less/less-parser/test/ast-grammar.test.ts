@@ -4130,6 +4130,22 @@ describe('Less AST grammar facts', () => {
     }
   });
 
+  it('keeps opaque at-rule prelude comments in trivia, not semantic bytes', () => {
+    const result = run(lessAstGrammar.OpaqueAtRuleBlock, '@future a/* note */b { color: red; }', {
+      trivia: lessAstGrammar.whitespace
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'OpaqueAtRuleBlock',
+      name: '@future',
+      prelude: 'a b',
+      rawBody: ' color: red; '
+    });
+    expect(JSON.stringify(result.value)).not.toContain('/* note */');
+  });
+
   it('keeps charset on the static generic route while retaining typed namespace interpolation', () => {
     const source =
       '@charset "UTF-8"; @ns: less; @namespace @{ns} "http://lesscss.org";';

@@ -1,6 +1,6 @@
 {
   "name": "@jesscss/style-resolver",
-  "version": "2.0.0-alpha.11",
+  "version": "2.0.0-alpha.12",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
