@@ -32,7 +32,6 @@ type JessMixinCallArgument = MixinCall['args'][number];
 
 type JessRules = {
   Stylesheet: Combinator<Stylesheet>;
-  JessAstDocument: Combinator<Stylesheet>;
   DirectJessVarDeclaration: Combinator<VariableDeclaration>;
   DirectJessValueBlockDeclaration: Combinator<VariableDeclaration>;
   DirectJessBlockLambda: Combinator<AnonymousMixin>;
@@ -5499,7 +5498,6 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
   return {
     Stylesheet,
-    JessAstDocument: Stylesheet,
     DirectJessVarDeclaration,
     DirectJessValueBlockDeclaration,
     DirectJessBlockLambda,
