@@ -4225,6 +4225,26 @@ check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed.
 
+SCSS selector/rule name cleanup, 2026-07-29: the SCSS selector-family grammar
+keys now use their semantic AST/CST-aligned labels (`Simple`,
+`InterpolatedSimple`, `Placeholder`, `Attribute`, `PseudoArgument`, `Pseudo`,
+`NestingSelector`, `Compound`, `ComplexTail`, `Complex`, `SelectorTail`,
+`Selector`, `Extend`, and `Rule`) instead of `DirectScss*` mode labels. The
+selector-private routed pseudo helpers were renamed too. This is a naming-only
+alignment; the pseudo dispatch table remains the same routed-token-family shape
+over the glued `:name` / `:name(` opener, and selector body choices remain
+construct-family choices.
+
+Evidence for the SCSS selector/rule name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. The previous selector compound gating warning now reports under the
+semantic `Compound` rule name.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman

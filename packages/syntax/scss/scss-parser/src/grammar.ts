@@ -164,30 +164,30 @@ type ScssRules = {
   DirectScssNestedConditionalBlock: Combinator<AtRuleBlock>;
   DirectScssNestedStartingStyleBlock: Combinator<AtRuleBlock>;
   DirectScssNestedLayerBlock: Combinator<AtRuleBlock>;
-  DirectScssSimple: Combinator<SimpleSelector>;
-  DirectScssInterpolatedSimple: Combinator<SimpleSelector>;
-  DirectScssPlaceholder: Combinator<SimpleSelector>;
-  DirectScssAttribute: Combinator<SimpleSelector>;
-  DirectScssPseudoArgument: Combinator<string>;
+  Simple: Combinator<SimpleSelector>;
+  InterpolatedSimple: Combinator<SimpleSelector>;
+  Placeholder: Combinator<SimpleSelector>;
+  Attribute: Combinator<SimpleSelector>;
+  PseudoArgument: Combinator<string>;
   StaticSelectorPseudoArgument: Combinator<string>;
   StaticSelectorPseudoItem: Combinator<string>;
   StaticSelectorPseudoTail: Combinator<string>;
   StaticPseudoArgument: Combinator<string>;
   StaticPseudoGroup: Combinator<string>;
   StaticPseudoSquare: Combinator<string>;
-  DirectScssPseudo: Combinator<SimpleToken>;
-  DirectScssNestingSelector: Combinator<SimpleSelector>;
-  DirectScssCompound: Combinator<CompoundSelector>;
-  DirectScssComplexTail: Combinator<ScssComplexTail>;
-  DirectScssComplex: Combinator<ComplexSelector>;
-  DirectScssSelectorTail: Combinator<ComplexSelector>;
-  DirectScssSelector: Combinator<SelectorList>;
-  DirectScssExtend: Combinator<ExtendInstruction>;
+  Pseudo: Combinator<SimpleToken>;
+  NestingSelector: Combinator<SimpleSelector>;
+  Compound: Combinator<CompoundSelector>;
+  ComplexTail: Combinator<ScssComplexTail>;
+  Complex: Combinator<ComplexSelector>;
+  SelectorTail: Combinator<ComplexSelector>;
+  Selector: Combinator<SelectorList>;
+  Extend: Combinator<ExtendInstruction>;
   DirectScssOpaquePrelude: Combinator<string | null>;
   DirectScssOpaqueBody: Combinator<string>;
   DirectScssOpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   DirectScssOpaqueAtRuleStatement: Combinator<AtRuleStatement>;
-  DirectScssRule: Combinator<Rule>;
+  Rule: Combinator<Rule>;
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
 };
@@ -2668,7 +2668,7 @@ export const scssFactory = (g: ScssInputRules) => {
   /* Nested body ending in `Rule` (mixin/each/for/nested-scope bodies). */
   const nestedBody = many(choice(
     nestedBodyPrefix,
-    g.DirectScssRule,
+    g.Rule,
     nestedAtStatement
   ));
 
@@ -2676,15 +2676,15 @@ export const scssFactory = (g: ScssInputRules) => {
   const nestedKeyframesBody = many(choice(
     nestedBodyPrefix,
     g.DirectScssKeyframes,
-    g.DirectScssRule,
+    g.Rule,
     nestedAtStatement
   ));
 
-  /* The ruleset body adds one extra arm (`DirectScssExtend`) before `Rule`. */
+  /* The ruleset body adds one extra arm (`Extend`) before `Rule`. */
   const ruleBody = many(choice(
     nestedBodyPrefix,
-    g.DirectScssExtend,
-    g.DirectScssRule,
+    g.Extend,
+    g.Rule,
     nestedAtStatement
   ));
 
@@ -2711,7 +2711,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.DirectScssKeyframes,
     g.DirectScssOpaqueAtRuleBlock,
     g.DirectScssOpaqueAtRuleStatement,
-    g.DirectScssRule
+    g.Rule
   ));
   const startingLayerBlockBody = many(choice(
     g.DirectScssComment,
@@ -2730,7 +2730,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.DirectScssKeyframes,
     g.DirectScssOpaqueAtRuleBlock,
     g.DirectScssOpaqueAtRuleStatement,
-    g.DirectScssRule
+    g.Rule
   ));
   const MixinDefinitionRule = node<MixinDef>(
     'MixinDefinitionRule',
@@ -3051,7 +3051,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const IfStaticRule = node<Rule>(
     'IfStaticRule',
     sequence(
-      g.DirectScssSelector,
+      g.Selector,
       g.IfBody
     ),
     children => rule(
@@ -3731,7 +3731,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.DirectScssPageBlock,
         g.DirectScssFontFeatureValuesBlock,
         g.DirectScssKeyframes,
-        g.DirectScssRule
+        g.Rule
       )),
       literal('}')
     ),
@@ -3886,7 +3886,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.DirectScssCounterStyle,
         g.DirectScssPropertyAtRule,
         g.DirectScssKeyframes,
-        g.DirectScssRule
+        g.Rule
       )),
       literal('}')
     ),
@@ -4277,12 +4277,12 @@ export const scssFactory = (g: ScssInputRules) => {
    * attribute selectors and pseudo arguments remain explicit
    * follow-up families rather than being flattened into a string fallback.
    */
-  const DirectScssSimple = node<SimpleSelector>(
+  const Simple = node<SimpleSelector>(
     'Simple',
     g.CssSyntaxSimple,
     children => simpleSelector(requireToken(children[0]).value)
   );
-  const DirectScssInterpolatedSimple = node<SimpleSelector>(
+  const InterpolatedSimple = node<SimpleSelector>(
     'InterpolatedSimple',
     noTrivia(sequence(
       optional(regex(/[.#]/)),
@@ -4315,7 +4315,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * exact static spelling as a SimpleSelector; interpolated placeholder names need a
    * typed interpolation model and are deliberately excluded.
    */
-  const DirectScssPlaceholder = node<SimpleSelector>(
+  const Placeholder = node<SimpleSelector>(
     'Placeholder',
     regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/),
     children => simpleSelector(requireToken(children[0]).value)
@@ -4328,7 +4328,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * attributes stay outside this closed slice because their segments need
    * their own typed representation rather than text flattening.
    */
-  const DirectScssAttribute = node<SimpleSelector>(
+  const Attribute = node<SimpleSelector>(
     'Attribute',
     sequence(
       literal('['),
@@ -4369,14 +4369,14 @@ export const scssFactory = (g: ScssInputRules) => {
    * pseudo arguments are deliberately not accepted here: an SCSS interpolation
    * in one must stay typed rather than being swallowed as a string.
    */
-  const DirectScssPseudoArgument = node<string>(
+  const PseudoArgument = node<string>(
     'PseudoArgument',
 
     /*
      * A pseudo's selector-valued argument is carried by its containing
      * SimpleSelector text in AST v2, not as a second selector field. Recognize
      * its static grammar here so it remains accepted without giving a nested
-     * DirectScssSelector an interpolation escape hatch.
+     * Selector an interpolation escape hatch.
      */
     sequence(
       not(g.CssSyntaxMalformedPseudoNumericArgument),
@@ -4475,7 +4475,7 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * Pseudos share a glued `:name` / `:name(` opener. Route it once, then let the
    * selected branch own that opener through `routed()` so the public
-   * `DirectScss...Pseudo` CST labels keep their source span.
+   * semantic pseudo CST labels keep their source span.
    */
   const pseudoIdentOrFunction = token(noTrivia(sequence(
     pseudoColon,
@@ -4496,13 +4496,13 @@ export const scssFactory = (g: ScssInputRules) => {
     literal('+'),
     literal('~')
   );
-  const DirectScssRelativeComplex = node<ComplexSelector>(
+  const RelativeComplex = node<ComplexSelector>(
     'RelativeComplex',
     parser(
       { trivia: whitespace },
       sequence(
         optional(scssRelativeSelectorCombinator),
-        g.DirectScssComplex
+        g.Complex
       )
     ),
     (children) => {
@@ -4525,18 +4525,18 @@ export const scssFactory = (g: ScssInputRules) => {
    * The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
    * selector-ONLY argument: a (relative) selector list with no general-any text
    * fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
-   * non-relative shape reduces identically to `g.DirectScssSelector`; the retained
+   * non-relative shape reduces identically to `g.Selector`; the retained
    * `SelectorList` becomes structured `PseudoSelector.args`, never joined at parse.
    */
-  const DirectScssSelectorOnlyPseudoArgument = node<SelectorList>(
+  const SelectorOnlyPseudoArgument = node<SelectorList>(
     'SelectorOnlyPseudoArgument',
     parser(
       { trivia: whitespace },
       sequence(
-        DirectScssRelativeComplex,
+        RelativeComplex,
         many(sequence(
           literal(','),
-          DirectScssRelativeComplex
+          RelativeComplex
         ))
       )
     ),
@@ -4621,7 +4621,7 @@ export const scssFactory = (g: ScssInputRules) => {
         )),
         'static selector pseudo argument'
       ),
-      DirectScssSelectorOnlyPseudoArgument,
+      SelectorOnlyPseudoArgument,
       optional(space),
       literal(')')
     ),
@@ -4639,7 +4639,7 @@ export const scssFactory = (g: ScssInputRules) => {
         */
     sequence(
       routed(),
-      g.DirectScssPseudoArgument,
+      g.PseudoArgument,
       literal(')')
     ),
     children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
@@ -4654,7 +4654,7 @@ export const scssFactory = (g: ScssInputRules) => {
        */
     sequence(
       routed(),
-      g.DirectScssPseudoArgument,
+      g.PseudoArgument,
       literal(')')
     ),
     children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
@@ -4664,7 +4664,7 @@ export const scssFactory = (g: ScssInputRules) => {
     routed(),
     children => simpleSelector(requireToken(children[0]).value)
   );
-  const DirectScssPseudoDispatch = dispatch(
+  const PseudoDispatch = dispatch(
     pseudoIdentOrFunction,
     caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
     caseInsensitive([':nth-of-type(', ':nth-last-of-type('], NthTypePseudo),
@@ -4684,45 +4684,45 @@ export const scssFactory = (g: ScssInputRules) => {
     when(endsWith('('), GenericFunctionPseudo),
     otherwise(GenericBarePseudo)
   );
-  const DirectScssPseudo = node<SimpleToken>(
+  const Pseudo = node<SimpleToken>(
     'Pseudo',
-    DirectScssPseudoDispatch,
+    PseudoDispatch,
     children => requireSimpleToken(children.find(isSimpleToken))
   );
-  const DirectScssNestingSelector = node<SimpleSelector>(
+  const NestingSelector = node<SimpleSelector>(
     'NestingSelector',
     literal('&'),
     () => simpleSelector('&')
   );
-  const DirectScssCompound = node<CompoundSelector>(
+  const Compound = node<CompoundSelector>(
     'Compound',
     noTrivia(sequence(
       oneOrMore(choice(
-        g.DirectScssNestingSelector,
+        g.NestingSelector,
         parser(
           { trivia: whitespace },
-          g.DirectScssAttribute
+          g.Attribute
         ),
-        g.DirectScssPseudo,
-        g.DirectScssPlaceholder,
-        g.DirectScssInterpolatedSimple,
-        g.DirectScssSimple
+        g.Pseudo,
+        g.Placeholder,
+        g.InterpolatedSimple,
+        g.Simple
       )),
       not(pseudoColon)
     )),
     children => compoundSelectorOf(children.filter(isSimpleToken))
   );
-  const directScssCombinator = choice(
+  const scssCombinator = choice(
     literal('||'),
     literal('>'),
     literal('+'),
     literal('~')
   );
-  const DirectScssComplexTail = node<ScssComplexTail>(
+  const ComplexTail = node<ScssComplexTail>(
     'ComplexTail',
     sequence(
-      optional(directScssCombinator),
-      g.DirectScssCompound
+      optional(scssCombinator),
+      g.Compound
     ),
     (children) => {
       const compound = children.find(isCompoundSelector);
@@ -4737,34 +4737,34 @@ export const scssFactory = (g: ScssInputRules) => {
       return { comb, compound };
     }
   );
-  const DirectScssComplex = node<ComplexSelector>(
+  const Complex = node<ComplexSelector>(
     'Complex',
     sequence(
-      g.DirectScssCompound,
-      many(g.DirectScssComplexTail)
+      g.Compound,
+      many(g.ComplexTail)
     ),
     children => complexSelector([
       { compound: requireCompoundSelector(children[0]) },
       ...children.slice(1).map(requireScssComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
     ])
   );
-  const DirectScssSelectorTail = node<ComplexSelector>(
+  const SelectorTail = node<ComplexSelector>(
     'SelectorTail',
     sequence(
       literal(','),
-      g.DirectScssComplex
+      g.Complex
     ),
     children => requireComplexSelector(children[1])
   );
-  const DirectScssSelector = node<SelectorList>(
+  const Selector = node<SelectorList>(
     'Selector',
     sequence(
       not(sequence(
-        g.DirectScssPlaceholder,
+        g.Placeholder,
         literal(',')
       )),
-      g.DirectScssComplex,
-      many(g.DirectScssSelectorTail)
+      g.Complex,
+      many(g.SelectorTail)
     ),
     children => selist(...children.filter((child): child is ComplexSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'ComplexSelector'))
   );
@@ -4776,11 +4776,11 @@ export const scssFactory = (g: ScssInputRules) => {
    * missing-target diagnostic semantics that the canonical instruction does not
    * yet model, so this direct slice rejects it rather than silently dropping it.
    */
-  const DirectScssExtend = node<ExtendInstruction>(
+  const Extend = node<ExtendInstruction>(
     'Extend',
     sequence(
       regex(/@extend(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.DirectScssSelector,
+      g.Selector,
       optional(literal(';'))
     ),
     children => ({ target: requireSelectorList(children[1]), partial: false })
@@ -4858,10 +4858,10 @@ export const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
-  const DirectScssRule = node<Rule>(
+  const Rule = node<Rule>(
     'Rule',
     sequence(
-      g.DirectScssSelector,
+      g.Selector,
       literal('{'),
       ruleBody,
       literal('}')
@@ -4924,7 +4924,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.DirectScssKeyframes,
         g.DirectScssOpaqueAtRuleBlock,
         g.DirectScssOpaqueAtRuleStatement,
-        g.DirectScssRule
+        g.Rule
       ))
     ),
     children => stylesheet(statements(children.flatMap(child => Array.isArray(child) ? child : [child])))
@@ -5060,26 +5060,26 @@ export const scssFactory = (g: ScssInputRules) => {
     DirectScssOpaqueBody,
     DirectScssOpaqueAtRuleBlock,
     DirectScssOpaqueAtRuleStatement,
-    DirectScssSimple,
-    DirectScssInterpolatedSimple,
-    DirectScssPlaceholder,
-    DirectScssAttribute,
-    DirectScssPseudoArgument,
+    Simple,
+    InterpolatedSimple,
+    Placeholder,
+    Attribute,
+    PseudoArgument,
     StaticSelectorPseudoArgument,
     StaticSelectorPseudoItem,
     StaticSelectorPseudoTail,
     StaticPseudoArgument,
     StaticPseudoGroup,
     StaticPseudoSquare,
-    DirectScssPseudo,
-    DirectScssNestingSelector,
-    DirectScssCompound,
-    DirectScssComplexTail,
-    DirectScssComplex,
-    DirectScssSelectorTail,
-    DirectScssSelector,
-    DirectScssExtend,
-    DirectScssRule,
+    Pseudo,
+    NestingSelector,
+    Compound,
+    ComplexTail,
+    Complex,
+    SelectorTail,
+    Selector,
+    Extend,
+    Rule,
     rw: whitespace,
     whitespace
   };
