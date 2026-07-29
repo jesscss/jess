@@ -169,12 +169,12 @@ type ScssRules = {
   DirectScssPlaceholder: Combinator<SimpleSelector>;
   DirectScssAttribute: Combinator<SimpleSelector>;
   DirectScssPseudoArgument: Combinator<string>;
-  DirectScssStaticSelectorPseudoArgument: Combinator<string>;
-  DirectScssStaticSelectorPseudoItem: Combinator<string>;
-  DirectScssStaticSelectorPseudoTail: Combinator<string>;
-  DirectScssStaticPseudoArgument: Combinator<string>;
-  DirectScssStaticPseudoGroup: Combinator<string>;
-  DirectScssStaticPseudoSquare: Combinator<string>;
+  StaticSelectorPseudoArgument: Combinator<string>;
+  StaticSelectorPseudoItem: Combinator<string>;
+  StaticSelectorPseudoTail: Combinator<string>;
+  StaticPseudoArgument: Combinator<string>;
+  StaticPseudoGroup: Combinator<string>;
+  StaticPseudoSquare: Combinator<string>;
   DirectScssPseudo: Combinator<SimpleToken>;
   DirectScssNestingSelector: Combinator<SimpleSelector>;
   DirectScssCompound: Combinator<CompoundSelector>;
@@ -4380,7 +4380,7 @@ export const scssFactory = (g: ScssInputRules) => {
      */
     sequence(
       not(g.CssSyntaxMalformedPseudoNumericArgument),
-      g.DirectScssStaticPseudoArgument
+      g.StaticPseudoArgument
     ),
     joinSourceText
   );
@@ -4393,45 +4393,45 @@ export const scssFactory = (g: ScssInputRules) => {
    * this static spelling while selector-valued arguments retain their existing
    * canonical spelling inside the containing SimpleSelector.
    */
-  const directScssStaticPseudoChunk = regex(/(?:[^()\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
-  const DirectScssStaticPseudoGroup = node<string>(
-    'DirectScssStaticPseudoGroup',
+  const staticPseudoChunk = regex(/(?:[^()\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
+  const StaticPseudoGroup = node<string>(
+    'StaticPseudoGroup',
     sequence(
       literal('('),
       many(choice(
-        g.DirectScssStaticPseudoGroup,
-        g.DirectScssStaticPseudoSquare,
+        g.StaticPseudoGroup,
+        g.StaticPseudoSquare,
         StaticValueQuoted,
         g.CssSyntaxBlockComment,
-        directScssStaticPseudoChunk
+        staticPseudoChunk
       )),
       literal(')')
     ),
     joinSourceText
   );
-  const DirectScssStaticPseudoSquare = node<string>(
-    'DirectScssStaticPseudoSquare',
+  const StaticPseudoSquare = node<string>(
+    'StaticPseudoSquare',
     sequence(
       literal('['),
       many(choice(
-        g.DirectScssStaticPseudoGroup,
-        g.DirectScssStaticPseudoSquare,
+        g.StaticPseudoGroup,
+        g.StaticPseudoSquare,
         StaticValueQuoted,
         g.CssSyntaxBlockComment,
-        directScssStaticPseudoChunk
+        staticPseudoChunk
       )),
       literal(']')
     ),
     joinSourceText
   );
-  const DirectScssStaticPseudoArgument = node<string>(
-    'DirectScssStaticPseudoArgument',
+  const StaticPseudoArgument = node<string>(
+    'StaticPseudoArgument',
     oneOrMore(choice(
-      g.DirectScssStaticPseudoGroup,
-      g.DirectScssStaticPseudoSquare,
+      g.StaticPseudoGroup,
+      g.StaticPseudoSquare,
       StaticValueQuoted,
       g.CssSyntaxBlockComment,
-      directScssStaticPseudoChunk
+      staticPseudoChunk
     )),
     joinSourceText
   );
@@ -4442,32 +4442,32 @@ export const scssFactory = (g: ScssInputRules) => {
    * selector spelling (no following whitespace). Keep that grammar-owned
    * normalization separate from generic functional pseudo arguments.
    */
-  const directScssStaticSelectorPseudoChunk = regex(/(?:[^(),\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
-  const DirectScssStaticSelectorPseudoItem = node<string>(
-    'DirectScssStaticSelectorPseudoItem',
+  const staticSelectorPseudoChunk = regex(/(?:[^(),\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
+  const StaticSelectorPseudoItem = node<string>(
+    'StaticSelectorPseudoItem',
     oneOrMore(choice(
-      g.DirectScssStaticPseudoGroup,
-      g.DirectScssStaticPseudoSquare,
+      g.StaticPseudoGroup,
+      g.StaticPseudoSquare,
       StaticValueQuoted,
       g.CssSyntaxBlockComment,
-      directScssStaticSelectorPseudoChunk
+      staticSelectorPseudoChunk
     )),
     joinSourceText
   );
-  const DirectScssStaticSelectorPseudoTail = node<string>(
-    'DirectScssStaticSelectorPseudoTail',
+  const StaticSelectorPseudoTail = node<string>(
+    'StaticSelectorPseudoTail',
     sequence(
       literal(','),
       optional(space),
-      g.DirectScssStaticSelectorPseudoItem
+      g.StaticSelectorPseudoItem
     ),
     children => `,${requireString(children.at(-1))}`
   );
-  const DirectScssStaticSelectorPseudoArgument = node<string>(
-    'DirectScssStaticSelectorPseudoArgument',
+  const StaticSelectorPseudoArgument = node<string>(
+    'StaticSelectorPseudoArgument',
     sequence(
-      g.DirectScssStaticSelectorPseudoItem,
-      many(g.DirectScssStaticSelectorPseudoTail)
+      g.StaticSelectorPseudoItem,
+      many(g.StaticSelectorPseudoTail)
     ),
     joinSourceText
   );
@@ -4557,7 +4557,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       routed(),
       not(g.CssSyntaxMalformedPseudoNumericArgument),
-      g.DirectScssStaticPseudoArgument,
+      g.StaticPseudoArgument,
       literal(')')
     ),
 
@@ -4591,7 +4591,7 @@ export const scssFactory = (g: ScssInputRules) => {
           g.CssSyntaxOfKeyword
         )
       )),
-      g.DirectScssStaticPseudoArgument,
+      g.StaticPseudoArgument,
       literal(')')
     ),
     children => simpleSelector(`${requireToken(children[0]).value}${requireString(children.find(child => typeof child === 'string')).trim()})`)
@@ -4616,7 +4616,7 @@ export const scssFactory = (g: ScssInputRules) => {
       optional(space),
       expect(
         peek(sequence(
-          g.DirectScssStaticSelectorPseudoArgument,
+          g.StaticSelectorPseudoArgument,
           literal(')')
         )),
         'static selector pseudo argument'
@@ -5065,12 +5065,12 @@ export const scssFactory = (g: ScssInputRules) => {
     DirectScssPlaceholder,
     DirectScssAttribute,
     DirectScssPseudoArgument,
-    DirectScssStaticSelectorPseudoArgument,
-    DirectScssStaticSelectorPseudoItem,
-    DirectScssStaticSelectorPseudoTail,
-    DirectScssStaticPseudoArgument,
-    DirectScssStaticPseudoGroup,
-    DirectScssStaticPseudoSquare,
+    StaticSelectorPseudoArgument,
+    StaticSelectorPseudoItem,
+    StaticSelectorPseudoTail,
+    StaticPseudoArgument,
+    StaticPseudoGroup,
+    StaticPseudoSquare,
     DirectScssPseudo,
     DirectScssNestingSelector,
     DirectScssCompound,
