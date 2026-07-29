@@ -175,7 +175,7 @@ type ScssRules = {
   StaticPseudoArgument: Combinator<string>;
   StaticPseudoGroup: Combinator<string>;
   StaticPseudoSquare: Combinator<string>;
-  Pseudo: Combinator<SimpleToken>;
+  PseudoSelector: Combinator<SimpleToken>;
   NestingSelector: Combinator<SimpleSelector>;
   Compound: Combinator<CompoundSelector>;
   ComplexTail: Combinator<ComplexTailFact>;
@@ -996,7 +996,7 @@ const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
  * CssSyntaxHexColor / CssSyntaxNumber). Leading a choice arm with a
  * cross-composition `g.CssSyntax*` reference leaves that arm's first-set
  * unresolved (`any`) across the composeLeaf artifact boundary, so the compiler
- * enters the Pseudo / Color / Dimension node frame SPECULATIVELY at every simple
+ * enters the PseudoSelector / Color / Dimension node frame SPECULATIVELY at every simple
  * selector and value atom. A grammar-local leading recognizer lets the compiler
  * resolve the arm's first-set (`:`, `#`, a digit/sign) and first-char-gate it,
  * skipping the doomed frame entirely.
@@ -4664,7 +4664,7 @@ export const scssFactory = (g: ScssInputRules) => {
     routed(),
     children => simpleSelector(requireToken(children[0]).value)
   );
-  const PseudoDispatch = dispatch(
+  const PseudoSelectorDispatch = dispatch(
     pseudoIdentOrFunction,
     caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
     caseInsensitive([':nth-of-type(', ':nth-last-of-type('], NthTypePseudo),
@@ -4684,9 +4684,9 @@ export const scssFactory = (g: ScssInputRules) => {
     when(endsWith('('), GenericFunctionPseudo),
     otherwise(GenericBarePseudo)
   );
-  const Pseudo = node<SimpleToken>(
-    'Pseudo',
-    PseudoDispatch,
+  const PseudoSelector = node<SimpleToken>(
+    'PseudoSelector',
+    PseudoSelectorDispatch,
     children => requireSimpleToken(children.find(isSimpleToken))
   );
   const NestingSelector = node<SimpleSelector>(
@@ -4703,7 +4703,7 @@ export const scssFactory = (g: ScssInputRules) => {
           { trivia: whitespace },
           g.Attribute
         ),
-        g.Pseudo,
+        g.PseudoSelector,
         g.Placeholder,
         g.InterpolatedSimple,
         g.Simple
@@ -5071,7 +5071,7 @@ export const scssFactory = (g: ScssInputRules) => {
     StaticPseudoArgument,
     StaticPseudoGroup,
     StaticPseudoSquare,
-    Pseudo,
+    PseudoSelector,
     NestingSelector,
     Compound,
     ComplexTail,

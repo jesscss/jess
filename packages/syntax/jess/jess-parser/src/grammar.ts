@@ -105,7 +105,7 @@ type JessRules = {
   InterpolatedSimple: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
   Attribute: Combinator<SimpleSelector>;
-  Pseudo: Combinator<SimpleToken>;
+  PseudoSelector: Combinator<SimpleToken>;
   StaticPseudoArgument: Combinator<SelectorList | string>;
   GenericPseudoArgument: Combinator<SelectorList | string>;
   Compound: Combinator<CompoundSelector>;
@@ -2570,8 +2570,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return nth.value;
     }
   );
-  const Pseudo = node<SimpleToken>(
-    'Pseudo',
+  const PseudoSelector = node<SimpleToken>(
+    'PseudoSelector',
 
     /*
      * Insignificant whitespace may surround a functional pseudo's argument inside
@@ -2665,7 +2665,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         { trivia: whitespace },
         g.Attribute
       ),
-      g.Pseudo,
+      g.PseudoSelector,
       g.Parent,
       g.Simple
     ))),
@@ -2735,7 +2735,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * source text. Retain the parsed `SelectorList` rather than collapsing it to
    * text: a whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as
    * structured `args` and never canonicalizes at parse (the inner `_canon` memos
-   * stay unpopulated); `Pseudo` derives opaque SimpleSelector text otherwise.
+   * stay unpopulated); `PseudoSelector` derives opaque SimpleSelector text otherwise.
    */
   const StaticPseudoArgument = node<SelectorList | string>(
     'StaticPseudoArgument',
@@ -5330,7 +5330,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         { trivia: whitespace },
         g.Attribute
       ),
-      g.Pseudo,
+      g.PseudoSelector,
       g.InterpolatedParentSuffix,
       g.InterpolatedSimple,
       g.Parent,
@@ -5624,7 +5624,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     InterpolatedSimple,
     InterpolatedParentSuffix,
     Attribute,
-    Pseudo,
+    PseudoSelector,
     StaticPseudoArgument,
     GenericPseudoArgument,
     Compound,

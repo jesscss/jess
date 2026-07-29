@@ -331,6 +331,64 @@ inventory, not an acceptance metric; a name may remain only when the rule really
 recognizes a dialect-specific language shape and that divergence is documented
 near the rule.
 
+CSS ownership re-audit, 2026-07-29: downstream grammars should use CSS for
+every construct they do not actually change. The naming target is semantic,
+generic, and shared: a guard is `Guard`, a mixin is `Mixin`, a selector is a
+`Selector`, and a pseudo selector is `PseudoSelector`, not bare `Pseudo` or a
+dialect/provenance-prefixed alias. `Css*` grammar rules and CST labels are
+findings by default for the same reason `Direct*`, `Ast*`, and `Core*` names
+are findings: they describe the current owner, not the language concept. The
+narrow exception is parser-shared terminal recognition such as `CssSyntax*` and
+`ScssSyntax*`, where the prefix names the accepted syntax surface; those names
+should not leak into grammar-family nodes, AST concepts, or public CST labels.
+
+At-rule naming decision, 2026-07-29: the top-level family is `AtRule`.
+Concrete public CST/AST node kinds may distinguish statement and block forms
+with `AtRuleStatement` and `AtRuleBlock` / `AtRuleWithBlock`, but the dispatcher
+or family rule should not be named for the caller (`StylesheetAtRule`,
+`DeclarationListAtRule`) or for provenance (`CssAtRulePrelude`) unless that
+context changes the accepted language. A future Parseman/CST ergonomics pass
+may add a separate family/category tag so consumers can ask "is this an
+AtRule?" while preserving a concrete kind such as `AtRuleStatement`; do not
+block grammar cleanup on that primitive.
+
+CSS duplication audit, 2026-07-29: Hypatia's read-only audit found these
+highest-priority non-Parseman grammar surfaces:
+
+- Jess CSS `@import` is the clearest cleanup. Jess `@import` is CSS only; Jess
+  extends CSS and its module/script imports are the `@-...` family. The local
+  `CssImportTarget`, `CssImportPrelude`, and `CssImport` family in
+  `packages/syntax/jess/jess-parser/src/grammar.ts` should become CSS-owned or
+  shared import composition, with only real Jess holes parameterized
+  (`$`-reserved URL handling, `UrlInterpolatedValue`, and typed `supports()` /
+  `layer()` tails). Do not tune this as a Jess-local CSS import parser.
+- Custom-property values in Less, SCSS, and Jess repeat the same CSS
+  declaration-value balanced-group frame. Replace that with a shared skeleton
+  parameterized by dialect interpolation/reference leaves; comments remain
+  trivia and the custom-property stream is not an ordinary evaluated
+  `ValueList`.
+- Query/media/container/supports grammar repeats the CSS frame across Less,
+  SCSS, and Jess. Downstream value leaves and interpolation policy can differ,
+  but property/comparison/range/boolean/list framing should be shared instead of
+  restated under `StaticAt*` or dialect-prefixed names.
+- Keyframe endpoint and selector framing duplicate CSS. Fold `from` / `to` and
+  the selector frame only after settling percentage differences explicitly.
+- SCSS still carries local CSS-like leaves (`pseudoColon`, `hexColor`,
+  `numberValue`, comments, at-keyword leaves) because cross-composed
+  `CssSyntax*` leaves have macro first-set limits. That is a temporary blocker,
+  not an architectural exception; either make the shared leaves macro-visible or
+  fix the Parseman compose limitation before calling the duplication done.
+- SCSS `propertyName` is documented as byte-identical to `CssSyntaxProperty`
+  but accepts optional leading `*`. Either use the shared leaf or rename and
+  document it as a deliberate legacy `*property` override.
+- CSS at-rule block frames in SCSS and Jess restate at-rule headers/tails with
+  dialect body substitutions. Share the at-rule frame/reducer pattern where the
+  accepted header language is unchanged; keep local bodies where the dialect
+  admits extra statements.
+- Less `CssAtRulePrelude` is CSS raw-prelude skeleton plus Less interpolation.
+  Share the whitespace/comma/group/quoted/text skeleton and keep only the Less
+  interpolation override local.
+
 Less naming/composition rule, 2026-07-27: `DirectLess*` is migration scaffolding,
 not grammar vocabulary. When a Less rule is the dialect version of a CSS
 production, give it the CSS production name so a composed grammar can override
@@ -4676,6 +4734,21 @@ AST / 36.4926 ms CST; `css-corpus-ok` 1.8392 ms AST / 1.5769 ms CST;
 A/B proof. The matching `pnpm run check:macro` pass reported parser-shared, CSS,
 Less, SCSS, and Jess fully compiled with 0 interpreter fallbacks; Less reported
 3512 `charCodeAt` vs 304 `RegExp.exec`.
+
+Less parse-performance follow-up, 2026-07-29: after the value-position
+`MixinReference` delimiter-dispatch slice, the same case filter on the
+patch-only worktree reported one-shot medians of `benchmark.less` 28.1948 ms AST
+/ 17.2576 ms CST; `bootstrap-port` 47.3880 ms AST / 38.8403 ms CST;
+`test-data-unit` 51.6589 ms AST / 41.4608 ms CST; `css-corpus-ok` 2.1233 ms
+AST / 2.1212 ms CST; `css-corpus-err` 0.0489 ms AST / 0.0409 ms CST; and
+`css-corpus-ok-joined` 1.8781 ms AST / 1.8757 ms CST. The interleaved
+same-worktree A/B command
+`BENCH_CASES=benchmark.less,bootstrap-port,test-data-unit,css-corpus-ok,css-corpus-err,css-corpus-ok-joined node packages/syntax/less/less-parser/test/ab-compare.mjs 2 2 4 12`
+read as neutral on the real corpora: `bootstrap-port` -0.4% AST / 0.0% CST and
+`test-data-unit` -0.7% AST / -0.3% CST. The one-file `benchmark.less` medians
+were noisily slower (+6.2% AST / +13.0% CST) and should not be reported as a
+clean regression without a larger A/B run because the broader corpus controls
+did not corroborate it.
 
 Dispatch pressure update, 2026-07-27: continue converting shared-opener routes
 to `dispatch(...)`/`routed()` only where the branch can reuse the consumed
