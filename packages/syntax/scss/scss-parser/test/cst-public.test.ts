@@ -68,7 +68,7 @@ describe('@jesscss/scss-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(stats(result.tree).grammarTypes.get('ScssImport')).toBe(1);
+    expect(stats(result.tree).grammarTypes.get('StaticImportRule')).toBe(1);
     expect(leafText(result.tree)).toContain('supports');
     expect(leafText(result.tree)).toContain('theme.css');
   });

@@ -77,22 +77,22 @@ type ScssRules = {
   DirectScssDeclaration: Combinator<Declaration>;
   DirectScssStaticNestedPropertyLeaf: Combinator<Declaration>;
   DirectScssStaticNestedProperty: Combinator<Declaration>;
-  ScssImport: Combinator<ImportAtRule>;
-  DirectScssUseAs: Combinator<string>;
-  DirectScssUse: Combinator<StyleImport | ModuleImport>;
-  DirectScssForward: Combinator<StyleImport>;
-  DirectScssStaticImportUrl: Combinator<Url>;
-  DirectScssStaticImportLayer: Combinator<ValueNode>;
-  DirectScssStaticImportDeclaration: Combinator<ValueNode>;
-  DirectScssStaticImportSupports: Combinator<FunctionCall>;
-  DirectScssStaticImportQualifier: Combinator<ValueNode>;
-  DirectScssStaticImportMediaFeature: Combinator<ValueNode>;
-  DirectScssStaticImportMediaInParens: Combinator<ValueNode>;
-  DirectScssStaticImportMediaCondition: Combinator<ValueNode>;
-  DirectScssStaticImportMediaOnlyClause: Combinator<ValueNode>;
-  DirectScssStaticImportMediaClause: Combinator<ValueNode>;
-  DirectScssStaticImportMediaPrelude: Combinator<ValueNode>;
-  DirectScssStaticImportTail: Combinator<ValueNode>;
+  StaticImportRule: Combinator<ImportAtRule>;
+  UseNamespace: Combinator<string>;
+  UseRule: Combinator<StyleImport | ModuleImport>;
+  ForwardRule: Combinator<StyleImport>;
+  StaticImportUrl: Combinator<Url>;
+  StaticImportLayer: Combinator<ValueNode>;
+  StaticImportDeclaration: Combinator<ValueNode>;
+  StaticImportSupports: Combinator<FunctionCall>;
+  StaticImportQualifier: Combinator<ValueNode>;
+  StaticImportMediaFeature: Combinator<ValueNode>;
+  StaticImportMediaInParens: Combinator<ValueNode>;
+  StaticImportMediaCondition: Combinator<ValueNode>;
+  StaticImportMediaOnlyClause: Combinator<ValueNode>;
+  StaticImportMediaClause: Combinator<ValueNode>;
+  StaticImportMediaPrelude: Combinator<ValueNode>;
+  StaticImportTail: Combinator<ValueNode>;
   DirectScssMixinParam: Combinator<Param>;
   DirectScssMixinParams: Combinator<Param[]>;
   ScssMixinCallArg: Combinator<ScssCallArg>;
@@ -2103,8 +2103,8 @@ export const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
-  const DirectScssStaticImportUrl = node<Url>(
-    'DirectScssStaticImportUrl',
+  const StaticImportUrl = node<Url>(
+    'StaticImportUrl',
 
     /*
      * The public CST accepts an empty CSS URL target. Keep that fact explicit
@@ -2141,8 +2141,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * multi-item imports still need their own typed reductions rather than a
    * generic value or authored-text fallback.
    */
-  const DirectScssStaticImportLayer = node<ValueNode>(
-    'DirectScssStaticImportLayer',
+  const StaticImportLayer = node<ValueNode>(
+    'StaticImportLayer',
     choice(
       noTrivia(sequence(
         regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i),
@@ -2165,8 +2165,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * parentheses required by a general <supports-condition>. Its canonical fact
    * is still the same parenthesized declaration condition used elsewhere.
    */
-  const DirectScssStaticImportDeclaration = node<ValueNode>(
-    'DirectScssStaticImportDeclaration',
+  const StaticImportDeclaration = node<ValueNode>(
+    'StaticImportDeclaration',
     sequence(
       propertyName,
       literal(':'),
@@ -2178,8 +2178,8 @@ export const scssFactory = (g: ScssInputRules) => {
       requireValue(children[2])
     ))
   );
-  const DirectScssStaticImportSupports = node<FunctionCall>(
-    'DirectScssStaticImportSupports',
+  const StaticImportSupports = node<FunctionCall>(
+    'StaticImportSupports',
     sequence(
       noTrivia(sequence(
         regex(/supports(?![-_a-zA-Z0-9\u0080-\uffff])/i),
@@ -2187,7 +2187,7 @@ export const scssFactory = (g: ScssInputRules) => {
       )),
       choice(
         g.DirectScssSupportsCondition,
-        g.DirectScssStaticImportDeclaration
+        g.StaticImportDeclaration
       ),
       literal(')')
     ),
@@ -2204,26 +2204,26 @@ export const scssFactory = (g: ScssInputRules) => {
    * admits only the static values and boolean/query forms the canonical nodes
    * already represent.
    */
-  const DirectScssStaticImportQualifier = node<ValueNode>(
-    'DirectScssStaticImportQualifier',
+  const StaticImportQualifier = node<ValueNode>(
+    'StaticImportQualifier',
     choice(
       sequence(
-        g.DirectScssStaticImportLayer,
-        g.DirectScssStaticImportSupports
+        g.StaticImportLayer,
+        g.StaticImportSupports
       ),
-      g.DirectScssStaticImportLayer,
-      g.DirectScssStaticImportSupports
+      g.StaticImportLayer,
+      g.StaticImportSupports
     ),
     (children) => {
       const values = children.filter(isValue);
       if (values.length === 0) {
-        throw new TypeError('Direct SCSS import qualifier requires typed facts.');
+        throw new TypeError('Static import qualifier requires typed facts.');
       }
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const DirectScssStaticImportMediaFeature = node<ValueNode>(
-    'DirectScssStaticImportMediaFeature',
+  const StaticImportMediaFeature = node<ValueNode>(
+    'StaticImportMediaFeature',
     choice(
       sequence(
         literal('('),
@@ -2257,30 +2257,30 @@ export const scssFactory = (g: ScssInputRules) => {
       ));
     }
   );
-  const DirectScssStaticImportMediaInParens = node<ValueNode>(
-    'DirectScssStaticImportMediaInParens',
+  const StaticImportMediaInParens = node<ValueNode>(
+    'StaticImportMediaInParens',
     choice(
       sequence(
         literal('('),
-        g.DirectScssStaticImportMediaCondition,
+        g.StaticImportMediaCondition,
         literal(')')
       ),
-      g.DirectScssStaticImportMediaFeature
+      g.StaticImportMediaFeature
     ),
     children => children.length === 1 ? requireValue(children[0]) : block(requireValue(children[1]))
   );
-  const DirectScssStaticImportMediaCondition = node<ValueNode>(
-    'DirectScssStaticImportMediaCondition',
+  const StaticImportMediaCondition = node<ValueNode>(
+    'StaticImportMediaCondition',
     choice(
       sequence(
         g.CssSyntaxQueryNot,
-        g.DirectScssStaticImportMediaInParens
+        g.StaticImportMediaInParens
       ),
       sequence(
-        g.DirectScssStaticImportMediaInParens,
+        g.StaticImportMediaInParens,
         many(sequence(
           g.CssSyntaxQueryAndOr,
-          g.DirectScssStaticImportMediaInParens
+          g.StaticImportMediaInParens
         ))
       )
     ),
@@ -2289,8 +2289,8 @@ export const scssFactory = (g: ScssInputRules) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const DirectScssStaticImportMediaNonOnlyKeyword = node<Keyword>(
-    'DirectScssStaticImportMediaNonOnlyKeyword',
+  const StaticImportMediaNonOnlyKeyword = node<Keyword>(
+    'StaticImportMediaNonOnlyKeyword',
     sequence(
       not(g.CssSyntaxQueryOnly),
       g.Keyword
@@ -2302,48 +2302,48 @@ export const scssFactory = (g: ScssInputRules) => {
    * A media *type* can only continue with `and`; `or` remains available in a
    * condition made solely from parenthesized media features below.
    */
-  const directScssStaticImportMediaAnd = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-  const DirectScssStaticImportMediaOnlyClause = node<ValueNode>(
-    'DirectScssStaticImportMediaOnlyClause',
+  const staticImportMediaAnd = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+  const StaticImportMediaOnlyClause = node<ValueNode>(
+    'StaticImportMediaOnlyClause',
     sequence(
       g.CssSyntaxQueryOnly,
-      DirectScssStaticImportMediaNonOnlyKeyword,
+      StaticImportMediaNonOnlyKeyword,
       many(sequence(
-        directScssStaticImportMediaAnd,
-        g.DirectScssStaticImportMediaInParens
+        staticImportMediaAnd,
+        g.StaticImportMediaInParens
       ))
     ),
     children => spaced(keywordizeValues(children))
   );
-  const DirectScssStaticImportMediaClause = node<ValueNode>(
-    'DirectScssStaticImportMediaClause',
+  const StaticImportMediaClause = node<ValueNode>(
+    'StaticImportMediaClause',
     choice(
-      DirectScssStaticImportMediaOnlyClause,
+      StaticImportMediaOnlyClause,
       sequence(
-        DirectScssStaticImportMediaNonOnlyKeyword,
+        StaticImportMediaNonOnlyKeyword,
         choice(
           sequence(
-            directScssStaticImportMediaAnd,
-            g.DirectScssStaticImportMediaInParens
+            staticImportMediaAnd,
+            g.StaticImportMediaInParens
           ),
-          g.DirectScssStaticImportMediaInParens
+          g.StaticImportMediaInParens
         )
       ),
-      g.DirectScssStaticImportMediaCondition,
-      DirectScssStaticImportMediaNonOnlyKeyword
+      g.StaticImportMediaCondition,
+      StaticImportMediaNonOnlyKeyword
     ),
     (children) => {
       const values = keywordizeValues(children);
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const DirectScssStaticImportMediaPrelude = node<ValueNode>(
-    'DirectScssStaticImportMediaPrelude',
+  const StaticImportMediaPrelude = node<ValueNode>(
+    'StaticImportMediaPrelude',
     sequence(
-      g.DirectScssStaticImportMediaClause,
+      g.StaticImportMediaClause,
       many(sequence(
         literal(','),
-        g.DirectScssStaticImportMediaClause
+        g.StaticImportMediaClause
       ))
     ),
     (children) => {
@@ -2356,15 +2356,15 @@ export const scssFactory = (g: ScssInputRules) => {
           );
     }
   );
-  const DirectScssStaticImportTail = node<ValueNode>(
-    'DirectScssStaticImportTail',
+  const StaticImportTail = node<ValueNode>(
+    'StaticImportTail',
     choice(
       sequence(
-        g.DirectScssStaticImportQualifier,
-        g.DirectScssStaticImportMediaPrelude
+        g.StaticImportQualifier,
+        g.StaticImportMediaPrelude
       ),
-      g.DirectScssStaticImportQualifier,
-      g.DirectScssStaticImportMediaPrelude
+      g.StaticImportQualifier,
+      g.StaticImportMediaPrelude
     ),
     (children) => {
       const values = children.filter(isValue).flatMap(value =>
@@ -2372,27 +2372,27 @@ export const scssFactory = (g: ScssInputRules) => {
           ? value.parts
           : [value]);
       if (values.length === 0) {
-        throw new TypeError('Direct SCSS static import tail requires a typed value.');
+        throw new TypeError('Static import tail requires a typed value.');
       }
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const ScssImport = node<ImportAtRule>(
-    'ScssImport',
+  const StaticImportRule = node<ImportAtRule>(
+    'StaticImportRule',
     sequence(
       regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       choice(
         g.Quoted,
-        g.DirectScssStaticImportUrl
+        g.StaticImportUrl
       ),
-      optional(g.DirectScssStaticImportTail),
+      optional(g.StaticImportTail),
       literal(';')
     ),
     (children) => {
       const targetIndex = children.findIndex(isImportTarget);
       const target = children[targetIndex];
       if (!isImportTarget(target)) {
-        throw new TypeError('ScssImport requires a typed target.');
+        throw new TypeError('StaticImportRule requires a typed target.');
       }
       const tail = children.slice(targetIndex + 1).find(isValue) ?? null;
       return importAtRule(
@@ -2404,24 +2404,24 @@ export const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
-  const directScssImportName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const DirectScssUseAs = node<string>(
-    'DirectScssUseAs',
+  const moduleNamespaceName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const UseNamespace = node<string>(
+    'UseNamespace',
     sequence(
       regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       choice(
         literal('*'),
-        directScssImportName
+        moduleNamespaceName
       )
     ),
     children => requireToken(children[1]).value
   );
-  const DirectScssUse = node<StyleImport | ModuleImport>(
-    'DirectScssUse',
+  const UseRule = node<StyleImport | ModuleImport>(
+    'UseRule',
     sequence(
       regex(/@use(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       g.StaticQuoted,
-      optional(g.DirectScssUseAs),
+      optional(g.UseNamespace),
       literal(';')
     ),
     (children) => {
@@ -2457,8 +2457,8 @@ export const scssFactory = (g: ScssInputRules) => {
           );
     }
   );
-  const DirectScssForward = node<StyleImport>(
-    'DirectScssForward',
+  const ForwardRule = node<StyleImport>(
+    'ForwardRule',
     sequence(
       regex(/@forward(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       g.StaticQuoted,
@@ -2660,7 +2660,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.DirectScssStaticNestedProperty,
     g.DirectScssDeclaration,
     g.DirectScssComment,
-    g.ScssImport,
+    g.StaticImportRule,
     g.VariableDeclaration,
     literal(';')
   );
@@ -2695,7 +2695,7 @@ export const scssFactory = (g: ScssInputRules) => {
    */
   const directScssConditionalBody = many(choice(
     g.DirectScssComment,
-    g.ScssImport,
+    g.StaticImportRule,
     g.DirectScssMixinDef,
     g.DirectScssMixinCall,
     g.DirectScssEach,
@@ -2715,7 +2715,7 @@ export const scssFactory = (g: ScssInputRules) => {
   ));
   const directScssStartingLayerBody = many(choice(
     g.DirectScssComment,
-    g.ScssImport,
+    g.StaticImportRule,
     g.DirectScssMixinDef,
     g.DirectScssMixinCall,
     g.DirectScssEach,
@@ -3023,7 +3023,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.DirectScssComment,
-        g.ScssImport,
+        g.StaticImportRule,
         g.VariableDeclaration,
         g.DirectScssStaticNestedProperty,
         g.DirectScssDeclaration,
@@ -3716,7 +3716,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.DirectScssComment,
-        g.ScssImport,
+        g.StaticImportRule,
         g.VariableDeclaration,
         g.DirectScssMixinDef,
         g.DirectScssMixinCall,
@@ -4897,12 +4897,12 @@ export const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.DirectScssComment,
         g.VariableDeclaration,
-        g.DirectScssUse,
-        g.DirectScssForward
+        g.UseRule,
+        g.ForwardRule
       )),
       many(choice(
         g.DirectScssComment,
-        g.ScssImport,
+        g.StaticImportRule,
         g.DirectScssAtRuleStatement,
         g.VariableDeclaration,
         g.DirectScssMixinDef,
@@ -4973,22 +4973,22 @@ export const scssFactory = (g: ScssInputRules) => {
     DirectScssDeclaration,
     DirectScssStaticNestedPropertyLeaf,
     DirectScssStaticNestedProperty,
-    ScssImport,
-    DirectScssUseAs,
-    DirectScssUse,
-    DirectScssForward,
-    DirectScssStaticImportUrl,
-    DirectScssStaticImportLayer,
-    DirectScssStaticImportDeclaration,
-    DirectScssStaticImportSupports,
-    DirectScssStaticImportQualifier,
-    DirectScssStaticImportMediaFeature,
-    DirectScssStaticImportMediaInParens,
-    DirectScssStaticImportMediaCondition,
-    DirectScssStaticImportMediaOnlyClause,
-    DirectScssStaticImportMediaClause,
-    DirectScssStaticImportMediaPrelude,
-    DirectScssStaticImportTail,
+    StaticImportRule,
+    UseNamespace,
+    UseRule,
+    ForwardRule,
+    StaticImportUrl,
+    StaticImportLayer,
+    StaticImportDeclaration,
+    StaticImportSupports,
+    StaticImportQualifier,
+    StaticImportMediaFeature,
+    StaticImportMediaInParens,
+    StaticImportMediaCondition,
+    StaticImportMediaOnlyClause,
+    StaticImportMediaClause,
+    StaticImportMediaPrelude,
+    StaticImportTail,
     DirectScssMixinParam,
     DirectScssMixinParams,
     ScssMixinCallArg,
