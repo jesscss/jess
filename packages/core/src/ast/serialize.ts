@@ -317,11 +317,14 @@ function importHasOption(options: string | null, option: string): boolean {
  */
 function importThroughContext(context: Context): NonNullable<SerializeOptions['importDocument']> {
   const importError = (request: ImportDocumentRequest, error: unknown): never => {
+    if (error instanceof JessError && error.code !== 'import/not-found') {
+      throw error;
+    }
+    const file = context.sourceContext?.file;
+    const source = file?.source;
+    const span = source === undefined ? undefined : sourceSpanOf(request.node);
+    const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start);
     if (error instanceof JessError && error.code === 'import/not-found') {
-      const file = context.sourceContext?.file;
-      const source = file?.source;
-      const span = source === undefined ? undefined : sourceSpanOf(request.node);
-      const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start);
       throw ERR.importNotFound({
         node: request.node,
         filePath: file?.fullPath,
@@ -334,7 +337,17 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
         }
       });
     }
-    throw error;
+    throw ERR.importLoadFailed({
+      node: request.node,
+      filePath: file?.fullPath,
+      source,
+      line: location?.line,
+      column: location?.column,
+      meta: {
+        specifier: request.specifier,
+        reason: error instanceof Error ? error.message : String(error)
+      }
+    });
   };
   return async ({ node, specifier, options, tail }) => {
     const request = { node, specifier, options, tail };

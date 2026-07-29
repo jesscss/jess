@@ -556,6 +556,13 @@ export const ERR = {
       ...args
     });
   },
+  importLoadFailed(args: Common & { meta: { specifier: string; reason: string } }) {
+    return makeJessError({
+      code: 'import/load-failed',
+      phase: 'import',
+      ...args
+    });
+  },
 
   // Eval
   arity(

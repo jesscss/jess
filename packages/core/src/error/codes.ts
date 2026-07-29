@@ -25,6 +25,7 @@ export type JessErrorCode =
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'import/not-found'
+  | 'import/load-failed'
   | 'eval/bad-call-arity'
   | 'eval/type-mismatch'
   | 'eval/invalid-function'
@@ -173,6 +174,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Import not found',
       reason: 'Could not resolve "${specifier}" from "${from}".',
       fix: 'Check the import path, extension, and configured include paths.'
+    }
+  ],
+  [
+    'import/load-failed',
+    {
+      summary: 'Import "${specifier}" could not be loaded: ${reason}',
+      reason: 'Loading the stylesheet import failed: ${reason}',
+      fix: 'Check that the imported file can be read and parsed, or remove the import.'
     }
   ],
 

@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
-import { logger } from '@jesscss/core';
+import { logger, type PluginInterface } from '@jesscss/core';
 
 describe('public API contract', () => {
   let tempDir: string;
@@ -164,6 +164,48 @@ describe('public API contract', () => {
     });
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.loadedUrls).toEqual([]);
+  });
+
+  it('surfaces imported source loader failures through renderToResult', async () => {
+    const entryFile = path.join(tempDir, 'entry.less');
+    const importedFile = path.join(tempDir, 'tokens.less');
+    fs.writeFileSync(entryFile, '@import "tokens.less";\n.a { color: red; }\n');
+    fs.writeFileSync(importedFile, '.tokens { color: blue; }\n');
+
+    const loaderFailure = 'import loader timed out while reading tokens.less';
+    const failingSourcePlugin: PluginInterface = {
+      name: 'node-modules',
+      resolve(filePath, currentDir) {
+        const paths = Array.isArray(filePath) ? filePath : [filePath];
+        return paths.map(candidate => path.isAbsolute(candidate) ? candidate : path.resolve(currentDir, candidate));
+      },
+      locate(candidates) {
+        return candidates.find(candidate => fs.existsSync(candidate)) ?? null;
+      },
+      async getSource(filePath) {
+        if (filePath === importedFile) {
+          throw new Error(loaderFailure);
+        }
+        return fs.promises.readFile(filePath, 'utf8');
+      }
+    };
+
+    const result = await new Compiler({
+      compile: { plugins: [failingSourcePlugin] }
+    }).renderToResult(entryFile, {
+      suppressWarnings: true,
+      colors: false
+    });
+
+    expect(result.css).toBe('');
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'import/load-failed',
+        phase: 'import',
+        message: expect.stringContaining(loaderFailure),
+        reason: expect.stringContaining(loaderFailure)
+      })
+    ]));
   });
 
   it('disposes public compiler instances idempotently', () => {
