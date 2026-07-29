@@ -27,6 +27,24 @@ describe('AST-v2 native function boundary', () => {
     expect(context.pluginHost?.globalFns).toEqual([double]);
   });
 
+  it('does not install a second executable @plugin loader', () => {
+    const loader = () => [];
+    const context = new Context({}, []);
+    context.pluginHost = { loadPlugin: loader };
+
+    new LessCompatPlugin().setContext(context);
+
+    expect(context.pluginHost?.loadPlugin).toBe(loader);
+  });
+
+  it('does not add executable @plugin loading to an empty Context', () => {
+    const context = new Context({}, []);
+
+    new LessCompatPlugin().setContext(context);
+
+    expect(context.pluginHost?.loadPlugin).toBeUndefined();
+  });
+
   it('keeps the compat plugin entrypoint free of the archived visitor adapter', () => {
     const source = readFileSync(fileURLToPath(new URL('../src/plugin.ts', import.meta.url)), 'utf8');
     expect(source).not.toMatch(/from '\.\/transform|LessAdapterBase|JsFunction/);

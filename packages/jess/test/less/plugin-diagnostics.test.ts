@@ -225,7 +225,9 @@ describe('the less-compat tree shim', () => {
     });
 
     expect(result.errors).toEqual([]);
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual([
+      expect.objectContaining({ code: 'deprecation/less-plugin' })
+    ]);
     expect(result.css).toContain('width: 992px');
   }, 30000);
 
