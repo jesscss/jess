@@ -22,10 +22,14 @@ function stats(tree: CstNode) {
   return { leaves, grammarTypes, types };
 }
 
-function expectNoDirectLabels(tree: CstNode) {
+function isModeLabel(type: string): boolean {
+  return type.startsWith('Direct') || type.includes('Ast') || type.includes('Cst');
+}
+
+function expectNoModeLabels(tree: CstNode) {
   const { grammarTypes, types } = stats(tree);
-  expect([...grammarTypes.keys()].filter(type => type.startsWith('Direct'))).toEqual([]);
-  expect([...types].filter(type => type.startsWith('Direct'))).toEqual([]);
+  expect([...grammarTypes.keys()].filter(isModeLabel)).toEqual([]);
+  expect([...types].filter(isModeLabel)).toEqual([]);
 }
 
 describe('@jesscss/jess-parser/cst', () => {
@@ -36,7 +40,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
     expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
-    expectNoDirectLabels(result.tree);
+    expectNoModeLabels(result.tree);
   });
 
   it('keeps collapse mode from dropping leaves or inventing Unknown nodes', () => {
@@ -56,8 +60,8 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(stats(expanded.tree).types).toContain('VariableDeclaration');
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
     expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
-    expectNoDirectLabels(expanded.tree);
-    expectNoDirectLabels(collapsed.tree);
+    expectNoModeLabels(expanded.tree);
+    expectNoModeLabels(collapsed.tree);
   });
 
   it('uses structural interpolation nodes in selector interpolation', () => {
@@ -142,7 +146,7 @@ describe('@jesscss/jess-parser/cst', () => {
      */
     expect(stats(result.tree).grammarTypes.get('ExpressionProduct')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('ExpressionAtom')).toBeGreaterThan(0);
-    expectNoDirectLabels(result.tree);
+    expectNoModeLabels(result.tree);
 
     const normalValue = parseJessCst('$w: 2px; .card { width: $w * 2 + 1px; }');
     expect(normalValue.errors.length + Number(normalValue.unconsumedFrom !== null)).toBeGreaterThan(0);
@@ -154,7 +158,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(stats(result.tree).grammarTypes.get('For')).toBe(1);
-    expectNoDirectLabels(result.tree);
+    expectNoModeLabels(result.tree);
   });
 
   it('rejects malformed selector interpolation instead of swallowing it as a token', () => {

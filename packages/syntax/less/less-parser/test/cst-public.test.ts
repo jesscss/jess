@@ -48,6 +48,16 @@ function stats(tree: CstNode) {
   return { leaves, grammarTypes, types };
 }
 
+function isModeLabel(type: string): boolean {
+  return type.startsWith('Direct') || type.includes('Ast') || type.includes('Cst');
+}
+
+function expectNoModeLabels(tree: CstNode) {
+  const { grammarTypes, types } = stats(tree);
+  expect([...grammarTypes.keys()].filter(isModeLabel)).toEqual([]);
+  expect([...types].filter(isModeLabel)).toEqual([]);
+}
+
 describe('@jesscss/less-parser/cst', () => {
   it('parses Less through the public core-free CST entry', () => {
     const result = parseLessCst('@color: red; .x { color: @color; }');
@@ -56,6 +66,7 @@ describe('@jesscss/less-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
     expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
+    expectNoModeLabels(result.tree);
   });
 
   it('keeps unsupported Less variable names recoverable in CST mode', () => {
@@ -68,6 +79,7 @@ describe('@jesscss/less-parser/cst', () => {
       const result = parseLessCst(input);
 
       expect(result.tree.type).toBe('StyleSheet');
+      expectNoModeLabels(result.tree);
     }
   });
 
@@ -91,6 +103,8 @@ describe('@jesscss/less-parser/cst', () => {
     expect(stats(collapsed.tree).grammarTypes.get('Reference') ?? 0).toBeLessThanOrEqual(stats(expanded.tree).grammarTypes.get('Reference') ?? 0);
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
     expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
+    expectNoModeLabels(expanded.tree);
+    expectNoModeLabels(collapsed.tree);
   });
 });
 
@@ -157,6 +171,7 @@ describe('Less import CST facts', () => {
     expect(findNode(imp!, 'ImportTarget')).toBeDefined();
     expect(findNode(imp!, 'Url')).toBeDefined();
     expect(findNode(imp!, 'ImportTail')).toBeDefined();
+    expectNoModeLabels(result.tree);
   });
 
   it('rejects an unterminated quoted interpolation import target', () => {
@@ -175,6 +190,7 @@ describe('Less statement-container CST facts', () => {
     expect(findNodes(result.tree, 'Ruleset')).toHaveLength(5);
     expect(findNodes(result.tree, 'For')).toHaveLength(2);
     expect(findNodes(result.tree, 'MixinOrQualifiedRule')).toHaveLength(1);
+    expectNoModeLabels(result.tree);
   });
 });
 

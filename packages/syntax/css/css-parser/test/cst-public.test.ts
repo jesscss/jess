@@ -38,6 +38,7 @@ function nodesByGrammarType(tree: CstNode, grammarType: string): CstNode[] {
 function collect(tree: CstNode) {
   let leaves = 0;
   let basicSelectors = 0;
+  const grammarTypes = new Map<string, number>();
   const types = new Set<string>();
   const visit = (node: CstNode | CstNode['children'][number]) => {
     if (node._tag === 'leaf') {
@@ -46,6 +47,7 @@ function collect(tree: CstNode) {
     }
     if (node._tag === 'node') {
       types.add(node.type);
+      grammarTypes.set(node.grammarType, (grammarTypes.get(node.grammarType) ?? 0) + 1);
       if (node.type === 'BasicSelector') {
         basicSelectors++;
       }
@@ -53,7 +55,17 @@ function collect(tree: CstNode) {
     }
   };
   visit(tree);
-  return { leaves, basicSelectors, types };
+  return { leaves, basicSelectors, grammarTypes, types };
+}
+
+function isModeLabel(type: string): boolean {
+  return type.startsWith('Direct') || type.includes('Ast') || type.includes('Cst');
+}
+
+function expectNoModeLabels(tree: CstNode) {
+  const { grammarTypes, types } = collect(tree);
+  expect([...grammarTypes.keys()].filter(isModeLabel)).toEqual([]);
+  expect([...types].filter(isModeLabel)).toEqual([]);
 }
 
 describe('@jesscss/css-parser/cst', () => {
@@ -64,6 +76,7 @@ describe('@jesscss/css-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
     expect(result.tree.children.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
+    expectNoModeLabels(result.tree);
   });
 
   it('ignores trailing CSS trivia but reports a non-trivia tail', () => {
@@ -80,6 +93,7 @@ describe('@jesscss/css-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.tree.children.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
+    expectNoModeLabels(result.tree);
   });
 
   it('keeps named CSS CST nodes stable with and without collapse mode', () => {
@@ -90,6 +104,8 @@ describe('@jesscss/css-parser/cst', () => {
     expect(collapsed.errors).toHaveLength(0);
     expect([...collect(collapsed.tree).types]).not.toContain('Unknown');
     expect(collect(collapsed.tree)).toMatchObject({ leaves: collect(expanded.tree).leaves, basicSelectors: 2 });
+    expectNoModeLabels(expanded.tree);
+    expectNoModeLabels(collapsed.tree);
   });
 
   it('keeps CSS static escaped strings as a sigil plus a normal Quoted CST node', () => {
@@ -309,6 +325,8 @@ describe('@jesscss/css-parser/cst — parseCssDoc structural parity', () => {
       }
       const abs = absolutizeCST(tree);
       expect(cstStructKey(abs), `mismatch for: ${JSON.stringify(input)}`).toEqual(cstStructKey(oneShot.tree));
+      expectNoModeLabels(oneShot.tree);
+      expectNoModeLabels(abs);
     }
   });
 });

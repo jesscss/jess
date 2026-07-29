@@ -35,10 +35,14 @@ function stats(tree: CstNode) {
   return { leaves, grammarTypes, types };
 }
 
-function expectNoDirectLabels(tree: CstNode) {
+function isModeLabel(type: string): boolean {
+  return type.startsWith('Direct') || type.includes('Ast') || type.includes('Cst');
+}
+
+function expectNoModeLabels(tree: CstNode) {
   const { grammarTypes, types } = stats(tree);
-  expect([...grammarTypes.keys()].filter(type => type.startsWith('Direct'))).toEqual([]);
-  expect([...types].filter(type => type.startsWith('Direct'))).toEqual([]);
+  expect([...grammarTypes.keys()].filter(isModeLabel)).toEqual([]);
+  expect([...types].filter(isModeLabel)).toEqual([]);
 }
 
 function leafText(node: CstNode | CstNode['children'][number]): string {
@@ -59,7 +63,7 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
     expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
-    expectNoDirectLabels(result.tree);
+    expectNoModeLabels(result.tree);
   });
 
   it('accepts an ASCII-case-insensitive declaration priority through the public parser', () => {
@@ -67,7 +71,7 @@ describe('@jesscss/scss-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expectNoDirectLabels(result.tree);
+    expectNoModeLabels(result.tree);
   });
 
   it('preserves direct import CST facts without a split CST-only route', () => {
@@ -79,7 +83,7 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(stats(result.tree).grammarTypes.get('StaticImportRule')).toBe(1);
     expect(leafText(result.tree)).toContain('supports');
     expect(leafText(result.tree)).toContain('theme.css');
-    expectNoDirectLabels(result.tree);
+    expectNoModeLabels(result.tree);
   });
 
   it('collapses transparent CST wrappers without dropping leaves', () => {
@@ -92,8 +96,8 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(stats(expanded.tree).types).toContain('VariableDeclaration');
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
     expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
-    expectNoDirectLabels(expanded.tree);
-    expectNoDirectLabels(collapsed.tree);
+    expectNoModeLabels(expanded.tree);
+    expectNoModeLabels(collapsed.tree);
   });
 });
 
