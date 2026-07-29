@@ -154,19 +154,19 @@ type JessRules = {
   StaticAtRuleHeader: Combinator<JessAtRuleHeader>;
   AtRuleHeader: Combinator<JessAtRuleHeader>;
   SupportsAtom: Combinator<ValueNode>;
-  DirectJessGeneralTemplate: Combinator<Interpolation>;
-  DirectJessGeneralTemplateParen: Combinator<Interpolation>;
-  DirectJessGeneralTemplateSquare: Combinator<Interpolation>;
-  DirectJessGeneralTemplateBrace: Combinator<Interpolation>;
-  DirectJessGeneralTemplateDoubleQuoted: Combinator<Interpolation>;
-  DirectJessGeneralTemplateSingleQuoted: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplate: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplateParen: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplateSquare: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplateBrace: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplateDoubleQuoted: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplateSingleQuoted: Combinator<Interpolation>;
-  DirectJessGeneralEnclosed: Combinator<GeneralEnclosed>;
+  GeneralTemplate: Combinator<Interpolation>;
+  GeneralTemplateParen: Combinator<Interpolation>;
+  GeneralTemplateSquare: Combinator<Interpolation>;
+  GeneralTemplateBrace: Combinator<Interpolation>;
+  GeneralTemplateDoubleQuoted: Combinator<Interpolation>;
+  GeneralTemplateSingleQuoted: Combinator<Interpolation>;
+  GeneralQuotedTemplate: Combinator<Interpolation>;
+  GeneralQuotedTemplateParen: Combinator<Interpolation>;
+  GeneralQuotedTemplateSquare: Combinator<Interpolation>;
+  GeneralQuotedTemplateBrace: Combinator<Interpolation>;
+  GeneralQuotedTemplateDoubleQuoted: Combinator<Interpolation>;
+  GeneralQuotedTemplateSingleQuoted: Combinator<Interpolation>;
+  GeneralEnclosed: Combinator<GeneralEnclosed>;
   SupportsNot: Combinator<Keyword>;
   SupportsLogical: Combinator<Keyword>;
   SupportsFeature: Combinator<ValueNode>;
@@ -3818,60 +3818,60 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * STRICT chain — the general-enclosed body and its non-quoted wrappers. Its
    * quoted arms hand off to the permissive chain below and never come back.
    */
-  const DirectJessGeneralTemplateParen = node<Interpolation>(
+  const GeneralTemplateParen = node<Interpolation>(
     'GeneralTemplateParen',
     sequence(
       literal('('),
-      g.DirectJessGeneralTemplate,
+      g.GeneralTemplate,
       literal(')')
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralTemplateSquare = node<Interpolation>(
+  const GeneralTemplateSquare = node<Interpolation>(
     'GeneralTemplateSquare',
     sequence(
       literal('['),
-      g.DirectJessGeneralTemplate,
+      g.GeneralTemplate,
       literal(']')
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralTemplateBrace = node<Interpolation>(
+  const GeneralTemplateBrace = node<Interpolation>(
     'GeneralTemplateBrace',
     sequence(
       literal('{'),
-      g.DirectJessGeneralTemplate,
+      g.GeneralTemplate,
       literal('}')
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralTemplateDoubleQuoted = node<Interpolation>(
+  const GeneralTemplateDoubleQuoted = node<Interpolation>(
     'GeneralTemplateDoubleQuoted',
     sequence(
       literal('"'),
-      g.DirectJessGeneralQuotedTemplate,
+      g.GeneralQuotedTemplate,
       literal('"')
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralTemplateSingleQuoted = node<Interpolation>(
+  const GeneralTemplateSingleQuoted = node<Interpolation>(
     'GeneralTemplateSingleQuoted',
     sequence(
       literal('\''),
-      g.DirectJessGeneralQuotedTemplate,
+      g.GeneralQuotedTemplate,
       literal('\'')
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralTemplate = node<Interpolation>(
+  const GeneralTemplate = node<Interpolation>(
     'GeneralTemplate',
     many(choice(
       g.DollarBrace,
-      g.DirectJessGeneralTemplateParen,
-      g.DirectJessGeneralTemplateSquare,
-      g.DirectJessGeneralTemplateBrace,
-      g.DirectJessGeneralTemplateDoubleQuoted,
-      g.DirectJessGeneralTemplateSingleQuoted,
+      g.GeneralTemplateParen,
+      g.GeneralTemplateSquare,
+      g.GeneralTemplateBrace,
+      g.GeneralTemplateDoubleQuoted,
+      g.GeneralTemplateSingleQuoted,
       jessGeneralTemplateText
     )),
     templateInterpolationFromChildren
@@ -3882,77 +3882,77 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Reached ONLY through the two quoted arms above, and closed under its own
    * wrappers so nesting never escapes back to the strict chain.
    */
-  const DirectJessGeneralQuotedTemplateParen = node<Interpolation>(
+  const GeneralQuotedTemplateParen = node<Interpolation>(
     'GeneralQuotedTemplateParen',
     sequence(
       literal('('),
-      g.DirectJessGeneralQuotedTemplate,
+      g.GeneralQuotedTemplate,
       literal(')')
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralQuotedTemplateSquare = node<Interpolation>(
+  const GeneralQuotedTemplateSquare = node<Interpolation>(
     'GeneralQuotedTemplateSquare',
     sequence(
       literal('['),
-      g.DirectJessGeneralQuotedTemplate,
+      g.GeneralQuotedTemplate,
       literal(']')
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralQuotedTemplateBrace = node<Interpolation>(
+  const GeneralQuotedTemplateBrace = node<Interpolation>(
     'GeneralQuotedTemplateBrace',
     sequence(
       literal('{'),
-      g.DirectJessGeneralQuotedTemplate,
+      g.GeneralQuotedTemplate,
       literal('}')
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralQuotedTemplateDoubleQuoted = node<Interpolation>(
+  const GeneralQuotedTemplateDoubleQuoted = node<Interpolation>(
     'GeneralQuotedTemplateDoubleQuoted',
     sequence(
       literal('"'),
-      g.DirectJessGeneralQuotedTemplate,
+      g.GeneralQuotedTemplate,
       literal('"')
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralQuotedTemplateSingleQuoted = node<Interpolation>(
+  const GeneralQuotedTemplateSingleQuoted = node<Interpolation>(
     'GeneralQuotedTemplateSingleQuoted',
     sequence(
       literal('\''),
-      g.DirectJessGeneralQuotedTemplate,
+      g.GeneralQuotedTemplate,
       literal('\'')
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralQuotedTemplate = node<Interpolation>(
+  const GeneralQuotedTemplate = node<Interpolation>(
     'GeneralQuotedTemplate',
     many(choice(
       g.DollarBrace,
       g.Expression,
-      g.DirectJessGeneralQuotedTemplateParen,
-      g.DirectJessGeneralQuotedTemplateSquare,
-      g.DirectJessGeneralQuotedTemplateBrace,
-      g.DirectJessGeneralQuotedTemplateDoubleQuoted,
-      g.DirectJessGeneralQuotedTemplateSingleQuoted,
+      g.GeneralQuotedTemplateParen,
+      g.GeneralQuotedTemplateSquare,
+      g.GeneralQuotedTemplateBrace,
+      g.GeneralQuotedTemplateDoubleQuoted,
+      g.GeneralQuotedTemplateSingleQuoted,
       jessGeneralTemplateText
     )),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralEnclosed = node<GeneralEnclosed>(
+  const GeneralEnclosed = node<GeneralEnclosed>(
     'GeneralEnclosed',
     choice(
       sequence(
         g.CssSyntaxKeyword,
         literal('('),
-        g.DirectJessGeneralTemplate,
+        g.GeneralTemplate,
         literal(')')
       ),
       sequence(
         literal('('),
-        g.DirectJessGeneralTemplate,
+        g.GeneralTemplate,
         literal(')')
       )
     ),
@@ -4014,7 +4014,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal(')')
       ),
       g.SupportsFeature,
-      g.DirectJessGeneralEnclosed
+      g.GeneralEnclosed
     ),
     (children) => {
       const value = children.find(isValueNode);
@@ -5571,19 +5571,19 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     StaticAtRuleHeader,
     AtRuleHeader,
     SupportsAtom,
-    DirectJessGeneralTemplate,
-    DirectJessGeneralTemplateParen,
-    DirectJessGeneralTemplateSquare,
-    DirectJessGeneralTemplateBrace,
-    DirectJessGeneralTemplateDoubleQuoted,
-    DirectJessGeneralTemplateSingleQuoted,
-    DirectJessGeneralQuotedTemplate,
-    DirectJessGeneralQuotedTemplateParen,
-    DirectJessGeneralQuotedTemplateSquare,
-    DirectJessGeneralQuotedTemplateBrace,
-    DirectJessGeneralQuotedTemplateDoubleQuoted,
-    DirectJessGeneralQuotedTemplateSingleQuoted,
-    DirectJessGeneralEnclosed,
+    GeneralTemplate,
+    GeneralTemplateParen,
+    GeneralTemplateSquare,
+    GeneralTemplateBrace,
+    GeneralTemplateDoubleQuoted,
+    GeneralTemplateSingleQuoted,
+    GeneralQuotedTemplate,
+    GeneralQuotedTemplateParen,
+    GeneralQuotedTemplateSquare,
+    GeneralQuotedTemplateBrace,
+    GeneralQuotedTemplateDoubleQuoted,
+    GeneralQuotedTemplateSingleQuoted,
+    GeneralEnclosed,
     SupportsNot,
     SupportsLogical,
     SupportsFeature,
