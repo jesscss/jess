@@ -4655,9 +4655,16 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const MediaContainerBlock = node<AtRuleBlock>(
     'QueryAtRuleBlock',
-    choice(
-      sequence(g.CssSyntaxMediaAtKeyword, choice(MediaQueryPrelude, g.AtRuleInterpolation), g.MediaContainerBody),
-      sequence(g.CssSyntaxContainerAtKeyword, ContainerQueryPrelude, g.MediaContainerBody)
+    dispatch(
+      token(noTrivia(g.CssSyntaxMediaContainerAtKeyword)),
+      caseOf(
+        '@media',
+        sequence(routed(), choice(MediaQueryPrelude, g.AtRuleInterpolation), g.MediaContainerBody)
+      ),
+      caseOf(
+        '@container',
+        sequence(routed(), ContainerQueryPrelude, g.MediaContainerBody)
+      )
     ),
     (children, _fields, span) => {
       const body = children.find(Array.isArray);
