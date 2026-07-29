@@ -245,10 +245,9 @@ runtime version from the committed Less manifest. The Less compatibility error
 wrapper now forwards
 canonical Jess diagnostic messages unchanged while still exposing Less-style
 fields such as `type`, `line`, `column`, `extract`, and `jessErrors`. GitHub
-evidence on 2026-07-29 reported PR #19 at head `4abb411c`, open/non-draft, with
-CodeRabbit green and release-PR automation jobs skipped as expected. Merge state
-was `UNSTABLE` while macOS/windows/current and some LTS CI jobs were still in
-progress; do not claim the remote head is fully green until those finish.
+evidence on 2026-07-29 reported PR #19 at head `4abb411c`, open/non-draft,
+merge-clean, and green: CodeRabbit plus all CI matrix jobs succeeded, while
+release-PR automation and Copilot-request jobs were skipped as expected.
 
 Current package/release gates are registry-backed against the published direct
 Jess runtime closure at `2.0.0-alpha.11`: on PR head `4abb411c`, the external
