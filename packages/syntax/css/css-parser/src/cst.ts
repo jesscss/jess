@@ -13,7 +13,7 @@ export type CssCstError = {
   readonly type: string;
   readonly span: Span;
   readonly expected: string[];
-  readonly children: CssCstChild[];
+  readonly rules: CssCstChild[];
   readonly state: unknown;
 };
 
@@ -23,7 +23,7 @@ export type CssCstNode = {
   readonly grammarType: string;
   readonly span: Span;
   readonly state: unknown;
-  readonly children: CssCstChild[];
+  readonly rules: CssCstChild[];
 };
 
 export type CssCstChild = CssCstNode | CssCstLeaf | CssCstError;
@@ -248,7 +248,7 @@ function buildCssCstNode(args: BuildHostArgs): CssCstNode {
       rawChildren
     ),
     state: state ?? null,
-    children: publicChildren(
+    rules: publicChildren(
       grammarType,
       rawChildren
     )
@@ -267,7 +267,7 @@ function emptyStyleSheet(): CssCstNode {
     grammarType: 'Stylesheet',
     span: { start: 0, end: 0 },
     state: null,
-    children: []
+    rules: []
   };
 }
 

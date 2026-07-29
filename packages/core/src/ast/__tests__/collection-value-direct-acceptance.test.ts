@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  classifyValueBlock, collection, decl, dimension, funcCall, interpolation, keyword,
+  classifyValueBlock, collection, collectionEntry, decl, dimension, funcCall, interpolation, keyword,
   rule, stylesheet, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -9,6 +9,8 @@ import { makeLessRegistry } from '@jesscss/fns';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
+const entry = (name: string, value: Parameters<typeof collectionEntry>[1], important = false): ReturnType<typeof collectionEntry> =>
+  collectionEntry(keyword(name), value, null, important);
 
 /**
  * A Collection reaching a value/arg position serializes as the canonical Jess
@@ -18,8 +20,8 @@ const render = (document: Stylesheet): string | undefined => serialize(document,
  */
 describe('Collection in a value/arg position', () => {
   const map = (): ReturnType<typeof collection> => collection([
-    decl('a', dimension(1)),
-    decl('b', dimension(2))
+    entry('a', dimension(1)),
+    entry('b', dimension(2))
   ]);
 
   it('serializes a variable-bound collection as the first argument', () => {
@@ -51,8 +53,8 @@ describe('Collection in a value/arg position', () => {
   it('serializes a nested collection through the same arm', () => {
     const document = stylesheet([
       rule('.x', [decl('y', funcCall('foo', [collection([
-        decl('a', collection([decl('c', dimension(3))])),
-        decl('b', dimension(2))
+        entry('a', collection([entry('c', dimension(3))])),
+        entry('b', dimension(2))
       ])]))])
     ]);
 
@@ -63,7 +65,7 @@ describe('Collection in a value/arg position', () => {
     const document = stylesheet([
       variableDeclaration('k', keyword('a'), { mode: 'declare' }),
       rule('.x', [decl('y', funcCall('foo', [collection([
-        decl(
+        collectionEntry(
           interpolation([{ ref: variableReference('k', 'live'), unquote: true }]),
           dimension(1)
         )
@@ -73,7 +75,7 @@ describe('Collection in a value/arg position', () => {
     expect(render(document)).toBe('.x {\n  y: foo({ a: 1 });\n}\n');
   });
 
-  it('keeps the `@` sigil on a variable-declaration entry', () => {
+  it('keeps Less variable-only value blocks as collection data', () => {
     const map = classifyValueBlock([
       variableDeclaration('a', dimension(1), { mode: 'declare' }),
       variableDeclaration('b', dimension(2), { mode: 'declare' })
@@ -84,7 +86,20 @@ describe('Collection in a value/arg position', () => {
       rule('.x', [decl('y', funcCall('foo', [map]))])
     ]);
 
-    expect(render(document)).toBe('.x {\n  y: foo({ @a: 1; @b: 2 });\n}\n');
+    expect(render(document)).toBe('.x {\n  y: foo({ a: 1; b: 2 });\n}\n');
+  });
+
+  it('keeps non-map Less detached rulesets as anonymous mixins', () => {
+    const block = classifyValueBlock([
+      decl('a', dimension(1))
+    ]);
+    expect(block.type).toBe('AnonymousMixin');
+
+    const document = stylesheet([
+      rule('.x', [decl('y', funcCall('foo', [block]))])
+    ]);
+
+    expect(render(document)).toBe('.x {\n  y: foo();\n}\n');
   });
 
   it('serializes an empty collection as `{}`', () => {
@@ -97,7 +112,7 @@ describe('Collection in a value/arg position', () => {
 
   it('keeps `!important` on a collection entry', () => {
     const document = stylesheet([
-      rule('.x', [decl('y', funcCall('foo', [collection([decl('a', dimension(1), null, true)])]))])
+      rule('.x', [decl('y', funcCall('foo', [collection([entry('a', dimension(1), true)])]))])
     ]);
 
     expect(render(document)).toBe('.x {\n  y: foo({ a: 1 !important });\n}\n');
@@ -110,7 +125,7 @@ describe('Collection in a value/arg position', () => {
    */
   it('leaves the SCSS nested-property flatten path untouched', () => {
     const document = stylesheet([
-      rule('.x', [decl('font', collection([decl('family', keyword('serif'))], dimension(20, 'px')))])
+      rule('.x', [decl('font', collection([entry('family', keyword('serif'))], dimension(20, 'px')))])
     ]);
 
     expect(render(document)).toBe('.x {\n  font: 20px;\n  font-family: serif;\n}\n');

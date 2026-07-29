@@ -22,7 +22,7 @@ import {
   color,
   complexSelector,
   complexCanonical,
-  compoundSelectorOf,
+  selectorTermOf,
   decl,
   dimension,
   funcCall,
@@ -56,8 +56,9 @@ import type {
   Interpolation,
   Keyword,
   Quoted as AstQuoted,
-  Rule,
+  Ruleset,
   SelectorList as AstSelectorList,
+  SelectorTerm as AstSelectorTerm,
   SimpleSelector,
   SimpleToken,
   Statement,
@@ -376,6 +377,18 @@ function isCompound(value: unknown): value is AstCompoundSelector {
   );
 }
 
+function isSelectorTerm(value: unknown): value is AstSelectorTerm {
+  return isSimpleToken(value) || isCompound(value);
+}
+
+function selectorTermFromSimples(simples: SimpleToken[]): AstSelectorTerm {
+  const [first, ...rest] = simples;
+  if (first === undefined) {
+    throw new TypeError('CSS selector production produced no simple selector tokens.');
+  }
+  return selectorTermOf([first, ...rest]);
+}
+
 function isComplex(value: unknown): value is AstComplexSelector {
   return isNodeType(
     value,
@@ -411,10 +424,10 @@ function isDeclaration(value: unknown): value is AstDeclaration {
   );
 }
 
-function isRule(value: unknown): value is Rule {
+function isRule(value: unknown): value is Ruleset {
   return isNodeType(
     value,
-    'Rule'
+    'Ruleset'
   );
 }
 
@@ -456,8 +469,8 @@ function valueSlot(value: ValueSlot): ValueSlot {
   if (value.type === 'SpacedValue') {
     return value.parts;
   }
-  if (value.type === 'Block' && isValue(value.inner) && value.inner.type === 'SpacedValue') {
-    return { ...value, inner: value.inner.parts };
+  if (value.type === 'Block' && isValue(value.value) && value.value.type === 'SpacedValue') {
+    return { ...value, value: value.value.parts };
   }
   return value;
 }
@@ -556,11 +569,11 @@ function selectorArgumentText(value: unknown): string {
   return tokenText(value);
 }
 
-function complexSegments(children: readonly unknown[]): Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: AstCompoundSelector }> {
-  const segments: Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: AstCompoundSelector }> = [];
+function complexSegments(children: readonly unknown[]): Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: AstSelectorTerm }> {
+  const segments: Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: AstSelectorTerm }> = [];
   let comb: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   for (const child of children) {
-    if (isCompound(child)) {
+    if (isSelectorTerm(child)) {
       segments.push(segments.length === 0 ? { compound: child } : { comb, compound: child });
       comb = ' ';
       continue;
@@ -671,7 +684,7 @@ function blockStatements(children: readonly unknown[]): Statement[] {
 }
 
 function keyframeSelectorList(children: readonly unknown[]): AstSelectorList {
-  const selectors = children.filter(isSimple).map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
+  const selectors = children.filter(isSimple).map(selector => complexSelector([{ compound: selector }]));
   if (selectors.length === 0) {
     throw new Error('KeyframeBlock requires a keyframe selector');
   }
@@ -1416,7 +1429,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         }
         simples.push(child);
       }
-      return compoundSelectorOf(simples);
+      return selectorTermFromSimples(simples);
     }
   );
   const TopLevelCompoundSelector = node(
@@ -1443,7 +1456,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         }
         simples.push(child);
       }
-      return compoundSelectorOf(simples);
+      return selectorTermFromSimples(simples);
     }
   );
   const ComplexSelector = node(

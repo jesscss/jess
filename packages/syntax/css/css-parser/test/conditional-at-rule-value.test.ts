@@ -26,7 +26,7 @@ import { parse } from '@jesscss/css-parser';
 
 const kw = (src: string) => ({ type: 'Keyword', src });
 const dim = (src: string) => ({ type: 'Dimension', src });
-const paren = (inner: unknown) => ({ type: 'Block', delimiter: 'paren', inner });
+const paren = (inner: unknown) => ({ type: 'Block', delimiter: 'paren', value: inner });
 const op = (operator: string, left: unknown, right: unknown) => ({ type: 'Operation', operator, left, right });
 const ratio = (n: string, d: string) => op('/', dim(n), dim(d));
 const call = (name: string, args: unknown[]) => ({ type: 'FunctionCall', name, args });
@@ -213,11 +213,11 @@ const SUPPORTS: Array<[string, string, object]> = [
 ];
 
 function descriptorValue(source: string): unknown {
-  const first = parse(source).children[0];
+  const first = parse(source).rules[0];
   if (first === undefined || !('body' in first)) {
     throw new TypeError(`Expected an at-rule block for: ${source}`);
   }
-  const declaration = first.body[0];
+  const declaration = first.rules[0];
   if (declaration === undefined || !('value' in declaration)) {
     throw new TypeError(`Expected an @property descriptor for: ${source}`);
   }
@@ -225,7 +225,7 @@ function descriptorValue(source: string): unknown {
 }
 
 function prelude(source: string): unknown {
-  const first = parse(source).children[0];
+  const first = parse(source).rules[0];
   if (first === undefined || !('prelude' in first)) {
     throw new TypeError(`Expected an at-rule prelude for: ${source}`);
   }
@@ -260,7 +260,7 @@ describe('CSS conditional at-rule value holes', () => {
    */
   it('keeps the custom-property !important tail out of the preserved value', () => {
     expect(parse('a { --x: red !important; }')).toMatchObject({
-      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red' }, important: true }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red' }, important: true }] }]
     });
   });
 
@@ -327,7 +327,7 @@ describe('CSS conditional at-rule value holes', () => {
 
   it('preserves a custom-property value verbatim inside a conditional at-rule', () => {
     expect(parse('@media (min-width: 600px) { a { --x: 1px solid black; } }')).toMatchObject({
-      children: [{ type: 'AtRuleBlock', body: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: '1px solid black' } }] }] }]
+      rules: [{ type: 'AtRuleBlock', rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: '1px solid black' } }] }] }]
     });
   });
 

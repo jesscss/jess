@@ -15,7 +15,7 @@ import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformReq
 import type { Stylesheet } from './ast/nodes.js';
 import type { StylesConfig } from './types.js';
 import type { TriviaMap } from './types/index.js';
-import type { ExtendSelectorKind } from './types/config.js';
+import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
 import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
@@ -127,6 +127,7 @@ export interface ContextOptions {
 
   /** See LessOptions.allowOverloadedImport. Enforcement pending its definition. */
   allowOverloadedImport?: boolean;
+  allowApplySelectors?: ApplySelectorKind[];
   processImports?: boolean;
   disableScriptModules?: boolean;
 
@@ -341,6 +342,9 @@ export interface TreeContextOptions extends DocumentContextOptions {
 
   /** Plugin-supplied allow-list of extend selector kinds. */
   allowExtendSelectors?: ExtendSelectorKind[];
+
+  /** Plugin-supplied allow-list of Jess `$apply` selector kinds. */
+  allowApplySelectors?: ApplySelectorKind[];
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');

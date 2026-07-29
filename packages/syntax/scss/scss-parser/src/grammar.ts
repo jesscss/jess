@@ -18,14 +18,14 @@ import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, complexSelector, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
 type ScssCallArg = { readonly value: ValueSlot; readonly name?: string; readonly spread?: boolean };
-type ScssComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
+type ScssComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: SelectorTerm };
 
 const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.json'] as const;
 
@@ -50,7 +50,7 @@ type ScssRules = {
   InterpolatedUrlValue: Combinator<Interpolation>;
   InterpolatedValue: Combinator<Interpolation>;
   Paren: Combinator<ValueNode>;
-  MapEntry: Combinator<Declaration>;
+  MapEntry: Combinator<CollectionEntry>;
   Map: Combinator<Collection>;
   ReturnRule: Combinator<Declaration>;
   FunctionRule: Combinator<VariableDeclaration>;
@@ -75,7 +75,7 @@ type ScssRules = {
   DirectScssCustomValue: Combinator<ValueNode>;
   DirectScssCustomDeclaration: Combinator<Declaration>;
   DirectScssDeclaration: Combinator<Declaration>;
-  DirectScssStaticNestedPropertyLeaf: Combinator<Declaration>;
+  DirectScssStaticNestedPropertyLeaf: Combinator<CollectionEntry>;
   DirectScssStaticNestedProperty: Combinator<Declaration>;
   StaticImportRule: Combinator<ImportAtRule>;
   UseNamespace: Combinator<string>;
@@ -97,7 +97,7 @@ type ScssRules = {
   MixinParameters: Combinator<Param[]>;
   ScssMixinCallArg: Combinator<ScssCallArg>;
   MixinCallRule: Combinator<MixinCall>;
-  MixinDefinitionRule: Combinator<MixinDef>;
+  MixinDefinitionRule: Combinator<MixinDefinition>;
   EachVariableName: Combinator<string>;
   EachBinding: Combinator<ForBinding>;
   EachRule: Combinator<For>;
@@ -108,7 +108,7 @@ type ScssRules = {
   IfAtom: Combinator<GuardNode>;
   IfComparison: Combinator<GuardNode>;
   IfBody: Combinator<Statement[]>;
-  IfStaticRule: Combinator<Rule>;
+  IfStaticRule: Combinator<Ruleset>;
   IfStaticConditionalBlock: Combinator<AtRuleBlock>;
   IfRule: Combinator<If>;
   QueryFeature: Combinator<ValueNode>;
@@ -159,7 +159,7 @@ type ScssRules = {
   DirectScssPropertyName: Combinator<Keyword>;
   DirectScssPropertyAtRule: Combinator<AtRuleBlock>;
   DirectScssKeyframeSelector: Combinator<SimpleSelector>;
-  DirectScssKeyframeBlock: Combinator<Rule>;
+  DirectScssKeyframeBlock: Combinator<Ruleset>;
   DirectScssKeyframes: Combinator<AtRuleBlock>;
   DirectScssNestedConditionalBlock: Combinator<AtRuleBlock>;
   DirectScssNestedStartingStyleBlock: Combinator<AtRuleBlock>;
@@ -177,7 +177,7 @@ type ScssRules = {
   StaticPseudoSquare: Combinator<string>;
   DirectScssPseudo: Combinator<SimpleToken>;
   DirectScssNestingSelector: Combinator<SimpleSelector>;
-  DirectScssCompound: Combinator<CompoundSelector>;
+  DirectScssCompound: Combinator<SelectorTerm>;
   DirectScssComplexTail: Combinator<ScssComplexTail>;
   DirectScssComplex: Combinator<ComplexSelector>;
   DirectScssSelectorTail: Combinator<ComplexSelector>;
@@ -187,7 +187,7 @@ type ScssRules = {
   DirectScssOpaqueBody: Combinator<string>;
   DirectScssOpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   DirectScssOpaqueAtRuleStatement: Combinator<AtRuleStatement>;
-  DirectScssRule: Combinator<Rule>;
+  DirectScssRule: Combinator<Ruleset>;
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
 };
@@ -282,15 +282,18 @@ function isSimpleSelector(value: unknown): value is SimpleSelector {
 function isCompoundSelector(value: unknown): value is CompoundSelector {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'CompoundSelector'
-    && 'simples' in value && Array.isArray(value.simples)
-    && value.simples.every(isSimpleToken);
+    && 'value' in value && Array.isArray(value.value)
+    && value.value.every(isSimpleToken);
+}
+
+function isSelectorTerm(value: unknown): value is SelectorTerm {
+  return isSimpleToken(value) || isCompoundSelector(value);
 }
 
 function isComplexSelector(value: unknown): value is ComplexSelector {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'ComplexSelector'
-    && 'head' in value && isCompoundSelector(value.head)
-    && 'tail' in value && Array.isArray(value.tail);
+    && 'value' in value && Array.isArray(value.value);
 }
 
 function isSelectorList(value: unknown): value is SelectorList {
@@ -310,7 +313,7 @@ function requireSelectorList(value: unknown): SelectorList {
 function isScssComplexTail(value: unknown): value is ScssComplexTail {
   return typeof value === 'object' && value !== null
     && 'comb' in value && (value.comb === ' ' || value.comb === '>' || value.comb === '+' || value.comb === '~' || value.comb === '||')
-    && 'compound' in value && isCompoundSelector(value.compound);
+    && 'compound' in value && isSelectorTerm(value.compound);
 }
 
 function requireScssComplexTail(value: unknown): ScssComplexTail {
@@ -320,11 +323,19 @@ function requireScssComplexTail(value: unknown): ScssComplexTail {
   return value;
 }
 
-function requireCompoundSelector(value: unknown): CompoundSelector {
-  if (!isCompoundSelector(value)) {
+function requireSelectorTerm(value: unknown): SelectorTerm {
+  if (!isSelectorTerm(value)) {
     throw new TypeError('Direct SCSS AST grammar produced a non-compound selector child.');
   }
   return value;
+}
+
+function selectorTermFromSimples(simples: SimpleToken[]): SelectorTerm {
+  const [first, ...rest] = simples;
+  if (first === undefined) {
+    throw new TypeError('Direct SCSS selector production produced no simple selector tokens.');
+  }
+  return selectorTermOf([first, ...rest]);
 }
 
 /*
@@ -603,7 +614,7 @@ function isValue(value: unknown): value is ValueNode {
     case 'List':
       return 'value' in value && Array.isArray(value.value);
     case 'Block':
-      return 'inner' in value && isValueSlotValue(value.inner);
+      return 'value' in value && isValueSlotValue(value.value);
     case 'Operation':
       return 'left' in value && 'right' in value && isValue(value.left) && isValue(value.right);
     case 'Keyword':
@@ -613,7 +624,7 @@ function isValue(value: unknown): value is ValueNode {
     case 'Reference':
       return 'base' in value && 'steps' in value && Array.isArray(value.steps);
     case 'AnonymousMixin':
-      return 'body' in value && Array.isArray(value.body);
+      return 'rules' in value && Array.isArray(value.rules);
     default:
       return false;
   }
@@ -623,8 +634,8 @@ function valueSlot(value: ValueNode): ValueSlot {
   if (value.type === 'SpacedValue') {
     return value.parts;
   }
-  if (value.type === 'Block' && isSpacedValue(value.inner)) {
-    return { ...value, inner: value.inner.parts };
+  if (value.type === 'Block' && isSpacedValue(value.value)) {
+    return { ...value, value: value.value.parts };
   }
   return value;
 }
@@ -652,12 +663,23 @@ function isDeclaration(value: unknown): value is Declaration {
     && isValueSlotValue(value.value);
 }
 
-function isRule(value: unknown): value is Rule {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Rule';
+function isCollectionEntry(value: unknown): value is CollectionEntry {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'CollectionEntry'
+    && 'key' in value
+    && isValueSlotValue(value.key)
+    && 'value' in value
+    && isValueSlotValue(value.value);
 }
 
-function isMixinDef(value: unknown): value is MixinDef {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDef';
+function isRule(value: unknown): value is Ruleset {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Ruleset';
+}
+
+function isMixinDef(value: unknown): value is MixinDefinition {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDefinition';
 }
 
 function isMixinCall(value: unknown): value is MixinCall {
@@ -781,21 +803,10 @@ function reduceScssCall(name: string, children: readonly unknown[], minArgumentI
   return call;
 }
 
-/** A Sass map key lowers to a Collection entry NAME. Collection names are
- *  `string | Interpolation` (leaf identifiers), so identifier, string, dimension,
- *  and interpolation keys lower cleanly; other value keys (colors aside, which
- *  carry a `src`) are unrepresentable as a Collection name and are rejected. */
-function mapKeyName(node: ValueNode): string | Interpolation {
-  if (node.type === 'Interpolation') {
-    return node;
-  }
-  if (node.type === 'Quoted') {
-    return node.value;
-  }
-  if ('src' in node && typeof node.src === 'string') {
-    return node.src;
-  }
-  throw new TypeError('Unsupported SCSS map key: Collection entry names must be identifiers, strings, dimensions, or interpolations.');
+/** A Sass map key stays an authored value node; equality belongs to value-domain
+ * map comparison, not to declaration-name stringification. */
+function mapKeyValue(node: ValueNode): ValueSlot {
+  return valueSlot(node);
 }
 
 function isGuardNode(value: unknown): value is GuardNode {
@@ -934,7 +945,7 @@ function requireStatementList(value: unknown): Statement[] {
 function directScssKeyframeSelectorList(children: readonly unknown[]): SelectorList {
   const selectors = children
     .filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
-    .map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
+    .map(selector => complexSelector([{ compound: selector }]));
   if (selectors.length === 0) {
     throw new TypeError('Direct SCSS keyframe block requires a selector.');
   }
@@ -1390,9 +1401,9 @@ export const scssFactory = (g: ScssInputRules) => {
    * A Sass map entry `key: value`. The key is a single arithmetic term (an
    * identifier, string, number, or `#{…}`); the value is an ordinary value term
    * (a space/slash list, never a comma list — commas separate entries). It lowers
-   * to a Collection entry: a leaf-named Declaration.
+   * to a typed Collection entry, preserving the authored key value node.
    */
-  const MapEntry = node<Declaration>(
+  const MapEntry = node<CollectionEntry>(
     'MapEntry',
     noTrivia(sequence(
       g.MathTopSum,
@@ -1401,8 +1412,8 @@ export const scssFactory = (g: ScssInputRules) => {
       optional(valueTrivia),
       g.ValueTerm
     )),
-    children => decl(
-      mapKeyName(requireValue(children[0])),
+    children => collectionEntry(
+      mapKeyValue(requireValue(children[0])),
       requireValueSlot(children[children.length - 1])
     )
   );
@@ -1441,7 +1452,7 @@ export const scssFactory = (g: ScssInputRules) => {
         literal(')')
       ))
     ),
-    children => collection(children.filter(isDeclaration))
+    children => collection(children.filter(isCollectionEntry))
   );
 
   /*
@@ -2016,7 +2027,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * nested properties and @extend are not legacy body forms, so this direct
    * grammar does not create extensions for them either.
    */
-  const DirectScssStaticNestedPropertyLeaf = node<Declaration>(
+  const DirectScssStaticNestedPropertyLeaf = node<CollectionEntry>(
     'DirectScssStaticNestedPropertyLeaf',
     sequence(
       choice(
@@ -2027,8 +2038,8 @@ export const scssFactory = (g: ScssInputRules) => {
       g.Value,
       optional(literal(';'))
     ),
-    children => decl(
-      isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value,
+    children => collectionEntry(
+      isInterpolation(children[0]) ? children[0] : keyword(requireToken(children[0]).value),
       requireValueSlot(children[2]),
       null,
       false
@@ -2079,17 +2090,17 @@ export const scssFactory = (g: ScssInputRules) => {
       }
 
       /*
-       * The leaf entries stay LEAF-ONLY-named plain Declarations inside a
+       * The leaf entries stay LEAF-ONLY-keyed CollectionEntries inside a
        * Collection value. Hyphenation and own-value placement move to the
        * serializer; the carrier's own value (when present) rides on `base`.
        */
-      const entries: Declaration[] = [];
+      const entries: CollectionEntry[] = [];
       for (let index = open + 1; index < close; index++) {
         const child = children[index];
-        if (isDeclaration(child)) {
+        if (isCollectionEntry(child)) {
           entries.push(child);
         } else {
-          throw new TypeError('Direct SCSS nested property produced a non-declaration child.');
+          throw new TypeError('Direct SCSS nested property produced a non-entry child.');
         }
       }
       return decl(
@@ -2478,7 +2489,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * The core canonical tree already owns MixinDef/MixinCall and its ordinary
+   * The core canonical tree already owns MixinDefinition/MixinCall and its ordinary
    * parameter/argument binding semantics. This direct SCSS family therefore
    * covers static mixin names, positional/named/default/rest arguments, and
    * bodies made from the direct statements already available below. `@content`,
@@ -2623,8 +2634,8 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * The `@`-led cluster is tried LAST in every body, after `Rule`. Every cluster
-   * arm opens with a literal `@` at-keyword, so it is disjoint from `Rule` (a
+   * The `@`-led cluster is tried LAST in every body, after `Ruleset`. Every cluster
+   * arm opens with a literal `@` at-keyword, so it is disjoint from `Ruleset` (a
    * selector never opens with `@`), from `@keyframes`/`@extend` (distinct
    * at-keywords with no cluster arm), and from every prefix arm (`Declaration`,
    * `StaticNestedProperty`, `VarDeclaration`, `Comment` never open with `@`, and
@@ -2632,7 +2643,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * input can match both the cluster and any arm ahead of it, moving it last is
    * firstMatch-order-preserving (byte-identical) while letting the common
    * non-`@` statements — ordinary rules and `&`-selectors, the bulk of a
-   * stylesheet — reach `Rule` without first walking all thirteen at-rule
+   * stylesheet — reach `Ruleset` without first walking all thirteen at-rule
    * recognizers on a doomed speculation.
    * Declarations (`prop: value`) and nested-property blocks (`prop: { … }`) are
    * by far the most common body statements, so they lead the prefix. Both open
@@ -2665,14 +2676,14 @@ export const scssFactory = (g: ScssInputRules) => {
     literal(';')
   );
 
-  /* Nested body ending in `Rule` (mixin/each/for/nested-scope bodies). */
+  /* Nested body ending in `Ruleset` (mixin/each/for/nested-scope bodies). */
   const nestedBody = many(choice(
     nestedBodyPrefix,
     g.DirectScssRule,
     nestedAtStatement
   ));
 
-  /* Nested bubbling at-rule bodies additionally accept `@keyframes` before `Rule`. */
+  /* Nested bubbling at-rule bodies additionally accept `@keyframes` before `Ruleset`. */
   const nestedKeyframesBody = many(choice(
     nestedBodyPrefix,
     g.DirectScssKeyframes,
@@ -2680,7 +2691,7 @@ export const scssFactory = (g: ScssInputRules) => {
     nestedAtStatement
   ));
 
-  /* The ruleset body adds one extra arm (`DirectScssExtend`) before `Rule`. */
+  /* The ruleset body adds one extra arm (`DirectScssExtend`) before `Ruleset`. */
   const ruleBody = many(choice(
     nestedBodyPrefix,
     g.DirectScssExtend,
@@ -2732,7 +2743,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.DirectScssOpaqueAtRuleStatement,
     g.DirectScssRule
   ));
-  const MixinDefinitionRule = node<MixinDef>(
+  const MixinDefinitionRule = node<MixinDefinition>(
     'MixinDefinitionRule',
     sequence(
       regex(/@mixin(?![-_a-zA-Z0-9\u0080-\uffff])/i),
@@ -2774,7 +2785,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * A user `@function f($n) { @return v }` lowers to a value-returning anonymous
    * mixin (lambda) bound to a `$var`: `$f: @($n) > { result: v }`. There is NO
    * first-class `$function` node — this reuses `variableDeclaration` +
-   * `AnonymousMixin` (with the same `params` shape a MixinDef uses), and `@return`
+   * `AnonymousMixin` (with the same `params` shape a MixinDefinition uses), and `@return`
    * reuses `result:`. The parameter list threads into `AnonymousMixin.params`; an
    * empty/absent list is omitted so the plain-block shape stays monomorphic.
    */
@@ -3048,7 +3059,7 @@ export const scssFactory = (g: ScssInputRules) => {
       true
     )
   );
-  const IfStaticRule = node<Rule>(
+  const IfStaticRule = node<Ruleset>(
     'IfStaticRule',
     sequence(
       g.DirectScssSelector,
@@ -3131,7 +3142,7 @@ export const scssFactory = (g: ScssInputRules) => {
       ))
     ),
     (children) => {
-      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), body: requireStatementList(children[2]) }];
+      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), rules: requireStatementList(children[2]) }];
       for (let index = 3; index < children.length;) {
         /*
          * Every tail begins with @else. An else-if has its literal `if`, guard,
@@ -3140,10 +3151,10 @@ export const scssFactory = (g: ScssInputRules) => {
         index += 1;
         const child = children[index];
         if (isToken(child) && child.value.toLowerCase() === 'if') {
-          branches.push({ guard: requireGuardNode(children[index + 1]), body: requireStatementList(children[index + 2]) });
+          branches.push({ guard: requireGuardNode(children[index + 1]), rules: requireStatementList(children[index + 2]) });
           index += 3;
         } else {
-          branches.push({ guard: null, body: requireStatementList(children[index]) });
+          branches.push({ guard: null, rules: requireStatementList(children[index]) });
           index += 1;
         }
       }
@@ -4188,7 +4199,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * Keyframes already fit the canonical AtRuleBlock + Rule model: the at-rule
+   * Keyframes already fit the canonical AtRuleBlock + Ruleset model: the at-rule
    * name/prelude and every descriptor block remain structured.  Keep this
    * deliberately static at the header and selector boundary; interpolated
    * keyframe names/selectors need typed selector interpolation rather than raw
@@ -4202,7 +4213,7 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     children => simpleSelector(requireToken(children[0]).value)
   );
-  const DirectScssKeyframeBlock = node<Rule>(
+  const DirectScssKeyframeBlock = node<Ruleset>(
     'DirectScssKeyframeBlock',
     sequence(
       g.DirectScssKeyframeSelector,
@@ -4694,7 +4705,7 @@ export const scssFactory = (g: ScssInputRules) => {
     literal('&'),
     () => simpleSelector('&')
   );
-  const DirectScssCompound = node<CompoundSelector>(
+  const DirectScssCompound = node<SelectorTerm>(
     'DirectScssCompound',
     noTrivia(sequence(
       oneOrMore(choice(
@@ -4710,7 +4721,7 @@ export const scssFactory = (g: ScssInputRules) => {
       )),
       not(pseudoColon)
     )),
-    children => compoundSelectorOf(children.filter(isSimpleToken))
+    children => selectorTermFromSimples(children.filter(isSimpleToken))
   );
   const directScssCombinator = choice(
     literal('||'),
@@ -4725,7 +4736,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.DirectScssCompound
     ),
     (children) => {
-      const compound = children.find(isCompoundSelector);
+      const compound = children.find(isSelectorTerm);
       if (compound === undefined) {
         throw new TypeError('DirectScssComplexTail requires a compound.');
       }
@@ -4744,7 +4755,7 @@ export const scssFactory = (g: ScssInputRules) => {
       many(g.DirectScssComplexTail)
     ),
     children => complexSelector([
-      { compound: requireCompoundSelector(children[0]) },
+      { compound: requireSelectorTerm(children[0]) },
       ...children.slice(1).map(requireScssComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
     ])
   );
@@ -4771,7 +4782,7 @@ export const scssFactory = (g: ScssInputRules) => {
 
   /*
    * SCSS `@extend` is a rule-body instruction, not a synthetic statement node.
-   * Its target stays a typed selector list and is hoisted onto the carrying Rule
+   * Its target stays a typed selector list and is hoisted onto the carrying Ruleset
    * through the existing canonical extendInstructions field. `!optional` has
    * missing-target diagnostic semantics that the canonical instruction does not
    * yet model, so this direct slice rejects it rather than silently dropping it.
@@ -4858,7 +4869,7 @@ export const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
-  const DirectScssRule = node<Rule>(
+  const DirectScssRule = node<Ruleset>(
     'DirectScssRule',
     sequence(
       g.DirectScssSelector,

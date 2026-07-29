@@ -6,7 +6,7 @@ import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
-import type { ExtendSelectorKind } from './types/config.js';
+import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
 
 export type ISafeParseResult = {
   /** Canonical parser document on successful parsing. */
@@ -41,6 +41,9 @@ export type SafeParseOptions = {
   compilerOptions?: ContextOptions & {
     /** Extend-selector kinds a plugin permits; consumed when building the TreeContext. */
     allowExtendSelectors?: ExtendSelectorKind[];
+
+    /** Jess `$apply` selector kinds a plugin permits. Defaults to class-only. */
+    allowApplySelectors?: ApplySelectorKind[];
   };
   importOptions?: ImportOptions;
 };

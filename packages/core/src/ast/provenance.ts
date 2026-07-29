@@ -77,7 +77,7 @@ const triviaGlobal = globalThis as typeof globalThis & {
 };
 const triviaMaps = triviaGlobal[triviaStoreKey] ??= new WeakMap<object, TriviaMap>();
 
-const bodySpanStoreKey = Symbol.for('jess.ast.body-span-store');
+const bodySpanStoreKey = Symbol.for('jess.ast.rules-span-store');
 const bodySpanGlobal = globalThis as typeof globalThis & {
   [bodySpanStoreKey]?: WeakMap<object, AstSourceSpan>;
 };

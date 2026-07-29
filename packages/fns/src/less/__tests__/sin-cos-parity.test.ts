@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { Dimension as LegacyDimension } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { makeDimension } from '@jesscss/core/value';
 import { cos } from '../cos.js';
@@ -28,8 +27,8 @@ function legacyTrigOracle(
       : unit === 'turn'
         ? number * 2 * Math.PI
         : number;
-  const result = new LegacyDimension({ number: fn(radians), unit: '' });
-  return { number: result.number, unit: result.unit ?? '', bytes: result.toString() };
+  const result = makeDimension(fn(radians));
+  return { number: result.number, unit: result.unit, bytes: result.bytes };
 }
 
 describe('Less sin/cos canonical cutover', () => {

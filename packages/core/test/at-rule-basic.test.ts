@@ -1,4 +1,4 @@
-import { rules, sel, el, decl, any, ruleset, atrule } from '../src/index.js';
+import { rules, sel, el, decl, any, ruleset, atrule } from '../src/tree/index.js';
 import { Context } from '../src/context.js';
 import { renderNodeToString } from '../src/tree/util/render-buffer.js';
 

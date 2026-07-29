@@ -31,7 +31,7 @@ function isValueNode(slot: ValueSlot): slot is ValueNode {
 }
 
 function isStylesheet(value: unknown): value is Stylesheet {
-  return isRecord(value) && value.type === 'Stylesheet' && Array.isArray(value.children);
+  return isRecord(value) && value.type === 'Stylesheet' && Array.isArray(value.rules);
 }
 
 /** Collect every user `@function` name: a VariableDeclaration bound to an
@@ -117,7 +117,7 @@ function rewrite(node: unknown, userFns: Set<string>): unknown {
 export function lowerUserFunctionCalls(sheet: Stylesheet): Stylesheet {
   const userFns = new Set<string>();
   collectUserFunctionNames(
-    sheet.children,
+    sheet.rules,
     userFns
   );
   if (userFns.size === 0) {

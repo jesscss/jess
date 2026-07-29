@@ -7,7 +7,7 @@
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
 import type {
-  Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Quoted, List, ListSeparator, ValueGroup
+  Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Nil, Quoted, List, ListSeparator, ValueGroup
 } from './value-eval.js';
 import { colorRgb, colorSourceRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
@@ -81,19 +81,19 @@ export function makeCompoundDimension(
   return n;
 }
 
-/** Build a color from an RGB source. `node` (verbatim spelling) is optional. */
+/** Build a color from an RGB source. `src` (verbatim spelling) is optional. */
 export function makeColorRgb(
   rgb: readonly [number, number, number],
   alpha: number,
   format: number,
-  opts?: { modernSyntax?: boolean; node?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number }
+  opts?: { modernSyntax?: boolean; src?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number }
 ): Color {
   const c: Mutable<Color> = { type: 'Color', rgb, alpha, format, bytes: '' };
   if (opts?.modernSyntax) {
     c.modernSyntax = true;
   }
-  if (opts?.node !== undefined) {
-    c.node = opts.node;
+  if (opts?.src !== undefined) {
+    c.src = opts.src;
   }
   if (opts?.rgbPct !== undefined) {
     c.rgbPct = opts.rgbPct;
@@ -140,6 +140,10 @@ export const makeAny = (bytes: string): Any => ({ type: 'Any', bytes });
 /** A boolean value result (`true`/`false` — the shape guards and `is*` predicates emit). */
 export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes: value ? 'true' : 'false' });
 
+/** The canonical empty / absent value. */
+export const NIL: Nil = { type: 'Nil', bytes: '' };
+export const makeNil = (): Nil => NIL;
+
 export function makeList(
   value: readonly ValueGroup[],
   sep: ListSeparator = ','
@@ -166,11 +170,11 @@ export function makeCollection(entries: readonly CollectionEntry[], base?: Value
 
 /** Wrap a value in an explicit paren/square delimiter fact. */
 export function makeBlock(
-  inner: ValueGroup,
+  value: ValueGroup,
   delimiter: Block['delimiter'],
   escaped = false
 ): Block {
-  const block: Mutable<Block> = { type: 'Block', inner, delimiter, bytes: '' };
+  const block: Mutable<Block> = { type: 'Block', value, delimiter, bytes: '' };
   if (escaped) {
     block.escaped = true;
   }

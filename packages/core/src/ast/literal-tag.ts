@@ -85,11 +85,11 @@ function quotedFromBytes(str: string): ValueObj {
 export function colorFromSrc(src: string): ValueObj {
   if (src.charCodeAt(0) === 35 /* # */) {
     const { rgb, alpha } = parseHex(src);
-    return makeColorRgb(rgb, alpha, HEX, { node: src });
+    return makeColorRgb(rgb, alpha, HEX, { src });
   }
   const named = namedColor(src);
   if (named) {
-    return makeColorRgb(named.rgb, named.alpha, HEX, { node: src });
+    return makeColorRgb(named.rgb, named.alpha, HEX, { src });
   }
   return makeKeyword(src);
 }
@@ -139,7 +139,7 @@ function sniffBuild(text: string): ValueObj {
   const c0 = text.charCodeAt(0);
   if (c0 === 35 /* # */ && HEX_RE.test(text)) {
     const { rgb, alpha } = parseHex(text);
-    return makeColorRgb(rgb, alpha, HEX, { node: text });
+    return makeColorRgb(rgb, alpha, HEX, { src: text });
   }
 
   // Numeric: ONE family (united or unitless — no split).
@@ -156,7 +156,7 @@ function sniffBuild(text: string): ValueObj {
   if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(text)) {
     const named = namedColor(text);
     if (named) {
-      return makeColorRgb(named.rgb, named.alpha, HEX, { node: text });
+      return makeColorRgb(named.rgb, named.alpha, HEX, { src: text });
     }
   }
   return isQuotedBytes(text) ? quotedFromBytes(text) : makeKeyword(text);

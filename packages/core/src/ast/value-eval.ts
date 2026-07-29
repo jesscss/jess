@@ -65,7 +65,7 @@ export interface Dimension {
   readonly bytes: string;
 }
 
-/** A color result. `format`/`modernSyntax`/`node` preserve output spelling. */
+/** A color result. `format`/`modernSyntax`/`src` preserve output spelling. */
 export interface Color {
   readonly type: 'Color';
   readonly rgb: readonly [number, number, number];
@@ -87,7 +87,7 @@ export interface Color {
   readonly modernSyntax?: boolean;
 
   /** Original literal source (e.g. `#aaa`, `blue`) preserved for verbatim emit. */
-  readonly node?: string;
+  readonly src?: string;
 
   /**
    * SOURCE-FORMAT preservation for an un-operated color CONSTRUCTOR (the verbatim
@@ -163,7 +163,7 @@ export interface List {
  */
 export interface Block {
   readonly type: 'Block';
-  readonly inner: ValueGroup;
+  readonly value: ValueGroup;
   readonly delimiter: 'paren' | 'square';
   readonly escaped?: boolean;
   readonly bytes: string;
@@ -188,8 +188,7 @@ export interface Nil {
  * `key` is a full {@link ValueGroup}, not a string: a Sass map key is a VALUE
  * (`(1: a)` keys on the number `1`, `(red: a)` on the colour), and equality is
  * value equality, never byte equality. It is a `ValueGroup` rather than a
- * `ValueObj` so a later parser lifting the current key restriction (see
- * `mapKeyName` in scss-parser) can hand over a sequence key without a breaking
+ * `ValueObj` so parsers can hand over sequence keys without a breaking
  * narrowing here.
  *
  * `variable` / `important` are BYTE facts carried from the authoring dialect so

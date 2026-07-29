@@ -36,7 +36,7 @@ export type ScssPluginOptions = {
   collapseNesting?: boolean;
 };
 
-type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+type ExtendSelectorKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 const sassValueEvaluator = buildEvaluator(makeSassRegistry());
 

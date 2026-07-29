@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { amp, compound, el, sel, pseudo, co, sellist, is, type Selector } from '../../../index.js';
+import { amp, compound, el, sel, pseudo, co, sellist, is, type Selector } from '../../index.js';
 import { Context } from '../../../context.js';
 import { selectorAnalysisFor, keySetOf, visibleKeySetOf, requiredKeySetOf } from '../selector-analysis.js';
 

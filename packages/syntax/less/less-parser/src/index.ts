@@ -25,8 +25,7 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && value !== null
     && 'type' in value
     && value.type === 'Stylesheet'
-    && 'children' in value
-    && Array.isArray(value.children)
+    && Array.isArray(value.rules)
   );
 }
 

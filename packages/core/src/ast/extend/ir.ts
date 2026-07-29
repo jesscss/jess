@@ -10,7 +10,7 @@
 import { renderCombinator } from '../node.js';
 import type { Combinator } from '../node.js';
 import { complexHasInterp, simpleTokenText } from '../nodes.js';
-import type { ComplexSelector, SelectorList, SimpleToken } from '../nodes.js';
+import type { ComplexSelector, SelectorList, SelectorTerm, SimpleToken } from '../nodes.js';
 
 /* --------------------------------------------------------------------- types */
 
@@ -231,14 +231,26 @@ function compoundFromTokens(simples: SimpleToken[]): Compound {
   return { simples: simples.map(simpleFromToken) };
 }
 
+function termFromSelector(term: SelectorTerm): Compound {
+  return term.type === 'CompoundSelector'
+    ? compoundFromTokens(term.value)
+    : compoundFromTokens([term]);
+}
+
 export function branchFromComplex(c: ComplexSelector): Branch {
   const segs: Seg[] = [];
-  segs.push({
-    comb: c.leadingComb ?? ' ',
-    compound: compoundFromTokens(c.head.simples)
-  });
-  for (const seg of c.tail) {
-    segs.push({ comb: seg.comb, compound: compoundFromTokens(seg.compound.simples) });
+  let first = true;
+  let pendingComb: Combinator = c.leadingComb ?? ' ';
+  for (const part of c.value) {
+    if (typeof part === 'string') {
+      pendingComb = part;
+      continue;
+    }
+    segs.push({
+      comb: first ? (c.leadingComb ?? ' ') : pendingComb,
+      compound: termFromSelector(part)
+    });
+    first = false;
   }
   return segs.length === 0 ? mkBranch([{ comb: ' ', compound: { simples: [] } }]) : mkBranch(segs);
 }

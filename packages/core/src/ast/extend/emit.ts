@@ -49,7 +49,7 @@ import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { collectPlan, documentHasExtend, reaches } from './plan.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 import { buildContribs, runFixpoint, solveComposed } from './solve.js';
-import type { Stylesheet, Rule, Statement } from '../nodes.js';
+import type { Stylesheet, Ruleset, Statement } from '../nodes.js';
 
 export interface NestedRulePlan {
   /** Emit this rule (and its descendants) via the flat path at top level. */
@@ -63,7 +63,7 @@ export interface NestedRulePlan {
   splits: string[][];
 
   /**
-   * A cross-`&` flatten whose subject STILL HAS surviving nested children: instead
+   * A cross-`&` flatten whose subject STILL HAS surviving nested rules: instead
    * of collapsing (`flatten`, which composes children flat), the subtree is
    * RE-NESTED at the hoist position — its `header` carries the composed cross-`&`
    * sibling list (the flat solve with `:is()`-compaction) and its children stay
@@ -96,13 +96,13 @@ export interface NestedRulePlan {
 /**
  * Extend projections for one concrete render placement. A `$for` body is one
  * canonical AST body but may run several times under different bindings; its
- * projections therefore belong to the iteration token, not to the shared Rule.
+ * projections therefore belong to the iteration token, not to the shared Ruleset.
  */
 export interface ExtendPlacementResults {
-  flatByRule: Map<Rule, string[]>;
-  hiddenByRule: Map<Rule, boolean[]>;
-  nestedPlan: Map<Rule, NestedRulePlan>;
-  hoistHeader: Map<Rule, string[]>;
+  flatByRule: Map<Ruleset, string[]>;
+  hiddenByRule: Map<Ruleset, boolean[]>;
+  nestedPlan: Map<Ruleset, NestedRulePlan>;
+  hoistHeader: Map<Ruleset, string[]>;
 }
 
 export interface ExtendResults {
@@ -112,7 +112,7 @@ export interface ExtendResults {
    * the RAW parent and extend independently — the composed model needs no
    * child-parent propagation).
    */
-  flatByRule: Map<Rule, string[]>;
+  flatByRule: Map<Ruleset, string[]>;
 
   /**
    * [import:reference] Per-rule visibility mask aligned 1:1 with `flatByRule`'s
@@ -120,16 +120,16 @@ export interface ExtendResults {
    * `(reference)` rules, which the serializer drops. Absent for a rule with no
    * hidden branch (the common case). A rule whose mask is all-`true` emits nothing.
    */
-  hiddenByRule: Map<Rule, boolean[]>;
+  hiddenByRule: Map<Ruleset, boolean[]>;
 
   /** NESTED mode: per-rule projection (flatten / rewritten header / splits). */
-  nestedPlan: Map<Rule, NestedRulePlan>;
+  nestedPlan: Map<Ruleset, NestedRulePlan>;
 
   /**
    * NESTED mode: per-rule FLAT header branches to use when a rule is hoisted to
    * top level — the flat composition with sibling `:is()`-compaction applied.
    */
-  hoistHeader: Map<Rule, string[]>;
+  hoistHeader: Map<Ruleset, string[]>;
 
   /**
    * Render-local projections for dynamically placed canonical rules. The weak
@@ -393,8 +393,8 @@ function relativizeExtender(inst: PlanInstruction, subject: PlanSubject): PlanIn
  */
 export function computeExtends(
   root: Stylesheet,
-  hiddenRules?: ReadonlySet<Rule>,
-  referenceBoundaries?: ReadonlyMap<Rule, object>,
+  hiddenRules?: ReadonlySet<Ruleset>,
+  referenceBoundaries?: ReadonlyMap<Ruleset, object>,
   overlay?: PlanOverlay
 ): ExtendResults | null {
   /*
@@ -409,10 +409,10 @@ export function computeExtends(
     return null;
   }
 
-  const flatByRule = new Map<Rule, string[]>();
-  const hiddenByRule = new Map<Rule, boolean[]>();
-  const nestedPlan = new Map<Rule, NestedRulePlan>();
-  const hoistHeader = new Map<Rule, string[]>();
+  const flatByRule = new Map<Ruleset, string[]>();
+  const hiddenByRule = new Map<Ruleset, boolean[]>();
+  const nestedPlan = new Map<Ruleset, NestedRulePlan>();
+  const hoistHeader = new Map<Ruleset, string[]>();
   const staticProjection: ExtendPlacementResults = { flatByRule, hiddenByRule, nestedPlan, hoistHeader };
   let byPlacement: WeakMap<object, ExtendPlacementResults> | null = null;
   const projectionFor = (subject: PlanSubject): ExtendPlacementResults => {
@@ -479,7 +479,7 @@ export function computeExtends(
    * COMPOSED complex). This is a general nested-emit collapse, gated tightly so it
    * does not disturb ordinary nesting.
    */
-  const collapsedParent = new Set<Rule>();
+  const collapsedParent = new Set<Ruleset>();
   const collapsedChild = new Set<PlanSubject>();
   const isPureAmpSelfCompound = (s: PlanSubject): boolean => {
     if (s.ownLocal.length !== 1) {
@@ -495,11 +495,11 @@ export function computeExtends(
   for (const p of plan.subjects) {
     let onlyRule: Statement | null = null;
     let bail = false;
-    for (const st of p.rule.body) {
-      if (st.type === 'MixinDef' || st.type === 'VariableDeclaration') {
+    for (const st of p.rule.rules) {
+      if (st.type === 'MixinDefinition' || st.type === 'VariableDeclaration') {
         continue;
       }
-      if (st.type === 'Rule' && onlyRule === null) {
+      if (st.type === 'Ruleset' && onlyRule === null) {
         onlyRule = st;
         continue;
       }
@@ -627,7 +627,7 @@ export function computeExtends(
    * ---- flatten decision (top-down; a COLLAPSE cascades to descendants) ----
    * 'collapse' — the flattened subtree is emitted FLAT (children composed); it
    * cascades flatten downward (a collapsed leaf's descendants collapse too).
-   * 'renest'  — the flattened subject STILL HAS nested children: it is RE-NESTED at
+   * 'renest'  — the flattened subject STILL HAS nested rules: it is RE-NESTED at
    * the hoist position (composed cross-`&` header, children stay literal-nested),
    * so it does NOT cascade (its children emit nested under the new header).
    */

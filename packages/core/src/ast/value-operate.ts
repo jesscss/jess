@@ -160,7 +160,7 @@ export function validateFinalUnits(value: ValueGroup, modes: EvalModes): void {
     return;
   }
   if (value.type === 'Block') {
-    validateFinalUnits(value.inner, modes);
+    validateFinalUnits(value.value, modes);
   }
 }
 

@@ -1,13 +1,12 @@
 import '@ungap/set-methods';
 
 /**
- * Public API surface. Node classes/factories and their types come from the
- * tree barrel; everything else is exported explicitly from the modules below.
+ * Public API surface. The old tree classes are intentionally not exported from
+ * the package root; consumers should use the AST/value entrypoints below.
  * Core-internal helpers (print state, trivia emission, compare/cast/lookup
  * machinery) are intentionally NOT exported — import them relatively inside
  * core. See docs/architecture/core/CORE-CLEANUP.md.
  */
-export * from './tree/index.js';
 
 export {
   Context,
@@ -36,7 +35,7 @@ export {
 export * from './plugin.js';
 export * from './jess-error.js';
 export * from './deprecation.js';
-export * from './define-function.js';
+export type { ApplySelectorKind, ExtendSelectorKind, SelectorPolicyKind } from './types/config.js';
 
 export { isNode } from './tree/util/is-node.js';
 

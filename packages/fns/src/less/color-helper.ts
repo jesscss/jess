@@ -40,7 +40,7 @@ export const snapAlpha = (a: number): number => (Math.abs(a - 1) < 1e-12 ? 1 : a
  * `rgba(255, 255, 0, 0.5)`, but `fade(#5F59, 10%)` → `#55ff551a`).
  */
 export function withAlpha(color: Color, newAlpha: number): Color {
-  const node = color.node;
+  const node = color.src;
   const hexDigits = typeof node === 'string' && node.startsWith('#') ? node.length - 1 : 0;
   const preserveHex = color.format === HEX && (hexDigits === 4 || hexDigits === 8);
   return makeColorRgb(colorRawRgb(color), round(newAlpha, 8), preserveHex ? HEX : RGB, { modernSyntax: color.modernSyntax === true });

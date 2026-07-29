@@ -123,15 +123,15 @@ function alphaText(c: Color, a: number): string {
 }
 
 /**
- * Serialize a color in scalar syntax. A verbatim source literal (`c.node`) wins;
+ * Serialize a color in scalar syntax. A verbatim source literal (`c.src`) wins;
  * else format-based emit (RGB/HSL/HEX). The optional SOURCE-FORMAT state
  * (`rgbPct`/`alphaPct`/`hueUnit`) reproduces an un-operated constructor's authored
  * spelling (`%` channels, `%` alpha, hue unit); when absent the emit is the
  * canonical no-source branch (`${rgb[idx]}` / `${alpha}`).
  */
 export function serializeColor(c: Color): string {
-  if (c.node !== undefined) {
-    return c.node;
+  if (c.src !== undefined) {
+    return c.src;
   }
   const format = c.format ?? HEX;
   if (format === RGB) {

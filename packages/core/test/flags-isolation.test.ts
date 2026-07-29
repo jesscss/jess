@@ -8,7 +8,6 @@ import {
   el,
   interpolated,
   interpolatedSelector,
-  isNode,
   list,
   negative,
   num,
@@ -21,7 +20,8 @@ import {
   sellist,
   type Declaration,
   type Ruleset
-} from '../src/index.js';
+} from '../src/tree/index.js';
+import { isNode } from '../src/tree/util/is-node.js';
 
 function expectRulesetNode(node: unknown): Ruleset {
   expect(isNode(node, N.Ruleset)).toBe(true);

@@ -3,7 +3,7 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
   compoundSelectorOf, complexSelector, decl, dimension, funcCall, interpolatedSimpleSelector, interpolation, keyword, operation, quoted, selist, spaced, stylesheet, rule, variableDeclaration, variableReference,
-  type MixinCall, type MixinDef, type Stylesheet, type Statement
+  type MixinCall, type MixinDefinition, type Stylesheet, type Statement
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { Context } from '../../context.js';
@@ -18,10 +18,10 @@ const call = (name: string, args: MixinCall['args'] = []): MixinCall => ({
 
 const mixin = (
   name: string,
-  params: MixinDef['params'],
-  body: Statement[],
-  guard?: MixinDef['guard']
-): MixinDef => ({ type: 'MixinDef', name, params, body, ...(guard ? { guard } : {}) });
+  params: MixinDefinition['params'],
+  rules: Statement[],
+  guard?: MixinDefinition['guard']
+): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard ? { guard } : {}) });
 
 describe('Mixin canonical AST emission', () => {
   it('errors for an unresolved mixin independently of functionMode', () => {

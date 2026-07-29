@@ -13,9 +13,9 @@ const flat = (document: Stylesheet): string | undefined =>
   serialize(document, { evaluator, collapseNesting: true }).css;
 
 /** `parents { children… { color: red } }`, rendered flat. */
-const nest = (parents: string[], children: ComplexSelector[]): string =>
+const nest = (parents: string[], rules: ComplexSelector[]): string =>
   (flat(stylesheet([
-    rule(selist(...parents.map(sel)), [rule(selist(...children), [decl('color', keyword('red'))])])
+    rule(selist(...parents.map(sel)), [rule(selist(...rules), [decl('color', keyword('red'))])])
   ])) ?? '').split('{')[0]!.trim().replace(/,\s+/g, ', ');
 
 /** A single-compound branch opening with `comb` — `> .col`. */

@@ -24,8 +24,8 @@ import {
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, atRuleBlock, atRuleStatement, block, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, color, complexCanonical, complexSelector, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
@@ -33,19 +33,19 @@ import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInline
 // ---------------------------------------------------------------------------
 
 type Token = { readonly value: string };
-type ChildContainer = { readonly children: readonly unknown[] };
+type ChildContainer = { readonly rules: readonly unknown[] };
 type InterpolationFact = { readonly ref: ValueNode; readonly src: string };
 type InterpolationAccessorFact = { readonly key: ValueNode | number; readonly keyKind: 'var' | 'prop' | 'index'; readonly src: string };
 /** A typed continuation of a left-associated public Reference chain. */
 type ReferenceTailFact = { readonly step: Reference['steps'][number]; readonly src: string };
-type ComplexTailFact = { readonly comb: ' ' | '>' | '+' | '~' | '|' | '||'; readonly compound: CompoundSelector };
+type ComplexTailFact = { readonly comb: ' ' | '>' | '+' | '~' | '|' | '||'; readonly compound: SelectorTerm };
 type MixinPathTailFact = { readonly comb: ' ' | '>'; readonly sel: string };
 type LessEachCallback = { readonly binding: ForBinding; readonly rules: Statement[] };
-type MixinGuard = NonNullable<MixinDef['guard']>;
+type MixinGuard = NonNullable<MixinDefinition['guard']>;
 type MixinCallArgument = MixinCall['args'][number];
 type CallValue = ValueSlot | MixinCall;
 /** Private grammar reduction: delimiters remain parser facts, while the public
- * MixinDef receives only the semantic Param array. */
+ * MixinDefinition receives only the semantic Param array. */
 type MixinParameterListFact = { readonly params: readonly Param[] };
 type MixinSignatureFact = { readonly name: string; readonly params: readonly Param[]; readonly guard?: MixinGuard };
 type StaticAttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
@@ -138,7 +138,7 @@ type LessRules = {
   Declaration: Combinator<Declaration>;
   MixinParam: Combinator<Param>;
   MixinParameterList: Combinator<MixinParameterListFact>;
-  MixinDefinition: Combinator<MixinDef>;
+  MixinDefinition: Combinator<MixinDefinition>;
   PositionalMixinCallArgument: Combinator<MixinCallArgument>;
   MixinArgumentGroup: Combinator<MixinCallArgument>;
   MixinArguments: Combinator<readonly MixinCallArgument[]>;
@@ -192,7 +192,7 @@ type LessRules = {
   MediaContainerBody: Combinator<readonly Statement[]>;
   MediaContainerBlock: Combinator<AtRuleBlock>;
   KeyframeSelector: Combinator<SimpleSelector>;
-  KeyframeBlock: Combinator<Rule>;
+  KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
   DottedAtRuleKeyword: Combinator<ValueNode>;
   StaticAtRuleAtom: Combinator<ValueNode>;
@@ -215,7 +215,7 @@ type LessRules = {
   StaticPseudoGroup: Combinator<string>;
   StaticPseudoSquare: Combinator<string>;
   StaticPseudoQuoted: Combinator<string>;
-  StaticPseudoCompound: Combinator<CompoundSelector>;
+  StaticPseudoCompound: Combinator<SelectorTerm>;
   StaticPseudoComplexTail: Combinator<ComplexTailFact>;
   StaticPseudoComplex: Combinator<ComplexSelector>;
   StaticPseudoSelectorTail: Combinator<ComplexSelector>;
@@ -235,7 +235,7 @@ type LessRules = {
   AdjacentInterpolatedSelector: Combinator<SimpleSelector>;
   BareInterpolatedSelectorWithSuffix: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
-  Compound: Combinator<CompoundSelector>;
+  Compound: Combinator<SelectorTerm>;
   ComplexTail: Combinator<ComplexTailFact>;
   Complex: Combinator<ComplexSelector>;
   SelectorTail: Combinator<ComplexSelector>;
@@ -243,7 +243,7 @@ type LessRules = {
   ExtendComplex: Combinator<ComplexSelector>;
   ExtendTarget: Combinator<ExtendTargetFact>;
   ExtendStatement: Combinator<ExtendInstruction[]>;
-  RulesetWithExtends: Combinator<Rule>;
+  RulesetWithExtends: Combinator<Ruleset>;
   Quoted: Combinator<Quoted | Interpolation>;
   StaticQuoted: Combinator<Quoted>;
   EscapedQuoted: Combinator<Quoted | Interpolation>;
@@ -325,8 +325,8 @@ function isUnsupportedVariableNameFact(value: unknown): value is UnsupportedVari
 function hasChildren(value: unknown): value is ChildContainer {
   return typeof value === 'object'
     && value !== null
-    && 'children' in value
-    && Array.isArray(value.children);
+    && 'rules' in value
+    && Array.isArray(value.rules);
 }
 
 function hasGrammarType(value: unknown, grammarType: string): boolean {
@@ -359,7 +359,7 @@ function variableNameTerminalText(value: unknown): string | undefined {
     return value.value;
   }
   if (hasChildren(value)) {
-    return variableNameTerminalText(value.children);
+    return variableNameTerminalText(value.rules);
   }
   return undefined;
 }
@@ -372,7 +372,7 @@ function unsupportedVariableNameFrom(value: unknown): string | undefined {
     return '-';
   }
   if (hasGrammarType(value, 'UnsupportedVariableName') && hasChildren(value)) {
-    return variableNameTerminalText(value.children);
+    return variableNameTerminalText(value.rules);
   }
   if (Array.isArray(value)) {
     for (const child of value) {
@@ -387,7 +387,7 @@ function unsupportedVariableNameFrom(value: unknown): string | undefined {
     return unsupportedVariableNameFrom(value.value);
   }
   if (hasChildren(value)) {
-    return unsupportedVariableNameFrom(value.children);
+    return unsupportedVariableNameFrom(value.rules);
   }
   return undefined;
 }
@@ -649,11 +649,11 @@ function mixinArgumentSource(value: CallValue): string {
     case 'VarIndirect': return `@${mixinArgumentSource(node.nameRef)}`;
     case 'Reference': return node.raw;
     case 'FunctionCall': return `${node.name}(${node.args.map(mixinArgumentSource).join(', ')})`;
-    case 'Block': return `${node.escaped ? '~' : ''}${node.delimiter === 'square' ? '[' : '('}${mixinArgumentSource(node.inner)}${node.delimiter === 'square' ? ']' : ')'}`;
+    case 'Block': return `${node.escaped ? '~' : ''}${node.delimiter === 'square' ? '[' : '('}${mixinArgumentSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     case 'Operation': return `${mixinArgumentSource(node.left)} ${node.operator} ${mixinArgumentSource(node.right)}`;
     case 'SpacedValue': return node.parts.map(mixinArgumentSource).join(' ');
     case 'List': return node.value.map(mixinArgumentSource).join(node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ');
-    case 'Important': return `${mixinArgumentSource(node.inner)} !important`;
+    case 'Important': return `${mixinArgumentSource(node.value)} !important`;
     default: throw new TypeError(`Less mixin-reference raw source cannot represent ${node.type}.`);
   }
 }
@@ -1224,8 +1224,8 @@ function valueSlot(value: ValueSlot): ValueSlot {
   if (isSpacedValue(value)) {
     return value.parts;
   }
-  if (isValueNode(value) && value.type === 'Block' && isSpacedValue(value.inner)) {
-    return { ...value, inner: value.inner.parts };
+  if (isValueNode(value) && value.type === 'Block' && isSpacedValue(value.value)) {
+    return { ...value, value: value.value.parts };
   }
   return value;
 }
@@ -1256,10 +1256,10 @@ function variableValueSlot(value: unknown): ValueSlot {
     const authoredBoundary = slot.separators?.some(separator => separator.length > 0) === true;
     return preservedDivision && authoredBoundary ? slot : slot.parts;
   }
-  if (isValueNode(slot) && slot.type === 'Block' && isSpacedValue(slot.inner)) {
-    const preservedDivision = slot.inner.parts.some(part =>
+  if (isValueNode(slot) && slot.type === 'Block' && isSpacedValue(slot.value)) {
+    const preservedDivision = slot.value.parts.some(part =>
       (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
-    return preservedDivision ? slot : { ...slot, inner: slot.inner.parts };
+    return preservedDivision ? slot : { ...slot, value: slot.value.parts };
   }
   return slot;
 }
@@ -1373,9 +1373,8 @@ function isComplex(value: unknown): value is ComplexSelector {
     && value !== null
     && 'type' in value
     && value.type === 'ComplexSelector'
-    && 'head' in value
-    && 'tail' in value
-    && Array.isArray(value.tail);
+    && 'value' in value
+    && Array.isArray(value.value);
 }
 
 function requireComplex(value: unknown): ComplexSelector {
@@ -1430,13 +1429,16 @@ function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[
   return span === undefined ? node : withBodySpan(node, span);
 }
 
-function isCompound(value: unknown): value is CompoundSelector {
+function isCompound(value: unknown): value is SelectorTerm {
+  if (isSimpleToken(value)) {
+    return true;
+  }
   return typeof value === 'object'
     && value !== null
     && 'type' in value
     && value.type === 'CompoundSelector'
-    && 'simples' in value
-    && Array.isArray(value.simples);
+    && 'value' in value
+    && Array.isArray(value.value);
 }
 
 function isSimpleSelector(value: unknown): value is SimpleSelector {
@@ -1460,6 +1462,14 @@ function isSimpleToken(value: unknown): value is SimpleToken {
     && value !== null
     && 'type' in value
     && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
+}
+
+function selectorTermFromSimples(simples: SimpleToken[]): SelectorTerm {
+  const [first, ...rest] = simples;
+  if (first === undefined) {
+    throw new TypeError('Less selector production produced no simple selector tokens.');
+  }
+  return selectorTermOf([first, ...rest]);
 }
 
 function requireSimpleToken(value: unknown): SimpleToken {
@@ -1490,28 +1500,28 @@ function staticNonSelectorPseudoFrom(head: string, arg: string | null): SimpleSe
     : simpleSelector(`${head}(${arg})`);
 }
 
-function requireCompound(value: unknown): CompoundSelector {
+function requireCompound(value: unknown): SelectorTerm {
   if (!isCompound(value)) {
     throw new TypeError('Less grammar produced a non-compound selector child.');
   }
   return value;
 }
 
-function isRule(value: unknown): value is Rule {
+function isRule(value: unknown): value is Ruleset {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
-    && value.type === 'Rule'
+    && value.type === 'Ruleset'
     && 'selector' in value
     && isSelectorList(value.selector)
-    && 'body' in value
-    && Array.isArray(value.body);
+    && 'rules' in value
+    && Array.isArray(value.rules);
 }
 
 function isAtRuleBlock(value: unknown): value is AtRuleBlock {
   return typeof value === 'object' && value !== null && 'type' in value
     && value.type === 'AtRuleBlock' && 'name' in value && typeof value.name === 'string'
-    && 'prelude' in value && 'body' in value && Array.isArray(value.body);
+    && 'prelude' in value && 'rules' in value && Array.isArray(value.rules);
 }
 
 function isAtRuleStatement(value: unknown): value is AtRuleStatement {
@@ -1520,10 +1530,10 @@ function isAtRuleStatement(value: unknown): value is AtRuleStatement {
     && 'prelude' in value;
 }
 
-function isMixinDef(value: unknown): value is MixinDef {
+function isMixinDef(value: unknown): value is MixinDefinition {
   return typeof value === 'object' && value !== null && 'type' in value
-    && value.type === 'MixinDef' && 'name' in value && typeof value.name === 'string'
-    && 'params' in value && Array.isArray(value.params) && 'body' in value && Array.isArray(value.body);
+    && value.type === 'MixinDefinition' && 'name' in value && typeof value.name === 'string'
+    && 'params' in value && Array.isArray(value.params) && 'rules' in value && Array.isArray(value.rules);
 }
 
 function isMixinCall(value: unknown): value is MixinCall {
@@ -1685,7 +1695,7 @@ function functionConditionSource(value: ValueSlot): string {
     case 'VariableReference': return `@${node.name}`;
     case 'FunctionCall': return `${node.name}(${node.args.map(functionConditionSource).join(', ')})`;
     case 'Operation': return `${functionConditionSource(node.left)} ${node.operator} ${functionConditionSource(node.right)}`;
-    case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.inner)}${node.delimiter === 'square' ? ']' : ')'}`;
+    case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     case 'SpacedValue': return node.parts.map(functionConditionSource).join(' ');
     case 'Condition': return node.src;
     default: throw new TypeError(`Less function condition cannot preserve ${node.type}.`);
@@ -1726,7 +1736,7 @@ function isStatement(value: unknown): value is Statement {
       return isVarDeclaration(value);
     case 'Declaration':
       return isDeclaration(value);
-    case 'Rule':
+    case 'Ruleset':
       return isRule(value);
     case 'AtRuleBlock':
       return isAtRuleBlock(value);
@@ -1736,7 +1746,7 @@ function isStatement(value: unknown): value is Statement {
       return isAtRuleStatement(value);
     case 'Plugin':
       return true;
-    case 'MixinDef':
+    case 'MixinDefinition':
       return isMixinDef(value);
     case 'MixinCall':
       return isMixinCall(value);
@@ -1774,14 +1784,14 @@ function isFor(value: unknown): value is For {
 }
 
 function requireRulesetBody(children: readonly unknown[]): Statement[] {
-  const body: Statement[] = [];
+  const rules: Statement[] = [];
   for (const child of children) {
     if (!isStatement(child)) {
       throw new TypeError('Less grammar produced a non-ruleset-body child.');
     }
-    body.push(child);
+    rules.push(child);
   }
-  return body;
+  return rules;
 }
 
 /** Retain every callback body fact except an authored empty statement. */
@@ -3373,7 +3383,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         throw new TypeError('Less grammar produced an invalid declaration merge modifier.');
       }
       const node = !Array.isArray(value) && isValueNode(value) && value.type === 'Important'
-        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, valueSlot(value.inner), merge, true, valueOnNewLine)
+        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, valueSlot(value.value), merge, true, valueOnNewLine)
         : decl(isInterp(rawName) ? rawName : requireToken(rawName).value, Array.isArray(value) ? value : valueSlot(value), merge, false, valueOnNewLine);
       return withSourceSpan(node, span);
     }
@@ -3969,7 +3979,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   // A `node()` reduction boundary keeps the gated group's single mixin fact from
   // splicing the zero-width lookahead marker into the parent statement list; the
-  // reducer returns the inner MixinDef/MixinCall/MixinCall (bare) node unchanged,
+  // reducer returns the inner MixinDefinition/MixinCall/MixinCall (bare) node unchanged,
   // so the emitted AST and its `type`-keyed shape are identical to the ungrouped
   // arms. `collapse` lets parseman drop the transparent wrapper allocation.
   const mixinStatement = node<Statement>(
@@ -3997,7 +4007,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // emitted AST and PEG priority are unchanged; a `node()` boundary keeps the
   // lookahead marker from splicing into the statement list.
   const rulesetNotDeclaration = not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
-  const guardedRuleset = node<Rule>(
+  const guardedRuleset = node<Ruleset>(
     'GuardedRuleset',
     sequence(rulesetNotDeclaration, g.RulesetWithExtends),
     (children) => {
@@ -4073,7 +4083,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // former flat `choice(<shared arms>, ExtendStatement, ';')` because
   // an extend head never matches `;` or any shared arm the flat list did not.
   const rulesetBody = many(choice(blockItem, g.ExtendStatement));
-  const MixinDefinition = node<MixinDef>(
+  const MixinDefinition = node<MixinDefinition>(
     'MixinOrQualifiedRule',
     sequence(
       mixinSignature,
@@ -4677,7 +4687,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       );
     }
   );
-  // Keyframes use the existing canonical AtRuleBlock + Rule shape. Keeping the
+  // Keyframes use the existing canonical AtRuleBlock + Ruleset shape. Keeping the
   // header and selector list structural avoids routing valid CSS keyframes
   // through the generic Less at-rule/ruleset combination, which cannot model
   // percentage selectors as selector facts.
@@ -4690,7 +4700,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     choice(keyframeEndpoint, keyframePercent),
     children => simpleSelector(requireToken(children[0]).value)
   );
-  const KeyframeBlock = node<Rule>(
+  const KeyframeBlock = node<Ruleset>(
     'KeyframeBlock',
     sequence(
       oneOrMoreSep(
@@ -4704,7 +4714,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     (children, _fields, span, rawChildren) => {
       const selectors = children.filter(isSimpleSelector)
-        .map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
+        .map(selector => complexSelector([{ compound: selector }]));
       if (selectors.length === 0) {
         throw new TypeError('Less keyframe block requires a selector.');
       }
@@ -5157,13 +5167,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // comment immediately between two simple selectors is lexical trivia, not a
   // descendant relation (`.a/*x*/.b` is one compound); actual whitespace still
   // belongs to the complex-tail descendant boundary.
-  const StaticPseudoCompound = node<CompoundSelector>(
+  const StaticPseudoCompound = node<SelectorTerm>(
     'StaticPseudoCompound',
     parser(
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.StaticNamespaceType, staticSimpleSelector, staticAmpersand, g.StaticPseudo, g.StaticNthPseudo, g.StaticAttribute))
     ),
-    children => compoundSelectorOf(children.map((child) => {
+    children => selectorTermFromSimples(children.map((child) => {
       return isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
     }))
   );
@@ -5517,7 +5527,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.StaticAttribute,
     g.InterpolatedAttribute
   );
-  const Compound: Combinator<CompoundSelector> = node<CompoundSelector>(
+  const Compound: Combinator<SelectorTerm> = node<SelectorTerm>(
     'Compound',
     // Production's CompoundSelector is a run of adjacent simple selectors.
     // Keep that same structural distinction here: `.a#id` is one CompoundSelector with
@@ -5530,7 +5540,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     parser({ trivia: compoundSelectorTrivia }, oneOrMore(compoundSimple)),
     (children) => {
       const simples = children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value));
-      return compoundSelectorOf(simples);
+      return selectorTermFromSimples(simples);
     }
   );
   const Complex = node<ComplexSelector>(
@@ -5574,13 +5584,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children, _fields, span) => withSourceSpan(selist(...requireComplexes(children)), span)
   );
   const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-  const StaticExtendCompound = node<CompoundSelector>(
+  const StaticExtendCompound = node<SelectorTerm>(
     'StaticExtendCompound',
     parser(
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.StaticNamespaceType, staticSimpleSelector, staticAmpersand, pseudo, g.StaticNthPseudo, g.StaticAttribute))
     ),
-    children => compoundSelectorOf(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
+    children => selectorTermFromSimples(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
   const StaticExtendComplexTail = node<ComplexTailFact>(
     'StaticExtendComplexTail',
@@ -5684,7 +5694,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions)
     })
   );
-  const RulesetWithExtends = node<Rule>(
+  const RulesetWithExtends = node<Ruleset>(
     'Ruleset',
     sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {

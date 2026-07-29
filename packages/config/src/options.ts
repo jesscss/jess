@@ -198,6 +198,7 @@ export function getOptions(
     unitMode: compile.unitMode,
     equalityMode: compile.equalityMode,
     allowExtendSelectors: compile.allowExtendSelectors,
+    allowApplySelectors: compile.allowApplySelectors,
     processImports: compile.processImports,
     disableScriptModules: compile.disableScriptModules ?? compile.disablePluginRule,
     paths: compile.searchPaths,

@@ -10,7 +10,7 @@
  * Add cases ONE rung at a time; each new case tells you which layer is missing.
  */
 import { describe, it, expect } from 'vitest';
-import { el, sel, sellist, compound, is, co, type Selector } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, type Selector } from '../../index.js';
 import { Ampersand } from '../../ampersand.js';
 import { F_IMPLICIT_AMPERSAND } from '../../node.js';
 import { extendSelector } from '../../util/extend.js';

@@ -49,10 +49,10 @@ describe('public CSS parse()', () => {
 
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'AtRuleBlock',
         name: '@media',
-        body: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] }]
       }]
     });
   });
@@ -65,11 +65,11 @@ describe('public CSS parse()', () => {
 
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'AtRuleBlock',
         name: '@property',
         prelude: { type: 'Any', src: '--accent' },
-        body: [
+        rules: [
           { type: 'Declaration', name: 'syntax' },
           { type: 'Declaration', name: 'inherits' },
           { type: 'Declaration', name: 'initial-value' }
@@ -86,9 +86,9 @@ describe('public CSS parse()', () => {
 
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock', name: '@scope', body: [{
-          type: 'AtRuleBlock', name: '@scope', body: [{ type: 'Declaration', name: 'color' }]
+      rules: [{
+        type: 'AtRuleBlock', name: '@scope', rules: [{
+          type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'Declaration', name: 'color' }]
         }]
       }]
     });
@@ -100,7 +100,7 @@ describe('public CSS parse()', () => {
 
   it('requires a semicolon between declarations and following nested body items', () => {
     expect(parse('.card { color: red }')).toMatchObject({
-      children: [{ body: [{ type: 'Declaration', name: 'color' }] }]
+      rules: [{ rules: [{ type: 'Declaration', name: 'color' }] }]
     });
     expect(() => parse('.card { color: red @media (width: 1px) { color: blue; } }')).toThrow(SyntaxError);
     expect(() => parse('.card { color: red .child { color: blue; } }')).toThrow(SyntaxError);
@@ -114,7 +114,7 @@ describe('public CSS parse()', () => {
 
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
           type: 'GeneralEnclosed', form: 'function', name: 'selector',
           content: { type: 'Interpolation', parts: [{ lit: '.grid /* keep */ :is(.a, .b)' }] }
@@ -133,8 +133,8 @@ describe('public CSS parse()', () => {
   it('accepts negative An+B pseudo arguments through the public direct-AST route', () => {
     expect(parse(':nth-child(-n+2 of .item) { color: red; }')).toMatchObject({
       type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
+      rules: [{
+        type: 'Ruleset',
         selector: { selectors: [{ head: { simples: [{ text: ':nth-child(-n+2 of .item)' }] } }] }
       }]
     });
@@ -143,10 +143,10 @@ describe('public CSS parse()', () => {
   it('accepts a comment at the qualified-selector to block boundary', () => {
     expect(parse('a/**/{ color: red; }')).toMatchObject({
       type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
+      rules: [{
+        type: 'Ruleset',
         selector: { selectors: [{ head: { simples: [{ text: 'a' }] } }] },
-        body: [{ type: 'Declaration', name: 'color' }]
+        rules: [{ type: 'Declaration', name: 'color' }]
       }]
     });
   });
@@ -156,7 +156,7 @@ describe('public CSS parse()', () => {
 
     expect(document).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [{
+      rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration', name: 'background'
       }] }]
     });
@@ -170,7 +170,7 @@ describe('public CSS parse()', () => {
 
     expect(glued).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [{
+      rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration',
         name: 'filter',
         value: { type: 'FunctionCall', name: 'alpha' }
@@ -178,7 +178,7 @@ describe('public CSS parse()', () => {
     });
     expect(spaced).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [{
+      rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration',
         name: 'filter'
       }] }]
@@ -196,7 +196,7 @@ describe('public CSS parse()', () => {
 
       expect(document).toMatchObject({
         type: 'Stylesheet',
-        children: [{ type: 'Rule', body: [{
+        rules: [{ type: 'Ruleset', rules: [{
           type: 'Declaration',
           value: [
             { type: 'Keyword', src: name },
@@ -216,7 +216,7 @@ describe('public CSS parse()', () => {
 
     expect(document).toMatchObject({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'AtRuleBlock',
         name: '@container',
         prelude: {
@@ -239,7 +239,7 @@ describe('public CSS parse()', () => {
 
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [
+      rules: [{ type: 'Ruleset', rules: [
         { type: 'Declaration', name: 'double', value: { type: 'Quoted', src: '~"theme"', value: 'theme', quote: '"', escaped: true } },
         { type: 'Declaration', name: 'single', value: { type: 'Quoted', src: '~\'tone\'', value: 'tone', quote: '\'', escaped: true } }
       ] }]
@@ -263,7 +263,7 @@ describe('public CSS parse()', () => {
   it('keeps an ordinary declaration var() fallback as one structured value', () => {
     expect(parse('.a { color: var(--theme,); }')).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [{
+      rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration', name: 'color', value: {
           type: 'FunctionCall', name: 'var', args: [
             { type: 'Keyword', src: '--theme' },
@@ -275,7 +275,7 @@ describe('public CSS parse()', () => {
 
     expect(parse('.a { color: var(--theme, red, blue); }')).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [{
+      rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration', name: 'color', value: {
           type: 'FunctionCall', name: 'var', args: [
             { type: 'Keyword', src: '--theme' },
@@ -296,9 +296,9 @@ describe('public CSS parse()', () => {
   it('keeps CSS unicode-range tokens opaque instead of splitting them into signed numbers', () => {
     expect(parse('@font-face { unicode-range: U+??????, U+0???, U+0-7F, U+A5; } .range { values: U+0-7F 1, U+A5; }')).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'AtRuleBlock', name: '@font-face', body: [{
+          type: 'AtRuleBlock', name: '@font-face', rules: [{
             type: 'Declaration', name: 'unicode-range', value: {
               type: 'List', sep: ',', value: [
                 { type: 'Any', src: 'U+??????' },
@@ -310,7 +310,7 @@ describe('public CSS parse()', () => {
           }]
         },
         {
-          type: 'Rule', body: [{
+          type: 'Ruleset', rules: [{
             type: 'Declaration', name: 'values', value: {
               type: 'List', sep: ',', value: [
                 [{ type: 'Any', src: 'U+0-7F' }, { type: 'Dimension', src: '1' }],
@@ -326,7 +326,7 @@ describe('public CSS parse()', () => {
   it('accepts every authored unicode-range spelling as one token', () => {
     for (const token of ['U+26', 'U+0-7F', 'U+0025-00FF', 'U+4??', 'U+??????', 'u+0-7f']) {
       expect(parse(`@font-face { unicode-range: ${token}; }`), token).toMatchObject({
-        children: [{ body: [{ type: 'Declaration', value: { type: 'Any', src: token } }] }]
+        rules: [{ rules: [{ type: 'Declaration', value: { type: 'Any', src: token } }] }]
       });
     }
   });

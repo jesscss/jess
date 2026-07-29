@@ -1,4 +1,4 @@
-import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../index.js';
 import { matchSelectors, MatchResult, findExtendableLocations, ExtendSearchResult } from '../find-extendable-locations.js';
 import { extendSelector } from '../extend.js';
 import { isNode } from '../is-node.js';

@@ -64,16 +64,16 @@ describe('SCSS grammar compose integrity', () => {
   it('keeps Less-looking at-rules on the generic at-rule path, not Less routes', () => {
     for (const [source, shape] of [
       ['@color: red;', {
-        children: [{ type: 'AtRuleStatement', name: '@color', prelude: { type: 'Any', src: ': red' } }]
+        rules: [{ type: 'AtRuleStatement', name: '@color', prelude: { type: 'Any', src: ': red' } }]
       }],
       ['.a { @color: red; }', {
-        children: [{ type: 'Rule', body: [{ type: 'AtRuleStatement', name: '@color', prelude: { type: 'Any', src: ': red' } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'AtRuleStatement', name: '@color', prelude: { type: 'Any', src: ': red' } }] }]
       }],
       ['@plugin "x";', {
-        children: [{ type: 'AtRuleStatement', name: '@plugin', prelude: { type: 'Any', src: '"x"' } }]
+        rules: [{ type: 'AtRuleStatement', name: '@plugin', prelude: { type: 'Any', src: '"x"' } }]
       }],
       ['.a { @detached(); }', {
-        children: [{ type: 'Rule', body: [{ type: 'AtRuleStatement', name: '@detached', prelude: { type: 'Any', src: '()' } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'AtRuleStatement', name: '@detached', prelude: { type: 'Any', src: '()' } }] }]
       }]
     ] as const) {
       const ast = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });

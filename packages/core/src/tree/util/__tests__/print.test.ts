@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Any } from '../../../index.js';
+import { Any } from '../../index.js';
 import { Context } from '../../../context.js';
 import { consumeTrivia, createTriviaMap, emitTriviaTokens, makeTrivia } from '../trivia.js';
 import type { Trivia } from '../../../types/index.js';

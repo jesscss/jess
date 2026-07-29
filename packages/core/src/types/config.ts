@@ -1,7 +1,9 @@
 import type { EqualityMode, FunctionMode, MathMode, UnitMode } from './modes.js';
 
 export type { EqualityMode, FunctionMode, MathMode, UnitMode };
-export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+export type SelectorPolicyKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+export type ExtendSelectorKind = SelectorPolicyKind;
+export type ApplySelectorKind = SelectorPolicyKind;
 
 /**
  * Less compiler options.
@@ -14,9 +16,10 @@ export interface LessOptions {
    * Restrict which selector shapes are allowed in extend targets.
    * When set, any other selector kind is a parse error.
    *
-   * Supported kinds mirror selector node types in lowercase:
-   * - `simple`
-   * - `basic`
+   * Supported kinds:
+   * - `class`: class selectors like `.utility`
+   * - `basic`: non-pseudo simple selectors like `.class`, `#id`, `button`, `[attr]`
+   * - `simple`: any simple selector, including pseudos
    * - `pseudo`
    * - `compound`
    * - `complex`
@@ -24,6 +27,15 @@ export interface LessOptions {
    * @default undefined
    */
   allowExtendSelectors?: ExtendSelectorKind[];
+
+  /**
+   * Restrict which selector shapes are allowed in Jess `$apply` targets.
+   * Jess defaults this narrower than `$extend`: unset means class selector
+   * targets only.
+   *
+   * @default ['class']
+   */
+  allowApplySelectors?: ApplySelectorKind[];
 
   /**
    * Inline Javascript - @plugin still allowed

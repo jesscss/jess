@@ -32,7 +32,7 @@ describe('Sass list functions on the AST-v2 value domain', () => {
   it('preserves a square Block wrapper when Sass list operations create a result', () => {
     const square = makeBlock([makeDimension(1)], 'square');
     const result = call(append, square, makeDimension(2));
-    expect(result).toMatchObject({ type: 'Block', delimiter: 'square', inner: [{ number: 1 }, { number: 2 }] });
+    expect(result).toMatchObject({ type: 'Block', delimiter: 'square', value: [{ number: 1 }, { number: 2 }] });
     expect(call(isBracketed, result)).toMatchObject({ type: 'Bool', value: true });
   });
 

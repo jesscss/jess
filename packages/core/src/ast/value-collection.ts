@@ -28,6 +28,20 @@ export function collectionEntries(value: ValueGroup | undefined): readonly Colle
   return isCollection(value) ? value.entries : [];
 }
 
+/** Find a map entry by Sass/Jess value equality in an already-owned entry list. */
+export function collectionEntryIndex(
+  entries: readonly CollectionEntry[],
+  key: ValueGroup,
+  equalityMode: EqualityMode = 'sass'
+): number {
+  for (let index = 0; index < entries.length; index += 1) {
+    if (compare('=', entries[index]!.key, key, equalityMode)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 /**
  * The index of the entry whose key equals `key`, or `-1`.
  *
@@ -41,11 +55,5 @@ export function collectionKeyIndex(
   key: ValueGroup,
   equalityMode: EqualityMode = 'sass'
 ): number {
-  const entries = collectionEntries(value);
-  for (let index = 0; index < entries.length; index += 1) {
-    if (compare('=', entries[index]!.key, key, equalityMode)) {
-      return index;
-    }
-  }
-  return -1;
+  return collectionEntryIndex(collectionEntries(value), key, equalityMode);
 }

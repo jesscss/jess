@@ -18,7 +18,7 @@ export const ieHexStr: Fn = defineFunction('ie-hex-str', {
   body: (c, excess) => {
     noExcess(excess, 1);
     const color = requireColor(c);
-    return makeColorRgb(colorRawRgb(color), color.alpha, HEX, { node: ieHexString(color) });
+    return makeColorRgb(colorRawRgb(color), color.alpha, HEX, { src: ieHexString(color) });
   }
 });
 

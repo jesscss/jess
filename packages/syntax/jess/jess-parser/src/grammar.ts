@@ -18,14 +18,14 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, complexCanonical, complexSelector, condition, decl, collection, collectionEntry, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
-type JessComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
+type JessComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: SelectorTerm };
 type JessStaticAtQueryProperty = { readonly property: Keyword };
 type JessAtRuleHeader = { readonly name: string; readonly prelude: ValueNode | null };
 type JessMixinCallArgument = MixinCall['args'][number];
@@ -73,7 +73,7 @@ type JessRules = {
   DirectJessCallComponent: Combinator<ValueSlot>;
   DirectJessCallArgument: Combinator<ValueSlot>;
   DirectJessCall: Combinator<FunctionCall>;
-  DirectJessCollectionEntry: Combinator<Declaration>;
+  DirectJessCollectionEntry: Combinator<CollectionEntry>;
   DirectJessCollection: Combinator<Collection>;
   DirectJessValueAtom: Combinator<ValueNode>;
   DirectJessValueSpaceGroup: Combinator<ValueSlot>;
@@ -97,7 +97,7 @@ type JessRules = {
   DirectJessReferenceCall: Combinator<Reference>;
   DirectJessApply: Combinator<Apply>;
   DirectJessExtend: Combinator<ExtendInstruction[]>;
-  DirectJessMixinDef: Combinator<MixinDef>;
+  DirectJessMixinDef: Combinator<MixinDefinition>;
   DirectJessSimple: Combinator<SimpleSelector>;
   DirectJessParent: Combinator<SimpleSelector>;
   DirectJessInterpolatedSimple: Combinator<SimpleSelector>;
@@ -106,8 +106,8 @@ type JessRules = {
   DirectJessPseudo: Combinator<SimpleToken>;
   DirectJessStaticPseudoArgument: Combinator<SelectorList | string>;
   DirectJessGenericPseudoArgument: Combinator<SelectorList | string>;
-  DirectJessCompound: Combinator<CompoundSelector>;
-  DirectJessStaticCompound: Combinator<CompoundSelector>;
+  DirectJessCompound: Combinator<SelectorTerm>;
+  DirectJessStaticCompound: Combinator<SelectorTerm>;
   DirectJessStaticComplexTail: Combinator<JessComplexTail>;
   DirectJessStaticComplex: Combinator<ComplexSelector>;
   DirectJessStaticSelectorTail: Combinator<ComplexSelector>;
@@ -117,7 +117,7 @@ type JessRules = {
   DirectJessComplex: Combinator<ComplexSelector>;
   DirectJessSelectorTail: Combinator<ComplexSelector>;
   DirectJessSelector: Combinator<SelectorList>;
-  DirectJessRule: Combinator<Rule>;
+  DirectJessRule: Combinator<Ruleset>;
   ForName: Combinator<string>;
   ForBinding: Combinator<ForBinding>;
   ForRangeBound: Combinator<ValueNode>;
@@ -180,7 +180,7 @@ type JessRules = {
   DirectJessStaticPropertyDescriptor: Combinator<Declaration>;
   DirectJessPropertyAtRule: Combinator<AtRuleBlock>;
   DirectJessKeyframeSelector: Combinator<SimpleSelector>;
-  DirectJessKeyframeBlock: Combinator<Rule>;
+  DirectJessKeyframeBlock: Combinator<Ruleset>;
   DirectJessKeyframes: Combinator<AtRuleBlock>;
   DirectJessOpaquePrelude: Combinator<string | null>;
   DirectJessOpaqueBody: Combinator<string>;
@@ -282,8 +282,9 @@ function isAtRuleNameToken(value: unknown): value is Token {
     && value.value.startsWith('@');
 }
 
-function isCompound(value: unknown): value is CompoundSelector {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'CompoundSelector' && 'simples' in value && Array.isArray(value.simples);
+function isCompound(value: unknown): value is SelectorTerm {
+  return isSimpleToken(value)
+    || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'CompoundSelector' && 'value' in value && Array.isArray(value.value));
 }
 
 function isSimpleSelector(value: unknown): value is SimpleSelector {
@@ -296,8 +297,7 @@ function isSimpleSelector(value: unknown): value is SimpleSelector {
 function isComplexSelector(value: unknown): value is ComplexSelector {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'ComplexSelector'
-    && 'head' in value && isCompound(value.head)
-    && 'tail' in value && Array.isArray(value.tail);
+    && 'value' in value && Array.isArray(value.value);
 }
 
 function isSelectorList(value: unknown): value is SelectorList {
@@ -334,11 +334,19 @@ function requireSimpleToken(value: unknown): SimpleToken {
   return value;
 }
 
-function requireCompound(value: unknown): CompoundSelector {
+function requireCompound(value: unknown): SelectorTerm {
   if (!isCompound(value)) {
     throw new TypeError('Direct Jess AST grammar produced a non-compound selector child.');
   }
   return value;
+}
+
+function selectorTermFromSimples(simples: SimpleToken[]): SelectorTerm {
+  const [first, ...rest] = simples;
+  if (first === undefined) {
+    throw new TypeError('Direct Jess selector production produced no simple selector tokens.');
+  }
+  return selectorTermOf([first, ...rest]);
 }
 
 function requireComplexSelector(value: unknown): ComplexSelector {
@@ -464,8 +472,8 @@ function valueSlot(value: ValueSlot): ValueSlot {
   if (value.type === 'SpacedValue') {
     return value.parts;
   }
-  if (value.type === 'Block' && isSpacedValue(value.inner)) {
-    return { ...value, inner: value.inner.parts };
+  if (value.type === 'Block' && isSpacedValue(value.value)) {
+    return { ...value, value: value.value.parts };
   }
   return value;
 }
@@ -927,14 +935,14 @@ function requireStatementList(value: unknown): Statement[] {
 function isIfBranch(value: unknown): value is IfBranch {
   return typeof value === 'object' && value !== null
     && 'guard' in value && (value.guard === null || isGuardNode(value.guard))
-    && 'body' in value && Array.isArray(value.body);
+    && 'rules' in value && Array.isArray(value.rules);
 }
 
 function requireIfBranch(value: unknown): IfBranch {
   if (!isIfBranch(value)) {
     throw new TypeError('Direct Jess AST grammar produced an invalid conditional branch.');
   }
-  return { guard: value.guard, body: requireStatementList(value.body) };
+  return { guard: value.guard, rules: requireStatementList(value.rules) };
 }
 
 function requireIfBranchArray(value: unknown): IfBranch[] {
@@ -1022,12 +1030,23 @@ function isDeclaration(value: unknown): value is Declaration {
       || (Array.isArray(value.value) && value.value.every(isValueNode)));
 }
 
-function isRule(value: unknown): value is Rule {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Rule';
+function isCollectionEntry(value: unknown): value is CollectionEntry {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'CollectionEntry'
+    && 'key' in value
+    && isValueSlotValue(value.key)
+    && 'value' in value
+    && isValueSlotValue(value.value);
 }
 
-function isMixinDef(value: unknown): value is MixinDef {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDef';
+function isRule(value: unknown): value is Ruleset {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Ruleset';
+}
+
+function isMixinDef(value: unknown): value is MixinDefinition {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDefinition';
 }
 
 function isMixinCall(value: unknown): value is MixinCall {
@@ -1147,8 +1166,8 @@ function reduceLambda(children: readonly unknown[]): AnonymousMixin {
  * in their recognition arms (static excludes interpolation); the compound,
  * complex, tail, and list reductions are structurally identical.
  */
-function reduceCompound(children: readonly unknown[]): CompoundSelector {
-  return compoundSelectorOf(children.map(requireSimpleToken));
+function reduceCompound(children: readonly unknown[]): SelectorTerm {
+  return selectorTermFromSimples(children.map(requireSimpleToken));
 }
 function reduceComplex(children: readonly unknown[]): ComplexSelector {
   return complexSelector([
@@ -2559,7 +2578,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return simpleSelector(`${head}(${argText})`);
     }
   );
-  const DirectJessStaticCompound = node<CompoundSelector>(
+  const DirectJessStaticCompound = node<SelectorTerm>(
     'DirectJessStaticCompound',
     noTrivia(oneOrMore(choice(
       parser(
@@ -2827,21 +2846,24 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * declaration names/values for bracket `$for` bindings; lower it directly
    * instead of preserving a CST-shaped collection node or opaque source bytes.
    */
-  const DirectJessCollectionEntry = node<Declaration>(
+  const DirectJessCollectionEntry = node<CollectionEntry>(
     'DirectJessCollectionEntry',
     sequence(
       g.CssSyntaxProperty,
       literal(':'),
       parser(
         { trivia: whitespace },
-        g.DirectJessValue
+        choice(
+          g.DirectJessValueBlock,
+          g.DirectJessValue
+        )
       ),
       optional(literal(';'))
     ),
     (children) => {
       const value = children[2];
-      return decl(
-        requireToken(children[0]).value,
+      return collectionEntry(
+        keyword(requireToken(children[0]).value),
         Array.isArray(value) ? value : valueSlot(requireValueNode(value))
       );
     }
@@ -2857,7 +2879,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       optional(rawWhitespace),
       literal('}')
     ),
-    children => collection(children.filter(isDeclaration))
+    children => collection(children.filter(isCollectionEntry))
   );
 
   /*
@@ -4076,7 +4098,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * The `@`-headed cluster is placed AFTER DirectJessRule: a rule requires a
    * selector (never `@`) and every at-rule requires `@`, so the two are disjoint
    * and this ordering is behaviour-neutral. Because rules dominate block bodies,
-   * trying Rule first means a non-`@` statement never enters (and rolls back) the
+   * trying Ruleset first means a non-`@` statement never enters (and rolls back) the
    * at-rule recognizers — only genuine `@` statements reach the cluster.
     */
   const directJessAtBlockStatement = choice(
@@ -4198,7 +4220,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * Keyframes already fit the canonical AtRuleBlock + Rule model.  Keep the
+   * Keyframes already fit the canonical AtRuleBlock + Ruleset model.  Keep the
    * header and selector boundary static until Jess has typed interpolation for
    * those positions; never turn either into a source-text prelude.
    */
@@ -4210,7 +4232,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     children => simpleSelector(requireToken(children[0]).value)
   );
-  const DirectJessKeyframeBlock = node<Rule>(
+  const DirectJessKeyframeBlock = node<Ruleset>(
     'DirectJessKeyframeBlock',
     sequence(
       g.DirectJessKeyframeSelector,
@@ -4227,7 +4249,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     (children) => {
       const selectors = children.filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
-        .map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
+        .map(selector => complexSelector([{ compound: selector }]));
       const bodyOpen = children.findIndex(child => isToken(child) && child.value === '{');
       if (bodyOpen < 0) {
         throw new TypeError('Direct Jess keyframe block lost its body boundary.');
@@ -4699,7 +4721,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * Jess shares the core MixinDef/MixinCall model with the other dialects, but
+   * Jess shares the core MixinDefinition/MixinCall model with the other dialects, but
    * owns its `$ >` invocation spelling and Less/Sass-style names here. Guards
    * and selector interpolation remain separate typed families; named arguments
    * already have the canonical CallArg fact and reduce directly to it.
@@ -4825,7 +4847,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessMixinDef = node<MixinDef>(
+  const DirectJessMixinDef = node<MixinDefinition>(
     'DirectJessMixinDef',
     sequence(
       directJessMixinName,
@@ -4875,7 +4897,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * CALL spelling (`$ > name()`) uses: `@(params) > { … }` is a FUNCTION whose
    * block body yields its `result:` entry, `@(params) { … }` / `@{ … }` is a
    * plain anonymous mixin whose body is spliced. There is no `$function` node —
-   * this is the same `AnonymousMixin` (with the same `params` shape a `MixinDef`
+   * this is the same `AnonymousMixin` (with the same `params` shape a `MixinDefinition`
    * uses) that an SCSS user `@function` already lowers to, so one core binder and
    * one `result:` convention serve both dialects.
    *
@@ -5217,7 +5239,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.DirectJessIfCondition,
       g.DirectJessIfBody
     ),
-    children => ({ guard: requireGuardNode(children[2]), body: requireStatementList(children[3]) })
+    children => ({ guard: requireGuardNode(children[2]), rules: requireStatementList(children[3]) })
   );
   const DirectJessElseBranch = node<IfBranch>(
     'DirectJessElseBranch',
@@ -5225,7 +5247,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/),
       g.DirectJessIfBody
     ),
-    children => ({ guard: null, body: requireStatementList(children[1]) })
+    children => ({ guard: null, rules: requireStatementList(children[1]) })
   );
   const DirectJessIf = node<If>(
     'DirectJessIf',
@@ -5237,7 +5259,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       optional(g.DirectJessElseBranch)
     ),
     (children) => {
-      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), body: requireStatementList(children[2]) }];
+      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), rules: requireStatementList(children[2]) }];
       for (const child of children.slice(3)) {
         if (Array.isArray(child)) {
           branches.push(...requireIfBranchArray(child));
@@ -5248,7 +5270,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return ifNode(requireIfBranchTuple(branches));
     }
   );
-  const DirectJessCompound = node<CompoundSelector>(
+  const DirectJessCompound = node<SelectorTerm>(
     'DirectJessCompound',
     noTrivia(oneOrMore(choice(
       parser(
@@ -5270,7 +5292,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.DirectJessCompound
     ),
     (children) => {
-      const compound = children.find((child): child is CompoundSelector => typeof child === 'object' && child !== null && 'simples' in child);
+      const compound = children.find(isCompound);
       if (compound === undefined) {
         throw new TypeError('Direct Jess selector tail requires a compound.');
       }
@@ -5334,7 +5356,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     children => children.filter((child): child is ComplexSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'ComplexSelector')
       .map(target => ({ target: selist(target), partial: !children.some(child => isToken(child) && child.value === '!exact') }))
   );
-  const DirectJessRule = node<Rule>(
+  const DirectJessRule = node<Ruleset>(
     'DirectJessRule',
     sequence(
       g.DirectJessSelector,

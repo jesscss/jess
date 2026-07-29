@@ -24,7 +24,7 @@ function serialize(...args: Parameters<typeof serializeMaybeAsync>): SerializeRe
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Stylesheet'
-    && 'children' in value && Array.isArray(value.children);
+    && Array.isArray(value.rules);
 }
 
 function stylesheet(value: unknown): Stylesheet {
@@ -65,7 +65,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'space', value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] },
         { type: 'VariableDeclaration', name: 'comma', value: { type: 'List', sep: ',' } },
         { type: 'VariableDeclaration', name: 'slash', value: { type: 'List', sep: '/' } }
@@ -83,7 +83,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{
+      type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
           type: 'GeneralEnclosed', form: 'function', name: 'selector', content: {
             type: 'Interpolation', parts: [
@@ -113,14 +113,14 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'If',
         branches: [
-          { guard: { g: 'and', left: { g: 'not', inner: { g: 'or', left: { g: 'truth', value: { src: 'false' } }, right: { g: 'truth', value: { src: 'false' } } } }, right: { g: 'truth', value: { src: 'true' } } }, body: [
-            { type: 'Comment' }, { type: 'Rule' }, { type: 'AtRuleBlock', name: '@media' }
+          { guard: { g: 'and', left: { g: 'not', inner: { g: 'or', left: { g: 'truth', value: { src: 'false' } }, right: { g: 'truth', value: { src: 'false' } } } }, right: { g: 'truth', value: { src: 'true' } } }, rules: [
+            { type: 'Comment' }, { type: 'Ruleset' }, { type: 'AtRuleBlock', name: '@media' }
           ] },
-          { guard: { g: 'truth', value: { src: 'false' } }, body: [{ type: 'Rule' }] },
-          { guard: null, body: [{ type: 'Rule' }] }
+          { guard: { g: 'truth', value: { src: 'false' } }, rules: [{ type: 'Ruleset' }] },
+          { guard: null, rules: [{ type: 'Ruleset' }] }
         ]
       }]
     });
@@ -144,7 +144,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{
+      type: 'Stylesheet', rules: [{
         type: 'If', branches: [
           { guard: { g: 'cmp', op: '=', left: { type: 'Dimension', number: 1 }, right: { type: 'Dimension', number: 2 } } },
           { guard: { g: 'and', left: { g: 'not', inner: { g: 'cmp', op: '=' } }, right: { g: 'cmp', op: '>=' } } }
@@ -175,10 +175,10 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'If', branches: [{ body: [
+      type: 'Stylesheet', rules: [{ type: 'If', branches: [{ rules: [
         { type: 'VariableDeclaration', name: 'accent' },
-        { type: 'MixinDef', name: 'paint' },
-        { type: 'Rule', body: [{ type: 'MixinCall', name: 'paint' }] },
+        { type: 'MixinDefinition', name: 'paint' },
+        { type: 'Ruleset', rules: [{ type: 'MixinCall', name: 'paint' }] },
         { type: 'For', binding: { kind: 'single', name: 'tone' } },
         { type: 'For', binding: { kind: 'single', name: 'i' } }
       ] }] }]
@@ -202,7 +202,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value).toMatchObject({ children: [{ type: 'If', branches: [{ body: [{ type: 'If' }] }] }] });
+    expect(result.value).toMatchObject({ rules: [{ type: 'If', branches: [{ rules: [{ type: 'If' }] }] }] });
     expect(serialize(stylesheet(result.value))).toEqual({ css: '.nested {\n  color: green;\n}\n' });
   });
 
@@ -216,7 +216,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toMatchObject({
-      children: [{ type: 'AtRuleBlock', name: '@media', body: [{ type: 'If', branches: [{ guard: { g: 'truth', value: { src: 'false' } } }, { guard: null }] }] }]
+      rules: [{ type: 'AtRuleBlock', name: '@media', rules: [{ type: 'If', branches: [{ guard: { g: 'truth', value: { src: 'false' } } }, { guard: null }] }] }]
     });
     expect(serialize(stylesheet(result.value))).toEqual({ css: '@media screen {\n  .inside {\n    color: green;\n  }\n}\n' });
   });
@@ -258,23 +258,23 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [
-        { type: 'If', branches: [{ body: [{ type: 'ImportAtRule', target: { value: 'if.css' } }] }] },
-        { type: 'MixinDef', body: [{ type: 'ImportAtRule', target: { value: 'mixin.css' } }] },
+      type: 'Stylesheet', rules: [
+        { type: 'If', branches: [{ rules: [{ type: 'ImportAtRule', target: { value: 'if.css' } }] }] },
+        { type: 'MixinDefinition', rules: [{ type: 'ImportAtRule', target: { value: 'mixin.css' } }] },
         { type: 'For', rules: [{ type: 'ImportAtRule', target: { value: 'each.css' } }] },
         { type: 'For', rules: [{ type: 'ImportAtRule', target: { value: 'for.css' } }] },
-        { type: 'AtRuleBlock', name: '@media', body: [{ type: 'ImportAtRule', target: { value: 'media.css' } }] },
-        { type: 'AtRuleBlock', name: '@supports', body: [{ type: 'ImportAtRule', target: { value: 'supports.css' } }] },
-        { type: 'AtRuleBlock', name: '@layer', body: [{ type: 'ImportAtRule', target: { value: 'layer.css' } }] },
-        { type: 'AtRuleBlock', name: '@scope', body: [{ type: 'ImportAtRule', target: { value: 'scope.css' } }] },
-        { type: 'Rule', body: [
+        { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'ImportAtRule', target: { value: 'media.css' } }] },
+        { type: 'AtRuleBlock', name: '@supports', rules: [{ type: 'ImportAtRule', target: { value: 'supports.css' } }] },
+        { type: 'AtRuleBlock', name: '@layer', rules: [{ type: 'ImportAtRule', target: { value: 'layer.css' } }] },
+        { type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'ImportAtRule', target: { value: 'scope.css' } }] },
+        { type: 'Ruleset', rules: [
           { type: 'ImportAtRule', target: { type: 'Url', value: { value: 'rule.css' } } },
-          { type: 'AtRuleBlock', name: '@media', body: [{ type: 'ImportAtRule', target: { value: 'nested-media.css' } }] },
-          { type: 'AtRuleBlock', name: '@supports', body: [{ type: 'ImportAtRule', target: { value: 'nested-supports.css' } }] },
-          { type: 'AtRuleBlock', name: '@layer', body: [{ type: 'ImportAtRule', target: { value: 'nested-layer.css' } }] },
-          { type: 'AtRuleBlock', name: '@scope', body: [{ type: 'ImportAtRule', target: { value: 'nested-scope.css' } }] }
+          { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'ImportAtRule', target: { value: 'nested-media.css' } }] },
+          { type: 'AtRuleBlock', name: '@supports', rules: [{ type: 'ImportAtRule', target: { value: 'nested-supports.css' } }] },
+          { type: 'AtRuleBlock', name: '@layer', rules: [{ type: 'ImportAtRule', target: { value: 'nested-layer.css' } }] },
+          { type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'ImportAtRule', target: { value: 'nested-scope.css' } }] }
         ] },
-        { type: 'Rule', body: [{ type: 'MixinCall', name: 'imported' }] }
+        { type: 'Ruleset', rules: [{ type: 'MixinCall', name: 'imported' }] }
       ]
     });
     expect(serialize(stylesheet(result.value), { evaluator }).css).toContain('@import "if.css";');
@@ -289,7 +289,7 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({ type: 'Stylesheet', children: [{ type: 'ImportAtRule', name: '@import', options: null, target: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false }, alias: null, tail: null }] });
+    expect(result.value).toEqual({ type: 'Stylesheet', rules: [{ type: 'ImportAtRule', name: '@import', options: null, target: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false }, alias: null, tail: null }] });
   });
 
   it('constructs static SCSS url imports as typed ImportAtRule targets', () => {
@@ -300,7 +300,7 @@ describe('SCSS canonical-AST grammar', () => {
       const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
-      expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'ImportAtRule', target: { type: 'Url' } }] });
+      expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'ImportAtRule', target: { type: 'Url' } }] });
     }
   });
 
@@ -314,7 +314,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'ImportAtRule', name: '@import', options: null,
         target: { type: 'Url', value: { type: 'Any', src: '' } },
         alias: null, tail: null
@@ -339,12 +339,12 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{
+      type: 'Stylesheet', rules: [{
         type: 'ImportAtRule',
         tail: {
           type: 'SpacedValue', parts: [
             { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] },
+            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
             { type: 'Keyword', src: 'screen' }
           ]
         }
@@ -356,7 +356,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(simple.unconsumedFrom).toBeNull();
     expect(simple.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'ImportAtRule', tail: { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] } }]
+      rules: [{ type: 'ImportAtRule', tail: { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] } }]
     });
 
     for (const unsupported of [
@@ -374,17 +374,17 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{
+      type: 'Stylesheet', rules: [{
         type: 'ImportAtRule',
         tail: {
           type: 'SpacedValue', parts: [
             { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] },
+            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
             {
               type: 'List', sep: ',', value: [
-                { type: 'SpacedValue', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] },
-                { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'color' } },
-                { type: 'SpacedValue', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] }
+                { type: 'SpacedValue', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
+                { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'color' } },
+                { type: 'SpacedValue', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] }
               ]
             }
           ]
@@ -430,7 +430,7 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.unconsumedFrom, source).toBeNull();
       expect(result.value).toMatchObject({
         type: 'Stylesheet',
-        children: [{ type: 'ImportAtRule', target: source.includes('url(')
+        rules: [{ type: 'ImportAtRule', target: source.includes('url(')
           ? { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'VariableReference', name: 'mode' }, unquote: true }, { lit: '.css"' }] } }
           : { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'VariableReference', name: 'mode' }, unquote: true }, { lit: '.css"' }] }
         }]
@@ -452,7 +452,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [
+      type: 'Stylesheet', rules: [
         { type: 'ModuleImport', mode: 'use', path: { type: 'Quoted', value: '#sass/math' }, namespace: 'math', defaultImport: null, imports: [] },
         { type: 'ModuleImport', mode: 'use', path: { type: 'Quoted', value: './tokens.ts' }, namespace: 'tokens', defaultImport: null, imports: [] },
         { type: 'StyleImport', mode: 'compose', path: { type: 'Quoted', value: './theme.scss' }, namespace: 'theme', forward: false },
@@ -492,7 +492,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'base', value: { type: 'Keyword', src: 'blue' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'theme', value: { type: 'VariableReference', name: 'base', lookup: 'live' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'font', value: { type: 'Quoted', src: '"Inter"', value: 'Inter', quote: '"', escaped: false }, write: { mode: 'declare' } },
@@ -529,12 +529,12 @@ describe('SCSS canonical-AST grammar', () => {
           write: { mode: 'declare' }
         },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
-            selectors: [{ type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.card', interp: null }] }, tail: [] }]
+            selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.card', interp: null }] }]
           },
-          body: [
+          rules: [
             { type: 'Declaration', name: 'color', value: { type: 'Color', src: '#00f' }, merge: null, important: false },
             { type: 'Declaration', name: 'margin', value: { type: 'Dimension', number: 1.5, unit: 'rem', src: '1.5rem' }, merge: null, important: false },
             { type: 'Declaration', name: 'opacity', value: { type: 'Dimension', number: 0.5, unit: '', src: '.5' }, merge: null, important: false },
@@ -553,19 +553,19 @@ describe('SCSS canonical-AST grammar', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'base', write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'fallback', write: { mode: 'if-absent', lookup: 'scoped' } },
         { type: 'VariableDeclaration', name: 'global', write: { mode: 'reassign', lookup: 'scoped' } },
-        { type: 'Rule', body: [{ type: 'Declaration', value: { type: 'VariableReference', name: 'base', lookup: 'live' } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'VariableReference', name: 'base', lookup: 'live' } }] }
       ]
     });
     expect(parse(source)).toMatchObject({
-      children: [
+      rules: [
         { write: { mode: 'declare' } },
         { write: { mode: 'if-absent', lookup: 'scoped' } },
         { write: { mode: 'reassign', lookup: 'scoped' } },
-        { type: 'Rule' }
+        { type: 'Ruleset' }
       ]
     });
 
@@ -581,15 +581,15 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [
-        { type: 'Rule', body: [
+      type: 'Stylesheet', rules: [
+        { type: 'Ruleset', rules: [
           { type: 'Declaration', name: 'direct', value: { type: 'Keyword', src: '--theme' } },
           { type: 'Declaration', name: 'via-var', value: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--theme' }, { type: 'Keyword', src: '--fallback' }] } },
           { type: 'Declaration', name: 'via-env', value: { type: 'FunctionCall', name: 'env', args: [{ type: 'Keyword', src: '--safe-area' }] } },
           { type: 'Declaration', name: 'via-calc', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', left: { src: '--size' } }] } }
         ] },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--viewport' } } } },
-        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--mode' } } } }
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--viewport' } } } },
+        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--mode' } } } }
       ]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
@@ -629,7 +629,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'base', value: {
           type: 'Operation', operator: '+', left: { src: '1' }, right: {
             type: 'Operation', operator: '*', left: { src: '2' }, right: { src: '3' }
@@ -637,7 +637,7 @@ describe('SCSS canonical-AST grammar', () => {
         } },
         { type: 'VariableDeclaration', name: 'nested', value: {
           type: 'Operation', operator: '*', left: {
-            type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '+' }
+            type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '+' }
           }, right: { src: '3' }
         } },
         { type: 'VariableDeclaration', name: 'signed', value: {
@@ -651,16 +651,16 @@ describe('SCSS canonical-AST grammar', () => {
           }, right: { src: '2' }
         } },
         { type: 'VariableDeclaration', name: 'spaced-positive', value: {
-          type: 'Block', delimiter: 'paren', inner: { type: 'VariableReference', name: 'base' }
+          type: 'Block', delimiter: 'paren', value: { type: 'VariableReference', name: 'base' }
         } },
         { type: 'VariableDeclaration', name: 'minus-list', value: [{ src: '1' }, { src: '-2' }] },
         { type: 'VariableDeclaration', name: 'legacy-plus', value: { type: 'Operation', operator: '+' } },
-        { type: 'Rule', body: [
+        { type: 'Ruleset', rules: [
           { name: 'compact', value: { type: 'Operation', operator: '-' } },
           { name: 'sequence', value: [{ src: '1' }, { type: 'Operation', operator: '+' }] },
           { name: 'mixed', value: [{ type: 'Operation', operator: '+' }, { src: 'red' }] },
           { name: 'ratio', value: { type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }] } },
-          { name: 'grouped-ratio', value: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '/' } } },
+          { name: 'grouped-ratio', value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '/' } } },
           { name: 'calc-ratio', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }] }] } },
           { name: 'mod', value: { type: 'Operation', operator: '%' } }
         ] }
@@ -670,14 +670,14 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('accepts the public optional final declaration semicolon', () => {
     for (const [source, expected] of [
-      ['.card { color: blue }', { type: 'Rule' }]
+      ['.card { color: blue }', { type: 'Ruleset' }]
     ] as const) {
       const cst = parseScssCst(source);
       const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
       expect(cst.errors, source).toHaveLength(0);
       expect(cst.unconsumedFrom, source).toBeNull();
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
-      expect(result.value).toMatchObject({ type: 'Stylesheet', children: [expected] });
+      expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [expected] });
     }
   });
 
@@ -703,13 +703,13 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', body: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
         { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [
-          { type: 'Declaration', name: 'family', value: { src: 'fantasy' } },
-          { type: 'Declaration', name: 'weight', value: { src: 'bold' }, important: false }
+          { type: 'CollectionEntry', key: { type: 'Keyword', src: 'family' }, value: { src: 'fantasy' } },
+          { type: 'CollectionEntry', key: { type: 'Keyword', src: 'weight' }, value: { src: 'bold' }, important: false }
         ] } },
         { type: 'Declaration', name: 'font', value: { type: 'Collection', base: { src: '20px' }, entries: [
-          { type: 'Declaration', name: 'size', value: { src: '1rem' } }
+          { type: 'CollectionEntry', key: { type: 'Keyword', src: 'size' }, value: { src: '1rem' } }
         ] } }
       ] }]
     });
@@ -738,16 +738,16 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'VariableDeclaration', name: 'prefix' }, { type: 'VariableDeclaration', name: 'part' }, {
-        type: 'Rule', body: [
+      type: 'Stylesheet', rules: [{ type: 'VariableDeclaration', name: 'prefix' }, { type: 'VariableDeclaration', name: 'part' }, {
+        type: 'Ruleset', rules: [
           { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, value: { type: 'Collection', entries: [
-            { type: 'Declaration', name: 'color', value: { src: 'red' } }
+            { type: 'CollectionEntry', key: { type: 'Keyword', src: 'color' }, value: { src: 'red' } }
           ] } },
           { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [
-            { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: 'bold' } }
+            { type: 'CollectionEntry', key: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: 'bold' } }
           ] } },
           { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, value: { type: 'Collection', entries: [
-            { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: '700' } }
+            { type: 'CollectionEntry', key: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: '700' } }
           ] } }
         ]
       }]
@@ -767,9 +767,9 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', body: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
         { type: 'Declaration', name: 'font', important: true, value: { type: 'Collection', base: { src: '20px' }, entries: [
-          { type: 'Declaration', name: 'size', important: false, value: { src: '1rem' } }
+          { type: 'CollectionEntry', key: { type: 'Keyword', src: 'size' }, important: false, value: { src: '1rem' } }
         ] } }
       ] }]
     });
@@ -787,7 +787,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule', body: [
+    expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
       { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [] } }
     ] }] });
     expect(serialize(stylesheet(result.value))).toEqual({ css: '' });
@@ -828,9 +828,9 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'tone' },
-        { type: 'Rule', body: [
+        { type: 'Ruleset', rules: [
           { type: 'Declaration', name: 'content', value: { type: 'Interpolation', parts: [{ lit: '"tone-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true }, { lit: '"' }] } },
           { type: 'Declaration', name: 'color', value: { type: 'Interpolation', parts: [{ lit: 'shade-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true }, { lit: '-strong' }] } }
         ] }
@@ -848,7 +848,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', body: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
         { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'property' }, unquote: true }] } },
         { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'margin-' }, { ref: { type: 'VariableReference', name: 'side' }, unquote: true }] } },
         { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: '--theme-' }, { ref: { type: 'VariableReference', name: 'mode' }, unquote: true }] } }
@@ -863,14 +863,14 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         { type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'VariableDeclaration' },
-        { type: 'Rule', body: [
+        { type: 'Ruleset', rules: [
           { name: { type: 'Interpolation', parts: [{ ref: { name: 'property' } }] }, value: { type: 'Interpolation', parts: [{ ref: { name: 'value' } }] } },
           { name: { type: 'Interpolation', parts: [{ lit: 'margin-' }, { ref: { name: 'side' } }, { lit: '-' }, { ref: { name: 'mode' } }] }, value: { type: 'VariableReference', name: 'value' } },
           { name: { type: 'Interpolation', parts: [{ lit: '--theme-' }, { ref: { name: 'mode' } }] } }
         ] },
-        { type: 'AtRuleBlock', name: '@font-face', body: [{ name: { type: 'Interpolation', parts: [{ lit: 'font-' }, { ref: { name: 'side' } }] } }] }
+        { type: 'AtRuleBlock', name: '@font-face', rules: [{ name: { type: 'Interpolation', parts: [{ lit: 'font-' }, { ref: { name: 'side' } }] } }] }
       ]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
@@ -893,22 +893,22 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
+      rules: [{
+        type: 'Ruleset',
         selector: {
           type: 'SelectorList',
-          selectors: [{ type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.card', interp: null }] }, tail: [] }]
+          selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.card', interp: null }] }]
         },
-        body: [
+        rules: [
           { type: 'VariableDeclaration', name: 'accent', value: { type: 'Color', src: '#00f' }, write: { mode: 'declare' } },
           { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'accent', lookup: 'live' }, merge: null, important: false },
           {
-            type: 'Rule',
+            type: 'Ruleset',
             selector: {
               type: 'SelectorList',
-              selectors: [{ type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.title', interp: null }] }, tail: [] }]
+              selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.title', interp: null }] }]
             },
-            body: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'blue' }, merge: null, important: false }]
+            rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'blue' }, merge: null, important: false }]
           }
         ]
       }]
@@ -934,12 +934,12 @@ describe('SCSS canonical-AST grammar', () => {
      */
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [
+      rules: [
         expect.objectContaining({ type: 'VariableDeclaration', name: 'theme' }),
         { type: 'Comment', text: '/* between */' },
         expect.objectContaining({
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             expect.objectContaining({ type: 'Declaration', name: 'color' }),
             { type: 'Comment', text: '/* tail */' }
           ]
@@ -977,12 +977,12 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('does not let `//` trivia reach inside strings or url() bodies', () => {
     expect(parse('.a { content: "//not-a-comment"; }')).toMatchObject({
-      children: [{ body: [{ value: { type: 'Quoted', value: '//not-a-comment' } }] }]
+      rules: [{ rules: [{ value: { type: 'Quoted', value: '//not-a-comment' } }] }]
     });
 
     // A leading space belongs to the string, not to the ambient trivia.
     expect(parse('.a { content: " x"; }')).toMatchObject({
-      children: [{ body: [{ value: { type: 'Quoted', value: ' x' } }] }]
+      rules: [{ rules: [{ value: { type: 'Quoted', value: ' x' } }] }]
     });
     expect(() => parse('.a { background: url(//cdn.example.com/x.png); }')).not.toThrow();
     expect(() => parse('.a { background: url("//cdn.example.com/x.png"); }')).not.toThrow();
@@ -997,9 +997,9 @@ describe('SCSS canonical-AST grammar', () => {
     expect(() => parse('@supports (content: "//x") { .a { color: red; } }')).not.toThrow();
 
     // Disabling trivia on those arms must not cost them their literal spacing.
-    expect(parse('@use " sp ";')).toMatchObject({ children: [{ path: { type: 'Quoted', value: ' sp ' } }] });
+    expect(parse('@use " sp ";')).toMatchObject({ rules: [{ path: { type: 'Quoted', value: ' sp ' } }] });
     expect(parse('.a[href=" sp "] { color: red; }')).toMatchObject({
-      children: [{ selector: { selectors: [{ head: { simples: [{ text: '.a' }, { text: '[href=" sp "]' }] } }] } }]
+      rules: [{ selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [{ text: '.a' }, { text: '[href=" sp "]' }] }] }] } }]
     });
   });
 
@@ -1019,13 +1019,13 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         // The `// media` line comment is trivia and leaves no node behind.
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' }, body: [{ type: 'Rule' }] },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Keyword', src: 'screen' }] }, body: [{ type: 'Rule' }] },
-        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'SpacedValue' }, body: [{ type: 'Rule' }] },
-        { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue' }, body: [{ type: 'Rule' }] },
-        { type: 'Rule', body: [{ type: 'AtRuleBlock', name: '@media', body: [{ type: 'VariableDeclaration' }, { type: 'Declaration' }] }] }
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' }, rules: [{ type: 'Ruleset' }] },
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Keyword', src: 'screen' }] }, rules: [{ type: 'Ruleset' }] },
+        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'SpacedValue' }, rules: [{ type: 'Ruleset' }] },
+        { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue' }, rules: [{ type: 'Ruleset' }] },
+        { type: 'Ruleset', rules: [{ type: 'AtRuleBlock', name: '@media', rules: [{ type: 'VariableDeclaration' }, { type: 'Declaration' }] }] }
       ]
     });
   });
@@ -1049,9 +1049,9 @@ describe('SCSS canonical-AST grammar', () => {
       expect(parseScssCst(source).errors, source).toHaveLength(0);
       const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
-      expect(parse(source).children[0], source).toMatchObject({
+      expect(parse(source).rules[0], source).toMatchObject({
         type: 'AtRuleBlock',
-        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator, right: ratio } }
+        prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator, right: ratio } }
       });
     }
 
@@ -1068,8 +1068,8 @@ describe('SCSS canonical-AST grammar', () => {
       ['@media (min-width: $size) { .card { color: red; } }', { type: 'VariableReference', name: 'size' }],
       ['@media (min-width: #{$size}) { .card { color: red; } }', { type: 'Interpolation' }]
     ] as const) {
-      expect(parse(source).children[0], source).toMatchObject({
-        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: inner } }
+      expect(parse(source).rules[0], source).toMatchObject({
+        prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', right: inner } }
       });
     }
 
@@ -1077,8 +1077,8 @@ describe('SCSS canonical-AST grammar', () => {
      * SCSS value position is untouched: a declaration slash is still SCSS's own
      * slash list, not a ratio operation.
      */
-    expect(parse('.card { font: 16px / 9; }').children[0]).toMatchObject({
-      body: [{ type: 'Declaration', name: 'font', value: { type: 'List', sep: '/' } }]
+    expect(parse('.card { font: 16px / 9; }').rules[0]).toMatchObject({
+      rules: [{ type: 'Declaration', name: 'font', value: { type: 'List', sep: '/' } }]
     });
   });
 
@@ -1140,9 +1140,9 @@ describe('SCSS canonical-AST grammar', () => {
       expect(parseScssCst(source).errors, source).toHaveLength(0);
       const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
-      expect(parse(source).children[0], source).toMatchObject({
+      expect(parse(source).rules[0], source).toMatchObject({
         type: 'AtRuleBlock',
-        prelude: { type: 'Block', delimiter: 'paren', inner }
+        prelude: { type: 'Block', delimiter: 'paren', value: inner }
       });
     }
 
@@ -1151,8 +1151,8 @@ describe('SCSS canonical-AST grammar', () => {
     });
 
     // The name-first comparison keeps its own operand order.
-    expect(parse('@media (width < 200px) { .card { color: red; } }').children[0]).toMatchObject({
-      prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '<', left: width, right: { type: 'Dimension', src: '200px' } } }
+    expect(parse('@media (width < 200px) { .card { color: red; } }').rules[0]).toMatchObject({
+      prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '<', left: width, right: { type: 'Dimension', src: '200px' } } }
     });
   });
 
@@ -1172,11 +1172,11 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('accepts `only` only as a media-type modifier', () => {
     expect(parse('@media only screen and (min-width: 1px) { .card { color: red; } }')).toMatchObject({
-      children: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
+      rules: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
     });
     expect(() => parse('@media only (min-width: 1px) { .card { color: red; } }')).toThrow(SyntaxError);
     expect(parse('@media not (min-width: 1px) { .card { color: red; } }')).toMatchObject({
-      children: [{ type: 'AtRuleBlock', name: '@media' }]
+      rules: [{ type: 'AtRuleBlock', name: '@media' }]
     });
   });
 
@@ -1188,11 +1188,11 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'AtRuleBlock', name: '@supports',
         prelude: {
           type: 'SpacedValue',
-          parts: [{ type: 'Keyword', src: 'not' }, { type: 'Block', delimiter: 'paren', inner: { type: 'SpacedValue' } }]
+          parts: [{ type: 'Keyword', src: 'not' }, { type: 'Block', delimiter: 'paren', value: { type: 'SpacedValue' } }]
         }
       }]
     });
@@ -1239,7 +1239,7 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'AtRuleBlock', name: '@font-face', prelude: null, body: [
+    expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleBlock', name: '@font-face', prelude: null, rules: [
       { type: 'Declaration', name: 'font-family', value: { type: 'VariableReference', name: 'font' } },
       { type: 'Declaration', name: 'src', value: { type: 'Url', value: { type: 'Quoted', value: 'font.woff2' } } }
     ] }] });
@@ -1260,7 +1260,7 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'AtRuleBlock', name: '@counter-style', prelude: { type: 'Keyword', src: 'thumbs' }, body: [{ type: 'Declaration', name: 'system' }, { type: 'Declaration', name: 'symbols' }] }] });
+    expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleBlock', name: '@counter-style', prelude: { type: 'Keyword', src: 'thumbs' }, rules: [{ type: 'Declaration', name: 'system' }, { type: 'Declaration', name: 'symbols' }] }] });
   });
 
   it('rejects nested rules in @counter-style', () => {
@@ -1285,11 +1285,11 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{
-        type: 'AtRuleBlock', name: '@PAGE', prelude: { type: 'Any', src: 'report:left' }, body: [
+      type: 'Stylesheet', rules: [{
+        type: 'AtRuleBlock', name: '@PAGE', prelude: { type: 'Any', src: 'report:left' }, rules: [
           { type: 'Comment', text: '/* page */' },
           { type: 'Declaration', name: 'size' },
-          ...names.map(name => ({ type: 'AtRuleBlock', name: `@${name}`, prelude: null, body: [{ type: 'Declaration', name: 'content' }] }))
+          ...names.map(name => ({ type: 'AtRuleBlock', name: `@${name}`, prelude: null, rules: [{ type: 'Declaration', name: 'content' }] }))
         ]
       }]
     });
@@ -1319,8 +1319,8 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'If', branches: [{ body: [{
-        type: 'AtRuleBlock', name: '@page', prelude: { type: 'Any', src: 'appendix' }, body: [{ type: 'Declaration', name: 'size' }]
+      type: 'Stylesheet', rules: [{ type: 'If', branches: [{ rules: [{
+        type: 'AtRuleBlock', name: '@page', prelude: { type: 'Any', src: 'appendix' }, rules: [{ type: 'Declaration', name: 'size' }]
       }] }] }]
     });
   });
@@ -1335,13 +1335,13 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{
+      type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@-moz-document',
         prelude: { type: 'Any', src: 'url-prefix("https://example.test/"), domain("example.test")' },
-        body: [
+        rules: [
           { type: 'AtRuleBlock', name: '@font-face' },
-          { type: 'Rule' },
-          { type: 'AtRuleBlock', name: '@document', prelude: { type: 'Any', src: 'regexp("nested")' }, body: [{ type: 'Rule' }] }
+          { type: 'Ruleset' },
+          { type: 'AtRuleBlock', name: '@document', prelude: { type: 'Any', src: 'regexp("nested")' }, rules: [{ type: 'Ruleset' }] }
         ]
       }]
     });
@@ -1372,8 +1372,8 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' }, body: [
+      rules: [{
+        type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' }, rules: [
           { type: 'Comment', text: '/* descriptor */' },
           { type: 'Declaration', name: 'syntax', value: { type: 'Quoted', src: '"<color>"', value: '<color>', quote: '"', escaped: false }, merge: null, important: false },
           { type: 'Declaration', name: 'inherits', value: { type: 'Keyword', src: 'false' }, merge: null, important: false },
@@ -1435,18 +1435,18 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
+      rules: [{
+        type: 'Ruleset',
         selector: {
           type: 'SelectorList',
           selectors: [
-            { type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ text: '.card' }, { text: '.featured' }, { text: ':hover' }] } },
-            { type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ text: '#hero' }, { text: '::before' }] } }
+            { type: 'ComplexSelector', value: [{ type: 'CompoundSelector', value: [{ text: '.card' }, { text: '.featured' }, { text: ':hover' }] }] },
+            { type: 'ComplexSelector', value: [{ type: 'CompoundSelector', value: [{ text: '#hero' }, { text: '::before' }] }] }
           ]
         },
-        body: [{ type: 'Declaration', name: 'color' }, {
-          type: 'Rule',
-          selector: { type: 'SelectorList', selectors: [{ head: { simples: [{ text: '&' }, { text: '.active' }] } }] }
+        rules: [{ type: 'Declaration', name: 'color' }, {
+          type: 'Ruleset',
+          selector: { type: 'SelectorList', selectors: [{ value: [{ type: 'CompoundSelector', value: [{ text: '&' }, { text: '.active' }] }] }] }
         }]
       }]
     });
@@ -1472,14 +1472,19 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [
-        { head: { simples: [{ text: '.card' }] }, tail: [
-          { comb: '>', compound: { simples: [{ text: '.icon' }] } },
-          { comb: '+', compound: { simples: [{ text: 'svg' }] } },
-          { comb: '~', compound: { simples: [{ text: '.badge' }] } },
-          { comb: '||', compound: { simples: [{ text: '.part' }] } }
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [
+        { value: [
+          { text: '.card' },
+          '>',
+          { text: '.icon' },
+          '+',
+          { text: 'svg' },
+          '~',
+          { text: '.badge' },
+          '||',
+          { text: '.part' }
         ] },
-        { head: { simples: [{ text: '.menu' }] }, tail: [{ comb: ' ', compound: { simples: [{ text: '.item' }] } }] }
+        { value: [{ text: '.menu' }, ' ', { text: '.item' }] }
       ] } }]
     });
   });
@@ -1494,11 +1499,11 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
         { type: 'SimpleSelector', text: '[data-state="open"i]' },
         { type: 'SimpleSelector', text: '[lang|=en]' }
-      ] } }] } }]
+      ] }] }] } }]
     });
   });
 
@@ -1527,16 +1532,16 @@ describe('SCSS canonical-AST grammar', () => {
      * sealed (crossable:false).
      */
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
         {
           type: 'PseudoSelector', name: ':not', text: null, crossable: false, interp: null,
           args: { type: 'SelectorList', selectors: [
-            { head: { simples: [{ type: 'SimpleSelector', text: '.disabled' }] } },
-            { head: { simples: [{ type: 'SimpleSelector', text: '[aria-hidden=true]' }] } }
+            { value: [{ type: 'SimpleSelector', text: '.disabled' }] },
+            { value: [{ type: 'SimpleSelector', text: '[aria-hidden=true]' }] }
           ] }
         }
-      ] } }] } }]
+      ] }] }] } }]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
       '.card:not(.disabled, [aria-hidden=true]) {\n  color: blue;\n}\n'
@@ -1553,16 +1558,16 @@ describe('SCSS canonical-AST grammar', () => {
     const structured = run(scssAstGrammar.Stylesheet, '.x:is(.a, .b) { color: red; }', { trivia: scssAstGrammar.whitespace });
     expect(structured.ok && structured.unconsumedFrom === null).toBe(true);
     expect(structured.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.x' },
         {
           type: 'PseudoSelector', name: ':is', text: null, crossable: true, interp: null,
           args: { type: 'SelectorList', selectors: [
-            { head: { simples: [{ type: 'SimpleSelector', text: '.a' }] } },
-            { head: { simples: [{ type: 'SimpleSelector', text: '.b' }] } }
+            { value: [{ type: 'SimpleSelector', text: '.a' }] },
+            { value: [{ type: 'SimpleSelector', text: '.b' }] }
           ] }
         }
-      ] } }] } }]
+      ] }] }] } }]
     });
 
     /*
@@ -1571,9 +1576,10 @@ describe('SCSS canonical-AST grammar', () => {
      */
     let canonBeforeSerialize: string | undefined = 'unset-marker';
     if (isStylesheet(structured.value)) {
-      const first = structured.value.children[0];
-      if (first?.type === 'Rule') {
-        canonBeforeSerialize = first.selector.selectors[0]?.head._canon;
+      const first = structured.value.rules[0];
+      if (first?.type === 'Ruleset') {
+        const term = first.selector.selectors[0]?.value[0];
+        canonBeforeSerialize = term?.type === 'CompoundSelector' ? term._canon : undefined;
       }
     }
     expect(canonBeforeSerialize).toBeUndefined();
@@ -1588,10 +1594,10 @@ describe('SCSS canonical-AST grammar', () => {
     // (2) `:where` structures too, but is SEALED (crossable:false).
     const sealed = run(scssAstGrammar.Stylesheet, '.x:where(.a, .b) { color: red; }', { trivia: scssAstGrammar.whitespace });
     expect(sealed.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.x' },
         { type: 'PseudoSelector', name: ':where', text: null, crossable: false }
-      ] } }] } }]
+      ] }] }] } }]
     });
 
     /*
@@ -1604,10 +1610,10 @@ describe('SCSS canonical-AST grammar', () => {
     expect(interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)).toBe(false);
     const opaque = run(scssAstGrammar.Stylesheet, '.x:global(.a) { color: red; }', { trivia: scssAstGrammar.whitespace });
     expect(opaque.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.x' },
         { type: 'SimpleSelector', text: ':global(.a)' }
-      ] } }] } }]
+      ] }] }] } }]
     });
   });
 
@@ -1685,12 +1691,12 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
         { type: 'SimpleSelector', text: ':lang(en-US)' },
         { type: 'SimpleSelector', text: ':nth-child(-n+2 of .item)' },
         { type: 'SimpleSelector', text: '::part(icon)' }
-      ] } }] } }]
+      ] }] }] } }]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
       '.card:lang(en-US):nth-child(-n+2 of .item)::part(icon) {\n  color: blue;\n}\n'
@@ -1735,15 +1741,15 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, {
-        type: 'Rule', selector: { selectors: [
-          { head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+      type: 'Stylesheet', rules: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, {
+        type: 'Ruleset', selector: { selectors: [
+          { value: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
             { lit: '.' }, { ref: { type: 'VariableReference', name: 'name', lookup: 'live' }, unquote: true },
             { lit: '-' }, { ref: { type: 'VariableReference', name: 'state', lookup: 'live' }, unquote: true }
-          ] } }] } },
-          { head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+          ] } }] },
+          { value: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
             { lit: '#item-' }, { ref: { type: 'VariableReference', name: 'name', lookup: 'live' }, unquote: true }
-          ] } }] } }
+          ] } }] }
         ] }
       }]
     });
@@ -1771,8 +1777,8 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [
-        { head: { simples: [{ type: 'SimpleSelector', text: '%notice' }] } }
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [
+        { value: [{ type: 'SimpleSelector', text: '%notice' }] }
       ] } }]
     });
   });
@@ -1809,18 +1815,18 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
+      rules: [{
+        type: 'Ruleset',
         selector: {
           type: 'SelectorList',
-          selectors: [{ type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.card', interp: null }] }, tail: [] }]
+          selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.card', interp: null }] }]
         },
-        body: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'blue' }, merge: null, important: true }]
+        rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'blue' }, merge: null, important: true }]
       }]
     });
   });
 
-  it('hoists static SCSS @extend targets onto the carrying canonical Rule', () => {
+  it('hoists static SCSS @extend targets onto the carrying canonical Ruleset', () => {
     const source = '.base { color: blue; } .button { @extend .base; color: red; }';
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
@@ -1831,16 +1837,16 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'Rule', selector: { selectors: [{ head: { simples: [{ text: '.base' }] } }] } },
+      rules: [
+        { type: 'Ruleset', selector: { selectors: [{ value: [{ text: '.base' }] }] } },
         {
-          type: 'Rule',
-          selector: { selectors: [{ head: { simples: [{ text: '.button' }] } }] },
+          type: 'Ruleset',
+          selector: { selectors: [{ value: [{ text: '.button' }] }] },
           extendInstructions: [{
             partial: false,
-            target: { type: 'SelectorList', selectors: [{ head: { simples: [{ text: '.base' }] } }] }
+            target: { type: 'SelectorList', selectors: [{ value: [{ text: '.base' }] }] }
           }],
-          body: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
+          rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
         }
       ]
     });
@@ -1874,23 +1880,23 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'MixinDef', name: 'paint',
+          type: 'MixinDefinition', name: 'paint',
           params: [
             { name: 'color' },
             { name: 'gap', default: { type: 'Dimension', number: 2, unit: 'px', src: '2px' } },
             { name: 'rest', rest: true }
           ],
-          body: [
+          rules: [
             { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'color' } },
             { type: 'Declaration', name: 'margin', value: { type: 'VariableReference', name: 'gap' } },
             { type: 'MixinCall', name: 'normalize', args: [{ value: { type: 'Dimension', number: 0, unit: '', src: '0' } }], path: [], important: false },
-            { type: 'Rule', body: [{ type: 'Declaration', name: 'padding' }] }
+            { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'padding' }] }
           ]
         },
         {
-          type: 'Rule', body: [{
+          type: 'Ruleset', rules: [{
             type: 'MixinCall', name: 'paint', path: [], important: false,
             args: [
               { value: { type: 'Keyword', src: 'blue' } },
@@ -1917,11 +1923,11 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock', name: '@media', body: [
-          { type: 'MixinDef', name: 'local', params: [{ name: 'width', default: { type: 'Dimension', number: 1, unit: 'px' } }], body: [{ type: 'Declaration', name: 'width' }] },
+      rules: [{
+        type: 'AtRuleBlock', name: '@media', rules: [
+          { type: 'MixinDefinition', name: 'local', params: [{ name: 'width', default: { type: 'Dimension', number: 1, unit: 'px' } }], rules: [{ type: 'Declaration', name: 'width' }] },
           { type: 'MixinCall', name: 'outer', args: [{ value: { type: 'Dimension', number: 2, unit: 'px' } }] },
-          { type: 'Rule', body: [{ type: 'MixinCall', name: 'local', args: [] }] }
+          { type: 'Ruleset', rules: [{ type: 'MixinCall', name: 'local', args: [] }] }
         ]
       }]
     });
@@ -1938,10 +1944,10 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'For', binding: { kind: 'single', name: 'tone' },
         iterable: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }],
-        rules: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'tone' } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'tone' } }] }]
       }]
     });
   });
@@ -1959,7 +1965,7 @@ describe('SCSS canonical-AST grammar', () => {
       const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
       expect(result.ok).toBe(true);
       expect(result.unconsumedFrom).toBeNull();
-      expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'For', binding }] });
+      expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'For', binding }] });
     }
   });
 
@@ -1975,9 +1981,9 @@ describe('SCSS canonical-AST grammar', () => {
 
       const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
-      const first = stylesheet(result.value).children[0];
+      const first = stylesheet(result.value).rules[0];
       const loop = source.startsWith('.host')
-        ? first?.type === 'Rule' && first.body[0]
+        ? first?.type === 'Ruleset' && first.rules[0]
         : first;
       expect(loop).toMatchObject({
         type: 'For', binding: { kind: 'single', name: 'i' },
@@ -1996,7 +2002,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{
+      type: 'Stylesheet', rules: [{
         type: 'For',
         iterable: {
           type: 'Range',
@@ -2032,7 +2038,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [
+    expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [
       { type: 'AtRuleStatement', name: '@charset', prelude: { type: 'Any', src: '"UTF-8"' } },
       { type: 'AtRuleStatement', name: '@namespace', prelude: { type: 'Any', src: 'svg url("https://example.test/svg")' } },
       { type: 'AtRuleStatement', name: '@layer', prelude: { type: 'Any', src: 'theme' } }
@@ -2063,9 +2069,9 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{
+    expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{
       type: 'AtRuleBlock', name: '@scope', prelude: { type: 'Any', src: '(.card) to (.card > .title)' },
-      body: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] }]
     }] });
 
     for (const invalid of [
@@ -2079,12 +2085,12 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('retains authored comments and multiline indentation on raw ValueSlot boundaries', () => {
     const document = parse('.a { color: red /* keep */\n  blue; shadow: a,\n  b; }');
-    const body = document.children[0];
-    if (body?.type !== 'Rule') {
+    const body = document.rules[0];
+    if (body?.type !== 'Ruleset') {
       throw new Error('expected an SCSS rule');
     }
-    const adjacent = body.body[0]?.type === 'Declaration' ? body.body[0].value : null;
-    const comma = body.body[1]?.type === 'Declaration' ? body.body[1].value : null;
+    const adjacent = body.rules[0]?.type === 'Declaration' ? body.rules[0].value : null;
+    const comma = body.rules[1]?.type === 'Declaration' ? body.rules[1].value : null;
     expect(Array.isArray(adjacent)).toBe(true);
     expect(comma).toMatchObject({ type: 'List' });
     if (typeof adjacent !== 'object' || adjacent === null || typeof comma !== 'object' || comma === null) {
@@ -2103,32 +2109,32 @@ describe('SCSS canonical-AST grammar', () => {
   it('lowers SCSS map literals to the shared Collection node', () => {
     expect(parse('$m: (a: 1, b: 2);')).toEqual({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'VariableDeclaration', name: 'm', write: { mode: 'declare' },
         value: {
           type: 'Collection', entries: [
-            { type: 'Declaration', name: 'a', value: { type: 'Dimension', number: 1, unit: '', src: '1' }, merge: null, important: false },
-            { type: 'Declaration', name: 'b', value: { type: 'Dimension', number: 2, unit: '', src: '2' }, merge: null, important: false }
+            { type: 'CollectionEntry', key: { type: 'Keyword', src: 'a' }, value: { type: 'Dimension', number: 1, unit: '', src: '1' }, merge: null, important: false },
+            { type: 'CollectionEntry', key: { type: 'Keyword', src: 'b' }, value: { type: 'Dimension', number: 2, unit: '', src: '2' }, merge: null, important: false }
           ]
         }
       }]
     });
 
     // Empty `()` and a single `(a: 1)` are maps too.
-    expect(parse('$m: ();').children[0]).toMatchObject({ value: { type: 'Collection', entries: [] } });
-    expect(parse('$m: (a: 1);').children[0]).toMatchObject({ value: { type: 'Collection', entries: [{ type: 'Declaration', name: 'a' }] } });
+    expect(parse('$m: ();').rules[0]).toMatchObject({ value: { type: 'Collection', entries: [] } });
+    expect(parse('$m: (a: 1);').rules[0]).toMatchObject({ value: { type: 'Collection', entries: [{ type: 'CollectionEntry', key: { type: 'Keyword', src: 'a' } }] } });
 
     /*
-     * A quoted-string key lowers to the entry name; a space-list value stays a
-     * structured value slot.
+     * A quoted-string key stays typed; a space-list value stays a structured
+     * value slot.
      */
-    expect(parse('$m: ("k": 1px solid);').children[0]).toMatchObject({
-      value: { type: 'Collection', entries: [{ type: 'Declaration', name: 'k', value: [{ type: 'Dimension', src: '1px' }, { type: 'Keyword', src: 'solid' }] }] }
+    expect(parse('$m: ("k": 1px solid);').rules[0]).toMatchObject({
+      value: { type: 'Collection', entries: [{ type: 'CollectionEntry', key: { type: 'Quoted', value: 'k' }, value: [{ type: 'Dimension', src: '1px' }, { type: 'Keyword', src: 'solid' }] }] }
     });
 
     // A paren value-list (no `key:` entry) stays a Block list, never a Collection.
-    expect(parse('$m: (1 2 3);').children[0]).toMatchObject({ value: { type: 'Block', delimiter: 'paren' } });
-    expect(parse('$m: (1 + 2);').children[0]).toMatchObject({ value: { type: 'Block', inner: { type: 'Operation' } } });
+    expect(parse('$m: (1 2 3);').rules[0]).toMatchObject({ value: { type: 'Block', delimiter: 'paren' } });
+    expect(parse('$m: (1 + 2);').rules[0]).toMatchObject({ value: { type: 'Block', value: { type: 'Operation' } } });
   });
 
   it('lowers SCSS map-get to the shared $[…] accessor read', () => {
@@ -2136,9 +2142,9 @@ describe('SCSS canonical-AST grammar', () => {
      * `map-get($m, a)` => `$m[a]`: a Reference whose single BracketLookup step
      * carries the key (member lookup for a value key, var lookup for `$k`).
      */
-    expect(parse('.x { color: map-get($m, a); }').children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{
+    expect(parse('.x { color: map-get($m, a); }').rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{
         type: 'Declaration', name: 'color',
         value: {
           type: 'Reference',
@@ -2149,13 +2155,13 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
 
-    expect(parse('.x { color: map-get($m, $k); }').children[0]).toMatchObject({
-      body: [{ value: { type: 'Reference', steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'k' }, keyKind: 'var' }], raw: '$m[$k]' } }]
+    expect(parse('.x { color: map-get($m, $k); }').rules[0]).toMatchObject({
+      rules: [{ value: { type: 'Reference', steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'k' }, keyKind: 'var' }], raw: '$m[$k]' } }]
     });
 
     // A non-canonical arity stays a plain FunctionCall for `fns` routing.
-    expect(parse('.x { color: map-get($m); }').children[0]).toMatchObject({
-      body: [{ value: { type: 'FunctionCall', name: 'map-get' } }]
+    expect(parse('.x { color: map-get($m); }').rules[0]).toMatchObject({
+      rules: [{ value: { type: 'FunctionCall', name: 'map-get' } }]
     });
   });
 
@@ -2166,25 +2172,25 @@ describe('SCSS canonical-AST grammar', () => {
      */
     expect(parse('@function two() { @return 2; }')).toEqual({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'VariableDeclaration', name: 'two', write: { mode: 'declare' },
         value: {
           type: 'AnonymousMixin',
-          body: [{ type: 'Declaration', name: 'result', value: { type: 'Dimension', number: 2, unit: '', src: '2' }, merge: null, important: false }]
+          rules: [{ type: 'Declaration', name: 'result', value: { type: 'Dimension', number: 2, unit: '', src: '2' }, merge: null, important: false }]
         }
       }]
     });
 
     /*
      * A parameterized function threads its `($n)` list into `AnonymousMixin.params`
-     * (the same `Param` shape a MixinDef uses), with `@return` → `result:`.
+     * (the same `Param` shape a MixinDefinition uses), with `@return` → `result:`.
      */
-    expect(parse('@function double($n) { @return $n * 2; }').children[0]).toEqual({
+    expect(parse('@function double($n) { @return $n * 2; }').rules[0]).toEqual({
       type: 'VariableDeclaration', name: 'double', write: { mode: 'declare' },
       value: {
         type: 'AnonymousMixin',
         params: [{ name: 'n' }],
-        body: [{ type: 'Declaration', name: 'result', value: { type: 'Operation', operator: '*', left: { type: 'VariableReference', name: 'n', lookup: 'live' }, right: { type: 'Dimension', number: 2, unit: '', src: '2' } }, merge: null, important: false }]
+        rules: [{ type: 'Declaration', name: 'result', value: { type: 'Operation', operator: '*', left: { type: 'VariableReference', name: 'n', lookup: 'live' }, right: { type: 'Dimension', number: 2, unit: '', src: '2' } }, merge: null, important: false }]
       }
     });
   });
@@ -2196,10 +2202,10 @@ describe('SCSS canonical-AST grammar', () => {
      * (`darken(...)`) is left as a FunctionCall for `fns` routing.
      */
     const doc = parse('@function double($n) { @return $n * 2; } .a { w: double(2); c: darken(#fff, 10%); }');
-    const ruleNode = doc.children.find(child => child.type === 'Rule');
+    const ruleNode = doc.rules.find(child => child.type === 'Ruleset');
     expect(ruleNode).toMatchObject({
-      type: 'Rule',
-      body: [
+      type: 'Ruleset',
+      rules: [
         { type: 'Declaration', name: 'w', value: {
           type: 'Reference',
           base: { type: 'VariableReference', name: 'double', lookup: 'live' },

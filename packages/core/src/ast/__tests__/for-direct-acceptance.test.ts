@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, collection, dimension, forNode, funcCall, interpolation, keyword, list,
+  decl, collection, collectionEntry, dimension, forNode, funcCall, interpolation, keyword, list,
   propertyReference, range, stylesheet, rule, spaced, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
+const entry = (name: string, value: Parameters<typeof collectionEntry>[1]): ReturnType<typeof collectionEntry> =>
+  collectionEntry(keyword(name), value);
 
 describe('For canonical AST emission', () => {
   it('merges a typed space list into one comma declaration', () => {
@@ -53,9 +55,9 @@ describe('For canonical AST emission', () => {
 
   it('binds map keys and values from a detached ruleset', () => {
     const map = collection([
-      decl('one', keyword('blue')),
-      decl('two', keyword('green')),
-      decl('three', keyword('red'))
+      entry('one', keyword('blue')),
+      entry('two', keyword('green')),
+      entry('three', keyword('red'))
     ]);
     const document = stylesheet([
       rule('.set', [
@@ -72,8 +74,8 @@ describe('For canonical AST emission', () => {
 
   it('evaluates detached-map member values through the map property timeline when bound to @value', () => {
     const map = collection([
-      decl('background-color', keyword('black')),
-      decl('color', propertyReference('background-color'))
+      entry('background-color', keyword('black')),
+      entry('color', propertyReference('background-color'))
     ]);
     const document = stylesheet([
       variableDeclaration('vars', map, { mode: 'declare' }),
@@ -98,7 +100,7 @@ describe('For canonical AST emission', () => {
     const document = stylesheet([
       rule('.set', [
         forNode(
-          collection([decl('one', keyword('blue')), decl('two', keyword('green'))]),
+          collection([entry('one', keyword('blue')), entry('two', keyword('green'))]),
           [decl(interpolation([{ ref: variableReference('key', 'scoped'), unquote: true }]), variableReference('value', 'scoped'))],
           { kind: 'bracket', names: ['key', 'value'] }
         )
@@ -109,7 +111,7 @@ describe('For canonical AST emission', () => {
   });
 
   it('binds comma key and counter positions for both lists and maps', () => {
-    const map = collection([decl('first', keyword('red')), decl('second', keyword('blue'))]);
+    const map = collection([entry('first', keyword('red')), entry('second', keyword('blue'))]);
     const document = stylesheet([
       rule('.list', [
         forNode(

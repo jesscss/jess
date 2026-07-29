@@ -1,4 +1,5 @@
-import { any, atrulestatement, quoted, rules, serializeTypes } from '../src/index.js';
+import { any, atrulestatement, quoted, rules } from '../src/tree/index.js';
+import { serializeTypes } from '../src/tree/util/serialize-types.js';
 
 describe('AtRuleStatement', () => {
   test('serializes statement-form at-rules without block machinery', () => {

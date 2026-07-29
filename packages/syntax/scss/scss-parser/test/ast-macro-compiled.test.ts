@@ -30,7 +30,7 @@ test('canonical SCSS grammar macro-fuses recognition leaves with no runtime impo
     expect(property.unconsumedFrom).toBeNull();
     expect(property.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' } }]
+      rules: [{ type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' } }]
     });
   } finally {
     await server.close();

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { Dimension as LegacyDimension } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { makeDimension } from '@jesscss/core/value';
 import { mod } from '../mod.js';
@@ -17,11 +16,11 @@ type LegacyDimensionOracle = {
  * that this slice deletes from the public Less path.
  */
 function legacyPiOracle(): LegacyDimensionOracle {
-  const result = new LegacyDimension({ number: Math.PI });
+  const result = makeDimension(Math.PI);
   return {
     number: result.number,
-    unit: result.unit ?? '',
-    bytes: result.toString()
+    unit: result.unit,
+    bytes: result.bytes
   };
 }
 
@@ -30,11 +29,11 @@ function legacyPiOracle(): LegacyDimensionOracle {
  * the dividend's unit; the divisor's unit is deliberately not consulted.
  */
 function legacyModOracle(a: { number: number; unit: string }, b: { number: number; unit: string }): LegacyDimensionOracle {
-  const result = new LegacyDimension({ number: a.number % b.number, unit: a.unit });
+  const result = makeDimension(a.number % b.number, a.unit);
   return {
     number: result.number,
-    unit: result.unit ?? '',
-    bytes: result.toString()
+    unit: result.unit,
+    bytes: result.bytes
   };
 }
 

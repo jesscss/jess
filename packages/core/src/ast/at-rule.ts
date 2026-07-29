@@ -36,7 +36,7 @@ export interface AtRuleBlock {
   readonly type: 'AtRuleBlock';
   readonly name: string;
   readonly prelude: ValueNode | null;
-  readonly body: Statement[];
+  readonly rules: Statement[];
 }
 
 /**
@@ -107,8 +107,8 @@ export interface Plugin {
 export const atRuleBlock = (
   name: string,
   prelude: ValueNode | null,
-  body: Statement[]
-): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, body });
+  rules: Statement[]
+): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, rules });
 
 export const atRuleStatement = (name: string, prelude: ValueNode | null): AtRuleStatement =>
   ({ type: 'AtRuleStatement', name, prelude });

@@ -14,13 +14,13 @@ test('Less factory compiles and runs in CST host mode', () => {
   expect(result.errors).toHaveLength(0);
   expect(result.unconsumedFrom).toBeNull();
   expect(result.tree.grammarType).toBe('Stylesheet');
-  expect(result.tree.children.some(child => child._tag === 'node' && child.grammarType === 'VarDeclaration')).toBe(true);
-  expect(result.tree.children.some(child => child._tag === 'node' && child.grammarType === 'Ruleset')).toBe(true);
+  expect(result.tree.rules.some(child => child._tag === 'node' && child.grammarType === 'VarDeclaration')).toBe(true);
+  expect(result.tree.rules.some(child => child._tag === 'node' && child.grammarType === 'Ruleset')).toBe(true);
 });
 
 test('Less CST leaves detached binding semicolons at statement-list boundary', () => {
   const result = parseCst(lessCstGrammar as Record<string, unknown>, '@theme: { color: red; };');
-  const [declaration, semicolon] = result.tree.children;
+  const [declaration, semicolon] = result.tree.rules;
 
   expect(result.errors).toHaveLength(0);
   expect(result.unconsumedFrom).toBeNull();

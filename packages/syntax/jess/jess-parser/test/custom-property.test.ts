@@ -42,7 +42,7 @@ describe('Jess custom properties', () => {
   for (const [label, source, expected, important = false] of ACCEPTED) {
     it(`accepts ${label}`, () => {
       expect(parse(source)).toMatchObject({
-        children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected }, important }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected }, important }] }]
       });
     });
   }
@@ -50,7 +50,7 @@ describe('Jess custom properties', () => {
   for (const name of NAMES) {
     it(`accepts the custom-property name \`${name}\``, () => {
       expect(parse(`a { ${name}: red; }`)).toMatchObject({
-        children: [{ type: 'Rule', body: [{ type: 'Declaration', name, value: { type: 'Any', src: 'red' } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name, value: { type: 'Any', src: 'red' } }] }]
       });
     });
   }
@@ -67,9 +67,9 @@ describe('Jess custom properties', () => {
 
   it('accepts an interpolated custom-property name', () => {
     expect(parse('$p: q; a { --${p}x: red; }')).toMatchObject({
-      children: [
+      rules: [
         { type: 'VariableDeclaration' },
-        { type: 'Rule', body: [{ type: 'Declaration', name: { type: 'Interpolation' } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: { type: 'Interpolation' } }] }
       ]
     });
   });
@@ -80,7 +80,7 @@ describe('Jess custom properties', () => {
 
   it('keeps a custom-property value verbatim rather than evaluating it', () => {
     expect(parse('a { --x: 1px+2px; --y: $notavariable; }')).toMatchObject({
-      children: [{ type: 'Rule', body: [
+      rules: [{ type: 'Ruleset', rules: [
         { type: 'Declaration', name: '--x', value: { type: 'Any', src: '1px+2px' } },
         { type: 'Declaration', name: '--y', value: { type: 'Any', src: '$notavariable' } }
       ] }]
@@ -89,16 +89,16 @@ describe('Jess custom properties', () => {
 
   it('keeps a `${…}` segment inside a custom-property value structural', () => {
     expect(parse('$v: red; a { --x: 1px ${v}; }')).toMatchObject({
-      children: [
+      rules: [
         { type: 'VariableDeclaration' },
-        { type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Interpolation' } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Interpolation' } }] }
       ]
     });
   });
 
   it('accepts a custom-property reference in a var() consumer', () => {
     expect(parse('a { color: var(--x, blue); }')).toMatchObject({
-      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] }]
     });
   });
 });

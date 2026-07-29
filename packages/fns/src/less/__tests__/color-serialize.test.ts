@@ -25,8 +25,8 @@ function colorResult(value: unknown): Color {
   return value;
 }
 
-const hexColor = (rgb: [number, number, number], alpha: number, node: string): Color =>
-  makeColorRgb(rgb, alpha, HEX, { node });
+const hexColor = (rgb: [number, number, number], alpha: number, src: string): Color =>
+  makeColorRgb(rgb, alpha, HEX, { src });
 
 const pct = (n: number): Dimension => makeDimension(n, '%');
 

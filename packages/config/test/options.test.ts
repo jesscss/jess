@@ -51,6 +51,7 @@ describe('getOptions', () => {
           scss: { precision: 10 }
         }
       };
+
       // File is .less but we explicitly request scss options
       const options = getOptions(config, { language: 'scss', input: 'src/styles.less' });
       expect(options.precision).toBe(10);
@@ -125,7 +126,8 @@ describe('getOptions', () => {
         compile: {
           mathMode: 'always',
           unitMode: 'loose',
-          equalityMode: 'exact'
+          equalityMode: 'exact',
+          allowApplySelectors: ['class']
         },
         language: {
           less: {
@@ -143,6 +145,7 @@ describe('getOptions', () => {
       const options = getOptions(config, { input: 'src/styles.less', output: 'dist/styles.css' });
       expect(options.unitMode).toBe('loose'); // from compile
       expect(options.equalityMode).toBe('exact'); // from compile
+      expect(options.allowApplySelectors).toEqual(['class']); // from compile
       expect(options.leakyScope).toBe(true); // from language.less
       expect(options.mathMode).toBe('strict'); // from input (overrides language)
       expect(options.collapseNesting).toBe(false); // from input

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  collection, decl, dimension, keyword, rule, stylesheet, type Stylesheet
+  collection, collectionEntry, decl, dimension, keyword, rule, stylesheet, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { makeLessRegistry } from '@jesscss/fns';
@@ -9,6 +9,8 @@ import { makeLessRegistry } from '@jesscss/fns';
 const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet, collapseNesting: boolean): string | undefined =>
   serialize(document, { evaluator, collapseNesting }).css;
+const entry = (name: string, value: Parameters<typeof collectionEntry>[1]): ReturnType<typeof collectionEntry> =>
+  collectionEntry(keyword(name), value);
 
 /** The declaration lines of a rendered block, ignoring header/brace/indent bytes. */
 const declarations = (css: string | undefined): string[] =>
@@ -29,8 +31,8 @@ describe('SCSS nested-property flatten', () => {
   it('expands a flat nested property in BOTH emitters', () => {
     const document = stylesheet([
       rule('.x', [decl('font', collection([
-        decl('family', keyword('serif')),
-        decl('size', dimension(12, 'px'))
+        entry('family', keyword('serif')),
+        entry('size', dimension(12, 'px'))
       ]))])
     ]);
 
@@ -41,7 +43,7 @@ describe('SCSS nested-property flatten', () => {
 
   it('emits the carrier value first, then the leaves, in BOTH emitters', () => {
     const document = stylesheet([
-      rule('.x', [decl('font', collection([decl('family', keyword('serif'))], dimension(20, 'px')))])
+      rule('.x', [decl('font', collection([entry('family', keyword('serif'))], dimension(20, 'px')))])
     ]);
 
     const { flat, nested } = bothModes(document);
@@ -51,7 +53,7 @@ describe('SCSS nested-property flatten', () => {
 
   it('renders the whole nested block byte-for-byte in the nested emitter', () => {
     const document = stylesheet([
-      rule('.x', [decl('font', collection([decl('family', keyword('serif'))], dimension(20, 'px')))])
+      rule('.x', [decl('font', collection([entry('family', keyword('serif'))], dimension(20, 'px')))])
     ]);
 
     expect(render(document, false)).toBe('.x {\n  font: 20px;\n  font-family: serif;\n}\n');
@@ -60,11 +62,11 @@ describe('SCSS nested-property flatten', () => {
   it('recurses through a deeper carrier in BOTH emitters', () => {
     const document = stylesheet([
       rule('.x', [decl('border', collection([
-        decl('left', collection([
-          decl('width', dimension(1, 'px')),
-          decl('style', keyword('solid'))
+        entry('left', collection([
+          entry('width', dimension(1, 'px')),
+          entry('style', keyword('solid'))
         ], keyword('none'))),
-        decl('color', keyword('red'))
+        entry('color', keyword('red'))
       ], dimension(0)))])
     ]);
 
@@ -83,7 +85,7 @@ describe('SCSS nested-property flatten', () => {
     const document = stylesheet([
       rule('.x', [
         decl('color', keyword('red')),
-        decl('font', collection([decl('family', keyword('serif'))])),
+        decl('font', collection([entry('family', keyword('serif'))])),
         decl('display', keyword('block'))
       ])
     ]);
@@ -102,8 +104,8 @@ describe('SCSS nested-property flatten', () => {
   it('does NOT flatten a custom property carrying a block, in BOTH emitters', () => {
     const document = stylesheet([
       rule('.x', [decl('--foo', collection([
-        decl('a', dimension(1)),
-        decl('b', dimension(2))
+        entry('a', dimension(1)),
+        entry('b', dimension(2))
       ]))])
     ]);
 

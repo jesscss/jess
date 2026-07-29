@@ -5,16 +5,27 @@ import {
   type Plugin,
   type SafeParseOptions
 } from '@jesscss/core';
-import { parse } from '@jesscss/jess-parser';
+import { parse, type JessParseOptions } from '@jesscss/jess-parser';
+
+function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions {
+  const compilerOptions = options?.compilerOptions;
+  return {
+    ...(compilerOptions?.allowApplySelectors !== undefined
+      ? { allowApplySelectors: compilerOptions.allowApplySelectors }
+      : {}),
+    ...(compilerOptions?.allowExtendSelectors !== undefined
+      ? { allowExtendSelectors: compilerOptions.allowExtendSelectors }
+      : {})
+  };
+}
 
 /** Parses `.jess` source into the canonical AST-v2 `Stylesheet` document. */
 export class JessPlugin extends AbstractPlugin {
   name = 'jess';
   supportedExtensions = ['.jess'];
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
-    void parseOptions;
     try {
-      return { document: parse(source), errors: [], warnings: [] };
+      return { document: parse(source, parseOptionsFromSafeParse(parseOptions)), errors: [], warnings: [] };
     } catch (error) {
       return {
         errors: [parserDiagnostic({ dialect: 'Jess', error, filePath, source })],

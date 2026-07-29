@@ -7,7 +7,7 @@
 
 import { branchFromComplex, branchSharesAtom, collectBranchAtoms, levelFromSelectorList } from './ir.js';
 import type { Branch, Level } from './ir.js';
-import type { ExtendInstruction, Stylesheet, Rule, Statement } from '../nodes.js';
+import type { ExtendInstruction, Stylesheet, Ruleset, Statement } from '../nodes.js';
 
 /**
  * Opt-in, import-time-captured counters for the AST extend planner. Production
@@ -43,7 +43,7 @@ export interface PlanInstruction {
 }
 
 export interface PlanSubject {
-  rule: Rule;
+  rule: Ruleset;
   path: Level[];
   scope: number[];
 
@@ -100,8 +100,8 @@ function instructionTargets(inst: ExtendInstruction): Branch[] {
 
 export function collectPlan(
   root: Stylesheet,
-  hiddenRules?: ReadonlySet<Rule>,
-  referenceBoundaries?: ReadonlyMap<Rule, object>,
+  hiddenRules?: ReadonlySet<Ruleset>,
+  referenceBoundaries?: ReadonlyMap<Ruleset, object>,
   overlay?: PlanOverlay
 ): Plan {
   recordAstExtendProfile?.('astExtend.plan.calls');
@@ -118,7 +118,7 @@ export function collectPlan(
     parent: PlanSubject | null
   ): void => {
     for (const st of statements) {
-      if (st.type === 'Rule') {
+      if (st.type === 'Ruleset') {
         const rule = st;
         const own = levelFromSelectorList(rule.selector);
         const rulePath = [...path, own];
@@ -158,17 +158,17 @@ export function collectPlan(
             }
           }
         }
-        walk(rule.body, rulePath, scope, subject);
+        walk(rule.rules, rulePath, scope, subject);
       } else if (st.type === 'AtRuleBlock') {
         const inner = [...scope, scopeCounter++];
-        walk(st.body, path, inner, parent);
+        walk(st.rules, path, inner, parent);
       }
 
-      // MixinDef / MixinCall / declarations / at-rule statements: no extend surface.
+      // MixinDefinition / MixinCall / declarations / at-rule statements: no extend surface.
     }
   };
 
-  walk(root.children, [], [], null);
+  walk(root.rules, [], [], null);
 
   if (overlay) {
     /*
@@ -214,22 +214,22 @@ export function documentHasExtend(root: Stylesheet): boolean {
   recordAstExtendProfile?.('astExtend.documentHasExtend.calls');
   const scan = (statements: Statement[]): boolean => {
     for (const st of statements) {
-      if (st.type === 'Rule') {
+      if (st.type === 'Ruleset') {
         if (st.extendInstructions && st.extendInstructions.length > 0) {
           return true;
         }
-        if (scan(st.body)) {
+        if (scan(st.rules)) {
           return true;
         }
       } else if (st.type === 'AtRuleBlock') {
-        if (scan(st.body)) {
+        if (scan(st.rules)) {
           return true;
         }
       }
     }
     return false;
   };
-  const found = scan(root.children);
+  const found = scan(root.rules);
   recordAstExtendProfile?.(found
     ? 'astExtend.documentHasExtend.featureBearingCalls'
     : 'astExtend.documentHasExtend.noFeatureMisses');

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { Dimension as LegacyDimension } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { makeDimension } from '@jesscss/core/value';
 import { sqrt } from '../sqrt.js';
@@ -17,8 +16,8 @@ type LegacyDimensionOracle = {
  * being removed.
  */
 function legacySqrtOracle(number: number, unit: string): LegacyDimensionOracle {
-  const result = new LegacyDimension({ number: Math.sqrt(number), unit: unit || undefined });
-  return { number: result.number, unit: result.unit ?? '', bytes: result.toString() };
+  const result = makeDimension(Math.sqrt(number), unit);
+  return { number: result.number, unit: result.unit, bytes: result.bytes };
 }
 
 describe('Less sqrt canonical cutover', () => {

@@ -23,8 +23,8 @@ import {
   decl,
   extend,
   any
-} from '../../../index.js';
-import type { Selector } from '../../../index.js';
+} from '../../index.js';
+import type { Selector } from '../../index.js';
 import { applyExtendsToSelector, type ExtendInstruction } from '../extend.js';
 import { findExtendableLocations } from '../find-extendable-locations.js';
 import { areCompoundSelectorsEquivalent, expandCompoundWithPseudoSelectors } from '../selector-match-core.js';

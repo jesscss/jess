@@ -25,7 +25,9 @@ export type FunctionMode = 'preserve' | 'error';
  * - `exact`: no coercion — operands must be the same node type
  */
 export type EqualityMode = 'less' | 'sass' | 'exact';
-export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+export type SelectorPolicyKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+export type ExtendSelectorKind = SelectorPolicyKind;
+export type ApplySelectorKind = SelectorPolicyKind;
 
 /**
  * Less compiler options
@@ -35,8 +37,12 @@ export interface LessOptions {
   /**
    * Restrict which selector shapes are allowed in extend targets.
    * When set, any other selector kind is a parse error.
+   *
+   * `class` is narrower than `basic`: it accepts `.utility`, while `basic`
+   * also accepts non-pseudo simple selectors such as `#id`, `button`, and `[attr]`.
    */
   allowExtendSelectors?: ExtendSelectorKind[];
+  allowApplySelectors?: ApplySelectorKind[];
 
   /**
    * Inline Javascript - @plugin still allowed
@@ -310,6 +316,7 @@ export interface LessOptions {
 
 export interface ScssOptions {
   allowExtendSelectors?: ExtendSelectorKind[];
+  allowApplySelectors?: ApplySelectorKind[];
   unitMode?: UnitMode;
   equalityMode?: EqualityMode;
   collapseNesting?: boolean;
@@ -452,6 +459,7 @@ export interface StylesConfig {
     /** See {@link LessOptions.processImports}. */
     processImports?: boolean;
     allowExtendSelectors?: ExtendSelectorKind[];
+    allowApplySelectors?: ApplySelectorKind[];
     disableScriptModules?: boolean;
 
     /**

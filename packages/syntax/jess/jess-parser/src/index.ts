@@ -9,9 +9,28 @@ import {
   createTriviaMapFromParseman,
   withSourceSpan,
   withTriviaMap,
+  type Apply,
+  type ComplexSelector,
+  type Ruleset,
+  type SelectorList,
+  type SelectorTerm,
+  type SimpleSelector,
+  type SimpleToken,
+  type Statement,
   type Stylesheet
 } from '@jesscss/core/ast';
+import type { ApplySelectorKind, ExtendSelectorKind } from '@jesscss/core';
 import { jessAstGrammar } from './grammar.js';
+
+export interface JessParseOptions {
+  readonly allowExtendSelectors?: readonly ExtendSelectorKind[];
+
+  /**
+   * Selector kinds accepted by `$apply`. Jess treats `$apply` as a utility-class
+   * composition feature by default, so unset means class selectors only.
+   */
+  readonly allowApplySelectors?: readonly ApplySelectorKind[];
+}
 
 /** Structured failure from the public direct Jess parser. */
 export class JessParseError extends SyntaxError {
@@ -33,12 +52,104 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && value !== null
     && 'type' in value
     && value.type === 'Stylesheet'
-    && 'children' in value
-    && Array.isArray(value.children);
+    && Array.isArray(value.rules);
+}
+
+const DEFAULT_APPLY_SELECTOR_KINDS: readonly ApplySelectorKind[] = ['class'];
+
+function selectorPolicyError(message: string): JessParseError {
+  return new JessParseError(0, [message]);
+}
+
+function isClassSelector(simple: SimpleSelector): boolean {
+  return simple.interp === null
+    && typeof simple.text === 'string'
+    && simple.text.startsWith('.')
+    && simple.text.length > 1;
+}
+
+function isTermAllowed(term: SelectorTerm, allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>): boolean {
+  if (term.type === 'CompoundSelector') {
+    return allowed.has('compound')
+      || (term.value.length === 1 && isSimpleAllowed(term.value[0]!, allowed));
+  }
+  return isSimpleAllowed(term, allowed);
+}
+
+function isSimpleAllowed(simple: SimpleToken, allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>): boolean {
+  if (simple.type === 'PseudoSelector') {
+    return allowed.has('simple') || allowed.has('pseudo');
+  }
+  return (allowed.has('class') && isClassSelector(simple))
+    || allowed.has('simple')
+    || allowed.has('basic');
+}
+
+function isComplexAllowed(complex: ComplexSelector, allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>): boolean {
+  if (allowed.has('complex')) {
+    return true;
+  }
+  const only = complex.value.length === 1 ? complex.value[0] : undefined;
+  return typeof only === 'object' && only !== null && isTermAllowed(only, allowed);
+}
+
+function validateSelectorList(label: string, selector: SelectorList, allowedKinds: readonly ExtendSelectorKind[]): void {
+  const allowed = new Set(allowedKinds);
+  if (!selector.selectors.every(item => isComplexAllowed(item, allowed))) {
+    throw selectorPolicyError(`${label} selector is not allowed by allowExtendSelectors.`);
+  }
+}
+
+function validateApply(node: Apply, allowedKinds: readonly ApplySelectorKind[]): void {
+  const allowed = new Set(allowedKinds);
+  if (!node.selectors.every(selector => isTermAllowed(selector, allowed))) {
+    throw selectorPolicyError('$apply target is not allowed by allowApplySelectors.');
+  }
+}
+
+function validateRuleset(node: Ruleset, options: Required<Pick<JessParseOptions, 'allowApplySelectors'>> & Pick<JessParseOptions, 'allowExtendSelectors'>): void {
+  if (options.allowExtendSelectors !== undefined) {
+    for (const instruction of node.extendInstructions ?? []) {
+      validateSelectorList('$extend', instruction.target, options.allowExtendSelectors);
+    }
+  }
+  validateStatements(node.rules, options);
+}
+
+function validateStatements(rules: readonly Statement[], options: Required<Pick<JessParseOptions, 'allowApplySelectors'>> & Pick<JessParseOptions, 'allowExtendSelectors'>): void {
+  for (const node of rules) {
+    switch (node.type) {
+      case 'Ruleset':
+        validateRuleset(node, options);
+        break;
+      case 'MixinDefinition':
+      case 'For':
+      case 'AtRuleBlock':
+        validateStatements(node.rules, options);
+        break;
+      case 'If':
+        for (const branch of node.branches) {
+          validateStatements(branch.rules, options);
+        }
+        break;
+      case 'Apply':
+        validateApply(node, options.allowApplySelectors);
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+function validateJessOptions(document: Stylesheet, options: JessParseOptions = {}): void {
+  validateStatements(document.rules, {
+    allowApplySelectors: options.allowApplySelectors ?? DEFAULT_APPLY_SELECTOR_KINDS,
+    allowExtendSelectors: options.allowExtendSelectors
+  });
 }
 
 /** Parse Jess directly into the canonical AST v2 document. */
-export function parse(input: string): Stylesheet {
+export function parse(input: string, options: JessParseOptions = {}): Stylesheet {
   const entry = jessAstGrammar.Stylesheet;
   const trivia = jessAstGrammar.whitespace;
   if (entry === undefined || trivia === undefined) {
@@ -59,8 +170,10 @@ export function parse(input: string): Stylesheet {
       expected
     );
   }
-  return withTriviaMap(
+  const document = withTriviaMap(
     withSourceSpan(result.value, result.span),
     createTriviaMapFromParseman(input, result.triviaMap)
   );
+  validateJessOptions(document, options);
+  return document;
 }
