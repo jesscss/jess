@@ -248,6 +248,14 @@ The intended selector shapes are sequence-shaped:
 That is clearer than `head`/`tail`, preserves the authored selector grammar
 shape, and gives visitors one payload field to traverse.
 
+The selector-list branch domain should be `SelectorTerm | ComplexSelector |
+RelativeSelector`. A branch with no combinator is a selector term directly. A
+`ComplexSelector` must contain at least one combinator. A `RelativeSelector`
+must contain its leading combinator and at least one selector term. A
+`CompoundSelector` must contain multiple adjacent simple selector tokens.
+One-term complex selectors and one-item compounds are illegal parser outputs,
+not shapes to reject at runtime.
+
 The selector term in those sequences is not necessarily a
 `CompoundSelector`. A `SimpleSelector` can occupy that position directly when
 the authored shape is simple. The sequence type should express that directly,
@@ -266,6 +274,20 @@ aggressively wrap authored facts for implementation convenience. No
 single-element arrays or single-child wrapper nodes should appear merely because
 an older representation required a uniform container. The parser should emit the
 smallest semantic shape the authored grammar justifies.
+
+Parser reductions own those invariants. This is a performance rule as much as a
+shape rule. Core nodes should remain dumb and cheap: they trust parser
+construction and should not spend hot-path work branching over shape validity.
+Use grammar-time decisions, macro-compilable Parseman structure, typed factory
+boundaries, and parser AST tests. Diagnostics may optionally audit invalid AST
+shapes for tooling, but diagnostics are not the mechanism that makes the
+canonical nodes valid.
+
+Leading-combinator selectors also need contextual grammar pressure. They should
+not be accepted by a generic selector production and normalized later. Each
+dialect should admit relative selectors only in positions where that dialect
+allows them, such as nested selector contexts or selector-function arguments
+whose grammar permits relative selectors.
 
 ### `List.sep` is acceptable
 
@@ -299,14 +321,25 @@ shape fixes are pending.
 ### P1: Clean remaining node and field names that affect visitation
 
 1. Decide whether/when to export the internal canonical traversal surface.
-2. Model `ComplexSelector.value` as alternating selector-term/combinator-string
+2. Model selector-list branches as `SelectorTerm | ComplexSelector |
+   RelativeSelector`.
+3. Model `ComplexSelector.value` as alternating selector-term/combinator-string
    pieces and `RelativeSelector.value` as the same sequence starting with a
    combinator string where relative selectors become first-class.
-3. Keep combinators as primitive strings, not `{ combinator }` wrapper objects.
-4. Preserve simple selector terms directly: `.a > .b` should have
+4. Require `ComplexSelector` to contain at least one combinator, require
+   `RelativeSelector` to contain its leading combinator and at least one selector
+   term, and require `CompoundSelector` to contain multiple simple selector
+   tokens.
+5. Enforce those requirements in parser reductions and parser AST tests, not
+   runtime node constructors or eval/render visitors.
+6. Audit CSS/Less/SCSS/Jess selector productions so leading-combinator branches
+   are accepted only in relative-selector contexts, not globally through generic
+   selector parsing.
+7. Keep combinators as primitive strings, not `{ combinator }` wrapper objects.
+8. Preserve simple selector terms directly: `.a > .b` should have
    `BasicSelector` terms on each side of the combinator, not synthetic one-item
    compounds.
-5. Apply the no-aggressive-wrapping rule generally: do not introduce
+9. Apply the no-aggressive-wrapping rule generally: do not introduce
    single-element arrays or one-child wrapper nodes without authored structure
    that justifies them.
 
