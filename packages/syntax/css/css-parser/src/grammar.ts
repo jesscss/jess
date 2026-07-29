@@ -2626,16 +2626,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const AtPreludeGroup = node(
     'AtPreludeGroup',
     noTrivia(choice(
-      balanced(
-        '(',
-        ')',
-        { skip: [customSingleQuoted, customDoubleQuoted, blockComment] }
-      ),
-      balanced(
-        '[',
-        ']',
-        { skip: [customSingleQuoted, customDoubleQuoted, blockComment] }
-      )
+      balanced('(', ')'),
+      balanced('[', ']')
     )),
     children => authoredText(children)
   );

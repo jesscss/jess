@@ -81,6 +81,17 @@ Parseman 0.41+ idioms such as `dispatch(...)`, `routed()`, `makeWhen(...)`,
 `word(...)`, separated-list helpers, and composition should be used where they
 remove real duplicated recognition or make the grammar clearer.
 
+Scanner cleanup priority, 2026-07-29: treat `scanTo(..., { skip })` and
+`balanced(..., { skip })` as review findings, not neutral plumbing. The first
+question is whether the bytes can be parsed as structured grammar or handled by
+the grammar's trivia / ambient `scanSkip`; only keep a scanner-local skip when
+the scanner is still the narrow accepted representation and a comment, quote, or
+balanced group must not terminate that specific opaque span. Do not tune a
+scanner skip list as a substitute for moving the language back into grammar
+structure. In the same pass, keep burning down false migration prefixes and use
+`dispatch(...)` only when `choice(...)` is truly re-reading one broad routed
+opener with known cases plus a same-family generic fallback.
+
 Live alpha evidence, 2026-07-27: registry `parseman@0.41.0` is installed;
 dependency-order parser/plugin/jess builds pass; `pnpm run check:macro` and
 `pnpm run verify:compose-integrity` both pass with 0 interpreter fallbacks.
@@ -4493,6 +4504,28 @@ parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
 fallbacks; and `pnpm run verify:compose-integrity` passed. The previous
 `ScssMixinCallArg` gating warning now reports under semantic
 `MixinCallArgument`.
+
+CSS at-rule prelude scanner-skip cleanup, 2026-07-29: CSS `AtPreludeGroup`
+now relies on the grammar-level ambient `scanSkip` / trivia policy for balanced
+paren and square groups instead of restating local
+`balanced(..., { skip: [...] })` lists. This keeps the structured unknown
+at-rule prelude route as the model: comments and quoted strings are not
+semantic prelude children, but they also do not terminate a balanced group. The
+touched `choice(...)` remains a delimiter-family choice between `(...)` and
+`[...]`; it is not a dispatch candidate because no routed known/generic token
+family is involved.
+
+Evidence for the CSS at-rule prelude scanner-skip cleanup: `pnpm --filter
+@jesscss/css-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 102 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/css-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. A narrow A/B parser workload over generic at-rule statements with
+grouped preludes measured the old local-skip shape at 50.324 ms median and the
+ambient-skip shape at 48.141 ms median for 160 parses on the same dirty
+worktree; treat this only as route sanity, not a general parser speed claim.
 
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
