@@ -813,7 +813,7 @@ describe('Jess AST grammar facts', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(hasCstGrammar(cst.tree, 'DirectJessSelectorCapture')).toBe(true);
+    expect(hasCstGrammar(cst.tree, 'SelectorCapture')).toBe(true);
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
@@ -1114,7 +1114,7 @@ describe('Jess AST grammar facts', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(hasCstGrammar(cst.tree, 'DirectJessAtRuleBlock')).toBe(true);
+    expect(hasCstGrammar(cst.tree, 'AtRuleBlock')).toBe(true);
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
@@ -1352,18 +1352,18 @@ describe('Jess AST grammar facts', () => {
       expect(cst.unconsumedFrom, source).toBeNull();
 
       /*
-       * Reduced as a `DirectJessAtRuleBlock` so every language-service grammarType
+       * Reduced as an `AtRuleBlock` so every language-service grammarType
        * allow-list treats it exactly like a static `@media`.
        */
-      expect(hasCstGrammar(cst.tree, 'DirectJessAtRuleBlock'), source).toBe(true);
-      expect(hasCstGrammar(cst.tree, 'DirectJessDollarBrace'), source).toBe(true);
+      expect(hasCstGrammar(cst.tree, 'AtRuleBlock'), source).toBe(true);
+      expect(hasCstGrammar(cst.tree, 'DollarBrace'), source).toBe(true);
 
       const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
     }
 
     /*
-     * The CST arm mirrors `DirectJessMediaPrelude` exactly: `@media` only, the
+     * The CST arm mirrors `MediaPrelude` exactly: `@media` only, the
      * prelude is a WHOLE `${…}` (no mixed/comma/glued form), block form only.
      * Every one of these stays rejected by BOTH routes.
      */
@@ -2617,7 +2617,7 @@ describe('Jess AST grammar facts', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(hasCstGrammar(cst.tree, 'DirectJessMixinDef')).toBe(true);
+    expect(hasCstGrammar(cst.tree, 'MixinDef')).toBe(true);
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({ type: 'Stylesheet' });
