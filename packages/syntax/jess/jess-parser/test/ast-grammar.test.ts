@@ -2640,7 +2640,7 @@ describe('Jess AST grammar facts', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(hasCstGrammar(cst.tree, 'MixinDef')).toBe(true);
+    expect(hasCstGrammar(cst.tree, 'MixinDefinition')).toBe(true);
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({ type: 'Stylesheet' });

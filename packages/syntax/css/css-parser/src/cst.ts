@@ -321,9 +321,8 @@ export function parseCst(
  * Incremental-document counterpart of {@link parseCst}: parse `input` from
  * `startRule` into a parseman `ParseDoc` that can be re-parsed in place with
  * `.edit(from, to, replacement)`. The tree is built with the same
- * {@link cssCstBuildHost} the one-shot `parseCst` uses, so `absolutizeCST(doc.tree)`
- * is structurally identical to `parseCst(...).tree` for the same input (the doc's
- * own spans are PARENT-RELATIVE — absolutize before comparing).
+ * {@link cssCstBuildHost} the one-shot `parseCst` uses, so `doc.tree` is
+ * structurally identical to `parseCst(...).tree` for the same input.
  *
  * `structuralReuse` is enabled: the CST list rules are genuine repetitions
  * (`many`/`sepBy`), so a whole-element insert/delete near the top of a large

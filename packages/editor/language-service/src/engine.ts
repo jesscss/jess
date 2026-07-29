@@ -1740,6 +1740,19 @@ export function createEngine(): JessLanguageServiceEngine {
           end: doc.positionAt(to > anchor ? to : Math.min(textLength, anchor + 1))
         };
       };
+      const rootFailureAnchor = (): number => {
+        const open = text.indexOf('{');
+        if (open < 0) {
+          return skipBlank(0);
+        }
+        const bodyStart = skipBlank(open + 1);
+        const colon = text.indexOf(':', bodyStart);
+        const badCloseParen = text.indexOf(')', bodyStart);
+        if (colon >= 0 && badCloseParen > colon) {
+          return badCloseParen;
+        }
+        return bodyStart;
+      };
 
       /*
        * ParseDoc is the parser's editor-facing result: recovery errors and a
@@ -1758,12 +1771,15 @@ export function createEngine(): JessLanguageServiceEngine {
           range: diagnosticRange(parseError.span.start, parseError.span.end)
         });
       } else if (cstDoc.unconsumedFrom !== null) {
+        const unconsumedFrom = cstDoc.unconsumedFrom === 0 && cstDoc.tree?.span.end === 0
+          ? rootFailureAnchor()
+          : cstDoc.unconsumedFrom;
         diagnostics.push({
           code: 'parse/parser',
           source: 'jess',
           message: 'Unexpected input',
           severity: DiagnosticSeverity.Error,
-          range: diagnosticRange(cstDoc.unconsumedFrom, cstDoc.unconsumedFrom + 1)
+          range: diagnosticRange(unconsumedFrom, unconsumedFrom + 1)
         });
       }
 

@@ -99,7 +99,7 @@ type JessRules = {
   ReferenceCall: Combinator<Reference>;
   Apply: Combinator<Apply>;
   Extend: Combinator<ExtendInstruction[]>;
-  MixinDef: Combinator<MixinDefinition>;
+  MixinDefinition: Combinator<MixinDefinition>;
   Simple: Combinator<SimpleSelector>;
   Parent: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
@@ -119,7 +119,7 @@ type JessRules = {
   Complex: Combinator<ComplexSelector>;
   SelectorTail: Combinator<ComplexSelector>;
   Selector: Combinator<SelectorList>;
-  Rule: Combinator<Ruleset>;
+  Ruleset: Combinator<Ruleset>;
   ForName: Combinator<string>;
   ForBinding: Combinator<ForBinding>;
   ForRangeBound: Combinator<ValueNode>;
@@ -343,8 +343,8 @@ function requireCompound(value: unknown): SelectorTerm {
   return value;
 }
 
-function selectorTermFromSimples(simples: SimpleToken[]): SelectorTerm {
-  const [first, ...rest] = simples;
+function selectorTermFromTokens(tokens: SimpleToken[]): SelectorTerm {
+  const [first, ...rest] = tokens;
   if (first === undefined) {
     throw new TypeError('Jess selector production produced no simple selector tokens.');
   }
@@ -922,7 +922,7 @@ function reduceColonFeature(children: readonly unknown[], lostMessage: string): 
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isVarDeclaration(child) && !isMixinDef(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRule(child) && !isFor(child) && !isIf(child) && !isDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
+    if (!isVarDeclaration(child) && !isMixinDefinition(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRuleset(child) && !isFor(child) && !isIf(child) && !isDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
       throw new TypeError('Jess grammar produced a non-statement child.');
     }
     statements.push(child);
@@ -1071,11 +1071,11 @@ function isCollectionEntry(value: unknown): value is CollectionEntry {
     && isValueSlotValue(value.value);
 }
 
-function isRule(value: unknown): value is Ruleset {
+function isRuleset(value: unknown): value is Ruleset {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Ruleset';
 }
 
-function isMixinDef(value: unknown): value is MixinDefinition {
+function isMixinDefinition(value: unknown): value is MixinDefinition {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDefinition';
 }
 
@@ -1197,7 +1197,7 @@ function reduceLambda(children: readonly unknown[]): AnonymousMixin {
  * complex, tail, and list reductions are structurally identical.
  */
 function reduceCompound(children: readonly unknown[]): SelectorTerm {
-  return selectorTermFromSimples(children.map(requireSimpleToken));
+  return selectorTermFromTokens(children.map(requireSimpleToken));
 }
 function reduceComplex(children: readonly unknown[]): ComplexSelector {
   return complexSelector([
@@ -4170,7 +4170,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * as one local const so the macro fuses a single shared choice instead of
    * re-emitting it per block.
    *
-   * The `@`-headed cluster is placed AFTER Rule: a rule requires a
+   * The `@`-headed cluster is placed AFTER Ruleset: a ruleset requires a
    * selector (never `@`) and every at-rule requires `@`, so the two are disjoint
    * and this ordering is behaviour-neutral. Because rules dominate block bodies,
    * trying Ruleset first means a non-`@` statement never enters (and rolls back) the
@@ -4181,13 +4181,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.ValueBlockDeclaration,
     g.VariableDeclaration,
     g.Declaration,
-    g.MixinDef,
+    g.MixinDefinition,
     g.ReferenceCall,
     g.Apply,
     g.Extend,
     g.For,
     g.If,
-    g.Rule,
+    g.Ruleset,
     g.SupportsAtRuleBlock,
     g.Keyframes,
     g.OpaqueAtRuleBlock,
@@ -4207,12 +4207,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.ValueBlockDeclaration,
     g.VariableDeclaration,
     g.Declaration,
-    g.MixinDef,
+    g.MixinDefinition,
     g.For,
     g.If,
     g.ReferenceCall,
     g.Apply,
-    g.Rule,
+    g.Ruleset,
     g.SupportsAtRuleBlock,
     g.Keyframes,
     g.OpaqueAtRuleBlock,
@@ -4922,8 +4922,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const MixinDef = node<MixinDefinition>(
-    'MixinDef',
+  const MixinDefinition = node<MixinDefinition>(
+    'MixinDefinition',
     sequence(
       mixinNameToken,
       g.MixinParams,
@@ -5431,8 +5431,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     children => children.filter((child): child is ComplexSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'ComplexSelector')
       .map(target => ({ target: selist(target), partial: !children.some(child => isToken(child) && child.value === '!exact') }))
   );
-  const Rule = node<Ruleset>(
-    'Rule',
+  const Ruleset = node<Ruleset>(
+    'Ruleset',
     sequence(
       g.Selector,
       literal('{'),
@@ -5442,13 +5442,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.ValueBlockDeclaration,
         g.VariableDeclaration,
         g.Declaration,
-        g.MixinDef,
+        g.MixinDefinition,
         g.For,
         g.If,
         g.ReferenceCall,
         g.Apply,
         g.Extend,
-        g.Rule,
+        g.Ruleset,
         g.SupportsAtRuleBlock,
         g.OpaqueAtRuleBlock,
         g.ScopeBlock,
@@ -5500,12 +5500,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.ModuleImport,
         g.ValueBlockDeclaration,
         g.VariableDeclaration,
-        g.MixinDef,
+        g.MixinDefinition,
         g.For,
         g.If,
         g.ReferenceCall,
         g.Apply,
-        g.Rule,
+        g.Ruleset,
         g.SupportsAtRuleBlock,
         g.PropertyAtRule,
         g.Keyframes,
@@ -5640,7 +5640,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ReferenceCall,
     Apply,
     Extend,
-    MixinDef,
+    MixinDefinition,
     Simple,
     Parent,
     InterpolatedSimple,
@@ -5660,7 +5660,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     Complex,
     SelectorTail,
     Selector,
-    Rule,
+    Ruleset,
     ForName,
     ForBinding,
     ForRangeBound,

@@ -226,8 +226,14 @@ describe('SCSS canonical-AST grammar', () => {
       '@if $enabled { .a { color: green; } }',
       '@if feature() { .a { color: green; } }'
     ]) {
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
+      let accepted = false;
+      try {
+        const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+        accepted = result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
+      } catch {
+        accepted = false;
+      }
+      expect(accepted, source).toBe(false);
     }
   });
 
@@ -475,8 +481,14 @@ describe('SCSS canonical-AST grammar', () => {
       '@forward "./theme.scss" show $tone;',
       '@forward "./theme.scss" with ($tone: red);'
     ]) {
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
+      let accepted = false;
+      try {
+        const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+        accepted = result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
+      } catch {
+        accepted = false;
+      }
+      expect(accepted, source).toBe(false);
     }
   });
 

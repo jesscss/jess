@@ -8,10 +8,9 @@
  * CST (`parseCssDoc` / `.edit()`) is the correct foundation for syntactic
  * features; the eval AST should be reached for only by genuinely-evaluated ones.
  *
- * SPAN MODEL: the incremental `ParseDoc` CST stores PARENT-RELATIVE spans (for
- * cheap `.edit()`), so a node's absolute offset is `parentAbsStart +
- * node.span.start`. `buildCstIndex` accumulates that once and hands every
- * consumer absolute offsets via `spanOf`.
+ * SPAN MODEL: parser CST nodes and leaves carry absolute source spans. The
+ * index validates and memoizes those offsets once so feature code can stay
+ * positional and avoid per-feature tree walks.
  */
 import type { CssCstChild, CssCstNode } from '@jesscss/css-parser';
 import { SymbolKind, FoldingRangeKind, Position, type DocumentSymbol, type FoldingRange, type Range, type SelectionRange } from 'vscode-languageserver-types';
@@ -24,13 +23,17 @@ export type CstIndexEntry = { node: CssCstNode; start: number; end: number };
 export type CstIndex = {
   nodes: CstIndexEntry[];
 
-  /** Absolute [start,end) of a node, resolved from parent-relative spans. */
+  /** Absolute [start,end) of a node. */
   spanOf(node: CssCstNode): { start: number; end: number } | undefined;
   findNodeAtOffset(offset: number): CssCstNode | null;
 };
 
 function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
+}
+
+export function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
+  return node.rules;
 }
 
 /*
@@ -42,8 +45,8 @@ function isCstNode(c: CssCstChild): c is CssCstNode {
  */
 const INDEX_CACHE = new WeakMap<CssCstNode, CstIndex>();
 
-/** Depth-first collect, accumulating parent-relative spans into absolute
- * offsets, sorted by position. Memoized by tree identity (see M4 note). */
+/** Depth-first collect of absolute offsets, sorted by position. Memoized by
+ * tree identity (see M4 note). */
 export function buildCstIndex(root: CssCstNode): CstIndex {
   const cached = INDEX_CACHE.get(root);
   if (cached) {
@@ -51,20 +54,20 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
   }
   const out: CstIndexEntry[] = [];
   const abs = new Map<CssCstNode, [number, number]>();
-  const walk = (node: CssCstNode, base: number) => {
-    const s = base + Number(node.span.start);
-    const e = base + Number(node.span.end);
+  const walk = (node: CssCstNode) => {
+    const s = Number(node.span.start);
+    const e = Number(node.span.end);
     abs.set(node, [s, e]);
     if (Number.isFinite(s) && Number.isFinite(e) && e >= s) {
       out.push({ node, start: s, end: e });
     }
-    for (const child of node.children) {
+    for (const child of cstChildrenOf(node)) {
       if (isCstNode(child)) {
-        walk(child, s);
+        walk(child);
       }
     }
   };
-  walk(root, 0);
+  walk(root);
   out.sort((a, b) => (a.start - b.start) || (a.end - b.end));
   const index: CstIndex = {
     nodes: out,
@@ -92,21 +95,21 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
  * Grammar types (raw `grammarType`, shared across css/less/scss/jess) grouped by
  * the symbol they yield — matching the AST-based `getDocumentSymbols` exactly.
  */
-const SELECTOR_TYPES = new Set(['SelectorList', 'ComplexSelector', 'CompoundSelector', 'InterpolatedSelector', 'BasicSelector']);
+const SELECTOR_TYPES = new Set(['Selector', 'SelectorList', 'ComplexSelector', 'CompoundSelector', 'InterpolatedSelector', 'BasicSelector']);
 const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBlock', 'QueryAtRuleBlock']);
 
 /*
- * Mixin DEFINITIONS: `Mixin`/`MixinDefinition` (legacy), the Less
- * `MixinOrQualifiedRule` (a `.foo() { … }` def — a bodyless `.foo();` CALL is the
- * SAME grammarType and is filtered out below), and the SCSS `@mixin foo` def.
+ * Mixin DEFINITIONS: Jess `MixinDefinition`, the Less `MixinOrQualifiedRule`
+ * (a `.foo() { … }` def - a bodyless `.foo();` CALL is the SAME grammarType and
+ * is filtered out below), and the SCSS `@mixin foo` def.
  */
-const MIXIN_TYPES = new Set(['Mixin', 'MixinDefinition', 'MixinOrQualifiedRule', 'ScssMixin']);
+const MIXIN_TYPES = new Set(['MixinDefinition', 'MixinDefinitionRule', 'MixinOrQualifiedRule']);
 
-// Function DEFINITIONS: legacy `Func`/`FunctionDefinition` + the SCSS `@function`.
-const FUNC_TYPES = new Set(['Func', 'FunctionDefinition', 'ScssFunction']);
+// Function DEFINITIONS: SCSS `@function`.
+const FUNC_TYPES = new Set(['FunctionRule']);
 
 function firstSelectorChild(node: CssCstNode): CssCstNode | null {
-  for (const c of node.children) {
+  for (const c of cstChildrenOf(node)) {
     if (c._tag === 'node' && SELECTOR_TYPES.has(c.grammarType)) {
       return c;
     }
@@ -127,8 +130,8 @@ function containsRange(outer: Range, inner: Range): boolean {
 
 /**
  * CST-grounded document outline. Same symbol set + hierarchy as the AST-based
- * `getDocumentSymbols` (Ruleset→Class, at-rule→Namespace, VarDeclaration→
- * Variable, Mixin/Func→Function), but sourced from the tolerant CST so a
+ * `getDocumentSymbols` (Ruleset→Class, at-rule→Namespace, variable declaration→
+ * Variable, mixin/function definition→Function), but sourced from the tolerant CST so a
  * partial/invalid document still yields its structure. Names are sliced
  * losslessly from source (whitespace lives in trivia, not leaves).
  */
@@ -183,7 +186,7 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
     } else if (ATRULE_TYPES.has(gt)) {
       const name = sliceOf(node).split(/[{;]/)[0]!.trim();
       add(name || 'at-rule', SymbolKind.Namespace, node, null, true);
-    } else if (gt === 'VarDeclaration') {
+    } else if (gt === 'VarDeclaration' || gt === 'VariableDeclaration') {
       const name = sliceOf(node).split(':')[0]!.trim();
       add(name || 'variable', SymbolKind.Variable, node, null, false);
     } else if (MIXIN_TYPES.has(gt)) {
@@ -209,7 +212,7 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
 const FOLD_TYPES = new Set(['Ruleset', ...ATRULE_TYPES, ...MIXIN_TYPES, ...FUNC_TYPES]);
 
 /** CST-grounded folding: every multi-line structural block. Matches the AST
- * folding set (Ruleset/at-rule/Mixin/Func), sourced from the tolerant CST. */
+ * folding set, sourced from the tolerant CST. */
 export function cstFoldingRanges(root: CssCstNode, doc: TextDocument): FoldingRange[] {
   const index = buildCstIndex(root);
   const out: FoldingRange[] = [];

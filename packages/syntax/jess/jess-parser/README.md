@@ -108,7 +108,7 @@ Parsing `$brand: #3366ff;` yields:
 }
 ```
 
-Jess-specific grammar rules include `VariableDeclaration` (`$x: …`), `VariableReference` / `ReferenceCall` (`$x`, `$x.prop`, `$x[0]`, callable chains), `Expression*` (inside `$(…)`), `MixinDef`, `MixinCall`, `InterpolatedSimple` (`.widget-${side}`), and the `@-compose`/`@-export`/`@-from`/`@-use` import at-rules.
+Jess-specific grammar rules include `VariableDeclaration` (`$x: …`), `VariableReference` / `ReferenceCall` (`$x`, `$x.prop`, `$x[0]`, callable chains), `Expression*` (inside `$(…)`), `MixinDefinition`, `MixinCall`, `InterpolatedSimple` (`.widget-${side}`), and the `@-compose`/`@-export`/`@-from`/`@-use` import at-rules.
 
 Pass `{ collapse: true }` to request parseman's transparent-wrapper collapse while preserving source leaves and grammar ownership.
 

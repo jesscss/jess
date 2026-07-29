@@ -80,6 +80,7 @@ type ScssRules = {
   StaticImportRule: Combinator<ImportAtRule>;
   UseNamespace: Combinator<string>;
   UseRule: Combinator<StyleImport | ModuleImport>;
+  ForwardTail: Combinator<Token | null>;
   ForwardRule: Combinator<StyleImport>;
   StaticImportUrl: Combinator<Url>;
   StaticImportLayer: Combinator<ValueNode>;
@@ -142,6 +143,10 @@ type ScssRules = {
   StaticAtPreludeDoubleQuoted: Combinator<Token>;
   StaticAtPreludeSingleQuoted: Combinator<Token>;
   AtRuleStatement: Combinator<AtRuleStatement>;
+  AtRootPrelude: Combinator<ValueNode | null>;
+  AtRootFilterPrelude: Combinator<ValueNode>;
+  AtRootBlock: Combinator<AtRuleBlock>;
+  AtRootFilter: Combinator<AtRuleBlock>;
   ScopeBlock: Combinator<AtRuleBlock>;
   NestedScopeBlock: Combinator<AtRuleBlock>;
   ConditionalBlock: Combinator<AtRuleBlock>;
@@ -187,7 +192,7 @@ type ScssRules = {
   OpaqueBody: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   OpaqueAtRuleStatement: Combinator<AtRuleStatement>;
-  Rule: Combinator<Ruleset>;
+  Ruleset: Combinator<Ruleset>;
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
 };
@@ -330,8 +335,8 @@ function requireSelectorTerm(value: unknown): SelectorTerm {
   return value;
 }
 
-function selectorTermFromSimples(simples: SimpleToken[]): SelectorTerm {
-  const [first, ...rest] = simples;
+function selectorTermFromTokens(tokens: SimpleToken[]): SelectorTerm {
+  const [first, ...rest] = tokens;
   if (first === undefined) {
     throw new TypeError('SCSS selector production produced no simple selector tokens.');
   }
@@ -674,11 +679,11 @@ function isCollectionEntry(value: unknown): value is CollectionEntry {
     && isValueSlotValue(value.value);
 }
 
-function isRule(value: unknown): value is Ruleset {
+function isRuleset(value: unknown): value is Ruleset {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Ruleset';
 }
 
-function isMixinDef(value: unknown): value is MixinDefinition {
+function isMixinDefinition(value: unknown): value is MixinDefinition {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDefinition';
 }
 
@@ -892,11 +897,11 @@ function isStatementChild(child: unknown, allowDeclarations: boolean): child is 
     || isAtRuleBlock(child)
     || isAtRuleStatement(child)
     || isVarDeclaration(child)
-    || isMixinDef(child)
+    || isMixinDefinition(child)
     || isMixinCall(child)
     || isFor(child)
     || isIf(child)
-    || isRule(child)
+    || isRuleset(child)
     || isOpaqueAtRuleBlock(child)
     || (allowDeclarations && isDeclaration(child));
 }
@@ -1058,6 +1063,7 @@ const containerAtKeyword = regex(/@container(?![-\w])/i);
 const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
 const layerAtKeyword = regex(/@layer(?![-\w])/i);
 const scopeAtKeyword = regex(/@scope(?![-\w])/i);
+const atRootAtKeyword = regex(/@at-root(?![-\w])/i);
 const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
 const pageAtKeyword = regex(/@page(?![-\w])/i);
 const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
@@ -2473,11 +2479,15 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       regex(/@forward(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       g.StaticQuoted,
+      g.ForwardTail,
       literal(';')
     ),
     (children) => {
       if (!isQuoted(children[1])) {
         throw new TypeError('SCSS @forward requires a quoted module path.');
+      }
+      if (children[2] !== null) {
+        throw new TypeError('SCSS @forward modifiers are not representable in the canonical import fact.');
       }
       return styleImport(
         children[1],
@@ -2485,6 +2495,17 @@ export const scssFactory = (g: ScssInputRules) => {
         null,
         true
       );
+    }
+  );
+  const ForwardTail = node<Token | null>(
+    'ForwardTail',
+    optional(scanTo(
+      literal(';'),
+      { skip: [balanced('(', ')'), g.StaticQuoted] }
+    )),
+    (children) => {
+      const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
+      return text === '' ? null : { value: text };
     }
   );
 
@@ -2622,6 +2643,8 @@ export const scssFactory = (g: ScssInputRules) => {
     g.ForRule,
     g.MixinDefinitionRule,
     g.FunctionRule,
+    g.AtRootFilter,
+    g.AtRootBlock,
     g.NestedConditionalBlock,
     g.NestedStartingStyleBlock,
     g.NestedLayerBlock,
@@ -2679,7 +2702,7 @@ export const scssFactory = (g: ScssInputRules) => {
   /* Nested body ending in `Ruleset` (mixin/each/for/nested-scope bodies). */
   const nestedBody = many(choice(
     nestedBodyPrefix,
-    g.Rule,
+    g.Ruleset,
     nestedAtStatement
   ));
 
@@ -2687,15 +2710,15 @@ export const scssFactory = (g: ScssInputRules) => {
   const nestedKeyframesBody = many(choice(
     nestedBodyPrefix,
     g.Keyframes,
-    g.Rule,
+    g.Ruleset,
     nestedAtStatement
   ));
 
-  /* The ruleset body adds one extra arm (`Extend`) before `Rule`. */
+  /* The ruleset body adds one extra arm (`Extend`) before `Ruleset`. */
   const ruleBody = many(choice(
     nestedBodyPrefix,
     g.Extend,
-    g.Rule,
+    g.Ruleset,
     nestedAtStatement
   ));
 
@@ -2712,6 +2735,8 @@ export const scssFactory = (g: ScssInputRules) => {
     g.EachRule,
     g.ForRule,
     g.IfRule,
+    g.AtRootFilter,
+    g.AtRootBlock,
     g.ConditionalBlock,
     g.StartingStyleBlock,
     g.LayerBlock,
@@ -2722,7 +2747,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.Keyframes,
     g.OpaqueAtRuleBlock,
     g.OpaqueAtRuleStatement,
-    g.Rule
+    g.Ruleset
   ));
   const startingLayerBlockBody = many(choice(
     g.Comment,
@@ -2732,6 +2757,8 @@ export const scssFactory = (g: ScssInputRules) => {
     g.EachRule,
     g.ForRule,
     g.IfRule,
+    g.AtRootFilter,
+    g.AtRootBlock,
     g.ConditionalBlock,
     g.StartingStyleBlock,
     g.LayerBlock,
@@ -2741,7 +2768,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.Keyframes,
     g.OpaqueAtRuleBlock,
     g.OpaqueAtRuleStatement,
-    g.Rule
+    g.Ruleset
   ));
   const MixinDefinitionRule = node<MixinDefinition>(
     'MixinDefinitionRule',
@@ -3047,6 +3074,8 @@ export const scssFactory = (g: ScssInputRules) => {
         g.EachRule,
         g.ForRule,
         g.IfRule,
+        g.AtRootFilter,
+        g.AtRootBlock,
         g.IfStaticRule
       )),
       literal('}')
@@ -3713,6 +3742,70 @@ export const scssFactory = (g: ScssInputRules) => {
       optionalValue(children[1])
     )
   );
+  const AtRootPrelude = node<ValueNode | null>(
+    'AtRootPrelude',
+    optional(scanTo(
+      literal('{'),
+      { skip: [balanced('(', ')'), g.StaticQuoted] }
+    )),
+    (children) => {
+      const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
+      return text === '' ? null : any(text);
+    }
+  );
+  const AtRootFilterPrelude = node<ValueNode>(
+    'AtRootFilterPrelude',
+    sequence(
+      literal('('),
+      scanTo(
+        literal('{'),
+        { skip: [balanced('(', ')'), g.StaticQuoted] }
+      )
+    ),
+    children => any(children.map(requireToken).map(token => token.value).join('').trim())
+  );
+  const AtRootBlock = node<AtRuleBlock>(
+    'AtRootBlock',
+    sequence(
+      atRootAtKeyword,
+      g.AtRootPrelude,
+      literal('{'),
+      nestedBody,
+      literal('}')
+    ),
+    children => atRuleBlock(
+      requireToken(children[0]).value,
+      optionalValue(children[1]),
+      statementChildren(
+        children.slice(
+          3,
+          -1
+        ),
+        true
+      )
+    )
+  );
+  const AtRootFilter = node<AtRuleBlock>(
+    'AtRootFilter',
+    sequence(
+      atRootAtKeyword,
+      g.AtRootFilterPrelude,
+      literal('{'),
+      nestedBody,
+      literal('}')
+    ),
+    children => atRuleBlock(
+      requireToken(children[0]).value,
+      optionalValue(children[1]),
+      statementChildren(
+        children.slice(
+          3,
+          -1
+        ),
+        true
+      )
+    )
+  );
 
   /*
    * `@scope` is an existing CSS at-rule fact: its static header remains a
@@ -3734,6 +3827,8 @@ export const scssFactory = (g: ScssInputRules) => {
         g.EachRule,
         g.ForRule,
         g.IfRule,
+        g.AtRootFilter,
+        g.AtRootBlock,
         g.ConditionalBlock,
         g.StartingStyleBlock,
         g.LayerBlock,
@@ -3742,7 +3837,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.PageBlock,
         g.FontFeatureValuesBlock,
         g.Keyframes,
-        g.Rule
+        g.Ruleset
       )),
       literal('}')
     ),
@@ -3887,6 +3982,8 @@ export const scssFactory = (g: ScssInputRules) => {
         g.EachRule,
         g.ForRule,
         g.IfRule,
+        g.AtRootFilter,
+        g.AtRootBlock,
         g.ConditionalBlock,
         g.StartingStyleBlock,
         g.LayerBlock,
@@ -3897,7 +3994,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.CounterStyle,
         g.PropertyAtRule,
         g.Keyframes,
-        g.Rule
+        g.Ruleset
       )),
       literal('}')
     ),
@@ -4721,7 +4818,7 @@ export const scssFactory = (g: ScssInputRules) => {
       )),
       not(pseudoColon)
     )),
-    children => selectorTermFromSimples(children.filter(isSimpleToken))
+    children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
   const scssCombinator = choice(
     literal('||'),
@@ -4869,8 +4966,8 @@ export const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
-  const Rule = node<Ruleset>(
-    'Rule',
+  const Ruleset = node<Ruleset>(
+    'Ruleset',
     sequence(
       g.Selector,
       literal('{'),
@@ -4922,6 +5019,8 @@ export const scssFactory = (g: ScssInputRules) => {
         g.EachRule,
         g.ForRule,
         g.IfRule,
+        g.AtRootFilter,
+        g.AtRootBlock,
         g.ConditionalBlock,
         g.StartingStyleBlock,
         g.LayerBlock,
@@ -4935,7 +5034,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.Keyframes,
         g.OpaqueAtRuleBlock,
         g.OpaqueAtRuleStatement,
-        g.Rule
+        g.Ruleset
       ))
     ),
     children => stylesheet(statements(children.flatMap(child => Array.isArray(child) ? child : [child])))
@@ -4987,6 +5086,7 @@ export const scssFactory = (g: ScssInputRules) => {
     StaticImportRule,
     UseNamespace,
     UseRule,
+    ForwardTail,
     ForwardRule,
     StaticImportUrl,
     StaticImportLayer,
@@ -5047,6 +5147,10 @@ export const scssFactory = (g: ScssInputRules) => {
     StaticAtPreludeDoubleQuoted,
     StaticAtPreludeSingleQuoted,
     AtRuleStatement,
+    AtRootPrelude,
+    AtRootFilterPrelude,
+    AtRootBlock,
+    AtRootFilter,
     ScopeBlock,
     NestedScopeBlock,
     ConditionalBlock,
@@ -5090,7 +5194,7 @@ export const scssFactory = (g: ScssInputRules) => {
     SelectorTail,
     Selector,
     Extend,
-    Rule,
+    Ruleset,
     rw: whitespace,
     whitespace
   };

@@ -9,10 +9,6 @@ import { cstDocumentSymbols, buildCstIndex } from '../cst-analysis.js';
 function symbolsOf(text: string) {
   const doc = TextDocument.create('file:///t.css', 'css', 1, text);
 
-  /*
-   * The engine drives the incremental ParseDoc (parent-relative spans), so test
-   * that path — not the one-shot parseCssCst (absolute).
-   */
   const tree = parseCssDoc(text).tree;
   return cstDocumentSymbols(tree, doc);
 }
@@ -87,7 +83,7 @@ describe('CST-grounded document symbols (Option B slice)', () => {
   });
 
   /*
-   * BUG 1: SCSS `@mixin` / `@function` parse as `ScssMixin` / `ScssFunction`,
+   * BUG 1: SCSS `@mixin` / `@function` parse as canonical callable rules,
    * which were absent from MIXIN_TYPES/FUNC_TYPES, so the outline dropped them.
    */
   it('lists SCSS @mixin and @function definitions as Function symbols', () => {
@@ -107,14 +103,14 @@ describe('CST-grounded document symbols (Option B slice)', () => {
     expect(other).not.toBe(a); // a new tree (a new edit) yields a fresh index
   });
 
-  it('buildCstIndex resolves absolute spans from parent-relative CST', () => {
+  it('buildCstIndex exposes absolute CST spans', () => {
     const text = '@media screen { .a { color: red } }';
     const idx = buildCstIndex(parseCssDoc(text).tree);
     const at = idx.findNodeAtOffset(text.indexOf('.a'));
     expect(at).not.toBeNull();
     const span = idx.spanOf(at!)!;
 
-    // Absolute resolution: the node over `.a` must sit where `.a` actually is.
+    // The node over `.a` must sit where `.a` actually is.
     expect(text.slice(span.start, span.end)).toContain('.a');
   });
 });

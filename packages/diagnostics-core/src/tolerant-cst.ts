@@ -61,6 +61,7 @@ type AstRecord = {
   readonly type?: unknown;
   readonly children?: unknown;
   readonly body?: unknown;
+  readonly rules?: unknown;
   readonly name?: unknown;
   readonly value?: unknown;
   readonly number?: unknown;
@@ -72,6 +73,10 @@ function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
 }
 
+function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
+  return node.rules;
+}
+
 function isAstRecord(value: unknown): value is AstRecord & object {
   return typeof value === 'object' && value !== null;
 }
@@ -80,7 +85,7 @@ function isValueSlot(value: unknown): value is ValueSlot {
   return Array.isArray(value) || (isAstRecord(value) && typeof value.type === 'string');
 }
 
-function astChildrenOf(value: unknown, key: 'children' | 'body'): readonly unknown[] {
+function astChildrenOf(value: unknown, key: 'children' | 'body' | 'rules'): readonly unknown[] {
   if (!isAstRecord(value)) {
     return [];
   }
@@ -88,19 +93,28 @@ function astChildrenOf(value: unknown, key: 'children' | 'body'): readonly unkno
   return Array.isArray(child) ? child : [];
 }
 
-function forwardPreludeOf(node: CssCstNode, nodeStart: number, src: string): string | null {
+function forwardPreludeOf(node: CssCstNode, src: string): string | null {
   let afterPath = false;
-  for (const child of node.children) {
+  for (const child of cstChildrenOf(node)) {
     if (isCstNode(child)) {
-      if (child.grammarType === 'Quoted') {
+      if (child.grammarType === 'Quoted' || child.grammarType === 'StaticQuoted') {
         afterPath = true;
+      }
+      if (afterPath && child.grammarType === 'ForwardTail') {
+        const text = src.slice(Number(child.span.start), Number(child.span.end));
+        const normalized = text
+          .replace(/\/\*[\s\S]*?\*\//g, ' ')
+          .replace(/\/\/[^\n\r]*/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return normalized === '' ? null : normalized;
       }
       continue;
     }
     if (!afterPath) {
       continue;
     }
-    const text = src.slice(nodeStart + Number(child.span.start), nodeStart + Number(child.span.end));
+    const text = src.slice(Number(child.span.start), Number(child.span.end));
     const normalized = text
       .replace(/\/\*[\s\S]*?\*\//g, ' ')
       .replace(/\/\/[^\n\r]*/g, ' ')
@@ -120,12 +134,12 @@ function propNameOf(slice: string): string {
   return head.trim();
 }
 
-function absoluteStart(base: number, node: CssCstNode): number {
-  return base + Number(node.span.start);
+function absoluteStart(node: CssCstNode): number {
+  return Number(node.span.start);
 }
 
-function absoluteEnd(base: number, node: CssCstNode): number {
-  return base + Number(node.span.end);
+function absoluteEnd(node: CssCstNode): number {
+  return Number(node.span.end);
 }
 
 function isWhitespaceOnly(source: string, start: number, end: number): boolean {
@@ -330,9 +344,9 @@ export function cstLintDiagnostics(
     out.push(diagnostic(code, severity, message, start, end, filePath));
   };
 
-  const visit = (node: CssCstNode, base: number) => {
-    const start = absoluteStart(base, node);
-    const end = absoluteEnd(base, node);
+  const visit = (node: CssCstNode) => {
+    const start = absoluteStart(node);
+    const end = absoluteEnd(node);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
       return;
     }
@@ -346,15 +360,15 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (gt === 'ScssAtRootFilter') {
+    if (gt === 'AtRootFilter') {
       push(
         LINT_CODES.unsupportedSassForm, 'warning',
         '@at-root prelude/filter forms are not yet supported in Jess. Write the hoisted rules directly instead.',
         start, end
       );
     }
-    if (gt === 'ScssForward') {
-      const prelude = forwardPreludeOf(node, start, source);
+    if (gt === 'ForwardRule') {
+      const prelude = forwardPreludeOf(node, source);
       if (prelude !== null) {
         if (FORWARD_AS_PREFIX.test(prelude)) {
           push(
@@ -430,13 +444,13 @@ export function cstLintDiagnostics(
     }
 
     let seenProps: Map<string, boolean> | undefined;
-    for (const child of node.children) {
+    for (const child of cstChildrenOf(node)) {
       if (!isCstNode(child)) {
         continue;
       }
       if (DECLARATION_TYPES.has(child.grammarType)) {
-        const childStart = absoluteStart(start, child);
-        const childEnd = absoluteEnd(start, child);
+        const childStart = absoluteStart(child);
+        const childEnd = absoluteEnd(child);
         const name = propNameOf(source.slice(childStart, childEnd));
         if (name.length > 0 && !name.includes('#{') && !name.includes('@{') && !name.includes('${')) {
           const key = name.toLowerCase();
@@ -448,11 +462,11 @@ export function cstLintDiagnostics(
           }
         }
       }
-      visit(child, start);
+      visit(child);
     }
   };
 
-  visit(root, 0);
+  visit(root);
 
   if (tolerantSourceScan) {
     const sourceForHexScan = blankStringsAndComments(source);
@@ -567,9 +581,9 @@ function cssAstLintDiagnostics(
     if (!isAstRecord(node)) {
       return;
     }
-    if (node.type === 'Rule') {
+    if (RULESET_TYPES.has(node.type)) {
       const bodySpan = bodySpanOf(node);
-      const body = astChildrenOf(node, 'body');
+      const body = astChildrenOf(node, 'rules');
       if (body.length === 0 && bodySpan && isWhitespaceOnly(source, bodySpan.start, bodySpan.end)) {
         const span = sourceSpanOf(node) ?? bodySpan;
         push(LINT_CODES.emptyRules, 'warning', 'Do not use empty rulesets', span.start, span.end);
@@ -585,11 +599,11 @@ function cssAstLintDiagnostics(
         push(LINT_CODES.unknownAtRules, 'warning', `Unknown at-rule @${rawName}`, span.start, span.start + rawName.length + 1);
       }
       if (node.type === 'AtRuleBlock') {
-        visitBody(astChildrenOf(node, 'body'), bodySpanOf(node));
+        visitBody(astChildrenOf(node, 'rules'), bodySpanOf(node));
       }
       return;
     }
-    visitBody(astChildrenOf(node, 'children'), undefined);
+    visitBody(astChildrenOf(node, 'rules'), undefined);
   };
 
   visitAstNode(root);

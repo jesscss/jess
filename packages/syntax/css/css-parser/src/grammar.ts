@@ -381,8 +381,8 @@ function isSelectorTerm(value: unknown): value is AstSelectorTerm {
   return isSimpleToken(value) || isCompound(value);
 }
 
-function selectorTermFromSimples(simples: SimpleToken[]): AstSelectorTerm {
-  const [first, ...rest] = simples;
+function selectorTermFromTokens(tokens: SimpleToken[]): AstSelectorTerm {
+  const [first, ...rest] = tokens;
   if (first === undefined) {
     throw new TypeError('CSS selector production produced no simple selector tokens.');
   }
@@ -424,7 +424,7 @@ function isDeclaration(value: unknown): value is AstDeclaration {
   );
 }
 
-function isRule(value: unknown): value is Ruleset {
+function isRuleset(value: unknown): value is Ruleset {
   return isNodeType(
     value,
     'Ruleset'
@@ -542,7 +542,7 @@ function isRulesetStatement(value: unknown): value is Statement {
 }
 
 function isDocumentStatement(value: unknown): value is Statement {
-  return isRule(value)
+  return isRuleset(value)
     || isNodeType(
       value,
       'AtRuleStatement'
@@ -1429,7 +1429,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         }
         simples.push(child);
       }
-      return selectorTermFromSimples(simples);
+      return selectorTermFromTokens(simples);
     }
   );
   const TopLevelCompoundSelector = node(
@@ -1456,7 +1456,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         }
         simples.push(child);
       }
-      return selectorTermFromSimples(simples);
+      return selectorTermFromTokens(simples);
     }
   );
   const ComplexSelector = node(

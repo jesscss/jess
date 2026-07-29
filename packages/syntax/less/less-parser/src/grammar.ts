@@ -1464,8 +1464,8 @@ function isSimpleToken(value: unknown): value is SimpleToken {
     && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
 }
 
-function selectorTermFromSimples(simples: SimpleToken[]): SelectorTerm {
-  const [first, ...rest] = simples;
+function selectorTermFromTokens(tokens: SimpleToken[]): SelectorTerm {
+  const [first, ...rest] = tokens;
   if (first === undefined) {
     throw new TypeError('Less selector production produced no simple selector tokens.');
   }
@@ -1507,7 +1507,7 @@ function requireCompound(value: unknown): SelectorTerm {
   return value;
 }
 
-function isRule(value: unknown): value is Ruleset {
+function isRuleset(value: unknown): value is Ruleset {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
@@ -1530,7 +1530,7 @@ function isAtRuleStatement(value: unknown): value is AtRuleStatement {
     && 'prelude' in value;
 }
 
-function isMixinDef(value: unknown): value is MixinDefinition {
+function isMixinDefinition(value: unknown): value is MixinDefinition {
   return typeof value === 'object' && value !== null && 'type' in value
     && value.type === 'MixinDefinition' && 'name' in value && typeof value.name === 'string'
     && 'params' in value && Array.isArray(value.params) && 'rules' in value && Array.isArray(value.rules);
@@ -1737,7 +1737,7 @@ function isStatement(value: unknown): value is Statement {
     case 'Declaration':
       return isDeclaration(value);
     case 'Ruleset':
-      return isRule(value);
+      return isRuleset(value);
     case 'AtRuleBlock':
       return isAtRuleBlock(value);
     case 'OpaqueAtRuleBlock':
@@ -1747,7 +1747,7 @@ function isStatement(value: unknown): value is Statement {
     case 'Plugin':
       return true;
     case 'MixinDefinition':
-      return isMixinDef(value);
+      return isMixinDefinition(value);
     case 'MixinCall':
       return isMixinCall(value);
     case 'Reference':
@@ -4011,7 +4011,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'GuardedRuleset',
     sequence(rulesetNotDeclaration, g.RulesetWithExtends),
     (children) => {
-      const ruleset = children.find(isRule);
+      const ruleset = children.find(isRuleset);
       if (ruleset === undefined) {
         throw new TypeError('Less declaration-guarded ruleset lost its rule.');
       }
@@ -5173,7 +5173,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.StaticNamespaceType, staticSimpleSelector, staticAmpersand, g.StaticPseudo, g.StaticNthPseudo, g.StaticAttribute))
     ),
-    children => selectorTermFromSimples(children.map((child) => {
+    children => selectorTermFromTokens(children.map((child) => {
       return isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
     }))
   );
@@ -5540,7 +5540,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     parser({ trivia: compoundSelectorTrivia }, oneOrMore(compoundSimple)),
     (children) => {
       const simples = children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value));
-      return selectorTermFromSimples(simples);
+      return selectorTermFromTokens(simples);
     }
   );
   const Complex = node<ComplexSelector>(
@@ -5590,7 +5590,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.StaticNamespaceType, staticSimpleSelector, staticAmpersand, pseudo, g.StaticNthPseudo, g.StaticAttribute))
     ),
-    children => selectorTermFromSimples(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
+    children => selectorTermFromTokens(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
   const StaticExtendComplexTail = node<ComplexTailFact>(
     'StaticExtendComplexTail',
