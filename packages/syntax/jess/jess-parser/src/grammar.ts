@@ -647,7 +647,7 @@ function requireExpressionFact(value: unknown): ExpressionFact {
  * also carries a block comment, which the operator-boundary productions recognize
  * as grammar structure rather than trimming out of a token.
  */
-function requireOperatorFact(value: unknown): JessOperatorFact {
+function requireJessOperatorFact(value: unknown): JessOperatorFact {
   if (typeof value === 'object' && value !== null && 'value' in value && 'src' in value
     && typeof value.value === 'string' && typeof value.src === 'string') {
     return { value: value.value, src: value.src };
@@ -659,7 +659,7 @@ function requireOperatorFact(value: unknown): JessOperatorFact {
 function foldExpression(children: readonly unknown[]): ExpressionFact {
   let fact = requireExpressionFact(children[0]);
   for (let index = 1; index < children.length; index += 2) {
-    const operator = requireOperatorFact(children[index]);
+    const operator = requireJessOperatorFact(children[index]);
     const right = requireExpressionFact(children[index + 1]);
     fact = {
       value: operation(
@@ -1732,7 +1732,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         return requireExpressionFact(children[0]);
       }
       const left = requireExpressionFact(children[0]);
-      const operator = requireOperatorFact(children[1]);
+      const operator = requireJessOperatorFact(children[1]);
       const right = requireExpressionFact(children[2]);
       const src = `${left.src}${operator.src}${right.src}`;
       return { value: condition(
@@ -1906,15 +1906,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * from every `$( … )` in the document and `$( 1px + 1px )` stops parsing.
    * These two re-enter the ambient trivia for the nested expression only.
    */
-  const directJessQuotedExpression = parser(
+  const quotedExpressionParser = parser(
     { trivia: whitespace },
     g.Expression
   );
-  const directJessQuotedExpressionInterpolation = parser(
+  const quotedExpressionInterpolationParser = parser(
     { trivia: whitespace },
     g.ExpressionInterpolation
   );
-  const directJessEscapedStaticQuoted = choice(
+  const escapedStaticQuoted = choice(
     noTrivia(sequence(
       literal('~'),
       literal('"'),
@@ -1934,12 +1934,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * static prefix is identical across the value, static, and expression quoted
    * families; only the interp-bearing arms and the reducer differ.
    */
-  const directJessPlainDoubleQuoted = noTrivia(sequence(
+  const plainDoubleQuoted = noTrivia(sequence(
     literal('"'),
     plainDoubleQuotedText,
     literal('"')
   ));
-  const directJessPlainSingleQuoted = noTrivia(sequence(
+  const plainSingleQuoted = noTrivia(sequence(
     literal('\''),
     plainSingleQuotedText,
     literal('\'')
@@ -1947,9 +1947,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const Quoted = node<Quoted | Interpolation>(
     'Quoted',
     choice(
-      directJessEscapedStaticQuoted,
-      directJessPlainDoubleQuoted,
-      directJessPlainSingleQuoted,
+      escapedStaticQuoted,
+      plainDoubleQuoted,
+      plainSingleQuoted,
 
       /*
        * An escaped string that carries interpolation IS representable: the
@@ -1962,7 +1962,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('"'),
         many(choice(
           g.DollarBrace,
-          directJessQuotedExpression,
+          quotedExpressionParser,
           interpolatedDoubleQuotedText
         )),
         literal('"')
@@ -1972,7 +1972,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('\''),
         many(choice(
           g.DollarBrace,
-          directJessQuotedExpression,
+          quotedExpressionParser,
           interpolatedSingleQuotedText
         )),
         literal('\'')
@@ -1981,7 +1981,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('"'),
         many(choice(
           g.DollarBrace,
-          directJessQuotedExpression,
+          quotedExpressionParser,
           interpolatedDoubleQuotedText
         )),
         literal('"')
@@ -1990,7 +1990,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('\''),
         many(choice(
           g.DollarBrace,
-          directJessQuotedExpression,
+          quotedExpressionParser,
           interpolatedSingleQuotedText
         )),
         literal('\'')
@@ -2023,9 +2023,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const StaticQuoted = node<Quoted>(
     'StaticQuoted',
     choice(
-      directJessEscapedStaticQuoted,
-      directJessPlainDoubleQuoted,
-      directJessPlainSingleQuoted
+      escapedStaticQuoted,
+      plainDoubleQuoted,
+      plainSingleQuoted
     ),
     (children) => {
       if (requireToken(children[0]).value === '~') {
@@ -2054,16 +2054,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * the static authored path/binding structure; Context-dispatched plugins own
    * loading, target classification, and execution.
    */
-  const directJessImportName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const directJessAsClause = sequence(
+  const moduleBindingName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const moduleAsClause = sequence(
     regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/),
-    directJessImportName
+    moduleBindingName
   );
-  const directJessStyleAsClause = sequence(
+  const styleImportAsClause = sequence(
     regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/),
     choice(
       literal('*'),
-      directJessImportName
+      moduleBindingName
     )
   );
   const StyleImport = node<StyleImport>(
@@ -2072,7 +2072,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         regex(/@-compose(?![-_a-zA-Z0-9\u0080-\uffff])/),
         g.Quoted,
-        optional(directJessStyleAsClause),
+        optional(styleImportAsClause),
         optional(literal(';'))
       ),
       sequence(
@@ -2119,8 +2119,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ModuleSpecifier = node<ModuleImportSpecifier>(
     'ModuleSpecifier',
     sequence(
-      directJessImportName,
-      optional(directJessAsClause)
+      moduleBindingName,
+      optional(moduleAsClause)
     ),
     children => ({
       name: requireToken(children[0]).value,
@@ -2133,7 +2133,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         regex(/@-use(?![-_a-zA-Z0-9\u0080-\uffff])/),
         g.Quoted,
-        optional(directJessStyleAsClause),
+        optional(styleImportAsClause),
         optional(literal(';'))
       ),
       sequence(
@@ -2143,7 +2143,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         choice(
           sequence(
             literal('*'),
-            directJessAsClause
+            moduleAsClause
           ),
           sequence(
             g.ModuleSpecifier,
@@ -2230,14 +2230,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ExpressionQuoted = node<ExpressionFact>(
     'ExpressionQuoted',
     choice(
-      directJessEscapedStaticQuoted,
-      directJessPlainDoubleQuoted,
-      directJessPlainSingleQuoted,
+      escapedStaticQuoted,
+      plainDoubleQuoted,
+      plainSingleQuoted,
       noTrivia(sequence(
         literal('"'),
         many(choice(
           g.ExpressionDollarBrace,
-          directJessQuotedExpressionInterpolation,
+          quotedExpressionInterpolationParser,
           interpolatedDoubleQuotedText
         )),
         literal('"')
@@ -2246,7 +2246,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('\''),
         many(choice(
           g.ExpressionDollarBrace,
-          directJessQuotedExpressionInterpolation,
+          quotedExpressionInterpolationParser,
           interpolatedSingleQuotedText
         )),
         literal('\'')
@@ -2473,12 +2473,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     )),
     children => interpolatedSimpleSelector(templateInterpolationFromChildren(children.filter(child => !isToken(child) || !child.value.includes('$'))))
   );
-  const directJessAttributeDoubleQuoted = noTrivia(sequence(
+  const attributeDoubleQuoted = noTrivia(sequence(
     literal('"'),
     g.CssSyntaxDoubleQuotedText,
     literal('"')
   ));
-  const directJessAttributeSingleQuoted = noTrivia(sequence(
+  const attributeSingleQuoted = noTrivia(sequence(
     literal('\''),
     g.CssSyntaxSingleQuotedText,
     literal('\'')
@@ -2491,8 +2491,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       optional(sequence(
         g.CssSyntaxAttributeOperator,
         choice(
-          directJessAttributeDoubleQuoted,
-          directJessAttributeSingleQuoted,
+          attributeDoubleQuoted,
+          attributeSingleQuoted,
           g.CssSyntaxKeyword
         ),
         optional(g.CssSyntaxAttributeModifier)
@@ -2690,7 +2690,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ))),
     reduceCompound
   );
-  const directJessCombinator = choice(
+  const selectorCombinator = choice(
     literal('||'),
     literal('>'),
     literal('+'),
@@ -2699,7 +2699,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const StaticComplexTail = node<JessComplexTail>(
     'StaticComplexTail',
     sequence(
-      optional(directJessCombinator),
+      optional(selectorCombinator),
       g.StaticCompound
     ),
     (children) => {
@@ -3246,7 +3246,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * that precedes it. Keeping the block out of the continuation set is what makes
    * `$foo: bar { … }` a positioned parse error instead of a silent two-value read.
    */
-  const directJessNonBlockValueAtom = choice(
+  const nonBlockValueAtom = choice(
     g.DollarValue,
     g.ExpressionLambda,
     g.InterpolatedValue,
@@ -3263,7 +3263,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'ValueAtom',
     choice(
       g.Collection,
-      directJessNonBlockValueAtom
+      nonBlockValueAtom
     ),
     children => requireValueNode(children[0])
   );
@@ -3281,7 +3281,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           'separator',
           regex(/[ \t\n\r\f]+/)
         ),
-        directJessNonBlockValueAtom
+        nonBlockValueAtom
       ))
     )),
     (children, fields) => {
@@ -4365,7 +4365,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * block-valued variable declaration. Both reduce with `reduceVarDeclaration`,
    * which reads the operator by position, so the head must stay one shape.
    */
-  const directJessAssignHead = choice(
+  const assignHead = choice(
     noTrivia(sequence(
       literal('$'),
       literal('$'),
@@ -4410,7 +4410,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const VariableDeclaration = node<VariableDeclaration>(
     'VariableDeclaration',
     sequence(
-      directJessAssignHead,
+      assignHead,
       g.Value,
       optional(literal(';'))
     ),
@@ -4430,7 +4430,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ValueBlockDeclaration = node<VariableDeclaration>(
     'ValueBlockDeclaration',
     sequence(
-      directJessAssignHead,
+      assignHead,
       g.ValueBlock,
       optional(literal(';'))
     ),
@@ -4801,7 +4801,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * and selector interpolation remain separate typed families; named arguments
    * already have the canonical CallArg fact and reduce directly to it.
    */
-  const directJessMixinName = regex(/[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const mixinNameToken = regex(/[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const MixinParam = node<Param>(
     'MixinParam',
     sequence(
@@ -4859,10 +4859,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       literal('$'),
       literal('>'),
-      directJessMixinName,
+      mixinNameToken,
       many(sequence(
         literal('>'),
-        directJessMixinName
+        mixinNameToken
       )),
       literal('('),
       optional(sequence(
@@ -4925,7 +4925,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const MixinDef = node<MixinDefinition>(
     'MixinDef',
     sequence(
-      directJessMixinName,
+      mixinNameToken,
       g.MixinParams,
       optional(sequence(
         regex(/when(?![-_a-zA-Z0-9\u0080-\uffff])/),
@@ -4961,7 +4961,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * definition is not. Re-establish the ordinary trivia scope at the reference so
    * the one shared rule keeps one recognition mode in both positions.
    */
-  const directJessLambdaParams = parser(
+  const lambdaParamsParser = parser(
     { trivia: whitespace },
     g.MixinParams
   );
@@ -4988,7 +4988,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal('@'),
       choice(
         sequence(
-          directJessLambdaParams,
+          lambdaParamsParser,
           optional(literal('>')),
           literal('{'),
           many(nestedBodyStatement),
@@ -5363,7 +5363,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ComplexTail = node<JessComplexTail>(
     'ComplexTail',
     sequence(
-      optional(directJessCombinator),
+      optional(selectorCombinator),
       g.Compound
     ),
     (children) => {

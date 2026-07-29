@@ -37,7 +37,7 @@ function isScriptModulePath(path: string): boolean {
 type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
   VariableDeclaration: Combinator<VariableDeclaration>;
-  DirectScssComment: Combinator<Comment>;
+  Comment: Combinator<Comment>;
   VariableReference: Combinator<VariableReference>;
   SassInterpolation: Combinator<Interpolation>;
   Quoted: Combinator<Quoted | Interpolation>;
@@ -55,7 +55,7 @@ type ScssRules = {
   ReturnRule: Combinator<Declaration>;
   FunctionRule: Combinator<VariableDeclaration>;
   Square: Combinator<ValueNode>;
-  ScssValueAtom: Combinator<ValueNode>;
+  ValueAtom: Combinator<ValueNode>;
   MathUnary: Combinator<ValueNode>;
   MathProduct: Combinator<ValueNode>;
   MathSum: Combinator<ValueNode>;
@@ -95,7 +95,7 @@ type ScssRules = {
   StaticImportTail: Combinator<ValueNode>;
   MixinParameter: Combinator<Param>;
   MixinParameters: Combinator<Param[]>;
-  ScssMixinCallArg: Combinator<ScssCallArg>;
+  MixinCallArgument: Combinator<ScssCallArg>;
   MixinCallRule: Combinator<MixinCall>;
   MixinDefinitionRule: Combinator<MixinDefinition>;
   EachVariableName: Combinator<string>;
@@ -942,7 +942,7 @@ function requireStatementList(value: unknown): Statement[] {
   );
 }
 
-function directScssKeyframeSelectorList(children: readonly unknown[]): SelectorList {
+function keyframeSelectorListFromChildren(children: readonly unknown[]): SelectorList {
   const selectors = children
     .filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
     .map(selector => complexSelector([{ term: selector }]));
@@ -1254,7 +1254,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * Only a block comment is CSS output. A `//` line comment is lexical trivia
    * (see `whitespace`) and is dropped, matching Sass and Less.
    */
-  const DirectScssComment = node<Comment>(
+  const Comment = node<Comment>(
     'Comment',
     blockComment,
     (children, _fields, span) => withSourceSpan(
@@ -1317,14 +1317,14 @@ export const scssFactory = (g: ScssInputRules) => {
    * URL chunks reserve a real interpolation opener for the structural branch,
    * while retaining CSS URL escaping and ordinary `#` bytes as literal text.
    */
-  const directScssUrlInterpolatedChunk = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F#]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#(?!\{))+/);
+  const interpolatedUrlChunk = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F#]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#(?!\{))+/);
   const InterpolatedUrlValue = node<Interpolation>(
     'InterpolatedUrlValue',
     sequence(
-      optional(directScssUrlInterpolatedChunk),
+      optional(interpolatedUrlChunk),
       g.SassInterpolation,
       many(choice(
-        directScssUrlInterpolatedChunk,
+        interpolatedUrlChunk,
         g.SassInterpolation
       ))
     ),
@@ -1534,8 +1534,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * identifier reduces to the identical `Interpolation` value. A standalone
    * `SassInterpolation` arm after it is therefore unreachable.
    */
-  const ScssValueAtom = node<ValueNode>(
-    'ScssValueAtom',
+  const ValueAtom = node<ValueNode>(
+    'ValueAtom',
     choice(
       g.Quoted,
       g.InterpolatedValue,
@@ -1564,14 +1564,14 @@ export const scssFactory = (g: ScssInputRules) => {
       noTrivia(sequence(
         regex(/-(?=[ \t\n\r\f]*[\$(])/),
         optional(space),
-        g.ScssValueAtom
+        g.ValueAtom
       )),
       noTrivia(sequence(
         regex(/\+(?=[ \t\n\r\f]*[\$(])/),
         optional(space),
-        g.ScssValueAtom
+        g.ValueAtom
       )),
-      g.ScssValueAtom
+      g.ValueAtom
     ),
     (children) => {
       if (children.length === 1) {
@@ -1802,15 +1802,15 @@ export const scssFactory = (g: ScssInputRules) => {
    * The production requires an interpolation atom, so ordinary CSS properties
    * remain on the compact shared CSS terminal below.
    */
-  const directScssPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+  const propertyNameChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
   const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     sequence(
       optional(literal('*')),
-      many(directScssPropertyChunk),
+      many(propertyNameChunk),
       g.SassInterpolation,
       many(choice(
-        directScssPropertyChunk,
+        propertyNameChunk,
         g.SassInterpolation
       ))
     ),
@@ -1842,10 +1842,10 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       noTrivia(sequence(
         literal('--'),
-        many(directScssPropertyChunk),
+        many(propertyNameChunk),
         g.SassInterpolation,
         many(choice(
-          directScssPropertyChunk,
+          propertyNameChunk,
           g.SassInterpolation
         ))
       )),
@@ -2492,7 +2492,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * The core canonical tree already owns MixinDefinition/MixinCall and its ordinary
    * parameter/argument binding semantics. This direct SCSS family therefore
    * covers static mixin names, positional/named/default/rest arguments, and
-   * bodies made from the direct statements already available below. `@content`,
+   * bodies made from the statements already available below. `@content`,
    * module-qualified calls, and interpolated names remain separate families.
    */
   const directMixinName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -2538,8 +2538,8 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     children => children.filter((child): child is Param => typeof child === 'object' && child !== null && !('type' in child) && ('name' in child || 'rest' in child))
   );
-  const ScssMixinCallArg = node<ScssCallArg>(
-    'ScssMixinCallArg',
+  const MixinCallArgument = node<ScssCallArg>(
+    'MixinCallArgument',
     choice(
       sequence(
         directMixinParamName,
@@ -2555,7 +2555,7 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const value = children.find(isValueSlotValue);
       if (value === undefined) {
-        throw new TypeError('ScssMixinCallArg requires a value.');
+        throw new TypeError('MixinCallArgument requires a value.');
       }
       const nameToken = children.find((child): child is Token => typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string' && child.value !== '$' && child.value !== ':' && child.value !== '...');
       if (nameToken !== undefined && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === ':')) {
@@ -2574,10 +2574,10 @@ export const scssFactory = (g: ScssInputRules) => {
       optional(sequence(
         literal('('),
         optional(sequence(
-          g.ScssMixinCallArg,
+          g.MixinCallArgument,
           many(sequence(
             literal(','),
-            g.ScssMixinCallArg
+            g.MixinCallArgument
           )),
           optional(literal(','))
         )),
@@ -2670,7 +2670,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const nestedBodyPrefix = choice(
     g.NestedPropertyDeclaration,
     g.Declaration,
-    g.DirectScssComment,
+    g.Comment,
     g.StaticImportRule,
     g.VariableDeclaration,
     literal(';')
@@ -2705,7 +2705,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * across their own arms; hoist each distinct signature to one combinator.
    */
   const conditionalBlockBody = many(choice(
-    g.DirectScssComment,
+    g.Comment,
     g.StaticImportRule,
     g.MixinDefinitionRule,
     g.MixinCallRule,
@@ -2725,7 +2725,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.Rule
   ));
   const startingLayerBlockBody = many(choice(
-    g.DirectScssComment,
+    g.Comment,
     g.StaticImportRule,
     g.MixinDefinitionRule,
     g.MixinCallRule,
@@ -2797,7 +2797,7 @@ export const scssFactory = (g: ScssInputRules) => {
       optional(g.MixinParameters),
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.VariableDeclaration,
         g.ReturnRule,
         g.IfRule,
@@ -3033,7 +3033,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.StaticImportRule,
         g.VariableDeclaration,
         g.NestedPropertyDeclaration,
@@ -3726,7 +3726,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.StaticImportRule,
         g.VariableDeclaration,
         g.MixinDefinitionRule,
@@ -3881,7 +3881,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.MixinDefinitionRule,
         g.MixinCallRule,
         g.EachRule,
@@ -3924,7 +3924,7 @@ export const scssFactory = (g: ScssInputRules) => {
       many(g.CssSyntaxBlockComment),
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.Declaration,
         literal(';')
       )),
@@ -3952,7 +3952,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.Declaration,
         g.PageMarginBox,
         literal(';')
@@ -3984,7 +3984,7 @@ export const scssFactory = (g: ScssInputRules) => {
       many(g.CssSyntaxBlockComment),
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.Declaration,
         literal(';')
       )),
@@ -4006,7 +4006,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.FontFeatureValueBlock
       )),
       literal('}')
@@ -4117,7 +4117,7 @@ export const scssFactory = (g: ScssInputRules) => {
       regex(/@font-face(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.Declaration
       )),
       literal('}')
@@ -4141,7 +4141,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.Keyword,
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.Declaration
       )),
       literal('}')
@@ -4180,7 +4180,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.PropertyName,
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.Declaration
       )),
       literal('}')
@@ -4224,22 +4224,22 @@ export const scssFactory = (g: ScssInputRules) => {
        * matching the direct CSS keyframe list without source recovery.
        */
       many(sequence(
-        many(g.DirectScssComment),
+        many(g.Comment),
         literal(','),
-        many(g.DirectScssComment),
+        many(g.Comment),
         g.KeyframeSelector
       )),
-      many(g.DirectScssComment),
+      many(g.Comment),
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.Declaration,
         literal(';')
       )),
       literal('}')
     ),
     children => rule(
-      directScssKeyframeSelectorList(children),
+      keyframeSelectorListFromChildren(children),
       statementChildren(
         children.slice(
           2,
@@ -4267,7 +4267,7 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       literal('{'),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.KeyframeBlock
       )),
       literal('}')
@@ -4906,13 +4906,13 @@ export const scssFactory = (g: ScssInputRules) => {
      */
     sequence(
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.VariableDeclaration,
         g.UseRule,
         g.ForwardRule
       )),
       many(choice(
-        g.DirectScssComment,
+        g.Comment,
         g.StaticImportRule,
         g.AtRuleStatement,
         g.VariableDeclaration,
@@ -4944,7 +4944,7 @@ export const scssFactory = (g: ScssInputRules) => {
   return {
     Stylesheet,
     VariableDeclaration,
-    DirectScssComment,
+    Comment,
     VariableReference,
     SassInterpolation,
     Quoted,
@@ -4962,7 +4962,7 @@ export const scssFactory = (g: ScssInputRules) => {
     ReturnRule,
     FunctionRule,
     Square,
-    ScssValueAtom,
+    ValueAtom,
     MathUnary,
     MathProduct,
     MathSum,
@@ -5002,7 +5002,7 @@ export const scssFactory = (g: ScssInputRules) => {
     StaticImportTail,
     MixinParameter,
     MixinParameters,
-    ScssMixinCallArg,
+    MixinCallArgument,
     MixinCallRule,
     MixinDefinitionRule,
     EachVariableName,
