@@ -2829,7 +2829,7 @@ Latest Jess fold status, 2026-07-27: Jess is now one host-mode grammar source.
 host-mode artifact. The full Jess parser suite passes:
 `pnpm --filter @jesscss/jess-parser test` (6 files / 249 tests), and
 `pnpm --filter @jesscss/jess-parser build` passes. The tests now assert folded
-CST grammar labels such as `DirectJessSelectorCapture`,
+CST grammar labels such as `SelectorCapture`,
 `DirectJessAtRuleBlock`, and `DirectJessDollarBrace`, and the old CST-only
 acceptance of invalid slash-function forms has been removed. Remaining Jess work
 is quality cleanup on the surviving grammar: remove `DirectJess*` migration
@@ -4135,6 +4135,25 @@ parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
 fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
 passed. Existing argument/value gating debt now reports under
 `ExpressionCallArgument` and `MixinCallArgument`.
+
+Jess selector rule name cleanup, 2026-07-29: the Jess selector-family grammar
+keys now use the same semantic labels as their AST/CST concepts (`Simple`,
+`Parent`, `InterpolatedSimple`, `InterpolatedParentSuffix`, `Attribute`,
+`Pseudo`, `GenericPseudoArgument`, `Compound`, `SelectorCapture`,
+`ComplexTail`, `Complex`, `SelectorTail`, `Selector`, and `Rule`) instead of
+`DirectJess*` mode labels. This is a naming-only alignment. The selector
+construct choices remain unchanged and still classify as selector construct
+families/contextual selector pieces, not same-opener dispatch candidates.
+
+Evidence for the Jess selector rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed. Existing selector/pseudo gating debt now reports under
+`Pseudo#0/#1/#2` without the old selector-owner prefix.
 
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or

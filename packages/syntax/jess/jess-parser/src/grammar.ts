@@ -100,26 +100,26 @@ type JessRules = {
   Apply: Combinator<Apply>;
   Extend: Combinator<ExtendInstruction[]>;
   MixinDef: Combinator<MixinDef>;
-  DirectJessSimple: Combinator<SimpleSelector>;
-  DirectJessParent: Combinator<SimpleSelector>;
-  DirectJessInterpolatedSimple: Combinator<SimpleSelector>;
-  DirectJessInterpolatedParentSuffix: Combinator<SimpleSelector>;
-  DirectJessAttribute: Combinator<SimpleSelector>;
-  DirectJessPseudo: Combinator<SimpleToken>;
+  Simple: Combinator<SimpleSelector>;
+  Parent: Combinator<SimpleSelector>;
+  InterpolatedSimple: Combinator<SimpleSelector>;
+  InterpolatedParentSuffix: Combinator<SimpleSelector>;
+  Attribute: Combinator<SimpleSelector>;
+  Pseudo: Combinator<SimpleToken>;
   StaticPseudoArgument: Combinator<SelectorList | string>;
-  DirectJessGenericPseudoArgument: Combinator<SelectorList | string>;
-  DirectJessCompound: Combinator<CompoundSelector>;
+  GenericPseudoArgument: Combinator<SelectorList | string>;
+  Compound: Combinator<CompoundSelector>;
   StaticCompound: Combinator<CompoundSelector>;
   StaticComplexTail: Combinator<JessComplexTail>;
   StaticComplex: Combinator<ComplexSelector>;
   StaticSelectorTail: Combinator<ComplexSelector>;
   StaticSelector: Combinator<SelectorList>;
-  DirectJessSelectorCapture: Combinator<SelectorCapture>;
-  DirectJessComplexTail: Combinator<JessComplexTail>;
-  DirectJessComplex: Combinator<ComplexSelector>;
-  DirectJessSelectorTail: Combinator<ComplexSelector>;
-  DirectJessSelector: Combinator<SelectorList>;
-  DirectJessRule: Combinator<Rule>;
+  SelectorCapture: Combinator<SelectorCapture>;
+  ComplexTail: Combinator<JessComplexTail>;
+  Complex: Combinator<ComplexSelector>;
+  SelectorTail: Combinator<ComplexSelector>;
+  Selector: Combinator<SelectorList>;
+  Rule: Combinator<Rule>;
   ForName: Combinator<string>;
   ForBinding: Combinator<ForBinding>;
   ForRangeBound: Combinator<ValueNode>;
@@ -2347,7 +2347,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * never need to parse a value. Keeping that dependency one-way avoids a
    * recording-phase forward-reference cycle.
    */
-  const DirectJessSimple = node<SimpleSelector>(
+  const Simple = node<SimpleSelector>(
     'Simple',
     g.CssSyntaxSimple,
     children => simpleSelector(requireToken(children[0]).value)
@@ -2359,7 +2359,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * The parenthesized arm leads: the fused terminal would otherwise commit the
    * bare `&` of `&(-1)` and strand its payload.
    */
-  const DirectJessParent = node<SimpleSelector>(
+  const Parent = node<SimpleSelector>(
     'Parent',
     choice(
       sequence(
@@ -2378,14 +2378,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   /*
    * Cheap superset lookahead so an ordinary `.card` simple selector does not
    * consume its `[.#]`+text run, fail the required `$[…]`, and backtrack a
-   * re-parse through DirectJessSimple. The predicate mirrors this arm's own
+   * re-parse through Simple. The predicate mirrors this arm's own
    * leading shape (optional class/id sigil + selector-text run) and requires an
    * interpolation opener immediately after it, so the opener is bound to THIS
    * simple selector and a sibling selector's interpolation never falsely admits
    * a plain one.
    */
   const directInterpSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
-  const DirectJessInterpolatedSimple = node<SimpleSelector>(
+  const InterpolatedSimple = node<SimpleSelector>(
     'InterpolatedSimple',
     noTrivia(sequence(
       directInterpSimpleAhead,
@@ -2436,11 +2436,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * The literal run between `&` and the template is a template FRAGMENT, not a
    * completed identifier, so the fused terminal's identifier rule does not apply
    * to it: `&-$[tone]` is the authored spelling of `&-primary`. The lookahead is
-   * the same fast reject `DirectJessInterpolatedSimple` uses, so an ordinary `&`
+   * the same fast reject `InterpolatedSimple` uses, so an ordinary `&`
    * compound member never pays a failed template scan.
    */
   const directInterpParentAhead = not(not(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
-  const DirectJessInterpolatedParentSuffix = node<SimpleSelector>(
+  const InterpolatedParentSuffix = node<SimpleSelector>(
     'InterpolatedParentSuffix',
     noTrivia(sequence(
       directInterpParentAhead,
@@ -2464,7 +2464,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.CssSyntaxSingleQuotedText,
     literal('\'')
   ));
-  const DirectJessAttribute = node<SimpleSelector>(
+  const Attribute = node<SimpleSelector>(
     'Attribute',
     sequence(
       literal('['),
@@ -2570,7 +2570,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return nth.value;
     }
   );
-  const DirectJessPseudo = node<SimpleToken>(
+  const Pseudo = node<SimpleToken>(
     'Pseudo',
 
     /*
@@ -2622,7 +2622,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           g.CssSyntaxKeyword,
           optional(sequence(
             literal('('),
-            g.DirectJessGenericPseudoArgument,
+            g.GenericPseudoArgument,
             literal(')')
           ))
         )
@@ -2663,11 +2663,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     noTrivia(oneOrMore(choice(
       parser(
         { trivia: whitespace },
-        g.DirectJessAttribute
+        g.Attribute
       ),
-      g.DirectJessPseudo,
-      g.DirectJessParent,
-      g.DirectJessSimple
+      g.Pseudo,
+      g.Parent,
+      g.Simple
     ))),
     reduceCompound
   );
@@ -2735,7 +2735,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * source text. Retain the parsed `SelectorList` rather than collapsing it to
    * text: a whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as
    * structured `args` and never canonicalizes at parse (the inner `_canon` memos
-   * stay unpopulated); `DirectJessPseudo` derives opaque SimpleSelector text otherwise.
+   * stay unpopulated); `Pseudo` derives opaque SimpleSelector text otherwise.
    */
   const StaticPseudoArgument = node<SelectorList | string>(
     'StaticPseudoArgument',
@@ -2797,7 +2797,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       ]
     }
   );
-  const DirectJessGenericPseudoArgument = node<SelectorList | string>(
+  const GenericPseudoArgument = node<SelectorList | string>(
     'GenericPseudoArgument',
     choice(
       sequence(
@@ -2815,7 +2815,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return children.length === 0 ? '' : requireToken(children[0]).value;
     }
   );
-  const DirectJessSelectorCapture = node<SelectorCapture>(
+  const SelectorCapture = node<SelectorCapture>(
     'SelectorCapture',
     sequence(
       literal('*['),
@@ -3228,7 +3228,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.DollarValue,
     g.ExpressionLambda,
     g.InterpolatedValue,
-    g.DirectJessSelectorCapture,
+    g.SelectorCapture,
     g.Url,
     g.InterpolatedUrl,
     g.Call,
@@ -4148,7 +4148,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * as one local const so the macro fuses a single shared choice instead of
    * re-emitting it per block.
    *
-   * The `@`-headed cluster is placed AFTER DirectJessRule: a rule requires a
+   * The `@`-headed cluster is placed AFTER Rule: a rule requires a
    * selector (never `@`) and every at-rule requires `@`, so the two are disjoint
    * and this ordering is behaviour-neutral. Because rules dominate block bodies,
    * trying Rule first means a non-`@` statement never enters (and rolls back) the
@@ -4165,7 +4165,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.Extend,
     g.For,
     g.DirectJessIf,
-    g.DirectJessRule,
+    g.Rule,
     g.DirectJessSupportsAtRuleBlock,
     g.DirectJessKeyframes,
     g.DirectJessOpaqueAtRuleBlock,
@@ -4190,7 +4190,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.DirectJessIf,
     g.ReferenceCall,
     g.Apply,
-    g.DirectJessRule,
+    g.Rule,
     g.DirectJessSupportsAtRuleBlock,
     g.DirectJessKeyframes,
     g.DirectJessOpaqueAtRuleBlock,
@@ -5323,26 +5323,26 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return ifNode(requireIfBranchTuple(branches));
     }
   );
-  const DirectJessCompound = node<CompoundSelector>(
+  const Compound = node<CompoundSelector>(
     'Compound',
     noTrivia(oneOrMore(choice(
       parser(
         { trivia: whitespace },
-        g.DirectJessAttribute
+        g.Attribute
       ),
-      g.DirectJessPseudo,
-      g.DirectJessInterpolatedParentSuffix,
-      g.DirectJessInterpolatedSimple,
-      g.DirectJessParent,
-      g.DirectJessSimple
+      g.Pseudo,
+      g.InterpolatedParentSuffix,
+      g.InterpolatedSimple,
+      g.Parent,
+      g.Simple
     ))),
     reduceCompound
   );
-  const DirectJessComplexTail = node<JessComplexTail>(
+  const ComplexTail = node<JessComplexTail>(
     'ComplexTail',
     sequence(
       optional(directJessCombinator),
-      g.DirectJessCompound
+      g.Compound
     ),
     (children) => {
       const compound = children.find((child): child is CompoundSelector => typeof child === 'object' && child !== null && 'simples' in child);
@@ -5357,27 +5357,27 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return { comb, compound };
     }
   );
-  const DirectJessComplex = node<ComplexSelector>(
+  const Complex = node<ComplexSelector>(
     'Complex',
     sequence(
-      g.DirectJessCompound,
-      many(g.DirectJessComplexTail)
+      g.Compound,
+      many(g.ComplexTail)
     ),
     reduceComplex
   );
-  const DirectJessSelectorTail = node<ComplexSelector>(
+  const SelectorTail = node<ComplexSelector>(
     'SelectorTail',
     sequence(
       literal(','),
-      g.DirectJessComplex
+      g.Complex
     ),
     reduceSelectorTail
   );
-  const DirectJessSelector = node<SelectorList>(
+  const Selector = node<SelectorList>(
     'Selector',
     sequence(
-      g.DirectJessComplex,
-      many(g.DirectJessSelectorTail)
+      g.Complex,
+      many(g.SelectorTail)
     ),
     reduceSelectorList
   );
@@ -5409,10 +5409,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     children => children.filter((child): child is ComplexSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'ComplexSelector')
       .map(target => ({ target: selist(target), partial: !children.some(child => isToken(child) && child.value === '!exact') }))
   );
-  const DirectJessRule = node<Rule>(
+  const Rule = node<Rule>(
     'Rule',
     sequence(
-      g.DirectJessSelector,
+      g.Selector,
       literal('{'),
       many(choice(
         literal(';'),
@@ -5426,7 +5426,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.ReferenceCall,
         g.Apply,
         g.Extend,
-        g.DirectJessRule,
+        g.Rule,
         g.DirectJessSupportsAtRuleBlock,
         g.DirectJessOpaqueAtRuleBlock,
         g.DirectJessScopeBlock,
@@ -5483,7 +5483,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.DirectJessIf,
         g.ReferenceCall,
         g.Apply,
-        g.DirectJessRule,
+        g.Rule,
         g.DirectJessSupportsAtRuleBlock,
         g.DirectJessPropertyAtRule,
         g.DirectJessKeyframes,
@@ -5619,26 +5619,26 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     Apply,
     Extend,
     MixinDef,
-    DirectJessSimple,
-    DirectJessParent,
-    DirectJessInterpolatedSimple,
-    DirectJessInterpolatedParentSuffix,
-    DirectJessAttribute,
-    DirectJessPseudo,
+    Simple,
+    Parent,
+    InterpolatedSimple,
+    InterpolatedParentSuffix,
+    Attribute,
+    Pseudo,
     StaticPseudoArgument,
-    DirectJessGenericPseudoArgument,
-    DirectJessCompound,
+    GenericPseudoArgument,
+    Compound,
     StaticCompound,
     StaticComplexTail,
     StaticComplex,
     StaticSelectorTail,
     StaticSelector,
-    DirectJessSelectorCapture,
-    DirectJessComplexTail,
-    DirectJessComplex,
-    DirectJessSelectorTail,
-    DirectJessSelector,
-    DirectJessRule,
+    SelectorCapture,
+    ComplexTail,
+    Complex,
+    SelectorTail,
+    Selector,
+    Rule,
     ForName,
     ForBinding,
     ForRangeBound,

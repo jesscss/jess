@@ -846,7 +846,7 @@ describe('Jess AST grammar facts', () => {
       '.tail:nth-child(-n+2), [lang|=en]'
     ]) {
       const captured = run(jessAstGrammar.StaticSelector, source, { trivia: jessAstGrammar.whitespace });
-      const ordinary = run(jessAstGrammar.DirectJessSelector, source, { trivia: jessAstGrammar.whitespace });
+      const ordinary = run(jessAstGrammar.Selector, source, { trivia: jessAstGrammar.whitespace });
       expect(captured.ok && captured.unconsumedFrom === null, source).toBe(true);
       expect(ordinary.ok && ordinary.unconsumedFrom === null, source).toBe(true);
       expect(captured.value).toEqual(ordinary.value);
