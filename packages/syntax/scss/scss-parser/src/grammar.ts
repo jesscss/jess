@@ -22,10 +22,10 @@ import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, c
 import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
-type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
-type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
-type ScssCallArg = { readonly value: ValueSlot; readonly name?: string; readonly spread?: boolean };
-type ScssComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
+type ValuePairFact = { readonly separator: string; readonly value: ValueSlot };
+type ValueTailFact = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
+type MixinCallArgumentFact = { readonly value: ValueSlot; readonly name?: string; readonly spread?: boolean };
+type ComplexTailFact = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
 
 const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.json'] as const;
 
@@ -55,14 +55,14 @@ type ScssRules = {
   ReturnRule: Combinator<Declaration>;
   FunctionRule: Combinator<VariableDeclaration>;
   Square: Combinator<ValueNode>;
-  ScssValueAtom: Combinator<ValueNode>;
+  ValueAtom: Combinator<ValueNode>;
   MathUnary: Combinator<ValueNode>;
   MathProduct: Combinator<ValueNode>;
   MathSum: Combinator<ValueNode>;
   MathTopProduct: Combinator<ValueNode>;
   MathTopSum: Combinator<ValueNode>;
   ValueTerm: Combinator<ValueSlot>;
-  ValuePair: Combinator<ScssValuePair>;
+  ValuePair: Combinator<ValuePairFact>;
   Value: Combinator<ValueSlot>;
   Important: Combinator<true>;
   InterpolatedProperty: Combinator<Interpolation>;
@@ -95,7 +95,7 @@ type ScssRules = {
   StaticImportTail: Combinator<ValueNode>;
   MixinParameter: Combinator<Param>;
   MixinParameters: Combinator<Param[]>;
-  ScssMixinCallArg: Combinator<ScssCallArg>;
+  MixinCallArgument: Combinator<MixinCallArgumentFact>;
   MixinCallRule: Combinator<MixinCall>;
   MixinDefinitionRule: Combinator<MixinDef>;
   EachVariableName: Combinator<string>;
@@ -178,7 +178,7 @@ type ScssRules = {
   Pseudo: Combinator<SimpleToken>;
   NestingSelector: Combinator<SimpleSelector>;
   Compound: Combinator<CompoundSelector>;
-  ComplexTail: Combinator<ScssComplexTail>;
+  ComplexTail: Combinator<ComplexTailFact>;
   Complex: Combinator<ComplexSelector>;
   SelectorTail: Combinator<ComplexSelector>;
   Selector: Combinator<SelectorList>;
@@ -307,14 +307,14 @@ function requireSelectorList(value: unknown): SelectorList {
   return value;
 }
 
-function isScssComplexTail(value: unknown): value is ScssComplexTail {
+function isComplexTailFact(value: unknown): value is ComplexTailFact {
   return typeof value === 'object' && value !== null
     && 'comb' in value && (value.comb === ' ' || value.comb === '>' || value.comb === '+' || value.comb === '~' || value.comb === '||')
     && 'compound' in value && isCompoundSelector(value.compound);
 }
 
-function requireScssComplexTail(value: unknown): ScssComplexTail {
-  if (!isScssComplexTail(value)) {
+function requireComplexTailFact(value: unknown): ComplexTailFact {
+  if (!isComplexTailFact(value)) {
     throw new TypeError('SCSS grammar produced an invalid selector tail.');
   }
   return value;
@@ -756,7 +756,7 @@ function reduceScssCall(name: string, children: readonly unknown[], minArgumentI
   const separators: string[] = [];
   for (let index = firstIndex + 1; index < lastIndex; index += 1) {
     const child = children[index];
-    if (!isScssValuePair(child)) {
+    if (!isValuePairFact(child)) {
       continue;
     }
     separators.push(String(child.separator));
@@ -836,7 +836,7 @@ function optionalValue(value: unknown): ValueNode | null {
   return value === null || value === undefined ? null : requireValue(value);
 }
 
-function isScssValuePair(value: unknown): value is ScssValuePair {
+function isValuePairFact(value: unknown): value is ValuePairFact {
   return typeof value === 'object'
     && value !== null
     && 'separator' in value
@@ -845,7 +845,7 @@ function isScssValuePair(value: unknown): value is ScssValuePair {
     && isValueSlotValue(value.value);
 }
 
-function isScssValueTail(value: unknown): value is ScssValueTail {
+function isValueTailFact(value: unknown): value is ValueTailFact {
   return typeof value === 'object'
     && value !== null
     && 'kind' in value
@@ -1523,8 +1523,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * identifier reduces to the identical `Interpolation` value. A standalone
    * `SassInterpolation` arm after it is therefore unreachable.
    */
-  const ScssValueAtom = node<ValueNode>(
-    'ScssValueAtom',
+  const ValueAtom = node<ValueNode>(
+    'ValueAtom',
     choice(
       g.Quoted,
       g.InterpolatedValue,
@@ -1553,14 +1553,14 @@ export const scssFactory = (g: ScssInputRules) => {
       noTrivia(sequence(
         regex(/-(?=[ \t\n\r\f]*[\$(])/),
         optional(space),
-        g.ScssValueAtom
+        g.ValueAtom
       )),
       noTrivia(sequence(
         regex(/\+(?=[ \t\n\r\f]*[\$(])/),
         optional(space),
-        g.ScssValueAtom
+        g.ValueAtom
       )),
-      g.ScssValueAtom
+      g.ValueAtom
     ),
     (children) => {
       if (children.length === 1) {
@@ -1631,7 +1631,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )),
     foldOperation
   );
-  const ValueTail = node<ScssValueTail>(
+  const ValueTail = node<ValueTailFact>(
     'ValueTail',
     choice(
       sequence(
@@ -1667,7 +1667,7 @@ export const scssFactory = (g: ScssInputRules) => {
       const groups: ValueNode[][] = [[requireValue(children[0])]];
       const groupSeparators: string[][] = [[]];
       for (const child of children.slice(1)) {
-        if (!isScssValueTail(child)) {
+        if (!isValueTailFact(child)) {
           throw new TypeError('SCSS AST value term produced an invalid list boundary.');
         }
         if (child.kind === 'slash') {
@@ -1692,7 +1692,7 @@ export const scssFactory = (g: ScssInputRules) => {
           );
     }
   );
-  const ValuePair = node<ScssValuePair>(
+  const ValuePair = node<ValuePairFact>(
     'ValuePair',
     noTrivia(sequence(
       literal(','),
@@ -1723,10 +1723,10 @@ export const scssFactory = (g: ScssInputRules) => {
       if (children.length === 1) {
         return first;
       }
-      const pairs: ScssValuePair[] = [];
+      const pairs: ValuePairFact[] = [];
       for (let index = 1; index < children.length; index += 1) {
         const child = children[index];
-        if (!isScssValuePair(child)) {
+        if (!isValuePairFact(child)) {
           throw new TypeError('SCSS AST value produced a non-list child.');
         }
         pairs.push(child);
@@ -2527,8 +2527,8 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     children => children.filter((child): child is Param => typeof child === 'object' && child !== null && !('type' in child) && ('name' in child || 'rest' in child))
   );
-  const ScssMixinCallArg = node<ScssCallArg>(
-    'ScssMixinCallArg',
+  const MixinCallArgument = node<MixinCallArgumentFact>(
+    'MixinCallArgument',
     choice(
       sequence(
         directMixinParamName,
@@ -2544,7 +2544,7 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const value = children.find(isValueSlotValue);
       if (value === undefined) {
-        throw new TypeError('ScssMixinCallArg requires a value.');
+        throw new TypeError('MixinCallArgument requires a value.');
       }
       const nameToken = children.find((child): child is Token => typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string' && child.value !== '$' && child.value !== ':' && child.value !== '...');
       if (nameToken !== undefined && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === ':')) {
@@ -2563,10 +2563,10 @@ export const scssFactory = (g: ScssInputRules) => {
       optional(sequence(
         literal('('),
         optional(sequence(
-          g.ScssMixinCallArg,
+          g.MixinCallArgument,
           many(sequence(
             literal(','),
-            g.ScssMixinCallArg
+            g.MixinCallArgument
           )),
           optional(literal(','))
         )),
@@ -2576,7 +2576,7 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     children => mixinCall(
       requireToken(children[1]).value,
-      children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isValueSlotValue(child.value))
+      children.filter((child): child is MixinCallArgumentFact => typeof child === 'object' && child !== null && 'value' in child && isValueSlotValue(child.value))
     )
   );
 
@@ -4718,7 +4718,7 @@ export const scssFactory = (g: ScssInputRules) => {
     literal('+'),
     literal('~')
   );
-  const ComplexTail = node<ScssComplexTail>(
+  const ComplexTail = node<ComplexTailFact>(
     'ComplexTail',
     sequence(
       optional(scssCombinator),
@@ -4745,7 +4745,7 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     children => complexSelector([
       { compound: requireCompoundSelector(children[0]) },
-      ...children.slice(1).map(requireScssComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+      ...children.slice(1).map(requireComplexTailFact).map(tail => ({ comb: tail.comb, compound: tail.compound }))
     ])
   );
   const SelectorTail = node<ComplexSelector>(
@@ -4951,7 +4951,7 @@ export const scssFactory = (g: ScssInputRules) => {
     ReturnRule,
     FunctionRule,
     Square,
-    ScssValueAtom,
+    ValueAtom,
     MathUnary,
     MathProduct,
     MathSum,
@@ -4991,7 +4991,7 @@ export const scssFactory = (g: ScssInputRules) => {
     StaticImportTail,
     MixinParameter,
     MixinParameters,
-    ScssMixinCallArg,
+    MixinCallArgument,
     MixinCallRule,
     MixinDefinitionRule,
     EachVariableName,

@@ -2819,9 +2819,9 @@ removed, so SCSS no longer inherits Less-only grammar hooks or CST-only
 acceptance paths. The full SCSS parser suite passes:
 `pnpm --filter @jesscss/scss-parser test` (8 files / 291 tests), and
 `pnpm --filter @jesscss/scss-parser build` passes. Remaining SCSS work is
-quality cleanup on the surviving grammar: rename the value spine to shared/spec
-concepts and replace broad shared-opener choices with current Parseman
-`dispatch(...)` / `makeWhen(...)` / `routed()`.
+quality cleanup on the surviving grammar: keep refining the value spine to
+shared/spec concepts and replace broad shared-opener choices with current
+Parseman `dispatch(...)` / `makeWhen(...)` / `routed()`.
 
 Latest Jess fold status, 2026-07-27: Jess is now one host-mode grammar source.
 `packages/syntax/jess/jess-parser/src/ast/grammar.ts` is deleted,
@@ -3943,14 +3943,16 @@ publicly pinned scaffolding names `DirectScssValueAtom`, `DirectScssImport`, and
 `ScssMixinCallArg` in the folded SCSS grammar and direct CST/compose tests.
 `DirectScssVarDeclaration` is already absent; the rule is `VariableDeclaration`.
 This was only the first SCSS naming pass; later reviewed family slices drained
-the remaining `DirectScss*` / `directScss*` source vocabulary.
+the remaining `DirectScss*` / `directScss*` source vocabulary, and the later
+SCSS value/mixin argument semantic-name cleanup below replaced the temporary
+`ScssValueAtom` / `ScssMixinCallArg` labels.
 
 Evidence for the SCSS public-name cleanup: `pnpm --filter
 @jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
 test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
-passed 4 files / 103 tests. The renamed `ScssMixinCallArg` still emits an
-existing Parseman gating warning; that is follow-up grammar structure debt, not
-a failed rename.
+passed 4 files / 103 tests. The same mixin argument shape still emits an
+existing Parseman gating warning, now under `MixinCallArgument`; that is
+follow-up grammar structure debt, not a failed rename.
 
 Jess `$for` public-name cleanup, 2026-07-27: the folded Jess grammar's loop
 family now uses `ForName`, `ForBinding`, `ForRangeBound`, `ForRange`,
@@ -4395,6 +4397,31 @@ build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
 check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed.
+
+SCSS value/mixin argument semantic-name cleanup, 2026-07-29: the SCSS value atom
+and mixin call argument grammar keys now use the cross-dialect semantic labels
+`ValueAtom` and `MixinCallArgument` instead of the temporary
+`ScssValueAtom` / `ScssMixinCallArg` labels. The related parser-local reducer
+fact types were renamed to `ValuePairFact`, `ValueTailFact`,
+`MixinCallArgumentFact`, and `ComplexTailFact`. This intentionally changes the
+public CST rule labels toward the AST/CST naming alignment target while keeping
+the same AST reducers and accept set. The touched `choice(...)` clusters remain
+construct/context choices: `ValueAtom` chooses between distinct value atom
+constructs, `MathUnary` preserves the existing sign/context split, and
+`MixinCallArgument` still needs a later `:` / `...` fact to distinguish named,
+spread, and positional arguments, so it is not a routed token-family dispatch
+candidate.
+
+Evidence for the SCSS value/mixin argument semantic-name cleanup: `pnpm
+--filter @jesscss/scss-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/ast-macro-compiled.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 104
+tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
+@jesscss/scss-parser build` passed; `pnpm run check:macro` reported
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; and `pnpm run verify:compose-integrity` passed. The previous
+`ScssMixinCallArg` gating warning now reports under semantic
+`MixinCallArgument`.
 
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or

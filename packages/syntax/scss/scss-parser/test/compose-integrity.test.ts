@@ -34,7 +34,7 @@ describe('SCSS grammar compose integrity', () => {
       /compose\b|missing rule|references missing|falling back to runtime/i.test(message));
     expect(issues, `compose() emitted missing-rule / runtime-fallback diagnostics:\n${issues.join('\n')}`).toEqual([]);
 
-    for (const rule of ['Stylesheet', 'ScssValueAtom', 'ScssMixinCallArg']) {
+    for (const rule of ['Stylesheet', 'ValueAtom', 'MixinCallArgument']) {
       expect(Object.hasOwn(grammar, rule), `folded SCSS grammar is missing rule "${rule}"`).toBe(true);
     }
     for (const rule of ['DetachedRuleset', 'AnonymousMixinDefinition', 'ExtendStatement', 'EachFor', 'VarCall', 'VariableCall', 'ImportOption', 'ImportOptions']) {
