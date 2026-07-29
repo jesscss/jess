@@ -48,4 +48,19 @@ describe('data-uri()', () => {
     const result = await callDataUri('image/png;base64', 'does-not-exist.png');
     expect(result.bytes).toBe('url("does-not-exist.png")');
   });
+
+  it('surfaces rejected file reads instead of treating them as missing files', async () => {
+    const result = dataUri(
+      makeList([makeQuoted('asset.png', '\'', false)], ','),
+      {
+        modes: { unitMode: 'preserve' },
+        stringify: value => value.type === 'Quoted' ? value.value : value.bytes,
+        io: {
+          readFile: () => Promise.reject(new Error('file loader timed out'))
+        }
+      }
+    );
+
+    await expect(Promise.resolve(result)).rejects.toThrow('file loader timed out');
+  });
 });

@@ -848,6 +848,21 @@ describe('ImportAtRule', () => {
     expect(loads).toBe(1);
   });
 
+  it('surfaces Context loader failures during static import preparation', async () => {
+    const document = stylesheet([
+      importAtRule('@import', quoted('"broken.less"', 'broken.less', '"', false))
+    ]);
+    let loads = 0;
+
+    await expect(Promise.resolve(prepareStaticImports(document, {
+      importDocument: () => {
+        loads++;
+        return Promise.reject(new Error('loader failed during static prep'));
+      }
+    }))).rejects.toThrow('loader failed during static prep');
+    expect(loads).toBe(1);
+  });
+
   it('publishes imported namespace rulesets for later call-result member reads', async () => {
     const imported = stylesheet([
       rule('#library', [mixinDef('.add-one', [{ name: 'value' }], [variableDeclaration('return', dimension(2, 'px', '2px'), { mode: 'declare' })])])
