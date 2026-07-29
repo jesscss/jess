@@ -4283,6 +4283,28 @@ check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed.
 
+Jess parser-local fact-name cleanup, 2026-07-29: Jess reducer-only fact types
+and guards now use semantic local names (`OperatorFact`, `ReferenceTailFact`,
+`ComplexTailFact`, `StaticAtQueryPropertyFact`, `AtRuleHeaderFact`, and
+`MixinCallArgumentFact`) instead of `Jess*`-prefixed names. This is a
+source-only naming alignment: public grammar/CST labels such as
+`ReferenceTail`, `ComplexTail`, `AtRuleHeader`, and `MixinCallArgument` did not
+change, and AST reducer output/acceptance stayed unchanged. The touched
+`choice(...)` sites were not rewritten in this slice; they remain existing
+expression/reference/selector construct and context choices, not routed
+token-family dispatch candidates. This does not classify every surviving
+`Jess*` source identifier as migration debt; real dialect-owned concepts still
+need the ordinary const-level review.
+
+Evidence for the Jess parser-local fact-name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 118 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/jess-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
 SCSS custom/declaration rule name cleanup, 2026-07-29: the SCSS declaration and
 custom-property grammar keys now use semantic AST/CST-aligned labels
 (`InterpolatedProperty`, `CustomPropertyName`, `CustomPart`, `CustomInnerPart`,

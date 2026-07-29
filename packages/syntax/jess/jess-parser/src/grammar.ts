@@ -23,12 +23,12 @@ import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, Comple
 
 type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
-type JessOperatorFact = { readonly value: string; readonly src: string };
-type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
-type JessComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
-type JessStaticAtQueryProperty = { readonly property: Keyword };
-type JessAtRuleHeader = { readonly name: string; readonly prelude: ValueNode | null };
-type JessMixinCallArgument = MixinCall['args'][number];
+type OperatorFact = { readonly value: string; readonly src: string };
+type ReferenceTailFact = { readonly step: Reference['steps'][number]; readonly src: string };
+type ComplexTailFact = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
+type StaticAtQueryPropertyFact = { readonly property: Keyword };
+type AtRuleHeaderFact = { readonly name: string; readonly prelude: ValueNode | null };
+type MixinCallArgumentFact = MixinCall['args'][number];
 
 type JessRules = {
   Stylesheet: Combinator<Stylesheet>;
@@ -39,8 +39,8 @@ type JessRules = {
   ValueBlock: Combinator<ValueNode>;
   VariableReference: Combinator<VariableReference>;
   DeclarationReference: Combinator<DeclarationReference>;
-  ReferenceTail: Combinator<JessReferenceTail>;
-  ReferenceCallTail: Combinator<JessReferenceTail>;
+  ReferenceTail: Combinator<ReferenceTailFact>;
+  ReferenceCallTail: Combinator<ReferenceTailFact>;
   DollarValue: Combinator<ValueNode>;
   DollarBrace: Combinator<Interpolation>;
   ExpressionDollarBrace: Combinator<ExpressionFact>;
@@ -51,8 +51,8 @@ type JessRules = {
   ExpressionInterpolation: Combinator<ExpressionFact>;
   ExpressionQuoted: Combinator<ExpressionFact>;
   ExpressionDeclarationReference: Combinator<ExpressionFact>;
-  ExpressionCallArgument: Combinator<JessMixinCallArgument>;
-  ExpressionReferenceCallTail: Combinator<JessReferenceTail>;
+  ExpressionCallArgument: Combinator<MixinCallArgumentFact>;
+  ExpressionReferenceCallTail: Combinator<ReferenceTailFact>;
   ExpressionAtom: Combinator<ExpressionFact>;
   ExpressionProduct: Combinator<ExpressionFact>;
   ExpressionSum: Combinator<ExpressionFact>;
@@ -94,7 +94,7 @@ type JessRules = {
   Declaration: Combinator<Declaration>;
   MixinParam: Combinator<Param>;
   MixinParams: Combinator<Param[]>;
-  MixinCallArgument: Combinator<JessMixinCallArgument>;
+  MixinCallArgument: Combinator<MixinCallArgumentFact>;
   MixinCall: Combinator<MixinCall>;
   ReferenceCall: Combinator<Reference>;
   Apply: Combinator<Apply>;
@@ -110,12 +110,12 @@ type JessRules = {
   GenericPseudoArgument: Combinator<SelectorList | string>;
   Compound: Combinator<CompoundSelector>;
   StaticCompound: Combinator<CompoundSelector>;
-  StaticComplexTail: Combinator<JessComplexTail>;
+  StaticComplexTail: Combinator<ComplexTailFact>;
   StaticComplex: Combinator<ComplexSelector>;
   StaticSelectorTail: Combinator<ComplexSelector>;
   StaticSelector: Combinator<SelectorList>;
   SelectorCapture: Combinator<SelectorCapture>;
-  ComplexTail: Combinator<JessComplexTail>;
+  ComplexTail: Combinator<ComplexTailFact>;
   Complex: Combinator<ComplexSelector>;
   SelectorTail: Combinator<ComplexSelector>;
   Selector: Combinator<SelectorList>;
@@ -151,8 +151,8 @@ type JessRules = {
   StaticAtPreludeTerm: Combinator<ValueNode>;
   StaticAtPrelude: Combinator<ValueNode | null>;
   MediaPrelude: Combinator<ValueNode | null>;
-  StaticAtRuleHeader: Combinator<JessAtRuleHeader>;
-  AtRuleHeader: Combinator<JessAtRuleHeader>;
+  StaticAtRuleHeader: Combinator<AtRuleHeaderFact>;
+  AtRuleHeader: Combinator<AtRuleHeaderFact>;
   SupportsAtom: Combinator<ValueNode>;
   GeneralTemplate: Combinator<Interpolation>;
   GeneralTemplateParen: Combinator<Interpolation>;
@@ -263,7 +263,7 @@ function isExpressionFact(value: unknown): value is ExpressionFact {
   return typeof value === 'object' && value !== null && 'value' in value && 'src' in value;
 }
 
-function isJessAtRuleHeader(value: unknown): value is JessAtRuleHeader {
+function isAtRuleHeaderFact(value: unknown): value is AtRuleHeaderFact {
   return typeof value === 'object'
     && value !== null
     && 'name' in value
@@ -271,8 +271,8 @@ function isJessAtRuleHeader(value: unknown): value is JessAtRuleHeader {
     && 'prelude' in value;
 }
 
-function requireJessAtRuleHeader(value: unknown): JessAtRuleHeader {
-  if (!isJessAtRuleHeader(value)) {
+function requireAtRuleHeaderFact(value: unknown): AtRuleHeaderFact {
+  if (!isAtRuleHeaderFact(value)) {
     throw new TypeError('Jess AST grammar produced an invalid at-rule header.');
   }
   return value;
@@ -309,13 +309,13 @@ function isSelectorList(value: unknown): value is SelectorList {
     && value.selectors.every(isComplexSelector);
 }
 
-function isJessComplexTail(value: unknown): value is JessComplexTail {
+function isComplexTailFact(value: unknown): value is ComplexTailFact {
   return typeof value === 'object' && value !== null
     && 'comb' in value && (value.comb === ' ' || value.comb === '>' || value.comb === '+' || value.comb === '~' || value.comb === '||')
     && 'compound' in value && isCompound(value.compound);
 }
 
-function isJessReferenceTail(value: unknown): value is JessReferenceTail {
+function isReferenceTailFact(value: unknown): value is ReferenceTailFact {
   return typeof value === 'object' && value !== null
     && 'step' in value && 'src' in value && typeof value.src === 'string';
 }
@@ -357,15 +357,15 @@ function requireSelectorList(value: unknown): SelectorList {
   return value;
 }
 
-function requireJessComplexTail(value: unknown): JessComplexTail {
-  if (!isJessComplexTail(value)) {
+function requireComplexTailFact(value: unknown): ComplexTailFact {
+  if (!isComplexTailFact(value)) {
     throw new TypeError('Jess AST grammar produced an invalid selector tail.');
   }
   return value;
 }
 
-function requireJessReferenceTail(value: unknown): JessReferenceTail {
-  if (!isJessReferenceTail(value)) {
+function requireReferenceTailFact(value: unknown): ReferenceTailFact {
+  if (!isReferenceTailFact(value)) {
     throw new TypeError('Jess AST grammar produced an invalid reference tail.');
   }
   return value;
@@ -485,7 +485,7 @@ function requireValueSlot(value: unknown): ValueSlot {
   return isValueNodeArray(value) ? value : valueSlot(requireValueNode(value));
 }
 
-function isJessMixinCallArgument(value: unknown): value is JessMixinCallArgument {
+function isMixinCallArgumentFact(value: unknown): value is MixinCallArgumentFact {
   return typeof value === 'object' && value !== null && 'value' in value && isValueSlotValue(value.value);
 }
 
@@ -639,7 +639,7 @@ function requireExpressionFact(value: unknown): ExpressionFact {
  * also carries a block comment, which the operator-boundary productions recognize
  * as grammar structure rather than trimming out of a token.
  */
-function requireOperatorFact(value: unknown): JessOperatorFact {
+function requireOperatorFact(value: unknown): OperatorFact {
   if (typeof value === 'object' && value !== null && 'value' in value && 'src' in value
     && typeof value.value === 'string' && typeof value.src === 'string') {
     return { value: value.value, src: value.src };
@@ -689,7 +689,7 @@ function referenceBaseSource(value: ValueNode): string {
 
 function declarationMemberReferenceFromVariableBase(
   base: VariableReference,
-  tails: readonly JessReferenceTail[]
+  tails: readonly ReferenceTailFact[]
 ): Reference | null {
   if (base.lookup !== 'live' || base.name === 'type' || tails[0]?.step.type !== 'DotLookup') {
     return null;
@@ -803,7 +803,7 @@ function dollarBraceInterpolation(
  * throws: a value with no direct spelling contributes nothing rather than
  * failing the parse.
  */
-function referenceArgSource(value: JessMixinCallArgument['value']): string {
+function referenceArgSource(value: MixinCallArgumentFact['value']): string {
   if (Array.isArray(value)) {
     return value.map(referenceArgSource).join(' ');
   }
@@ -1183,7 +1183,7 @@ function reduceCompound(children: readonly unknown[]): CompoundSelector {
 function reduceComplex(children: readonly unknown[]): ComplexSelector {
   return complexSelector([
     { compound: requireCompound(children[0]) },
-    ...children.slice(1).map(requireJessComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+    ...children.slice(1).map(requireComplexTailFact).map(tail => ({ comb: tail.comb, compound: tail.compound }))
   ]);
 }
 function reduceSelectorTail(children: readonly unknown[]): ComplexSelector {
@@ -1482,7 +1482,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       span
     ), src: tokenSource(children) })
   );
-  const ExpressionProductOperator = node<JessOperatorFact>(
+  const ExpressionProductOperator = node<OperatorFact>(
     'ExpressionProductOperator',
     noTrivia(sequence(
       jessExprBoundary,
@@ -1491,7 +1491,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
-  const ExpressionSumOperator = node<JessOperatorFact>(
+  const ExpressionSumOperator = node<OperatorFact>(
     'ExpressionSumOperator',
     noTrivia(sequence(
       jessExprBoundary,
@@ -1500,7 +1500,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
-  const ExpressionCompareOperator = node<JessOperatorFact>(
+  const ExpressionCompareOperator = node<OperatorFact>(
     'ExpressionCompareOperator',
     noTrivia(sequence(
       jessExprBoundary,
@@ -1535,7 +1535,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       const name = requireToken(children[rooted ? 2 : 1]).value;
       const baseRaw = rooted ? '$' : '';
       const base = withSourceSpan(declarationReference(baseRaw), span);
-      const tails = children.slice(rooted ? 3 : 2).map(requireJessReferenceTail);
+      const tails = children.slice(rooted ? 3 : 2).map(requireReferenceTailFact);
       const raw = `${baseRaw}.${name}${tails.map(tail => tail.src).join('')}`;
       return { value: reference(
         base,
@@ -1547,7 +1547,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       ), src: raw };
     }
   );
-  const ExpressionCallArgument = node<JessMixinCallArgument>(
+  const ExpressionCallArgument = node<MixinCallArgumentFact>(
     'ExpressionCallArgument',
     choice(
       sequence(
@@ -1567,7 +1567,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return name === undefined ? { value: fact.value } : { name: name.value, value: fact.value };
     }
   );
-  const ExpressionReferenceCallTail = node<JessReferenceTail>(
+  const ExpressionReferenceCallTail = node<ReferenceTailFact>(
     'ExpressionReferenceCallTail',
     noTrivia(sequence(
       literal('('),
@@ -1585,7 +1585,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal(')')
     )),
     (children) => {
-      const args = children.filter(isJessMixinCallArgument);
+      const args = children.filter(isMixinCallArgumentFact);
       return {
         step: { type: 'Call', args },
         src: `(${args.map(arg => (arg.name === undefined ? '' : `$${arg.name}: `) + referenceArgSource(arg.value)).join(', ')})`
@@ -1651,12 +1651,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         const inner = requireExpressionFact(children[1]);
         return { value: block(inner.value), src: `(${inner.src})` };
       }
-      if (isJessReferenceTail(children[1])) {
+      if (isReferenceTailFact(children[1])) {
         const base = requireValueNode(children[0]);
         if (base.type !== 'VariableReference' && base.type !== 'DeclarationReference') {
           throw new TypeError('Jess expression reference base must be a variable or declaration reference.');
         }
-        const tails = children.slice(1).map(requireJessReferenceTail);
+        const tails = children.slice(1).map(requireReferenceTailFact);
         if (base.type === 'VariableReference') {
           const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
           if (memberReference) {
@@ -2677,7 +2677,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     literal('+'),
     literal('~')
   );
-  const StaticComplexTail = node<JessComplexTail>(
+  const StaticComplexTail = node<ComplexTailFact>(
     'StaticComplexTail',
     sequence(
       optional(selectorCombinator),
@@ -2965,7 +2965,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * authored chain stays one typed Reference without a post-parse walk.
    */
   const ReferenceTail = choice(
-    node<JessReferenceTail>(
+    node<ReferenceTailFact>(
       'ReferenceDotTail',
       noTrivia(sequence(
         literal('.'),
@@ -2976,7 +2976,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         return { step: { type: 'DotLookup', name }, src: `.${name}` };
       }
     ),
-    node<JessReferenceTail>(
+    node<ReferenceTailFact>(
       'ReferenceBracketTail',
       noTrivia(sequence(
         literal('['),
@@ -3018,7 +3018,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * condition positions opt in to dispatch by listing this tail alongside the
    * access tail (see `ExpressionAtom`, `DollarValue`).
    */
-  const ReferenceCallTail = node<JessReferenceTail>(
+  const ReferenceCallTail = node<ReferenceTailFact>(
     'ReferenceCallTail',
     noTrivia(sequence(
       literal('('),
@@ -3036,7 +3036,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal(')')
     )),
     (children) => {
-      const args = children.filter(isJessMixinCallArgument);
+      const args = children.filter(isMixinCallArgumentFact);
       return {
         step: { type: 'Call', args },
         src: `(${args.map(arg => (arg.name === undefined ? '' : `$${arg.name}: `) + referenceArgSource(arg.value)).join(', ')})`
@@ -3099,7 +3099,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       const rest = children.slice(1);
       if (base.type === 'DeclarationReference') {
         const name = requireToken(rest[1]).value;
-        const tails = rest.slice(2).map(requireJessReferenceTail);
+        const tails = rest.slice(2).map(requireReferenceTailFact);
         return reference(
           base,
           [
@@ -3112,8 +3112,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       if (base.type !== 'VariableReference') {
         throw new TypeError('Jess reference base must be a variable reference.');
       }
-      if (isJessReferenceTail(rest[0])) {
-        const tails = rest.map(requireJessReferenceTail);
+      if (isReferenceTailFact(rest[0])) {
+        const tails = rest.map(requireReferenceTailFact);
         const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
         if (memberReference) {
           return memberReference;
@@ -3452,7 +3452,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           );
     }
   );
-  const StaticAtQueryProperty = node<JessStaticAtQueryProperty>(
+  const StaticAtQueryProperty = node<StaticAtQueryPropertyFact>(
     'StaticAtQueryProperty',
     g.CssSyntaxKeyword,
     children => ({ property: keyword(requireToken(children[0]).value) })
@@ -3499,7 +3499,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       )
     ),
     (children, fields) => {
-      const propertyFact = children.find((child): child is JessStaticAtQueryProperty => typeof child === 'object' && child !== null && 'property' in child);
+      const propertyFact = children.find((child): child is StaticAtQueryPropertyFact => typeof child === 'object' && child !== null && 'property' in child);
       if (propertyFact === undefined) {
         throw new TypeError('Jess static query comparison lost its property.');
       }
@@ -3697,7 +3697,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * media/container arms plus the `media`/`container` exclusion in
    * `jessGenericCssAtRuleName`, preserving the exact accept/reject set.
    */
-  const StaticAtRuleHeader = node<JessAtRuleHeader>(
+  const StaticAtRuleHeader = node<AtRuleHeaderFact>(
     'StaticAtRuleHeader',
     choice(
       sequence(
@@ -3730,7 +3730,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Every other header, including `@container`, stays on the static grammar;
    * mixing the deferred form with query terms remains rejected.
    */
-  const AtRuleHeader = node<JessAtRuleHeader>(
+  const AtRuleHeader = node<AtRuleHeaderFact>(
     'AtRuleHeader',
     choice(
       sequence(
@@ -3741,7 +3741,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.StaticAtRuleHeader
     ),
     (children) => {
-      const staticHeader = children.find(isJessAtRuleHeader);
+      const staticHeader = children.find(isAtRuleHeaderFact);
       if (staticHeader !== undefined) {
         return staticHeader;
       }
@@ -4700,8 +4700,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal('}')
     ),
     children => atRuleBlock(
-      requireJessAtRuleHeader(children[0]).name,
-      requireJessAtRuleHeader(children[0]).prelude,
+      requireAtRuleHeaderFact(children[0]).name,
+      requireAtRuleHeaderFact(children[0]).prelude,
       collectBlockStatements(
         children,
         2
@@ -4715,7 +4715,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal(';')
     ),
     (children) => {
-      const header = requireJessAtRuleHeader(children[0]);
+      const header = requireAtRuleHeaderFact(children[0]);
       return atRuleStatement(
         header.name,
         header.prelude
@@ -4812,7 +4812,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     children => children.filter((child): child is Param => typeof child === 'object' && child !== null && !('type' in child) && 'name' in child)
   );
-  const MixinCallArgument = node<JessMixinCallArgument>(
+  const MixinCallArgument = node<MixinCallArgumentFact>(
     'MixinCallArgument',
     choice(
       sequence(
@@ -4857,7 +4857,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       const names = children.filter(isToken)
         .map(token => token.value)
         .filter(value => value !== '$' && value !== '>' && value !== '(' && value !== ')' && value !== ',' && value !== ';');
-      const args = children.filter(isJessMixinCallArgument);
+      const args = children.filter(isMixinCallArgumentFact);
       const name = names.at(-1);
       if (name === undefined) {
         throw new TypeError('Jess AST grammar produced a mixin call without a name.');
@@ -5338,7 +5338,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ))),
     reduceCompound
   );
-  const ComplexTail = node<JessComplexTail>(
+  const ComplexTail = node<ComplexTailFact>(
     'ComplexTail',
     sequence(
       optional(selectorCombinator),
