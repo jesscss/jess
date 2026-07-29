@@ -4791,7 +4791,6 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const atPreludeWhitespace = noTrivia(regex(/[ \t\n\r\f]+/));
-  const atPreludeComment = noTrivia(blockComment);
   const atPreludeComma = noTrivia(literal(','));
   const atPreludeGroup = noTrivia(choice(
     balanced(
@@ -4829,15 +4828,14 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const lessOpaqueAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|@(?!\{)|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
-  const lessOpaqueAtPreludeCapture = noTrivia(many(choice(
+  const lessOpaqueAtPreludeCapture = many(choice(
     atPreludeWhitespace,
-    atPreludeComment,
     atPreludeComma,
     atPreludeGroup,
     atPreludeQuoted,
     BareVariableInterpolation,
     lessOpaqueAtPreludeText
-  )));
+  ));
   // CSS-defined statement at-rules have grammar-owned interpolation forms that
   // the generic at-rule subset intentionally does not accept. Keep the
   // namespace prefix and URI as ordinary typed values; this preserves
@@ -4912,9 +4910,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const OpaqueAtPrelude = node<string | null>(
     'OpaqueAtPrelude',
-    lessOpaqueAtPreludeCapture,
-    (children) => {
-      const text = children.length === 0 ? '' : staticText(children).trim();
+    parser(
+      { trivia: atPreludeCommentTrivia },
+      lessOpaqueAtPreludeCapture
+    ),
+    (children, _fields, _span, _rawChildren, triviaLog) => {
+      const text = children.length === 0 ? '' : staticTextWithTriviaGaps(children, triviaLog).trim();
       return text === '' ? null : text;
     }
   );

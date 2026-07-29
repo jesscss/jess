@@ -72,6 +72,33 @@ const fixtureFilter = envFixturePattern
   ? new RegExp(envFixturePattern)
   : undefined;
 
+const fixtureTimeoutMs = 4500;
+
+class FixtureTimeoutError extends Error {
+  constructor(file: string) {
+    super(`${file} timed out before surfacing a diagnostic or render result.`);
+    this.name = 'FixtureTimeoutError';
+  }
+}
+
+async function withFixtureTimeout<T>(
+  file: string,
+  work: () => Promise<T>,
+  timeoutMs = fixtureTimeoutMs
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new FixtureTimeoutError(file)), timeoutMs);
+  });
+  try {
+    return await Promise.race([work(), timeout]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 type SkippedFixture = {
   file: string;
   reason: string;
@@ -370,10 +397,10 @@ describe("Can render Less files to CSS", () => {
           };
 
           const runFixture = async () => {
-            const { expectedCss, result } = await renderFixture();
+            const { expectedCss, result } = await withFixtureTimeout(file, renderFixture);
             try {
               expect(result.css).toBe(expectedCss);
-            } catch (error: any) {
+            } catch (error: unknown) {
               // Output diagnostics if available
               if (
                 result &&
@@ -401,7 +428,7 @@ describe("Can render Less files to CSS", () => {
             const expectedDiagnosticCode =
               expectedFailureDiagnosticCodes.get(file);
             if (expectedDiagnosticCode !== undefined) {
-              const { result } = await renderFixture();
+              const { result } = await withFixtureTimeout(file, renderFixture);
               const actualDiagnosticCodes = diagnosticCodesFor(result);
               expect(
                 actualDiagnosticCodes,
@@ -413,7 +440,10 @@ describe("Can render Less files to CSS", () => {
             let failed = false;
             try {
               await runFixture();
-            } catch {
+            } catch (error: unknown) {
+              if (error instanceof FixtureTimeoutError) {
+                throw error;
+              }
               failed = true;
             }
             expect(
@@ -429,4 +459,21 @@ describe("Can render Less files to CSS", () => {
         });
       }
     });
+});
+
+describe('Less fixture harness diagnostics', () => {
+  it('surfaces fixture timeouts as harness failures', async () => {
+    await expect(
+      withFixtureTimeout(
+        'tests-unit/import/import.less',
+        () => new Promise<never>(() => {
+          // Deliberately unsettled to exercise the harness timeout branch.
+        }),
+        1
+      )
+    ).rejects.toMatchObject({
+      name: 'FixtureTimeoutError',
+      message: 'tests-unit/import/import.less timed out before surfacing a diagnostic or render result.'
+    });
+  });
 });
