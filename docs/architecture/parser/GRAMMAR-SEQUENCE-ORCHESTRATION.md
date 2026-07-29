@@ -4245,6 +4245,29 @@ compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed. The previous selector compound gating warning now reports under the
 semantic `Compound` rule name.
 
+SCSS at-rule/keyframe name cleanup, 2026-07-29: the SCSS CSS-compatible
+at-rule and keyframe grammar keys now use their semantic AST/CST-aligned labels
+(`AtRuleStatement`, `ScopeBlock`, `NestedScopeBlock`, `ConditionalBlock`,
+`StartingStyleBlock`, `LayerBlock`, `DocumentBlock`, `PageMarginBox`,
+`PageBlock`, `FontFeatureValueBlock`, `FontFeatureValuesBlock`,
+`NestedConditionalBlock`, `NestedStartingStyleBlock`, `NestedLayerBlock`,
+`FontFace`, `CounterStyle`, `PropertyName`, `PropertyAtRule`,
+`KeyframeSelector`, `KeyframeBlock`, and `Keyframes`) instead of
+`DirectScss*` mode labels. This intentionally lets SCSS override the shared CSS
+semantic names where the same concept needs an SCSS body/header policy. The body
+lists stay as `choice(...)` construct-family choices because the decision is a
+statement/body item family, not one already-consumed routed token. The
+comment-as-trivia and opaque/raw-capture names remain separate cleanup queues.
+
+Evidence for the SCSS at-rule/keyframe name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman
