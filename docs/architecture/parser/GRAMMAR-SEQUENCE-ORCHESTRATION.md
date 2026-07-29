@@ -267,13 +267,11 @@ Current prefix inventory, 2026-07-29: CSS is clean for `CssAst*` in
 `DirectLess*` / `directLess*` in
 `packages/syntax/less/less-parser/src/grammar.ts`. The remaining dialect
 grammar source prefix debt should burn down by reviewed families, not by blind
-whole-file replacement. Current counts are: SCSS has 10 lowercase
-`directScss*` parser-local helper references across 3 distinct names
-(`directScssKeyframeSelectorList`, `directScssPropertyChunk`, and
-`directScssUrlInterpolatedChunk`), with no uppercase `DirectScss*` grammar keys
-left in `packages/syntax/scss/scss-parser/src/grammar.ts`; Jess has 49
-lowercase `directJess*` parser-local helper references across 15 distinct names,
-with no uppercase `DirectJess*` grammar keys left in
+whole-file replacement. Current counts are: SCSS is clean for
+`DirectScss*` / `directScss*` in
+`packages/syntax/scss/scss-parser/src/grammar.ts`; Jess has 49 lowercase
+`directJess*` parser-local helper references across 15 distinct names, with no
+uppercase `DirectJess*` grammar keys left in
 `packages/syntax/jess/jess-parser/src/grammar.ts`. Use these as a progress
 inventory, not an acceptance metric; a name may remain only when the rule really
 recognizes a dialect-specific language shape and that divergence is documented
@@ -594,12 +592,12 @@ state.
    workspace package layout rather than obsolete flat `packages/*` paths.
 3. **SCSS folded; keep it a sibling, not a Less child.** SCSS now ships from one
    host-mode grammar source and no longer composes through Less. The remaining
-   SCSS work is quality cleanup on that source: rename the remaining lowercase
-   `directScss*` parser-local helpers, rebuild SCSS deliberately against
-   CSS/preprocessor concepts, and lift only demonstrated common syntax into
-   `parser-shared`. Less `~"..."`, guards, variable and call syntax,
-   `:extend(...)`, property merge, detached-ruleset assignment, and namespace
-   lookup stay Less-only unless a Sass fixture proves otherwise.
+   SCSS work is quality cleanup on that source: rebuild SCSS deliberately
+   against CSS/preprocessor concepts, refine the value spine and dispatch/choice
+   shapes, and lift only demonstrated common syntax into `parser-shared`. Less
+   `~"..."`, guards, variable and call syntax, `:extend(...)`, property merge,
+   detached-ruleset assignment, and namespace lookup stay Less-only unless a
+   Sass fixture proves otherwise.
 4. **Jess folded; keep only Jess-specific syntax.** Jess now ships from one
    host-mode grammar source. Reuse CSS/preprocessor concepts, route shared
    opener families with Parseman 0.41, and do not copy Less/SCSS shapes unless
@@ -2822,9 +2820,8 @@ removed, so SCSS no longer inherits Less-only grammar hooks or CST-only
 acceptance paths. The full SCSS parser suite passes:
 `pnpm --filter @jesscss/scss-parser test` (8 files / 291 tests), and
 `pnpm --filter @jesscss/scss-parser build` passes. Remaining SCSS work is
-quality cleanup on the surviving grammar: rename the remaining lowercase
-`directScss*` parser-local helpers, rename the value spine to shared/spec
-concepts, and replace broad shared-opener choices with current Parseman
+quality cleanup on the surviving grammar: rename the value spine to shared/spec
+concepts and replace broad shared-opener choices with current Parseman
 `dispatch(...)` / `makeWhen(...)` / `routed()`.
 
 Latest Jess fold status, 2026-07-27: Jess is now one host-mode grammar source.
@@ -3946,8 +3943,8 @@ publicly pinned scaffolding names `DirectScssValueAtom`, `DirectScssImport`, and
 `DirectScssMixinCallArg` to `ScssValueAtom`, `ScssImport`, and
 `ScssMixinCallArg` in the folded SCSS grammar and direct CST/compose tests.
 `DirectScssVarDeclaration` is already absent; the rule is `VariableDeclaration`.
-This is only the first SCSS naming pass: many `DirectScss*` names remain and
-must be burned down by reviewed families.
+This was only the first SCSS naming pass; later reviewed family slices drained
+the remaining `DirectScss*` / `directScss*` source vocabulary.
 
 Evidence for the SCSS public-name cleanup: `pnpm --filter
 @jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
@@ -4356,6 +4353,22 @@ items are disjoint `/`-led grammar facts, not a routed token family with a
 same-family generic fallback.
 
 Evidence for the SCSS comment grammar-key cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+SCSS parser-local source vocabulary cleanup, 2026-07-29: the remaining
+lowercase `directScss*` helper names were renamed to semantic local names
+(`keyframeSelectorListFromChildren`, `interpolatedUrlChunk`, and
+`propertyNameChunk`), and stale "Direct SCSS" reducer diagnostics/comments now
+use plain SCSS wording. This is a naming-only alignment: no grammar branch,
+CST/AST node label, reducer shape, or comment trivia behavior changed.
+
+Evidence for the SCSS parser-local source vocabulary cleanup: `pnpm --filter
 @jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
 test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
 passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared

@@ -551,14 +551,14 @@ function customValue(children: readonly unknown[]): ValueNode {
 function foldOperation(children: readonly unknown[]): ValueNode {
   const first = children.find(isValue);
   if (first === undefined) {
-    throw new TypeError('Direct SCSS arithmetic grammar produced no operand.');
+    throw new TypeError('SCSS arithmetic grammar produced no operand.');
   }
   let result = first;
   for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
     const operatorToken = children[index];
     const right = children[index + 1];
     if (operatorToken === undefined || !isValue(right)) {
-      throw new TypeError('Direct SCSS arithmetic grammar lost an operator operand.');
+      throw new TypeError('SCSS arithmetic grammar lost an operator operand.');
     }
     result = operation(
       requireToken(operatorToken).value.trim(),
@@ -931,12 +931,12 @@ function requireStatementList(value: unknown): Statement[] {
   );
 }
 
-function directScssKeyframeSelectorList(children: readonly unknown[]): SelectorList {
+function keyframeSelectorListFromChildren(children: readonly unknown[]): SelectorList {
   const selectors = children
     .filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
     .map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
   if (selectors.length === 0) {
-    throw new TypeError('Direct SCSS keyframe block requires a selector.');
+    throw new TypeError('SCSS keyframe block requires a selector.');
   }
   return selist(...selectors);
 }
@@ -1306,14 +1306,14 @@ export const scssFactory = (g: ScssInputRules) => {
    * URL chunks reserve a real interpolation opener for the structural branch,
    * while retaining CSS URL escaping and ordinary `#` bytes as literal text.
    */
-  const directScssUrlInterpolatedChunk = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F#]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#(?!\{))+/);
+  const interpolatedUrlChunk = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F#]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#(?!\{))+/);
   const InterpolatedUrlValue = node<Interpolation>(
     'InterpolatedUrlValue',
     sequence(
-      optional(directScssUrlInterpolatedChunk),
+      optional(interpolatedUrlChunk),
       g.SassInterpolation,
       many(choice(
-        directScssUrlInterpolatedChunk,
+        interpolatedUrlChunk,
         g.SassInterpolation
       ))
     ),
@@ -1651,7 +1651,7 @@ export const scssFactory = (g: ScssInputRules) => {
       }
       const value = children[children.length - 1];
       if (!isValue(value)) {
-        throw new TypeError('Direct SCSS slash list lost its value.');
+        throw new TypeError('SCSS slash list lost its value.');
       }
       const separators = children.filter(isToken).map(child => child.value).filter(text => text !== '/');
       return { kind: 'slash', value, separator: `${separators[0] ?? ''}/${separators[1] ?? ''}` };
@@ -1668,7 +1668,7 @@ export const scssFactory = (g: ScssInputRules) => {
       const groupSeparators: string[][] = [[]];
       for (const child of children.slice(1)) {
         if (!isScssValueTail(child)) {
-          throw new TypeError('Direct SCSS AST value term produced an invalid list boundary.');
+          throw new TypeError('SCSS AST value term produced an invalid list boundary.');
         }
         if (child.kind === 'slash') {
           groups.push([child.value]);
@@ -1727,7 +1727,7 @@ export const scssFactory = (g: ScssInputRules) => {
       for (let index = 1; index < children.length; index += 1) {
         const child = children[index];
         if (!isScssValuePair(child)) {
-          throw new TypeError('Direct SCSS AST value produced a non-list child.');
+          throw new TypeError('SCSS AST value produced a non-list child.');
         }
         pairs.push(child);
       }
@@ -1791,15 +1791,15 @@ export const scssFactory = (g: ScssInputRules) => {
    * The production requires an interpolation atom, so ordinary CSS properties
    * remain on the compact shared CSS terminal below.
    */
-  const directScssPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+  const propertyNameChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
   const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     sequence(
       optional(literal('*')),
-      many(directScssPropertyChunk),
+      many(propertyNameChunk),
       g.SassInterpolation,
       many(choice(
-        directScssPropertyChunk,
+        propertyNameChunk,
         g.SassInterpolation
       ))
     ),
@@ -1831,10 +1831,10 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       noTrivia(sequence(
         literal('--'),
-        many(directScssPropertyChunk),
+        many(propertyNameChunk),
         g.SassInterpolation,
         many(choice(
-          directScssPropertyChunk,
+          propertyNameChunk,
           g.SassInterpolation
         ))
       )),
@@ -2427,7 +2427,7 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const path = children[1];
       if (!isQuoted(path)) {
-        throw new TypeError('Direct SCSS @use requires a quoted module path.');
+        throw new TypeError('SCSS @use requires a quoted module path.');
       }
       const namespace = children.find((child): child is string => typeof child === 'string') ?? null;
       if (path.value.startsWith('sass:')) {
@@ -2466,7 +2466,7 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       if (!isQuoted(children[1])) {
-        throw new TypeError('Direct SCSS @forward requires a quoted module path.');
+        throw new TypeError('SCSS @forward requires a quoted module path.');
       }
       return styleImport(
         children[1],
@@ -2479,9 +2479,9 @@ export const scssFactory = (g: ScssInputRules) => {
 
   /*
    * The core canonical tree already owns MixinDef/MixinCall and its ordinary
-   * parameter/argument binding semantics. This direct SCSS family therefore
+   * parameter/argument binding semantics. This SCSS family therefore
    * covers static mixin names, positional/named/default/rest arguments, and
-   * bodies made from the direct statements already available below. `@content`,
+   * bodies made from the statements already available below. `@content`,
    * module-qualified calls, and interpolated names remain separate families.
    */
   const directMixinName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -2915,7 +2915,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * Direct SCSS conditionals use the canonical If/GuardNode. Bare truthiness is
+   * SCSS conditionals use the canonical If/GuardNode. Bare truthiness is
    * deliberately still held because the current truth node has Less's exact-
    * true behavior; comparisons have their own existing typed evaluator path.
    */
@@ -2976,7 +2976,7 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const atom = children.find((child): child is GuardNode => typeof child === 'object' && child !== null && 'g' in child);
       if (atom === undefined) {
-        throw new TypeError('Direct SCSS @if term lost its guard.');
+        throw new TypeError('SCSS @if term lost its guard.');
       }
       return children.some(child => isToken(child) && child.value.toLowerCase() === 'not')
         ? { g: 'not', inner: atom }
@@ -3103,7 +3103,7 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const body = children[2];
       if (!Array.isArray(body)) {
-        throw new TypeError('Direct SCSS conditional block lost its statement body.');
+        throw new TypeError('SCSS conditional block lost its statement body.');
       }
       return atRuleBlock(
         requireToken(children[0]).value,
@@ -3149,7 +3149,7 @@ export const scssFactory = (g: ScssInputRules) => {
       }
       const first = branches[0];
       if (first === undefined) {
-        throw new TypeError('Direct SCSS @if reduction produced no branches.');
+        throw new TypeError('SCSS @if reduction produced no branches.');
       }
       return ifNode([first, ...branches.slice(1)]);
     }
@@ -3543,7 +3543,7 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const value = children.find(isValue);
       if (value === undefined) {
-        throw new TypeError('Direct SCSS supports parenthesis lost its typed condition.');
+        throw new TypeError('SCSS supports parenthesis lost its typed condition.');
       }
       return isValue(children[0]) ? value : block(value);
     }
@@ -3576,7 +3576,7 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const values = children.filter(isValue);
       if (values.length === 0) {
-        throw new TypeError('Direct SCSS supports condition lost every typed part.');
+        throw new TypeError('SCSS supports condition lost every typed part.');
       }
       return values.length === 1 ? values[0]! : spaced(values);
     }
@@ -4228,7 +4228,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('}')
     ),
     children => rule(
-      directScssKeyframeSelectorList(children),
+      keyframeSelectorListFromChildren(children),
       statementChildren(
         children.slice(
           2,
