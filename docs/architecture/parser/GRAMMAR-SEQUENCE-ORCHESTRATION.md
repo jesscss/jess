@@ -3961,6 +3961,25 @@ vitest --run test/ast-grammar.test.ts -t '\$for' --reporter=dot` passed 7 tests
 with 97 skipped, and `pnpm --filter @jesscss/jess-parser exec vitest --run
 test/cst-public.test.ts -t '\$for' --reporter=dot` passed 1 test with 9 skipped.
 
+Jess expression-name cleanup, 2026-07-29: the folded Jess grammar's expression
+family now uses the same semantic rule keys as its public CST node labels:
+`Expression`, `ExpressionInterpolation`, `ExpressionQuoted`,
+`ExpressionDeclarationReference`, `ExpressionCallArg`,
+`ExpressionReferenceCallTail`, `ExpressionAtom`, `ExpressionProduct`,
+`ExpressionSum`, and `ExpressionCompare` instead of `DirectJessExpression*`.
+This is a naming cleanup only. Expression arithmetic still belongs only behind
+the explicit `$()` boundary, and the expression-only leading-dot declaration
+lookup remains in `ExpressionDeclarationReference`.
+
+Evidence for the Jess expression-name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests.
+`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; `pnpm run check:macro` passed with all parser packages fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. Existing gating warnings in adjacent guard/value families remain
+follow-up grammar-shape debt.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman
