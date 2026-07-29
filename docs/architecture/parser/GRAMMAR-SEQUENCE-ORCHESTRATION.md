@@ -3980,6 +3980,27 @@ compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed. Existing gating warnings in adjacent guard/value families remain
 follow-up grammar-shape debt.
 
+Jess static-family name cleanup, 2026-07-29: the folded Jess grammar's static
+CSS subgrammar now uses semantic rule keys matching its public CST labels:
+`StaticQuoted`, `StaticValueAtom`, `StaticValue`, `StaticCallArgument`,
+`StaticCall`, `StaticAtQuery`, `StaticAtPrelude`, `StaticAtRuleHeader`,
+`StaticPropertyDescriptor`, `StaticPseudoArgument`, `StaticCompound`,
+`StaticComplex`, and `StaticSelector` instead of `DirectJessStatic*`. `Static`
+is the real language boundary here: these productions admit the CSS-only static
+forms used inside Jess headers, captures, descriptors, and selectors, while
+excluding Jess dynamic value/expression forms.
+
+Evidence for the Jess static-family name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; `pnpm run check:macro` passed with parser-shared, CSS, Less,
+SCSS, and Jess all fully compiled and 0 interpreter fallbacks; and `pnpm run
+verify:compose-integrity` passed. The renamed `StaticValueAtom`,
+`StaticAtPreludeTerm`, `StaticAtNonOnlyAtom`, and `StaticAtRuleHeader#0`
+warnings are existing left-factor/dispatch-review debt now reported under the
+semantic owner names.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman

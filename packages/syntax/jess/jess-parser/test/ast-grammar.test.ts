@@ -845,7 +845,7 @@ describe('Jess AST grammar facts', () => {
       'main > .card:not(.muted, .disabled):nth-child(2n+1 of .item)',
       '.tail:nth-child(-n+2), [lang|=en]'
     ]) {
-      const captured = run(jessAstGrammar.DirectJessStaticSelector, source, { trivia: jessAstGrammar.whitespace });
+      const captured = run(jessAstGrammar.StaticSelector, source, { trivia: jessAstGrammar.whitespace });
       const ordinary = run(jessAstGrammar.DirectJessSelector, source, { trivia: jessAstGrammar.whitespace });
       expect(captured.ok && captured.unconsumedFrom === null, source).toBe(true);
       expect(ordinary.ok && ordinary.unconsumedFrom === null, source).toBe(true);
@@ -1084,7 +1084,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('constructs static CSS at-rule facts directly, including nested documented media blocks', () => {
-    const staticQuery = run(jessAstGrammar.DirectJessStaticAtQuery, '(min-width: 48rem)', { trivia: jessAstGrammar.whitespace });
+    const staticQuery = run(jessAstGrammar.StaticAtQuery, '(min-width: 48rem)', { trivia: jessAstGrammar.whitespace });
     expect(staticQuery.ok && staticQuery.unconsumedFrom === null).toBe(true);
     for (const staticSource of [
       '@media screen { .card { color: blue; } }',
