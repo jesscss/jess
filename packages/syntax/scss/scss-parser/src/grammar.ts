@@ -200,7 +200,7 @@ type ScssInputRules =
 
 function requireToken(value: unknown): Token {
   if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
-    throw new TypeError('Direct SCSS AST grammar produced a non-token child.');
+    throw new TypeError('SCSS grammar produced a non-token child.');
   }
   return { value: value.value };
 }
@@ -302,7 +302,7 @@ function isSelectorList(value: unknown): value is SelectorList {
 
 function requireSelectorList(value: unknown): SelectorList {
   if (!isSelectorList(value)) {
-    throw new TypeError('Direct SCSS AST grammar produced a non-selector-list child.');
+    throw new TypeError('SCSS grammar produced a non-selector-list child.');
   }
   return value;
 }
@@ -315,14 +315,14 @@ function isScssComplexTail(value: unknown): value is ScssComplexTail {
 
 function requireScssComplexTail(value: unknown): ScssComplexTail {
   if (!isScssComplexTail(value)) {
-    throw new TypeError('Direct SCSS AST grammar produced an invalid selector tail.');
+    throw new TypeError('SCSS grammar produced an invalid selector tail.');
   }
   return value;
 }
 
 function requireCompoundSelector(value: unknown): CompoundSelector {
   if (!isCompoundSelector(value)) {
-    throw new TypeError('Direct SCSS AST grammar produced a non-compound selector child.');
+    throw new TypeError('SCSS grammar produced a non-compound selector child.');
   }
   return value;
 }
@@ -340,14 +340,14 @@ function isSimpleToken(value: unknown): value is SimpleToken {
 
 function requireSimpleToken(value: unknown): SimpleToken {
   if (!isSimpleToken(value)) {
-    throw new TypeError('Direct SCSS AST grammar produced a non-simple selector child.');
+    throw new TypeError('SCSS grammar produced a non-simple selector child.');
   }
   return value;
 }
 
 function requireComplexSelector(value: unknown): ComplexSelector {
   if (!isComplexSelector(value)) {
-    throw new TypeError('Direct SCSS AST grammar produced a non-complex selector child.');
+    throw new TypeError('SCSS grammar produced a non-complex selector child.');
   }
   return value;
 }
@@ -390,14 +390,14 @@ function isForBinding(value: unknown): value is ForBinding {
 
 function requireForBinding(value: unknown): ForBinding {
   if (!isForBinding(value)) {
-    throw new TypeError('Direct SCSS AST grammar produced an invalid for binding.');
+    throw new TypeError('SCSS grammar produced an invalid for binding.');
   }
   return value;
 }
 
 function requireString(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new TypeError('Direct SCSS AST grammar produced a non-string child.');
+    throw new TypeError('SCSS grammar produced a non-string child.');
   }
   return value;
 }
@@ -455,7 +455,7 @@ function isInterpolation(value: unknown): value is Interpolation {
 
 function requireInterpolation(value: unknown): Interpolation {
   if (!isInterpolation(value)) {
-    throw new TypeError('Direct SCSS AST grammar produced a non-interpolation child.');
+    throw new TypeError('SCSS grammar produced a non-interpolation child.');
   }
   return value;
 }
@@ -702,7 +702,7 @@ function isExtendInstruction(value: unknown): value is ExtendInstruction {
 
 function requireValue(value: unknown): ValueNode {
   if (!isValue(value)) {
-    throw new TypeError('Direct SCSS AST grammar produced a non-value child.');
+    throw new TypeError('SCSS grammar produced a non-value child.');
   }
   return value;
 }
@@ -710,7 +710,7 @@ function requireValue(value: unknown): ValueNode {
 function requireKeyword(value: unknown): Keyword {
   const node = requireValue(value);
   if (node.type !== 'Keyword') {
-    throw new TypeError('Direct SCSS AST grammar produced a non-keyword child.');
+    throw new TypeError('SCSS grammar produced a non-keyword child.');
   }
   return node;
 }
@@ -827,7 +827,7 @@ function isGuardNode(value: unknown): value is GuardNode {
 
 function requireGuardNode(value: unknown): GuardNode {
   if (!isGuardNode(value)) {
-    throw new TypeError('Direct SCSS AST grammar produced a non-guard child.');
+    throw new TypeError('SCSS grammar produced a non-guard child.');
   }
   return value;
 }
@@ -901,7 +901,7 @@ function statements(children: readonly unknown[], allowDeclarations = false): St
       child,
       allowDeclarations
     )) {
-      throw new TypeError('Direct SCSS AST grammar produced a non-statement child.');
+      throw new TypeError('SCSS grammar produced a non-statement child.');
     }
     result.push(child);
   }
@@ -923,7 +923,7 @@ function statementChildren(children: readonly unknown[], allowDeclarations = fal
 
 function requireStatementList(value: unknown): Statement[] {
   if (!Array.isArray(value)) {
-    throw new TypeError('Direct SCSS AST grammar produced a non-statement list.');
+    throw new TypeError('SCSS grammar produced a non-statement list.');
   }
   return statements(
     value,
@@ -1244,7 +1244,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * (see `whitespace`) and is dropped, matching Sass and Less.
    */
   const DirectScssComment = node<Comment>(
-    'DirectScssComment',
+    'Comment',
     blockComment,
     (children, _fields, span) => withSourceSpan(
       comment(requireToken(children[0]).value),
@@ -1454,7 +1454,7 @@ export const scssFactory = (g: ScssInputRules) => {
     optional(literal('('))
   )));
   const UrlFunction = node<ValueNode>(
-    'DirectScssUrl',
+    'Url',
     sequence(
       routed(),
       optional(choice(
@@ -1467,19 +1467,19 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       if (children.length === 2) {
         if (requireToken(children[0]).value.toLowerCase() !== 'url(' || requireToken(children[1]).value !== ')') {
-          throw new TypeError('DirectScssUrl produced unexpected children.');
+          throw new TypeError('SCSS URL produced unexpected children.');
         }
         return url(any(''));
       }
       if (children.length !== 3 || requireToken(children[0]).value.toLowerCase() !== 'url(' || requireToken(children[2]).value !== ')') {
-        throw new TypeError('DirectScssUrl produced unexpected children.');
+        throw new TypeError('SCSS URL produced unexpected children.');
       }
       const body = children[1];
       return url(isValue(body) ? body : any(requireToken(body).value));
     }
   );
   const Call = node<FunctionCall | Reference>(
-    'DirectScssCall',
+    'Call',
     sequence(
       routed(),
       optional(valueTrivia),
@@ -1793,7 +1793,7 @@ export const scssFactory = (g: ScssInputRules) => {
    */
   const directScssPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
   const DirectScssInterpolatedProperty = node<Interpolation>(
-    'DirectScssInterpolatedProperty',
+    'InterpolatedProperty',
     sequence(
       optional(literal('*')),
       many(directScssPropertyChunk),
@@ -1827,7 +1827,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * SCSS `#{…}` segments.
    */
   const DirectScssCustomPropertyName = node<string | Interpolation>(
-    'DirectScssCustomPropertyName',
+    'CustomPropertyName',
     choice(
       noTrivia(sequence(
         literal('--'),
@@ -1863,7 +1863,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * declaration and an inner `#{…}` still reduces to a typed segment.
    */
   const DirectScssCustomParen = node<readonly unknown[]>(
-    'DirectScssCustomParen',
+    'CustomParen',
     noTrivia(sequence(
       literal('('),
       many(g.DirectScssCustomInnerPart),
@@ -1872,7 +1872,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => children.slice()
   );
   const DirectScssCustomSquare = node<readonly unknown[]>(
-    'DirectScssCustomSquare',
+    'CustomSquare',
     noTrivia(sequence(
       literal('['),
       many(g.DirectScssCustomInnerPart),
@@ -1881,7 +1881,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => children.slice()
   );
   const DirectScssCustomCurly = node<readonly unknown[]>(
-    'DirectScssCustomCurly',
+    'CustomCurly',
     noTrivia(sequence(
       literal('{'),
       many(g.DirectScssCustomInnerPart),
@@ -1910,12 +1910,12 @@ export const scssFactory = (g: ScssInputRules) => {
     g.DirectScssCustomCurly
   );
   const DirectScssCustomValue = node<ValueNode>(
-    'DirectScssCustomValue',
+    'CustomValue',
     noTrivia(many(g.DirectScssCustomPart)),
     children => customValue(children)
   );
   const DirectScssCustomDeclaration = node<Declaration>(
-    'DirectScssCustomDeclaration',
+    'CustomDeclaration',
 
     /*
      * A trailing `!important` is declaration priority, not value text: css-syntax-3
@@ -1934,7 +1934,7 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const name = children[0];
       if (typeof name !== 'string' && !isInterpolation(name)) {
-        throw new TypeError('Direct SCSS AST grammar produced a custom declaration without a name.');
+        throw new TypeError('SCSS grammar produced a custom declaration without a name.');
       }
 
       /*
@@ -1943,7 +1943,7 @@ export const scssFactory = (g: ScssInputRules) => {
        */
       const value = children[2];
       if (!isValue(value)) {
-        throw new TypeError('Direct SCSS AST grammar produced an incomplete custom declaration.');
+        throw new TypeError('SCSS grammar produced an incomplete custom declaration.');
       }
       return decl(
         name,
@@ -1954,7 +1954,7 @@ export const scssFactory = (g: ScssInputRules) => {
     }
   );
   const DirectScssDeclaration = node<Declaration>(
-    'DirectScssDeclaration',
+    'Declaration',
     choice(
       g.DirectScssCustomDeclaration,
       sequence(
@@ -1991,7 +1991,7 @@ export const scssFactory = (g: ScssInputRules) => {
       const colon = children.findIndex(child => isToken(child) && child.value === ':');
       const value = colon < 0 ? undefined : children[colon + 1];
       if (value === undefined) {
-        throw new TypeError('DirectScssDeclaration requires a value.');
+        throw new TypeError('SCSS declaration requires a value.');
       }
       const name = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
       return decl(
@@ -2830,7 +2830,7 @@ export const scssFactory = (g: ScssInputRules) => {
         return { kind: 'single', name: names[0]! };
       }
       if (names.length < 2) {
-        throw new TypeError('Direct SCSS AST grammar produced an invalid @each binding.');
+        throw new TypeError('SCSS grammar produced an invalid @each binding.');
       }
       return { kind: 'tuple', names: [names[0]!, names[1]!, ...names.slice(2)] };
     }
@@ -3691,7 +3691,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * all dynamic headers: neither can truthfully lower to CSS output here.
    */
   const DirectScssAtRuleStatement = node<AtRuleStatement>(
-    'DirectScssAtRuleStatement',
+    'AtRuleStatement',
     sequence(
       regex(/@(?:charset|namespace|layer)(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       StaticStatementPrelude,
@@ -3709,7 +3709,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * interpolation is intentionally outside StaticAtPrelude.
    */
   const DirectScssScopeBlock = node<AtRuleBlock>(
-    'DirectScssScopeBlock',
+    'ScopeBlock',
     sequence(
       scopeAtKeyword,
       g.StaticAtPrelude,
@@ -3753,7 +3753,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * nested declaration-capable body used by the other bubbling at-rules.
    */
   const DirectScssNestedScopeBlock = node<AtRuleBlock>(
-    'DirectScssNestedScopeBlock',
+    'NestedScopeBlock',
     sequence(
       scopeAtKeyword,
       g.StaticAtPrelude,
@@ -3774,7 +3774,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )
   );
   const DirectScssConditionalBlock = node<AtRuleBlock>(
-    'DirectScssConditionalBlock',
+    'ConditionalBlock',
     choice(
       sequence(
         supportsAtKeyword,
@@ -3820,7 +3820,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )
   );
   const DirectScssStartingStyleBlock = node<AtRuleBlock>(
-    'DirectScssStartingStyleBlock',
+    'StartingStyleBlock',
     sequence(
       startingStyleAtKeyword,
       g.StaticAtPrelude,
@@ -3838,7 +3838,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )
   );
   const DirectScssLayerBlock = node<AtRuleBlock>(
-    'DirectScssLayerBlock',
+    'LayerBlock',
     sequence(
       layerAtKeyword,
       g.StaticAtPrelude,
@@ -3864,7 +3864,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * shared static-header grammar before a node exists.
    */
   const DirectScssDocumentBlock = node<AtRuleBlock>(
-    'DirectScssDocumentBlock',
+    'DocumentBlock',
     sequence(
       documentAtKeyword,
       g.StaticAtPrelude,
@@ -3907,7 +3907,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * not a body comment.
    */
   const DirectScssPageMarginBox = node<AtRuleBlock>(
-    'DirectScssPageMarginBox',
+    'PageMarginBox',
     sequence(
       g.CssSyntaxMarginAtKeyword,
       many(g.CssSyntaxBlockComment),
@@ -3935,7 +3935,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * excluded by StaticAtPrelude rather than being flattened.
    */
   const DirectScssPageBlock = node<AtRuleBlock>(
-    'DirectScssPageBlock',
+    'PageBlock',
     sequence(
       pageAtKeyword,
       g.StaticAtPrelude,
@@ -3967,7 +3967,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * existing grammar-owned Any fact; dynamic SCSS headers are not flattened.
    */
   const DirectScssFontFeatureValueBlock = node<AtRuleBlock>(
-    'DirectScssFontFeatureValueBlock',
+    'FontFeatureValueBlock',
     sequence(
       g.CssSyntaxFontFeatureValueAtKeyword,
       many(g.CssSyntaxBlockComment),
@@ -3989,7 +3989,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )
   );
   const DirectScssFontFeatureValuesBlock = node<AtRuleBlock>(
-    'DirectScssFontFeatureValuesBlock',
+    'FontFeatureValuesBlock',
     sequence(
       fontFeatureValuesAtKeyword,
       g.StaticAtPrelude,
@@ -4010,7 +4010,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )
   );
   const DirectScssNestedConditionalBlock = node<AtRuleBlock>(
-    'DirectScssNestedConditionalBlock',
+    'NestedConditionalBlock',
     choice(
       sequence(
         supportsAtKeyword,
@@ -4059,7 +4059,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )
   );
   const DirectScssNestedStartingStyleBlock = node<AtRuleBlock>(
-    'DirectScssNestedStartingStyleBlock',
+    'NestedStartingStyleBlock',
     sequence(
       startingStyleAtKeyword,
       g.StaticAtPrelude,
@@ -4080,7 +4080,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )
   );
   const DirectScssNestedLayerBlock = node<AtRuleBlock>(
-    'DirectScssNestedLayerBlock',
+    'NestedLayerBlock',
     sequence(
       layerAtKeyword,
       g.StaticAtPrelude,
@@ -4101,7 +4101,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )
   );
   const DirectScssFontFace = node<AtRuleBlock>(
-    'DirectScssFontFace',
+    'FontFace',
     sequence(
       regex(/@font-face(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       literal('{'),
@@ -4124,7 +4124,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )
   );
   const DirectScssCounterStyle = node<AtRuleBlock>(
-    'DirectScssCounterStyle',
+    'CounterStyle',
     sequence(
       regex(/@counter-style(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       g.Keyword,
@@ -4155,7 +4155,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * slip through as a flattened string.
    */
   const DirectScssPropertyName = node<Keyword>(
-    'DirectScssPropertyName',
+    'PropertyName',
     noTrivia(sequence(
       literal('--'),
       g.CssSyntaxKeyword
@@ -4163,7 +4163,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => keyword(`${requireToken(children[0]).value}${requireToken(children[1]).value}`)
   );
   const DirectScssPropertyAtRule = node<AtRuleBlock>(
-    'DirectScssPropertyAtRule',
+    'PropertyAtRule',
     sequence(
       regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       g.DirectScssPropertyName,
@@ -4195,7 +4195,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * text capture.
    */
   const DirectScssKeyframeSelector = node<SimpleSelector>(
-    'DirectScssKeyframeSelector',
+    'KeyframeSelector',
     choice(
       keyframeEndpoint,
       keyframePercent
@@ -4203,7 +4203,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => simpleSelector(requireToken(children[0]).value)
   );
   const DirectScssKeyframeBlock = node<Rule>(
-    'DirectScssKeyframeBlock',
+    'KeyframeBlock',
     sequence(
       g.DirectScssKeyframeSelector,
 
@@ -4247,7 +4247,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * while still leaving a real `#{` opener for the rejected dynamic path.
    */
   const DirectScssKeyframes = node<AtRuleBlock>(
-    'DirectScssKeyframes',
+    'Keyframes',
     sequence(
       g.CssSyntaxKeyframesAtKeyword,
       choice(
@@ -4278,12 +4278,12 @@ export const scssFactory = (g: ScssInputRules) => {
    * follow-up families rather than being flattened into a string fallback.
    */
   const DirectScssSimple = node<SimpleSelector>(
-    'DirectScssSimple',
+    'Simple',
     g.CssSyntaxSimple,
     children => simpleSelector(requireToken(children[0]).value)
   );
   const DirectScssInterpolatedSimple = node<SimpleSelector>(
-    'DirectScssInterpolatedSimple',
+    'InterpolatedSimple',
     noTrivia(sequence(
       optional(regex(/[.#]/)),
       many(selectorTextRun),
@@ -4316,7 +4316,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * typed interpolation model and are deliberately excluded.
    */
   const DirectScssPlaceholder = node<SimpleSelector>(
-    'DirectScssPlaceholder',
+    'Placeholder',
     regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/),
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -4329,7 +4329,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * their own typed representation rather than text flattening.
    */
   const DirectScssAttribute = node<SimpleSelector>(
-    'DirectScssAttribute',
+    'Attribute',
     sequence(
       literal('['),
       g.CssSyntaxKeyword,
@@ -4370,7 +4370,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * in one must stay typed rather than being swallowed as a string.
    */
   const DirectScssPseudoArgument = node<string>(
-    'DirectScssPseudoArgument',
+    'PseudoArgument',
 
     /*
      * A pseudo's selector-valued argument is carried by its containing
@@ -4497,7 +4497,7 @@ export const scssFactory = (g: ScssInputRules) => {
     literal('~')
   );
   const DirectScssRelativeComplex = node<ComplexSelector>(
-    'DirectScssRelativeComplex',
+    'RelativeComplex',
     parser(
       { trivia: whitespace },
       sequence(
@@ -4508,14 +4508,14 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const complex = children.find(isComplexSelector);
       if (complex === undefined) {
-        throw new TypeError('DirectScssRelativeComplex requires a complex selector.');
+        throw new TypeError('SCSS relative complex selector requires a complex selector.');
       }
       if (children.length === 1) {
         return complex;
       }
       const lead = requireToken(children[0]).value;
       if (lead !== '>' && lead !== '+' && lead !== '~') {
-        throw new TypeError('DirectScssRelativeComplex produced an invalid leading combinator.');
+        throw new TypeError('SCSS relative complex selector produced an invalid leading combinator.');
       }
       return { ...complex, leadingComb: lead };
     }
@@ -4529,7 +4529,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * `SelectorList` becomes structured `PseudoSelector.args`, never joined at parse.
    */
   const DirectScssSelectorOnlyPseudoArgument = node<SelectorList>(
-    'DirectScssSelectorOnlyPseudoArgument',
+    'SelectorOnlyPseudoArgument',
     parser(
       { trivia: whitespace },
       sequence(
@@ -4543,7 +4543,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => selist(...children.filter(isComplexSelector))
   );
   const NthPseudo = node<SimpleSelector>(
-    'DirectScssNthPseudo',
+    'NthPseudo',
 
     /*
        * `:nth-child`/`:nth-last-child`: a bare `<An+B>` OR `<An+B> of <selector>`
@@ -4571,7 +4571,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => simpleSelector(`${requireToken(children[0]).value}${requireString(children.find(child => typeof child === 'string')).trim()})`)
   );
   const NthTypePseudo = node<SimpleSelector>(
-    'DirectScssNthTypePseudo',
+    'NthTypePseudo',
 
     /*
        * `:nth-of-type`/`:nth-last-of-type`: a BARE `<An+B>` only — Selectors-4
@@ -4597,7 +4597,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => simpleSelector(`${requireToken(children[0]).value}${requireString(children.find(child => typeof child === 'string')).trim()})`)
   );
   const StructuredPseudo = node<SimpleToken>(
-    'DirectScssStructuredPseudo',
+    'StructuredPseudo',
 
     /*
        * Parser = STRUCTURE + trivia only: keep the parsed `SelectorList` as `args`
@@ -4631,7 +4631,7 @@ export const scssFactory = (g: ScssInputRules) => {
     )
   );
   const GlobalLocalPseudo = node<SimpleSelector>(
-    'DirectScssGlobalLocalPseudo',
+    'GlobalLocalPseudo',
 
     /*
        * `:global(…)`/`:local(…)` retain the opaque, comma-normalized selector text
@@ -4645,7 +4645,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
   );
   const GenericFunctionPseudo = node<SimpleSelector>(
-    'DirectScssGenericPseudo',
+    'GenericPseudo',
 
     /*
        * Generic glued functions remain the general-any class. Known selector and
@@ -4660,7 +4660,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
   );
   const GenericBarePseudo = node<SimpleSelector>(
-    'DirectScssGenericPseudo',
+    'GenericPseudo',
     routed(),
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -4685,17 +4685,17 @@ export const scssFactory = (g: ScssInputRules) => {
     otherwise(GenericBarePseudo)
   );
   const DirectScssPseudo = node<SimpleToken>(
-    'DirectScssPseudo',
+    'Pseudo',
     DirectScssPseudoDispatch,
     children => requireSimpleToken(children.find(isSimpleToken))
   );
   const DirectScssNestingSelector = node<SimpleSelector>(
-    'DirectScssNestingSelector',
+    'NestingSelector',
     literal('&'),
     () => simpleSelector('&')
   );
   const DirectScssCompound = node<CompoundSelector>(
-    'DirectScssCompound',
+    'Compound',
     noTrivia(sequence(
       oneOrMore(choice(
         g.DirectScssNestingSelector,
@@ -4719,7 +4719,7 @@ export const scssFactory = (g: ScssInputRules) => {
     literal('~')
   );
   const DirectScssComplexTail = node<ScssComplexTail>(
-    'DirectScssComplexTail',
+    'ComplexTail',
     sequence(
       optional(directScssCombinator),
       g.DirectScssCompound
@@ -4727,18 +4727,18 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const compound = children.find(isCompoundSelector);
       if (compound === undefined) {
-        throw new TypeError('DirectScssComplexTail requires a compound.');
+        throw new TypeError('SCSS complex selector tail requires a compound.');
       }
       const combinator = children.find(isToken);
       const comb = combinator?.value ?? ' ';
       if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '||') {
-        throw new TypeError('DirectScssComplexTail produced an invalid combinator.');
+        throw new TypeError('SCSS complex selector tail produced an invalid combinator.');
       }
       return { comb, compound };
     }
   );
   const DirectScssComplex = node<ComplexSelector>(
-    'DirectScssComplex',
+    'Complex',
     sequence(
       g.DirectScssCompound,
       many(g.DirectScssComplexTail)
@@ -4749,7 +4749,7 @@ export const scssFactory = (g: ScssInputRules) => {
     ])
   );
   const DirectScssSelectorTail = node<ComplexSelector>(
-    'DirectScssSelectorTail',
+    'SelectorTail',
     sequence(
       literal(','),
       g.DirectScssComplex
@@ -4757,7 +4757,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => requireComplexSelector(children[1])
   );
   const DirectScssSelector = node<SelectorList>(
-    'DirectScssSelector',
+    'Selector',
     sequence(
       not(sequence(
         g.DirectScssPlaceholder,
@@ -4777,7 +4777,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * yet model, so this direct slice rejects it rather than silently dropping it.
    */
   const DirectScssExtend = node<ExtendInstruction>(
-    'DirectScssExtend',
+    'Extend',
     sequence(
       regex(/@extend(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       g.DirectScssSelector,
@@ -4796,7 +4796,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * would otherwise shift every positional index in the reducers below.
    */
   const DirectScssOpaquePrelude = node<string | null>(
-    'DirectScssOpaquePrelude',
+    'OpaquePrelude',
     g.ScssAstOpaqueStaticPrelude,
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
@@ -4804,12 +4804,12 @@ export const scssFactory = (g: ScssInputRules) => {
     }
   );
   const DirectScssOpaqueBody = node<string>(
-    'DirectScssOpaqueBody',
+    'OpaqueBody',
     g.ScssAstOpaqueBody,
     children => children.length === 0 ? '' : requireToken(children[0]).value
   );
   const DirectScssOpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
-    'DirectScssOpaqueAtRuleBlock',
+    'OpaqueAtRuleBlock',
     sequence(
       scssGenericAtRuleName,
       noTrivia(sequence(
@@ -4839,7 +4839,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * from each other — this one requires `;` where the block requires `{`.
    */
   const DirectScssOpaqueAtRuleStatement = node<AtRuleStatement>(
-    'DirectScssOpaqueAtRuleStatement',
+    'OpaqueAtRuleStatement',
     sequence(
       scssGenericAtRuleName,
       noTrivia(sequence(
@@ -4859,7 +4859,7 @@ export const scssFactory = (g: ScssInputRules) => {
     }
   );
   const DirectScssRule = node<Rule>(
-    'DirectScssRule',
+    'Rule',
     sequence(
       g.DirectScssSelector,
       literal('{'),
@@ -4868,7 +4868,7 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       if (children.length < 3 || requireToken(children[1]).value !== '{' || requireToken(children[children.length - 1]).value !== '}') {
-        throw new TypeError('DirectScssRule produced unexpected children.');
+        throw new TypeError('SCSS rule produced unexpected children.');
       }
       const extendInstructions = children.filter(isExtendInstruction);
       return rule(
