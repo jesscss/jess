@@ -26,7 +26,7 @@ import {
   copySpanFields,
   spanStartOf,
   isSourceFree,
-  stampEvalErrorLocation,
+  spanEndOf,
   valueSpansOf,
   setValueSpans,
   fieldSpansOf,
@@ -35,6 +35,7 @@ import {
   F_HAS_VALUESPANS,
   F_HAS_FIELDSPANS
 } from './util/provenance.js';
+import { stampEvalErrorLocation } from '../error/eval-error-location.js';
 
 const { isArray } = Array;
 
@@ -1440,7 +1441,7 @@ export abstract class Node<
        * top-level catch can frame the real location instead of falling back to
        * `1:1`. The innermost source-bearing node wins (see stampEvalErrorLocation).
        */
-      stampEvalErrorLocation(err, node, Node.evalErrorSourceFor(node, context));
+      stampEvalErrorLocation(err, spanStartOf(node), spanEndOf(node), Node.evalErrorSourceFor(node, context));
       throw err;
     }
     if (isThenable(evaluated)) {
@@ -1451,7 +1452,7 @@ export abstract class Node<
         }
         return evald;
       }, (err: unknown) => {
-        stampEvalErrorLocation(err, node, Node.evalErrorSourceFor(node, context));
+        stampEvalErrorLocation(err, spanStartOf(node), spanEndOf(node), Node.evalErrorSourceFor(node, context));
         throw err;
       });
     }

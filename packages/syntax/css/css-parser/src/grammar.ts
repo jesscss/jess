@@ -581,7 +581,9 @@ function selectorArgumentText(value: unknown): string {
   return tokenText(value);
 }
 
-function complexSegments(children: readonly unknown[]): Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }> {
+type CssComplexSegment = { combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm };
+
+function complexSegments(children: readonly unknown[]): [CssComplexSegment, ...CssComplexSegment[]] {
   const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }> = [];
   let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   for (const child of children) {
@@ -596,17 +598,18 @@ function complexSegments(children: readonly unknown[]): Array<{ combinator?: ' '
     }
     combinator = token;
   }
-  if (segments.length === 0) {
+  const [first, ...rest] = segments;
+  if (first === undefined) {
     throw new Error('ComplexSelector requires a compound selector');
   }
-  return segments;
+  return [first, ...rest];
 }
 
-function branchSegments(branch: AstSelectorBranch): [{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }, ...Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }>] {
+function branchSegments(branch: AstSelectorBranch): [CssComplexSegment, ...CssComplexSegment[]] {
   if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
     return [{ term: branch }];
   }
-  const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }> = [];
+  const segments: CssComplexSegment[] = [];
   let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   const start = branch.type === 'RelativeSelector' ? 1 : 0;
   for (let index = start; index < branch.value.length; index++) {
