@@ -385,10 +385,12 @@ Observations, each re-checkable from the current grammar files:
 
 - The physical fold paid the `src/ast/grammar.ts` split, but dialect- and
   mode-flavoured rule names can still survive inside the four `src/grammar.ts`
-  files. Treat `CssAst*`, `DirectLess*`, `DirectScss*`, `DirectJess*`, `Ast`, and
-  `Cst` as findings unless the rule accepts a genuinely different language.
+  files. Treat `CssAst*`, `DirectScss*`, `DirectJess*`, `Ast`, and `Cst` as
+  findings unless the rule accepts a genuinely different language. Less has
+  already burned down the local `DirectLess*` / `LessDirect*` / `LessAst*`
+  migration prefixes; reintroducing one is a finding by default.
   _Interpretation:_ a shared base cannot supply `Declaration` to a dialect that
-  still calls the same concept `DirectLessDeclaration`.
+  still calls the same concept `DirectScssDeclaration`.
 - `packages/parser-shared/src/` exports four current shared-recognition
   artifacts — `cssSyntax`, `lessSyntax` (`recognition.ts`), `cssPseudoSyntax`
   (`pseudo-consts.ts`), and `opaqueAtRuleRecognition` (`opaque-at-rule.ts`). The
