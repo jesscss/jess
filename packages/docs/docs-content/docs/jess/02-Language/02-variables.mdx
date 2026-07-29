@@ -27,6 +27,22 @@ Use `$$foo` when you need the scoped/final lookup behavior.
 }
 ```
 
+## Variables are not expression names
+
+`$color` reads the variable named `color`. `$(color)` does not; inside an
+expression, `color` is an ordinary value token. To use a variable inside an
+expression, keep the variable reference explicit:
+
+```scss
+$color: red;
+
+.card {
+  a: $color;     // variable lookup -> red
+  b: $(color);   // value token -> color
+  c: $($color);  // expression containing a variable lookup -> red
+}
+```
+
 ## Declarations and assignments
 
 Both `$foo: value` and `$$foo: value` create or update **both** the live and
@@ -176,7 +192,11 @@ mixins, and function literals alike.
 
 :::
 
+{/*
 ## Private and readonly names
 
-The reference distinction stays the same for private and readonly bindings:
-`$name` is live and `$$name` is scoped/final.
+Private and readonly bindings are intentionally not part of the public Jess docs
+until the parser, evaluator, and SCSS compatibility tests prove the feature.
+When they land, the reference distinction should remain: `$name` is live and
+`$$name` is scoped/final.
+*/}
