@@ -4093,6 +4093,25 @@ fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
 passed. The old `ReferenceTail#1` gating debt now reports under the semantic
 rule name instead of `DirectJessReferenceTail#1`.
 
+Jess collection/value rule name cleanup, 2026-07-29: the Jess collection,
+ordinary value-grouping, and `!important` grammar keys now use semantic names
+(`CollectionEntry`, `Collection`, `ValueAtom`, `ValueSpaceGroup`, `ValueTerm`,
+`Value`, and `Important`) instead of `DirectJess*` mode labels. This is a
+naming-only alignment with the existing public node labels. Ordinary value
+positions still route through `Value`/`ValueTerm`; expression-only arithmetic,
+comparison, and leading-dot declaration lookup remain restricted to the
+explicit `$()` expression grammar.
+
+Evidence for the Jess collection/value rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed. The old `DirectJessValueAtom#0/#2` gating debt now reports under the
+semantic `ValueAtom#0/#2` rule names.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman

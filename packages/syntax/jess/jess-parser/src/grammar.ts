@@ -75,13 +75,13 @@ type JessRules = {
   CallComponent: Combinator<ValueSlot>;
   CallArgument: Combinator<ValueSlot>;
   Call: Combinator<FunctionCall>;
-  DirectJessCollectionEntry: Combinator<Declaration>;
-  DirectJessCollection: Combinator<Collection>;
-  DirectJessValueAtom: Combinator<ValueNode>;
-  DirectJessValueSpaceGroup: Combinator<ValueSlot>;
-  DirectJessValueTerm: Combinator<ValueSlot>;
-  DirectJessValue: Combinator<ValueSlot>;
-  DirectJessImportant: Combinator<true>;
+  CollectionEntry: Combinator<Declaration>;
+  Collection: Combinator<Collection>;
+  ValueAtom: Combinator<ValueNode>;
+  ValueSpaceGroup: Combinator<ValueSlot>;
+  ValueTerm: Combinator<ValueSlot>;
+  Value: Combinator<ValueSlot>;
+  Important: Combinator<true>;
   DirectJessCustomPropertyValue: Combinator<Keyword>;
   DirectJessCustomPropertyName: Combinator<string | Interpolation>;
   DirectJessCustomPart: Combinator<unknown>;
@@ -1749,16 +1749,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         jessGuardUnaryTypePredicate,
         literal('('),
-        g.DirectJessValueTerm,
+        g.ValueTerm,
         literal(')')
       ),
       sequence(
         jessGuardIsUnitPredicate,
         literal('('),
-        g.DirectJessValueTerm,
+        g.ValueTerm,
         optional(sequence(
           literal(','),
-          g.DirectJessValueTerm
+          g.ValueTerm
         )),
         literal(')')
       )
@@ -2840,12 +2840,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const CallComponent = node<ValueSlot>(
     'CallComponent',
     sequence(
-      g.DirectJessValueSpaceGroup,
+      g.ValueSpaceGroup,
       optional(sequence(
         optional(rawWhitespace),
         literal('/'),
         optional(rawWhitespace),
-        g.DirectJessValueSpaceGroup
+        g.ValueSpaceGroup
       ))
     ),
     (children) => {
@@ -2926,14 +2926,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * declaration names/values for bracket `$for` bindings; lower it directly
    * instead of preserving a CST-shaped collection node or opaque source bytes.
    */
-  const DirectJessCollectionEntry = node<Declaration>(
+  const CollectionEntry = node<Declaration>(
     'CollectionEntry',
     sequence(
       g.CssSyntaxProperty,
       literal(':'),
       parser(
         { trivia: whitespace },
-        g.DirectJessValue
+        g.Value
       ),
       optional(literal(';'))
     ),
@@ -2945,13 +2945,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessCollection = node<Collection>(
+  const Collection = node<Collection>(
     'Collection',
     sequence(
       literal('{'),
       parser(
         { trivia: whitespace },
-        many(g.DirectJessCollectionEntry)
+        many(g.CollectionEntry)
       ),
       optional(rawWhitespace),
       literal('}')
@@ -3077,7 +3077,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
             optional(rawWhitespace),
             literal('/'),
             optional(rawWhitespace),
-            g.DirectJessValueAtom
+            g.ValueAtom
           ),
 
           /* Accessor-tail chain (`.name`, `[key]`). */
@@ -3237,10 +3237,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.Dimension,
     KeywordLikeValue
   );
-  const DirectJessValueAtom = node<ValueNode>(
+  const ValueAtom = node<ValueNode>(
     'ValueAtom',
     choice(
-      g.DirectJessCollection,
+      g.Collection,
       directJessNonBlockValueAtom
     ),
     children => requireValueNode(children[0])
@@ -3250,10 +3250,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * The authored space-adjacency run: the value atoms between two slash
    * boundaries, or the whole term when the value carries no slash.
    */
-  const DirectJessValueSpaceGroup = node<ValueSlot>(
+  const ValueSpaceGroup = node<ValueSlot>(
     'ValueSpaceGroup',
     noTrivia(sequence(
-      g.DirectJessValueAtom,
+      g.ValueAtom,
       many(sequence(
         field(
           'separator',
@@ -3290,13 +3290,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * each side stays ONE authored space group (flattening it would render
    * `1 / 2 / sans-serif`), and `/` still never becomes unwrapped arithmetic.
    */
-  const DirectJessValueTerm = node<ValueSlot>(
+  const ValueTerm = node<ValueSlot>(
     'ValueTerm',
     noTrivia(sequence(
-      g.DirectJessValueSpaceGroup,
+      g.ValueSpaceGroup,
       many(sequence(
         jessValueSlashBoundary,
-        g.DirectJessValueSpaceGroup
+        g.ValueSpaceGroup
       ))
     )),
     (children) => {
@@ -3309,14 +3309,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           );
     }
   );
-  const DirectJessValue = node<ValueSlot>(
+  const Value = node<ValueSlot>(
     'Value',
     sequence(
-      g.DirectJessValueTerm,
+      g.ValueTerm,
       many(sequence(
         literal(','),
         optional(regex(/[ \t\n\r\f]+/)),
-        g.DirectJessValueTerm
+        g.ValueTerm
       ))
     ),
     (children) => {
@@ -4234,7 +4234,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   /*
    * Registered-property descriptors are authored CSS component values, but they
    * are not Jess value positions: they take the shared static component value
-   * above, never DirectJessValue (which admits variable references,
+   * above, never Value (which admits variable references,
    * interpolation, arithmetic, and collections) and never Any/raw source.
    */
   const StaticPropertyDescriptor = node<Declaration>(
@@ -4389,7 +4389,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'VariableDeclaration',
     sequence(
       directJessAssignHead,
-      g.DirectJessValue,
+      g.Value,
       optional(literal(';'))
     ),
     reduceVarDeclaration
@@ -4420,7 +4420,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * direct grammar construction rather than a Jess-specific compatibility path.
    * Comments around the marker/name are ambient trivia, not value children.
    */
-  const DirectJessImportant = node<true>(
+  const Important = node<true>(
     'Important',
     sequence(
       literal('!'),
@@ -4594,7 +4594,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.DirectJessCustomPropertyName,
       literal(':'),
       g.DirectJessCustomValue,
-      optional(g.DirectJessImportant),
+      optional(g.Important),
       optional(literal(';'))
     ),
     (children) => {
@@ -4629,8 +4629,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           g.CssSyntaxProperty
         ),
         literal(':'),
-        g.DirectJessValue,
-        optional(g.DirectJessImportant),
+        g.Value,
+        optional(g.Important),
         optional(literal(';'))
       )
     ),
@@ -4787,7 +4787,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       jessDollarName,
       optional(sequence(
         literal(':'),
-        g.DirectJessValueTerm
+        g.ValueTerm
       ))
     ),
     (children) => {
@@ -4819,9 +4819,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('$'),
         jessDollarName,
         literal(':'),
-        g.DirectJessValueTerm
+        g.ValueTerm
       ),
-      g.DirectJessValueTerm
+      g.ValueTerm
     ),
     (children) => {
       const value = children.find(isValueNode);
@@ -4997,7 +4997,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.DirectJessMixinParams,
         literal('>'),
         not(literal('{')),
-        g.DirectJessValue
+        g.Value
       )
     ),
     (children) => {
@@ -5022,7 +5022,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'ValueBlock',
     choice(
       g.DirectJessBlockLambda,
-      g.DirectJessCollection
+      g.Collection
     ),
     children => requireValueNode(children[0])
   );
@@ -5128,11 +5128,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ForSource = node<ValueNode>(
     'ForSource',
     sequence(
-      g.DirectJessValueAtom,
+      g.ValueAtom,
       many(sequence(
         literal(','),
         optional(rawWhitespace),
-        g.DirectJessValueAtom
+        g.ValueAtom
       ))
     ),
     (children) => {
@@ -5593,14 +5593,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     CallComponent,
     CallArgument,
     Call,
-    DirectJessCollectionEntry,
-    DirectJessCollection,
+    CollectionEntry,
+    Collection,
     InterpolatedValue,
-    DirectJessValueAtom,
-    DirectJessValueSpaceGroup,
-    DirectJessValueTerm,
-    DirectJessValue,
-    DirectJessImportant,
+    ValueAtom,
+    ValueSpaceGroup,
+    ValueTerm,
+    Value,
+    Important,
     DirectJessCustomPropertyValue,
     DirectJessCustomPropertyName,
     DirectJessCustomPart,
