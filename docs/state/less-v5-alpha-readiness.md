@@ -806,8 +806,16 @@ earlier, before a manual publish attempt.
   tests-unit/import/import.less`, focused skipped remote-import selection,
   the intentional no-match failure probe, `npm --prefix packages/less run lint`,
   `npm --prefix packages/less run test:alpha`, and the commit hook's root alpha
-  / publish dry-run / packed-consumer proof. GitHub PR #19 was open/non-draft at
-  head `4abb411c`; remote CI was still in progress at the time of this note.
+  / publish dry-run / packed-consumer proof. GitHub PR #19 is open/non-draft and
+  merge-clean at head `4abb411c`; CI is green across ubuntu/macOS/windows current
+  and ubuntu LTS, LTS-1, and LTS-2; CodeRabbit is green.
+- 2026-07-29: Hardened the Jess alpha fixture harness timeout path. Fixture
+  renders now race a harness-owned timeout that reports
+  `FixtureTimeoutError`, and expected-failure fixtures rethrow that timeout
+  instead of counting it as "failed as expected". The focused
+  `tests-unit/import/import.less` run still surfaces the
+  `resolve/name-not-found` Linecraft diagnostic, and the full
+  `less/all-less.test.ts` lane passed 109 / 109.
 - 2026-07-28: Repaired the Jess alpha fixture harness so
   `tests-unit/import/import.less` keeps surfacing its settled
   `resolve/name-not-found` expected failure instead of timing out at Vitest's
