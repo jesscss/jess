@@ -48,22 +48,22 @@ import {
 import type {
   AtRuleBlock,
   OpaqueAtRuleBlock,
-  ComplexSelector as AstComplexSelector,
-  CompoundSelector as AstCompoundSelector,
-  Color as AstColor,
-  Declaration as AstDeclaration,
-  Dimension as AstDimension,
+  ComplexSelector as ComplexSelectorNode,
+  CompoundSelector as CompoundSelectorNode,
+  Color as ColorNode,
+  Declaration as DeclarationNode,
+  Dimension as DimensionNode,
   Interpolation,
   Keyword,
-  Quoted as AstQuoted,
+  Quoted as QuotedNode,
   Rule,
-  SelectorList as AstSelectorList,
+  SelectorList as SelectorListNode,
   SimpleSelector,
   SimpleToken,
   Statement,
   ValueNode,
   ValueSlot,
-  Url as AstUrl
+  Url as UrlNode
 } from '@jesscss/core/ast';
 
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -369,21 +369,21 @@ function isSimpleToken(value: unknown): value is SimpleToken {
  */
 const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 
-function isCompound(value: unknown): value is AstCompoundSelector {
+function isCompound(value: unknown): value is CompoundSelectorNode {
   return isNodeType(
     value,
     'CompoundSelector'
   );
 }
 
-function isComplex(value: unknown): value is AstComplexSelector {
+function isComplex(value: unknown): value is ComplexSelectorNode {
   return isNodeType(
     value,
     'ComplexSelector'
   );
 }
 
-function isSelectorList(value: unknown): value is AstSelectorList {
+function isSelectorList(value: unknown): value is SelectorListNode {
   return isNodeType(
     value,
     'SelectorList'
@@ -404,7 +404,7 @@ function isInterpolation(value: unknown): value is Interpolation {
   );
 }
 
-function isDeclaration(value: unknown): value is AstDeclaration {
+function isDeclaration(value: unknown): value is DeclarationNode {
   return isNodeType(
     value,
     'Declaration'
@@ -503,7 +503,7 @@ function chainedQueryComparison(left: ValueNode, children: readonly unknown[]): 
   return result;
 }
 
-function isImportTarget(value: unknown): value is AstQuoted | { readonly type: 'Url'; readonly value: ValueNode } {
+function isImportTarget(value: unknown): value is QuotedNode | { readonly type: 'Url'; readonly value: ValueNode } {
   return isNodeType(
     value,
     'Quoted'
@@ -516,7 +516,7 @@ function isImportTarget(value: unknown): value is AstQuoted | { readonly type: '
 /** CSS `@import` is an ordinary statement at-rule. Its dedicated grammar only
  * validates the required target and retains its authored prelude; it does not
  * make import loading or resolution part of the AST. */
-function importPrelude(target: AstQuoted | { readonly type: 'Url'; readonly value: ValueNode }, tail: ValueNode | null): ValueNode {
+function importPrelude(target: QuotedNode | { readonly type: 'Url'; readonly value: ValueNode }, tail: ValueNode | null): ValueNode {
   const targetText = target.type === 'Url'
     ? `url(${sourceText(target.value)})`
     : target.src;
@@ -541,7 +541,7 @@ function isDocumentStatement(value: unknown): value is Statement {
     || isOpaqueAtRuleBlock(value);
 }
 
-function selectorComplexes(children: readonly unknown[]): AstComplexSelector[] {
+function selectorComplexes(children: readonly unknown[]): ComplexSelectorNode[] {
   const selectors = children.filter(isComplex);
   if (selectors.length === 0) {
     throw new Error('SelectorList requires a complex selector');
@@ -556,8 +556,8 @@ function selectorArgumentText(value: unknown): string {
   return tokenText(value);
 }
 
-function complexSegments(children: readonly unknown[]): Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: AstCompoundSelector }> {
-  const segments: Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: AstCompoundSelector }> = [];
+function complexSegments(children: readonly unknown[]): Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: CompoundSelectorNode }> {
+  const segments: Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: CompoundSelectorNode }> = [];
   let comb: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   for (const child of children) {
     if (isCompound(child)) {
@@ -670,7 +670,7 @@ function blockStatements(children: readonly unknown[]): Statement[] {
   return children.filter(isDocumentStatement);
 }
 
-function keyframeSelectorList(children: readonly unknown[]): AstSelectorList {
+function keyframeSelectorList(children: readonly unknown[]): SelectorListNode {
   const selectors = children.filter(isSimple).map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
   if (selectors.length === 0) {
     throw new Error('KeyframeBlock requires a keyframe selector');
@@ -1519,7 +1519,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     g.CssSyntaxCustomProperty,
     children => keyword(tokenText(children[0]))
   );
-  const Color = node<AstColor>(
+  const Color = node<ColorNode>(
     'Color',
     hexColor,
     children => color(tokenText(children[0]))
@@ -1535,7 +1535,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     g.CssSyntaxUnicodeRange,
     children => any(tokenText(children[0]))
   );
-  const Percentage = node<AstDimension>(
+  const Percentage = node<DimensionNode>(
     'Percentage',
     noTrivia(sequence(
       numberValue,
@@ -1550,7 +1550,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const Dimension = node<AstDimension>(
+  const Dimension = node<DimensionNode>(
     'Dimension',
     noTrivia(sequence(
       numberNoPercentage,
@@ -1566,7 +1566,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const Quoted = node<AstQuoted>(
+  const Quoted = node<QuotedNode>(
     'Quoted',
     choice(
       noTrivia(sequence(
@@ -1613,7 +1613,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     g.CssSyntaxUrlInner,
     children => any(tokenText(children[0]!))
   );
-  const Url = node<AstUrl>(
+  const Url = node<UrlNode>(
     'Url',
     sequence(
       urlOpen,
@@ -2128,7 +2128,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const UrlFunction = node<AstUrl>(
+  const UrlFunction = node<UrlNode>(
     'Url',
     sequence(
       routed(),
@@ -3302,7 +3302,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
-      children.filter((value): value is AstDeclaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
+      children.filter((value): value is DeclarationNode | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
     ), rawChildren)
   );
   const RoutedKeyframes = node(
@@ -3631,7 +3631,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
-      children.filter((value): value is AstDeclaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
+      children.filter((value): value is DeclarationNode | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
     ), rawChildren)
   );
   const keyframeSelector = node(
