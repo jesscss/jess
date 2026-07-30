@@ -3198,7 +3198,7 @@ SCSS Less-inheritance cut, 2026-07-27: `packages/syntax/scss/scss-parser`
 no longer imports `lessGrammar`, no longer declares `@jesscss/less-parser` as a
 package dependency, and the CST grammar no longer includes the obvious Less-only
 statement/selector arms (`VarCall`, `ExtendStatement`, `EachFor`, `MixinCall`,
-`MixinOrQualifiedRule`, `DetachedRuleset`, `AnonymousMixinDefinition`,
+`MixinDefinition`, `DetachedRuleset`, `AnonymousMixinDefinition`,
 `LessAmpersand`, `interpOrBasic`). The current SCSS grammar is a single
 host-mode grammar and is macro-buildable. A follow-up query-clause cleanup
 left-factored the inner
@@ -4191,7 +4191,8 @@ follow-up grammar-shape debt.
 
 Jess contextual CSS-only name cleanup, 2026-07-29: the folded Jess grammar no
 longer uses parser-mode terminology for constrained quoted and pseudo-selector
-contexts. `PlainQuoted` means quoted syntax without a Jess interpolation;
+contexts. The private `PlainQuoted` helper recognizes quoted syntax without a
+Jess interpolation but still emits the semantic `Quoted` CST label;
 `NthChildArgument`, `NthTypeArgument`, `PseudoSelectorArgument`,
 `PseudoSelectorCompound`, `PseudoSelectorComplex`, and `PseudoSelectorList`
 name the selector context that intentionally excludes Jess dynamic value and
@@ -4200,7 +4201,7 @@ at-rule/header restrictions must be named by their owning context or collapsed
 into a CSS slot when their accepted language does not genuinely differ.
 
 Evidence for the Jess contextual CSS-only name cleanup: the public CST test
-pins the new `PlainQuoted`, `PseudoSelectorArgument`, `PseudoSelectorList`,
+pins `Quoted`, `PseudoSelectorArgument`, `PseudoSelectorList`,
 `PseudoSelectorCompound`, and `NthChildArgument` labels and rejects the old
 `Static*` family on the exercised source. Rebuild the parser dependency chain,
 then run `pnpm run check:macro` and `pnpm run verify:compose-integrity` before

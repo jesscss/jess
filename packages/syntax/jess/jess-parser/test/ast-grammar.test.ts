@@ -2132,31 +2132,35 @@ describe('Jess AST grammar facts', () => {
 
   it('rejects unsupported dynamic CSS URL bodies rather than falling through to FunctionCall', () => {
     for (const source of [
-      '.asset { image: url($path); }',
       '.asset { image: url(images/$[path] icon.svg); }',
+      '.asset { image: url($(path)); }',
       '.asset { image: url("images/icon.svg"; }'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
   });
 
-  it('admits $(…) expressions but not $[…] lookups in url bodies', () => {
+  it('keeps unquoted declaration URLs distinct from the shared quoted override', () => {
     /*
-     * A url body follows the quoted-string `$` policy: `${…}` and `$(…)` are
-     * admitted, while `$[…]` is rejected even though it is a value lookup elsewhere.
+     * Unquoted URL text admits only `${…}` as a dynamic segment; a bare `$` is
+     * literal URL text rather than a Jess lookup. Quoted URL bodies use the
+     * universal Quoted override and therefore retain `$(…)` expressions.
      */
-    for (const source of ['.asset { image: url($(path)); }']) {
+    for (const source of [
+      '.asset { image: url(images/${file}.svg); }',
+      '.asset { image: url($asset); }',
+      '.asset { image: url($[asset]); }',
+      '.asset { image: url("$(path)"); }'
+    ]) {
       const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
     }
-    const rule = parse('.asset { image: url($(path)); }').rules[0];
+    const rule = parse('.asset { image: url("$(path)"); }').rules[0];
     expect(rule).toMatchObject({
       type: 'Ruleset',
       rules: [{
         type: 'Declaration', name: 'image',
-        value: { type: 'Url', value: { type: 'Interpolation', parts: [
-          { ref: { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'path' } }, unquote: true }
-        ] } }
+        value: { type: 'Url', value: { type: 'Interpolation' } }
       }]
     });
   });

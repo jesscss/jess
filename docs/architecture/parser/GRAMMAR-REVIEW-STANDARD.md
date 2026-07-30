@@ -475,8 +475,9 @@ The rule:
   for a truly narrower parse, but it should be lower-case/private and named by
   the constraint. Public node labels and shared rule references like
   `StaticValueQuoted` or `StaticNthChildArgument` are findings: use the actual
-  constraint or context, such as `PlainQuoted`, `NthChildArgument`, or
-  `PseudoSelectorArgument`, when that distinct language concept is real.
+  semantic concept, such as `Quoted`, `NthChildArgument`, or
+  `PseudoSelectorArgument`. A private helper may carry a context name such as
+  `PlainQuoted` only when that context changes recognition.
 - **`Ast` / `Cst` in a name is the same error one axis over.** That is a compile
   _mode_, not an identity; one grammar serves both modes, so the mode does not
   belong in the rule's name.

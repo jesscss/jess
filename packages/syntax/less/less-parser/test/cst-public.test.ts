@@ -194,7 +194,7 @@ describe('Less statement-container CST facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(findNodes(result.tree, 'Ruleset')).toHaveLength(5);
     expect(findNodes(result.tree, 'For')).toHaveLength(2);
-    expect(findNodes(result.tree, 'MixinOrQualifiedRule')).toHaveLength(1);
+    expect(findNodes(result.tree, 'MixinDefinition')).toHaveLength(1);
     expectNoModeLabels(result.tree);
   });
 });
@@ -342,18 +342,18 @@ describe('Less direct-AST closure CST contract', () => {
     ['typed import fact', '@import (less) "theme.less" screen;', 'ImportAtRule'],
     ['at-rule statement', '@charset "utf-8";', 'AtRuleStatement'],
     ['ruleset', '.a { color: red; }', 'Ruleset'],
-    ['top-level mixin definition', '.m(@x) { color: @x; }', 'MixinOrQualifiedRule'],
+    ['top-level mixin definition', '.m(@x) { color: @x; }', 'MixinDefinition'],
     ['static mixin call', '.a { .m(1px, red); }', 'MixinCall'],
     ['important mixin call', '.a { .m(1px) !important; }', 'MixinCall'],
     ['namespaced mixin call', '.a { .library > .colors .tone(red); }', 'MixinCall'],
     ['named namespaced mixin call', '.a { .library > .colors .tone(@shade: red, @gap: 2px); }', 'MixinCall'],
-    ['pattern and variadic mixin definition', '.m(red, @gap, @rest...) { color: @gap; }', 'MixinOrQualifiedRule'],
-    ['static mixin guard', '.m(@width) when (@width >= 20px) { width: @width; }', 'MixinOrQualifiedRule'],
-    ['logical mixin guard', '.m(@value) when (not (@value < 2) and iscolor(red), default()) { color: red; }', 'MixinOrQualifiedRule'],
+    ['pattern and variadic mixin definition', '.m(red, @gap, @rest...) { color: @gap; }', 'MixinDefinition'],
+    ['static mixin guard', '.m(@width) when (@width >= 20px) { width: @width; }', 'MixinDefinition'],
+    ['logical mixin guard', '.m(@value) when (not (@value < 2) and iscolor(red), default()) { color: red; }', 'MixinDefinition'],
     ['each control statement', 'each(1, { color: red; });', 'For'],
     ['namespaced mixin-call each iterable', 'each(.library > .values(), { color: red; });', 'For'],
     ['bare function-call statement', 'e("x");', 'Call'],
-    ['nested mixin definition', '.a { .m(@x) { color: @x; } }', 'MixinOrQualifiedRule'],
+    ['nested mixin definition', '.a { .m(@x) { color: @x; } }', 'MixinDefinition'],
     ['nested mixin call', '.a { .m(1); }', 'MixinCall'],
     ['nested extend instruction', '.a { &:extend(.b); }', 'ExtendStatement'],
     ['static pseudo selector', '.a:hover, .b::before { color: red; }', 'Ruleset'],

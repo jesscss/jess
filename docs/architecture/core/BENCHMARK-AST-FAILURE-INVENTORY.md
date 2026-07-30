@@ -136,7 +136,7 @@ driver AND confirmed against the parser's emitted node type.
 - **Partial impl?** ENGINE YES / ACTION NO. `serialize.ts:844` already has a
   `case 'MixinCall'`, and `mixin-dispatch.ts` implements full arity/pattern/named/
   guard selection. The mixin **definition** action exists
-  (`actions/mixins-def.ts`, `MixinOrQualifiedRule`). What is missing is the
+  (`actions/mixins-def.ts`, `MixinDefinition`). What is missing is the
   **`MixinCall` action** (`actions/mixins-def.ts:173` explicitly punts: "statement
   (call) form is the MixinCall family's; leave it to fall through").
 - **Size:** **M** (arg binding + scope resolution; namespace-path resolution adds a

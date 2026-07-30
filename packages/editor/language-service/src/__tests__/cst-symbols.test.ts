@@ -107,7 +107,7 @@ describe('CST symbol tolerance', () => {
  * SCSS `@mixin foo` / `@include foo` / `@function bar` are distinct canonical
  * callable grammarTypes from the Less mixin nodes. These pin that every CST
  * navigation feature resolves them (regression: the CST migration only knew the
- * Less `MixinCall`/`MixinOrQualifiedRule` shapes, so every SCSS mixin was
+ * Less `MixinCall`/`MixinDefinition` shapes, so every SCSS mixin was
  * invisible to definition / references / rename / prepareRename).
  */
 describe('CST symbols resolve SCSS mixins (@mixin / @include)', () => {

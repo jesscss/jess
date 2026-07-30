@@ -76,6 +76,8 @@ type JessRules = {
   Dimension: Combinator<Dimension>;
   Color: Combinator<Color>;
   Url: Combinator<Url>;
+  PlainUrlInner: Combinator<string>;
+  UnquotedUrlText: Combinator<string>;
   UrlInterpolatedValue: Combinator<Interpolation>;
   CallComponent: Combinator<ValueSlot>;
   CallArgument: Combinator<ValueSlot>;
@@ -235,7 +237,6 @@ type SharedSyntax = {
   DimensionUnit: Combinator<string>;
   UrlOpen: Combinator<string>;
   UrlInner: Combinator<string>;
-  PlainUrlInner: Combinator<string>;
   GenericAtRuleName: Combinator<string>;
   SimpleSelectorToken: Combinator<string>;
   PseudoSelectorColon: Combinator<string>;
@@ -1416,12 +1417,16 @@ const interpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
 const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
 const generalTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 
+/* CSS at-rule URL bodies stay closed to Jess value syntax. */
+const plainUrlInner = regex(/(?:[^"'()\\$ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+
 /*
- * An unquoted Jess URL keeps literal URL-token bytes plus `${...}` and `$(...)`
- * segments as separate grammar facts. `$[...]`, whitespace, quotes, and invalid
- * parentheses remain outside this closed URL slice rather than becoming raw payload.
+ * An unquoted declaration-value URL recognizes `${...}` as its sole dynamic
+ * segment. Every other `$` remains CSS URL-token text, so `$foo` and
+ * `$[key]` do not become Jess value lookups. Whitespace, quotes, and
+ * parentheses stay outside this closed URL slice.
  */
-const urlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const unquotedUrlText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\$(?!\{)|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
  * Jess's compiler namespace: the `@-\u2026` names a module directive lowers to. They
@@ -2061,7 +2066,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * non-SyntaxError from the public parse path.
    */
   const PlainQuoted = node<Quoted>(
-    'PlainQuoted',
+    'Quoted',
     choice(
       escapedPlainQuoted,
       plainDoubleQuoted,
@@ -2355,15 +2360,11 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   const UrlInterpolatedValue = node<Interpolation>(
     'UrlInterpolatedValue',
     noTrivia(sequence(
-      optional(urlInterpolatedText),
-      choice(
-        g.DollarBrace,
-        g.Expression
-      ),
+      optional(unquotedUrlText),
+      g.DollarBrace,
       many(choice(
-        urlInterpolatedText,
-        g.DollarBrace,
-        g.Expression
+        unquotedUrlText,
+        g.DollarBrace
       ))
     )),
     (children) => {
@@ -3007,7 +3008,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       optional(choice(
         g.Quoted,
         g.UrlInterpolatedValue,
-        g.PlainUrlInner
+        g.UnquotedUrlText
       )),
       literal(')')
     ),
@@ -5640,6 +5641,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     ImportTarget,
     ImportPrelude,
     UrlInterpolatedValue,
+    PlainUrlInner: plainUrlInner,
+    UnquotedUrlText: unquotedUrlText,
     Charset,
     ImportStatement,
     SupportsAtRuleBlock,
