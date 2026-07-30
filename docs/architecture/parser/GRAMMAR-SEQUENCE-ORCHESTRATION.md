@@ -432,6 +432,11 @@ highest-priority non-Parseman grammar surfaces:
   larger follow-up is still to make that shared frame CSS-owned, with only real
   Jess holes parameterized (`$`-reserved URL handling and interpolation policy).
   Do not grow this back into a Jess-local CSS import parser.
+- Jess constrained CSS headers deliberately use private `PlainValue*` helpers
+  because they exclude Jess execution forms while reusing the same value
+  semantics. Their public CST labels are `ValueAtom`, `Value`, `CallArgument`,
+  and `Call`, never the private helper names. This is the narrow-helper rule:
+  the restriction earns a private grammar name, not a second public vocabulary.
 - Custom-property values in Less, SCSS, and Jess repeat the same CSS
   declaration-value balanced-group frame. Replace that with a shared skeleton
   parameterized by dialect interpolation/reference leaves; comments remain
