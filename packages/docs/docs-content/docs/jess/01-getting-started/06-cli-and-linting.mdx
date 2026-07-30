@@ -96,6 +96,7 @@ export default {
       'jess/no-dead-extend': 'warn',
       'jess/no-suspicious-map-key-access': 'warn',
       'vendor-prefix': 'warn',
+      'unknown-vendor-specific-properties': 'off',
       'float': 'off',
       'jess/unsupported-sass-form': 'warn'
     }
@@ -129,6 +130,7 @@ Jess's stable lint set is deliberately small:
 | `jess/no-dead-extend` | `lint/no-dead-extend` | Exact static extend targets with no same-file selector match |
 | `jess/no-suspicious-map-key-access` | `lint/no-suspicious-map-key-access` | Numeric key access against same-file Less maps, SCSS maps, and Jess collections |
 | `vendor-prefix` | `lint/vendor-prefix` | CSS vendor-prefixed declarations without the standard property |
+| `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | Opt-in unknown CSS vendor-prefixed declarations |
 | `float` | `lint/float` | Opt-in CSS `float` layout warnings |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | SCSS forms Jess recognizes but does not support yet |
 

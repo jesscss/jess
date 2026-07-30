@@ -40,6 +40,7 @@ export const LINT_CODES = {
   boxModel: 'lint/box-model',
   float: 'lint/float',
   vendorPrefix: 'lint/vendor-prefix',
+  unknownVendorSpecificProperties: 'lint/unknown-vendor-specific-property',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   duplicateModuleLoads: 'lint/no-duplicate-module-load',
@@ -4194,6 +4195,22 @@ export function cstLintDiagnostics(
             LINT_CODES.unknownAtRuleDescriptors,
             'warning',
             `Unknown descriptor "${name}" for at-rule "@${descriptor.atRuleName}"`,
+            spanAtOrContaining(node, nameStart, nameStart + name.length)
+          );
+        } else if (
+          language === 'css'
+          && descriptor?.status === undefined
+          && lower.startsWith('-')
+          && !lower.startsWith('--')
+          && !lower.includes('#{')
+          && !lower.includes('@{')
+          && !lower.includes('${')
+          && !cssData.isKnownProperty(lower)
+        ) {
+          push(
+            LINT_CODES.unknownVendorSpecificProperties,
+            'warning',
+            `Unknown vendor-specific property: '${name}'`,
             spanAtOrContaining(node, nameStart, nameStart + name.length)
           );
         } else if (descriptor?.status === undefined && !skip && !cssData.isKnownProperty(lower)) {

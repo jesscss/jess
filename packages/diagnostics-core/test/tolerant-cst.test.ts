@@ -640,6 +640,35 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports unknown CSS vendor-specific properties', () => {
+    const source = [
+      '.unknown { -webkit-made-up: x; -foo-thing: y; -webkit-transform: rotate(0); }',
+      '.custom { --x: 1; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownVendorSpecific = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.unknownVendorSpecificProperties
+    );
+    const webkitStart = source.indexOf('-webkit-made-up');
+    const fooStart = source.indexOf('-foo-thing');
+
+    expect(unknownVendorSpecific.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Unknown vendor-specific property: \'-webkit-made-up\'',
+        webkitStart,
+        webkitStart + '-webkit-made-up'.length
+      ],
+      [
+        'Unknown vendor-specific property: \'-foo-thing\'',
+        fooStart,
+        fooStart + '-foo-thing'.length
+      ]
+    ]);
+  });
+
   it('does not report vendor-prefix diagnostics in dialect files before property facts exist', () => {
     const source = '.a { -webkit-transform: rotate(0); }';
     const scss = collectTolerantDiagnostics({
@@ -653,6 +682,21 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.vendorPrefix)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.vendorPrefix)).toBe(false);
+  });
+
+  it('does not report unknown vendor-specific properties in dialect files before property facts exist', () => {
+    const source = '.a { -webkit-made-up: x; }';
+    const scss = collectTolerantDiagnostics({
+      source,
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source,
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownVendorSpecificProperties)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownVendorSpecificProperties)).toBe(false);
   });
 
   it('reports definite CSS box-model size risks', () => {
