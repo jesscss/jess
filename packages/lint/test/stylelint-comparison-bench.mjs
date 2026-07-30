@@ -44,6 +44,7 @@ const STYLELINT_RULES = {
   'no-unknown-animations': true,
   'unit-no-unknown': true,
   'function-no-unknown': true,
+  'function-linear-gradient-no-nonstandard-direction': true,
   'media-feature-name-no-unknown': true,
   'media-feature-name-value-no-unknown': true,
   'selector-pseudo-class-no-unknown': true,

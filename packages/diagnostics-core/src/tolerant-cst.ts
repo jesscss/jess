@@ -38,6 +38,7 @@ export const LINT_CODES = {
   unknownAnimations: 'lint/no-unknown-animations',
   unknownUnits: 'lint/unit-no-unknown',
   unknownFunctions: 'lint/function-no-unknown',
+  linearGradientNonstandardDirection: 'lint/function-linear-gradient-no-nonstandard-direction',
   unknownMediaFeatureNames: 'lint/media-feature-name-no-unknown',
   unknownMediaFeatureValues: 'lint/media-feature-name-value-no-unknown',
   unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
@@ -72,8 +73,11 @@ const ANGLE_UNITS = new Set(['deg', 'grad', 'turn', 'rad']);
 const TIME_UNITS = new Set(['s', 'ms']);
 const FREQUENCY_UNITS = new Set(['hz', 'khz']);
 const RESOLUTION_UNITS = new Set(['dpi', 'dpcm', 'dppx', 'x']);
+const VERTICAL_GRADIENT_SIDES = new Set(['top', 'bottom']);
+const HORIZONTAL_GRADIENT_SIDES = new Set(['left', 'right']);
 const MATH_FUNCTION_NAMES = new Set(['min', 'max', 'clamp']);
 const COLOR_FUNCTION_NAMES = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+const LINEAR_GRADIENT_FUNCTION_NAMES = new Set(['linear-gradient', 'repeating-linear-gradient']);
 const FONT_DISPLAY_VALUES = new Set(['auto', 'block', 'swap', 'fallback', 'optional']);
 const PROPERTY_SYNTAX_TYPES = new Set([
   'angle',
@@ -1538,6 +1542,66 @@ function incompatibleMathFunctionUnits(source: string, node: CssCstNode, functio
     if (areMathKindsDefinitelyIncompatible(expected.kind, actual.kind)) {
       return { functionName, expected, actual };
     }
+  }
+  return null;
+}
+
+function gradientSideAxis(word: string): 'vertical' | 'horizontal' | null {
+  if (VERTICAL_GRADIENT_SIDES.has(word)) {
+    return 'vertical';
+  }
+  if (HORIZONTAL_GRADIENT_SIDES.has(word)) {
+    return 'horizontal';
+  }
+  return null;
+}
+
+function isGradientSideOrCorner(words: readonly string[]): boolean {
+  if (words.length === 1) {
+    return gradientSideAxis(words[0]!) !== null;
+  }
+  if (words.length !== 2) {
+    return false;
+  }
+  const first = gradientSideAxis(words[0]!);
+  const second = gradientSideAxis(words[1]!);
+  return first !== null && second !== null && first !== second;
+}
+
+function gradientDirectionWords(words: readonly string[]): readonly string[] {
+  const colorSpaceIndex = words.indexOf('in');
+  return colorSpaceIndex < 0 ? words : words.slice(0, colorSpaceIndex);
+}
+
+function nonstandardLinearGradientDirection(source: string, node: CssCstNode, functionName: string): DiagnosticSpan | null {
+  if (!LINEAR_GRADIENT_FUNCTION_NAMES.has(unprefixedName(functionName))) {
+    return null;
+  }
+  const firstArg = firstChildNodeOf(node, 'ValueSequence');
+  if (firstArg === undefined || firstDescendantNodeMatching(firstArg, FUNCTION_TYPES) !== undefined) {
+    return null;
+  }
+  const start = absoluteStart(firstArg);
+  const end = absoluteEnd(firstArg);
+  const trimmed = trimOffsets(source.slice(start, end), start);
+  if (trimmed.start >= trimmed.end) {
+    return null;
+  }
+  const raw = source.slice(trimmed.start, trimmed.end);
+  if (hasDynamicSyntax(raw)) {
+    return null;
+  }
+  const words = gradientDirectionWords(normalizedCssWords(raw).split(' ').filter(Boolean));
+  if (words.length === 0) {
+    return null;
+  }
+  if (words[0] === 'to') {
+    return isGradientSideOrCorner(words.slice(1))
+      ? null
+      : spanAtOrContaining(firstArg, trimmed.start, trimmed.end);
+  }
+  if (isGradientSideOrCorner(words) || (words.length === 1 && cssNumberValue(words[0]!) !== null)) {
+    return spanAtOrContaining(firstArg, trimmed.start, trimmed.end);
   }
   return null;
 }
@@ -3107,6 +3171,15 @@ export function cstLintDiagnostics(
             mismatch.actual.span
           );
         }
+      }
+      const gradientDirection = nonstandardLinearGradientDirection(source, node, functionName);
+      if (gradientDirection !== null) {
+        push(
+          LINT_CODES.linearGradientNonstandardDirection,
+          'warning',
+          `Expected standard direction syntax in ${functionName}()`,
+          gradientDirection
+        );
       }
       const colorProblem = invalidColorFunctionChannels(source, node, functionName);
       if (colorProblem !== null) {
