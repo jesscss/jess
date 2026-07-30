@@ -2725,8 +2725,9 @@ Latest shared CSS recognition naming follow-up: `parser-shared` now exposes the
 shared CSS lexical artifact as `cssSyntax` and the shared pseudo-argument
 artifact as `cssPseudoSyntax`, with shared rule keys moved from
 `CssAstSyntax*` to `CssSyntax*`. CSS opaque capture leaves likewise moved from
-`CssAstOpaqueCapture*` to `CssOpaqueCapture*`, and the accidental
-`ScssAstSyntax*` compile-mode names became `ScssSyntax*`.
+`CssAstOpaqueCapture*` to concept names (`OpaqueAtRulePreludeCapture` /
+`OpaqueAtRuleBodyCapture`), and the accidental `ScssAstSyntax*` compile-mode
+names became `ScssSyntax*`.
 
 Superseded pre-fold note: `cssAstGrammar` compatibility naming was retained
 until the CSS host-mode fold. CSS now ships from
@@ -3474,8 +3475,9 @@ Less opaque at-rule checkpoint, 2026-07-27: Less now has a narrow
 `OpaqueAtRuleBlock` fallback for CSS-valid unknown block bodies such as
 `@future {!!:foo > ; > ?bar}`. The body capture is Less-local rather than
 composed from `opaqueAtRuleRecognition`, so `lessCstGrammar` exposes
-`OpaqueAtRuleBlock` but does not leak `CssOpaqueCapturePrelude` or
-`CssOpaqueCaptureBody` into the public Less CST rule catalog. Dynamic Less
+`OpaqueAtRuleBlock` but does not leak the CSS opaque capture leaves
+(`OpaqueAtRulePreludeCapture` / `OpaqueAtRuleBodyCapture`) into the public Less
+CST rule catalog. Dynamic Less
 headers such as `@custom foo@{query};` and variable declarations such as
 `@theme: { ... };` remain outside that opaque block route.
 
@@ -4169,13 +4171,14 @@ warnings are existing left-factor/dispatch-review debt now reported under the
 semantic owner names.
 
 Shared opaque at-rule name cleanup, 2026-07-29: parser-shared's preprocessor
-opaque capture terminals are no longer mode-labelled `JessAstOpaque*` /
-`ScssAstOpaque*`. They are now `JessOpaqueStaticPrelude`, `JessOpaqueBody`,
-`ScssOpaqueStaticPrelude`, and `ScssOpaqueBody`, with Jess/SCSS grammar
-call-sites updated to consume those semantic keys. The dialect prefixes are
-intentional because these captures add preprocessor line-comment skipping and
-top-level `$` sentinels beyond the plain CSS opaque capture contract; `Ast` was
-the false part.
+opaque capture terminals are no longer mode- or dialect-labelled
+`JessAstOpaque*` / `ScssAstOpaque*` / `JessOpaque*` / `ScssOpaque*`. Jess and
+SCSS now consume one shared preprocessor pair:
+`PreprocessorOpaqueAtRulePreludeCapture` and
+`PreprocessorOpaqueAtRuleBodyCapture`. CSS consumes the plain CSS pair:
+`OpaqueAtRulePreludeCapture` and `OpaqueAtRuleBodyCapture`. The preprocessor
+name is the real distinction: line-comment skipping and top-level `$` sentinels
+are shared by Jess/SCSS and are not a dialect provenance label.
 
 Evidence for the shared opaque at-rule name cleanup: `pnpm --filter
 @jesscss/parser-shared build` passed; `pnpm --filter @jesscss/scss-parser test
@@ -4187,9 +4190,8 @@ passed 3 files / 117 tests; `pnpm --filter @jesscss/scss-parser build` and
 `pnpm --filter @jesscss/jess-parser build` passed after rebuilding
 `parser-shared`; `pnpm run check:macro` passed with all parser packages fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
-passed. The remaining `CssOpaqueCapturePrelude#1`,
-`JessOpaqueStaticPrelude#1`, and shared balanced-capture warnings are the
-existing bounded-capture/trivia-aware-helper queue, not a naming contract.
+passed. Remaining capture warnings under the new concept names are the existing
+bounded-capture/trivia-aware-helper queue, not a naming contract.
 
 Jess root rule name cleanup, 2026-07-29: the stale `JessAstDocument` grammar
 alias has been removed. Direct AST parser tests now target `Stylesheet`, which

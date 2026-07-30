@@ -90,8 +90,6 @@ type CssGrammarRuleName =
   | 'ContainerPrelude'
   | 'ContainerQueryClause'
   | 'ContainerQueryPrelude'
-  | 'CssOpaqueCaptureBody'
-  | 'CssOpaqueCapturePrelude'
   | 'CssSyntax'
   | 'CssSyntaxAttributeModifier'
   | 'CssSyntaxAttributeOperator'
@@ -171,7 +169,9 @@ type CssGrammarRuleName =
   | 'NestedStartingStyleBlock'
   | 'NestingSelector'
   | 'OfTypePseudoArgument'
+  | 'OpaqueAtRuleBodyCapture'
   | 'OpaqueAtPrelude'
+  | 'OpaqueAtRulePreludeCapture'
   | 'OpaqueAtRuleBlock'
   | 'OpaqueBody'
   | 'PageBlock'
@@ -2670,7 +2670,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const OpaqueAtPrelude = node(
     'OpaqueAtPrelude',
-    g.CssOpaqueCapturePrelude,
+    g.OpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : tokenText(children[0]).trim();
       return text === '' ? null : text;
@@ -2678,7 +2678,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const OpaqueBody = node(
     'OpaqueBody',
-    g.CssOpaqueCaptureBody,
+    g.OpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : tokenText(children[0])
   );
   const OpaqueAtRuleBlock = node(

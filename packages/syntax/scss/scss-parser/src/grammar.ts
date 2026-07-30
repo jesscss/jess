@@ -4778,7 +4778,7 @@ export const scssFactory = (g: ScssInputRules) => {
    */
   const OpaquePrelude = node<string | null>(
     'OpaquePrelude',
-    g.ScssOpaqueStaticPrelude,
+    g.PreprocessorOpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
       return text === '' ? null : text;
@@ -4786,7 +4786,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const OpaqueBody = node<string>(
     'OpaqueBody',
-    g.ScssOpaqueBody,
+    g.PreprocessorOpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : requireToken(children[0]).value
   );
   const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(

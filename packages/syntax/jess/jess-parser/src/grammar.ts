@@ -234,8 +234,8 @@ type SharedCssSyntax = {
   CssSyntaxSimple: Combinator<string>;
   CssSyntaxPseudoColon: Combinator<string>;
   CssSyntaxMediaAtKeyword: Combinator<string>;
-  JessOpaqueStaticPrelude: Combinator<string | null>;
-  JessOpaqueBody: Combinator<string>;
+  PreprocessorOpaqueAtRulePreludeCapture: Combinator<string | null>;
+  PreprocessorOpaqueAtRuleBodyCapture: Combinator<string>;
 };
 
 function requireToken(value: unknown): Token {
@@ -4796,7 +4796,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    */
   const OpaquePrelude = node<string | null>(
     'OpaquePrelude',
-    g.JessOpaqueStaticPrelude,
+    g.PreprocessorOpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
       return text === '' ? null : text;
@@ -4804,7 +4804,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const OpaqueBody = node<string>(
     'OpaqueBody',
-    g.JessOpaqueBody,
+    g.PreprocessorOpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : requireToken(children[0]).value
   );
   const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
