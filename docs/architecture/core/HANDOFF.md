@@ -223,7 +223,9 @@ verify:less-alpha` passes, `all-less.test.ts` is 108 / 108, and
 `all-less-error.test.ts` is 94 / 94 after recursive variable/property fixtures
 graduated from the worker-hang skip list. The Less byte-identity oracle
 is still red against the committed baseline and must be treated as a named
-classification queue before any baseline update.
+classification queue before any baseline update. That queue is
+[`../parser/LESS-ORACLE-MOVER-CLASSIFICATION.md`](../parser/LESS-ORACLE-MOVER-CLASSIFICATION.md)
+— classify a mover there before proposing a rebaseline.
 
 ### 2026-07-25 update — four-grammar rewrite, Stages 0–1 LANDED on `dev`
 
@@ -263,7 +265,10 @@ slower; CST route 25–30% faster; noise floor ~1.4–3.6% (visible in the 0.37.
 clean-spread). Opposite of the +8–12% Less regression that made 0.36.0 declined (§5.1);
 the floor is paid. Spec updated: GRAMMAR-REBUILD-SPEC.md §0.2 / §5.0 now reflect the paid
 state with the benchmark table. **Stage 2 (parseman/oracle corpus-digest gate + coverage
-gate + combinator cheat-sheet) is the next work — see `grammar-rewrite-037-plan.md`.**
+gate + combinator cheat-sheet) is the next work — see
+[`../../design/GRAMMAR-REBUILD-SPEC.md`](../../design/GRAMMAR-REBUILD-SPEC.md) §0.**
+(A `grammar-rewrite-037-plan.md` was cited here and never existed in the repo; the
+spec's §0 is the staging authority.)
 
 ### 2026-07-25 update (cont.) — Stage 2.1 LANDED on `dev` (commit `a2911a491`)
 
@@ -302,13 +307,14 @@ for Stages 3–6 to proceed (every collapse commit's byte-identity verdict is wh
 the collapse-pivots on; coverage was a "is this dialect safe to collapse yet?"
 greenfield assessment, not a collapse-pass gate).
 
-**Stage 2.3 (combinator cheat-sheet at 0.37.0)** — OPEN. The original Unit 1
-cheat-sheet was authored against parseman 0.32.0. Now that the bumped tree is
-the authoring target it should be re-cut against 0.37.0 with the new idioms
-(`peek`, `word(caseInsensitive)`, `oneOrMoreSep`, `{min,max}`, `trailing`,
-`gate()` rename of `guard()`, `gating:'error'` with an `accept` allowlist,
-`analyzeDuplication`/`analyzeGatingRules` on the pre-`compose()` map). It does
-not block the Stage 3 collapse work; it lands alongside as a doc-only commit.
+**Stage 2.3 (combinator cheat-sheet)** — DONE and now maintained ahead of the
+0.37.0 target it was written for.
+[`../parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md`](../parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md)
+is cut against `parseman@0.43.0` and was last updated by `3bb2b4225`, the same
+commit that banned statement-prefix wrapper routes — so it carries the
+`choice` / `dispatch` / `routed` / `attempt` ownership rules the statement-start
+railroad work is held to. Read it with `GRAMMAR-REVIEW-STANDARD.md`, not instead
+of it. Re-cut it in the same change as any parseman floor bump.
 
 | Lane | Where | State |
 | --- | --- | --- |
@@ -858,6 +864,37 @@ flow.
 | The per-`const` grammar review checklist and the naming law (item 14) | [`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md) |
 | Patch-shape review | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) |
 | Owner semantic/architecture questions and rulings | [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md) — the canonical OPEN/SETTLED decision ledger |
+
+### Router — grammar cleanup (`docs/architecture/parser/`)
+
+Every doc in that directory, so nothing gets rediscovered. The two rows above
+(`GRAMMAR-REBUILD-SPEC.md` = what to do, `GRAMMAR-REVIEW-STANDARD.md` = how each
+`const` is judged) still come first; these are the rest of the surface.
+
+**Live — read before touching a grammar file:**
+
+| Work | Read |
+| --- | --- |
+| Which combinator states which ownership boundary — `choice` vs `dispatch` vs `routed` vs `attempt`, first-set gating, the current idiom set. Cut against `parseman@0.43.0`; last updated by the wrapper-route ban `3bb2b4225` | [`../parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md`](../parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md) |
+| Sequencing the `css → less → scss → jess` cleanup, and why it is ordered that way. Orchestration decision, not a replacement for the spec | [`../parser/GRAMMAR-SEQUENCE-ORCHESTRATION.md`](../parser/GRAMMAR-SEQUENCE-ORCHESTRATION.md) |
+| The remaining named quality cleanup in the Less grammar after its fold — the working list for Less-side routing work | [`../parser/LESS-FOLD-HOTSPOT-REPORT.md`](../parser/LESS-FOLD-HOTSPOT-REPORT.md) |
+| The red `oracle:less:byte-identity` movers, classified by entry class. Classify here **before** proposing any baseline update | [`../parser/LESS-ORACLE-MOVER-CLASSIFICATION.md`](../parser/LESS-ORACLE-MOVER-CLASSIFICATION.md) |
+| Where a grammar timing row goes. A row counts only if the parser was rebuilt from the measured commit and the macro/compose gates prove no interpreter fallback — the `1517e97c5` perf gate writes here | [`../parser/PARSEMAN-BENCHMARK-LEDGER.md`](../parser/PARSEMAN-BENCHMARK-LEDGER.md) |
+| Parseman behaviours reproduced in this repo rather than read off a changelog. Titled 0.32.0 and **version-specific by construction** — re-verify every claim against the current floor before relying on it | [`../parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](../parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md) |
+| The parse-perf research queue, per-item and separately measured | [`../../perf/PARSER_OPTIMIZATION_SPEC.md`](../../perf/PARSER_OPTIMIZATION_SPEC.md) |
+
+**Historical evidence — do not let an old problem statement override the current plan:**
+
+| Record | Read |
+| --- | --- |
+| Why the CSS AST grammar was ~2.3× its CST twin — the Stage 3 pattern proof the fold was built on | [`../parser/CSS-FOLD-DIAGNOSIS.md`](../parser/CSS-FOLD-DIAGNOSIS.md) |
+| Stage 3 Phase A rename mapping (verdict: output-neutral, no mapping needed) | [`../parser/CSS-FOLD-PHASE-A-MAPPING.md`](../parser/CSS-FOLD-PHASE-A-MAPPING.md) |
+| Stage 3 Phase B discovery notes, kept so the next dispatch does not re-pay the discovery cost | [`../parser/CSS-FOLD-PHASE-B-PARTIAL-FINDINGS.md`](../parser/CSS-FOLD-PHASE-B-PARTIAL-FINDINGS.md) |
+| The 2026-07-17 dialect-architecture + error-coverage program. The physical re-base has landed; current status moved to `GRAMMAR-SEQUENCE-ORCHESTRATION.md` | [`../parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`](../parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md) |
+
+Reviewer agents for this work: `.cursor/agents/grammar-reviewer.md` (evidence per
+`const`; a bare verdict, "tests pass", or a sampled review is an invalid result)
+and `.cursor/agents/perf-architecture-reviewer.md` (evidence per invariant).
 
 The detailed future plans remain active for their grammar, feature/eval,
 scanner-cleanup, and performance content. Their former bridge/host sections are
