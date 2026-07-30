@@ -111,4 +111,51 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.fontFamilyMissingGeneric)).toBe(false);
   });
+
+  it('reports duplicate @import rules with the same target and conditions', () => {
+    const result = collectTolerantDiagnostics({
+      source: '@import url("a.css");\n@import "a.css";\n@import url(b.css) screen;\n@import url(b.css) print;\n@import url("b.css") screen;',
+      language: 'css'
+    });
+    const duplicates = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.duplicateAtImportRules);
+
+    expect(duplicates).toHaveLength(2);
+    expect(duplicates.map(diagnostic => diagnostic.message)).toEqual([
+      'Duplicate @import rule a.css',
+      'Duplicate @import rule b.css'
+    ]);
+    expect(duplicates[0]).toMatchObject({
+      line: 2,
+      column: 1
+    });
+    expect(duplicates[1]).toMatchObject({
+      line: 5,
+      column: 1
+    });
+  });
+
+  it('keeps duplicate @import checks conservative for dialect options and dynamic imports', () => {
+    const less = collectTolerantDiagnostics({
+      source: '@import (less) "theme.less";\n@import (reference) "theme.less";',
+      language: 'less'
+    });
+    const scss = collectTolerantDiagnostics({
+      source: '@import "theme-#{$mode}.css";\n@import "theme-#{$mode}.css";',
+      language: 'scss'
+    });
+
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.duplicateAtImportRules)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.duplicateAtImportRules)).toBe(false);
+  });
+
+  it('normalizes protocol-relative @import urls without treating // as a comment', () => {
+    const result = collectTolerantDiagnostics({
+      source: '@import url("//cdn.example/theme.css");\n@import "//cdn.example/theme.css";',
+      language: 'less'
+    });
+
+    expect(result.diagnostics.find(diagnostic => diagnostic.code === LINT_CODES.duplicateAtImportRules)).toMatchObject({
+      message: 'Duplicate @import rule //cdn.example/theme.css'
+    });
+  });
 });

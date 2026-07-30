@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 2;
+export const STABLE_LINT_RULE_SET_VERSION = 3;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -19,6 +19,7 @@ export const LINT_RULE_NAMES = {
   keyframeDeclarationNoImportant: 'keyframe-declaration-no-important',
   fontFamilyDuplicateNames: 'font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'font-family-no-missing-generic-family-keyword',
+  duplicateAtImportRules: 'no-duplicate-at-import-rules',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
 
@@ -47,6 +48,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: LINT_CODES.keyframeDeclarationNoImportant,
   [LINT_RULE_NAMES.fontFamilyDuplicateNames]: LINT_CODES.fontFamilyDuplicateNames,
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: LINT_CODES.fontFamilyMissingGeneric,
+  [LINT_RULE_NAMES.duplicateAtImportRules]: LINT_CODES.duplicateAtImportRules,
   [LINT_RULE_NAMES.unsupportedSassForm]: LINT_CODES.unsupportedSassForm
 };
 
@@ -62,6 +64,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.keyframeDeclarationNoImportant]: LINT_RULE_NAMES.keyframeDeclarationNoImportant,
   [LINT_CODES.fontFamilyDuplicateNames]: LINT_RULE_NAMES.fontFamilyDuplicateNames,
   [LINT_CODES.fontFamilyMissingGeneric]: LINT_RULE_NAMES.fontFamilyMissingGeneric,
+  [LINT_CODES.duplicateAtImportRules]: LINT_RULE_NAMES.duplicateAtImportRules,
   [LINT_CODES.unsupportedSassForm]: LINT_RULE_NAMES.unsupportedSassForm
 };
 
@@ -77,6 +80,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'warn',
   [LINT_RULE_NAMES.fontFamilyDuplicateNames]: 'warn',
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
+  [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
 };
 
@@ -91,7 +95,8 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.keyframeDuplicateSelectors]: 'warn',
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'warn',
   [LINT_RULE_NAMES.fontFamilyDuplicateNames]: 'warn',
-  [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn'
+  [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
+  [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn'
 };
 
 export const STABLE_LINT_RULES: readonly StableLintRule[] = [
@@ -204,6 +209,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'font-family-no-missing-generic-family-keyword',
     notes: 'Flags definite font-family declarations that omit a generic family keyword.'
+  },
+  {
+    code: LINT_CODES.duplicateAtImportRules,
+    ruleName: LINT_RULE_NAMES.duplicateAtImportRules,
+    title: 'Duplicate @import rules',
+    tier: 'maintainability',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-equivalent',
+    stylelintRule: 'no-duplicate-at-import-rules',
+    notes: 'Flags repeated @import targets with the same authored options and conditions in one file.'
   },
   {
     code: LINT_CODES.unsupportedSassForm,

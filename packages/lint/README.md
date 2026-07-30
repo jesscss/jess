@@ -123,6 +123,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | `keyframe-declaration-no-important` |
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | near `font-family-no-duplicate-names` |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | near `font-family-no-missing-generic-family-keyword` |
+| `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | `no-duplicate-at-import-rules` |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
 
 Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
