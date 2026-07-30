@@ -134,6 +134,16 @@ malformed header cannot be rescued as an at-rule statement followed by a
 ruleset. The next attempt should either compose the CSS conditional/container
 structure directly or introduce a committed known-at-rule dispatcher that proves
 public CST and AST rejection remain unchanged.
+Less lookahead inventory, 2026-07-29 current-dev recheck: grammar sources are
+clean for `Direct*` / `CssAst*` prefixes, but Less still has the last explicit
+`not(not(...))` code sites. The declaration-head interpolated-property gate was
+reduced to an honest `peek(...)` because it is already a bounded positive
+lookahead inside a declaration context. Do not apply that as a blanket pattern:
+the remaining function-condition argument probe needs a structural condition
+argument boundary, and the `.foo`/`#foo` mixin-vs-ruleset gate needs the planned
+class/id statement router that owns both the mixin continuation and the
+qualified-rule continuation. A cosmetic `peek(...)` swap at those two sites would
+preserve the wrong architecture.
 Less mixin-reference routing, 2026-07-29: the value-position
 `mixinReferenceAhead` probe was replaced by a typed shared mixin-reference base
 plus `dispatch(...)` on the first accessor delimiter (`[]`, `[`, `.`, or `(`).

@@ -3307,7 +3307,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // actually present before the delimiter, so plain properties fall straight to
   // the literal DeclarationProperty arm. The `node()` boundary keeps the marker
   // off the declaration reducer's `children[0]` property slot.
-  const interpolatedPropertyAhead = not(not(regex(/[^:;{}]*[@$]\{/)));
+  const interpolatedPropertyAhead = peek(regex(/[^:;{}]*[@$]\{/));
   const gatedInterpolatedProperty = node<Interpolation>(
     'GatedInterpolatedProperty',
     sequence(interpolatedPropertyAhead, g.InterpolatedProperty),
