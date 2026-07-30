@@ -56,7 +56,10 @@ jess lint src/card.scss --format json
 
 `packages/lint/src/rules.ts` exposes these stable rule names. Rule names follow
 Stylelint when the behavior is close enough to be familiar; Jess-only checks use
-a `jess/` prefix.
+a `jess/` prefix. Each stable rule also maps to a shared Jess diagnostic code:
+the rule name is the user-facing `lint.rules` key, while the diagnostic code is
+the shared identity used by diagnostics-core, the language service, JSON output,
+and compatibility aliases.
 
 | Rule | Diagnostic code | Kind |
 | --- | --- | --- |
@@ -80,6 +83,7 @@ a `jess/` prefix.
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | Stylelint-near |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
 | `font-face-no-missing-required-properties` | `lint/font-face-missing-required-properties` | VSCode-equivalent |
+| `property-ignored-due-to-display` | `lint/property-ignored-due-to-display` | VSCode-equivalent |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | Stylelint-equivalent |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
 | `no-unknown-animations` | `lint/no-unknown-animations` | Stylelint-near |
@@ -195,6 +199,7 @@ can detect over authored source.
 | Landed | Important declarations | `declaration-no-important` | Flags CSS `!important` declarations outside keyframes; keyframes use the dedicated keyframe rule to avoid duplicate default diagnostics. |
 | Landed | Named grid areas | `named-grid-areas-no-invalid` | Flags empty, ragged, or non-rectangular named grid area strings in CSS `grid`, `grid-template`, and `grid-template-areas` declarations. |
 | Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword`, `font-face-no-missing-required-properties` | Checks definite `font-family` values and CSS `@font-face` blocks missing `font-family`/`src`; dynamic values and dialect-injected descriptors stay unknown. |
+| Landed | Display/property interactions | `property-ignored-due-to-display` | Matches VSCode `propertyIgnoredDueToDisplay` for CSS `display: inline-block` with non-`none` `float`, and `display: block` with `vertical-align`; dynamic and dialect values stay unknown until semantic facts exist. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
 | Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
 | Landed | Units | `unit-no-unknown` | Flags unknown Dimension units; URL values and resolution `x` contexts are suppressed. |

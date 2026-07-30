@@ -342,6 +342,51 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.fontFaceMissingRequiredProperties)).toBe(false);
   });
 
+  it('reports CSS properties ignored by display mode', () => {
+    const source = [
+      '.inline { display: inline-block; float: left; }',
+      '.none { display: inline-block; float: none; }',
+      '.block { display: block; vertical-align: middle; }',
+      '.ok { display: inline; vertical-align: middle; float: right; }',
+      '.dynamic { display: var(--display); float: left; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const ignored = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.propertyIgnoredDueToDisplay);
+    const floatStart = source.indexOf('float: left');
+    const verticalAlignStart = source.indexOf('vertical-align');
+
+    expect(ignored.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'With display: inline-block, float changes display to block',
+        floatStart,
+        source.indexOf('; }')
+      ],
+      [
+        'With display: block, vertical-align has no effect',
+        verticalAlignStart,
+        source.indexOf('; }', verticalAlignStart)
+      ]
+    ]);
+  });
+
+  it('does not report properties ignored by display in dialect files before value facts exist', () => {
+    const source = '.a { display: block; vertical-align: middle; }\n.b { display: inline-block; float: left; }';
+    const scss = collectTolerantDiagnostics({
+      source,
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source,
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.propertyIgnoredDueToDisplay)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.propertyIgnoredDueToDisplay)).toBe(false);
+  });
+
   it('reports duplicate keyframe selectors and important keyframe declarations', () => {
     const result = collectTolerantDiagnostics({
       source: '@keyframes spin { from { opacity: 1 !important; } 0% { opacity: .5; } 50% { color: red; } 50% { color: blue; } }',

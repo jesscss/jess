@@ -36,6 +36,7 @@ export const LINT_CODES = {
   fontFamilyDuplicateNames: 'lint/font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
   fontFaceMissingRequiredProperties: 'lint/font-face-missing-required-properties',
+  propertyIgnoredDueToDisplay: 'lint/property-ignored-due-to-display',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   unknownAnimations: 'lint/no-unknown-animations',
@@ -1782,6 +1783,14 @@ function declarationValueText(source: string, node: CssCstNode): { readonly text
   };
 }
 
+function staticDeclarationKeywordValue(source: string, node: CssCstNode): string | null {
+  const value = declarationValueText(source, node);
+  if (value === null || hasDynamicSyntax(value.text) || !isCssIdentifier(value.text)) {
+    return null;
+  }
+  return value.text.toLowerCase();
+}
+
 function fontFaceMissingRequiredProperties(source: string, node: CssCstNode): readonly string[] {
   const required = new Set(['font-family', 'src']);
   for (const child of cstChildrenOf(node)) {
@@ -3483,6 +3492,10 @@ export function cstLintDiagnostics(
       : nodeContext;
     let seenProps: Map<string, string> | undefined;
     let seenCustomProps: Set<string> | undefined;
+    let hasDisplayInlineBlock = false;
+    let hasDisplayBlock = false;
+    const nonNoneFloatDeclarations: CssCstNode[] = [];
+    const verticalAlignDeclarations: CssCstNode[] = [];
     for (const child of cstChildrenOf(node)) {
       if (!isCstNode(child)) {
         continue;
@@ -3495,6 +3508,19 @@ export function cstLintDiagnostics(
         const name = propNameOf(childSource);
         if (name.length > 0 && !name.includes('#{') && !name.includes('@{') && !name.includes('${')) {
           const key = name.toLowerCase();
+          if (language === 'css' && RULESET_TYPES.has(gt) && !nodeContext.inKeyframeBlock) {
+            const keywordValue = staticDeclarationKeywordValue(source, child);
+            if (key === 'display') {
+              hasDisplayInlineBlock ||= keywordValue === 'inline-block';
+              hasDisplayBlock ||= keywordValue === 'block';
+            } else if (key === 'float') {
+              if (keywordValue !== null && keywordValue !== 'none') {
+                nonNoneFloatDeclarations.push(child);
+              }
+            } else if (key === 'vertical-align') {
+              verticalAlignDeclarations.push(child);
+            }
+          }
           seenProps ??= new Map();
           if (seenProps.has(key)) {
             push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${name}'`, child.span);
@@ -3536,6 +3562,28 @@ export function cstLintDiagnostics(
         }
       }
       visit(child, childContext);
+    }
+    if (language === 'css' && RULESET_TYPES.has(gt) && !nodeContext.inKeyframeBlock) {
+      if (hasDisplayInlineBlock) {
+        for (const declaration of nonNoneFloatDeclarations) {
+          push(
+            LINT_CODES.propertyIgnoredDueToDisplay,
+            'warning',
+            'With display: inline-block, float changes display to block',
+            declaration.span
+          );
+        }
+      }
+      if (hasDisplayBlock) {
+        for (const declaration of verticalAlignDeclarations) {
+          push(
+            LINT_CODES.propertyIgnoredDueToDisplay,
+            'warning',
+            'With display: block, vertical-align has no effect',
+            declaration.span
+          );
+        }
+      }
     }
   };
 

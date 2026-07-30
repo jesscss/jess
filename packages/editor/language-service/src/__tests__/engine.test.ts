@@ -671,6 +671,35 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('propertyIgnoredDueToDisplay (lint/property-ignored-due-to-display)', () => {
+      it('fires on CSS properties that display mode ignores', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { display: block; vertical-align: middle; }\n.b { display: inline-block; float: left; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/property-ignored-due-to-display');
+
+        expect(diags).toHaveLength(2);
+        expect(diags.map(d => d.severity)).toEqual([2, 2]); // Warning
+        const slices = diags.map(d => doc.getText().slice(doc.offsetAt(d.range.start), doc.offsetAt(d.range.end)));
+        expect(slices).toEqual(['vertical-align: middle', 'float: left']);
+      });
+
+      it('does not fire in dialect files before value facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('less', '.a { display: block; vertical-align: middle; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/property-ignored-due-to-display');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/property-ignored-due-to-display', 'ignore'));
+        const doc = createDocument('css', '.a { display: block; vertical-align: middle; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/property-ignored-due-to-display');
+      });
+    });
+
     describe('duplicateProperties (lint/duplicate-property)', () => {
       it('fires when a property is declared twice in one block', () => {
         const engine = createEngine();
