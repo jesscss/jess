@@ -1347,31 +1347,30 @@ const dollarBraceStructure = noTrivia(sequence(
  * Direct `$[...]` lookup is value/expression-only. Unlike `${...}`, it never
  * appears in a selector/name interpolation position.
  */
-const dollarInterpolationStructure = noTrivia(choice(
-  sequence(
-    literal('$['),
-    literal('$'),
-    dollarName,
-    literal(']')
-  ),
-  sequence(
-    literal('$['),
-    dollarName,
-    literal(']')
-  ),
-  sequence(
-    literal('$['),
-    literal('\''),
-    regex(/(?:[^'\\]|\\[\s\S])*/),
-    literal('\''),
-    literal(']')
-  ),
-  sequence(
-    literal('$['),
-    literal('"'),
-    regex(/(?:[^"\\]|\\[\s\S])*/),
-    literal('"'),
-    literal(']')
+const dollarInterpolationStructure = noTrivia(sequence(
+  literal('$['),
+  choice(
+    sequence(
+      literal('$'),
+      dollarName,
+      literal(']')
+    ),
+    sequence(
+      dollarName,
+      literal(']')
+    ),
+    sequence(
+      literal('\''),
+      regex(/(?:[^'\\]|\\[\s\S])*/),
+      literal('\''),
+      literal(']')
+    ),
+    sequence(
+      literal('"'),
+      regex(/(?:[^"\\]|\\[\s\S])*/),
+      literal('"'),
+      literal(']')
+    )
   )
 ));
 const customPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);

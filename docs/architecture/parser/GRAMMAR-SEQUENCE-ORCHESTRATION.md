@@ -5101,3 +5101,16 @@ AST/CST focus and full parser suite passed, including a single-quoted bracketed
 0.4831ms to 0.4568ms AST median and from 0.4720ms to 0.4652ms CST median for
 the 1.9KB Jess-data corpus (warmup 12, timed 45); the sample is too small and
 noisy to claim a speedup.
+
+Jess direct `$[...]` lookup factoring, 2026-07-30: the value/expression-only
+`dollarInterpolationStructure` now consumes its common `$[` literal once and
+chooses the disjoint computed-key, bare-key, single-quoted, or double-quoted
+body. Unlike the `${...}` change, this preserves the existing reducer child
+layout exactly, so `interpolationFromChildren` and the public `DollarInterp` /
+`ExpressionDollarInterp` nodes are unchanged. Generated Parseman diagnostics no
+longer report either `$` interpolation structure. The focused AST/CST suite and
+the full Jess parser suite passed; the coverage now asserts all four direct
+lookup body forms. `check:macro` had zero interpreter fallbacks and
+`verify:compose-integrity` passed. The 1.9KB snapshot was noisy and mixed
+(0.4933ms AST / 0.4460ms CST medians, warmup 12, timed 45), so it is not a
+speed claim.

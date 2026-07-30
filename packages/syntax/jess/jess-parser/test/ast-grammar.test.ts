@@ -2430,7 +2430,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('constructs structural Jess key and expression interpolation in values and quoted strings', () => {
-    const source = '$tone: blue; $gap: 2px; $key: $[tone]; $quoted-key: $["theme"]; $math: $(1 + 2 * $gap); $compare: $(1  +  2 = 3); $quoted-compare: $("a-${tone}" = foo); .card { content: "tone-${tone}-$(1 + 2)"; color: rgb($[tone], $(1 + 2), blue); }';
+    const source = '$tone: blue; $gap: 2px; $key: $[tone]; $quoted-key: $["theme"]; $single-quoted-key: $[\'theme\']; $math: $(1 + 2 * $gap); $compare: $(1  +  2 = 3); $quoted-compare: $("a-${tone}" = foo); .card { content: "tone-${tone}-$(1 + 2)"; color: rgb($[tone], $(1 + 2), blue); }';
     const legacy = parseJessCst(source);
     const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
 
@@ -2445,6 +2445,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'gap' },
         { type: 'VariableDeclaration', name: 'key', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'tone' }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'PropertyReference', name: 'theme', raw: '$["theme"]' }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'single-quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'PropertyReference', name: 'theme', raw: '$[\'theme\']' }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '+' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-${tone}" = foo' } }, unquote: true }] } },
