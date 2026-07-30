@@ -418,7 +418,7 @@ spell the glued opener structurally. The public CST grammar replaced
 `queryFunctionToken = regex(...(?=\())` plus a following `literal('(')` with
 `queryFunctionOpen = noTrivia(sequence(ident, literal('(')))`. The direct CSS
 AST grammar uses the same shape through a new shared recognition export,
-`CssSyntaxQueryFunctionOpen`. The older `CssSyntaxQueryFunctionName`
+`QueryFunctionOpen`. The older `QueryFunctionName`
 export remains available for Less/SCSS/Jess until their direct AST grammars are
 swept deliberately; do not delete or repoint it incidentally. A regression test
 now verifies that `selector(.grid)` parses while `selector (.grid)` reports a
