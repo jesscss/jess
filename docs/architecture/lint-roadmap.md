@@ -94,6 +94,7 @@ enough.
 | `vendor-prefix` | `lint/vendor-prefix` | VSCode-equivalent |
 | `compatible-vendor-prefixes` | `lint/compatible-vendor-prefixes` | VSCode-equivalent, opt-in |
 | `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | VSCode-equivalent, opt-in |
+| `import-statement` | `lint/import-statement` | VSCode-equivalent, opt-in |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | Stylelint-equivalent |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
 | `no-unknown-animations` | `lint/no-unknown-animations` | Stylelint-near |
@@ -227,6 +228,7 @@ can detect over authored source.
 | Landed | Vendor prefixes | `vendor-prefix` | Matches VSCode `vendorPrefix` for CSS vendor-prefixed declarations and keyframe at-rules whose standard form is missing. |
 | Landed | Compatible vendor prefixes | `compatible-vendor-prefixes` | Opt-in VSCode `compatibleVendorPrefixes` parity for CSS declarations and keyframe at-rules that use one known vendor-prefixed form but omit other known vendor-prefixed siblings. |
 | Landed | Unknown vendor-specific properties | `unknown-vendor-specific-properties` | Opt-in VSCode `unknownVendorSpecificProperties` parity for CSS single-hyphen prefixed declarations whose full property name is not known; custom validProperties support stays future work. |
+| Landed | Import statement warning | `import-statement` | Opt-in VSCode `importStatement` parity for CSS `@import` rules that may block parallel stylesheet loading. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
 | Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
 | Landed | Selector policy | `selector-max-id`, `selector-max-universal` | Opt-in VSCode `idSelector` and `universalSelector` parity surfaced under Stylelint names; the initial subset reports any static CSS ID or universal selector as max-0. |
@@ -237,6 +239,7 @@ can detect over authored source.
 | Landed | At-rule descriptor values | `at-rule-descriptor-value-no-unknown` | Flags definite invalid descriptor values in parsed CSS descriptor blocks; the first subset covers `@property` `syntax`/`inherits` and `@font-face` `font-display`. |
 | Landed | Color function arguments | `color-function-no-invalid-arguments` | Matches VSCode `argumentsInColorFunction` for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |
 | Landed | Typed custom properties | `jess/no-invalid-typed-custom-property-value` | Flags definite CSS `@property` `initial-value` mismatches for simple syntax descriptors; full CSS value-definition syntax and dialect value facts remain future work. |
+| P3 | Browser legacy hacks | `ie-hack` | VSCode has opt-in `ieHack`, but current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |
 | P2 | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Project-policy heavy; opt-in only. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |
