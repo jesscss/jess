@@ -754,6 +754,35 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('float (lint/float)', () => {
+      it('stays quiet by default because VSCode marks float opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { float: left; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/float');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/float', 'warning'));
+        const doc = createDocument('css', '.a { float: left; }\n.b { float: none; }\n.c { float: var(--side); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/float');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('float: left');
+      });
+
+      it('does not fire in dialect files before value facts exist', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/float', 'warning'));
+        const doc = createDocument('less', '.a { float: left; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/float');
+      });
+    });
+
     describe('unusedVariables (lint/no-unused-variable)', () => {
       it('stays quiet by default until project symbol facts exist', () => {
         const engine = createEngine();

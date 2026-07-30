@@ -768,7 +768,8 @@ export function createEngine(): JessLanguageServiceEngine {
      * CST lint rules. Keys match `LINT_CODES`; every rule's severity is
      * settable via `configure()` and disabled with `ignore`/`off`.
      * Keep these aligned with @jesscss/lint recommended diagnostics, except
-     * rules that are intentionally opt-in such as `lint/box-model`.
+     * rules that are intentionally opt-in such as `lint/box-model` and
+     * `lint/float`.
      */
     [LINT_CODES.emptyRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownProperties]: DiagnosticSeverity.Warning,
