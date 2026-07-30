@@ -574,6 +574,50 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.propertyIgnoredDueToDisplay)).toBe(false);
   });
 
+  it('reports definite CSS float layout declarations as an opt-in diagnostic source', () => {
+    const source = [
+      '.left { float: left; }',
+      '.none { float: none; }',
+      '.dynamic { float: var(--side); }',
+      '.right { float: inline-end; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const floats = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.float);
+    const leftStart = source.indexOf('float: left');
+    const rightStart = source.indexOf('float: inline-end');
+
+    expect(floats.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Avoid using float for layout',
+        leftStart,
+        source.indexOf(';', leftStart)
+      ],
+      [
+        'Avoid using float for layout',
+        rightStart,
+        source.indexOf(';', rightStart)
+      ]
+    ]);
+  });
+
+  it('does not report float layout diagnostics in dialect files before value facts exist', () => {
+    const source = '.a { float: left; }';
+    const scss = collectTolerantDiagnostics({
+      source,
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source,
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.float)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.float)).toBe(false);
+  });
+
   it('reports definite CSS box-model size risks', () => {
     const source = [
       '.wide { width: 100px; padding-left: 1px; padding-right: 0; }',

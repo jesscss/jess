@@ -106,6 +106,7 @@ export default {
       'font-face-no-missing-required-properties': 'warn',
       'property-ignored-due-to-display': 'warn',
       'box-model': 'off',
+      'float': 'off',
       'color-function-no-invalid-arguments': 'error',
       'jess/no-invalid-typed-custom-property-value': 'warn',
       'jess/no-unused-variable': 'off',
@@ -157,6 +158,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `font-face-no-missing-required-properties` | `lint/font-face-missing-required-properties` | VSCode `fontFaceProperties` parity |
 | `property-ignored-due-to-display` | `lint/property-ignored-due-to-display` | VSCode `propertyIgnoredDueToDisplay` parity |
 | `box-model` | `lint/box-model` | VSCode `boxModel` parity, opt-in |
+| `float` | `lint/float` | VSCode `float` parity, opt-in |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | `no-invalid-position-at-import-rule` |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | `no-duplicate-at-import-rules` |
 | `no-unknown-animations` | `lint/no-unknown-animations` | near `no-unknown-animations` |

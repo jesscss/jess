@@ -38,6 +38,7 @@ export const LINT_CODES = {
   fontFaceMissingRequiredProperties: 'lint/font-face-missing-required-properties',
   propertyIgnoredDueToDisplay: 'lint/property-ignored-due-to-display',
   boxModel: 'lint/box-model',
+  float: 'lint/float',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   duplicateModuleLoads: 'lint/no-duplicate-module-load',
@@ -4480,6 +4481,14 @@ export function cstLintDiagnostics(
             declaration.span
           );
         }
+      }
+      for (const declaration of nonNoneFloatDeclarations ?? []) {
+        push(
+          LINT_CODES.float,
+          'warning',
+          'Avoid using float for layout',
+          declaration.span
+        );
       }
       if (hasDisplayBlock) {
         for (const declaration of verticalAlignDeclarations ?? []) {
