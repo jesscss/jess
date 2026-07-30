@@ -224,6 +224,36 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports unknown animation names from CSS declarations', () => {
+    const source = '.a { animation: 1s ease-in known, 200ms missing both; animation-name: known, other, none; }\n'
+      + '.b { animation: var(--motion); }\n'
+      + '@keyframes /* { */ known { from { opacity: 0; } }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownAnimations = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownAnimations);
+
+    expect(unknownAnimations.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown animation "missing"', source.indexOf('missing'), source.indexOf('missing') + 'missing'.length],
+      ['Unknown animation "other"', source.indexOf('other'), source.indexOf('other') + 'other'.length]
+    ]);
+  });
+
+  it('does not report unknown animations in dialect files before animation facts exist', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '.a { animation-name: missing; }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '.a { animation-name: missing; }',
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownAnimations)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownAnimations)).toBe(false);
+  });
+
   it('reports invalid named grid areas', () => {
     const source = '.a { grid-template-areas: "a a" "b"; }\n'
       + '.b { grid-template: "a ." ". a" / 1fr 1fr; }\n'

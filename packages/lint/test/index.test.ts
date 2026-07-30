@@ -39,6 +39,7 @@ describe('stable rule set', () => {
       LINT_CODES.fontFamilyMissingGeneric,
       LINT_CODES.invalidImportPosition,
       LINT_CODES.duplicateAtImportRules,
+      LINT_CODES.unknownAnimations,
       LINT_CODES.duplicateSelectors,
       LINT_CODES.unknownUnits,
       LINT_CODES.unknownFunctions,
@@ -70,6 +71,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
       LINT_RULE_NAMES.invalidImportPosition,
       LINT_RULE_NAMES.duplicateAtImportRules,
+      LINT_RULE_NAMES.unknownAnimations,
       LINT_RULE_NAMES.duplicateSelectors,
       LINT_RULE_NAMES.unknownUnits,
       LINT_RULE_NAMES.unknownFunctions,
@@ -82,7 +84,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(18);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(19);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -101,6 +103,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.fontFamilyDuplicateNames,
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
       LINT_RULE_NAMES.duplicateAtImportRules,
+      LINT_RULE_NAMES.unknownAnimations,
       LINT_RULE_NAMES.unknownUnits,
       LINT_RULE_NAMES.unknownFunctions,
       LINT_RULE_NAMES.unknownMediaFeatureNames,
@@ -350,6 +353,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.duplicateAtImportRules, 'error']
+    ]);
+  });
+
+  it('applies policy to unknown animation diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { animation-name: missing; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.unknownAnimations]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.unknownAnimations, 'error']
     ]);
   });
 

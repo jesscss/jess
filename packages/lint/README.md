@@ -130,6 +130,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | near `font-family-no-missing-generic-family-keyword` |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | `no-invalid-position-at-import-rule` |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | `no-duplicate-at-import-rules` |
+| `no-unknown-animations` | `lint/no-unknown-animations` | near `no-unknown-animations` |
 | `no-duplicate-selectors` | `lint/no-duplicate-selectors` | near `no-duplicate-selectors` |
 | `unit-no-unknown` | `lint/unit-no-unknown` | near `unit-no-unknown` |
 | `function-no-unknown` | `lint/function-no-unknown` | near `function-no-unknown` |
