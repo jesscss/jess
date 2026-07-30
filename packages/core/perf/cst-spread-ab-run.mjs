@@ -32,16 +32,31 @@ const src = readFileSync(file, 'utf8');
 
 for (let i = 0; i < warmup; i++) { parseCssCst(src); }
 
+/*
+ * Wall clock AND CPU time. On a loaded machine wall-clock quantiles are charged
+ * for preemption by unrelated processes, and the review of this change showed
+ * wall-clock MEDIAN inverting run to run while the floor stayed stable --
+ * min-only reporting hid that. `process.cpuUsage()` is not charged for
+ * preemption, so it is the honest estimator here; wall clock is kept alongside
+ * so the contamination stays visible rather than being asserted away.
+ */
 const times = [];
+const cpus = [];
 for (let i = 0; i < samples; i++) {
   if (globalThis.gc) { globalThis.gc(); globalThis.gc(); }
+  const c0 = process.cpuUsage();
   const t0 = performance.now();
   const r = parseCssCst(src);
-  times.push(performance.now() - t0);
+  const wall = performance.now() - t0;
+  const c1 = process.cpuUsage(c0);
+  times.push(wall);
+  cpus.push((c1.user + c1.system) / 1000);
   if (!r.ok && i === 0) { console.error(`${variant}: parse NOT ok`); }
 }
 times.sort((a, b) => a - b);
+cpus.sort((a, b) => a - b);
 const med = times[times.length >> 1];
+const q = (xs, p) => xs[Math.min(xs.length - 1, Math.round((xs.length - 1) * p))];
 
 /* Node/leaf counts prove both lanes built the same tree. */
 let nodes = 0, leaves = 0, tagged = 0;
@@ -55,7 +70,10 @@ while (stack.length) {
   } else if (n._tag === 'leaf') { leaves++; }
 }
 
+const r3 = x => Math.round(x * 1000) / 1000;
 console.log(JSON.stringify({
-  variant, median: med, min: times[0], p75: times[Math.floor(times.length * 0.75)],
-  samples: times.length, nodes, leaves, tagged, load: loadavg()[0]
+  variant,
+  wall: { min: r3(times[0]), p25: r3(q(times, 0.25)), median: r3(med), p75: r3(q(times, 0.75)) },
+  cpu: { min: r3(cpus[0]), p25: r3(q(cpus, 0.25)), median: r3(q(cpus, 0.5)), p75: r3(q(cpus, 0.75)) },
+  samples: times.length, nodes, leaves, tagged, load: r3(loadavg()[0])
 }));

@@ -289,17 +289,53 @@ function buildCssCstNode(args: BuildHostArgs): CssCstNode {
     || type === 'BasicSelector'
     ? mergeTags(tags, 'Selector')
     : tags;
+  const typeName = publicTypeName(type);
+  const nodeSpan = publicSpan(
+    grammarType,
+    span,
+    rawChildren
+  );
+  const nodeState = state ?? null;
+
+  /*
+   * Two explicit branches, not one literal with a conditional `tags` spread.
+   * Both spellings realize the SAME two hidden classes (measured with
+   * `%HaveSameMap`, not assumed), so this is NOT a node-shape fix — it is a
+   * construction-path one: a conditional spread drops the literal off V8's
+   * object-literal fast path onto a generic copy-properties runtime call, and
+   * allocates a throwaway `{}`/`{ tags }` per node to do it. Every dialect pays
+   * it, because less/scss/jess all route their CST through here.
+   *
+   * Measured on benchmark.css (CPU time, 3 interleaved pairs, 30 samples):
+   * ~2x at the floor and ~1.3-1.6x at loaded quantiles — the upper quantiles
+   * compress because contention adds a roughly constant cost to both lanes.
+   * Quote the range, not a single number. Harness:
+   * `packages/core/perf/node-representation-bench.mjs` (spread vs branch at
+   * equal hidden-class count) and `cst-spread-ab-*` (real-parse A/B).
+   *
+   * Field order is deliberately identical to the spread it replaces, and both
+   * arms must stay identical: adding a field to only one arm, or in a different
+   * position, silently mints a third hidden class. `cst-shape-digest.mjs`
+   * catches exactly that.
+   */
+  if (publicTags === undefined || publicTags.length === 0) {
+    return {
+      _tag: 'node',
+      type: typeName,
+      grammarType: type,
+      span: nodeSpan,
+      state: nodeState,
+      rules,
+      children: rules
+    };
+  }
   return {
     _tag: 'node',
-    type: publicTypeName(type),
+    type: typeName,
     grammarType: type,
-    ...(publicTags === undefined || publicTags.length === 0 ? {} : { tags: publicTags }),
-    span: publicSpan(
-      grammarType,
-      span,
-      rawChildren
-    ),
-    state: state ?? null,
+    tags: publicTags,
+    span: nodeSpan,
+    state: nodeState,
     rules,
     children: rules
   };
