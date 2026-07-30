@@ -19,6 +19,7 @@ export const LINT_CODES = {
   unknownAtRules: 'lint/unknown-at-rule',
   unknownAtRuleDescriptors: 'lint/at-rule-descriptor-no-unknown',
   duplicateProperties: 'lint/duplicate-property',
+  shorthandPropertyOverrides: 'lint/declaration-block-no-shorthand-property-overrides',
   duplicateCustomProperties: 'lint/declaration-block-no-duplicate-custom-properties',
   hexColorLength: 'lint/hex-color-length',
   zeroUnits: 'lint/zero-units',
@@ -64,6 +65,65 @@ const TIME_UNITS = new Set(['s', 'ms']);
 const FREQUENCY_UNITS = new Set(['hz', 'khz']);
 const RESOLUTION_UNITS = new Set(['dpi', 'dpcm', 'dppx', 'x']);
 const MATH_FUNCTION_NAMES = new Set(['min', 'max', 'clamp']);
+
+const SHORTHAND_OVERRIDE_PROPERTIES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['animation', new Set([
+    'animation-delay', 'animation-direction', 'animation-duration', 'animation-fill-mode',
+    'animation-iteration-count', 'animation-name', 'animation-play-state', 'animation-timing-function'
+  ])],
+  ['background', new Set([
+    'background-attachment', 'background-clip', 'background-color', 'background-image',
+    'background-origin', 'background-position', 'background-repeat', 'background-size'
+  ])],
+  ['border', new Set([
+    'border-bottom', 'border-bottom-color', 'border-bottom-style', 'border-bottom-width',
+    'border-color', 'border-image', 'border-image-outset', 'border-image-repeat',
+    'border-image-slice', 'border-image-source', 'border-image-width', 'border-left',
+    'border-left-color', 'border-left-style', 'border-left-width', 'border-right',
+    'border-right-color', 'border-right-style', 'border-right-width', 'border-style',
+    'border-top', 'border-top-color', 'border-top-style', 'border-top-width', 'border-width'
+  ])],
+  ['border-bottom', new Set(['border-bottom-color', 'border-bottom-style', 'border-bottom-width'])],
+  ['border-color', new Set(['border-bottom-color', 'border-left-color', 'border-right-color', 'border-top-color'])],
+  ['border-left', new Set(['border-left-color', 'border-left-style', 'border-left-width'])],
+  ['border-radius', new Set([
+    'border-bottom-left-radius', 'border-bottom-right-radius',
+    'border-top-left-radius', 'border-top-right-radius'
+  ])],
+  ['border-right', new Set(['border-right-color', 'border-right-style', 'border-right-width'])],
+  ['border-style', new Set(['border-bottom-style', 'border-left-style', 'border-right-style', 'border-top-style'])],
+  ['border-top', new Set(['border-top-color', 'border-top-style', 'border-top-width'])],
+  ['border-width', new Set(['border-bottom-width', 'border-left-width', 'border-right-width', 'border-top-width'])],
+  ['column-rule', new Set(['column-rule-color', 'column-rule-style', 'column-rule-width'])],
+  ['columns', new Set(['column-count', 'column-width'])],
+  ['flex', new Set(['flex-basis', 'flex-grow', 'flex-shrink'])],
+  ['font', new Set([
+    'font-family', 'font-feature-settings', 'font-kerning', 'font-language-override',
+    'font-optical-sizing', 'font-size', 'font-size-adjust', 'font-stretch', 'font-style',
+    'font-variant', 'font-variant-alternates', 'font-variant-caps',
+    'font-variant-east-asian', 'font-variant-emoji', 'font-variant-ligatures',
+    'font-variant-numeric', 'font-variant-position', 'font-variation-settings',
+    'font-weight', 'line-height'
+  ])],
+  ['grid', new Set([
+    'grid-auto-columns', 'grid-auto-flow', 'grid-auto-rows',
+    'grid-template', 'grid-template-areas', 'grid-template-columns', 'grid-template-rows'
+  ])],
+  ['grid-template', new Set(['grid-template-areas', 'grid-template-columns', 'grid-template-rows'])],
+  ['inset', new Set(['bottom', 'left', 'right', 'top'])],
+  ['inset-block', new Set(['inset-block-end', 'inset-block-start'])],
+  ['inset-inline', new Set(['inset-inline-end', 'inset-inline-start'])],
+  ['list-style', new Set(['list-style-image', 'list-style-position', 'list-style-type'])],
+  ['margin', new Set(['margin-bottom', 'margin-left', 'margin-right', 'margin-top'])],
+  ['outline', new Set(['outline-color', 'outline-style', 'outline-width'])],
+  ['padding', new Set(['padding-bottom', 'padding-left', 'padding-right', 'padding-top'])],
+  ['place-content', new Set(['align-content', 'justify-content'])],
+  ['place-items', new Set(['align-items', 'justify-items'])],
+  ['place-self', new Set(['align-self', 'justify-self'])],
+  ['scroll-margin', new Set(['scroll-margin-bottom', 'scroll-margin-left', 'scroll-margin-right', 'scroll-margin-top'])],
+  ['scroll-padding', new Set(['scroll-padding-bottom', 'scroll-padding-left', 'scroll-padding-right', 'scroll-padding-top'])],
+  ['transition', new Set(['transition-delay', 'transition-duration', 'transition-property', 'transition-timing-function'])]
+]);
 
 const DIALECT_AT_RULES: Record<JessLanguage, Set<string>> = {
   css: new Set(),
@@ -396,6 +456,22 @@ function unprefixedName(name: string): string {
     return name.slice(3);
   }
   return name;
+}
+
+function vendorPrefixOfName(name: string): string {
+  if (name.startsWith('-webkit-')) {
+    return '-webkit-';
+  }
+  if (name.startsWith('-moz-')) {
+    return '-moz-';
+  }
+  if (name.startsWith('-ms-')) {
+    return '-ms-';
+  }
+  if (name.startsWith('-o-')) {
+    return '-o-';
+  }
+  return '';
 }
 
 function pseudoNameSpan(source: string, start: number, end: number): { name: string; bare: string; colonCount: 1 | 2; start: number; end: number } | null {
@@ -1868,7 +1944,7 @@ export function cstLintDiagnostics(
   ) => {
     const start = Number(span.start);
     const end = Number(span.end);
-    const key = `${code}:${start}:${Math.max(start, end)}`;
+    const key = `${code}:${start}:${Math.max(start, end)}:${message}`;
     if (emitted.has(key)) {
       return;
     }
@@ -2306,7 +2382,7 @@ export function cstLintDiagnostics(
           selectorLists: new Map()
         }
       : nodeContext;
-    let seenProps: Set<string> | undefined;
+    let seenProps: Map<string, string> | undefined;
     let seenCustomProps: Set<string> | undefined;
     for (const child of cstChildrenOf(node)) {
       if (!isCstNode(child)) {
@@ -2316,15 +2392,32 @@ export function cstLintDiagnostics(
       if (DECLARATION_TYPES.has(childGrammarType)) {
         const childStart = absoluteStart(child);
         const childEnd = absoluteEnd(child);
-        const name = propNameOf(source.slice(childStart, childEnd));
+        const childSource = source.slice(childStart, childEnd);
+        const name = propNameOf(childSource);
         if (name.length > 0 && !name.includes('#{') && !name.includes('@{') && !name.includes('${')) {
           const key = name.toLowerCase();
-          seenProps ??= new Set();
+          seenProps ??= new Map();
           if (seenProps.has(key)) {
             push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${name}'`, child.span);
-          } else {
-            seenProps.add(key);
           }
+          const prefix = vendorPrefixOfName(key);
+          const overriddenProperties = SHORTHAND_OVERRIDE_PROPERTIES.get(unprefixedName(key));
+          if (overriddenProperties !== undefined) {
+            const nameStart = childStart + childSource.indexOf(name);
+            const nameSpan = spanAtOrContaining(child, nameStart, nameStart + name.length);
+            for (const longhand of overriddenProperties) {
+              const overriddenName = seenProps.get(`${prefix}${longhand}`);
+              if (overriddenName !== undefined) {
+                push(
+                  LINT_CODES.shorthandPropertyOverrides,
+                  'warning',
+                  `Overridden property "${overriddenName}" by shorthand "${name}"`,
+                  nameSpan
+                );
+              }
+            }
+          }
+          seenProps.set(key, name);
         }
       }
       if (CUSTOM_DECLARATION_TYPES.has(childGrammarType)) {

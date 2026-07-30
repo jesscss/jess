@@ -57,6 +57,7 @@ a `jess/` prefix.
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | Stylelint-near |
 | `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | Stylelint-near |
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | Stylelint-equivalent |
+| `declaration-block-no-shorthand-property-overrides` | `lint/declaration-block-no-shorthand-property-overrides` | Stylelint-near |
 | `declaration-block-no-duplicate-custom-properties` | `lint/declaration-block-no-duplicate-custom-properties` | Stylelint-equivalent |
 | `color-no-invalid-hex` | `lint/hex-color-length` | Stylelint-equivalent |
 | `length-zero-no-unit` | `lint/zero-units` | Stylelint-equivalent |
@@ -134,13 +135,13 @@ pnpm --filter @jesscss/lint bench:stylelint
 ```
 
 Current CSS benchmark evidence on `packages/jess/benchmark/benchmark.css`
-using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 236-finding
+using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 242-finding
 comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint comparison config | `29.65 ms/op` |
-| Stylelint comparable rules | `32.12 ms/op` |
+| Jess lint comparison config | `23.51 ms/op` |
+| Stylelint comparable rules | `29.17 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -158,12 +159,13 @@ can detect over authored source.
 | Priority | Stylelint rule family | Jess rule name | Notes |
 | --- | --- | --- | --- |
 | P0 | Unknown CSS | existing `property-no-unknown`, `at-rule-no-unknown` | Keep metadata current and dialect-aware. |
-| P0 | Duplicates | existing `declaration-block-no-duplicate-properties` | Add ignore-consecutive and shorthand/longhand awareness. |
+| P0 | Duplicates | existing `declaration-block-no-duplicate-properties` | Add ignore-consecutive and expand shorthand/longhand property-table coverage. |
 | P0 | Empty blocks | existing `block-no-empty` | Extend to empty mixin bodies only when configured. Empty mixins can be API placeholders. |
 | Landed | Custom properties | `custom-property-no-missing-var-function` | Flags `color: --x`; suppresses inside custom-property declarations and `var()`. |
 | Landed | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement after style rules or blocking at-rules. Jess `@-import` is separate. |
 | Landed | Duplicate imports | `no-duplicate-at-import-rules` | Flags repeated same-file imports with the same target/options/conditions; import-graph duplicate modules remain Jess-only semantic work. |
 | Landed | Duplicate custom properties | `declaration-block-no-duplicate-custom-properties` | Flags repeated custom property declarations in one parsed block with exact name matching. |
+| Landed | Shorthand overrides | `declaration-block-no-shorthand-property-overrides` | Flags common CSS shorthands that override earlier longhands in the same parsed block; starts with a curated high-value shorthand map. |
 | Landed | Duplicate selectors | `no-duplicate-selectors` | CSS selector-list duplicates are CST-owned: duplicate entries inside one list and duplicate whole lists among sibling rules. Dialect nested resolution still needs selector facts. |
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
 | Landed | Named grid areas | `named-grid-areas-no-invalid` | Flags empty, ragged, or non-rectangular named grid area strings in CSS `grid`, `grid-template`, and `grid-template-areas` declarations. |

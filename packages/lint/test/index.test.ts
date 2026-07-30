@@ -26,6 +26,7 @@ describe('stable rule set', () => {
       LINT_CODES.unknownAtRules,
       LINT_CODES.unknownAtRuleDescriptors,
       LINT_CODES.duplicateProperties,
+      LINT_CODES.shorthandPropertyOverrides,
       LINT_CODES.duplicateCustomProperties,
       LINT_CODES.hexColorLength,
       LINT_CODES.zeroUnits,
@@ -54,6 +55,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownAtRules,
       LINT_RULE_NAMES.unknownAtRuleDescriptors,
       LINT_RULE_NAMES.duplicateProperties,
+      LINT_RULE_NAMES.shorthandPropertyOverrides,
       LINT_RULE_NAMES.duplicateCustomProperties,
       LINT_RULE_NAMES.hexColorLength,
       LINT_RULE_NAMES.zeroUnits,
@@ -76,7 +78,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(15);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(16);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -91,6 +93,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.hexColorLength,
       LINT_RULE_NAMES.customPropertyMissingVarFunction,
       LINT_RULE_NAMES.invalidImportPosition,
+      LINT_RULE_NAMES.shorthandPropertyOverrides,
       LINT_RULE_NAMES.fontFamilyDuplicateNames,
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
       LINT_RULE_NAMES.duplicateAtImportRules,
@@ -275,6 +278,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.invalidNamedGridAreas, 'error']
+    ]);
+  });
+
+  it('applies policy to shorthand property override diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { margin-left: 1px; margin: 0; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.shorthandPropertyOverrides]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.shorthandPropertyOverrides, 'error']
     ]);
   });
 

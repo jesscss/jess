@@ -29,6 +29,7 @@ const STYLELINT_RULES = {
   'at-rule-descriptor-no-unknown': true,
   'declaration-block-no-duplicate-custom-properties': true,
   'declaration-block-no-duplicate-properties': true,
+  'declaration-block-no-shorthand-property-overrides': true,
   'color-no-invalid-hex': true,
   'length-zero-no-unit': true,
   'custom-property-no-missing-var-function': true,

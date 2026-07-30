@@ -154,6 +154,28 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports shorthand properties that override earlier longhands', () => {
+    const source = '.a { margin-left: 1px; margin: 0; background-image: url(a.png); background-color: red; background: blue; }\n'
+      + '.b { margin: 0; margin-left: 1px; -webkit-transition-property: opacity; -webkit-transition: opacity 1s; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const shorthandOverrides = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.shorthandPropertyOverrides
+    );
+    const marginStart = source.indexOf('margin: 0');
+    const backgroundStart = source.indexOf('background: blue');
+    const transitionStart = source.indexOf('-webkit-transition: opacity');
+
+    expect(shorthandOverrides.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Overridden property "margin-left" by shorthand "margin"', marginStart, marginStart + 'margin'.length],
+      ['Overridden property "background-color" by shorthand "background"', backgroundStart, backgroundStart + 'background'.length],
+      ['Overridden property "background-image" by shorthand "background"', backgroundStart, backgroundStart + 'background'.length],
+      ['Overridden property "-webkit-transition-property" by shorthand "-webkit-transition"', transitionStart, transitionStart + '-webkit-transition'.length]
+    ]);
+  });
+
   it('reports unknown at-rule descriptors without also reporting unknown properties', () => {
     const source = '@font-face { font-family: Inter; src: url(inter.woff2); made-up: nope; }\n'
       + '@property --x { syntax: "<length>"; inherits: false; initial-value: 0px; unknown: yes; }\n'
