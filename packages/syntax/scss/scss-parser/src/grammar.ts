@@ -1329,25 +1329,19 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * The legacy URL lexical body permits ordinary `#` bytes, but an interpolation
-   * opener has its own typed SCSS production. This closed static branch must not
-   * flatten it into `Any`, so `#{` is excluded by grammar rather than a post-parse
-   * inspection.
+   * Plain URL text reserves `#{` for the typed interpolation production while
+   * retaining CSS URL escaping and ordinary `#` bytes. Both literal and
+   * interpolation-bearing URLs use this same chunk grammar.
    */
-  const staticUrlInner = regex(/(?:[^\"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F#]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#(?!\{))+/);
+  const plainUrlChunk = regex(/(?:[^\"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F#]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#(?!\{))+/);
 
-  /*
-   * URL chunks reserve a real interpolation opener for the structural branch,
-   * while retaining CSS URL escaping and ordinary `#` bytes as literal text.
-   */
-  const interpolatedUrlChunk = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F#]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#(?!\{))+/);
   const InterpolatedUrlValue = node<Interpolation>(
     'InterpolatedUrlValue',
     sequence(
-      optional(interpolatedUrlChunk),
+      optional(plainUrlChunk),
       g.SassInterpolation,
       many(choice(
-        interpolatedUrlChunk,
+        plainUrlChunk,
         g.SassInterpolation
       ))
     ),
@@ -1494,7 +1488,7 @@ export const scssFactory = (g: ScssInputRules) => {
       optional(choice(
         g.Quoted,
         g.InterpolatedUrlValue,
-        staticUrlInner
+        plainUrlChunk
       )),
       literal(')')
     ),
@@ -2150,7 +2144,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.UrlOpen,
       optional(choice(
         g.Quoted,
-        staticUrlInner
+        plainUrlChunk
       )),
       literal(')')
     ),
