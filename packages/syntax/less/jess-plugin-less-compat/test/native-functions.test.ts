@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Context } from '@jesscss/core';
-import { defineFunction, emitValue, makeDimension, type FnCtx, type ValueObj } from '@jesscss/core';
+import { defineFunction, emitValue, makeDimension, type FnCtx, type Value } from '@jesscss/core';
 import { LessApiBridge } from '../src/less-api-bridge.js';
 import { LessCompatPlugin } from '../src/plugin.js';
 
@@ -65,7 +65,7 @@ describe('AST-v2 native function boundary', () => {
 
   it('does not materialize unused child value wrappers for raw sequence args', async () => {
     let bytesReads = 0;
-    const child: ValueObj = {
+    const child: Value = {
       type: 'Keyword',
       text: 'child',
       get bytes() {
@@ -84,7 +84,7 @@ describe('AST-v2 native function boundary', () => {
   });
 
   it('caches lazy child wrappers when a Less plugin reads a sequence arg repeatedly', async () => {
-    const child: ValueObj = { type: 'Keyword', text: 'child', bytes: 'child' };
+    const child: Value = { type: 'Keyword', text: 'child', bytes: 'child' };
     const bridge = new LessApiBridge();
     const fn = bridge.addFunction('probe', (arg) => {
       expect(hasNativeValue(arg)).toBe(true);

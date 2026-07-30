@@ -49,6 +49,14 @@ actually use `instanceof`, constructors, or prototype methods, a lazy
 compatibility facade may be justified for that observed shape. Jess v2 should
 not resurrect tree classes speculatively.
 
+Current installed Less-plugin evidence:
+
+| Package | Version | Entry point / shape observed | Compatibility conclusion |
+| --- | ---: | --- | --- |
+| `less-plugin-clean-css` | 1.6.0 | No `less.tree`, visitor, `instanceof`, or prototype usage in the installed package source. | No class facade evidence. |
+| `less-plugin-autoprefix` | 2.0.0 | No `less.tree`, visitor, `instanceof`, or prototype usage in the installed package source. | No class facade evidence. |
+| `less-plugin-dls` | 1.5.0 | Function registrations plus `src/enhancers/reduce-calc.js` monkey-patches `less.tree.Call.prototype.genCSS`. | Evidence for a possible lazy Less tree/prototype compat lane, not for changing canonical AST nodes into classes. |
+
 Context: this audit compares the current canonical AST v2 and `packages/fns`
 usage against Less 4.x tree naming, the public CSS/Less CST surface, and the
 newer value-domain API. Deviation is acceptable when it improves Jess UX/DX or
