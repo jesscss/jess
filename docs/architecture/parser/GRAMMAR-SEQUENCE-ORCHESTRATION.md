@@ -4762,11 +4762,43 @@ shared-opener dispatch candidate.
 Verification for that alignment: parser-shared then SCSS builds; SCSS public
 CST, macro-compiled AST, compose-integrity, and mixin-focused AST tests; root
 `check:macro` (zero interpreter fallbacks); and root compose integrity passed.
-The full SCSS AST grammar suite has three separate existing stack overflows in
-custom-property/interpolation and `@supports` fixtures. The same three failures
-reproduced after temporarily restoring the prior CST labels, so they do not
-gate this naming-only change; repair the recursive SCSS grammar route as its
-own semantic slice.
+At the time, the full SCSS AST grammar suite had three unrelated-looking stack
+overflows. A control run with the prior CST labels reproduced them unchanged;
+the immediately following custom-property slice identified and repaired their
+shared recursion route.
+
+SCSS custom-property leaf repair, 2026-07-30: CSS recognition now exposes its
+static `CustomPropertyToken` separately from the overridable
+`CustomPropertyName` slot. SCSS uses that CSS-owned token for ordinary
+value-position custom-property keywords and as the non-interpolated fallback
+inside its declaration-name override. This removes the accidental
+`CustomPropertyName -> CustomPropertyName` recursion introduced by composing an
+override through the same rule key. The SCSS override remains only for the
+actual dialect expansion, `--name-#{...}` declaration names; value-position
+`--name#{...}` remains rejected. This is a targeted override repair, not a
+replacement of CSS custom-property structure.
+
+Verification: parser-shared then SCSS build and the full SCSS AST/CST/macro/
+compose set passed (107 tests); root `check:macro` reported zero interpreter
+fallbacks in all four parsers; root compose integrity passed. A CPU profile of
+the old rejected SCSS corpus had `CustomPropertyName` as its dominant parser
+frame. The post-fix profile has no `CustomPropertyName` recursion. The harness
+now classifies 1,906 inputs as rejected instead of 1,915, so its post-fix
+18.4688 ms AST / 12.5288 ms CST medians (warmup 8, timed 25) are useful
+directionally but are not a valid before/after performance claim.
+
+Parser timing and profiling priority, 2026-07-30: built-artifact baselines
+were taken separately for CSS, Less, SCSS, and Jess with 8 warmup and 25 timed
+samples. The largest regular corpus medians were Less `test-data-unit` (136
+files / 136.7 KB: 41.8113 ms AST, 39.6980 ms CST) and SCSS Sass-spec rejected
+inputs before the recursion repair (1,915 files / 126.0 KB: 57.0349 ms AST,
+48.8716 ms CST). CSS `test-data-css` (151 files / 285.8 KB) was 10.1300 ms
+AST / 9.9393 ms CST; the small Jess corpus does not yet identify a comparable
+hot route. The next optimization profiling target is a loaded-source, parse-
+only profile of Less `test-data-unit`, then SCSS expected-error allocation and
+the surviving `MathUnary`/`ValueAtom` path. Use diagnostics to select a
+specific construct family from those profiles; do not turn broad `@`-led body
+choices or routine error allocation into speculative dispatch rewrites.
 
 CSS at-rule prelude scanner-skip cleanup, 2026-07-29: CSS `AtRulePreludeGroup`
 now relies on the grammar-level ambient `scanSkip` / trivia policy for balanced

@@ -1292,7 +1292,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const CustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
-    g.CustomPropertyName,
+    g.CustomPropertyToken,
     children => keyword(requireToken(children[0]).value)
   );
   const Color = node<Color>(
@@ -1866,7 +1866,7 @@ export const scssFactory = (g: ScssInputRules) => {
           g.SassInterpolation
         ))
       )),
-      g.CustomPropertyName
+      g.CustomPropertyToken
     ),
     (children) => {
       if (!children.some(isInterpolation)) {

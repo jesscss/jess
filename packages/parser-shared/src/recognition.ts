@@ -465,6 +465,7 @@ export const cssSyntax = rules(_g => ({
   InterpolatedPropertyStart: interpolatedPropertyStart,
   InterpolatedPropertyTail: interpolatedPropertyTail,
   CustomPropertyName: customPropertyName,
+  CustomPropertyToken: customPropertyName,
   CustomOuterContent: customOuterContent,
   CustomInnerContent: customInnerContent,
   CustomSingleQuoted: customSingleQuoted,
