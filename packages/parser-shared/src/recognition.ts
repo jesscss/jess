@@ -432,7 +432,6 @@ export const cssSyntax = rules(_g => ({
   AttributeOperator: attributeOperator,
   AttributeModifier: attributeModifier,
   CssSyntaxProperty: propertyName,
-  CssSyntaxKeyword: keywordValue,
   DoubleQuotedText: doubleQuotedText,
   SingleQuotedText: singleQuotedText,
   CssSyntaxUrlOpen: urlOpen,

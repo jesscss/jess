@@ -1289,7 +1289,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const Keyword = node<Keyword>(
     'Keyword',
-    g.CssSyntaxKeyword,
+    g.Identifier,
     children => keyword(requireToken(children[0]).value)
   );
   const CustomPropertyValue = node<Keyword>(
@@ -1486,7 +1486,7 @@ export const scssFactory = (g: ScssInputRules) => {
      * identifier-led interpolation branch without reparsing the identifier.
      */
   const identOrFunction = token(noTrivia(sequence(
-    g.CssSyntaxKeyword,
+    g.Identifier,
     optional(literal('('))
   )));
   const UrlFunction = node<ValueNode>(
@@ -3537,7 +3537,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'SupportsGeneralEnclosed',
     choice(
       sequence(
-        g.CssSyntaxKeyword,
+        g.Identifier,
         literal('('),
         g.SupportsGeneralTemplate,
         literal(')')
@@ -4285,7 +4285,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'PropertyName',
     noTrivia(sequence(
       literal('--'),
-      g.CssSyntaxKeyword
+      g.Identifier
     )),
     children => keyword(`${requireToken(children[0]).value}${requireToken(children[1]).value}`)
   );
@@ -4606,7 +4606,7 @@ export const scssFactory = (g: ScssInputRules) => {
    */
   const pseudoIdentOrFunction = token(noTrivia(sequence(
     pseudoColon,
-    g.CssSyntaxKeyword,
+    g.Identifier,
     optional(literal('('))
   )));
 

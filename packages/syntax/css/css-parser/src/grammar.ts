@@ -112,7 +112,6 @@ type CssGrammarRuleName =
   | 'CssSyntaxGenericAtRuleName'
   | 'CssSyntaxImportant'
   | 'CssSyntaxKeyframesAtKeyword'
-  | 'CssSyntaxKeyword'
   | 'CssSyntaxLayerAtKeyword'
   | 'MalformedPseudoSelectorNumericArgument'
   | 'CssSyntaxMarginAtKeyword'
@@ -164,6 +163,7 @@ type CssGrammarRuleName =
   | 'ImportUrl'
   | 'ImportUrlUnquoted'
   | 'Important'
+  | 'RoutedKeyword'
   | 'KeyframeBlock'
   | 'Keyframes'
   | 'Keyword'
@@ -1038,7 +1038,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('\'')
   );
   const pseudoIdentOrFunction = token(noTrivia(sequence(
-    g.CssSyntaxKeyword,
+    g.Identifier,
     optional(literal('('))
   )));
   const pseudoRawArgument = scanTo(
@@ -1534,7 +1534,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const Keyword = node(
     'Keyword',
-    g.CssSyntaxKeyword,
+    g.Identifier,
     children => keyword(tokenText(children[0]))
   );
 
@@ -2212,7 +2212,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       children.filter(isValueSlotValue)
     )
   );
-  const Identifier = node(
+  const RoutedKeyword = node(
     'Keyword',
     routed(),
     children => keyword(tokenText(children[0]))
@@ -2242,7 +2242,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       endsWith('('),
       GenericFunction
     ),
-    otherwise(Identifier)
+    otherwise(RoutedKeyword)
   );
   const TypedGenericFunction = node(
     'Call',
@@ -2287,7 +2287,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       endsWith('('),
       TypedGenericFunction
     ),
-    otherwise(Identifier)
+    otherwise(RoutedKeyword)
   );
   const CalcIdentOrFunction = typedIdentOrFunction;
   const TypedIdentOrFunction = typedIdentOrFunction;
@@ -3945,6 +3945,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     CustomProperty,
     CustomValue,
     Keyword,
+    RoutedKeyword,
     Color,
     UnicodeRange,
     Percentage,

@@ -213,7 +213,6 @@ type SharedCssSyntax = {
   CssSyntaxImportant: Combinator<string>;
   CssSyntaxKeyframesAtKeyword: Combinator<string>;
   Identifier: Combinator<string>;
-  CssSyntaxKeyword: Combinator<string>;
   NthExpression: Combinator<string>;
   NthChildPseudoSelectorName: Combinator<string>;
   NthTypePseudoSelectorName: Combinator<string>;
@@ -2308,7 +2307,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const Keyword = node<Keyword>(
     'Keyword',
-    g.CssSyntaxKeyword,
+    g.Identifier,
     children => keyword(requireToken(children[0]).value)
   );
   const Dimension = node<Dimension>(
@@ -2677,7 +2676,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         sequence(
           not(g.SelectorArgumentPseudoSelectorName),
           not(g.NthPseudoSelectorName),
-          g.CssSyntaxKeyword,
+          g.Identifier,
           optional(sequence(
             literal('('),
             g.GenericPseudoArgument,
@@ -2940,7 +2939,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   const callOpen = token(noTrivia(sequence(
-    g.CssSyntaxKeyword,
+    g.Identifier,
     literal('(')
   )));
   const VarCall = node<FunctionCall>(
@@ -3222,7 +3221,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const keywordToken = choice(
     token(g.CssSyntaxCustomProperty),
-    token(g.CssSyntaxKeyword)
+    token(g.Identifier)
   );
   const RoutedCustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
@@ -3472,7 +3471,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'StaticCall',
     sequence(
       noTrivia(sequence(
-        g.CssSyntaxKeyword,
+        g.Identifier,
         literal('(')
       )),
       optional(sequence(
@@ -3529,7 +3528,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const StaticAtQueryProperty = node<JessStaticAtQueryProperty>(
     'StaticAtQueryProperty',
-    g.CssSyntaxKeyword,
+    g.Identifier,
     children => ({ property: keyword(requireToken(children[0]).value) })
   );
   const StaticAtComparisonQuery = node<ValueNode>(
@@ -3630,7 +3629,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.CssSyntaxKeyword,
+        g.Identifier,
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
@@ -3641,7 +3640,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.CssSyntaxKeyword,
+        g.Identifier,
         optional(rawWhitespace),
         literal(')')
       )
@@ -4059,7 +4058,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'GeneralEnclosed',
     choice(
       sequence(
-        g.CssSyntaxKeyword,
+        g.Identifier,
         literal('('),
         g.GeneralTemplate,
         literal(')')
@@ -4098,7 +4097,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.CssSyntaxKeyword,
+        g.Identifier,
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
@@ -4109,7 +4108,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.CssSyntaxKeyword,
+        g.Identifier,
         optional(rawWhitespace),
         literal(')')
       )
@@ -4214,7 +4213,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * widened, so no other header gains a function-call spelling here.
    */
   const importTailFunctionOpen = token(noTrivia(sequence(
-    g.CssSyntaxKeyword,
+    g.Identifier,
     literal('(')
   )));
   const ImportSupportsArgument = node<ValueNode>(
@@ -4226,7 +4225,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       ),
       sequence(
         optional(rawWhitespace),
-        g.CssSyntaxKeyword,
+        g.Identifier,
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
@@ -4236,7 +4235,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       ),
       sequence(
         optional(rawWhitespace),
-        g.CssSyntaxKeyword,
+        g.Identifier,
         optional(rawWhitespace),
         literal(')')
       )
@@ -4396,7 +4395,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'PropertyName',
     noTrivia(sequence(
       literal('--'),
-      g.CssSyntaxKeyword
+      g.Identifier
     )),
     children => keyword(`${requireToken(children[0]).value}${requireToken(children[1]).value}`)
   );
