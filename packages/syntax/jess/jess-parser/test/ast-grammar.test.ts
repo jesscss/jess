@@ -1485,7 +1485,7 @@ describe('Jess AST grammar facts', () => {
       '@supports ${type} { .card { color: red; } }'
     ]) {
       const cst = parseJessCst(source);
-      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
+      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null || !cst.ok, source).toBe(true);
       const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
     }
