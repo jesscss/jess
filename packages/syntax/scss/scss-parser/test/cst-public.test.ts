@@ -104,6 +104,17 @@ describe('@jesscss/scss-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('keeps the selected SCSS @at-root continuation as the semantic CST node', () => {
+    const result = parseScssCst('@at-root { .top { color: red; } } @at-root (with: .scope) { .filtered { color: blue; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AtRootBlock')).toBe(1);
+    expect(grammarTypes.get('AtRootFilter')).toBe(1);
+    expectNoModeLabels(result.tree);
+  });
+
   it('uses CSS-aligned CST labels for generic at-rule preludes', () => {
     const result = parseScssCst('@layer base.utilities { .card { color: red; } } @charset "UTF-8";');
 

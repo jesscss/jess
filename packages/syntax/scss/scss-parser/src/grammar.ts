@@ -151,6 +151,7 @@ type ScssRules = {
   AtRootFilterPrelude: Combinator<ValueNode>;
   AtRootBlock: Combinator<AtRuleBlock>;
   AtRootFilter: Combinator<AtRuleBlock>;
+  AtRootDirective: Combinator<AtRuleBlock>;
   ScopeBlock: Combinator<AtRuleBlock>;
   NestedScopeBlock: Combinator<AtRuleBlock>;
   ConditionalBlock: Combinator<AtRuleBlock>;
@@ -1066,9 +1067,6 @@ const scssScanSkipSingleString = noTrivia(sequence(
   regex(/(?:[^'\\]|\\.)*/),
   literal('\'')
 ));
-
-/* SCSS adds the evaluated `@at-root` directive; CSS owns the other at-keywords. */
-const atRootAtKeyword = regex(/@at-root(?![-\w])/i);
 
 /*
  * An at-rule this grammar has no typed production for is still well-formed CSS:
@@ -2629,8 +2627,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.ForRule,
     g.MixinDefinitionRule,
     g.FunctionRule,
-    g.AtRootFilter,
-    g.AtRootBlock,
+    g.AtRootDirective,
     g.NestedConditionalBlock,
     g.NestedStartingStyleBlock,
     g.NestedLayerBlock,
@@ -2721,8 +2718,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.EachRule,
     g.ForRule,
     g.IfRule,
-    g.AtRootFilter,
-    g.AtRootBlock,
+    g.AtRootDirective,
     g.ConditionalBlock,
     g.StartingStyleBlock,
     g.LayerBlock,
@@ -2743,8 +2739,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.EachRule,
     g.ForRule,
     g.IfRule,
-    g.AtRootFilter,
-    g.AtRootBlock,
+    g.AtRootDirective,
     g.ConditionalBlock,
     g.StartingStyleBlock,
     g.LayerBlock,
@@ -3060,8 +3055,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.EachRule,
         g.ForRule,
         g.IfRule,
-        g.AtRootFilter,
-        g.AtRootBlock,
+        g.AtRootDirective,
         g.IfBodyRule
       )),
       literal('}')
@@ -3744,7 +3738,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const AtRootBlock = node<AtRuleBlock>(
     'AtRootBlock',
     sequence(
-      atRootAtKeyword,
+      routed(),
       g.AtRootPrelude,
       literal('{'),
       nestedBody,
@@ -3765,7 +3759,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const AtRootFilter = node<AtRuleBlock>(
     'AtRootFilter',
     sequence(
-      atRootAtKeyword,
+      routed(),
       g.AtRootFilterPrelude,
       literal('{'),
       nestedBody,
@@ -3782,6 +3776,21 @@ export const scssFactory = (g: ScssInputRules) => {
         true
       )
     )
+  );
+
+  /*
+   * SCSS owns the evaluated `@at-root` directive. Its shared at-keyword is a
+   * routed family opener; only after it is consumed does the `(`-led filter
+   * tail differ from the ordinary prelude/block tail. Keep that later decision
+   * as a choice, and keep the existing semantic `AtRootFilter`/`AtRootBlock`
+   * CST nodes as the selected continuations.
+   */
+  const AtRootDirective = dispatch(
+    atRuleKeyword,
+    caseInsensitive('@at-root', choice(
+      AtRootFilter,
+      AtRootBlock
+    ))
   );
 
   /*
@@ -3804,8 +3813,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.EachRule,
         g.ForRule,
         g.IfRule,
-        g.AtRootFilter,
-        g.AtRootBlock,
+        g.AtRootDirective,
         g.ConditionalBlock,
         g.StartingStyleBlock,
         g.LayerBlock,
@@ -3959,8 +3967,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.EachRule,
         g.ForRule,
         g.IfRule,
-        g.AtRootFilter,
-        g.AtRootBlock,
+        g.AtRootDirective,
         g.ConditionalBlock,
         g.StartingStyleBlock,
         g.LayerBlock,
@@ -4948,8 +4955,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.EachRule,
         g.ForRule,
         g.IfRule,
-        g.AtRootFilter,
-        g.AtRootBlock,
+        g.AtRootDirective,
         g.ConditionalBlock,
         g.StartingStyleBlock,
         g.LayerBlock,
@@ -5079,6 +5085,7 @@ export const scssFactory = (g: ScssInputRules) => {
     AtRootFilterPrelude,
     AtRootBlock,
     AtRootFilter,
+    AtRootDirective,
     ScopeBlock,
     NestedScopeBlock,
     ConditionalBlock,

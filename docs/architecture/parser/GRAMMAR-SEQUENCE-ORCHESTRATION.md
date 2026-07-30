@@ -5310,3 +5310,15 @@ reason to reintroduce individual `@use` / `@forward` opener regexes. The former
 needs that raw tail, and the `literal(';')` in `ForwardRule` now rejects every
 unsupported modifier at its actual grammar boundary instead of scanning and
 discarding it.
+
+SCSS `@at-root` routing, 2026-07-30: `@at-root` is Sass-only structure, so
+SCSS owns its route rather than copying a CSS at-rule rule. Every allowed body
+context now reaches one `AtRootDirective` dispatcher: it consumes the shared
+at-keyword exactly once and routes the selected continuation through
+`routed()`. The remaining `choice(AtRootFilter, AtRootBlock)` is intentional:
+both continuations share that opener, and only the subsequent `(`-led filter
+prelude versus ordinary prelude/block decides which syntax applies. The
+dispatcher stays unlabeled; the CST continues to expose `AtRootFilter` and
+`AtRootBlock`, which are the semantic AST/CST-aligned shapes. Focused AST and
+public-CST tests now cover both forms, including their route through the public
+stylesheet entry.
