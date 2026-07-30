@@ -56,8 +56,8 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
-| Property hover | ✓ MDN description + **browser-compat table + MDN "syntax" + spec/MDN links** | ✓ description string from web-custom-data only | No browser-compat, no links, no syntax | P1 |
-| Property-value hover | ✓ | ✓ value description from web-custom-data | Comparable (shallower text) | P2 |
+| Property hover | ✓ MDN description + **browser-compat table + MDN "syntax" + spec/MDN links** | ✓ description, formal syntax, Baseline, browser support summary, and MDN link from web-custom-data | Comparable, though MS has a richer rendered compat table | P2 |
+| Property-value hover | ✓ | ✓ value description, Baseline, and browser support summary when web-custom-data includes it | Comparable, though MS has richer presentation | P2 |
 | At-rule hover | ✓ | ✓ description from web-custom-data | Comparable | P2 |
 | Pseudo-class/element hover | ✓ | ✗ | Missing | P1 |
 | Selector-specificity hover | ✓ (shows computed specificity for a selector) | ✗ | Missing | P2 |
@@ -128,9 +128,9 @@ MS lint rules with default levels (`src/services/lintRules.ts`):
 
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
-| Property data | MDN-sourced `languageFacts` + `@vscode/web-custom-data`: descriptions, **`restrictions`**, `values`, `status`, **`browsers`/compat** | `known-css-properties` (names) + web-custom-data (descriptions, values, restrictions, status) | Browser-compat data remains missing | P2 |
+| Property data | MDN-sourced `languageFacts` + `@vscode/web-custom-data`: descriptions, **`restrictions`**, `values`, `status`, **`browsers`/compat** | `known-css-properties` (names) + web-custom-data (descriptions, values, restrictions, status, browser support summaries) | Rich compat table UI remains missing | P2 |
 | At-rule data | ✓ rich | ✓ web-custom-data | Comparable | P2 |
-| Pseudo-class / pseudo-element data | ✓ (names + descriptions + compat) | ✓ web-custom-data names/descriptions | Browser-compat data remains missing | P2 |
+| Pseudo-class / pseudo-element data | ✓ (names + descriptions + compat) | ✓ web-custom-data names, descriptions, Baseline, browser support summaries, and MDN links | Rich compat table UI remains missing | P2 |
 | Custom-data provider API (`setDataProviders`) | ✓ extensible | ✓ custom properties, at-rules, pseudos, completions, hover, and shared CSS diagnostics | Per-language settings shape remains future polish | P2 |
 | Built-in Sass/Less function catalog | ✓ (baked into scss/less completion) | ✗ | Missing dataset | P1 |
 
@@ -179,9 +179,10 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    `propertyIgnoredDueToDisplay`, `boxModel`, and follow-on CSS validity diagnostics.
    Detection lives in diagnostics-core; lint and the language service only
    configure and surface the shared records.
-10. ✅ **DONE.** **Hover enrichment** — pseudo-class/element hover added; property +
-    at-rule hover append formal `syntax`, Baseline status, and the MDN reference
-    link (from web-custom-data `references`/`baseline`/`syntax`).
+10. ✅ **DONE.** **Hover enrichment** — pseudo-class/element hover added; property,
+    value, pseudo, and at-rule hover append formal `syntax`, Baseline status,
+    browser support summaries, and the MDN reference link when web-custom-data
+    provides those fields.
 11. ✅ **DONE (highlights all occurrences of the symbol under the cursor).** **`findDocumentHighlights`** — add to the engine interface; reuse
     `collectReferenceSet` but scope to the current document only.
 12. ✅ **DONE (named colors w/ swatch + color functions; units on numeric prefix).** **Named-color + color-function value completions** in color contexts, with
@@ -227,6 +228,8 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
   `vscode-css-languageservice` at all (VS Code colors CSS via TextMate).
 - **Broader modern color coverage** in document colors / presentations
   (`hwb/lab/lch/oklab/oklch`).
+- **Compact browser-support hover summaries** from the same web-custom-data used
+  by VS Code; MS still presents richer browser tables.
 
 Net: Jess leads on *engine semantics, incremental performance, and
 navigation/rename quality*; MS leads massively on *breadth of completion + the
@@ -251,8 +254,8 @@ MDN data behind it + lint*.
 - **Signature help** — neither side ships it; not a parity item.
 - **`@vscode/web-custom-data` is shared**, so the raw property/at-rule dataset is
   common ground. The MS *advantage* is the additional MDN-derived `languageFacts`
-  layer (restrictions, browser compat, pseudo data, specificity) that Jess does
-  not yet load — closing that data gap unlocks most of the P0 completion depth
-  for free.
+  layer (richer browser compat presentation and specificity) that Jess does not
+  fully mirror yet — closing that presentation/data gap unlocks more polish
+  without changing parser semantics.
 </content>
 </invoke>

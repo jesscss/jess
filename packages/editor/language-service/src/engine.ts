@@ -407,9 +407,9 @@ const require = createRequire(import.meta.url);
 // Shared enrichment fields carried by web-custom-data entries (used in hover).
 type MdnRef = { name: string; url: string };
 type Baseline = { status?: 'high' | 'low' | false; baseline_low_date?: string; baseline_high_date?: string };
-type Enrich = { syntax?: string; references?: MdnRef[]; baseline?: Baseline };
+type Enrich = { syntax?: string; references?: MdnRef[]; baseline?: Baseline; browsers?: readonly string[] };
 type AtDirectiveEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
-type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; status?: string; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }>; restrictions?: string[] } & Enrich;
+type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; status?: string; values?: Array<{ name: string; description?: string | { value: string; kind?: string } } & Enrich>; restrictions?: string[] } & Enrich;
 type PseudoEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
 type WebCssData = {
   atDirectives?: AtDirectiveEntry[];
@@ -497,6 +497,35 @@ for (const p of webCssData.pseudoElements ?? []) {
   }
 }
 
+const BROWSER_CODE_NAMES: readonly (readonly [string, string])[] = [
+  ['FFA', 'Firefox Android'],
+  ['CA', 'Chrome Android'],
+  ['SM', 'Safari iOS'],
+  ['FF', 'Firefox'],
+  ['IE', 'IE'],
+  ['E', 'Edge'],
+  ['S', 'Safari'],
+  ['C', 'Chrome'],
+  ['O', 'Opera']
+];
+
+function browserSupportLabel(code: string): string {
+  for (const [prefix, name] of BROWSER_CODE_NAMES) {
+    if (code.startsWith(prefix)) {
+      const version = code.slice(prefix.length);
+      return version.length === 0 ? name : `${name} ${version}`;
+    }
+  }
+  return code;
+}
+
+function browserSupportText(browsers: readonly string[] | undefined): string | null {
+  if (browsers === undefined || browsers.length === 0) {
+    return null;
+  }
+  return browsers.map(browserSupportLabel).join(', ');
+}
+
 /** Append MDN link + Baseline status + formal syntax to a hover, from the
  * enrichment fields web-custom-data ships. Empty string when nothing to add. */
 function hoverExtras(entry: Enrich): string {
@@ -511,6 +540,10 @@ function hoverExtras(entry: Enrich): string {
     parts.push('⚠ Baseline: newly available');
   } else if (status === false) {
     parts.push('⚠ Limited availability — not Baseline');
+  }
+  const browsers = browserSupportText(entry.browsers);
+  if (browsers !== null) {
+    parts.push(`**Browser support:** ${browsers}`);
   }
   const mdn = entry.references?.find(r => /mdn/i.test(r.name));
   if (mdn) {
@@ -1845,7 +1878,7 @@ export function createEngine(): JessLanguageServiceEngine {
               return {
                 contents: {
                   kind: MarkupKind.Markdown,
-                  value: `**${val.name}**\n\n${desc}`
+                  value: `**${val.name}**\n\n${desc}${hoverExtras(val)}`
                 }
               };
             }

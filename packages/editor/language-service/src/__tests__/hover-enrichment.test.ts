@@ -19,13 +19,23 @@ describe('hover enrichment (MS-parity: MDN links, Baseline, syntax, pseudo hover
     expect(v).toContain('**gap**');
     expect(v).toContain('**Syntax:**');
     expect(v).toContain('Baseline');
+    expect(v).toContain('**Browser support:**');
+    expect(v).toContain('Chrome');
     expect(v).toMatch(/\[MDN Reference\]\(https:\/\/developer\.mozilla\.org/);
   });
 
   it('pseudo-class hover (`:hover`) shows a description + MDN link', () => {
     const v = hoverAt('css', '.a:ho|ver {}');
     expect(v).toContain('**:hover**');
+    expect(v).toContain('**Browser support:**');
     expect(v).toMatch(/\[MDN Reference\]/);
+  });
+
+  it('property value hover includes browser support when web custom data has it', () => {
+    const v = hoverAt('css', '.a { display: fl|ex; }');
+    expect(v).toContain('**flex**');
+    expect(v).toContain('Baseline');
+    expect(v).toContain('**Browser support:**');
   });
 
   it('pseudo-element hover (`::before`) shows a description', () => {
