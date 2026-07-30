@@ -5,6 +5,7 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { sourceSpanOf, triviaMapOf } from '../../../../core/src/ast/provenance.js';
 import { serialize as serializeMaybeAsync, type SerializeResult } from '../../../../core/src/ast/serialize.js';
+import { bare } from '../../../../../test/provenance-free.js';
 
 /*
  * `serialize` lifts to `Promise<SerializeResult>` only when an async built-in
@@ -83,7 +84,7 @@ describe('@jesscss/scss-parser public parse API', () => {
   });
 
   it('accepts a final SCSS variable declaration without a semicolon through public parse', () => {
-    expect(parse('$tone: blue')).toEqual({
+    expect(bare(parse('$tone: blue'))).toEqual({
       type: 'Stylesheet',
       rules: [{ type: 'VariableDeclaration', name: 'tone', value: { type: 'Keyword', src: 'blue' }, write: { mode: 'declare' } }]
     });
@@ -306,7 +307,7 @@ describe('@jesscss/scss-parser public parse API', () => {
 
   it('parses and renders the public-CST-valid empty SCSS url import through the public route', () => {
     const root = parse('@import url();');
-    expect(root).toEqual({
+    expect(bare(root)).toEqual({
       type: 'Stylesheet',
       rules: [{
         type: 'ImportAtRule', name: '@import', options: null,
@@ -373,7 +374,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(layer).toMatchObject({
       rules: [{ type: 'ImportAtRule', target: { value: 'theme.css' }, tail: { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'theme' }] } }]
     });
-    expect(layeredMedia).toEqual({
+    expect(bare(layeredMedia)).toEqual({
       type: 'Stylesheet',
       rules: [{
         type: 'ImportAtRule', name: '@import', options: null,
@@ -406,7 +407,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     const supported = parse('@import "theme.css" supports((display: grid));');
     const layered = parse('@import "theme.css" layer(tokens) supports((display: grid)) screen;');
 
-    expect(supported).toEqual({
+    expect(bare(supported)).toEqual({
       type: 'Stylesheet',
       rules: [{
         type: 'ImportAtRule', name: '@import', options: null,
@@ -418,7 +419,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         }
       }]
     });
-    expect(simple).toEqual(supported);
+    expect(bare(simple)).toEqual(bare(supported));
     expect(layered).toMatchObject({
       rules: [{
         tail: {
@@ -743,7 +744,7 @@ describe('@jesscss/scss-parser public parse API', () => {
   });
 
   it('parses descriptor-only @property through the public Stylesheet route', () => {
-    expect(parse('@property --accent { syntax: "<color>"; inherits: false; initial-value: red; }')).toEqual({
+    expect(bare(parse('@property --accent { syntax: "<color>"; inherits: false; initial-value: red; }'))).toEqual({
       type: 'Stylesheet',
       rules: [{
         type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' }, rules: [

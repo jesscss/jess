@@ -29,10 +29,11 @@
  * modules (`node`, `nodes`) — never the legacy tree.
  */
 
+import { NO_SPAN, type BodySpanSlots, type SpanSlots } from './provenance.js';
 import type { Interpolation, List, Quoted, Statement, Url, ValueNode } from './nodes.js';
 
 /** A block-bearing at-rule: `@name prelude { …body }`. */
-export interface AtRuleBlock {
+export interface AtRuleBlock extends SpanSlots, BodySpanSlots {
   readonly type: 'AtRuleBlock';
   readonly name: string;
   readonly prelude: ValueNode | null;
@@ -47,7 +48,7 @@ export interface AtRuleBlock {
  * stays literal (Less resolves only `@{…}` in a statement prelude), so the common
  * case round-trips byte-for-byte.
  */
-export interface AtRuleStatement {
+export interface AtRuleStatement extends SpanSlots {
   readonly type: 'AtRuleStatement';
   readonly name: string;
   readonly prelude: ValueNode | null;
@@ -60,7 +61,7 @@ export interface AtRuleStatement {
  * producing grammar keeps opaque; the core serializer must not try to evaluate,
  * inspect, or recursively render those bytes.
  */
-export interface OpaqueAtRuleBlock {
+export interface OpaqueAtRuleBlock extends SpanSlots {
   readonly type: 'OpaqueAtRuleBlock';
   readonly name: string;
   readonly prelude: string | null;
@@ -68,7 +69,7 @@ export interface OpaqueAtRuleBlock {
 }
 
 /** A typed import statement. Context/plugin document loading owns resolution. */
-export interface ImportAtRule {
+export interface ImportAtRule extends SpanSlots {
   readonly type: 'ImportAtRule';
   readonly name: string;
 
@@ -108,16 +109,16 @@ export const atRuleBlock = (
   name: string,
   prelude: ValueNode | null,
   rules: Statement[]
-): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, rules });
+): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, rules, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
 
 export const atRuleStatement = (name: string, prelude: ValueNode | null): AtRuleStatement =>
-  ({ type: 'AtRuleStatement', name, prelude });
+  ({ type: 'AtRuleStatement', name, prelude, _s: NO_SPAN, _e: NO_SPAN });
 
 export const opaqueAtRuleBlock = (
   name: string,
   prelude: string | null,
   rawBody: string
-): OpaqueAtRuleBlock => ({ type: 'OpaqueAtRuleBlock', name, prelude, rawBody });
+): OpaqueAtRuleBlock => ({ type: 'OpaqueAtRuleBlock', name, prelude, rawBody, _s: NO_SPAN, _e: NO_SPAN });
 
 export const importAtRule = (
   name: string,
@@ -125,7 +126,7 @@ export const importAtRule = (
   options: List | null = null,
   alias: ValueNode | null = null,
   tail: ValueNode | null = null
-): ImportAtRule => ({ type: 'ImportAtRule', name, options, target, alias, tail });
+): ImportAtRule => ({ type: 'ImportAtRule', name, options, target, alias, tail, _s: NO_SPAN, _e: NO_SPAN });
 
 export const plugin = (
   target: Quoted | Url | Interpolation,

@@ -7,6 +7,7 @@ import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseJessCst } from '../src/cst.js';
 import { parse } from '../src/index.js';
 import { jessGrammar } from '../src/grammar.js';
+import { bare } from '../../../../../test/provenance-free.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object'
@@ -1146,7 +1147,7 @@ describe('Jess AST grammar facts', () => {
       ['.x:future-thing(foo(bar[qux])) { color: red; }', ':future-thing(foo(bar[qux]))'],
       ['.x:future-thing(/* nested ) */ [d]) { color: red; }', ':future-thing(/* nested ) */ [d])']
     ] as const) {
-      expect(parse(source), source).toMatchObject({
+      expect(bare(parse(source)), source).toMatchObject({
         rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: '.x' }, { text }] }] } }]
       });
     }
@@ -1944,7 +1945,7 @@ describe('Jess AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
 
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         expect.objectContaining({ type: 'VariableDeclaration', name: 'theme' }),
@@ -2006,7 +2007,7 @@ describe('Jess AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         { type: 'VariableDeclaration', name: 'base', value: { type: 'Quoted', src: '"dark"', value: 'dark', quote: '"', escaped: false }, write: { mode: 'declare' } },
@@ -2587,7 +2588,7 @@ describe('Jess AST grammar facts', () => {
     expect(legacy.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         {
@@ -2690,7 +2691,7 @@ describe('Jess AST grammar facts', () => {
     expect(legacy.unconsumedFrom).toBeNull();
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
-    expect(parse(source)).toEqual(direct.value);
+    expect(bare(parse(source))).toEqual(bare(direct.value));
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
       rules: [
@@ -2765,7 +2766,7 @@ describe('Jess AST grammar facts', () => {
     expect(legacy.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         {
@@ -2874,7 +2875,7 @@ describe('Jess AST grammar facts', () => {
       { type: 'MixinDefinition', name: 'numeric', guard: { g: 'call', name: 'isnumber', args: [{ type: 'VariableReference', name: 'value' }] } },
       { type: 'MixinDefinition', name: 'unit', guard: { g: 'call', name: 'isunit', args: [{ type: 'VariableReference', name: 'value' }, { type: 'Keyword', src: 'px' }] } }
     ]);
-    expect(parse(source)).toEqual(direct.value);
+    expect(bare(parse(source))).toEqual(bare(direct.value));
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.yes {\n  color: red;\n}\n.no {\n  color: blue;\n}\n.or {\n  color: green;\n}\n.number {\n  color: purple;\n}\n.unit {\n  color: orange;\n}\n'
     );

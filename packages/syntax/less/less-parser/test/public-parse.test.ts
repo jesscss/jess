@@ -15,6 +15,7 @@ import {
   parse
 } from '@jesscss/less-parser';
 import { parseLessCst, parseLessDoc } from '@jesscss/less-parser/cst';
+import { bare } from '../../../../../test/provenance-free.js';
 
 const simpleSelector = (text: string | null, extra: object = {}) => ({
   type: 'SimpleSelector',
@@ -1657,7 +1658,7 @@ describe('public Less parse()', () => {
   it('returns and evaluates a typed indirect variable from the public Stylesheet route', () => {
     const document = parse('@name: tone; @tone: red; .card { color: @@name; }');
 
-    expect(document).toEqual({
+    expect(bare(document)).toEqual({
       type: 'Stylesheet',
       rules: [
         {

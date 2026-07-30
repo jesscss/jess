@@ -10,6 +10,7 @@ import {
   LessUnsupportedMixinNameError,
   LessUnsupportedVariableNameError
 } from '../src/parse-error.js';
+import { bare } from '../../../../../test/provenance-free.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return (
@@ -564,14 +565,17 @@ describe('Less AST grammar facts', () => {
       });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
-      return JSON.parse(
+
+      /* Glued and spaced sources yield the same facts at different offsets, so
+       * the authored span is not part of the shape being compared. */
+      return bare(JSON.parse(
         JSON.stringify(result.value, (key, value) =>
           key === 'span' ? undefined : value
         )
-      );
+      ));
     };
     for (let index = 0; index < glued.length; index += 1) {
-      expect(shape(glued[index]!), glued[index]).toEqual(shape(spaced[index]!));
+      expect(bare(shape(glued[index]!), glued[index])).toEqual(shape(spaced[index]!));
     }
   });
 
@@ -905,7 +909,7 @@ describe('Less AST grammar facts', () => {
     expect(legacy.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         {
@@ -1302,7 +1306,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         {
@@ -2853,7 +2857,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         {
@@ -3121,7 +3125,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         {
@@ -3236,7 +3240,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         {
@@ -3932,7 +3936,7 @@ describe('Less AST grammar facts', () => {
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         {
@@ -4515,7 +4519,7 @@ describe('Less AST grammar facts', () => {
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         {
@@ -7075,7 +7079,7 @@ describe('Less AST grammar facts', () => {
     expect(listResult.ok).toBe(true);
     expect(listResult.unconsumedFrom).toBeNull();
     expect(isStylesheet(listResult.value)).toBe(true);
-    expect(listResult.value.rules[0]).toEqual({
+    expect(bare(listResult.value.rules[0])).toEqual({
       type: 'Declaration',
       name: 'shadow',
       merge: null,
@@ -7762,7 +7766,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         {
@@ -7832,7 +7836,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value.rules[0]).toEqual({
+    expect(bare(result.value.rules[0])).toEqual({
       type: 'Ruleset',
       selector: {
         type: 'SelectorList',
@@ -7877,7 +7881,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value.rules[0]).toEqual({
+    expect(bare(result.value.rules[0])).toEqual({
       type: 'Ruleset',
       selector: {
         type: 'SelectorList',
@@ -7928,7 +7932,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value.rules[0]).toEqual({
+    expect(bare(result.value.rules[0])).toEqual({
       type: 'Ruleset',
       selector: {
         type: 'SelectorList',

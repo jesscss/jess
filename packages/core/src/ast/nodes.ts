@@ -28,6 +28,7 @@
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
 import type { CallArg } from './mixin-dispatch.js'; // [guards]
+import { NO_SPAN, type BodySpanSlots, type SpanSlots, type TriviaSlot } from './provenance.js';
 
 /* ------------------------------------------------------------------ values */
 
@@ -145,7 +146,7 @@ export interface List {
 export type VariableLookup = 'live' | 'scoped';
 
 /** A reference to a mixin parameter / bound variable. */
-export interface VariableReference {
+export interface VariableReference extends SpanSlots {
   readonly type: 'VariableReference';
   readonly name: string;
 
@@ -174,7 +175,7 @@ export interface DeclarationReference {
  * after a not-yet-modelled expansion), so an unresolved accessor never regresses
  * below its prior verbatim output.
  */
-export interface PropertyReference {
+export interface PropertyReference extends SpanSlots {
   readonly type: 'PropertyReference';
   readonly name: string;
   readonly raw: string;
@@ -213,7 +214,7 @@ export interface Important {
  * operations / variable refs fold bottom-up (each sub-operation is computed to
  * bytes before the outer one runs — precedence is carried by the tree shape).
  */
-export interface Operation {
+export interface Operation extends SpanSlots {
   readonly type: 'Operation';
   readonly operator: string;
   readonly left: ValueNode;
@@ -228,7 +229,7 @@ export interface Operation {
  * separators — vs the legacy comma form, so the evaluator preserves the output
  * spelling.
  */
-export interface FunctionCall {
+export interface FunctionCall extends SpanSlots {
   readonly type: 'FunctionCall';
   readonly name: string;
   readonly args: ValueSlot[];
@@ -236,7 +237,7 @@ export interface FunctionCall {
 }
 
 /** A delimiter-bearing value, e.g. `(#aaa * 3)` or `[a, b]`. */
-export interface Block {
+export interface Block extends SpanSlots {
   readonly type: 'Block';
   readonly value: ValueSlot;
   readonly delimiter: 'paren' | 'square';
@@ -419,7 +420,7 @@ export interface ReferenceCall {
  * represented as an ordered typed step. `raw` is the authored fallback when a
  * dialect-specific dynamic chain cannot yet resolve at evaluation time.
  */
-export interface Reference {
+export interface Reference extends SpanSlots {
   readonly type: 'Reference';
 
   /**
@@ -486,7 +487,7 @@ export type ValueSlot = ValueNode | readonly ValueSlot[];
  * text is resolved at ruleset-enter in the entering frame. A static token keeps
  * `text` and `interp: null` (the cached `compoundCanonical` fast path).
  */
-export interface SimpleSelector {
+export interface SimpleSelector extends SpanSlots {
   readonly type: 'SimpleSelector';
   readonly text: string | null;
   readonly interp: Interpolation | null;
@@ -505,7 +506,7 @@ export interface SimpleSelector {
  * name is a boundary a selector may cross for extend (`:is`/`:matches`); every
  * other name (`:not`/`:where`/`:has`/…) is sealed.
  */
-export interface PseudoSelector {
+export interface PseudoSelector extends SpanSlots {
   readonly type: 'PseudoSelector';
   readonly text: string | null;
   readonly interp: Interpolation | null;
@@ -518,7 +519,7 @@ export interface PseudoSelector {
 export type SimpleToken = SimpleSelector | PseudoSelector;
 
 /** A run of simple tokens with no separator, e.g. `.a.b`, `&:hover`. */
-export interface CompoundSelector {
+export interface CompoundSelector extends SpanSlots {
   readonly type: 'CompoundSelector';
   readonly value: SimpleToken[];
 
@@ -586,7 +587,7 @@ export type SelectorTerm = SimpleToken | CompoundSelector;
  * selector branches with at least one authored combinator; a no-combinator
  * branch is a `SelectorTerm` directly.
  */
-export interface ComplexSelector {
+export interface ComplexSelector extends SpanSlots {
   readonly type: 'ComplexSelector';
   readonly value: [SelectorTerm, ...(SelectorTerm | Combinator)[]];
 
@@ -604,7 +605,7 @@ export interface ComplexSelector {
  * A combinator-leading relative selector branch. These are admitted only in
  * grammar contexts that allow relative selectors.
  */
-export interface RelativeSelector {
+export interface RelativeSelector extends SpanSlots {
   readonly type: 'RelativeSelector';
   readonly value: [Combinator, SelectorTerm, ...(SelectorTerm | Combinator)[]];
 
@@ -765,7 +766,7 @@ export const selectorBranchHasInterp = (branch: SelectorBranch): boolean =>
       : selectorTermHasInterp(branch);
 
 /** A comma-separated list of selector branches, e.g. `.a, .b`. */
-export interface SelectorList {
+export interface SelectorList extends SpanSlots {
   readonly type: 'SelectorList';
   readonly selectors: SelectorBranch[];
 }
@@ -778,7 +779,7 @@ export interface SelectorList {
  * `important` is the structured `!important` flag parsed directly with the value,
  * promoted so merge can OR it across members and emit it once.
  */
-export interface Declaration {
+export interface Declaration extends SpanSlots {
   readonly type: 'Declaration';
   readonly name: string | Interpolation;
   readonly value: ValueSlot;
@@ -804,7 +805,7 @@ export type VariableWrite =
   | { readonly mode: 'declare' }
   | { readonly mode: 'if-absent' | 'reassign'; readonly lookup: VariableLookup };
 
-export interface VariableDeclaration {
+export interface VariableDeclaration extends SpanSlots {
   readonly type: 'VariableDeclaration';
   readonly name: string;
   readonly value: ValueSlot | MixinCall;
@@ -868,7 +869,7 @@ export interface ExtendInstruction {
  * (the `Extend` statements are removed and hoisted here);
  * absent for the common no-extend rule so the serializer's zero-cost gate holds.
  */
-export interface Ruleset {
+export interface Ruleset extends SpanSlots, BodySpanSlots {
   readonly type: 'Ruleset';
   readonly selector: SelectorList;
   readonly rules: Statement[];
@@ -911,7 +912,7 @@ export interface Param {
  * call reads it through an overlay (bindings + parent-selector context) and
  * NEVER clones it. [guards] `guard` is an optional `when (...)` condition.
  */
-export interface MixinDefinition {
+export interface MixinDefinition extends SpanSlots, BodySpanSlots {
   readonly type: 'MixinDefinition';
   readonly name: string;
   readonly params: Param[];
@@ -942,7 +943,7 @@ export interface MixinPathSegment {
  * plain flat `.mixin()` call — byte-unchanged flat dispatch). `.m() !important`
  * promotes every declaration the body emits.
  */
-export interface MixinCall {
+export interface MixinCall extends SpanSlots {
   readonly type: 'MixinCall';
   readonly name: string;
   readonly args: CallArg[];
@@ -1027,7 +1028,7 @@ export interface ModuleImport {
 }
 
 /** The document stylesheet: an ordered list of top-level statements. */
-export interface Stylesheet {
+export interface Stylesheet extends SpanSlots, TriviaSlot {
   readonly type: 'Stylesheet';
   readonly rules: Statement[];
 }
@@ -1097,10 +1098,10 @@ export const list = (
   sep: List['sep'] = ','
 ): List => ({ type: 'List', value, sep });
 
-export const simpleSelector = (text: string): SimpleSelector => ({ type: 'SimpleSelector', text, interp: null });
+export const simpleSelector = (text: string): SimpleSelector => ({ type: 'SimpleSelector', text, interp: null, _s: NO_SPAN, _e: NO_SPAN });
 
 /** An interpolated simple token, e.g. `.icon-@{type}`. */
-export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelector => ({ type: 'SimpleSelector', text: null, interp });
+export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelector => ({ type: 'SimpleSelector', text: null, interp, _s: NO_SPAN, _e: NO_SPAN });
 
 /**
  * Selector-function pseudos a selector may CROSS during extend (the arg list is a
@@ -1120,7 +1121,7 @@ export const pseudoSelector = (
   args: SelectorList | null,
   text: string | null = null,
   interp: Interpolation | null = null
-): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name) });
+): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts });
 export const generalEnclosed = (
   form: GeneralEnclosed['form'],
@@ -1168,11 +1169,11 @@ export const reference = (
   base: ValueNode | MixinCall,
   steps: readonly ReferenceStep[],
   raw: string
-): Reference => ({ type: 'Reference', base, steps, raw });
-export const propertyReference = (name: string, raw: string = `$${name}`): PropertyReference => ({ type: 'PropertyReference', name, raw });
+): Reference => ({ type: 'Reference', base, steps, raw, _s: NO_SPAN, _e: NO_SPAN });
+export const propertyReference = (name: string, raw: string = `$${name}`): PropertyReference => ({ type: 'PropertyReference', name, raw, _s: NO_SPAN, _e: NO_SPAN });
 
 /** A compound from an already-built list of simple tokens. */
-export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => ({ type: 'CompoundSelector', value });
+export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => ({ type: 'CompoundSelector', value, _s: NO_SPAN, _e: NO_SPAN });
 
 /** A selector term: a lone simple token stays direct; adjacent tokens form a compound. */
 export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]): SelectorTerm => {
@@ -1197,7 +1198,9 @@ export const complexSelector = (
   ];
   return {
     type: 'ComplexSelector',
-    value
+    value,
+    _s: NO_SPAN,
+    _e: NO_SPAN
   };
 };
 export const relativeSelector = (
@@ -1212,14 +1215,16 @@ export const relativeSelector = (
   ];
   return {
     type: 'RelativeSelector',
-    value
+    value,
+    _s: NO_SPAN,
+    _e: NO_SPAN
   };
 };
 export const selectorBranchOf = (segments: readonly [SelectorPartInput, ...SelectorPartInput[]]): SelectorBranch => {
   const [first, second, ...rest] = segments;
   return second === undefined ? first.term : complexSelector([first, second, ...rest]);
 };
-export const selist = (...selectors: SelectorBranch[]): SelectorList => ({ type: 'SelectorList', selectors });
+export const selist = (...selectors: SelectorBranch[]): SelectorList => ({ type: 'SelectorList', selectors, _s: NO_SPAN, _e: NO_SPAN });
 
 export const decl = (
   name: string | Interpolation,
@@ -1229,8 +1234,8 @@ export const decl = (
   valueOnNewLine = false
 ): Declaration =>
   valueOnNewLine
-    ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true }
-    : { type: 'Declaration', name, value, merge, important };
+    ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true, _s: NO_SPAN, _e: NO_SPAN }
+    : { type: 'Declaration', name, value, merge, important, _s: NO_SPAN, _e: NO_SPAN };
 
 export const collectionEntry = (
   key: ValueSlot,
@@ -1254,7 +1259,7 @@ export const comment = (text: string): Comment => ({ type: 'Comment', text });
 export const rawInline = (text: string, media?: string | null): RawInline =>
   media != null ? { type: 'RawInline', text, media } : { type: 'RawInline', text };
 export const variableReference = (name: string, lookup: VariableLookup): VariableReference =>
-  ({ type: 'VariableReference', name, lookup });
+  ({ type: 'VariableReference', name, lookup, _s: NO_SPAN, _e: NO_SPAN });
 export const declarationReference = (raw: string = '$'): DeclarationReference => ({ type: 'DeclarationReference', raw });
 export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
 export const important = (value: ValueSlot): Important => ({ type: 'Important', value });
@@ -1262,28 +1267,28 @@ export const important = (value: ValueSlot): Important => ({ type: 'Important', 
 /** @deprecated Renamed to {@link sequence}; kept one cycle for straddling callers. */
 export const concat = sequence;
 export const operation = (operator: string, left: ValueNode, right: ValueNode): Operation =>
-  ({ type: 'Operation', operator, left, right });
+  ({ type: 'Operation', operator, left, right, _s: NO_SPAN, _e: NO_SPAN });
 export const funcCall = (name: string, args: ValueSlot[], modern = false): FunctionCall =>
-  ({ type: 'FunctionCall', name, args, modern });
+  ({ type: 'FunctionCall', name, args, modern, _s: NO_SPAN, _e: NO_SPAN });
 export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
-  escaped ? { type: 'Block', value, delimiter, escaped: true } : { type: 'Block', value, delimiter };
+  escaped ? { type: 'Block', value, delimiter, escaped: true, _s: NO_SPAN, _e: NO_SPAN } : { type: 'Block', value, delimiter, _s: NO_SPAN, _e: NO_SPAN };
 
 /** The `$( … )` math boundary — see {@link Block.boundary}. */
 export const boundaryBlock = (value: ValueSlot): Block =>
-  ({ type: 'Block', value, delimiter: 'paren', boundary: true });
+  ({ type: 'Block', value, delimiter: 'paren', boundary: true, _s: NO_SPAN, _e: NO_SPAN });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
 export const variableDeclaration = (
   name: string,
   value: ValueSlot | MixinCall,
   write: VariableWrite
 ): VariableDeclaration =>
-  ({ type: 'VariableDeclaration', name, value, write });
+  ({ type: 'VariableDeclaration', name, value, write, _s: NO_SPAN, _e: NO_SPAN });
 export const mixinDef = (
   name: string,
   params: Param[],
   rules: Statement[],
   guard?: GuardNode // [guards]
-): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard !== undefined ? { guard } : {}) });
+): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard !== undefined ? { guard } : {}), _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
 
 /** [guards] Args may be bare value nodes (positional) or `{ value, name? }`. */
 export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): MixinCall => ({
@@ -1291,7 +1296,8 @@ export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): 
   name,
   args: args.map(a => ('type' in a ? { value: a } : a)),
   path: [],
-  important: false
+  important: false,
+  _s: NO_SPAN, _e: NO_SPAN
 });
 export const apply = (selectors: readonly SelectorTerm[]): Apply => ({ type: 'Apply', selectors });
 
@@ -1317,7 +1323,11 @@ export const rule = (
     selector: list,
     rules,
     ...(extendInstructions !== undefined ? { extendInstructions } : {}),
-    ...(guard !== undefined ? { guard } : {})
+    ...(guard !== undefined ? { guard } : {}),
+    _s: NO_SPAN,
+    _e: NO_SPAN,
+    _bs: NO_SPAN,
+    _be: NO_SPAN
   };
 };
 export const styleImport = (
@@ -1333,4 +1343,4 @@ export const moduleImport = (
   imports: readonly ModuleImportSpecifier[] = [],
   defaultImport: string | null = null
 ): ModuleImport => ({ type: 'ModuleImport', path, mode, defaultImport, namespace, imports });
-export const stylesheet = (rules: Statement[]): Stylesheet => ({ type: 'Stylesheet', rules });
+export const stylesheet = (rules: Statement[]): Stylesheet => ({ type: 'Stylesheet', rules, _s: NO_SPAN, _e: NO_SPAN, _trivia: undefined });

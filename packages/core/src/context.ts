@@ -22,7 +22,7 @@ import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
-import { sourceSpanOf } from './ast/provenance.js';
+import { NO_SPAN, sourceStartOf } from './ast/provenance.js';
 import { extractRelevantLines, lineColAt } from './error/code-frame.js';
 import { type JessErrorCode, type Phase, resolveTemplate } from './error/codes.js';
 import type { Deprecation } from './deprecation.js';
@@ -732,15 +732,18 @@ export class Context {
     options?: { code?: string; note?: string }
   ): void {
     const code = options?.code ?? templateCode;
-    const file = this.sourceContext?.file;
-    const source = file?.source;
-    const offset = source === undefined ? -1 : sourceSpanOf(node)?.start ?? -1;
-    const site = offset >= 0
-      ? `${file?.fullPath ?? ''}:@${offset}`
-      : `${file?.fullPath ?? ''}:1:1`;
     if (warnCodeMatchesAny(code, this.warnConfig.silence)) {
       return;
     }
+
+    /* Read the inline span slot, and only past the silence gate: a silenced
+     * warning must construct nothing (V8-ARCH #10). */
+    const file = this.sourceContext?.file;
+    const source = file?.source;
+    const offset = source === undefined ? NO_SPAN : sourceStartOf(node);
+    const site = offset >= 0
+      ? `${file?.fullPath ?? ''}:@${offset}`
+      : `${file?.fullPath ?? ''}:1:1`;
     if (!this.admitWarning(code, phase, site, () => resolveTemplate(templateCode, meta).summary)) {
       return;
     }

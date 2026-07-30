@@ -14,6 +14,7 @@ import {
   variableDeclaration,
   variableReference
 } from '../nodes.js';
+import { bare } from '../../../../../test/provenance-free.js';
 
 describe('AST node contract', () => {
   it('admits the Important value wrapper through the exported Node union', () => {
@@ -62,7 +63,7 @@ describe('AST node contract', () => {
   it('publishes variable-held calls as final Reference call steps', () => {
     const call: Node = reference(variableReference('content', 'scoped'), [{ type: 'Call', args: [] }], '@content()');
 
-    expect(call).toEqual({
+    expect(bare(call)).toEqual({
       type: 'Reference',
       base: { type: 'VariableReference', name: 'content', lookup: 'scoped' },
       steps: [{ type: 'Call', args: [] }],
@@ -74,7 +75,7 @@ describe('AST node contract', () => {
   it('publishes declaration-member references as public AST facts', () => {
     const member: Node = reference(declarationReference('$'), [{ type: 'DotLookup', name: 'tone' }], '$.tone');
 
-    expect(member).toEqual({
+    expect(bare(member)).toEqual({
       type: 'Reference',
       base: { type: 'DeclarationReference', raw: '$' },
       steps: [{ type: 'DotLookup', name: 'tone' }],
@@ -85,16 +86,16 @@ describe('AST node contract', () => {
   });
 
   it('retains variable lookup and write operations as public AST facts', () => {
-    expect(variableReference('current', 'live')).toEqual({
+    expect(bare(variableReference('current', 'live'))).toEqual({
       type: 'VariableReference', name: 'current', lookup: 'live'
     });
-    expect(variableReference('final', 'scoped')).toEqual({
+    expect(bare(variableReference('final', 'scoped'))).toEqual({
       type: 'VariableReference', name: 'final', lookup: 'scoped'
     });
-    expect(varIndirect(variableReference('name', 'live'), 'live')).toEqual({
-      type: 'VarIndirect', nameRef: variableReference('name', 'live'), lookup: 'live'
+    expect(bare(varIndirect(variableReference('name', 'live'), 'live'))).toEqual({
+      type: 'VarIndirect', nameRef: bare(variableReference('name', 'live')), lookup: 'live'
     });
-    expect(variableDeclaration('both', keyword('blue'), { mode: 'declare' })).toEqual({
+    expect(bare(variableDeclaration('both', keyword('blue'), { mode: 'declare' }))).toEqual({
       type: 'VariableDeclaration', name: 'both', value: keyword('blue'), write: { mode: 'declare' }
     });
     expect(variableDeclaration('ifMissing', keyword('blue'), {

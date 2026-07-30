@@ -19,9 +19,15 @@ import { collectShapes, formatShapeReport, SHAPE_DEBT_ALLOWLIST, type CorpusSour
  *
  * This is pure test-side instrumentation — it walks freshly PARSED trees (no
  * serialize pass, so lazy serializer memos on selectors stay unset) and reads
- * `Object.keys` order. Zero production code path, zero production overhead. Source
- * spans and value layouts are held in out-of-band WeakMaps (see provenance.ts),
- * so they never perturb node shape.
+ * `Object.keys` order. Zero production code path, zero production overhead.
+ *
+ * Source spans are INLINE integer slots on the node (`_s`/`_e`, plus `_bs`/`_be`
+ * and `_trivia` — see provenance.ts), so they DO appear in every signature the
+ * probe records. Every factory for a span-bearing type writes them
+ * unconditionally, so they add no shape; a type that gains a slot on only some
+ * construction path is exactly the divergence this test exists to catch. Value
+ * layouts remain in an out-of-band WeakMap (their subject is a raw ValueSlot
+ * array) and still never perturb node shape.
  *
  * Known-current polymorphism is captured in SHAPE_DEBT_ALLOWLIST (see
  * shape-probe.ts): the test passes on today's debt but FAILS on any NEW

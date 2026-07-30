@@ -8,6 +8,57 @@ import type { Trivia, TriviaMap } from '../types/index.js';
  * the exact span; evaluation reads it only when constructing a diagnostic.
  */
 export type AstSourceSpan = Readonly<{ start: number; end: number }>;
+
+/**
+ * Inline provenance slots.
+ *
+ * A parser-authored span lives in two plain integer fields ON the node, the way
+ * every production compiler carries it (TypeScript's `pos`/`end`, rustc's
+ * `Span`, swc's `span`, esbuild's `Loc`). The prior design kept four
+ * identity-keyed `WeakMap`s, which cost one `{ start, end }` object plus one
+ * ephemeron entry per span; reads outnumber writes ~2.6:1 and the dominant
+ * consumer is the renderer, so a hash probe sat on the hot path.
+ *
+ * `NO_SPAN` (-1) is the absent sentinel: it cannot collide with a real offset.
+ * Every factory for a span-bearing node type initializes both slots
+ * unconditionally, so a later `withSourceSpan` stores into an existing Smi field
+ * and never transitions the hidden class.
+ *
+ * Prefer {@link sourceStartOf} / {@link sourceEndOf} on hot paths: they read the
+ * integer directly. {@link sourceSpanOf} keeps the historical object-returning
+ * signature for cold diagnostic callers and MATERIALIZES a `{ start, end }`
+ * object per call, so it must not be used per-node in the renderer.
+ */
+export const NO_SPAN = -1;
+
+/** The two inline source-span slots carried by every span-bearing node. */
+export interface SpanSlots {
+  _s: number;
+  _e: number;
+}
+
+/** The inline per-document trivia slot carried by a stylesheet root.
+ *
+ * Trivia is keyed by the ROOT only — one entry per document — so the former
+ * `WeakMap` bought nothing but an ephemeron the collector had to track. The
+ * field is initialized to `undefined` by the factory so a later
+ * {@link withTriviaMap} stores into an existing Tagged slot without a
+ * hidden-class transition. */
+export interface TriviaSlot {
+  _trivia?: TriviaMap;
+}
+
+/** The two inline body-span slots carried by every block-bearing node. */
+export interface BodySpanSlots {
+  _bs: number;
+  _be: number;
+}
+
+/*
+ * Factories write `_s: NO_SPAN, _e: NO_SPAN` as LITERAL fields in their object
+ * literal — never by spreading a helper's return, which would reintroduce the
+ * per-node allocation this change exists to remove.
+ */
 export type AstTriviaRange = AstSourceSpan;
 export interface ParserTriviaEntriesView {
   readonly length: number;
@@ -112,35 +163,23 @@ function labeledCommentRangesFromEntries(
 export type ValueLayout = readonly string[];
 
 /*
+ * Value layout is the one side table that MUST stay identity-keyed: its subject
+ * is a raw `ValueSlot` ARRAY, and named properties on an array are not a shape a
+ * factory can pre-initialize (and would push the array out of its fast elements
+ * kind). Measured on `benchmark.less`: 145 layout writes per render, versus
+ * 9,813 span writes that are now inline fields. Spans, body spans, and the
+ * per-document trivia map all moved onto the nodes themselves.
+ *
  * Parser packages consume the public `@jesscss/core/ast` subpath while core
- * evaluation is also loaded through the package root. Build tools may therefore
- * materialize more than one copy of this small module. A process-global symbol
- * keeps the one parser-authored side table shared across those module identities
- * without adding properties to AST nodes or creating a test-only metadata path.
+ * evaluation is also loaded through the package root, so build tools may
+ * materialize more than one copy of this module. A process-global symbol keeps
+ * this one remaining side table shared across those module identities.
  */
-const spanStoreKey = Symbol.for('jess.ast.source-span-store');
-const globalStore = globalThis as typeof globalThis & {
-  [spanStoreKey]?: WeakMap<object, AstSourceSpan>;
-};
-const spans = globalStore[spanStoreKey] ??= new WeakMap<object, AstSourceSpan>();
-
 const layoutStoreKey = Symbol.for('jess.ast.value-layout-store');
 const layoutGlobal = globalThis as typeof globalThis & {
   [layoutStoreKey]?: WeakMap<object, ValueLayout>;
 };
 const layouts = layoutGlobal[layoutStoreKey] ??= new WeakMap<object, ValueLayout>();
-
-const triviaStoreKey = Symbol.for('jess.ast.trivia-map-store');
-const triviaGlobal = globalThis as typeof globalThis & {
-  [triviaStoreKey]?: WeakMap<object, TriviaMap>;
-};
-const triviaMaps = triviaGlobal[triviaStoreKey] ??= new WeakMap<object, TriviaMap>();
-
-const bodySpanStoreKey = Symbol.for('jess.ast.rules-span-store');
-const bodySpanGlobal = globalThis as typeof globalThis & {
-  [bodySpanStoreKey]?: WeakMap<object, AstSourceSpan>;
-};
-const bodySpans = bodySpanGlobal[bodySpanStoreKey] ??= new WeakMap<object, AstSourceSpan>();
 
 function rangeHasComment(src: string, start: number, end: number): boolean {
   for (let i = start; i < end; i++) {
@@ -318,37 +357,92 @@ export function createTriviaMapFromParseman(
 /** @deprecated Use `createTriviaMapFromParseman`. */
 export const createTriviaMapFromRootIndex = createTriviaMapFromParseman;
 
-/** Retain the exact Parseman reduction span for an AST factory result. */
+/**
+ * Retain the exact Parseman reduction span for an AST factory result.
+ *
+ * The node's factory already initialized `_s`/`_e` to {@link NO_SPAN}, so this is
+ * a same-map Smi store. A node built outside a factory (a hand-written literal
+ * in a test) transitions once here and is not on any hot path.
+ */
 export function withSourceSpan<T extends object>(node: T, span: AstSourceSpan): T {
-  spans.set(node, span);
+  const slots = node as Partial<SpanSlots>;
+  slots._s = span.start;
+  slots._e = span.end;
   return node;
 }
 
-/** Read a parser-authored span, if the AST node originated in source. */
-export function sourceSpanOf(node: object): AstSourceSpan | undefined {
-  return spans.get(node);
+/** The parser-authored start offset, or {@link NO_SPAN}. The hot-path reader. */
+export function sourceStartOf(node: object): number {
+  return (node as Partial<SpanSlots>)._s ?? NO_SPAN;
 }
 
-/** Retain parser-owned document trivia without adding fields to the AST root. */
+/** The parser-authored end offset, or {@link NO_SPAN}. The hot-path reader. */
+export function sourceEndOf(node: object): number {
+  return (node as Partial<SpanSlots>)._e ?? NO_SPAN;
+}
+
+/**
+ * Read a parser-authored span, if the AST node originated in source.
+ *
+ * MATERIALIZES an object per call. Cold diagnostic callers only — hot readers
+ * use {@link sourceStartOf} / {@link sourceEndOf}.
+ */
+export function sourceSpanOf(node: object): AstSourceSpan | undefined {
+  const slots = node as Partial<SpanSlots>;
+  const start = slots._s;
+  if (start === undefined || start === NO_SPAN) {
+    return undefined;
+  }
+  return { start, end: slots._e ?? NO_SPAN };
+}
+
+/**
+ * Retain parser-owned document trivia.
+ *
+ * Keyed by the stylesheet ROOT only — one entry per document — so a `WeakMap`
+ * bought nothing but an ephemeron the collector had to track. It rides on the
+ * root as an ordinary field.
+ */
 export function withTriviaMap<T extends object>(node: T, trivia: TriviaMap): T {
-  triviaMaps.set(node, trivia);
+  (node as { _trivia?: TriviaMap })._trivia = trivia;
   return node;
 }
 
 /** Read parser-owned document trivia attached to a canonical AST root. */
 export function triviaMapOf(node: object): TriviaMap | undefined {
-  return triviaMaps.get(node);
+  return (node as { _trivia?: TriviaMap })._trivia;
 }
 
 /** Retain the exact source span inside a block's braces. */
 export function withBodySpan<T extends object>(node: T, span: AstSourceSpan): T {
-  bodySpans.set(node, span);
+  const slots = node as Partial<BodySpanSlots>;
+  slots._bs = span.start;
+  slots._be = span.end;
   return node;
 }
 
-/** Read the parser-authored source span inside a block's braces. */
+/** The body-span start offset inside a block's braces, or {@link NO_SPAN}. */
+export function bodyStartOf(node: object): number {
+  return (node as Partial<BodySpanSlots>)._bs ?? NO_SPAN;
+}
+
+/** The body-span end offset inside a block's braces, or {@link NO_SPAN}. */
+export function bodyEndOf(node: object): number {
+  return (node as Partial<BodySpanSlots>)._be ?? NO_SPAN;
+}
+
+/**
+ * Read the parser-authored source span inside a block's braces.
+ *
+ * MATERIALIZES an object per call — see {@link sourceSpanOf}.
+ */
 export function bodySpanOf(node: object): AstSourceSpan | undefined {
-  return bodySpans.get(node);
+  const slots = node as Partial<BodySpanSlots>;
+  const start = slots._bs;
+  if (start === undefined || start === NO_SPAN) {
+    return undefined;
+  }
+  return { start, end: slots._be ?? NO_SPAN };
 }
 
 /** Retain authored separator/trivia runs for a raw ValueSlot array or List fact.

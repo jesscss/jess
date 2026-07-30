@@ -7,6 +7,7 @@ import {
   selist,
   sel,
   sourceSpanOf,
+  stylesheet,
   triviaMapOf,
   variableReference,
   withBodySpan,
@@ -52,7 +53,9 @@ describe('canonical AST source provenance', () => {
   });
 
   it('retains document trivia without changing the AST root shape', () => {
-    const doc = { type: 'Stylesheet' as const, rules: [] };
+    /* Built through the factory: the shape guarantee is about the shape every
+     * root actually has, not about an ad-hoc literal that skips the slots. */
+    const doc = stylesheet([]);
     const keys = Object.keys(doc);
     const src = '/* keep */\n.a{}';
     const trivia = createTriviaMapFromRanges(src, [{ start: 0, end: 11 }]);

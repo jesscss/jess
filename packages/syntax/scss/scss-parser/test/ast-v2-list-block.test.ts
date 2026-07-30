@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/scss-parser';
 import { serialize } from '../../../../core/src/ast/serialize.js';
+import { bare } from '../../../../../test/provenance-free.js';
 
 describe('SCSS AST-v2 separator and delimiter facts', () => {
   it('reduces top-level slash lists without a slash keyword sentinel', () => {
@@ -43,7 +44,7 @@ describe('SCSS AST-v2 separator and delimiter facts', () => {
     if (declaration?.type !== 'Declaration') {
       throw new Error('expected declaration');
     }
-    expect(declaration.value).toEqual({
+    expect(bare(declaration.value)).toEqual({
       type: 'Block',
       delimiter: 'square',
       value: {
@@ -68,7 +69,7 @@ describe('SCSS AST-v2 separator and delimiter facts', () => {
     if (declaration?.type !== 'Declaration') {
       throw new Error('expected declaration');
     }
-    expect(declaration.value).toEqual({
+    expect(bare(declaration.value)).toEqual({
       type: 'Block',
       delimiter: 'paren',
       value: [

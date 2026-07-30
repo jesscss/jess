@@ -8,6 +8,7 @@ import { cssGrammar } from '../src/grammar.js';
 import { parseCssCst } from '../src/cst-css.js';
 import { parse } from '../src/index.js';
 import { wptAnbParsing } from './wpt-syntax-vectors.js';
+import { bare } from '../../../../../test/provenance-free.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object'
@@ -457,7 +458,7 @@ describe('CSS canonical-AST grammar', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(document).toEqual(parseAst(source));
+    expect(bare(document)).toEqual(bare(parseAst(source)));
     expect(trivia?.commentRuns().map(run => source.slice(run.start, run.end))).toEqual([
       '/* root */ ',
       '/* compound */',
@@ -499,7 +500,7 @@ describe('CSS canonical-AST grammar', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(parse(source)).toEqual(parseAst(source));
+    expect(bare(parse(source))).toEqual(bare(parseAst(source)));
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
       rules: [{
@@ -525,7 +526,7 @@ describe('CSS canonical-AST grammar', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(parse(source)).toEqual(parseAst(source));
+    expect(bare(parse(source))).toEqual(bare(parseAst(source)));
     expect(parse(source).rules[0]).toMatchObject({
       type: 'Ruleset',
       rules: [{
@@ -841,7 +842,7 @@ describe('CSS canonical-AST grammar', () => {
       const cst = parseCssCst(input);
       expect(cst.errors, input).toHaveLength(0);
       expect(cst.unconsumedFrom, input).toBeNull();
-      expect(parse(input), input).toEqual(parseAst(input));
+      expect(bare(parse(input), input)).toEqual(bare(parseAst(input)));
     }
     expect(parseAst(source).rules[0]).toMatchObject({
       type: 'AtRuleBlock',
@@ -1076,7 +1077,7 @@ describe('CSS canonical-AST grammar', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(parse(source)).toEqual(parseAst(source));
+    expect(bare(parse(source))).toEqual(bare(parseAst(source)));
     expect(parseAst(source).rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@page',
@@ -1257,7 +1258,7 @@ describe('CSS canonical-AST grammar', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(parse(source)).toEqual(parseAst(source));
+    expect(bare(parse(source))).toEqual(bare(parseAst(source)));
     expect(parseAst(source)).toMatchObject({
       type: 'Stylesheet',
       rules: [{
@@ -1464,7 +1465,7 @@ describe('CSS canonical-AST grammar', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(parse(source)).toEqual(parseAst(source));
+    expect(bare(parse(source))).toEqual(bare(parseAst(source)));
     expect(parse(source).rules).toMatchObject([
       { type: 'AtRuleStatement', prelude: { type: 'Any', src: '"theme.css"' } },
       { type: 'AtRuleStatement', prelude: { type: 'Any', src: 'url(icons.css)' } },
@@ -1488,7 +1489,7 @@ describe('CSS canonical-AST grammar', () => {
     });
     expect(containsNode(document, value => value.type === 'Url')).toBe(false);
     expect(containsNode(document, value => value.type === 'FunctionCall' && value.name === 'url')).toBe(false);
-    expect(parse(source)).toEqual(parseAst(source));
+    expect(bare(parse(source))).toEqual(bare(parseAst(source)));
 
     const invalid = '.asset { background: url(foo bar); }';
     expect(() => parseAst(invalid), invalid).toThrow('CSS AST grammar did not consume the document');
@@ -1757,7 +1758,7 @@ describe('CSS canonical-AST grammar', () => {
     expect(directVar.ok, JSON.stringify(directVar)).toBe(true);
     expect(directVar.unconsumedFrom).toBeNull();
     const document = parseAst(source);
-    expect(parse(source)).toEqual(document);
+    expect(bare(parse(source))).toEqual(bare(document));
     expect(document.rules[0]).toMatchObject({
       type: 'Ruleset',
       rules: [
@@ -1781,7 +1782,7 @@ describe('CSS canonical-AST grammar', () => {
 
     const nestedFallback = '.a { h: calc(var(--x, (foo) [foo]) + 2px); i: calc(var(--x, foo, bar) + 2px); j: calc(var(--x, foo([bar])) + 2px); k: calc(var(--x, {foo}) + 2px); l: calc(var(--x, var(--y, a, b)) + 2px); m: calc(var(--x,) + 2px); n: calc(var(--x, foo,) + 2px); o: calc(var(--x, foo(a,)) + 2px); p: calc(var(--x, foo(,a)) + 2px); q: calc(var(--x, a,,b) + 2px); }';
     const nestedDocument = parseAst(nestedFallback);
-    expect(parse(nestedFallback)).toEqual(nestedDocument);
+    expect(bare(parse(nestedFallback))).toEqual(bare(nestedDocument));
     expect(nestedDocument.rules[0]).toMatchObject({
       type: 'Ruleset',
       rules: [{
@@ -1899,7 +1900,7 @@ describe('CSS canonical-AST grammar', () => {
       '.a { x: calc(var(--x, {a[b]}) + 2px); }'
     ]) {
       expect(() => parse(valid), valid).not.toThrow();
-      expect(parse(valid), valid).toEqual(parseAst(valid));
+      expect(bare(parse(valid)), valid).toEqual(bare(parseAst(valid)));
     }
   });
 

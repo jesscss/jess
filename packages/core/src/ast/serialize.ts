@@ -138,7 +138,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { bodySpanOf, sourceSpanOf, triviaMapOf, valueLayoutOf, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueLayoutOf, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -1120,7 +1120,10 @@ function orderedMixinsForStatements(
        */
       const rm: MixinDefinition = {
         type: 'MixinDefinition', name: key, params: [], rules: rule.rules, ruleMixin: true,
-        ...(rule.guard !== undefined ? { guard: rule.guard } : {})
+        ...(rule.guard !== undefined ? { guard: rule.guard } : {}),
+
+        /* the synthesized ruleset-mixin stands for the same source as its rule */
+        _s: rule._s, _e: rule._e, _bs: rule._bs, _be: rule._be
       };
       add(key, rm, [index]);
     }
@@ -1703,7 +1706,10 @@ function findPathInScope(
             type: 'MixinDefinition',
             name: selectorBranchHasInterp(c) ? resolveSelectorBranchSync(c, selectorFrame, e) : selectorBranchCanonical(c),
             params: [], rules: s.rules, ruleMixin: true,
-            ...(s.guard !== undefined ? { guard: s.guard } : {})
+            ...(s.guard !== undefined ? { guard: s.guard } : {}),
+
+            /* the synthesized ruleset-mixin stands for the same source as its rule */
+            _s: s._s, _e: s._e, _bs: s._bs, _be: s._be
           };
           out.push(rm);
           homes.set(rm, placement ?? scope);
@@ -2726,8 +2732,10 @@ function arithmeticSiteLocation(node: object, e: EvalCtx): {
   if (source === undefined || span === undefined) {
     return location;
   }
-  const leftEnd = sourceSpanOf(node.left)?.end ?? span.start;
-  const rightStart = sourceSpanOf(node.right)?.start ?? span.end;
+  const leftEndSlot = sourceEndOf(node.left);
+  const rightStartSlot = sourceStartOf(node.right);
+  const leftEnd = leftEndSlot === NO_SPAN ? span.start : leftEndSlot;
+  const rightStart = rightStartSlot === NO_SPAN ? span.end : rightStartSlot;
   const searchStart = Math.max(span.start, leftEnd);
   const searchEnd = Math.min(span.end, rightStart);
   const operatorOffset = source.indexOf(node.operator, searchStart);
@@ -3757,8 +3765,13 @@ function invokeValueLambda(
   callerFrame: Frame | null,
   e: EvalCtx
 ): { value: ValueSlot; frame: Frame } | null {
-  const syntheticDef: MixinDefinition = { type: 'MixinDefinition', name: '', params: lambda.params ?? [], rules: lambda.rules };
-  const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false };
+  const syntheticDef: MixinDefinition = {
+    type: 'MixinDefinition', name: '', params: lambda.params ?? [], rules: lambda.rules,
+
+    /* a synthetic lambda wrapper carries no source position of its own */
+    _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN
+  };
+  const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false, _s: NO_SPAN, _e: NO_SPAN };
   const resolveCaller = makeResolver(callerFrame, e);
   const resolveDefault: DefaultResolver = (v, boundSoFar) => {
     const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
@@ -5744,29 +5757,29 @@ function inlineBlockCommentText(run: Trivia, trimLeadingWhitespace = false): str
   return out;
 }
 
+/* Reads the inline span slots directly: these run per statement per render, so
+ * they must not materialize an `{ start, end }` object to discard one half. */
 function statementStartOf(node: Statement): number | undefined {
   if (node.type === 'VariableDeclaration') {
     return undefined;
   }
-  if (node.type === 'Ruleset') {
-    return sourceSpanOf(node.selector)?.start;
-  }
-  return sourceSpanOf(node)?.start;
+  const start = node.type === 'Ruleset' ? sourceStartOf(node.selector) : sourceStartOf(node);
+  return start === NO_SPAN ? undefined : start;
 }
 
 function statementEndOf(node: Statement): number | undefined {
   if (node.type === 'VariableDeclaration') {
     return undefined;
   }
+  const end = sourceEndOf(node);
   if (node.type === 'Ruleset') {
-    const span = sourceSpanOf(node);
-    if (span !== undefined) {
-      return span.end;
+    if (end !== NO_SPAN) {
+      return end;
     }
-    const body = bodySpanOf(node);
-    return body === undefined ? undefined : body.end + 1;
+    const bodyEnd = bodyEndOf(node);
+    return bodyEnd === NO_SPAN ? undefined : bodyEnd + 1;
   }
-  return sourceSpanOf(node)?.end;
+  return end === NO_SPAN ? undefined : end;
 }
 
 interface ReplaySpan {
@@ -5844,8 +5857,7 @@ function commentRunStartingAt(table: CommentTable, offset: number): number {
 
 function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   const trivia = e.trivia;
-  const span = sourceSpanOf(node);
-  if (trivia === undefined || span === undefined) {
+  if (trivia === undefined) {
     return;
   }
   const table = commentTableOf(trivia);
@@ -5853,6 +5865,11 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   if (source === undefined) {
     return;
   }
+  const spanStart = sourceStartOf(node);
+  if (spanStart === NO_SPAN) {
+    return;
+  }
+  const span = { start: spanStart, end: sourceEndOf(node) };
 
   /* This path only emits comments. A general trivia-boundary lookup forces a
    * legacy Parseman root map for all whitespace gaps; comment runs are already
@@ -5973,14 +5990,18 @@ function firstDeclarationColon(source: string, span: AstSourceSpan): number | nu
 
 function declarationHeadTriviaText(node: Declaration, e: Emit): string {
   const trivia = e.trivia;
-  const span = sourceSpanOf(node);
-  if (trivia === undefined || span === undefined) {
+  if (trivia === undefined) {
     return '';
   }
   const source = triviaSource(trivia);
   if (source === undefined) {
     return '';
   }
+  const spanStart = sourceStartOf(node);
+  if (spanStart === NO_SPAN) {
+    return '';
+  }
+  const span = { start: spanStart, end: sourceEndOf(node) };
   const colon = firstDeclarationColon(source, span);
   if (colon === null) {
     return '';
@@ -6071,10 +6092,14 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
     return null;
   }
   const trivia = e.trivia;
-  const span = sourceSpanOf(value);
-  if (trivia === undefined || span === undefined) {
+  if (trivia === undefined) {
     return null;
   }
+  const spanStart = sourceStartOf(value);
+  if (spanStart === NO_SPAN) {
+    return null;
+  }
+  const span = { start: spanStart, end: sourceEndOf(value) };
   let source: string | undefined;
   let sawComment = false;
   const valueTable = commentTableOf(trivia);
@@ -6138,10 +6163,14 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
 
 function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
   const trivia = e.trivia;
-  const span = sourceSpanOf(node);
-  if (trivia === undefined || span === undefined) {
+  if (trivia === undefined) {
     return;
   }
+  const spanStart = sourceStartOf(node);
+  if (spanStart === NO_SPAN) {
+    return;
+  }
+  const span = { start: spanStart, end: sourceEndOf(node) };
   const table = commentTableOf(trivia);
   for (let i = firstRunAtOrAfter(table, span.start); i < table.runs.length; i++) {
     if (table.runStart[i]! > span.end) {
@@ -6153,19 +6182,31 @@ function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
   }
 }
 
+/* The start offset alone, with no object built: this runs per statement inside
+ * an at-rule body, and every caller that only needs the start must not pay for
+ * a `{ start, end }` the base version got for free from the retained side table. */
+function bodyStartForTriviaReplay(owner: object, e: Emit): number {
+  const bodyStart = bodyStartOf(owner);
+  if (bodyStart !== NO_SPAN) {
+    return bodyStart;
+  }
+  return bodySpanForTriviaReplay(owner, e)?.start ?? NO_SPAN;
+}
+
 function bodySpanForTriviaReplay(owner: object, e: Emit): ReplaySpan | undefined {
-  const body = bodySpanOf(owner);
-  if (body !== undefined) {
-    return body;
+  const bodyStart = bodyStartOf(owner);
+  if (bodyStart !== NO_SPAN) {
+    return { start: bodyStart, end: bodyEndOf(owner) };
   }
   const trivia = e.trivia;
-  const span = sourceSpanOf(owner);
+  const spanStart = sourceStartOf(owner);
   const source = trivia === undefined ? undefined : commentTableOf(trivia).src;
-  if (span === undefined || source === undefined) {
+  if (spanStart === NO_SPAN || source === undefined) {
     return undefined;
   }
-  const open = firstIndexInSourceRange(source, '{', span.start, span.end);
-  const close = lastIndexInSourceRange(source, '}', span.start, span.end);
+  const spanEnd = sourceEndOf(owner);
+  const open = firstIndexInSourceRange(source, '{', spanStart, spanEnd);
+  const close = lastIndexInSourceRange(source, '}', spanStart, spanEnd);
   if (open < 0 || close <= open) {
     return undefined;
   }
@@ -6204,9 +6245,14 @@ function bodyBlockCommentTexts(owner: object, e: Emit): string[] {
 }
 
 function emitBodyBlockCommentTriviaBefore(owner: object, before: object, e: Emit, indent: string, after: number): number {
-  const body = bodySpanForTriviaReplay(owner, e);
-  const span = sourceSpanOf(before);
-  return emitBlockCommentTriviaBetween(e, Math.max(body?.start ?? after, after), span?.start, indent);
+  const bodyStart = bodyStartForTriviaReplay(owner, e);
+  const beforeStart = sourceStartOf(before);
+  return emitBlockCommentTriviaBetween(
+    e,
+    Math.max(bodyStart === NO_SPAN ? after : bodyStart, after),
+    beforeStart === NO_SPAN ? undefined : beforeStart,
+    indent
+  );
 }
 
 function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
@@ -6428,12 +6474,16 @@ function authoredStatementWithTrivia(node: AtRuleStatement, e: Emit): string | n
 
 function authoredSliceWithTrivia(node: object, e: Emit): string | null {
   const trivia = e.trivia;
-  const span = sourceSpanOf(node);
-  if (trivia === undefined || span === undefined) {
+  if (trivia === undefined) {
     return null;
   }
-  return spanContainsCommentRun(trivia, span.start, span.end)
-    ? commentTableOf(trivia).src!.slice(span.start, span.end).trim()
+  const spanStart = sourceStartOf(node);
+  if (spanStart === NO_SPAN) {
+    return null;
+  }
+  const spanEnd = sourceEndOf(node);
+  return spanContainsCommentRun(trivia, spanStart, spanEnd)
+    ? commentTableOf(trivia).src!.slice(spanStart, spanEnd).trim()
     : null;
 }
 
@@ -6524,10 +6574,14 @@ function authoredSelectorHeaderWithTrivia(node: SelectorList, rendered: readonly
     return null;
   }
   const trivia = e.trivia;
-  const span = sourceSpanOf(node);
-  if (trivia === undefined || span === undefined) {
+  if (trivia === undefined) {
     return null;
   }
+  const spanStart = sourceStartOf(node);
+  if (spanStart === NO_SPAN) {
+    return null;
+  }
+  const span = { start: spanStart, end: sourceEndOf(node) };
   const branchSpans = node.selectors.map(sourceSpanOf);
   if (branchSpans.some(branch => branch === undefined)) {
     return null;
@@ -10079,7 +10133,7 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MaybeP
       }
       pushSpread(args, resolved);
     }
-    return { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important };
+    return { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, _s: call._s, _e: call._e };
   };
   return step(0);
 }
@@ -10133,7 +10187,9 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
     }
     return a;
   });
-  return changed ? { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important } : call;
+  return changed
+    ? { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, _s: call._s, _e: call._e }
+    : call;
 }
 
 function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: SelectorList, parentKey?: object | null, owner?: object): MaybePromise<void> {
@@ -10194,10 +10250,12 @@ function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: Select
     if (merged) {
       mergeFold(kept, e, INDENT.repeat(e.depth + 1));
     } else {
-      const body = owner === undefined ? undefined : bodySpanOf(owner);
-      let bodyTriviaCursor = body?.start ?? 0;
+      const bodyOwner = owner;
+      const bodyStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
+      const hasBody = bodyStart !== NO_SPAN;
+      let bodyTriviaCursor = hasBody ? bodyStart : 0;
       for (const leaf of kept) {
-        if (body !== undefined) {
+        if (hasBody) {
           emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(leaf.node), INDENT.repeat(e.depth + 1));
           bodyTriviaCursor = statementEndOf(leaf.node) ?? bodyTriviaCursor;
         }
@@ -10208,8 +10266,8 @@ function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: Select
         }
         emitLeaf(leaf, e);
       }
-      if (body !== undefined) {
-        emitBlockCommentTriviaBetween(e, bodyTriviaCursor, body.end, INDENT.repeat(e.depth + 1));
+      if (hasBody) {
+        emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyOwner === undefined ? bodyTriviaCursor : bodyEndOf(bodyOwner), INDENT.repeat(e.depth + 1));
       }
     }
     for (const comment of trailingBlockComments) {
@@ -11848,7 +11906,8 @@ function emitAtRuleBody(
   owner?: object
 ): MaybePromise<void> {
   const group: Leaf[] = [];
-  let bodyTriviaCursor = owner === undefined ? 0 : bodySpanOf(owner)?.start ?? 0;
+  const ownerBodyStart = owner === undefined ? NO_SPAN : bodyStartOf(owner);
+  let bodyTriviaCursor = ownerBodyStart === NO_SPAN ? 0 : ownerBodyStart;
   const flushDirect = (): void => {
     if (group.length > 0) {
       if (groupHasMerge(group)) {
@@ -11857,7 +11916,10 @@ function emitAtRuleBody(
         for (const leaf of group) {
           if (owner !== undefined) {
             emitBodyBlockCommentTriviaBefore(owner, leaf.node, e, INDENT.repeat(e.depth + 1), bodyTriviaCursor);
-            bodyTriviaCursor = sourceSpanOf(leaf.node)?.end ?? bodyTriviaCursor;
+            {
+              const leafEnd = sourceEndOf(leaf.node);
+              bodyTriviaCursor = leafEnd === NO_SPAN ? bodyTriviaCursor : leafEnd;
+            }
           }
           emitLeaf(leaf, e);
         }
@@ -11875,7 +11937,10 @@ function emitAtRuleBody(
     flushDirect();
     if (owner !== undefined) {
       emitBodyBlockCommentTriviaBefore(owner, node, e, INDENT.repeat(e.depth + 1), bodyTriviaCursor);
-      bodyTriviaCursor = sourceSpanOf(node)?.end ?? bodyTriviaCursor;
+      {
+        const nodeEnd = sourceEndOf(node);
+        bodyTriviaCursor = nodeEnd === NO_SPAN ? bodyTriviaCursor : nodeEnd;
+      }
     }
     e.depth++;
     let out: MaybePromise<void>;

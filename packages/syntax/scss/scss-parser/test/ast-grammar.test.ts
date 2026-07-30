@@ -7,6 +7,7 @@ import { serialize as serializeMaybeAsync, type SerializeResult } from '../../..
 import { scssGrammar } from '../src/grammar.js';
 import { parseScssCst } from '../src/cst.js';
 import { parse } from '../src/index.js';
+import { bare } from '../../../../../test/provenance-free.js';
 
 /*
  * `serialize` lifts to `Promise<SerializeResult>` only when an async built-in
@@ -295,7 +296,7 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({ type: 'Stylesheet', rules: [{ type: 'ImportAtRule', name: '@import', options: null, target: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false }, alias: null, tail: null }] });
+    expect(bare(result.value)).toEqual({ type: 'Stylesheet', rules: [{ type: 'ImportAtRule', name: '@import', options: null, target: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false }, alias: null, tail: null }] });
   });
 
   it('constructs static SCSS url imports as typed ImportAtRule targets', () => {
@@ -318,7 +319,7 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [{
         type: 'ImportAtRule', name: '@import', options: null,
@@ -546,7 +547,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         { type: 'VariableDeclaration', name: 'base', value: { type: 'Keyword', src: 'blue' }, write: { mode: 'declare' } },
@@ -947,7 +948,7 @@ describe('SCSS canonical-AST grammar', () => {
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [{
         type: 'Ruleset',
@@ -988,7 +989,7 @@ describe('SCSS canonical-AST grammar', () => {
      * Less — it is lexical trivia and never becomes a renderable `Comment`
      * node. `/* *\/` stays CSS output.
      */
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
         expect.objectContaining({ type: 'VariableDeclaration', name: 'theme' }),
@@ -1426,7 +1427,7 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [{
         type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' }, rules: [
@@ -1912,7 +1913,7 @@ describe('SCSS canonical-AST grammar', () => {
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toEqual({
+    expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [{
         type: 'Ruleset',
@@ -2206,7 +2207,7 @@ describe('SCSS canonical-AST grammar', () => {
    * shared Collection/accessor/lambda is a separate downstream concern).
    */
   it('lowers SCSS map literals to the shared Collection node', () => {
-    expect(parse('$m: (a: 1, b: 2);')).toEqual({
+    expect(bare(parse('$m: (a: 1, b: 2);'))).toEqual({
       type: 'Stylesheet',
       rules: [{
         type: 'VariableDeclaration', name: 'm', write: { mode: 'declare' },
@@ -2269,7 +2270,7 @@ describe('SCSS canonical-AST grammar', () => {
      * A zero-parameter function lowers completely: `$two: @() > { result: 2 }`.
      * The `params` field is OMITTED so the plain-block shape stays monomorphic.
      */
-    expect(parse('@function two() { @return 2; }')).toEqual({
+    expect(bare(parse('@function two() { @return 2; }'))).toEqual({
       type: 'Stylesheet',
       rules: [{
         type: 'VariableDeclaration', name: 'two', write: { mode: 'declare' },
@@ -2284,7 +2285,7 @@ describe('SCSS canonical-AST grammar', () => {
      * A parameterized function threads its `($n)` list into `AnonymousMixin.params`
      * (the same `Param` shape a MixinDefinition uses), with `@return` → `result:`.
      */
-    expect(parse('@function double($n) { @return $n * 2; }').rules[0]).toEqual({
+    expect(bare(parse('@function double($n) { @return $n * 2; }').rules[0])).toEqual({
       type: 'VariableDeclaration', name: 'double', write: { mode: 'declare' },
       value: {
         type: 'AnonymousMixin',
