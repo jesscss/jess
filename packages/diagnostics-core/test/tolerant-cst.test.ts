@@ -384,7 +384,7 @@ describe('collectTolerantDiagnostics', () => {
   it('reports same-file unused variables in dialect stylesheets', () => {
     const less = '@used: red; @unused: blue; .a { color: @used; }';
     const scss = '$used_name: red; $used-name: green; $unused: blue; .a { color: $used-name; }';
-    const jess = '$used: red; $unused: blue; .a { color: $used; }';
+    const jess = '$used: red; $unused: blue; $tokens: { tone: blue; }; .a { color: $used; }';
 
     const lessResult = collectTolerantDiagnostics({ source: less, language: 'less' });
     const scssResult = collectTolerantDiagnostics({ source: scss, language: 'scss' });
@@ -403,7 +403,34 @@ describe('collectTolerantDiagnostics', () => {
     expect(jessResult.diagnostics
       .filter(diagnostic => diagnostic.code === LINT_CODES.unusedVariables)
       .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['Unused variable "$unused"', jess.indexOf('$unused'), jess.indexOf('$unused') + '$unused'.length]
+      ['Unused variable "$unused"', jess.indexOf('$unused'), jess.indexOf('$unused') + '$unused'.length],
+      ['Unused variable "$tokens"', jess.indexOf('$tokens'), jess.indexOf('$tokens') + '$tokens'.length]
+    ]);
+  });
+
+  it('reports numeric key access against same-file map-like variables', () => {
+    const less = '@tokens: { tone: blue; gap: 1px; };\n.a { color: @tokens[0]; bg: @tokens[tone]; }';
+    const scss = '$tokens: (tone: blue, gap: 1px);\n.a { color: map-get($tokens, 0); bg: map-get($tokens, tone); }';
+    const jess = '$tokens: { tone: blue; gap: 1px; };\n.a { color: $tokens[0]; bg: $tokens[tone]; dyn: $tokens[$key]; }\n$tokens: red;\n.b { color: $tokens[0]; }';
+
+    const lessResult = collectTolerantDiagnostics({ source: less, language: 'less' });
+    const scssResult = collectTolerantDiagnostics({ source: scss, language: 'scss' });
+    const jessResult = collectTolerantDiagnostics({ source: jess, language: 'jess' });
+
+    expect(lessResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.suspiciousMapKeyAccess)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Numeric key access on map-like variable "@tokens" is probably an accidental positional lookup', less.indexOf('[0]'), less.indexOf('[0]') + '[0]'.length]
+    ]);
+    expect(scssResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.suspiciousMapKeyAccess)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Numeric key access on map-like variable "$tokens" is probably an accidental positional lookup', scss.indexOf('0);'), scss.indexOf('0);') + '0'.length]
+    ]);
+    expect(jessResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.suspiciousMapKeyAccess)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Numeric key access on map-like variable "$tokens" is probably an accidental positional lookup', jess.indexOf('[0]'), jess.indexOf('[0]') + '[0]'.length]
     ]);
   });
 

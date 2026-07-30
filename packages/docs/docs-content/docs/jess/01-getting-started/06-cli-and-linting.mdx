@@ -94,6 +94,7 @@ export default {
       'jess/no-duplicate-module-load': 'warn',
       'jess/no-unbounded-extend': 'warn',
       'jess/no-dead-extend': 'warn',
+      'jess/no-suspicious-map-key-access': 'warn',
       'jess/unsupported-sass-form': 'warn'
     }
   }
@@ -124,6 +125,7 @@ Jess's stable lint set is deliberately small:
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Repeated same-file static SCSS/Jess module-load directives |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Static Less/SCSS/Jess extend targets with no bounded selector anchor |
 | `jess/no-dead-extend` | `lint/no-dead-extend` | Exact static extend targets with no same-file selector match |
+| `jess/no-suspicious-map-key-access` | `lint/no-suspicious-map-key-access` | Numeric key access against same-file Less maps, SCSS maps, and Jess collections |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | SCSS forms Jess recognizes but does not support yet |
 
 The lint package owns policy and reporting. Detection lives in the shared Jess
