@@ -11,7 +11,7 @@
  *   - variable reference   → `Reference` / `VariableReference` (`@primary` / `$primary`)
  *   - variable declaration → `VarDeclaration` / `VariableDeclaration` (`@primary: red;`)
  *   - mixin reference      → `MixinCall` / `MixinCallRule` (`.button();` / `@include foo`)
- *   - mixin definition     → `MixinOrQualifiedRule` / `MixinDefinitionRule` / `MixinDefinition`
+ *   - mixin definition     → `MixinDefinition` / `MixinDefinitionRule`
  *                            (`.button() { … }` / `@mixin foo` / Jess mixin def)
  * A plain selector rule is `Ruleset`, so a mixin definition (which carries
  * `MixinArgs`) is cleanly distinguished by its grammarType.
@@ -31,12 +31,12 @@ const VAR_DECL_TYPES = new Set(['VarDeclaration', 'VariableDeclaration']);
 const MIXIN_REF_TYPES = new Set(['MixinCall', 'MixinCallRule']);
 
 /*
- * A mixin/function DEFINITION: Less `MixinOrQualifiedRule`, Jess
- * `MixinDefinition`, SCSS `@mixin foo`, and SCSS `@function bar`.
+ * A mixin/function DEFINITION: shared Less/Jess `MixinDefinition`, SCSS
+ * `@mixin foo`, and SCSS `@function bar`.
  * `@include`/`@mixin` are DISTINCT grammarTypes (call vs def); `mixinNameOf`
  * strips the differing keyword so both resolve to the same bare `matchName`.
  */
-const MIXIN_DEF_TYPES = new Set(['MixinOrQualifiedRule', 'MixinDefinitionRule', 'MixinDefinition', 'FunctionRule']);
+const MIXIN_DEF_TYPES = new Set(['MixinDefinitionRule', 'MixinDefinition', 'FunctionRule']);
 
 /** A variable/mixin symbol resolved from a cursor position. */
 export type CstSymbol = {
@@ -72,7 +72,7 @@ function varNameOf(slice: string): string {
 }
 
 /** Cross-site match name for a mixin/function. For Less this is the
- * selector-with-combinator (`.button`) from a `MixinCall`/`MixinOrQualifiedRule`;
+ * selector-with-combinator (`.button`) from a `MixinCall`/`MixinDefinition`;
  * for SCSS it is the bare name after the `@mixin`/`@include`/`@function` keyword
  * (`foo`), so a `@mixin foo` def and its `@include foo` calls share one name. */
 function mixinNameOf(slice: string): string {

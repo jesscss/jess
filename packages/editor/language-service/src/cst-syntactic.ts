@@ -12,7 +12,7 @@
  *   - string literal      → `Quoted`
  *   - variable reference   → `Reference` / `VariableReference` (`@primary` / `$primary`)
  *   - variable declaration → `VarDeclaration` / `VariableDeclaration` (`@primary: red;`)
- *   - mixin definition     → `MixinOrQualifiedRule` (`.button() { … }`) / `MixinDefinitionRule` (`@mixin foo`)
+ *   - mixin definition     → `MixinDefinition` (`.button() { … }`) / `MixinDefinitionRule` (`@mixin foo`)
  *   - mixin call           → `MixinCall`      (`.button();`) / `MixinCallRule` (`@include foo`)
  *   - scss function def    → `FunctionRule`   (`@function bar`)
  *   - numbers              → `Num` / `Dimension` / `Color`
@@ -89,7 +89,7 @@ function varNameOf(slice: string): string {
   return head.trim().replace(/^[$@]/, '').trim();
 }
 
-/** Bare mixin identifier from a `MixinCall`/`MixinOrQualifiedRule` (Less/Jess)
+/** Bare mixin identifier from a `MixinCall`/`MixinDefinition` (Less/Jess)
  * or a SCSS callable slice: head before `(`/`{`, then the SCSS keyword or the
  * Less/Jess `.`/`#` combinator dropped. */
 function mixinIdentOf(slice: string): string {
@@ -114,7 +114,7 @@ export function cstDeclaredSymbols(root: CssCstNode, doc: TextDocument): { vars:
       if (name) {
         vars.add(name);
       }
-    } else if (gt === 'MixinOrQualifiedRule' || gt === 'MixinDefinitionRule' || gt === 'MixinDefinition') {
+    } else if (gt === 'MixinDefinitionRule' || gt === 'MixinDefinition') {
       const name = mixinIdentOf(src.slice(start, end));
       if (name) {
         mixins.add(name);

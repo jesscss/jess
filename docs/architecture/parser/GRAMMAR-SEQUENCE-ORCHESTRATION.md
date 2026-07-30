@@ -3198,7 +3198,7 @@ SCSS Less-inheritance cut, 2026-07-27: `packages/syntax/scss/scss-parser`
 no longer imports `lessGrammar`, no longer declares `@jesscss/less-parser` as a
 package dependency, and the CST grammar no longer includes the obvious Less-only
 statement/selector arms (`VarCall`, `ExtendStatement`, `EachFor`, `MixinCall`,
-`MixinOrQualifiedRule`, `DetachedRuleset`, `AnonymousMixinDefinition`,
+`MixinDefinition`, `DetachedRuleset`, `AnonymousMixinDefinition`,
 `LessAmpersand`, `interpOrBasic`). The current SCSS grammar is a single
 host-mode grammar and is macro-buildable. A follow-up query-clause cleanup
 left-factored the inner

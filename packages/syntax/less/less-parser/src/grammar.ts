@@ -4220,7 +4220,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // an extend head never matches `;` or any shared arm the flat list did not.
   const rulesetBody = many(choice(blockItem, g.ExtendStatement));
   const MixinDefinition = node<MixinDefinition>(
-    'MixinOrQualifiedRule',
+    'MixinDefinition',
     sequence(
       mixinSignature,
       blockBody,

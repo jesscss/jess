@@ -175,7 +175,7 @@ not reintroduce that namespace. Local const names should be the shortest stable
 spec-shaped concept unless the accepted language genuinely differs. Preserve or
 map public CST labels separately: `Declaration`, `CustomDeclaration`,
 `AtRuleBlock`, `AtRuleStatement`, `ImportAtRule`, `QueryAtRuleBlock`,
-`MixinCall`, `MixinOrQualifiedRule`, `VarCall`, selector node keys, and
+`MixinCall`, `MixinDefinition`, `VarCall`, selector node keys, and
 interpolation node keys are contract questions; local rule names are not.
 
 Preferred local vocabulary by region:
