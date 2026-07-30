@@ -482,6 +482,31 @@ describe('lintText', () => {
       [undefined, SEMANTIC_CODES.unknownNamedArgument, 'eval', 'error', 'Unknown named argument @tone for mixin .theme']
     ]);
 
+    const scssNamedArgument = await lintText(
+      {
+        source: '@mixin theme($color) { color: $color; }\n.a { @include theme($tone: red); }',
+        filePath: '/tmp/input.scss'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            diagnostics: {
+              [SEMANTIC_CODES.unknownNamedArgument]: 'error'
+            }
+          }
+        }
+      }
+    );
+    expect(scssNamedArgument.diagnostics.map(diagnostic => [
+      diagnostic.ruleName,
+      diagnostic.code,
+      diagnostic.phase,
+      diagnostic.severity,
+      diagnostic.message
+    ])).toEqual([
+      [undefined, SEMANTIC_CODES.unknownNamedArgument, 'eval', 'error', 'Unknown named argument $tone for mixin theme']
+    ]);
+
     for (const dialectInput of [
       {
         source: '.a { @include missing(); }',
