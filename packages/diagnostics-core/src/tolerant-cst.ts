@@ -33,6 +33,7 @@ export const LINT_CODES = {
   unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
   unknownTypeSelectors: 'lint/selector-type-no-unknown',
   duplicateSelectors: 'lint/no-duplicate-selectors',
+  incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -53,6 +54,11 @@ const KNOWN_CSS_UNITS = new Set([
   'hz', 'khz',
   'dpi', 'dpcm', 'dppx'
 ]);
+const ANGLE_UNITS = new Set(['deg', 'grad', 'turn', 'rad']);
+const TIME_UNITS = new Set(['s', 'ms']);
+const FREQUENCY_UNITS = new Set(['hz', 'khz']);
+const RESOLUTION_UNITS = new Set(['dpi', 'dpcm', 'dppx', 'x']);
+const MATH_FUNCTION_NAMES = new Set(['min', 'max', 'clamp']);
 
 const DIALECT_AT_RULES: Record<JessLanguage, Set<string>> = {
   css: new Set(),
@@ -87,6 +93,7 @@ const ATRULE_TYPES = new Set([
 const DECLARATION_TYPES = new Set(['Declaration', 'DirectScssDeclaration', 'DirectJessDeclaration']);
 const CUSTOM_DECLARATION_TYPES = new Set(['CustomDeclaration']);
 const DIMENSION_TYPES = new Set(['Dimension', 'DirectScssDimension', 'DirectJessDimension']);
+const PERCENTAGE_TYPES = new Set(['Percentage']);
 const CUSTOM_PROPERTY_VALUE_TYPES = new Set(['CustomPropertyValue']);
 const KEYFRAMES_TYPES = new Set(['Keyframes']);
 const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
@@ -197,6 +204,20 @@ type FontFamilyPart = {
 type ImportKey = {
   readonly key: string;
   readonly target: string;
+};
+
+type NumericKind = 'number' | 'length' | 'angle' | 'time' | 'frequency' | 'resolution' | 'percentage' | 'flex';
+
+type MathArgumentFact = {
+  readonly kind: NumericKind;
+  readonly text: string;
+  readonly span: DiagnosticSpan;
+};
+
+type MathUnitMismatch = {
+  readonly functionName: string;
+  readonly expected: MathArgumentFact;
+  readonly actual: MathArgumentFact;
 };
 
 type SelectorSeen = {
@@ -560,6 +581,136 @@ function dimensionUnitSpan(source: string, start: number, end: number): { unit: 
     i++;
   }
   return i === end ? { unit: source.slice(unitStart, end), start: unitStart, end } : null;
+}
+
+function numericKindOfUnit(unit: string): NumericKind | null {
+  const lower = unit.toLowerCase();
+  if (lower === '%') {
+    return 'percentage';
+  }
+  if (lower === 'fr') {
+    return 'flex';
+  }
+  if (ANGLE_UNITS.has(lower)) {
+    return 'angle';
+  }
+  if (TIME_UNITS.has(lower)) {
+    return 'time';
+  }
+  if (FREQUENCY_UNITS.has(lower)) {
+    return 'frequency';
+  }
+  if (RESOLUTION_UNITS.has(lower)) {
+    return 'resolution';
+  }
+  if (LENGTH_UNITS.has(lower)) {
+    return 'length';
+  }
+  return null;
+}
+
+function numberLiteralSpan(source: string, start: number, end: number): { text: string; start: number; end: number } | null {
+  const trimmed = trimOffsets(source.slice(start, end), start);
+  if (trimmed.start >= trimmed.end) {
+    return null;
+  }
+  const text = source.slice(trimmed.start, trimmed.end);
+  if (!/^[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?)$/.test(text)) {
+    return null;
+  }
+  return { text, start: trimmed.start, end: trimmed.end };
+}
+
+function bareDimensionOrPercentageFact(source: string, arg: CssCstNode): MathArgumentFact | null {
+  const argStart = absoluteStart(arg);
+  const argEnd = absoluteEnd(arg);
+  const trimmed = trimOffsets(source.slice(argStart, argEnd), argStart);
+  let found: CssCstNode | null = null;
+  const visit = (node: CssCstNode) => {
+    if (found === null && (DIMENSION_TYPES.has(node.grammarType) || PERCENTAGE_TYPES.has(node.grammarType))) {
+      found = node;
+      return;
+    }
+    for (const child of cstChildrenOf(node)) {
+      if (isCstNode(child)) {
+        visit(child);
+      }
+    }
+  };
+  visit(arg);
+  if (found === null) {
+    return null;
+  }
+  const valueStart = absoluteStart(found);
+  const valueEnd = absoluteEnd(found);
+  if (valueStart !== trimmed.start || valueEnd !== trimmed.end) {
+    return null;
+  }
+  if (PERCENTAGE_TYPES.has(found.grammarType)) {
+    return {
+      kind: 'percentage',
+      text: source.slice(valueStart, valueEnd),
+      span: found.span
+    };
+  }
+  const unitSpan = dimensionUnitSpan(source, valueStart, valueEnd);
+  if (unitSpan === null) {
+    return null;
+  }
+  const kind = numericKindOfUnit(unitSpan.unit);
+  if (kind === null) {
+    return null;
+  }
+  return {
+    kind,
+    text: source.slice(valueStart, valueEnd),
+    span: found.span
+  };
+}
+
+function mathArgumentFact(source: string, arg: CssCstNode): MathArgumentFact | null {
+  const start = absoluteStart(arg);
+  const end = absoluteEnd(arg);
+  const number = numberLiteralSpan(source, start, end);
+  if (number !== null) {
+    return {
+      kind: 'number',
+      text: number.text,
+      span: spanAtOrContaining(arg, number.start, number.end)
+    };
+  }
+  return bareDimensionOrPercentageFact(source, arg);
+}
+
+function areMathKindsDefinitelyIncompatible(a: NumericKind, b: NumericKind): boolean {
+  if (a === b) {
+    return false;
+  }
+  return a !== 'percentage' && b !== 'percentage';
+}
+
+function incompatibleMathFunctionUnits(source: string, node: CssCstNode, functionName: string): MathUnitMismatch | null {
+  const args: MathArgumentFact[] = [];
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child) || child.grammarType !== 'ValueSequence') {
+      continue;
+    }
+    const fact = mathArgumentFact(source, child);
+    if (fact !== null) {
+      args.push(fact);
+    }
+  }
+  if (args.length < 2) {
+    return null;
+  }
+  const expected = args[0]!;
+  for (let i = 1; i < args.length; i++) {
+    const actual = args[i]!;
+    if (areMathKindsDefinitelyIncompatible(expected.kind, actual.kind)) {
+      return { functionName, expected, actual };
+    }
+  }
+  return null;
 }
 
 function isResolutionMediaFeatureDimension(source: string, dimensionStart: number): boolean {
@@ -1629,6 +1780,17 @@ export function cstLintDiagnostics(
           `Unknown function "${functionName}"`,
           spanAtOrContaining(node, start, start + functionName.length)
         );
+      }
+      if (MATH_FUNCTION_NAMES.has(functionName)) {
+        const mismatch = incompatibleMathFunctionUnits(source, node, functionName);
+        if (mismatch !== null) {
+          push(
+            LINT_CODES.incompatibleMathFunctionUnits,
+            'warning',
+            `Incompatible units in ${mismatch.functionName}(): ${mismatch.expected.text} is ${mismatch.expected.kind} but ${mismatch.actual.text} is ${mismatch.actual.kind}`,
+            mismatch.actual.span
+          );
+        }
       }
     }
 

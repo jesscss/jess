@@ -260,6 +260,29 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports definite incompatible CSS math function units', () => {
+    const source = '.a { width: min(1px, 2s); rotate: max(1turn, 2deg); opacity: clamp(.1, 2, 3); height: clamp(1rem, 2s, 3px); }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const mismatches = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.incompatibleMathFunctionUnits);
+
+    expect(mismatches.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Incompatible units in min(): 1px is length but 2s is time', source.indexOf('2s'), source.indexOf('2s') + '2s'.length],
+      ['Incompatible units in clamp(): 1rem is length but 2s is time', source.indexOf('2s, 3px'), source.indexOf('2s, 3px') + '2s'.length]
+    ]);
+  });
+
+  it('keeps CSS math function unit checks conservative for dynamic, percentage, or compound arguments', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { width: min(10%, 2px); height: min(var(--size), 2s); margin: min(1px + 2px, 1s); }',
+      language: 'css'
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.incompatibleMathFunctionUnits)).toBe(false);
+  });
+
   it('reports unknown selector pseudo-classes and pseudo-elements', () => {
     const result = collectTolerantDiagnostics({
       source: '.a:focus-visible::before { color: red; }\n.b:foo::bar { color: blue; }',

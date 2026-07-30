@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 10;
+export const STABLE_LINT_RULE_SET_VERSION = 11;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -28,6 +28,7 @@ export const LINT_RULE_NAMES = {
   unknownPseudoClasses: 'selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'selector-pseudo-element-no-unknown',
   unknownTypeSelectors: 'selector-type-no-unknown',
+  incompatibleMathFunctionUnits: 'jess/no-incompatible-math-function-units',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
 
@@ -65,6 +66,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unknownPseudoClasses]: LINT_CODES.unknownPseudoClasses,
   [LINT_RULE_NAMES.unknownPseudoElements]: LINT_CODES.unknownPseudoElements,
   [LINT_RULE_NAMES.unknownTypeSelectors]: LINT_CODES.unknownTypeSelectors,
+  [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: LINT_CODES.incompatibleMathFunctionUnits,
   [LINT_RULE_NAMES.unsupportedSassForm]: LINT_CODES.unsupportedSassForm
 };
 
@@ -89,6 +91,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.unknownPseudoClasses]: LINT_RULE_NAMES.unknownPseudoClasses,
   [LINT_CODES.unknownPseudoElements]: LINT_RULE_NAMES.unknownPseudoElements,
   [LINT_CODES.unknownTypeSelectors]: LINT_RULE_NAMES.unknownTypeSelectors,
+  [LINT_CODES.incompatibleMathFunctionUnits]: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
   [LINT_CODES.unsupportedSassForm]: LINT_RULE_NAMES.unsupportedSassForm
 };
 
@@ -113,6 +116,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownPseudoClasses]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoElements]: 'warn',
   [LINT_RULE_NAMES.unknownTypeSelectors]: 'warn',
+  [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
 };
 
@@ -140,6 +144,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
 
 const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateSelectors]: 'off',
+  [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'off'
 };
 
@@ -343,6 +348,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'selector-type-no-unknown',
     notes: 'Flags unknown CSS type selectors using HTML, SVG, and MathML metadata; custom elements and dialect selectors are intentionally skipped.'
+  },
+  {
+    code: LINT_CODES.incompatibleMathFunctionUnits,
+    ruleName: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
+    title: 'Incompatible math function units',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags definite CSS min()/max()/clamp() numeric-kind mismatches while leaving dynamic, percentage, and compound arguments unknown.'
   },
   {
     code: LINT_CODES.unsupportedSassForm,

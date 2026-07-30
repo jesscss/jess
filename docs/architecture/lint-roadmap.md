@@ -72,6 +72,7 @@ a `jess/` prefix.
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | Stylelint-near |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | Stylelint-near |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | Stylelint-near |
+| `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess-only value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -134,8 +135,8 @@ comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint comparison config | `21.04 ms/op` |
-| Stylelint comparable rules | `28.26 ms/op` |
+| Jess lint comparison config | `20.84 ms/op` |
+| Stylelint comparable rules | `27.42 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -237,6 +238,11 @@ The first value diagnostic should be math-function argument compatibility for
 - determine whether all args can resolve to a common type;
 - preserve unresolved variables/interpolation as unknown instead of guessing;
 - report only definite mismatches such as `min(1px, 2s)`.
+
+Status: landed as `jess/no-incompatible-math-function-units` for CSS-authored
+bare numeric arguments. It reports definite non-percentage kind mismatches and
+leaves dynamic, percentage, nested, or compound math expressions for future
+value facts.
 
 Follow-on value/type diagnostics:
 
