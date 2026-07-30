@@ -267,7 +267,7 @@ const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
 const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
 const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule']);
 const MODULE_LOAD_TYPES = new Set(['UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport']);
-const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'PlainQuoted', 'ImportTarget', 'Url']);
+const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'ImportTarget', 'Url']);
 const EXTEND_TARGET_TYPES = new Set(['ExtendTargetComplex', 'Selector', 'PseudoSelectorComplex']);
 const EXTERNAL_SELECTOR_SOURCE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
@@ -559,7 +559,7 @@ function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
 }
 
 function isQuotedCstNode(node: CssCstNode): boolean {
-  return node.grammarType === 'Quoted' || node.grammarType === 'PlainQuoted';
+  return node.grammarType === 'Quoted';
 }
 
 function forwardPreludeOf(node: CssCstNode, src: string): string | null {
