@@ -5173,7 +5173,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     )
   );
   const StaticNthArgument = node<string>(
-    'StaticNthArgument',
+    'NthChildArgument',
     sequence(
       g.NthExpression,
       optional(sequence(g.NthOfKeyword, parser({ trivia: staticSelectorTrivia }, g.StaticPseudoSelector)))
@@ -5186,7 +5186,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const StaticNthPseudo: Combinator<SimpleSelector> = choice(
     node<SimpleSelector>(
-      'StaticNthChildPseudo',
+      'NthChildPseudo',
       parser({ trivia: staticSelectorTrivia }, sequence(
         token(noTrivia(sequence(pseudoDelimiter, g.NthChildPseudoSelectorName, literal('(')))),
         g.StaticNthArgument,
@@ -5195,7 +5195,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
     ),
     node<SimpleSelector>(
-      'StaticNthTypePseudo',
+      'NthTypePseudo',
       parser({ trivia: staticSelectorTrivia }, sequence(
         token(noTrivia(sequence(pseudoDelimiter, g.NthTypePseudoSelectorName, literal('(')))),
         g.NthExpression,
@@ -5260,17 +5260,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const staticPseudoInner = choice(g.StaticPseudoGroup, g.StaticPseudoSquare, plainQuoted, staticPseudoChunk);
   const StaticPseudoGroup = node<string>(
-    'StaticPseudoGroup',
+    'PseudoArgumentGroup',
     parser({ trivia: staticSelectorTrivia }, sequence(literal('('), many(staticPseudoInner), literal(')'))),
     (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   const StaticPseudoSquare = node<string>(
-    'StaticPseudoSquare',
+    'PseudoArgumentSquare',
     parser({ trivia: staticSelectorTrivia }, sequence(literal('['), many(staticPseudoInner), literal(']'))),
     (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   const StaticNonSelectorPseudoArgument = node<string>(
-    'StaticNonSelectorPseudoArgument',
+    'PseudoArgumentText',
     parser({ trivia: staticSelectorTrivia }, oneOrMore(staticPseudoInner)),
     (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
@@ -5295,7 +5295,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // descendant relation (`.a/*x*/.b` is one compound); actual whitespace still
   // belongs to the complex-tail descendant boundary.
   const StaticPseudoCompound = node<SelectorTerm>(
-    'StaticPseudoCompound',
+    'PseudoArgumentCompound',
     parser(
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.NamespaceTypeSelector, staticSimpleSelector, staticAmpersand, g.StaticPseudo, g.StaticNthPseudo, g.AttributeSelector))
@@ -5310,12 +5310,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // The ordinary outer selector continues to use ComplexTail, whose
   // no-trivia compound boundary is intentionally unchanged.
   const StaticPseudoComplexTail = node<ComplexTailFact>(
-    'StaticPseudoComplexTail',
+    'PseudoArgumentComplexTail',
     sequence(optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.StaticPseudoCompound)),
     combinatorTailReducer
   );
   const StaticPseudoComplex = node<SelectorBranch>(
-    'StaticPseudoComplex',
+    'PseudoArgumentComplex',
     sequence(
       optional(relativeSelectorCombinator),
       g.StaticPseudoCompound,
@@ -5332,12 +5332,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const StaticPseudoSelectorTail = node<SelectorBranch>(
-    'StaticPseudoSelectorTail',
+    'PseudoArgumentSelectorTail',
     sequence(literal(','), parser({ trivia: staticSelectorTrivia }, g.StaticPseudoComplex)),
     children => children.find(isSelectorBranch)!
   );
   const StaticPseudoSelector = node<SelectorList>(
-    'StaticPseudoSelector',
+    'PseudoArgumentSelector',
     sequence(g.StaticPseudoComplex, many(g.StaticPseudoSelectorTail)),
     children => selist(...selectorBranchesFrom(children))
   );
@@ -5386,7 +5386,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const staticNonSelectorPseudoRouted = node<SimpleSelector>(
-    'StaticNonSelectorPseudo',
+    'GenericPseudo',
     sequence(routed(), g.StaticNonSelectorPseudoArgument, literal(')')),
     children => staticNonSelectorPseudoFrom(
       requireToken(children[0]).value.slice(0, -1),
@@ -5394,7 +5394,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     )
   );
   const staticBarePseudoRouted = node<SimpleSelector>(
-    'StaticNonSelectorPseudo',
+    'GenericPseudo',
     routed(),
     children => staticNonSelectorPseudoFrom(requireToken(children[0]).value, null)
   );
@@ -5427,7 +5427,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     otherwise(staticBarePseudoRouted)
   );
   const StaticPseudo = node<SimpleToken>(
-    'StaticPseudo',
+    'PseudoSelector',
     staticPseudoDispatch,
     children => children.find(isSimpleToken)!
   );

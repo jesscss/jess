@@ -523,7 +523,7 @@ should own the inline pseudo in both host modes; the direct selector branch
 facts are temporary reducer facts, not public owners.
 
 2026-07-27 update: the pseudo family now has the shared-opener dispatch shape.
-`Pseudo` / `StaticPseudo` parse one `:name` / glued `:name(` opener, then route
+`PseudoSelector` parses one `:name` / glued `:name(` opener, then routes
 selector-function, generic-function, interpolation-argument, and bare-pseudo
 branches with `routed()`. The focused Less parser set passed, `check:macro` and
 `verify:compose-integrity` passed, and the Less oracle stayed AST-neutral
