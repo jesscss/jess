@@ -32,6 +32,7 @@ export const LINT_CODES = {
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
+  unknownAnimations: 'lint/no-unknown-animations',
   unknownUnits: 'lint/unit-no-unknown',
   unknownFunctions: 'lint/function-no-unknown',
   unknownMediaFeatureNames: 'lint/media-feature-name-no-unknown',
@@ -238,6 +239,29 @@ const DIALECT_PSEUDO_CLASSES: Record<JessLanguage, Set<string>> = {
   jess: new Set(['global', 'local'])
 };
 const CSS_WIDE_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
+const ANIMATION_NAME_KEYWORDS = new Set([...CSS_WIDE_KEYWORDS, 'none']);
+const ANIMATION_SHORTHAND_KEYWORDS = new Set([
+  ...ANIMATION_NAME_KEYWORDS,
+  'linear',
+  'ease',
+  'ease-in',
+  'ease-in-out',
+  'ease-out',
+  'step-start',
+  'step-end',
+  'steps',
+  'cubic-bezier',
+  'infinite',
+  'normal',
+  'reverse',
+  'alternate',
+  'alternate-reverse',
+  'forwards',
+  'backwards',
+  'both',
+  'running',
+  'paused'
+]);
 const GENERIC_FONT_FAMILIES = new Set([
   'serif',
   'sans-serif',
@@ -345,6 +369,11 @@ type SelectorSeen = {
 type SelectorBranchFact = {
   readonly key: string;
   readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+type AnimationNameReference = {
+  readonly name: string;
   readonly span: DiagnosticSpan;
 };
 
@@ -761,6 +790,211 @@ function isCssIdentifier(value: string): boolean {
     }
   }
   return true;
+}
+
+function isKeyframesAtRuleName(name: string): boolean {
+  return name === 'keyframes' || (name.startsWith('-') && name.endsWith('-keyframes'));
+}
+
+function staticAnimationName(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || hasDynamicSyntax(trimmed)) {
+    return null;
+  }
+  const first = trimmed.charCodeAt(0);
+  const last = trimmed.charCodeAt(trimmed.length - 1);
+  if ((first === 34 || first === 39) && last === first && trimmed.length >= 2) {
+    return trimmed.slice(1, -1);
+  }
+  return isCssIdentifier(trimmed) ? trimmed : null;
+}
+
+function keyframesAnimationName(source: string, node: CssCstNode): string | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  const atRuleName = atRuleNameOf(source, start, end);
+  if (atRuleName === null || !isKeyframesAtRuleName(atRuleName)) {
+    return null;
+  }
+  const nameStart = atRuleNameEnd(source, start, end);
+  const blockStart = topLevelBlockStart(source, nameStart, end);
+  if (blockStart < 0 || blockStart > end) {
+    return null;
+  }
+  return staticAnimationName(stripComments(source.slice(nameStart, blockStart)));
+}
+
+function topLevelBlockStart(source: string, start: number, end: number): number {
+  let i = start;
+  let quote = 0;
+  let inBlockComment = false;
+  while (i < end) {
+    const code = source.charCodeAt(i);
+    const next = i + 1 < end ? source.charCodeAt(i + 1) : 0;
+    if (inBlockComment) {
+      if (code === 42 && next === 47) {
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    if (quote !== 0) {
+      if (code === 92) {
+        i += 2;
+        continue;
+      }
+      if (code === quote) {
+        quote = 0;
+      }
+      i++;
+      continue;
+    }
+    if (code === 47 && next === 42) {
+      inBlockComment = true;
+      i += 2;
+      continue;
+    }
+    if (code === 34 || code === 39) {
+      quote = code;
+      i++;
+      continue;
+    }
+    if (code === 123) {
+      return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
+function isAnimationShorthandNameToken(value: string): boolean {
+  const lower = value.toLowerCase();
+  return !ANIMATION_SHORTHAND_KEYWORDS.has(lower)
+    && cssNumberValue(value) === null
+    && cssPercentageValue(value) === null
+    && cssDimensionUnit(value) === null
+    && isCssIdentifier(value);
+}
+
+function animationNameReferences(source: string, node: CssCstNode, name: string, valueStart: number, valueEnd: number): AnimationNameReference[] {
+  const refs: AnimationNameReference[] = [];
+  const rawValue = source.slice(valueStart, valueEnd);
+  if (hasDynamicSyntax(rawValue)) {
+    return refs;
+  }
+  const lowerName = name.toLowerCase();
+
+  const pushAnimationName = (start: number, end: number) => {
+    const trimmed = trimOffsets(source.slice(start, end), start);
+    const animationName = staticAnimationName(source.slice(trimmed.start, trimmed.end));
+    if (animationName !== null && !ANIMATION_NAME_KEYWORDS.has(animationName.toLowerCase())) {
+      refs.push({
+        name: animationName,
+        span: spanAtOrContaining(node, trimmed.start, trimmed.end)
+      });
+    }
+  };
+
+  if (lowerName === 'animation-name') {
+    let partStart = valueStart;
+    let quote = 0;
+    let parenDepth = 0;
+    let inBlockComment = false;
+    for (let i = valueStart; i < valueEnd; i++) {
+      const code = source.charCodeAt(i);
+      const next = i + 1 < valueEnd ? source.charCodeAt(i + 1) : 0;
+      if (inBlockComment) {
+        if (code === 42 && next === 47) {
+          inBlockComment = false;
+          i++;
+        }
+        continue;
+      }
+      if (quote !== 0) {
+        if (code === 92) {
+          i++;
+          continue;
+        }
+        if (code === quote) {
+          quote = 0;
+        }
+        continue;
+      }
+      if (code === 47 && next === 42) {
+        inBlockComment = true;
+        i++;
+        continue;
+      }
+      if (code === 34 || code === 39) {
+        quote = code;
+        continue;
+      }
+      if (code === 40) {
+        parenDepth++;
+        continue;
+      }
+      if (code === 41 && parenDepth > 0) {
+        parenDepth--;
+        continue;
+      }
+      if (code === 44 && parenDepth === 0) {
+        pushAnimationName(partStart, i);
+        partStart = i + 1;
+      }
+    }
+    pushAnimationName(partStart, valueEnd);
+    return refs;
+  }
+
+  if (lowerName !== 'animation') {
+    return refs;
+  }
+
+  let i = valueStart;
+  while (i < valueEnd) {
+    const code = source.charCodeAt(i);
+    const next = i + 1 < valueEnd ? source.charCodeAt(i + 1) : 0;
+    if (isCssWhitespace(code) || code === 44) {
+      i++;
+      continue;
+    }
+    if (code === 47 && next === 42) {
+      i = skipCssComment(source, i, valueEnd);
+      continue;
+    }
+    if (code === 34 || code === 39) {
+      i = quotedEnd(source, i, valueEnd);
+      continue;
+    }
+    if (!isIdentStart(code) && code !== 43 && code !== 45 && code !== 46 && (code < 48 || code > 57)) {
+      i++;
+      continue;
+    }
+    const tokenStart = i;
+    while (i < valueEnd) {
+      const tokenCode = source.charCodeAt(i);
+      if (!isIdentChar(tokenCode) && tokenCode !== 43 && tokenCode !== 46) {
+        break;
+      }
+      i++;
+    }
+    const tokenEnd = i;
+    const token = source.slice(tokenStart, tokenEnd);
+    const afterToken = skipWhitespace(source, tokenEnd, valueEnd);
+    if (afterToken < valueEnd && source.charCodeAt(afterToken) === 40) {
+      i = balancedEnd(source, afterToken, valueEnd);
+      continue;
+    }
+    if (isAnimationShorthandNameToken(token)) {
+      refs.push({
+        name: token,
+        span: spanAtOrContaining(node, tokenStart, tokenEnd)
+      });
+    }
+  }
+  return refs;
 }
 
 function cssNumberValue(value: string): number | null {
@@ -2051,6 +2285,8 @@ export function cstLintDiagnostics(
   const out: SourceDiagnostic[] = [];
   const emitted = new Set<string>();
   const seenImports = new Map<string, ImportKey>();
+  const declaredAnimations = new Set<string>();
+  const animationReferences: AnimationNameReference[] = [];
   const cssData = metadataWithDefaults(metadata);
   const dialectAtRules = DIALECT_AT_RULES[language];
   const push = (
@@ -2415,6 +2651,9 @@ export function cstLintDiagnostics(
         const important = firstChildNodeOf(node, 'Important');
         const absoluteValueStart = start + valueStart;
         const absoluteValueEnd = important ? absoluteStart(important) : end;
+        if (language === 'css' && (lowerName === 'animation' || lowerName === 'animation-name')) {
+          animationReferences.push(...animationNameReferences(source, node, name, absoluteValueStart, absoluteValueEnd));
+        }
         const fontFamilyStart = lowerName === 'font-family'
           ? absoluteValueStart
           : lowerName === 'font'
@@ -2493,6 +2732,12 @@ export function cstLintDiagnostics(
     }
 
     if (KEYFRAMES_TYPES.has(gt)) {
+      if (language === 'css') {
+        const animationName = keyframesAnimationName(source, node);
+        if (animationName !== null) {
+          declaredAnimations.add(animationName);
+        }
+      }
       const seenSelectors = new Set<string>();
       for (const child of cstChildrenOf(node)) {
         if (!isCstNode(child) || !KEYFRAME_BLOCK_TYPES.has(child.grammarType)) {
@@ -2582,6 +2827,17 @@ export function cstLintDiagnostics(
     ...ROOT_VISIT_CONTEXT_BASE,
     selectorLists: new Map()
   });
+
+  for (const animation of animationReferences) {
+    if (!declaredAnimations.has(animation.name)) {
+      push(
+        LINT_CODES.unknownAnimations,
+        'warning',
+        `Unknown animation "${animation.name}"`,
+        animation.span
+      );
+    }
+  }
 
   if (tolerantSourceScan) {
     if (language === 'css') {

@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 18;
+export const STABLE_LINT_RULE_SET_VERSION = 19;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -26,6 +26,7 @@ export const LINT_RULE_NAMES = {
   fontFamilyMissingGeneric: 'font-family-no-missing-generic-family-keyword',
   invalidImportPosition: 'no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'no-duplicate-at-import-rules',
+  unknownAnimations: 'no-unknown-animations',
   duplicateSelectors: 'no-duplicate-selectors',
   unknownUnits: 'unit-no-unknown',
   unknownFunctions: 'function-no-unknown',
@@ -71,6 +72,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: LINT_CODES.fontFamilyMissingGeneric,
   [LINT_RULE_NAMES.invalidImportPosition]: LINT_CODES.invalidImportPosition,
   [LINT_RULE_NAMES.duplicateAtImportRules]: LINT_CODES.duplicateAtImportRules,
+  [LINT_RULE_NAMES.unknownAnimations]: LINT_CODES.unknownAnimations,
   [LINT_RULE_NAMES.duplicateSelectors]: LINT_CODES.duplicateSelectors,
   [LINT_RULE_NAMES.unknownUnits]: LINT_CODES.unknownUnits,
   [LINT_RULE_NAMES.unknownFunctions]: LINT_CODES.unknownFunctions,
@@ -103,6 +105,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.fontFamilyMissingGeneric]: LINT_RULE_NAMES.fontFamilyMissingGeneric,
   [LINT_CODES.invalidImportPosition]: LINT_RULE_NAMES.invalidImportPosition,
   [LINT_CODES.duplicateAtImportRules]: LINT_RULE_NAMES.duplicateAtImportRules,
+  [LINT_CODES.unknownAnimations]: LINT_RULE_NAMES.unknownAnimations,
   [LINT_CODES.duplicateSelectors]: LINT_RULE_NAMES.duplicateSelectors,
   [LINT_CODES.unknownUnits]: LINT_RULE_NAMES.unknownUnits,
   [LINT_CODES.unknownFunctions]: LINT_RULE_NAMES.unknownFunctions,
@@ -135,6 +138,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
   [LINT_RULE_NAMES.invalidImportPosition]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
+  [LINT_RULE_NAMES.unknownAnimations]: 'warn',
   [LINT_RULE_NAMES.duplicateSelectors]: 'warn',
   [LINT_RULE_NAMES.unknownUnits]: 'warn',
   [LINT_RULE_NAMES.unknownFunctions]: 'warn',
@@ -167,6 +171,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
   [LINT_RULE_NAMES.invalidImportPosition]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
+  [LINT_RULE_NAMES.unknownAnimations]: 'warn',
   [LINT_RULE_NAMES.unknownUnits]: 'warn',
   [LINT_RULE_NAMES.unknownFunctions]: 'warn',
   [LINT_RULE_NAMES.unknownMediaFeatureNames]: 'warn',
@@ -363,6 +368,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-equivalent',
     stylelintRule: 'no-duplicate-at-import-rules',
     notes: 'Flags repeated @import targets with the same authored options and conditions in one file.'
+  },
+  {
+    code: LINT_CODES.unknownAnimations,
+    ruleName: LINT_RULE_NAMES.unknownAnimations,
+    title: 'Unknown animations',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'no-unknown-animations',
+    notes: 'Flags definite CSS animation names that do not have a same-file @keyframes definition; dynamic values and dialect animation facts remain future work.'
   },
   {
     code: LINT_CODES.duplicateSelectors,

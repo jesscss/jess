@@ -70,6 +70,7 @@ a `jess/` prefix.
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | Stylelint-equivalent |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
+| `no-unknown-animations` | `lint/no-unknown-animations` | Stylelint-near |
 | `no-duplicate-selectors` | `lint/no-duplicate-selectors` | Stylelint-near |
 | `unit-no-unknown` | `lint/unit-no-unknown` | Stylelint-near |
 | `function-no-unknown` | `lint/function-no-unknown` | Stylelint-near |
@@ -142,8 +143,8 @@ comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint comparison config | `22.00 ms/op` |
-| Stylelint comparable rules | `25.34 ms/op` |
+| Jess lint comparison config | `22.50 ms/op` |
+| Stylelint comparable rules | `25.29 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -166,6 +167,7 @@ can detect over authored source.
 | Landed | Custom properties | `custom-property-no-missing-var-function` | Flags `color: --x`; suppresses inside custom-property declarations and `var()`. |
 | Landed | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement after style rules or blocking at-rules. Jess `@-import` is separate. |
 | Landed | Duplicate imports | `no-duplicate-at-import-rules` | Flags repeated same-file imports with the same target/options/conditions; import-graph duplicate modules remain Jess-only semantic work. |
+| Landed | Unknown animations | `no-unknown-animations` | Flags definite CSS animation names without same-file `@keyframes`; imported reference roots and dialect animation facts remain semantic-facts work. |
 | Landed | Duplicate custom properties | `declaration-block-no-duplicate-custom-properties` | Flags repeated custom property declarations in one parsed block with exact name matching. |
 | Landed | Shorthand overrides | `declaration-block-no-shorthand-property-overrides` | Flags common CSS shorthands that override earlier longhands in the same parsed block; starts with a curated high-value shorthand map. |
 | Landed | Duplicate selectors | `no-duplicate-selectors` | CSS selector-list duplicates are CST-owned: duplicate entries inside one list and duplicate whole lists among sibling rules. Dialect nested resolution still needs selector facts. |
