@@ -185,6 +185,39 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('reports invalid named grid areas', () => {
+    const source = '.a { grid-template-areas: "a a" "b"; }\n'
+      + '.b { grid-template: "a ." ". a" / 1fr 1fr; }\n'
+      + '.c { grid: "" / 1fr; }\n'
+      + '.d { grid-template-areas: "ok ok" "ok ok"; }\n'
+      + '.e { grid-template-areas: "gap" "." "gap"; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const invalidGridAreas = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.invalidNamedGridAreas);
+
+    expect(invalidGridAreas.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Expected same number of cell tokens in each string', source.indexOf('"b"'), source.indexOf('"b"') + '"b"'.length],
+      ['Expected single filled-in rectangle for "a"', source.indexOf('"a ."'), source.indexOf('"a ."') + '"a ."'.length],
+      ['Expected cell token within string', source.indexOf('""'), source.indexOf('""') + '""'.length]
+    ]);
+  });
+
+  it('does not report invalid named grid areas in dialect files before value facts exist', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '.a { grid-template-areas: "a a" "b"; }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '.a { grid-template-areas: "a a" "b"; }',
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidNamedGridAreas)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidNamedGridAreas)).toBe(false);
+  });
+
   it('reports duplicate font families and missing generic family keywords', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { font-family: Inter, "Open Sans", inter; }\n.b { font-family: Arial, sans-serif; }\n.c { font: 12px/16px Arial; }',

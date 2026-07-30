@@ -25,6 +25,7 @@ export const LINT_CODES = {
   customPropertyMissingVarFunction: 'lint/custom-property-no-missing-var-function',
   keyframeDuplicateSelectors: 'lint/keyframe-block-no-duplicate-selectors',
   keyframeDeclarationNoImportant: 'lint/keyframe-declaration-no-important',
+  invalidNamedGridAreas: 'lint/named-grid-areas-no-invalid',
   fontFamilyDuplicateNames: 'lint/font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
@@ -216,6 +217,11 @@ type NumericKind = 'number' | 'length' | 'angle' | 'time' | 'frequency' | 'resol
 type MathArgumentFact = {
   readonly kind: NumericKind;
   readonly text: string;
+  readonly span: DiagnosticSpan;
+};
+
+type GridAreaRow = {
+  readonly tokens: readonly string[];
   readonly span: DiagnosticSpan;
 };
 
@@ -739,6 +745,66 @@ function normalizedKeyframeSelectorKeys(source: string, node: CssCstNode): strin
       : part === 'to'
         ? '100%'
         : part);
+}
+
+function gridAreaRows(source: string, node: CssCstNode): GridAreaRow[] {
+  const rows: GridAreaRow[] = [];
+  const visit = (child: CssCstChild) => {
+    if (!isCstNode(child)) {
+      return;
+    }
+    if (child.grammarType === 'Quoted' || child.grammarType === 'StaticQuoted') {
+      const start = absoluteStart(child);
+      const end = absoluteEnd(child);
+      if (Number.isFinite(start) && Number.isFinite(end) && end > start + 1) {
+        const text = source.slice(start + 1, end - 1).trim();
+        rows.push({
+          tokens: text.length === 0 ? [] : text.split(/\s+/),
+          span: child.span
+        });
+      }
+      return;
+    }
+    for (const nested of cstChildrenOf(child)) {
+      visit(nested);
+    }
+  };
+  for (const child of cstChildrenOf(node)) {
+    visit(child);
+  }
+  return rows;
+}
+
+function invalidGridAreaNames(rows: readonly GridAreaRow[]): string[] {
+  const names = new Set(rows.flatMap(row => row.tokens).filter(name => name !== '.'));
+  const invalid: string[] = [];
+  for (const name of names) {
+    let expectedColumns: number[] | undefined;
+    let isContiguousAndRectangular = true;
+    for (const row of rows) {
+      const columns: number[] = [];
+      for (let col = 0; col < row.tokens.length; col++) {
+        if (row.tokens[col] === name) {
+          columns.push(col);
+        }
+      }
+      if (columns.length === 0) {
+        continue;
+      }
+      if (expectedColumns === undefined) {
+        expectedColumns = columns;
+        continue;
+      }
+      if (columns.length !== expectedColumns.length || columns.some((col, index) => col !== expectedColumns![index])) {
+        isContiguousAndRectangular = false;
+        break;
+      }
+    }
+    if (!isContiguousAndRectangular) {
+      invalid.push(name);
+    }
+  }
+  return invalid.sort();
 }
 
 function dimensionUnitSpan(source: string, start: number, end: number): { unit: string; start: number; end: number } | null {
@@ -2137,6 +2203,42 @@ export function cstLintDiagnostics(
           : lowerName === 'font'
             ? fontShorthandFamilyStart(source, absoluteValueStart, absoluteValueEnd)
             : null;
+
+        if (language === 'css' && (lowerName === 'grid' || lowerName === 'grid-template' || lowerName === 'grid-template-areas')) {
+          const rows = gridAreaRows(source, node);
+          const emptyRow = rows.find(row => row.tokens.length === 0);
+          if (emptyRow !== undefined) {
+            push(
+              LINT_CODES.invalidNamedGridAreas,
+              'warning',
+              'Expected cell token within string',
+              emptyRow.span
+            );
+          } else if (rows.length > 0) {
+            const expectedTokenCount = rows[0]!.tokens.length;
+            const mismatchedRow = rows.find(row => row.tokens.length !== expectedTokenCount);
+            if (mismatchedRow !== undefined) {
+              push(
+                LINT_CODES.invalidNamedGridAreas,
+                'warning',
+                'Expected same number of cell tokens in each string',
+                mismatchedRow.span
+              );
+            } else {
+              for (const name of invalidGridAreaNames(rows)) {
+                const row = rows.find(areaRow => areaRow.tokens.includes(name));
+                if (row !== undefined) {
+                  push(
+                    LINT_CODES.invalidNamedGridAreas,
+                    'warning',
+                    `Expected single filled-in rectangle for "${name}"`,
+                    row.span
+                  );
+                }
+              }
+            }
+          }
+        }
 
         if (fontFamilyStart !== null && !nodeContext.inFontFaceAtRule) {
           const rawValue = source.slice(fontFamilyStart, absoluteValueEnd);
