@@ -152,6 +152,15 @@ with SHA-256 `3ea6c1bdae41511923deece75676d453ff470cb447f531aae935b44eae6f5083`.
   Do not merely move the same allocation from parse to render. The next audit
   must identify which semantic/render facts actually require a span and remove
   whole writes for facts that do not, while preserving the uniform AST shape.
+
+  Rejected first cut (2026-07-30): omitting standalone Less `Dimension` spans
+  removed 2,969 writes (14.7%) and 119 KB/document (1.76%) from the exact
+  held-AST measurement, but Parseman currently provides only the enclosing
+  reduction span. A chained expression can retain an intermediate `Operation`,
+  so spanning only the final fold loses that operation's precise diagnostic
+  location. Do not land this reduction until Parseman can provide child spans to
+  AST reductions, or a replacement proves precise spans for every
+  diagnostic-owning operation without retaining a per-dimension span.
 - **Parseman trivia indexing:** the Jess-side generic-map trigger is deleted in
   `bda41a0bb`: legacy labeled logs stream contiguous comment ranges directly,
   and comment-only emission uses an exact binary search over those sparse runs.
