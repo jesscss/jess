@@ -82,6 +82,7 @@ describe('stable rule set', () => {
       LINT_CODES.unusedVariables,
       LINT_CODES.unusedMixins,
       LINT_CODES.unusedFunctions,
+      LINT_CODES.impossibleGuards,
       LINT_CODES.duplicateModuleLoads,
       LINT_CODES.unboundedExtends,
       LINT_CODES.deadExtends,
@@ -150,13 +151,14 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unusedVariables,
       LINT_RULE_NAMES.unusedMixins,
       LINT_RULE_NAMES.unusedFunctions,
+      LINT_RULE_NAMES.impossibleGuards,
       LINT_RULE_NAMES.duplicateModuleLoads,
       LINT_RULE_NAMES.unboundedExtends,
       LINT_RULE_NAMES.deadExtends,
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(54);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(55);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -183,6 +185,7 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedMixins]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedFunctions]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.impossibleGuards]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.deadExtends]).toBe('warn');
@@ -1619,6 +1622,28 @@ describe('lintText', () => {
     });
     expect(configured.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_RULE_NAMES.shadowedTokens, LINT_CODES.shadowedTokens, 'warning']
+    ]);
+  });
+
+  it('applies policy to impossible guard diagnostics by lint rule name', async () => {
+    const result = await lintText(
+      {
+        source: '@if false { .a { color: red; } }',
+        filePath: '/tmp/input.scss'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.impossibleGuards]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.impossibleGuards, LINT_CODES.impossibleGuards, 'error']
     ]);
   });
 

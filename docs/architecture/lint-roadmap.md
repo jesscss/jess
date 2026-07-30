@@ -129,6 +129,7 @@ enough.
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Jess-only symbol diagnostic, opt-in |
 | `jess/no-unused-mixin` | `lint/no-unused-mixin` | Jess-only callable diagnostic, opt-in |
 | `jess/no-unused-function` | `lint/no-unused-function` | Jess-only callable diagnostic, opt-in |
+| `jess/no-impossible-guard` | `lint/no-impossible-guard` | Jess-only static guard diagnostic |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess-only module diagnostic |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess-only selector diagnostic |
 | `jess/no-dead-extend` | `lint/no-dead-extend` | Jess-only selector diagnostic |
@@ -176,7 +177,10 @@ and should stay opt-in.
 Language-service defaults should surface the same shared diagnostics as
 `@jesscss/lint` recommended policy unless a rule is explicitly opt-in. Opt-in
 rules still need shared detection and editor configuration support; they should
-not become IDE noise by accident.
+not become IDE noise by accident. The language service currently keys severity
+configuration by shared diagnostic code. Public lint configuration keys are rule
+names owned by `@jesscss/lint`, which maps those rule names to diagnostic codes
+for CLI/API reporting and migration-friendly config.
 
 ## Stylelint story
 
@@ -313,6 +317,7 @@ Stylelint.
 | `jess/no-ambiguous-mixin-call` | warn | Callable facts | A call matches multiple overloads with incompatible bodies or signatures. |
 | `jess/no-mixin-output-mismatch` | off | Call signatures | A mixin used as declarations emits nested rules, or a value callable emits declarations. |
 | `jess/no-unsafe-reference-compose` | warn | Module facts | Extending or reading through a protected boundary that cannot surface output. |
+| `jess/no-impossible-guard` | warn | Static guard facts now; semantic facts later | Initial Less/SCSS/Jess diagnostic flags literal false/null, same-unit numeric comparisons, keyword/string equality, and boolean not/and/or guard compositions that are definitely false; variables, `default()`, type predicates, and dynamic values stay unknown. |
 | `jess/no-duplicate-module-load` | warn | Module refs now; import graph/config later | Initial same-file static SCSS/Jess duplicate directive check landed; same resolved file through multiple specifiers still needs module graph facts. |
 | `jess/no-unbounded-extend` | warn | Static targets now; selector facts later | Initial Less/SCSS/Jess diagnostic flags static extend targets with no top-level class, id, placeholder, or parent selector anchor; selector graph facts can later catch broad resolved targets more precisely. |
 | `jess/no-dead-extend` | warn | Same-file exact targets now; selector graph later | Initial import-free Less/SCSS/Jess diagnostic flags exact static extend targets that match no same-file selector; accessible imported surfaces and partial extend submatching still need selector graph facts. |
@@ -345,7 +350,7 @@ Follow-on value/type diagnostics:
 | Incompatible units | Compiler or strict lint | Arithmetic and comparisons with impossible unit families. If Jess rejects it, compiler owns it; if Jess can still emit useful CSS, lint owns it. |
 | Invalid color channel | CSS validity/compiler | Initial CSS-authored rgb()/rgba()/hsl()/hsla() arity/type checks landed as `color-function-no-invalid-arguments`; broader color functions and semantic value facts remain future work. |
 | Invalid typed custom property value | Diagnostics-core/type facts | Initial CSS `@property` descriptor check landed as `jess/no-invalid-typed-custom-property-value` for simple static syntax/value pairs; future work is full CSS value-definition syntax and Jess constraints. |
-| Impossible guard | Lint preference | Guard condition that is statically always false. |
+| Impossible guard | Lint preference | Initial static CST-backed guard diagnostic landed as `jess/no-impossible-guard`; richer callable/type facts can expand coverage without guessing. |
 | Unused default branch | Lint preference | Mixin `default()` branch that cannot be selected. |
 | Suspicious map key access | Lint preference | Initial same-file Less map, SCSS map, and Jess collection diagnostic landed as `jess/no-suspicious-map-key-access`; richer collection/list value facts remain future work. |
 

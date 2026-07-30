@@ -1364,6 +1364,20 @@ describe('JessLanguageServiceEngine', () => {
         disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
         expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-suspicious-map-key-access');
       });
+
+      it('surfaces impossible guard diagnostics by default and allows disable', () => {
+        const source = '@if false { .a { color: red; } }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-impossible-guard');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-impossible-guard', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-impossible-guard');
+      });
     });
 
     describe('duplicateProperties (lint/duplicate-property)', () => {

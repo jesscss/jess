@@ -78,6 +78,7 @@ export const LINT_CODES = {
   unusedVariables: 'lint/no-unused-variable',
   unusedMixins: 'lint/no-unused-mixin',
   unusedFunctions: 'lint/no-unused-function',
+  impossibleGuards: 'lint/no-impossible-guard',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
   suspiciousMapKeyAccess: 'lint/no-suspicious-map-key-access',
@@ -603,6 +604,12 @@ type ExactExtendTargetFact = {
   readonly display: string;
   readonly span: DiagnosticSpan;
 };
+
+type StaticGuardValue =
+  | { readonly kind: 'boolean'; readonly value: boolean }
+  | { readonly kind: 'null' }
+  | { readonly kind: 'number'; readonly value: number; readonly unit: string }
+  | { readonly kind: 'string'; readonly value: string };
 
 const ROOT_VISIT_CONTEXT_BASE = {
   inVarCall: false,
@@ -2658,6 +2665,20 @@ function firstChildNodeMatching(node: CssCstNode, grammarTypes: ReadonlySet<stri
   return undefined;
 }
 
+function childNodesOf(node: CssCstNode): CssCstNode[] {
+  const children: CssCstNode[] = [];
+  for (const child of cstChildrenOf(node)) {
+    if (isCstNode(child)) {
+      children.push(child);
+    }
+  }
+  return children;
+}
+
+function childNodesOfType(node: CssCstNode, grammarType: string): CssCstNode[] {
+  return childNodesOf(node).filter(child => child.grammarType === grammarType);
+}
+
 function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNode | undefined {
   for (const child of cstChildrenOf(node)) {
     if (!isCstNode(child)) {
@@ -2672,6 +2693,262 @@ function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNod
     }
   }
   return undefined;
+}
+
+const GUARD_OR_TYPES = new Set(['GuardOr', 'IfGuardOr', 'MixinGuardTopOr', 'MixinGuardOr', 'IfCondition']);
+const GUARD_AND_TYPES = new Set(['GuardAnd', 'IfGuardAnd', 'MixinGuardTopAnd', 'MixinGuardAnd', 'IfAnd']);
+const GUARD_COMPARE_TYPES = new Set(['GuardCompare', 'IfGuardCompare']);
+const GUARD_WRAPPER_TYPES = new Set([
+  'MixinGuard',
+  'GuardPrimary',
+  'GuardValue',
+  'IfGuard',
+  'IfGuardPrimary',
+  'IfGuardValue',
+  'IfTerm',
+  'IfAtom',
+  'MixinGuardTopTerm',
+  'MixinGuardTerm',
+  'MixinGuardOperand',
+  'FunctionCondition',
+  'FunctionConditionOr',
+  'FunctionConditionAnd',
+  'FunctionConditionTerm',
+  'FunctionConditionOperand',
+  'FunctionConditionParen'
+]);
+const STATIC_VALUE_WRAPPER_TYPES = new Set([
+  'ExpressionSum',
+  'ExpressionProduct',
+  'ExpressionAtom',
+  'Value',
+  'ValueTerm',
+  'ValueSpaceGroup',
+  'ValueAtom',
+  'ValueListWithPriority',
+  'ValueList',
+  'ValueSequence',
+  'TopSumMaybeDivision',
+  'TopSum',
+  'FunctionScalarArgument',
+  'Keyword',
+  'NamedColor',
+  'Number'
+]);
+const GUARD_COMPARISON_OPERATORS = new Set(['=', '==', '!=', '<', '>', '<=', '>=', '=<', '=>']);
+const DYNAMIC_GUARD_VALUE_TYPES = new Set([
+  'VariableReference',
+  'VarCall',
+  'FunctionCall',
+  'Call',
+  'GuardCall',
+  'Interpolation',
+  'SassInterpolation',
+  'VariableInterpolation'
+]);
+
+function directLeafValues(node: CssCstNode): string[] {
+  const values: string[] = [];
+  for (const child of cstChildrenOf(node)) {
+    if (child._tag === 'leaf') {
+      values.push(child.value);
+    }
+  }
+  return values;
+}
+
+function hasDirectLeaf(node: CssCstNode, value: string): boolean {
+  return directLeafValues(node).some(leaf => leaf.trim().toLowerCase() === value);
+}
+
+function foldGuardOr(source: string, nodes: readonly CssCstNode[]): boolean | null {
+  let hasUnknown = false;
+  for (const node of nodes) {
+    const truth = staticGuardTruth(source, node);
+    if (truth === true) {
+      return true;
+    }
+    if (truth === null) {
+      hasUnknown = true;
+    }
+  }
+  return hasUnknown ? null : false;
+}
+
+function foldGuardAnd(source: string, nodes: readonly CssCstNode[]): boolean | null {
+  let hasUnknown = false;
+  for (const node of nodes) {
+    const truth = staticGuardTruth(source, node);
+    if (truth === false) {
+      return false;
+    }
+    if (truth === null) {
+      hasUnknown = true;
+    }
+  }
+  return hasUnknown ? null : true;
+}
+
+function trimGuardText(source: string, node: CssCstNode): string {
+  return source.slice(absoluteStart(node), absoluteEnd(node)).trim();
+}
+
+function staticGuardValue(source: string, node: CssCstNode): StaticGuardValue | null {
+  if (DYNAMIC_GUARD_VALUE_TYPES.has(node.grammarType)) {
+    return null;
+  }
+  const text = trimGuardText(source, node);
+  const lower = text.toLowerCase();
+  if (lower === 'true') {
+    return { kind: 'boolean', value: true };
+  }
+  if (lower === 'false') {
+    return { kind: 'boolean', value: false };
+  }
+  if (lower === 'null') {
+    return { kind: 'null' };
+  }
+  const numeric = /^([+-]?(?:\d*\.\d+|\d+))(?:([a-z%]+))?$/i.exec(text);
+  if (numeric !== null) {
+    return {
+      kind: 'number',
+      value: Number(numeric[1]),
+      unit: (numeric[2] ?? '').toLowerCase()
+    };
+  }
+  if (isQuotedCstNode(node) && text.length >= 2) {
+    return hasDynamicSyntax(text)
+      ? null
+      : { kind: 'string', value: text.slice(1, -1) };
+  }
+  if (/^-?[_a-z][_a-z0-9-]*$/i.test(text)) {
+    return { kind: 'string', value: lower };
+  }
+  const children = childNodesOf(node);
+  return children.length === 1 && STATIC_VALUE_WRAPPER_TYPES.has(node.grammarType)
+    ? staticGuardValue(source, children[0]!)
+    : null;
+}
+
+function guardValueTruth(value: StaticGuardValue | null): boolean | null {
+  if (value === null) {
+    return null;
+  }
+  if (value.kind === 'boolean') {
+    return value.value;
+  }
+  if (value.kind === 'null') {
+    return false;
+  }
+  return null;
+}
+
+function guardValuesEqual(left: StaticGuardValue, right: StaticGuardValue): boolean | null {
+  if (left.kind !== right.kind) {
+    return left.kind === 'null' || right.kind === 'null' || left.kind === 'boolean' || right.kind === 'boolean'
+      ? false
+      : null;
+  }
+  if (left.kind === 'null') {
+    return true;
+  }
+  if (left.kind === 'boolean') {
+    return left.value === right.value;
+  }
+  if (left.kind === 'string') {
+    return left.value === right.value;
+  }
+  return left.unit === right.unit ? left.value === right.value : null;
+}
+
+function compareStaticGuardValues(left: StaticGuardValue, operator: string, right: StaticGuardValue): boolean | null {
+  const normalizedOperator = operator === '=<' ? '<=' : operator === '=>' ? '>=' : operator;
+  if (normalizedOperator === '=' || normalizedOperator === '==') {
+    return guardValuesEqual(left, right);
+  }
+  if (normalizedOperator === '!=') {
+    const equal = guardValuesEqual(left, right);
+    return equal === null ? null : !equal;
+  }
+  if (left.kind !== 'number' || right.kind !== 'number' || left.unit !== right.unit) {
+    return null;
+  }
+  switch (normalizedOperator) {
+    case '<':
+      return left.value < right.value;
+    case '>':
+      return left.value > right.value;
+    case '<=':
+      return left.value <= right.value;
+    case '>=':
+      return left.value >= right.value;
+    default:
+      return null;
+  }
+}
+
+function comparisonOperatorOf(node: CssCstNode): string | null {
+  for (const value of directLeafValues(node)) {
+    const trimmed = value.trim();
+    if (GUARD_COMPARISON_OPERATORS.has(trimmed)) {
+      return trimmed;
+    }
+  }
+  return null;
+}
+
+function staticComparisonTruth(source: string, node: CssCstNode): boolean | null {
+  const operator = comparisonOperatorOf(node);
+  if (operator === null) {
+    return null;
+  }
+  const operands = childNodesOf(node);
+  if (operands.length !== 2) {
+    return null;
+  }
+  const left = staticGuardValue(source, operands[0]!);
+  const right = staticGuardValue(source, operands[1]!);
+  return left === null || right === null ? null : compareStaticGuardValues(left, operator, right);
+}
+
+function staticGuardTruth(source: string, node: CssCstNode): boolean | null {
+  if (GUARD_OR_TYPES.has(node.grammarType)) {
+    return foldGuardOr(source, childNodesOf(node));
+  }
+  if (GUARD_AND_TYPES.has(node.grammarType)) {
+    return foldGuardAnd(source, childNodesOf(node));
+  }
+  if (GUARD_COMPARE_TYPES.has(node.grammarType)) {
+    return staticComparisonTruth(source, node);
+  }
+  const termComparison = staticComparisonTruth(source, node);
+  if (termComparison !== null) {
+    return termComparison;
+  }
+  const children = childNodesOf(node);
+  if (hasDirectLeaf(node, 'not')) {
+    const truth = children.length === 1 ? staticGuardTruth(source, children[0]!) : null;
+    return truth === null ? null : !truth;
+  }
+  const valueTruth = guardValueTruth(staticGuardValue(source, node));
+  if (valueTruth !== null) {
+    return valueTruth;
+  }
+  return children.length === 1 && GUARD_WRAPPER_TYPES.has(node.grammarType)
+    ? staticGuardTruth(source, children[0]!)
+    : null;
+}
+
+function ownedMixinGuardNode(node: CssCstNode): CssCstNode | null {
+  const direct = firstChildNodeOf(node, 'MixinGuard');
+  if (direct !== undefined) {
+    return direct;
+  }
+  const signature = firstChildNodeOf(node, 'MixinSignature');
+  if (signature === undefined) {
+    return null;
+  }
+  return firstChildNodeOf(signature, 'MixinGuard') ?? null;
 }
 
 function authoredVariableNameOf(source: string, start: number, end: number): { name: string; start: number; end: number } | null {
@@ -4326,6 +4603,32 @@ export function cstLintDiagnostics(
 
     if (MIXIN_DEFINITION_TYPES.has(gt) && emptyBracedBody(source, start, end)) {
       push(LINT_CODES.emptyRules, 'warning', 'Do not use empty mixin bodies', node.span, ['mixin-body']);
+    }
+
+    if (language !== 'css') {
+      if (MIXIN_DEFINITION_TYPES.has(gt) || RULESET_TYPES.has(gt)) {
+        const guard = ownedMixinGuardNode(node);
+        if (guard !== null && staticGuardTruth(source, guard) === false) {
+          push(
+            LINT_CODES.impossibleGuards,
+            'warning',
+            'Guard is statically false; this branch can never run',
+            guard.span
+          );
+        }
+      }
+      if (gt === 'If' || gt === 'IfRule') {
+        for (const condition of childNodesOfType(node, 'IfCondition')) {
+          if (staticGuardTruth(source, condition) === false) {
+            push(
+              LINT_CODES.impossibleGuards,
+              'warning',
+              'Guard is statically false; this branch can never run',
+              condition.span
+            );
+          }
+        }
+      }
     }
 
     const variableDeclaration = variableDeclarationOf(source, node, language);

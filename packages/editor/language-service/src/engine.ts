@@ -766,11 +766,11 @@ export function createEngine(): JessLanguageServiceEngine {
     'mixin/undefined': DiagnosticSeverity.Warning,
 
     /*
-     * CST lint rules. Keys match `LINT_CODES`; every rule's severity is
-     * settable via `configure()` and disabled with `ignore`/`off`.
-     * Keep these aligned with @jesscss/lint recommended diagnostics, except
-     * rules that are intentionally opt-in such as `lint/box-model` and
-     * `lint/float`.
+     * Shared diagnostics. Keys match diagnostics-core `LINT_CODES`, not the
+     * public lint rule names from @jesscss/lint. The lint package owns the
+     * rule-name <-> diagnostic-code mapping for CLI/API/config migration
+     * friendliness; editor settings currently configure the diagnostic codes
+     * directly.
      */
     [LINT_CODES.emptyRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownProperties]: DiagnosticSeverity.Warning,
@@ -811,6 +811,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.incompatibleMathFunctionUnits]: DiagnosticSeverity.Warning,
     [LINT_CODES.invalidColorFunctionChannels]: DiagnosticSeverity.Error,
     [LINT_CODES.invalidTypedCustomPropertyValue]: DiagnosticSeverity.Warning,
+    [LINT_CODES.impossibleGuards]: DiagnosticSeverity.Warning,
     [LINT_CODES.duplicateModuleLoads]: DiagnosticSeverity.Warning,
     [LINT_CODES.unboundedExtends]: DiagnosticSeverity.Warning,
     [LINT_CODES.deadExtends]: DiagnosticSeverity.Warning,

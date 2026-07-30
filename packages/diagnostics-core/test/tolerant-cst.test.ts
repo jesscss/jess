@@ -585,6 +585,31 @@ describe('collectTolerantDiagnostics', () => {
       .some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
   });
 
+  it('reports definitely impossible dialect guards without flagging dynamic guards', () => {
+    const less = '.a when (false) { color: red; }\n.m() when (1 > 2) { color: blue; }\n.ok() when (not(false)) { color: green; }\n.dyn(@value) when (@value = false) { color: yellow; }';
+    const scss = '@if false { .a { color: red; } } @else if 1px > 2px { .b { color: blue; } } @if not(false) { .c { color: green; } } @if $value { .d { color: yellow; } }';
+    const jess = '$if (null) { color: red; } $if (1 = 2) { color: blue; } $if (not(false)) { color: green; } m($value) when ($value = false) { color: yellow; }';
+
+    expect(collectTolerantDiagnostics({ source: less, language: 'less' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.impossibleGuards)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Guard is statically false; this branch can never run', less.indexOf('when (false)'), less.indexOf('when (false)') + 'when (false)'.length],
+      ['Guard is statically false; this branch can never run', less.indexOf('when (1 > 2)'), less.indexOf('when (1 > 2)') + 'when (1 > 2)'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.impossibleGuards)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Guard is statically false; this branch can never run', scss.indexOf('false'), scss.indexOf('false') + 'false'.length],
+      ['Guard is statically false; this branch can never run', scss.indexOf('1px > 2px'), scss.indexOf('1px > 2px') + '1px > 2px'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.impossibleGuards)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Guard is statically false; this branch can never run', jess.indexOf('(null)'), jess.indexOf('(null)') + '(null)'.length],
+      ['Guard is statically false; this branch can never run', jess.indexOf('(1 = 2)'), jess.indexOf('(1 = 2)') + '(1 = 2)'.length]
+    ]);
+  });
+
   it('reports numeric key access against same-file map-like variables', () => {
     const less = '@tokens: { tone: blue; gap: 1px; };\n.a { color: @tokens[0]; bg: @tokens[tone]; }';
     const scss = '$tokens: (tone: blue, gap: 1px);\n.a { color: map-get($tokens, 0); bg: map-get($tokens, tone); }';
