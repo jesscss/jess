@@ -87,6 +87,17 @@ describe('@jesscss/jess-parser/cst', () => {
     expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
   });
 
+  it('reuses the semantic Quoted slot for static attribute values', () => {
+    const result = parseJessCst('[data-kind="primary" i] { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('Attribute')).toBe(1);
+    expect(grammarTypes.get('Quoted')).toBe(1);
+    expectNoModeLabels(result.tree);
+  });
+
   it('uses semantic CST labels for CSS at-rule preludes and headers', () => {
     const result = parseJessCst('@media screen and (width >= 1px) { .a { color: red; } } @container card (width > 1px) { .b { color: blue; } } @unknown screen;');
 

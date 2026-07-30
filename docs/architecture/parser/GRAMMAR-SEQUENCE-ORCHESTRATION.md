@@ -5225,12 +5225,12 @@ replace that scan with `peek(...)` alone. The scan inventory remains governed by
 the question "can this be structured or trivia-owned?"; `scanTo(...)` is kept
 only where an opaque language region is actually the accepted syntax.
 
-Quoted/header semantic-name alignment, 2026-07-30: SCSS and Jess now name the
-private non-interpolated quoted slot `LiteralQuoted`, not `PlainQuoted`. It is a
-real restricted recognition slot: module/import paths, static CSS import
-targets, scanner skips, and header-only leaves must reject the dialect's quoted
-interpolation forms, while the universal `Quoted` override remains the ordinary
-value/string production. Jess also calls its restricted CSS-header value spine
+Quoted/header semantic-name alignment, 2026-07-30: Less, SCSS, and Jess name
+the private non-interpolated quoted slot `LiteralQuoted`, not `PlainQuoted`.
+It is a real restricted recognition slot: module/import paths, static CSS import
+targets, scanner skips, selector attributes, and header-only leaves must reject
+the dialect's quoted interpolation forms, while the universal `Quoted` override
+remains the ordinary value/string production. Jess also calls its restricted CSS-header value spine
 `HeaderValueAtom`, `HeaderValue`, `HeaderCallArgument`, and `HeaderCall`: those
 rules serve typed at-rule/descriptors, never normal Jess values, and therefore
 exclude execution forms without inventing a second public vocabulary. Every
