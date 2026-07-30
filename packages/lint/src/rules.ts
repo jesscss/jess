@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 23;
+export const STABLE_LINT_RULE_SET_VERSION = 24;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -32,6 +32,7 @@ export const LINT_RULE_NAMES = {
   duplicateSelectors: 'no-duplicate-selectors',
   unknownUnits: 'unit-no-unknown',
   unknownFunctions: 'function-no-unknown',
+  linearGradientNonstandardDirection: 'function-linear-gradient-no-nonstandard-direction',
   unknownMediaFeatureNames: 'media-feature-name-no-unknown',
   unknownMediaFeatureValues: 'media-feature-name-value-no-unknown',
   unknownPseudoClasses: 'selector-pseudo-class-no-unknown',
@@ -82,6 +83,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.duplicateSelectors]: LINT_CODES.duplicateSelectors,
   [LINT_RULE_NAMES.unknownUnits]: LINT_CODES.unknownUnits,
   [LINT_RULE_NAMES.unknownFunctions]: LINT_CODES.unknownFunctions,
+  [LINT_RULE_NAMES.linearGradientNonstandardDirection]: LINT_CODES.linearGradientNonstandardDirection,
   [LINT_RULE_NAMES.unknownMediaFeatureNames]: LINT_CODES.unknownMediaFeatureNames,
   [LINT_RULE_NAMES.unknownMediaFeatureValues]: LINT_CODES.unknownMediaFeatureValues,
   [LINT_RULE_NAMES.unknownPseudoClasses]: LINT_CODES.unknownPseudoClasses,
@@ -119,6 +121,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.duplicateSelectors]: LINT_RULE_NAMES.duplicateSelectors,
   [LINT_CODES.unknownUnits]: LINT_RULE_NAMES.unknownUnits,
   [LINT_CODES.unknownFunctions]: LINT_RULE_NAMES.unknownFunctions,
+  [LINT_CODES.linearGradientNonstandardDirection]: LINT_RULE_NAMES.linearGradientNonstandardDirection,
   [LINT_CODES.unknownMediaFeatureNames]: LINT_RULE_NAMES.unknownMediaFeatureNames,
   [LINT_CODES.unknownMediaFeatureValues]: LINT_RULE_NAMES.unknownMediaFeatureValues,
   [LINT_CODES.unknownPseudoClasses]: LINT_RULE_NAMES.unknownPseudoClasses,
@@ -156,6 +159,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateSelectors]: 'warn',
   [LINT_RULE_NAMES.unknownUnits]: 'warn',
   [LINT_RULE_NAMES.unknownFunctions]: 'warn',
+  [LINT_RULE_NAMES.linearGradientNonstandardDirection]: 'warn',
   [LINT_RULE_NAMES.unknownMediaFeatureNames]: 'warn',
   [LINT_RULE_NAMES.unknownMediaFeatureValues]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoClasses]: 'warn',
@@ -190,6 +194,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownAnimations]: 'warn',
   [LINT_RULE_NAMES.unknownUnits]: 'warn',
   [LINT_RULE_NAMES.unknownFunctions]: 'warn',
+  [LINT_RULE_NAMES.linearGradientNonstandardDirection]: 'warn',
   [LINT_RULE_NAMES.unknownMediaFeatureNames]: 'warn',
   [LINT_RULE_NAMES.unknownMediaFeatureValues]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoClasses]: 'warn',
@@ -448,6 +453,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'function-no-unknown',
     notes: 'Flags unknown CSS declaration functions using css-functions-list; dialect callable checks wait for semantic facts.'
+  },
+  {
+    code: LINT_CODES.linearGradientNonstandardDirection,
+    ruleName: LINT_RULE_NAMES.linearGradientNonstandardDirection,
+    title: 'Nonstandard linear-gradient directions',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-equivalent',
+    stylelintRule: 'function-linear-gradient-no-nonstandard-direction',
+    notes: 'Flags old side-or-corner direction syntax and unitless numeric directions in CSS linear-gradient() and repeating-linear-gradient() calls.'
   },
   {
     code: LINT_CODES.unknownMediaFeatureNames,

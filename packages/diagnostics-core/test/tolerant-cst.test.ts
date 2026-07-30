@@ -635,6 +635,34 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('reports nonstandard linear-gradient directions', () => {
+    const source = [
+      '.a { background: linear-gradient(top, #fff, #000); }',
+      '.b { background: linear-gradient(left bottom in oklab, red, blue); }',
+      '.c { background: repeating-linear-gradient(45, red, blue); }',
+      '.d { background: linear-gradient(to top top, red, blue); }',
+      '.e { background: linear-gradient(to top, #fff, #000); }',
+      '.f { background: linear-gradient(to bottom right in oklab, red, blue); }',
+      '.g { background: linear-gradient(45deg, #fff, #000); }',
+      '.h { background: linear-gradient(in oklab, red, blue); }',
+      '.i { background: linear-gradient(var(--direction), red, blue); }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const gradients = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.linearGradientNonstandardDirection
+    );
+
+    expect(gradients.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Expected standard direction syntax in linear-gradient()', source.indexOf('top'), source.indexOf('top') + 'top'.length],
+      ['Expected standard direction syntax in linear-gradient()', source.indexOf('left bottom'), source.indexOf('left bottom in oklab') + 'left bottom in oklab'.length],
+      ['Expected standard direction syntax in repeating-linear-gradient()', source.indexOf('45'), source.indexOf('45') + '45'.length],
+      ['Expected standard direction syntax in linear-gradient()', source.indexOf('to top top'), source.indexOf('to top top') + 'to top top'.length]
+    ]);
+  });
+
   it('does not report unknown declaration functions in dialect files before callable facts exist', () => {
     const scss = collectTolerantDiagnostics({
       source: '.a { color: project-size($x); }',

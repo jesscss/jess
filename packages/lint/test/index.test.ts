@@ -45,6 +45,7 @@ describe('stable rule set', () => {
       LINT_CODES.duplicateSelectors,
       LINT_CODES.unknownUnits,
       LINT_CODES.unknownFunctions,
+      LINT_CODES.linearGradientNonstandardDirection,
       LINT_CODES.unknownMediaFeatureNames,
       LINT_CODES.unknownMediaFeatureValues,
       LINT_CODES.unknownPseudoClasses,
@@ -81,6 +82,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.duplicateSelectors,
       LINT_RULE_NAMES.unknownUnits,
       LINT_RULE_NAMES.unknownFunctions,
+      LINT_RULE_NAMES.linearGradientNonstandardDirection,
       LINT_RULE_NAMES.unknownMediaFeatureNames,
       LINT_RULE_NAMES.unknownMediaFeatureValues,
       LINT_RULE_NAMES.unknownPseudoClasses,
@@ -92,7 +94,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(23);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(24);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -114,6 +116,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownAnimations,
       LINT_RULE_NAMES.unknownUnits,
       LINT_RULE_NAMES.unknownFunctions,
+      LINT_RULE_NAMES.linearGradientNonstandardDirection,
       LINT_RULE_NAMES.unknownMediaFeatureNames,
       LINT_RULE_NAMES.unknownMediaFeatureValues,
       LINT_RULE_NAMES.unknownPseudoClasses,
@@ -588,6 +591,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownFunctions, 'error']
+    ]);
+  });
+
+  it('applies policy to nonstandard linear-gradient direction diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { background: linear-gradient(top, #fff, #000); }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.linearGradientNonstandardDirection]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.linearGradientNonstandardDirection, 'error']
     ]);
   });
 
