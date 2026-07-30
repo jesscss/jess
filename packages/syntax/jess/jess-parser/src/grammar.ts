@@ -185,7 +185,7 @@ type JessRules = {
   KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Rule>;
   Keyframes: Combinator<AtRuleBlock>;
-  OpaquePrelude: Combinator<string | null>;
+  OpaqueAtPrelude: Combinator<string | null>;
   OpaqueBody: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   ScopeBlock: Combinator<AtRuleBlock>;
@@ -4730,7 +4730,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       scopeAtRuleName,
       noTrivia(sequence(
-        g.OpaquePrelude,
+        g.OpaqueAtPrelude,
         literal('{')
       )),
       many(atBlockStatement),
@@ -4794,8 +4794,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * one child, matching the explicit wrapper shape the other dialects use for
    * optional opaque captures.
    */
-  const OpaquePrelude = node<string | null>(
-    'OpaquePrelude',
+  const OpaqueAtPrelude = node<string | null>(
+    'OpaqueAtPrelude',
     g.PreprocessorOpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
@@ -4813,7 +4813,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       not(compilerAtRuleName),
       g.CssSyntaxGenericAtRuleName,
       noTrivia(sequence(
-        g.OpaquePrelude,
+        g.OpaqueAtPrelude,
         literal('{'),
         g.OpaqueBody,
         literal('}')
@@ -5635,7 +5635,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,
-    OpaquePrelude,
+    OpaqueAtPrelude,
     OpaqueBody,
     OpaqueAtRuleBlock,
     ScopeBlock,

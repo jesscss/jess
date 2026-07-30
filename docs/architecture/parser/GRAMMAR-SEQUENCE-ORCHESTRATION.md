@@ -4383,7 +4383,7 @@ grammar keys now use semantic AST/CST-aligned labels (`MediaPrelude`,
 `SupportsFeature`, `SupportsInParens`, `SupportsCondition`,
 `ImportTailFunction`, `ImportPrelude`, `Charset`, `ImportStatement`,
 `SupportsAtRuleBlock`, `PropertyName`, `PropertyAtRule`, `KeyframeSelector`,
-`KeyframeBlock`, `Keyframes`, `OpaquePrelude`, `OpaqueBody`,
+`KeyframeBlock`, `Keyframes`, `OpaqueAtPrelude`, `OpaqueBody`,
 `OpaqueAtRuleBlock`, `ScopeBlock`, `AtRuleBlock`, and `AtRuleStatement`)
 instead of `DirectJess*` mode labels. The shared body helpers were renamed to
 `atBlockStatement` and `nestedBodyStatement`. This is a naming-only alignment:
@@ -4606,7 +4606,7 @@ passed.
 
 SCSS opaque at-rule name cleanup, 2026-07-29: the remaining SCSS opaque/raw
 capture grammar keys now use their semantic AST/CST-aligned labels
-(`OpaquePrelude`, `OpaqueBody`, `OpaqueAtRuleBlock`, and
+(`OpaqueAtPrelude`, `OpaqueBody`, `OpaqueAtRuleBlock`, and
 `OpaqueAtRuleStatement`) instead of `DirectScss*` mode labels. This is a
 naming-only alignment: the shared recognition artifact still owns the bounded
 balanced/string/comment capture, and the statement-vs-block split remains a

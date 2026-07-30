@@ -183,7 +183,7 @@ type ScssRules = {
   SelectorTail: Combinator<ComplexSelector>;
   Selector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
-  OpaquePrelude: Combinator<string | null>;
+  OpaqueAtPrelude: Combinator<string | null>;
   OpaqueBody: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   OpaqueAtRuleStatement: Combinator<AtRuleStatement>;
@@ -4776,8 +4776,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * fixed: an `optional(scanTo(...))` that matches nothing emits no child and
    * would otherwise shift every positional index in the reducers below.
    */
-  const OpaquePrelude = node<string | null>(
-    'OpaquePrelude',
+  const OpaqueAtPrelude = node<string | null>(
+    'OpaqueAtPrelude',
     g.PreprocessorOpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
@@ -4794,7 +4794,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       scssGenericAtRuleName,
       noTrivia(sequence(
-        g.OpaquePrelude,
+        g.OpaqueAtPrelude,
         literal('{'),
         g.OpaqueBody,
         literal('}')
@@ -4824,7 +4824,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       scssGenericAtRuleName,
       noTrivia(sequence(
-        g.OpaquePrelude,
+        g.OpaqueAtPrelude,
         literal(';')
       ))
     ),
@@ -5037,7 +5037,7 @@ export const scssFactory = (g: ScssInputRules) => {
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,
-    OpaquePrelude,
+    OpaqueAtPrelude,
     OpaqueBody,
     OpaqueAtRuleBlock,
     OpaqueAtRuleStatement,
