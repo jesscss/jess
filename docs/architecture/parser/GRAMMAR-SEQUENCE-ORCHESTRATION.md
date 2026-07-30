@@ -5105,6 +5105,26 @@ test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`;
 interpreter fallbacks across parser-shared/CSS/Less/SCSS/Jess; `pnpm run
 verify:compose-integrity`; and `git diff --check`. No speed claim.
 
+Jess static media-query alignment, 2026-07-30: `MediaPrelude` now overrides
+only the whole-prelude `${...}` extension. Its static branch uses local
+`QueryClause` / `QueryPrelude` productions with the CSS semantic names and the
+same clause/list shape; generic at-rule headers continue to use the distinct
+`AtRulePrelude` family. Direct cross-artifact reuse of CSS AST builders is not
+macro-fusible under Parseman host mode, so those local productions share the
+same parser body while keeping direct reducers visible to the macro. This is
+not a Jess-specific media grammar: it restores CSS-aligned AST/CST query labels
+for unchanged static syntax. Verify with the Jess AST/CST/macro/compose suite,
+then `pnpm --filter @jesscss/jess-parser build`, `pnpm run check:macro`, and
+`pnpm run verify:compose-integrity`.
+
+SCSS query-list separator cleanup, 2026-07-30: `QueryPrelude` now uses
+`oneOrMoreSep(QueryClause, ',')`, matching the CSS list shape. The deleted
+`QueryPreludeTail` was a temporary CST/AST wrapper that only threw away its
+comma; it was not a semantic production or a dialect extension. `QueryClause`
+and all SCSS-specific query terms remain unchanged. Verify with the SCSS
+AST/CST/public/macro/compose suite, then the parser build, `check:macro`, and
+`verify:compose-integrity`. No speed claim.
+
 SCSS selector-pseudo single-parse cleanup, 2026-07-29: the selector-argument
 pseudo route no longer scans a raw `PseudoSelectorArgumentText*` preflight and
 then reparses the same source as `SelectorOnlyPseudoArgument`. `StructuredPseudo`

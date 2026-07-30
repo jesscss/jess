@@ -372,9 +372,10 @@ not widen normal Jess values to accept `$foo + 1`.
 terminal leaves.** The constraint a builder must satisfy to be statically
 resolvable is `direct-builder-static.ts` — **which is in parseman, not in this
 repo**: source at `src/plugin/direct-builder-static.ts` in the parseman
-checkout, shipped to jess only as bundled output at
-`node_modules/.pnpm/parseman@0.32.0/node_modules/parseman/dist/plugin/index.js`
-(the implementation is `directBuilderUnsupportedBindings`). Read there, verified:
+checkout, shipped to jess only as bundled output at the resolved Parseman
+package's `dist/plugin/index.js` (locate its package root from `node -p
+"require.resolve('parseman')"`; the implementation is
+`directBuilderUnsupportedBindings`). Read there, verified:
 
 - the builder must be an **expression-bodied arrow** — a `BlockStatement` body
   is rejected, and so is a nested block-bodied arrow;

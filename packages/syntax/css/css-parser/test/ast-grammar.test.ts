@@ -1652,6 +1652,20 @@ describe('CSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({ type: 'Url', value: { type: 'Any', src: 'foo' } });
   });
 
+  it('routes identifier-shaped value starts before the punctuation fallback', () => {
+    for (const [source, expected] of [
+      ['-foo', { type: 'Keyword', src: '-foo' }],
+      ['--foo', { type: 'Keyword', src: '--foo' }],
+      ['\\\\foo', { type: 'Keyword', src: '\\\\foo' }],
+      ['-', { type: 'Any', src: '-' }]
+    ] as const) {
+      const result = run(cssGrammar.Value, source, { trivia: cssGrammar.whitespace });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      expect(result.value, source).toMatchObject(expected);
+    }
+  });
+
   it('keeps unquoted url payload bytes when building ordinary declarations', () => {
     const document = parseAst('.asset { background: url(icon.svg); }');
 

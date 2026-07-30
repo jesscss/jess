@@ -114,6 +114,18 @@ describe('@jesscss/scss-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('uses the CSS query-list separator shape without a tail wrapper', () => {
+    const result = parseScssCst('@media screen, print { .card { color: red; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('QueryPrelude')).toBe(1);
+    expect(grammarTypes.get('QueryClause')).toBe(2);
+    expect(grammarTypes.has('QueryPreludeTail')).toBe(false);
+    expectNoModeLabels(result.tree);
+  });
+
   it('uses cross-dialect semantic CST labels for mixin definitions and calls', () => {
     const result = parseScssCst('@mixin spacing($size) { padding: $size; } .card { @include spacing(1rem); }');
 

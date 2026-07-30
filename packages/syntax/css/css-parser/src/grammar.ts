@@ -2268,14 +2268,6 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const CalcIdentOrFunction = typedIdentOrFunction;
   const TypedIdentOrFunction = typedIdentOrFunction;
-  const NonIdentifierPunctuationValue = node(
-    'NonIdentifierPunctuationValue',
-    sequence(
-      not(identOrFunction),
-      g.PunctuationValue
-    ),
-    children => firstValue(children)
-  );
   const Value = node(
     'Value',
 
@@ -2284,7 +2276,9 @@ export const cssFactory = (g: CssGrammarSelf) => {
      * functions keep their dedicated tails, other glued functions use the
      * generic call tail, and bare identifiers become keywords. Keep the spaced
      * paren bridge first so `foo (bar)` can preserve its authored separator as
-     * a value boundary instead of becoming a glued function token.
+     * a value boundary instead of becoming a glued function token. The final
+     * punctuation fallback needs no negative identifier preflight: every
+     * identifier-shaped start has already been consumed by this route.
      */
     choice(
       g.Percentage,
@@ -2296,7 +2290,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.ParenValue,
       g.Quoted,
       CustomPropertyValue,
-      NonIdentifierPunctuationValue
+      PunctuationValue
     ),
     { project: 0 }
   );

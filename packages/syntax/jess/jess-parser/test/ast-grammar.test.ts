@@ -906,6 +906,37 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('keeps declaration-entry lookup and operators inside explicit Jess expressions', () => {
+    const source = '.card { predicate: $(.type.isnumber(.math.e)); math: $(.w + 1); comparison: $(.w > 0); rooted: $($.decl); namespaced: $($ns.decl); decimal: .1; }';
+    const cst = parseJessCst(source);
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(parse(source)).toMatchObject({
+      rules: [{
+        type: 'Ruleset',
+        rules: [
+          { name: 'predicate', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'DeclarationReference' }, raw: '.type.isnumber(.math.e)' } } }] } },
+          { name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Operation', operator: '+', left: { type: 'Reference', base: { type: 'DeclarationReference' }, raw: '.w' } } } }] } },
+          { name: 'comparison', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Condition', guard: { g: 'cmp', op: '>', left: { type: 'Reference', base: { type: 'DeclarationReference' }, raw: '.w' } } } } }] } },
+          { name: 'rooted', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'DeclarationReference' }, raw: '$.decl' } } }] } },
+          { name: 'namespaced', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'DeclarationReference' }, raw: '$ns.decl' } } }] } },
+          { name: 'decimal', value: { type: 'Dimension', number: 0.1, src: '.1' } }
+        ]
+      }]
+    });
+
+    for (const invalid of [
+      '.card { value: $w + 1; }',
+      '.card { value: .type.isnumber(.math.e); }'
+    ]) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
+  });
+
   it('parses a static selector list between *[…] delimiters and rejects dynamic selector content', () => {
     const source = '$targets: *[.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2)];';
     const cst = parseJessCst(source);

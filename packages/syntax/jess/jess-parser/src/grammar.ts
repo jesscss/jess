@@ -156,6 +156,8 @@ type JessRules = {
   QueryTerm: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryDashedIdentifier: Combinator<Keyword>;
+  QueryClause: Combinator<ValueNode>;
+  QueryPrelude: Combinator<ValueNode>;
   AtRulePreludeTerm: Combinator<ValueNode>;
   AtRulePrelude: Combinator<ValueNode | null>;
   ContainerQueryClause: Combinator<ValueNode>;
@@ -3674,26 +3676,58 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     children => requireValueNode(children.at(-1))
   );
+
+  /*
+   * This is the CSS media-query clause shape, named identically so the AST and
+   * CST retain the shared semantic concept. It stays local only because direct
+   * cross-artifact CSS AST builders cannot macro-fuse; Jess changes the term
+   * leaf, not the clause/list structure.
+   */
+  const queryClause = noTrivia(sequence(choice(
+    sequence(
+      g.QueryOnly,
+      regex(/[ \t\n\r\f]+/),
+      QueryNonOnlyKeyword,
+      many(sequence(
+        regex(/[ \t\n\r\f]+/),
+        QueryTerm
+      ))
+    ),
+    sequence(
+      QueryTerm,
+      many(sequence(
+        regex(/[ \t\n\r\f]+/),
+        QueryTerm
+      ))
+    )
+  )));
+  const QueryClause = node<ValueNode>(
+    'QueryClause',
+    queryClause,
+    (children) => {
+      const values = children.filter(isValueNode);
+      const startsWithOnly = children.some(child => isToken(child) && requireToken(child).value.toLowerCase() === 'only');
+      return startsWithOnly ? spaced([keyword('only'), ...values]) : values.length === 1 ? values[0]! : spaced(values);
+    }
+  );
+  const queryPrelude = sequence(
+    g.QueryClause,
+    many(sequence(
+      literal(','),
+      g.QueryClause
+    ))
+  );
+  const QueryPrelude = node<ValueNode>(
+    'QueryPrelude',
+    queryPrelude,
+    (children) => {
+      const values = children.filter(isValueNode);
+      return values.length === 1 ? values[0]! : list(values, ',');
+    }
+  );
   const AtRulePreludeTerm = node<ValueNode>(
     'AtRulePreludeTerm',
-    noTrivia(sequence(choice(
-      sequence(
-        g.QueryOnly,
-        regex(/[ \t\n\r\f]+/),
-        QueryNonOnlyKeyword,
-        many(sequence(
-          regex(/[ \t\n\r\f]+/),
-          QueryTerm
-        ))
-      ),
-      sequence(
-        QueryTerm,
-        many(sequence(
-          regex(/[ \t\n\r\f]+/),
-          QueryTerm
-        ))
-      )
-    ))),
+    queryClause,
     (children) => {
       const values = children.filter(isValueNode);
       const startsWithOnly = children.some(child => isToken(child) && requireToken(child).value.toLowerCase() === 'only');
@@ -3793,7 +3827,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     'MediaPrelude',
     choice(
       g.DollarBrace,
-      g.AtRulePrelude
+      g.QueryPrelude
     ),
     children => children[0] === null ? null : requireValueNode(children[0])
   );
@@ -5625,6 +5659,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     QueryTerm,
     QueryFeature,
     QueryDashedIdentifier,
+    QueryClause,
+    QueryPrelude,
     AtRulePreludeTerm,
     AtRulePrelude,
     ContainerQueryClause,
