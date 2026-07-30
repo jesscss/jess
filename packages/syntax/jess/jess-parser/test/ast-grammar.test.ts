@@ -2163,6 +2163,18 @@ describe('Jess AST grammar facts', () => {
         value: { type: 'Url', value: { type: 'Interpolation' } }
       }]
     });
+    for (const [source, urlText] of [
+      ['.asset { image: url($asset); }', '$asset'],
+      ['.asset { image: url($[asset]); }', '$[asset]']
+    ]) {
+      expect(parse(source).rules[0]).toMatchObject({
+        type: 'Ruleset',
+        rules: [{
+          type: 'Declaration', name: 'image',
+          value: { type: 'Url', value: { type: 'Any', src: urlText } }
+        }]
+      });
+    }
   });
 
   it('constructs public static selector lists, compounds, combinators, and nested rules directly', () => {
