@@ -1,10 +1,11 @@
 # Jess lint package design
 
 Status: adversarially reviewed design with the initial Phase 1/2 implementation
-slice landed on `codex/lint-package-design`: `@jesscss/diagnostics-core`,
-`@jesscss/lint`, the shared default compiler stack package, `jess lint` CLI
-wiring, and the CSS parser/PostCSS oracle. Phase 3 semantic diagnostics still
-need compiler-owned analysis facts before implementation.
+slice landed on `origin/dev`: `@jesscss/diagnostics-core`, `@jesscss/lint`, the
+shared default compiler stack package, `jess lint` CLI wiring, the CSS
+parser/PostCSS oracle, Stylelint comparison harnesses, and line-tracked
+diagnostic CST parser entrypoints. Phase 3 semantic diagnostics still need
+compiler-owned analysis facts before implementation.
 
 ## 1. Goal
 
@@ -114,15 +115,17 @@ pnpm --filter @jesscss/lint bench:stylelint
 
 `@jesscss/lint` compares against Stylelint using the stable Stylelint-comparable
 rule set exported from `packages/lint/src/rules.ts`. The hot lint result is the
-flat offset diagnostic list; legacy Jess `ErrorDiagnostic`/`WarningDiagnostic`
-frame objects are opt-in through `includeLegacyDiagnostics` because building
-code-frame objects is presentation work, not rule detection.
+neutral source diagnostic list with offsets and, on diagnostic/editor paths,
+parser-captured line/column coordinates. Legacy Jess
+`ErrorDiagnostic`/`WarningDiagnostic` frame objects are opt-in through
+`includeLegacyDiagnostics` because building code-frame objects is presentation
+work, not rule detection.
 
-For plain CSS files that parse cleanly, diagnostics-core uses the canonical CSS
-AST and its source/body spans for the shared rule set. Invalid or recovery-heavy
-CSS falls back to the tolerant CST path so editor diagnostics keep firing on
-broken input. Dialect files continue to use the CST diagnostics path until the
-compiler-owned semantic fact layer exists.
+Diagnostics-core routes CSS, Less, SCSS, and Jess through diagnostic CST parser
+entrypoints compiled from the same grammar factories with `hostMode: 'cst'` and
+line tracking enabled. Normal AST/CST parser entrypoints remain offset-only.
+The earlier CSS AST fast path was removed so CLI and IDE diagnostics share one
+source of spans and coordinates.
 
 ## 4. Existing Jess surfaces to reuse
 
@@ -460,9 +463,10 @@ from §4.3 and covers editor-style syntactic and CSS metadata rules:
 
 The current language-service `cst-lint.ts` is the starting point, but the shared
 engine must remain reusable by the language service. It should report offsets
-and let adapters convert to CLI frames or LSP ranges. CSS/custom-data metadata
-stays with the language diagnostics layer; parser/core packages do not grow
-policy tables.
+and parser-captured line/column coordinates on diagnostic paths, then let
+adapters convert to compact CLI lines, legacy Jess frames, or LSP ranges.
+CSS/custom-data metadata stays with the language diagnostics layer; parser/core
+packages do not grow policy tables.
 
 Extraction must replace LSP return types with neutral diagnostics. It must also
 classify text access deliberately:
@@ -746,6 +750,34 @@ pnpm run verify:types
 Before claiming an implementation complete, use the repo's dependency-order
 release build or `pnpm run build:release` rather than trusting stale `lib/`
 artifacts.
+
+## 14.1 Current tracking items
+
+Current as of July 30, 2026:
+
+- Landed: `@jesscss/diagnostics-core`, `@jesscss/lint`, `jess lint`, compact
+  line diagnostics, JSON output, Stylelint comparison harnesses, PostCSS parser
+  oracles, and line-tracked diagnostic CST parser entrypoints.
+- Wire `@jesscss/language-service` to consume diagnostics-core for every stable
+  shared diagnostic, then keep a CLI/API/IDE parity test with each new shared
+  detector.
+- Expand the stable Stylelint-comparable rule set only where Jess has native
+  parser, CST, AST, compiler, or metadata facts. Match high-value Stylelint rule
+  names when behavior is equivalent, but do not promise Stylelint's full option
+  surface.
+- Add compiler-owned semantic analysis facts before unresolved symbol, unused
+  binding, import graph, or extend diagnostics. Lint should consume those facts,
+  not inspect compiler internals or rendered CSS.
+- Improve CSS lint performance by targeting diagnostic CST parse/build object
+  cost. Current `packages/jess/benchmark/benchmark.css` evidence on Node
+  `v25.9.0`, Stylelint `17.14.1`, and the matched 195-finding rule set:
+  Jess lint median `19.55 ms/op`; Stylelint median `12.00 ms/op`; normal CSS
+  CST parse median `8.85 ms/op`; line-tracked CSS CST parse median
+  `10.60 ms/op`; diagnostics walk median `3.70 ms/op`.
+- Keep parser line tracking opt-in. Normal parser entrypoints must not regress
+  when diagnostics, linting, or language services do not request coordinates.
+- Defer custom formatting, custom rule authoring, and autofix until the source
+  span contract and conflict-safe edit composition story are stable.
 
 ## 15. Open questions
 
