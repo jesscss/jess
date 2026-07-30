@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 21;
+export const STABLE_LINT_RULE_SET_VERSION = 23;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -12,12 +12,14 @@ export const LINT_RULE_NAMES = {
   unknownProperties: 'property-no-unknown',
   unknownAtRules: 'at-rule-no-unknown',
   unknownAtRuleDescriptors: 'at-rule-descriptor-no-unknown',
+  unknownAtRuleDescriptorValues: 'at-rule-descriptor-value-no-unknown',
   duplicateProperties: 'declaration-block-no-duplicate-properties',
   shorthandPropertyOverrides: 'declaration-block-no-shorthand-property-overrides',
   duplicateCustomProperties: 'declaration-block-no-duplicate-custom-properties',
   hexColorLength: 'color-no-invalid-hex',
   zeroUnits: 'length-zero-no-unit',
   customPropertyMissingVarFunction: 'custom-property-no-missing-var-function',
+  unknownCustomProperties: 'no-unknown-custom-properties',
   keyframeDuplicateSelectors: 'keyframe-block-no-duplicate-selectors',
   keyframeDeclarationNoImportant: 'keyframe-declaration-no-important',
   declarationNoImportant: 'declaration-no-important',
@@ -60,12 +62,14 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unknownProperties]: LINT_CODES.unknownProperties,
   [LINT_RULE_NAMES.unknownAtRules]: LINT_CODES.unknownAtRules,
   [LINT_RULE_NAMES.unknownAtRuleDescriptors]: LINT_CODES.unknownAtRuleDescriptors,
+  [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: LINT_CODES.unknownAtRuleDescriptorValues,
   [LINT_RULE_NAMES.duplicateProperties]: LINT_CODES.duplicateProperties,
   [LINT_RULE_NAMES.shorthandPropertyOverrides]: LINT_CODES.shorthandPropertyOverrides,
   [LINT_RULE_NAMES.duplicateCustomProperties]: LINT_CODES.duplicateCustomProperties,
   [LINT_RULE_NAMES.hexColorLength]: LINT_CODES.hexColorLength,
   [LINT_RULE_NAMES.zeroUnits]: LINT_CODES.zeroUnits,
   [LINT_RULE_NAMES.customPropertyMissingVarFunction]: LINT_CODES.customPropertyMissingVarFunction,
+  [LINT_RULE_NAMES.unknownCustomProperties]: LINT_CODES.unknownCustomProperties,
   [LINT_RULE_NAMES.keyframeDuplicateSelectors]: LINT_CODES.keyframeDuplicateSelectors,
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: LINT_CODES.keyframeDeclarationNoImportant,
   [LINT_RULE_NAMES.declarationNoImportant]: LINT_CODES.declarationNoImportant,
@@ -95,12 +99,14 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.unknownProperties]: LINT_RULE_NAMES.unknownProperties,
   [LINT_CODES.unknownAtRules]: LINT_RULE_NAMES.unknownAtRules,
   [LINT_CODES.unknownAtRuleDescriptors]: LINT_RULE_NAMES.unknownAtRuleDescriptors,
+  [LINT_CODES.unknownAtRuleDescriptorValues]: LINT_RULE_NAMES.unknownAtRuleDescriptorValues,
   [LINT_CODES.duplicateProperties]: LINT_RULE_NAMES.duplicateProperties,
   [LINT_CODES.shorthandPropertyOverrides]: LINT_RULE_NAMES.shorthandPropertyOverrides,
   [LINT_CODES.duplicateCustomProperties]: LINT_RULE_NAMES.duplicateCustomProperties,
   [LINT_CODES.hexColorLength]: LINT_RULE_NAMES.hexColorLength,
   [LINT_CODES.zeroUnits]: LINT_RULE_NAMES.zeroUnits,
   [LINT_CODES.customPropertyMissingVarFunction]: LINT_RULE_NAMES.customPropertyMissingVarFunction,
+  [LINT_CODES.unknownCustomProperties]: LINT_RULE_NAMES.unknownCustomProperties,
   [LINT_CODES.keyframeDuplicateSelectors]: LINT_RULE_NAMES.keyframeDuplicateSelectors,
   [LINT_CODES.keyframeDeclarationNoImportant]: LINT_RULE_NAMES.keyframeDeclarationNoImportant,
   [LINT_CODES.declarationNoImportant]: LINT_RULE_NAMES.declarationNoImportant,
@@ -130,12 +136,14 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownProperties]: 'warn',
   [LINT_RULE_NAMES.unknownAtRules]: 'warn',
   [LINT_RULE_NAMES.unknownAtRuleDescriptors]: 'warn',
+  [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'warn',
   [LINT_RULE_NAMES.duplicateProperties]: 'warn',
   [LINT_RULE_NAMES.shorthandPropertyOverrides]: 'warn',
   [LINT_RULE_NAMES.duplicateCustomProperties]: 'warn',
   [LINT_RULE_NAMES.hexColorLength]: 'error',
   [LINT_RULE_NAMES.zeroUnits]: 'warn',
   [LINT_RULE_NAMES.customPropertyMissingVarFunction]: 'warn',
+  [LINT_RULE_NAMES.unknownCustomProperties]: 'warn',
   [LINT_RULE_NAMES.keyframeDuplicateSelectors]: 'warn',
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'warn',
   [LINT_RULE_NAMES.declarationNoImportant]: 'warn',
@@ -192,6 +200,8 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
 
 const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateSelectors]: 'off',
+  [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'off',
+  [LINT_RULE_NAMES.unknownCustomProperties]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'off',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'off',
@@ -238,6 +248,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'at-rule-descriptor-no-unknown',
     notes: 'Flags unknown descriptors in parsed CSS descriptor blocks using shared CSS metadata, including CSS @page page-context and margin-box descriptors.'
+  },
+  {
+    code: LINT_CODES.unknownAtRuleDescriptorValues,
+    ruleName: LINT_RULE_NAMES.unknownAtRuleDescriptorValues,
+    title: 'Unknown at-rule descriptor values',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'at-rule-descriptor-value-no-unknown',
+    notes: 'Flags definite invalid CSS descriptor values in parsed descriptor blocks; the initial subset covers @property syntax/inherits and @font-face font-display while leaving dynamic or unsupported descriptor grammars unknown.'
   },
   {
     code: LINT_CODES.duplicateProperties,
@@ -298,6 +318,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-equivalent',
     stylelintRule: 'custom-property-no-missing-var-function',
     notes: 'Flags custom property names used as ordinary values without wrapping them in var(...).'
+  },
+  {
+    code: LINT_CODES.unknownCustomProperties,
+    ruleName: LINT_RULE_NAMES.unknownCustomProperties,
+    title: 'Unknown custom properties',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'no-unknown-custom-properties',
+    notes: 'Flags var() references without a same-file custom property declaration or @property registration; project reference files and import graph facts remain future work.'
   },
   {
     code: LINT_CODES.keyframeDuplicateSelectors,

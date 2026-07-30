@@ -56,12 +56,14 @@ a `jess/` prefix.
 | `property-no-unknown` | `lint/unknown-property` | Stylelint-near |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | Stylelint-near |
 | `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | Stylelint-near |
+| `at-rule-descriptor-value-no-unknown` | `lint/at-rule-descriptor-value-no-unknown` | Stylelint-near |
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | Stylelint-equivalent |
 | `declaration-block-no-shorthand-property-overrides` | `lint/declaration-block-no-shorthand-property-overrides` | Stylelint-near |
 | `declaration-block-no-duplicate-custom-properties` | `lint/declaration-block-no-duplicate-custom-properties` | Stylelint-equivalent |
 | `color-no-invalid-hex` | `lint/hex-color-length` | Stylelint-equivalent |
 | `length-zero-no-unit` | `lint/zero-units` | Stylelint-equivalent |
 | `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | Stylelint-equivalent |
+| `no-unknown-custom-properties` | `lint/no-unknown-custom-properties` | Stylelint-near |
 | `keyframe-block-no-duplicate-selectors` | `lint/keyframe-block-no-duplicate-selectors` | Stylelint-equivalent |
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | Stylelint-equivalent |
 | `declaration-no-important` | `lint/declaration-no-important` | Stylelint-near |
@@ -166,7 +168,7 @@ can detect over authored source.
 | P0 | Unknown CSS | existing `property-no-unknown`, `at-rule-no-unknown` | Keep metadata current and dialect-aware. |
 | P0 | Duplicates | existing `declaration-block-no-duplicate-properties` | Add ignore-consecutive and expand shorthand/longhand property-table coverage. |
 | P0 | Empty blocks | existing `block-no-empty` | Extend to empty mixin bodies only when configured. Empty mixins can be API placeholders. |
-| Landed | Custom properties | `custom-property-no-missing-var-function` | Flags `color: --x`; suppresses inside custom-property declarations and `var()`. |
+| Landed | Custom properties | `custom-property-no-missing-var-function`, `no-unknown-custom-properties` | Flags `color: --x` and same-file unknown `var(--x)` references; reference files and import graph facts remain future work. |
 | Landed | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement after style rules or blocking at-rules. Jess `@-import` is separate. |
 | Landed | Duplicate imports | `no-duplicate-at-import-rules` | Flags repeated same-file imports with the same target/options/conditions; import-graph duplicate modules remain Jess-only semantic work. |
 | Landed | Unknown animations | `no-unknown-animations` | Flags definite CSS animation names without same-file `@keyframes`; imported reference roots and dialect animation facts remain semantic-facts work. |
@@ -183,6 +185,7 @@ can detect over authored source.
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
 | Landed | Media feature names and values | `media-feature-name-no-unknown`, `media-feature-name-value-no-unknown` | Flags unknown CSS `@media` feature names and definite invalid static values; dialect media facts remain future work. |
 | Landed | At-rule descriptors | `at-rule-descriptor-no-unknown` | Flags unknown descriptors in parsed CSS descriptor blocks, including `@page` page-context and margin-box descriptors. |
+| Landed | At-rule descriptor values | `at-rule-descriptor-value-no-unknown` | Flags definite invalid descriptor values in parsed CSS descriptor blocks; the first subset covers `@property` `syntax`/`inherits` and `@font-face` `font-display`. |
 | Landed | Color function channels | `jess/no-invalid-color-function-channels` | Flags definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |
 | Landed | Typed custom properties | `jess/no-invalid-typed-custom-property-value` | Flags definite CSS `@property` `initial-value` mismatches for simple syntax descriptors; full CSS value-definition syntax and dialect value facts remain future work. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |

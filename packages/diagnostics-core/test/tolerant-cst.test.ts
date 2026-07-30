@@ -139,6 +139,35 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('reports var() references to unknown same-file custom properties', () => {
+    const source = [
+      '.a { color: var(--brand); background: var(--missing, var(--fallback)); border-color: var(--registered); }',
+      '@property --registered { syntax: "<color>"; inherits: false; initial-value: red; }',
+      ':root { --brand: red; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownCustomProperties = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.unknownCustomProperties
+    );
+
+    expect(unknownCustomProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown custom property "--missing"', source.indexOf('--missing'), source.indexOf('--missing') + '--missing'.length],
+      ['Unknown custom property "--fallback"', source.indexOf('--fallback'), source.indexOf('--fallback') + '--fallback'.length]
+    ]);
+  });
+
+  it('does not report unknown custom properties in dialect files before project facts exist', () => {
+    const less = collectTolerantDiagnostics({
+      source: '.a { color: var(--missing); }',
+      language: 'less'
+    });
+
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownCustomProperties)).toBe(false);
+  });
+
   it('reports duplicate custom properties in one declaration block', () => {
     const source = '.a { --brand: red; --Brand: blue; --brand: green; color: red; color: blue; }';
     const result = collectTolerantDiagnostics({
@@ -195,6 +224,43 @@ describe('collectTolerantDiagnostics', () => {
       ['Unknown descriptor "bad-margin" for at-rule "@page"', source.indexOf('bad-margin'), source.indexOf('bad-margin') + 'bad-margin'.length]
     ]);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toBe(false);
+  });
+
+  it('reports definite unknown at-rule descriptor values', () => {
+    const source = [
+      '@property --bad-inherits { syntax: "<length>"; inherits: yes; initial-value: 0px; }',
+      '@property --bad-syntax-token { syntax: <length>; inherits: false; initial-value: 0px; }',
+      '@property --bad-syntax-type { syntax: "<lenght>"; inherits: false; initial-value: 0px; }',
+      '@property --ok-syntax { syntax: "<length> | auto"; inherits: false; initial-value: 0px; }',
+      '@font-face { font-family: Inter; src: url(inter.woff2); font-display: sometimes; }',
+      '@font-face { font-family: Inter; src: url(inter.woff2); font-display: swap; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const descriptorValues = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownAtRuleDescriptorValues);
+
+    expect(descriptorValues.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown value "yes" for descriptor "inherits" in @property', source.indexOf('yes'), source.indexOf('yes') + 'yes'.length],
+      ['Unknown value "<length>" for descriptor "syntax" in @property', source.indexOf('<length>;'), source.indexOf('<length>;') + '<length>'.length],
+      ['Unknown value "<lenght>" for descriptor "syntax" in @property', source.indexOf('"<lenght>"'), source.indexOf('"<lenght>"') + '"<lenght>"'.length],
+      ['Unknown value "sometimes" for descriptor "font-display" in @font-face', source.indexOf('sometimes'), source.indexOf('sometimes') + 'sometimes'.length]
+    ]);
+  });
+
+  it('does not report unknown at-rule descriptor values in dialect files before value facts exist', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '@property --gap { syntax: <length>; inherits: yes; initial-value: red; }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '@font-face { font-family: Inter; src: url(inter.woff2); font-display: sometimes; }',
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownAtRuleDescriptorValues)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownAtRuleDescriptorValues)).toBe(false);
   });
 
   it('reports duplicate keyframe selectors and important keyframe declarations', () => {

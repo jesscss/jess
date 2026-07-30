@@ -25,12 +25,14 @@ describe('stable rule set', () => {
       LINT_CODES.unknownProperties,
       LINT_CODES.unknownAtRules,
       LINT_CODES.unknownAtRuleDescriptors,
+      LINT_CODES.unknownAtRuleDescriptorValues,
       LINT_CODES.duplicateProperties,
       LINT_CODES.shorthandPropertyOverrides,
       LINT_CODES.duplicateCustomProperties,
       LINT_CODES.hexColorLength,
       LINT_CODES.zeroUnits,
       LINT_CODES.customPropertyMissingVarFunction,
+      LINT_CODES.unknownCustomProperties,
       LINT_CODES.keyframeDuplicateSelectors,
       LINT_CODES.keyframeDeclarationNoImportant,
       LINT_CODES.declarationNoImportant,
@@ -59,12 +61,14 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownProperties,
       LINT_RULE_NAMES.unknownAtRules,
       LINT_RULE_NAMES.unknownAtRuleDescriptors,
+      LINT_RULE_NAMES.unknownAtRuleDescriptorValues,
       LINT_RULE_NAMES.duplicateProperties,
       LINT_RULE_NAMES.shorthandPropertyOverrides,
       LINT_RULE_NAMES.duplicateCustomProperties,
       LINT_RULE_NAMES.hexColorLength,
       LINT_RULE_NAMES.zeroUnits,
       LINT_RULE_NAMES.customPropertyMissingVarFunction,
+      LINT_RULE_NAMES.unknownCustomProperties,
       LINT_RULE_NAMES.keyframeDuplicateSelectors,
       LINT_RULE_NAMES.keyframeDeclarationNoImportant,
       LINT_RULE_NAMES.declarationNoImportant,
@@ -88,7 +92,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(21);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(23);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -127,6 +131,8 @@ describe('stable rule set', () => {
     ].sort());
     expect(STYLELINT_COMPARISON_LINT_CONFIG.reportSyntax).toBe(false);
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateSelectors]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownAtRuleDescriptorValues]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownCustomProperties]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyValue]).toBe('off');
@@ -248,6 +254,28 @@ describe('lintText', () => {
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.keyframeDuplicateSelectors, 'warning'],
       [LINT_CODES.customPropertyMissingVarFunction, 'error']
+    ]);
+  });
+
+  it('applies policy to unknown custom property diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { color: var(--missing); }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.unknownCustomProperties]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.unknownCustomProperties, 'error']
     ]);
   });
 
@@ -403,6 +431,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownAtRuleDescriptors, 'error']
+    ]);
+  });
+
+  it('applies policy to unknown at-rule descriptor value diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '@property --gap { syntax: "<length>"; inherits: yes; initial-value: 1px; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.unknownAtRuleDescriptorValues, 'error']
     ]);
   });
 
