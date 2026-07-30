@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 42;
+export const STABLE_LINT_RULE_SET_VERSION = 44;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -47,6 +47,8 @@ export const LINT_RULE_NAMES = {
   unknownPseudoElements: 'selector-pseudo-element-no-unknown',
   unmatchableAnbSelectors: 'selector-anb-no-unmatchable',
   unknownTypeSelectors: 'selector-type-no-unknown',
+  selectorMaxId: 'selector-max-id',
+  selectorMaxUniversal: 'selector-max-universal',
   incompatibleMathFunctionUnits: 'jess/no-incompatible-math-function-units',
   invalidColorFunctionChannels: 'color-function-no-invalid-arguments',
   invalidTypedCustomPropertyValue: 'jess/no-invalid-typed-custom-property-value',
@@ -111,6 +113,8 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unknownPseudoElements]: LINT_CODES.unknownPseudoElements,
   [LINT_RULE_NAMES.unmatchableAnbSelectors]: LINT_CODES.unmatchableAnbSelectors,
   [LINT_RULE_NAMES.unknownTypeSelectors]: LINT_CODES.unknownTypeSelectors,
+  [LINT_RULE_NAMES.selectorMaxId]: LINT_CODES.selectorMaxId,
+  [LINT_RULE_NAMES.selectorMaxUniversal]: LINT_CODES.selectorMaxUniversal,
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: LINT_CODES.incompatibleMathFunctionUnits,
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: LINT_CODES.invalidColorFunctionChannels,
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: LINT_CODES.invalidTypedCustomPropertyValue,
@@ -162,6 +166,8 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.unknownPseudoElements]: LINT_RULE_NAMES.unknownPseudoElements,
   [LINT_CODES.unmatchableAnbSelectors]: LINT_RULE_NAMES.unmatchableAnbSelectors,
   [LINT_CODES.unknownTypeSelectors]: LINT_RULE_NAMES.unknownTypeSelectors,
+  [LINT_CODES.selectorMaxId]: LINT_RULE_NAMES.selectorMaxId,
+  [LINT_CODES.selectorMaxUniversal]: LINT_RULE_NAMES.selectorMaxUniversal,
   [LINT_CODES.incompatibleMathFunctionUnits]: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
   [LINT_CODES.invalidColorFunctionChannels]: LINT_RULE_NAMES.invalidColorFunctionChannels,
   [LINT_CODES.invalidTypedCustomPropertyValue]: LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
@@ -213,6 +219,8 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownPseudoElements]: 'warn',
   [LINT_RULE_NAMES.unmatchableAnbSelectors]: 'warn',
   [LINT_RULE_NAMES.unknownTypeSelectors]: 'warn',
+  [LINT_RULE_NAMES.selectorMaxId]: 'off',
+  [LINT_RULE_NAMES.selectorMaxUniversal]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'warn',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'error',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'warn',
@@ -270,6 +278,8 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'off',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'off',
+  [LINT_RULE_NAMES.selectorMaxId]: 'off',
+  [LINT_RULE_NAMES.selectorMaxUniversal]: 'off',
   [LINT_RULE_NAMES.unusedVariables]: 'off',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'off',
   [LINT_RULE_NAMES.unboundedExtends]: 'off',
@@ -661,6 +671,26 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'selector-type-no-unknown',
     notes: 'Flags unknown CSS type selectors using HTML, SVG, and MathML metadata; custom elements and dialect selectors are intentionally skipped.'
+  },
+  {
+    diagnosticCode: LINT_CODES.selectorMaxId,
+    ruleName: LINT_RULE_NAMES.selectorMaxId,
+    title: 'ID selectors',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'selector-max-id',
+    notes: 'Opt-in VSCode idSelector parity surfaced under the Stylelint selector-max-id name; the initial subset reports any static CSS ID selector as max-0.'
+  },
+  {
+    diagnosticCode: LINT_CODES.selectorMaxUniversal,
+    ruleName: LINT_RULE_NAMES.selectorMaxUniversal,
+    title: 'Universal selectors',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'selector-max-universal',
+    notes: 'Opt-in VSCode universalSelector parity surfaced under the Stylelint selector-max-universal name; the initial subset reports any static CSS universal selector as max-0.'
   },
   {
     diagnosticCode: LINT_CODES.incompatibleMathFunctionUnits,

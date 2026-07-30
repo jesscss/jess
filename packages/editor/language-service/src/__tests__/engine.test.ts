@@ -896,6 +896,67 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('selector style policy', () => {
+      it('keeps ID selector diagnostics opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '#app { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/selector-max-id');
+      });
+
+      it('fires on ID selectors when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/selector-max-id', 'warning'));
+        const doc = createDocument('css', '#app, :not(#nested) { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/selector-max-id');
+
+        expect(diags).toHaveLength(2);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(diags.map(diag => doc.getText().slice(doc.offsetAt(diag.range.start), doc.offsetAt(diag.range.end)))).toEqual([
+          '#app',
+          '#nested'
+        ]);
+      });
+
+      it('keeps universal selector diagnostics opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '* { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/selector-max-universal');
+      });
+
+      it('fires on universal selectors when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/selector-max-universal', 'warning'));
+        const doc = createDocument('css', '* > .item { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/selector-max-universal');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('*');
+      });
+
+      it('does not fire in dialect files before selector facts exist', () => {
+        const engine = createEngine();
+        engine.configure({
+          diagnostics: {
+            severity: {
+              ['lint/selector-max-id']: 'warning',
+              ['lint/selector-max-universal']: 'warning'
+            }
+          }
+        });
+        const doc = createDocument('scss', '#app, * { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const codes = codesOf(engine, doc.uri);
+
+        expect(codes).not.toContain('lint/selector-max-id');
+        expect(codes).not.toContain('lint/selector-max-universal');
+      });
+    });
+
     describe('unusedVariables (lint/no-unused-variable)', () => {
       it('stays quiet by default until project symbol facts exist', () => {
         const engine = createEngine();

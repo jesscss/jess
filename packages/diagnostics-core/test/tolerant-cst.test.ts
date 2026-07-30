@@ -1251,6 +1251,29 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports opt-in CSS ID and universal selector policy facts', () => {
+    const source = '#app, * > .item, .ok, :not(#nested) { color: red; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const idSelectors = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.selectorMaxId);
+    const universalSelectors = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.selectorMaxUniversal
+    );
+    const appStart = source.indexOf('#app');
+    const universalStart = source.indexOf('*');
+    const nestedStart = source.indexOf('#nested');
+
+    expect(idSelectors.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Avoid ID selectors', appStart, appStart + '#app'.length],
+      ['Avoid ID selectors', nestedStart, nestedStart + '#nested'.length]
+    ]);
+    expect(universalSelectors.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Avoid universal selectors', universalStart, universalStart + '*'.length]
+    ]);
+  });
+
   it('reports duplicate CSS selectors with Stylelint default scoping', () => {
     const source = '.a, .b, .a { color: red; }\n'
       + '.a, .b { color: red; }\n'
@@ -1282,16 +1305,20 @@ describe('collectTolerantDiagnostics', () => {
 
   it('does not report unknown type selectors in dialect files before selector facts exist', () => {
     const scss = collectTolerantDiagnostics({
-      source: '$root foo { color: red; }',
+      source: '$root foo, #app, * { color: red; }',
       language: 'scss'
     });
     const less = collectTolerantDiagnostics({
-      source: '@root foo { color: red; }',
+      source: '@root foo, #app, * { color: red; }',
       language: 'less'
     });
 
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownTypeSelectors)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownTypeSelectors)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxId)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxId)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxUniversal)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxUniversal)).toBe(false);
   });
 
   it('reports unknown CSS declaration functions', () => {
