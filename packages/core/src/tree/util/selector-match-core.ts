@@ -11,7 +11,7 @@ import type { Context } from '../../context.js';
 import { isNode } from './is-node.js';
 import { isCombinator, combinatorValue } from './combinator.js';
 import { N } from '../node-type.js';
-import { isSubsetOf, isDisjoint } from './bitset.js';
+import { isSubsetOf, isDisjoint } from '../../util/bitset.js';
 import { keySetOf, requiredKeySetOf } from './selector-analysis.js';
 
 function shareKeySetLibrary(a: Selector, b: Selector): boolean {

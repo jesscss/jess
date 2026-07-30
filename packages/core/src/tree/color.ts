@@ -1,5 +1,5 @@
 import { Node, F_STATIC, defineType, type NodeOptions } from './node.js';
-import { calculate, type Operator } from './util/calculate.js';
+import { calculate, type Operator } from '../util/calculate.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';

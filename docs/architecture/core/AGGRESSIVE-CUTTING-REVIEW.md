@@ -313,7 +313,7 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/reference.ts",
       "packages/core/src/tree/ruleset.ts",
       "packages/core/src/tree/selector-list.ts",
-      "packages/core/src/tree/util/bitset.ts",
+      "packages/core/src/util/bitset.ts",
       "packages/core/src/tree/util/combinator.ts",
       "packages/core/src/tree/util/extend.ts",
       "packages/core/src/tree/util/extend-roots.ts",
@@ -321,6 +321,18 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/util/render-buffer.ts",
       "packages/core/src/tree/util/selector-analysis.ts"
     ],
+    "supportFiles": [
+      "packages/core/src/util/calculate.ts",
+      "packages/core/src/tree/color.ts",
+      "packages/core/src/tree/dimension.ts",
+      "packages/core/src/tree/node.ts",
+      "packages/core/src/tree/number.ts",
+      "packages/core/src/tree/operation.ts",
+      "packages/core/src/tree/selector.ts",
+      "packages/core/src/tree/util/selector-utils.ts",
+      "packages/core/src/tree/util/should-operate.ts"
+    ],
+    "coverage": "owner-plus-named-carry-forward-support",
     "semanticRuntime": {
       "owner": "the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
       "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. A mixin's invisible render is synchronously empty when it has no effect to await, and interpolated-name registration truthfully returns Mixin rather than promising the receiver subtype because preparation may return a distinct withParts result. Extend registration, root composition, and composed-match walking now admit the same selector surface and materialize it only at APIs that require Selector node behavior. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",

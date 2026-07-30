@@ -3,7 +3,7 @@ import { Node, type NodeLocation, type NodeOptions, type NodeValue, defineType, 
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
-import { BitSetLibrary } from './util/bitset.js';
+import { BitSetLibrary } from '../util/bitset.js';
 import type { RenderBuffer } from './util/render-buffer.js';
 import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 

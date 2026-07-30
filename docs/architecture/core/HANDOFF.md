@@ -1619,6 +1619,105 @@ involved.
       "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
       "outputBytes": 122534
     }
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": [
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
+    ],
+    "why": "This slice relocates generic helper imports used by Context and extend-index to their new core util paths. The Context/plugin dispatcher, extend-index tagged IR behavior, selector matching, callable output, and serializer contracts are unchanged; this is ownership cleanup without a speed or semantic expansion claim.",
+    "dangerTokensJustification": "The diff rewrites import specifiers and moves existing helper modules. It adds no parser host, alternate evaluator, resolver, output policy, AST materialization route, render-output array path, traversal, or runtime validation.",
+    "behaviorEvidence": "Focused bitset and dimension behavior passed: `pnpm --filter @jesscss/core test bitset.test.ts bitset-disjoint.test.ts dimension.test.ts -- --run` (61/61).",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the helper relocation.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "legacy-tree-strict-contract-drain",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "cases": [
+      "declaration-sync-and-async-render-result",
+      "declaration-merge-source-span-exclusion",
+      "default-guard-owned-value",
+      "bitset-inversion-and-disjointness",
+      "string-and-node-combinator-recognition",
+      "selector-list-singleton-collapse",
+      "selector-list-array-or-node-inheritance",
+      "parser-delivered-selector-array-ampersand",
+      "selector-array-ruleset-callable-registration",
+      "selector-array-key-set-analysis",
+      "selector-compose-cache-node-boundary",
+      "ordered-registration-context-restoration",
+      "property-merge-container-scope",
+      "mixin-invisible-sync-render-and-registration-result",
+      "extend-record-selector-surface",
+      "extend-root-composition-selector-surface",
+      "extend-walk-composed-match-selector-surface"
+    ],
+    "why": "This slice relocates the generic bitset and numeric operator helpers from legacy tree util paths to core util paths, then repoints their existing legacy tree consumers. The helper behavior and selector/extend contracts are unchanged; this is ownership cleanup for the retained legacy-tree drain, not a speed, neutrality, or semantic expansion claim.",
+    "dangerTokensJustification": "The diff moves existing helper modules and rewrites import specifiers. It adds no traversal, no object allocation, no parser replay, no materialization cache, no selector matching branch, no output policy, and no new runtime validation.",
+    "behaviorEvidence": "Focused bitset and dimension behavior passed: `pnpm --filter @jesscss/core test bitset.test.ts bitset-disjoint.test.ts dimension.test.ts -- --run` (61/61).",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the helper relocation.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "legacy-tree-visitor-abi-removal",
+    "verdict": "accepted",
+    "costDelta": "neutral",
+    "why": "This import-only slice touches `node-base.ts` solely because its `Operator` type import now points at the core util helper. It does not restore or alter the removed visitor ABI, add a dispatch method, allocate a facade, or change node behavior.",
+    "byteIdentity": {
+      "fixture": "benchmark.less",
+      "collapseNesting": true,
+      "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6",
+      "outputBytes": 122390
+    }
+  },
+  {
+    "id": "bounded-core-tree-lint-guards",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the five bounded core tree helper owners listed by bounded-core-tree-lint-guards",
+    "cases": [
+      "List raw NodeArrayItem normalization",
+      "canonical node-array prefix guard",
+      "root node validation narrowing",
+      "callable candidate record narrowing",
+      "extend helper lint-safe syntax"
+    ],
+    "why": "This slice changes `List` only to import the shared `Operator` type from its new core util path. The List normalization and validation behavior named by the bounded lint-guard contract is untouched; this is a dependency-path cleanup, not a performance or semantic behavior change.",
+    "dangerTokensJustification": "The touched List hunk is an import-specifier rewrite. It adds no branch, traversal, allocation, validation helper, parser replay, or render path.",
+    "behaviorEvidence": "Focused dimension operator coverage passed as part of `pnpm --filter @jesscss/core test bitset.test.ts bitset-disjoint.test.ts dimension.test.ts -- --run`.",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the import rewrite.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
   }
 ]
 ```
@@ -1711,6 +1810,78 @@ involved.
     "dangerTokensJustification": "The flagged Context/plugin/serializer tokens are API-boundary and diagnostic/runtime integration work: Context stores one private evaluator reference, serialize reads that accessor, and plugin setContext methods register the dialect evaluator. It adds no parser host, alternate evaluator, resolver, output policy, AST materialization route, or render-output array path.",
     "behaviorEvidence": "The focused semantic-runtime command `pnpm --filter @jesscss/core test -- --run` passed: 203 files, 3219 tests, 9 skipped, 2 todo. Plugin-level evaluator registration was separately exercised by plugin Less/SCSS tests and verify:less-alpha in the active Less facade slice.",
     "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the Context evaluator registration change.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "legacy-tree-strict-contract-drain",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "cases": [
+      "declaration-sync-and-async-render-result",
+      "declaration-merge-source-span-exclusion",
+      "default-guard-owned-value",
+      "bitset-inversion-and-disjointness",
+      "string-and-node-combinator-recognition",
+      "selector-list-singleton-collapse",
+      "selector-list-array-or-node-inheritance",
+      "parser-delivered-selector-array-ampersand",
+      "selector-array-ruleset-callable-registration",
+      "selector-array-key-set-analysis",
+      "selector-compose-cache-node-boundary",
+      "ordered-registration-context-restoration",
+      "property-merge-container-scope",
+      "mixin-invisible-sync-render-and-registration-result",
+      "extend-record-selector-surface",
+      "extend-root-composition-selector-surface",
+      "extend-walk-composed-match-selector-surface"
+    ],
+    "why": "This slice relocates the generic bitset and numeric operator helpers from legacy tree util paths to core util paths, then repoints their existing legacy tree consumers. The helper behavior and selector/extend contracts are unchanged; this is ownership cleanup for the retained legacy-tree drain, not a speed, neutrality, or semantic expansion claim.",
+    "dangerTokensJustification": "The diff moves existing helper modules and rewrites import specifiers. It adds no traversal, no object allocation, no parser replay, no materialization cache, no selector matching branch, no output policy, and no new runtime validation.",
+    "behaviorEvidence": "Focused bitset and dimension behavior passed: `pnpm --filter @jesscss/core test bitset.test.ts bitset-disjoint.test.ts dimension.test.ts -- --run` (61/61).",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the helper relocation.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "legacy-tree-visitor-abi-removal",
+    "verdict": "accepted",
+    "costDelta": "neutral",
+    "why": "This import-only slice touches `node-base.ts` solely because its `Operator` type import now points at the core util helper. It does not restore or alter the removed visitor ABI, add a dispatch method, allocate a facade, or change node behavior.",
+    "byteIdentity": {
+      "fixture": "benchmark.less",
+      "collapseNesting": true,
+      "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6",
+      "outputBytes": 122390
+    }
+  },
+  {
+    "id": "bounded-core-tree-lint-guards",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the five bounded core tree helper owners listed by bounded-core-tree-lint-guards",
+    "cases": [
+      "List raw NodeArrayItem normalization",
+      "canonical node-array prefix guard",
+      "root node validation narrowing",
+      "callable candidate record narrowing",
+      "extend helper lint-safe syntax"
+    ],
+    "why": "This slice changes `List` only to import the shared `Operator` type from its new core util path. The List normalization and validation behavior named by the bounded lint-guard contract is untouched; this is a dependency-path cleanup, not a performance or semantic behavior change.",
+    "dangerTokensJustification": "The touched List hunk is an import-specifier rewrite. It adds no branch, traversal, allocation, validation helper, parser replay, or render path.",
+    "behaviorEvidence": "Focused dimension operator coverage passed as part of `pnpm --filter @jesscss/core test bitset.test.ts bitset-disjoint.test.ts dimension.test.ts -- --run`.",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the import rewrite.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",

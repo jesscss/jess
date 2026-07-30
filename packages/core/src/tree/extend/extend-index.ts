@@ -38,7 +38,7 @@ import { Ampersand } from '../ampersand.js';
 import { isNode } from '../util/is-node.js';
 import { isCombinator, combinatorValue } from '../util/combinator.js';
 import { N } from '../node-type.js';
-import { isDisjoint, isSubsetOf } from '../util/bitset.js';
+import { isDisjoint, isSubsetOf } from '../../util/bitset.js';
 import { keySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { extendSelector } from '../util/extend.js';
 

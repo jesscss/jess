@@ -3,7 +3,7 @@ import { type Context } from '../context.js';
 import { defineType, F_CHILD_DERIVED, F_STATIC, Node, type NodeLocation } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
-import { type Operator } from './util/calculate.js';
+import { type Operator } from '../util/calculate.js';
 import {
   consumeTrivia,
   emitCommentTriviaBetweenNodes,

@@ -2,7 +2,7 @@ import {
   type Context
 } from '../context.js';
 import type { TriviaMap } from '../types/index.js';
-import { type Operator } from './util/calculate.js';
+import { type Operator } from '../util/calculate.js';
 import type { AbstractClass, Tagged } from 'type-fest';
 import {
   type PrintOptions,

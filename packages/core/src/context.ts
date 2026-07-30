@@ -10,7 +10,7 @@ import type {
 } from './tree/index.js';
 import type { ImportOptions } from './import-options.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
-import { type Operator } from './tree/util/calculate.js';
+import { type Operator } from './util/calculate.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
 import type { StylesConfig } from './types.js';
@@ -36,7 +36,7 @@ import {
 } from './warnings.js';
 import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
-import { BitSetLibrary } from './tree/util/bitset.js';
+import { BitSetLibrary } from './util/bitset.js';
 import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector-analysis.js';
 import type { PrintOptions } from './tree/util/print.js';
 
