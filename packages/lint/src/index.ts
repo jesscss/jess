@@ -29,7 +29,6 @@ import {
 
 export type { LintConfig, LintRuleOptions, LintRuleSetting, LintSeverity };
 export type { CssDiagnosticMetadata } from '@jesscss/diagnostics-core';
-export { SEMANTIC_CODES } from '@jesscss/diagnostics-core';
 export {
   LINT_RULE_NAMES,
   PARSE_SYNTAX_ERROR_CODE,

@@ -196,11 +196,8 @@
         },
         "jess.diagnostics.severity": {
           "type": "object",
-          "default": {
-            "var/undefined": "warning",
-            "mixin/undefined": "warning"
-          },
-          "description": "Override severities for Jess semantic diagnostics. Values: 'error' | 'warning' | 'information' | 'hint' | 'off'. Keys are rule IDs like 'var/undefined'."
+          "default": {},
+          "description": "Override severities for Jess stylesheet diagnostics. Values: 'error' | 'warning' | 'information' | 'hint' | 'off'. Keys may be shared diagnostic codes like 'lint/unknown-property' or lint rule names like 'property-no-unknown'."
         }
       }
     }
@@ -227,4 +224,3 @@
     "test:e2e": "vscode-test"
   }
 }
-

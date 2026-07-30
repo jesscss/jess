@@ -3,7 +3,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { CodeActionKind, Position, SymbolKind } from 'vscode-languageserver-types';
+import { Position, SymbolKind } from 'vscode-languageserver-types';
+import { LINT_RULE_NAMES } from '@jesscss/diagnostics-core';
 import { createEngine } from '../engine.js';
 
 function createDocument(languageId: string, content: string): TextDocument {
@@ -418,77 +419,11 @@ describe('JessLanguageServiceEngine', () => {
       }
     });
 
-    it('reports undefined Less variable references (semantic)', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', 'a { color: @missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const codes = diagnostics.map(d => d.code);
-      expect(codes).toContain('var/undefined');
-    });
-
-    it('reports undefined SCSS variable as warning when @use is not present', () => {
-      const engine = createEngine();
-      const doc = createDocument('scss', 'a { color: $missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
-      expect(varDiag).toBeDefined();
-      expect(varDiag?.severity).toBe(2); // DiagnosticSeverity.Warning
-    });
-
-    it('does not report SCSS callable parameters as undefined variables', () => {
-      const engine = createEngine();
-      const doc = createDocument('scss', '@mixin theme($color) { color: $color; }\n@function tone($input) { @return $input; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-
-      expect(diagnostics.some(diagnostic => diagnostic.code === 'var/undefined')).toBe(false);
-    });
-
-    it('reports undefined SCSS variable as error when @use is present', () => {
-      const engine = createEngine();
-      const doc = createDocument('scss', '@use "sass:math";\na { color: $missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
-      expect(varDiag).toBeDefined();
-      expect(varDiag?.severity).toBe(1); // DiagnosticSeverity.Error
-    });
-
-    it('reports undefined Less variable as warning when @from/@compose are not present', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', 'a { color: @missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
-      expect(varDiag).toBeDefined();
-      expect(varDiag?.severity).toBe(2); // DiagnosticSeverity.Warning
-    });
-
-    it('reports undefined Less variable as error when @from is present', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '@from "vars";\na { color: @missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
-      expect(varDiag).toBeDefined();
-      expect(varDiag?.severity).toBe(1); // DiagnosticSeverity.Error
-    });
-
-    it('reports undefined Less variable as error when @compose is present', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '@compose "button";\na { color: @missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
-      expect(varDiag).toBeDefined();
-      expect(varDiag?.severity).toBe(1); // DiagnosticSeverity.Error
-    });
-
-    it('reports undefined dialect mixin calls (semantic)', () => {
+    it('does not report evaluator-dependent missing symbols from CST facts', () => {
       const engine = createEngine();
       const docs = [
+        createDocument('less', 'a { color: @missing; }'),
+        createDocument('scss', '@use "sass:math";\na { color: $missing; }'),
         createDocument('less', '.a { .missing(); }'),
         createDocument('scss', '.a { @include missing(); }'),
         createDocument('jess', '.a { $ > missing(); }')
@@ -497,9 +432,9 @@ describe('JessLanguageServiceEngine', () => {
       for (const doc of docs) {
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         const diagnostics = engine.getDiagnostics(doc.uri);
-        const diag = diagnostics.find(d => d.code === 'mixin/undefined');
-        expect(diag).toBeDefined();
-        expect(diag?.severity).toBe(2); // DiagnosticSeverity.Warning
+        expect(diagnostics.some(diagnostic =>
+          diagnostic.code === 'var/undefined' || diagnostic.code === 'mixin/undefined'
+        )).toBe(false);
       }
     });
   });
@@ -594,6 +529,21 @@ describe('JessLanguageServiceEngine', () => {
         const doc = createDocument('css', '.a { colr: red; }');
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-property');
+      });
+
+      it('accepts lint rule names as severity aliases', () => {
+        const disabled = createEngine();
+        disabled.configure(sevCfg(LINT_RULE_NAMES.unknownProperties, 'ignore'));
+        const disabledDoc = createDocument('css', '.a { colr: red; }');
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/unknown-property');
+
+        const escalated = createEngine();
+        escalated.configure(sevCfg(LINT_RULE_NAMES.unknownProperties, 'error'));
+        const escalatedDoc = createDocument('css', '.a { colr: red; }');
+        escalated.open(escalatedDoc.uri, escalatedDoc.languageId, escalatedDoc.version, escalatedDoc.getText());
+        const diagnostic = escalated.getDiagnostics(escalatedDoc.uri).find(d => d.code === 'lint/unknown-property');
+        expect(diagnostic?.severity).toBe(1);
       });
     });
 
@@ -1634,25 +1584,14 @@ describe('JessLanguageServiceEngine', () => {
       expect(namespaceTokens.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('creates separate diagnostics for each interpolation in a string', () => {
+    it('does not create missing-symbol diagnostics for interpolation in a string', () => {
       const engine = createEngine();
       const doc = createDocument('less', '@import "import/import-@{in}@{terpolation}.less";');
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
       const diagnostics = engine.getDiagnostics(doc.uri);
       const varDiags = diagnostics.filter(d => d.code === 'var/undefined');
-
-      // Should have 2 separate diagnostics, one for @{in} and one for @{terpolation}
-      expect(varDiags.length).toBeGreaterThanOrEqual(2);
-
-      // Each diagnostic should have a different range
-      const ranges = varDiags.map(d => d.range);
-      expect(ranges.length).toBeGreaterThanOrEqual(2);
-
-      // Verify the ranges are different (they should point to different interpolations)
-      if (ranges.length >= 2) {
-        expect(ranges[0]!.start.character).not.toBe(ranges[1]!.start.character);
-      }
+      expect(varDiags).toEqual([]);
     });
   });
 
@@ -1769,79 +1708,12 @@ describe('JessLanguageServiceEngine', () => {
   });
 
   describe('code actions', () => {
-    it('offers a quick fix to create an undefined Less variable', () => {
+    it('does not offer missing-symbol quick fixes without evaluator-backed diagnostics', () => {
       const engine = createEngine();
       const doc = createDocument('less', 'a { color: @missing; }');
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diags = engine.getDiagnostics(doc.uri);
-      const target = diags.find(d => d.code === 'var/undefined');
-      expect(target).toBeDefined();
-
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
-      expect(actions.some(a => a.kind === CodeActionKind.QuickFix)).toBe(true);
-      expect(actions.some(a => a.title.includes('Create variable'))).toBe(true);
-    });
-
-    it('offers a quick fix to create an undefined Less mixin', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '.a { .missing(); }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diags = engine.getDiagnostics(doc.uri);
-      const target = diags.find(d => d.code === 'mixin/undefined');
-      expect(target).toBeDefined();
-
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
-      expect(actions.some(a => a.kind === CodeActionKind.QuickFix)).toBe(true);
-      expect(actions.some(a => a.title.includes('Create mixin'))).toBe(true);
-    });
-
-    it('offers a "did you mean" fix for a mistyped Less variable', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '@primary: red;\na { color: @primay; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diags = engine.getDiagnostics(doc.uri);
-      const target = diags.find(d => d.code === 'var/undefined');
-      expect(target).toBeDefined();
-
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
-      const didYouMean = actions.find(a => a.title === 'Change to @primary');
-      expect(didYouMean).toBeDefined();
-
-      // The fix rewrites only the identifier, keeping the `@` sigil.
-      const textEdits = didYouMean?.edit?.changes?.[doc.uri] ?? [];
-      expect(textEdits.length).toBe(1);
-      expect(textEdits[0]!.newText).toBe('@primary');
-    });
-
-    it('offers a "did you mean" fix for a mistyped Less mixin', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '.button() { color: red; }\n.a { .buton(); }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diags = engine.getDiagnostics(doc.uri);
-      const target = diags.find(d => d.code === 'mixin/undefined');
-      expect(target).toBeDefined();
-
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
-      const didYouMean = actions.find(a => a.title.startsWith('Change to .button'));
-      expect(didYouMean).toBeDefined();
-
-      // The fix keeps the `.` combinator and only swaps the identifier.
-      const textEdits = didYouMean?.edit?.changes?.[doc.uri] ?? [];
-      expect(textEdits.length).toBe(1);
-      expect(textEdits[0]!.newText.startsWith('.button')).toBe(true);
-    });
-
-    it('does not offer a "did you mean" fix when nothing is close', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '@primary: red;\na { color: @zzzzzz; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diags = engine.getDiagnostics(doc.uri);
-      const target = diags.find(d => d.code === 'var/undefined');
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
-      expect(actions.some(a => a.title.startsWith('Change to'))).toBe(false);
-
-      // The create-variable fix is still offered.
-      expect(actions.some(a => a.title.includes('Create variable'))).toBe(true);
+      const actions = engine.getCodeActions(doc.uri, Position.create(0, 10), { diagnostics: [] });
+      expect(actions).toEqual([]);
     });
   });
 

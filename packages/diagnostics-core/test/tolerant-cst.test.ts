@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectTolerantDiagnostics, LINT_CODES, SEMANTIC_CODES } from '../src/index.js';
+import { collectTolerantDiagnostics, LINT_CODES } from '../src/index.js';
 
 describe('collectTolerantDiagnostics', () => {
   it('reports CST-grounded lint findings with parser-captured source positions', () => {
@@ -596,61 +596,10 @@ describe('collectTolerantDiagnostics', () => {
       .some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
   });
 
-  it('reports same-file undefined variables as shared semantic diagnostics', () => {
+  it('does not report evaluator-dependent missing symbol diagnostics from CST facts', () => {
     const less = '@used: red;\n.a { color: @used; background: @missing; border-color: @later; }\n@later: blue;';
-    const lessInterpolatedImport = '@import "import/import-@{in}@{terpolation}.less";';
-    const scss = '$used: red;\n.a { color: $used; background: $missing; border-color: $later; }\n$later: blue;';
-    const strictScss = '@use "sass:math";\n.a { color: $missing; }';
-
-    expect(collectTolerantDiagnostics({ source: less, language: 'less' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)
-      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['eval', 'warning', 'Undefined variable @missing', less.indexOf('@missing'), less.indexOf('@missing') + '@missing'.length]
-    ]);
-    expect(collectTolerantDiagnostics({ source: lessInterpolatedImport, language: 'less' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)
-      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['eval', 'warning', 'Undefined variable @{in}', lessInterpolatedImport.indexOf('@{in}'), lessInterpolatedImport.indexOf('@{in}') + '@{in}'.length],
-      ['eval', 'warning', 'Undefined variable @{terpolation}', lessInterpolatedImport.indexOf('@{terpolation}'), lessInterpolatedImport.indexOf('@{terpolation}') + '@{terpolation}'.length]
-    ]);
-    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)
-      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['eval', 'warning', 'Undefined variable $missing', scss.indexOf('$missing'), scss.indexOf('$missing') + '$missing'.length]
-    ]);
-    expect(collectTolerantDiagnostics({ source: strictScss, language: 'scss' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)
-      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message])).toEqual([
-      ['eval', 'error', 'Undefined variable $missing']
-    ]);
-  });
-
-  it('reports same-file undefined mixin calls as shared semantic diagnostics', () => {
-    const less = '.used() { color: red; }\n.a { .used(); .missing(); }';
     const scss = '@mixin used() { color: red; }\n.a { @include used(); @include missing(); }';
     const jess = 'used() { color: red; }\n.a { $ > used(); $ > missing(); }';
-
-    expect(collectTolerantDiagnostics({ source: less, language: 'less' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)
-      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['eval', 'warning', 'Undefined mixin .missing', less.indexOf('.missing'), less.indexOf('.missing') + '.missing'.length]
-    ]);
-    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)
-      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['eval', 'warning', 'Undefined mixin missing', scss.indexOf('missing'), scss.indexOf('missing') + 'missing'.length]
-    ]);
-    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)
-      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['eval', 'warning', 'Undefined mixin missing', jess.indexOf('missing'), jess.indexOf('missing') + 'missing'.length]
-    ]);
-  });
-
-  it('does not report same-file undefined mixin calls when imports or modules may provide them', () => {
-    const less = '@import "mixins.less";\n.a { .missing(); }';
-    const scss = '@use "mixins";\n.a { @include missing(); }';
-    const jess = '@-compose "mixins";\n.a { $ > missing(); }';
 
     for (const [source, language] of [
       [less, 'less'],
@@ -658,29 +607,8 @@ describe('collectTolerantDiagnostics', () => {
       [jess, 'jess']
     ] as const) {
       expect(collectTolerantDiagnostics({ source, language }).diagnostics
-        .some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)).toBe(false);
+        .some(diagnostic => diagnostic.code === 'var/undefined' || diagnostic.code === 'mixin/undefined')).toBe(false);
     }
-  });
-
-  it('does not report Less mixin parameters as undefined variables inside their definition', () => {
-    const source = '.theme(@color) { color: @color; }\n.a { color: @color; }';
-
-    expect(collectTolerantDiagnostics({ source, language: 'less' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)
-      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['Undefined variable @color', source.lastIndexOf('@color'), source.lastIndexOf('@color') + '@color'.length]
-    ]);
-  });
-
-  it('does not report SCSS callable parameters as undefined variables inside their definitions', () => {
-    const source = '@mixin theme($color) { color: $color; }\n@function tone($input) { @return $input; }\n.a { color: $color; background: $input; }';
-
-    expect(collectTolerantDiagnostics({ source, language: 'scss' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)
-      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['Undefined variable $color', source.lastIndexOf('$color'), source.lastIndexOf('$color') + '$color'.length],
-      ['Undefined variable $input', source.lastIndexOf('$input'), source.lastIndexOf('$input') + '$input'.length]
-    ]);
   });
 
   it('reports definitely impossible dialect guards without flagging dynamic guards', () => {

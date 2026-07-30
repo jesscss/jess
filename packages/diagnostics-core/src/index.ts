@@ -1,10 +1,15 @@
 export {
   LINT_CODES,
-  SEMANTIC_CODES,
   collectTolerantDiagnostics,
   cstLintDiagnostics,
   parseDocForLanguage
 } from './tolerant-cst.js';
+export {
+  LINT_RULE_NAMES,
+  diagnosticCodeForRuleName,
+  ruleNameForDiagnosticCode,
+  type LintRuleName
+} from './rule-aliases.js';
 export {
   buildCstIndex,
   type CstIndex,

@@ -456,9 +456,8 @@ export interface LintConfig {
 
   /**
    * Diagnostic-code policy for parser/compiler-style diagnostics and a
-   * compatibility alias for lint rules. When a code maps to a lint rule, `rules`
-   * is preferred; codes without lint rule names, such as `var/undefined`, stay
-   * here.
+   * compatibility alias for lint rules. When a code maps to a lint rule,
+   * `rules` is preferred; codes without lint rule names stay here.
    */
   diagnostics?: Record<string, LintSeverity>;
 }

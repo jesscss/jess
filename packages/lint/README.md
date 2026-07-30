@@ -152,10 +152,6 @@ export default {
       'jess/no-dead-extend': 'warn',
       'jess/no-suspicious-map-key-access': 'warn',
       'jess/unsupported-sass-form': 'warn'
-    },
-    diagnostics: {
-      'var/undefined': 'warn',
-      'mixin/undefined': 'warn'
     }
   }
 }
@@ -176,10 +172,8 @@ Jess-native or VSCode-data-backed subset.
 Compiler-style diagnostics are configured by diagnostic code under
 `lint.diagnostics`. They are not lint rules and do not appear in
 `STABLE_LINT_RULES` unless Jess intentionally adds a lint rule alias for them,
-but `jess lint` can report them in the same compact and JSON outputs.
-`SEMANTIC_CODES` exports the current shared semantic diagnostic codes. The
-initial semantic set includes same-file undefined variables, same-file
-Less/SCSS/Jess undefined mixin calls, and simple Less unknown named arguments.
+but `jess lint` can report them in the same compact and JSON outputs once an
+evaluator-backed diagnostic source emits them.
 
 `block-no-empty` warns on empty rulesets by default. Add
 `['warn', { include: ['mixins'] }]` when empty Less, SCSS, or Jess mixin bodies

@@ -188,10 +188,11 @@ and should stay opt-in.
 Language-service defaults should surface the same shared diagnostics as
 `@jesscss/lint` recommended policy unless a rule is explicitly opt-in. Opt-in
 rules still need shared detection and editor configuration support; they should
-not become IDE noise by accident. The language service currently keys severity
-configuration by shared diagnostic code. Public lint configuration keys are rule
-names owned by `@jesscss/lint`, which maps those rule names to diagnostic codes
-for CLI/API reporting and migration-friendly config.
+not become IDE noise by accident. The language service accepts severity
+configuration by shared diagnostic code and by stable lint rule-name aliases.
+Public lint configuration keys are rule names, and diagnostics-core exposes the
+alias table so editor settings can use the same migration-friendly names without
+depending on lint's CLI package.
 
 ## Stylelint story
 
@@ -308,8 +309,9 @@ the language service because they are often the most useful author feedback.
 
 | Diagnostic | Owner | Notes |
 | --- | --- | --- |
-| Definite unresolved variable | Compiler/evaluator | Initial shared same-file CST diagnostic landed as `var/undefined` for Less/SCSS/Jess variable references and suppresses Less/SCSS callable parameters in their definition scope; strict SCSS `@use` and Less/Jess `@from`/`@compose` syntax defaults to error. Resolver/import-aware certainty remains future work. |
+| Definite unresolved variable | Future evaluator | Requires evaluated project/module scope facts before reporting. CST-only same-file declarations are not enough because imports, modules, plugins, guards, and ambient definitions can change resolution. |
 | Missing import or module cycle | Resolver/compiler | Report the path and config context. |
+| Undefined mixin/function | Future evaluator | Same ownership as symbol resolution; requires evaluated callable facts before reporting. |
 | No matching mixin/function overload | Future evaluator | Requires evaluated ambient/project callable facts before reporting. Static same-file CST facts are not enough because Less, Sass, and Jess can add callables through imports, modules, guards, plugins, and evaluation. |
 | Unknown named argument | Future evaluator | Same ownership as call resolution; needs the evaluated candidate set and signature model before reporting. |
 | Less scope leakage | Future evaluator | Needs actual Less/Jess evaluation and scope facts. CST can identify suspicious shapes, but it cannot prove whether a read depends on leakage. |

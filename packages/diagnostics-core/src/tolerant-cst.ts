@@ -87,11 +87,6 @@ export const LINT_CODES = {
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
-export const SEMANTIC_CODES = {
-  undefinedVariable: 'var/undefined',
-  undefinedMixin: 'mixin/undefined'
-} as const;
-
 const LENGTH_UNITS = new Set([
   'cap', 'ch', 'em', 'ex', 'ic', 'lh', 'rcap', 'rch', 'rem', 'rex', 'ric', 'rlh',
   'dvb', 'dvh', 'dvi', 'dvmax', 'dvmin', 'dvw',
@@ -581,25 +576,6 @@ type MixinDefinitionFact = {
   readonly span: DiagnosticSpan;
 };
 
-type LessFixedMixinDefinitionFact = {
-  readonly name: string;
-  readonly display: string;
-  readonly arity: number;
-};
-
-type LessFixedMixinCallFact = {
-  readonly name: string;
-  readonly display: string;
-  readonly arity: number;
-  readonly span: DiagnosticSpan;
-};
-
-type MixinSignatureFact = {
-  readonly name: string;
-  readonly display: string;
-  readonly parameters: ReadonlySet<string> | null;
-};
-
 type MixinReferenceFact = {
   readonly name: string;
   readonly display: string;
@@ -610,17 +586,6 @@ type VariableReferenceFact = {
   readonly name: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
-};
-
-type IgnoredReferenceSpan = {
-  readonly start: number;
-  readonly end: number;
-};
-
-type VariableParameterScopeFact = {
-  readonly names: ReadonlySet<string>;
-  readonly start: number;
-  readonly end: number;
 };
 
 type FunctionDefinitionFact = {
@@ -2794,6 +2759,10 @@ function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNod
   return undefined;
 }
 
+function hasDescendantNodeOf(node: CssCstNode, grammarType: string): boolean {
+  return firstDescendantNodeOf(node, grammarType) !== undefined;
+}
+
 const GUARD_OR_TYPES = new Set(['GuardOr', 'IfGuardOr', 'MixinGuardTopOr', 'MixinGuardOr', 'IfCondition']);
 const GUARD_AND_TYPES = new Set(['GuardAnd', 'IfGuardAnd', 'MixinGuardTopAnd', 'MixinGuardAnd', 'IfAnd']);
 const GUARD_COMPARE_TYPES = new Set(['GuardCompare', 'IfGuardCompare']);
@@ -3264,30 +3233,6 @@ function scssMixinCallFactOf(source: string, node: CssCstNode): MixinReferenceFa
       };
 }
 
-function scssCallableParameterScopeOf(source: string, node: CssCstNode): VariableParameterScopeFact | null {
-  if (node.grammarType !== 'MixinDefinition' && node.grammarType !== 'FunctionRule') {
-    return null;
-  }
-  const params = firstChildNodeOf(node, 'MixinParameters');
-  if (params === undefined) {
-    return null;
-  }
-  const names = new Set<string>();
-  for (const parameter of childNodesOfType(params, 'MixinParameter')) {
-    const authored = authoredVariableNameOf(source, absoluteStart(parameter), absoluteEnd(parameter));
-    if (authored !== null && authored.name.charCodeAt(0) === 36 /* $ */) {
-      names.add(normalizedVariableName(authored.name, 'scss'));
-    }
-  }
-  return names.size === 0
-    ? null
-    : {
-        names,
-        start: absoluteStart(node),
-        end: absoluteEnd(node)
-      };
-}
-
 function normalizedScssCallableName(name: string): string {
   return name.replace(/_/g, '-');
 }
@@ -3325,220 +3270,6 @@ function lessMixinCallChild(node: CssCstNode): CssCstNode | undefined {
   return statement === undefined
     ? firstChildNodeOf(node, 'MixinCall')
     : firstChildNodeOf(statement, 'MixinCall');
-}
-
-function lessMixinInteriorChild(node: CssCstNode): CssCstNode | undefined {
-  const statement = lessMixinStatementChild(node);
-  return statement === undefined ? undefined : firstChildNodeOf(statement, 'MixinInterior');
-}
-
-function lessMixinBindingNodes(node: CssCstNode): CssCstNode[] {
-  const interior = lessMixinInteriorChild(node);
-  return interior === undefined
-    ? []
-    : childNodesOf(interior).filter(child => child.grammarType === 'MixinBinding');
-}
-
-function lessMixinBindingHasValue(binding: CssCstNode): boolean {
-  return firstChildNodeOf(binding, 'CallArgumentValue') !== undefined
-    || firstChildNodeOf(binding, 'MixinParamValueTerm') !== undefined;
-}
-
-function lessMixinCurrentSignatureIsDynamic(source: string, node: CssCstNode): boolean {
-  const interior = lessMixinInteriorChild(node);
-  if (interior === undefined) {
-    return false;
-  }
-  if (childNodesOf(interior).some(child => child.grammarType === 'MixinArgument')) {
-    return true;
-  }
-  return lessMixinBindingNodes(node).some(binding =>
-    source.slice(absoluteStart(binding), absoluteEnd(binding)).includes('...')
-  );
-}
-
-function lessMixinCurrentSignatureHasDefault(node: CssCstNode): boolean {
-  return lessMixinBindingNodes(node).some(lessMixinBindingHasValue);
-}
-
-function lessSimpleMixinNameFromSelector(source: string, selector: CssCstNode): MixinDefinitionFact | null {
-  const start = absoluteStart(selector);
-  const end = absoluteEnd(selector);
-  const raw = source.slice(start, end);
-  const trimmed = trimOffsets(raw, start);
-  if (trimmed.end <= trimmed.start + 1 || raw.includes('@{')) {
-    return null;
-  }
-  const first = source.charCodeAt(trimmed.start);
-  if (first !== 35 && first !== 46) {
-    return null;
-  }
-  for (let i = trimmed.start + 1; i < trimmed.end; i++) {
-    if (!isIdentChar(source.charCodeAt(i))) {
-      return null;
-    }
-  }
-  const display = source.slice(trimmed.start, trimmed.end);
-  return {
-    name: display,
-    display,
-    span: spanFromNodeStart(selector, trimmed.start, trimmed.end)
-  };
-}
-
-function lessFixedMixinDefinitionOf(source: string, node: CssCstNode): LessFixedMixinDefinitionFact | null {
-  if (node.grammarType !== 'Statement') {
-    return null;
-  }
-  const definition = lessMixinDefinitionChild(node);
-  if (definition === undefined) {
-    return null;
-  }
-  const signature = firstChildNodeOf(definition, 'MixinSignature');
-  if (
-    (signature !== undefined && (
-      hasDescendantNodeOf(signature, 'MixinGuard')
-      || hasDescendantNodeOf(signature, 'MixinRestParam')
-      || hasDescendantNodeOf(signature, 'MixinAnonymousRestParam')
-      || hasDescendantNodeOf(signature, 'MixinPatternParam')
-      || hasDescendantNodeOf(signature, 'MixinParamValueTerm')
-    ))
-    || hasDescendantNodeOf(definition, 'MixinGuard')
-    || lessMixinCurrentSignatureHasDefault(node)
-    || lessMixinCurrentSignatureIsDynamic(source, node)
-  ) {
-    return null;
-  }
-  const selector = firstChildNodeOf(node, 'SelectorBranch');
-  const name = selector === undefined ? null : lessSimpleMixinNameFromSelector(source, selector);
-  return name === null
-    ? null
-    : {
-        name: name.name,
-        display: name.display,
-        arity: signature === undefined
-          ? lessMixinBindingNodes(node).length
-          : countDescendantNodesOf(signature, 'MixinParamWithSignatureTrivia')
-      };
-}
-
-function descendantNodesOfType(node: CssCstNode, grammarType: string, out: CssCstNode[]): void {
-  for (const child of cstChildrenOf(node)) {
-    if (!isCstNode(child)) {
-      continue;
-    }
-    if (child.grammarType === grammarType) {
-      out.push(child);
-    }
-    descendantNodesOfType(child, grammarType, out);
-  }
-}
-
-function lessMixinSignatureOf(source: string, node: CssCstNode): MixinSignatureFact | null {
-  if (node.grammarType !== 'Statement') {
-    return null;
-  }
-  const definition = lessMixinDefinitionChild(node);
-  if (definition === undefined) {
-    return null;
-  }
-  const selector = firstChildNodeOf(node, 'SelectorBranch');
-  const name = selector === undefined ? null : lessSimpleMixinNameFromSelector(source, selector);
-  if (name === null) {
-    return null;
-  }
-  const signature = firstChildNodeOf(definition, 'MixinSignature');
-  if (
-    (signature !== undefined && (
-      hasDescendantNodeOf(signature, 'MixinRestParam')
-      || hasDescendantNodeOf(signature, 'MixinAnonymousRestParam')
-      || hasDescendantNodeOf(signature, 'MixinPatternParam')
-    ))
-    || hasDescendantNodeOf(definition, 'MixinGuard')
-    || lessMixinCurrentSignatureIsDynamic(source, node)
-  ) {
-    return {
-      name: name.name,
-      display: name.display,
-      parameters: null
-    };
-  }
-  const boundParams: CssCstNode[] = signature === undefined ? lessMixinBindingNodes(node) : [];
-  if (signature !== undefined) {
-    descendantNodesOfType(signature, 'MixinBoundParam', boundParams);
-  }
-  const parameters = new Set<string>();
-  for (const parameter of boundParams) {
-    const authored = authoredVariableNameOf(source, absoluteStart(parameter), absoluteEnd(parameter));
-    if (authored === null) {
-      return {
-        name: name.name,
-        display: name.display,
-        parameters: null
-      };
-    }
-    parameters.add(normalizedVariableName(authored.name, 'less'));
-  }
-  return {
-    name: name.name,
-    display: name.display,
-    parameters
-  };
-}
-
-function lessMixinParameterScopeOf(source: string, node: CssCstNode): VariableParameterScopeFact | null {
-  const signature = lessMixinSignatureOf(source, node);
-  if (signature === null || signature.parameters === null || signature.parameters.size === 0) {
-    return null;
-  }
-  const definition = lessMixinDefinitionChild(node);
-  return definition === undefined
-    ? null
-    : {
-        names: signature.parameters,
-        start: absoluteStart(definition),
-        end: absoluteEnd(definition)
-      };
-}
-
-function lessFixedMixinCallOf(source: string, node: CssCstNode): LessFixedMixinCallFact | null {
-  if (node.grammarType !== 'Statement') {
-    return null;
-  }
-  const call = lessMixinCallChild(node);
-  if (call === undefined) {
-    return null;
-  }
-  const selector = firstChildNodeOf(node, 'SelectorBranch');
-  const name = selector === undefined ? null : lessSimpleMixinNameFromSelector(source, selector);
-  return name === null
-    ? null
-    : {
-        name: name.name,
-        display: name.display,
-        arity: countDescendantNodesOf(call, 'PositionalMixinArgument')
-          + lessMixinBindingNodes(node).filter(binding => !lessMixinBindingHasValue(binding)).length
-          + childNodesOf(lessMixinInteriorChild(node) ?? call).filter(child => child.grammarType === 'MixinArgument').length,
-        span: name.span
-      };
-}
-
-function lessMixinBindingNameSpan(source: string, node: CssCstNode): IgnoredReferenceSpan | null {
-  const authored = authoredVariableNameOf(source, absoluteStart(node), absoluteEnd(node));
-  return authored === null || authored.name.charCodeAt(0) !== 64 /* @ */
-    ? null
-    : { start: authored.start, end: authored.end };
-}
-
-function lessSimpleMixinCallFactOf(source: string, node: CssCstNode): MixinReferenceFact | null {
-  const call = lessFixedMixinCallOf(source, node);
-  return call === null
-    ? null
-    : {
-        name: call.name,
-        display: call.display,
-        span: call.span
-      };
 }
 
 function jessMixinNameSpan(source: string, node: CssCstNode): MixinDefinitionFact | null {
@@ -3646,23 +3377,6 @@ function mixinCallNamesOf(source: string, node: CssCstNode, language: JessLangua
   }
   const name = node.grammarType === 'MixinCall' ? jessMixinCallName(source, node) : null;
   return name === null ? [] : [name];
-}
-
-function mixinCallFactsOf(source: string, node: CssCstNode, language: JessLanguage): readonly MixinReferenceFact[] {
-  if (language === 'css') {
-    return [];
-  }
-  if (language === 'less') {
-    const fact = lessSimpleMixinCallFactOf(source, node);
-    return fact === null ? [] : [fact];
-  }
-  if (node.grammarType !== 'MixinCall') {
-    return [];
-  }
-  const fact = language === 'scss'
-    ? scssMixinCallFactOf(source, node)
-    : jessMixinCallFactOf(source, node);
-  return fact === null ? [] : [fact];
 }
 
 function exactDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNode | null {
@@ -5193,12 +4907,8 @@ export function cstLintDiagnostics(
   const customPropertyReferences: CustomPropertyReference[] = [];
   const variableDeclarations: VariableDeclarationFact[] = [];
   const variableReferences = new Set<string>();
-  const variableReferenceFacts: VariableReferenceFact[] = [];
-  const ignoredVariableReferenceSpans: IgnoredReferenceSpan[] = [];
-  const variableParameterScopes: VariableParameterScopeFact[] = [];
   const mixinDefinitions: MixinDefinitionFact[] = [];
   const mixinReferences = new Set<string>();
-  const mixinReferenceFacts: MixinReferenceFact[] = [];
   const functionDefinitions: FunctionDefinitionFact[] = [];
   const functionReferences = new Set<string>();
   const functionDefinitionNames = new Set<string>();
@@ -5206,7 +4916,6 @@ export function cstLintDiagnostics(
   const ruleSelectorKeys = new Set<string>();
   const exactExtendTargets: ExactExtendTargetFact[] = [];
   let hasExternalSources = false;
-  let hasStrictVariableResolution = false;
   const cssData = metadataWithDefaults(metadata);
   const dialectAtRules = DIALECT_AT_RULES[language];
   const pushDiagnostic = (
@@ -5244,12 +4953,6 @@ export function cstLintDiagnostics(
     }
     const gt = node.grammarType;
     hasExternalSources ||= EXTERNAL_SOURCE_TYPES.has(gt);
-    if (language !== 'css' && source.charCodeAt(start) === 64 /* @ */) {
-      const atRuleName = atRuleNameOf(source, start, end);
-      hasStrictVariableResolution ||= (language === 'scss' && atRuleName === 'use')
-        || (language === 'less' && (atRuleName === 'from' || atRuleName === 'compose' || atRuleName === '-from' || atRuleName === '-compose'))
-        || (language === 'jess' && (atRuleName === '-from' || atRuleName === '-compose'));
-    }
     const declarationName = DECLARATION_TYPES.has(gt)
       ? propNameOf(source.slice(start, end)).toLowerCase()
       : null;
@@ -5401,19 +5104,9 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (language === 'less') {
-      for (const binding of lessMixinBindingNodes(node)) {
-        const ignoredSpan = lessMixinBindingNameSpan(source, binding);
-        if (ignoredSpan !== null) {
-          ignoredVariableReferenceSpans.push(ignoredSpan);
-        }
-      }
-    }
-
     const variableReference = variableReferenceFactOf(source, node, language);
     if (variableReference !== null) {
       variableReferences.add(variableReference.name);
-      variableReferenceFacts.push(variableReference);
     }
 
     const mixinDefinition = mixinDefinitionOf(source, node, language);
@@ -5424,18 +5117,6 @@ export function cstLintDiagnostics(
     for (const mixinReference of mixinCallNamesOf(source, node, language)) {
       mixinReferences.add(mixinReference);
     }
-    for (const mixinReference of mixinCallFactsOf(source, node, language)) {
-      mixinReferenceFacts.push(mixinReference);
-    }
-    const lessMixinParameterScope = language === 'less' ? lessMixinParameterScopeOf(source, node) : null;
-    if (lessMixinParameterScope !== null) {
-      variableParameterScopes.push(lessMixinParameterScope);
-    }
-    const scssParameterScope = language === 'scss' ? scssCallableParameterScopeOf(source, node) : null;
-    if (scssParameterScope !== null) {
-      variableParameterScopes.push(scssParameterScope);
-    }
-
     const functionDefinition = functionDefinitionOf(source, node, language);
     if (functionDefinition !== null) {
       functionDefinitions.push(functionDefinition);
@@ -6399,45 +6080,6 @@ export function cstLintDiagnostics(
   }
 
   if (language !== 'css') {
-    const variableDeclarationNames = new Set(variableDeclarations.map(declaration => declaration.name));
-    const undefinedVariableSeverity = hasStrictVariableResolution ? 'error' : 'warning';
-    for (const reference of variableReferenceFacts) {
-      const inParameterScope = variableParameterScopes.some(scope =>
-        Number(reference.span.start) >= scope.start
-        && Number(reference.span.end) <= scope.end
-        && scope.names.has(reference.name)
-      );
-      const ignoredReference = ignoredVariableReferenceSpans.some(span =>
-        Number(reference.span.start) === span.start && Number(reference.span.end) === span.end
-      );
-      if (!variableDeclarationNames.has(reference.name) && !inParameterScope && !ignoredReference) {
-        pushDiagnostic(
-          SEMANTIC_CODES.undefinedVariable,
-          undefinedVariableSeverity,
-          `Undefined variable ${reference.display}`,
-          reference.span,
-          undefined,
-          'eval'
-        );
-      }
-    }
-
-    if (!hasExternalSources) {
-      const mixinDefinitionNames = new Set(mixinDefinitions.map(definition => definition.name));
-      for (const reference of mixinReferenceFacts) {
-        if (!mixinDefinitionNames.has(reference.name)) {
-          pushDiagnostic(
-            SEMANTIC_CODES.undefinedMixin,
-            'warning',
-            `Undefined mixin ${reference.display}`,
-            reference.span,
-            undefined,
-            'eval'
-          );
-        }
-      }
-    }
-
     for (const declaration of variableDeclarations) {
       if (!declaration.configurable && !functionDefinitionNames.has(declaration.name) && !variableReferences.has(declaration.name)) {
         push(

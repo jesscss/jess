@@ -16,8 +16,8 @@ import {
   cstLintDiagnostics,
   type CssDiagnosticMetadata,
   type CssPropertyValueFact,
+  diagnosticCodeForRuleName,
   LINT_CODES,
-  SEMANTIC_CODES,
   type SourceDiagnostic
 } from '@jesscss/diagnostics-core';
 import * as colorUtils from './color-utils.js';
@@ -41,7 +41,6 @@ import {
   Range,
   CodeAction,
   CodeActionContext,
-  CodeActionKind,
   DocumentLink,
   WorkspaceEdit,
   SelectionRange,
@@ -395,35 +394,6 @@ function findIdentInSpan(text: string, start: number, end: number, ident: string
     return null;
   }
   return { start: start + m.index, end: start + m.index + ident.length };
-}
-
-/*
- * Small Levenshtein edit distance, capped: powers the "did you mean" quick fix
- * (suggest a declared symbol close to an undefined reference).
- */
-function editDistance(a: string, b: string): number {
-  const al = a.length;
-  const bl = b.length;
-  if (al === 0) {
-    return bl;
-  }
-  if (bl === 0) {
-    return al;
-  }
-  let prev = new Array<number>(bl + 1);
-  let curr = new Array<number>(bl + 1);
-  for (let j = 0; j <= bl; j++) {
-    prev[j] = j;
-  }
-  for (let i = 1; i <= al; i++) {
-    curr[0] = i;
-    for (let j = 1; j <= bl; j++) {
-      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
-      curr[j] = Math.min(prev[j]! + 1, curr[j - 1]! + 1, prev[j - 1]! + cost);
-    }
-    [prev, curr] = [curr, prev];
-  }
-  return prev[bl]!;
 }
 
 /*
@@ -820,20 +790,6 @@ function formatStyleSource(source: string): string {
   return out.trimEnd();
 }
 
-function undefinedVariableDeclarationName(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('@{') && trimmed.endsWith('}') && trimmed.length > 3) {
-    return trimmed.slice(2, -1);
-  }
-  if (trimmed.startsWith('#{$') && trimmed.endsWith('}') && trimmed.length > 4) {
-    return trimmed.slice(3, -1);
-  }
-  if ((trimmed.startsWith('$') || trimmed.startsWith('@')) && trimmed.length > 1) {
-    return trimmed.slice(1);
-  }
-  return trimmed || 'var';
-}
-
 export function createEngine(): JessLanguageServiceEngine {
   const docs = new Map<string, TrackedDoc>();
 
@@ -919,9 +875,6 @@ export function createEngine(): JessLanguageServiceEngine {
   const importedDocs = new Map<string, TrackedDoc>();
   let semanticDiagnosticSeverities: Record<string, DiagnosticSeverity> = {
     /* eslint-disable @typescript-eslint/naming-convention */
-    [SEMANTIC_CODES.undefinedVariable]: DiagnosticSeverity.Warning,
-    [SEMANTIC_CODES.undefinedMixin]: DiagnosticSeverity.Warning,
-
     /*
      * Shared diagnostics. Keys match diagnostics-core `LINT_CODES`, not the
      * public lint rule names from @jesscss/lint. The lint package owns the
@@ -1393,7 +1346,7 @@ export function createEngine(): JessLanguageServiceEngine {
       /*
        * Expected shape (from client settings):
        * { diagnostics?: { severity?: Record<string, string>, options?: Record<string, object> } }
-       * Example: { diagnostics: { severity: { "var/undefined": "error" } } }
+       * Example: { diagnostics: { severity: { "lint/unknown-property": "error" } } }
        */
       const diagnosticsObj = (config && typeof config === 'object' && 'diagnostics' in config)
         ? config.diagnostics
@@ -1404,6 +1357,7 @@ export function createEngine(): JessLanguageServiceEngine {
       if (severity && typeof severity === 'object') {
         const next: Record<string, DiagnosticSeverity> = { ...semanticDiagnosticSeverities };
         for (const [k, v] of Object.entries(severity)) {
+          const key = diagnosticCodeForRuleName(k) ?? k;
           const parsed = parseSeverity(v);
           if (parsed === null) {
             /*
@@ -1411,11 +1365,11 @@ export function createEngine(): JessLanguageServiceEngine {
              * key yields no severity at lookup-time, so the rule emits nothing).
              */
             if (v === 'off' || v === 'ignore') {
-              delete next[k];
+              delete next[key];
             }
             continue;
           }
-          next[k] = parsed;
+          next[key] = parsed;
         }
         semanticDiagnosticSeverities = next;
       }
@@ -2133,16 +2087,11 @@ export function createEngine(): JessLanguageServiceEngine {
         if (typeof configured !== 'number') {
           continue;
         }
-        const effectiveSeverity = diagnostic.code === SEMANTIC_CODES.undefinedVariable
-          && diagnostic.defaultSeverity === 'error'
-          && configured === DiagnosticSeverity.Warning
-          ? DiagnosticSeverity.Error
-          : configured;
         diagnostics.push({
           code: diagnostic.code,
           source: diagnostic.source,
           message: diagnostic.message,
-          severity: effectiveSeverity,
+          severity: configured,
           range: diagnosticRange(diagnostic.start, diagnostic.end)
         });
       }
@@ -2182,134 +2131,10 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getCodeActions(uri, _range, context) {
-      /*
-       * CST-grounded for the SYNTACTIC paths: the declared-symbol inventory
-       * behind "did you mean" reads the tolerant CST (no AST reparse), and the
-       * undefined identifier is recovered from the diagnostic message. The
-       * create-variable / create-mixin fixes are pure text edits. All of this
-       * survives an otherwise-invalid document.
-       */
-      const tracked = get(uri);
-      const doc = tracked.document;
-      const actions: CodeAction[] = [];
-
-      const diagnostics = Array.isArray(context?.diagnostics) ? context.diagnostics : [];
-      const text = doc.getText();
-
-      // Declared-symbol inventories (bare identifiers) for "did you mean" fixes.
-      const cstTree = tracked.cstDoc?.tree;
-      const declared = cstTree ? cstDeclaredSymbols(cstTree, doc) : { vars: new Set<string>(), mixins: new Set<string>() };
-      const declaredVars = declared.vars;
-      const declaredMixins = declared.mixins;
-
-      // Closest declared identifiers to `name` (edit distance <= 2), nearest first.
-      const suggestClosest = (name: string, pool: Set<string>): string[] => {
-        const scored: Array<{ n: string; d: number }> = [];
-        for (const candidate of pool) {
-          if (candidate === name) {
-            continue;
-          }
-          const d = editDistance(name.toLowerCase(), candidate.toLowerCase());
-          if (d <= 2) {
-            scored.push({ n: candidate, d });
-          }
-        }
-        scored.sort((a, b) => (a.d - b.d) || a.n.localeCompare(b.n));
-        return scored.slice(0, 3).map(s => s.n);
-      };
-
-      /*
-       * Rewrite just the identifier inside a diagnostic range, keeping the sigil /
-       * combinator, and yield a "Change to X" quick fix per close-by candidate.
-       */
-      const pushDidYouMean = (diag: Diagnostic, undefinedIdent: string, pool: Set<string>) => {
-        if (!diag.range) {
-          return;
-        }
-        const from = doc.offsetAt(diag.range.start);
-        const to = doc.offsetAt(diag.range.end);
-        const identRange = findIdentInSpan(text, from, to, undefinedIdent);
-        if (!identRange) {
-          return;
-        }
-        const prefix = text.slice(from, identRange.start);
-        const suffix = text.slice(identRange.end, to);
-        for (const candidate of suggestClosest(undefinedIdent, pool)) {
-          const edit: WorkspaceEdit = {
-            changes: {
-              [uri]: [TextEdit.replace(diag.range, `${prefix}${candidate}${suffix}`)]
-            }
-          };
-          actions.push({
-            title: `Change to ${prefix}${candidate}${suffix}`,
-            kind: CodeActionKind.QuickFix,
-            diagnostics: [diag],
-            edit
-          });
-        }
-      };
-
-      for (const diag of diagnostics) {
-        const code = String(diag?.code ?? '');
-        if (code === SEMANTIC_CODES.undefinedVariable) {
-          /*
-           * The undefined name is carried by the diagnostic message (produced by
-           * getDiagnostics), so no AST node lookup is needed.
-           */
-          const raw = String(diag?.message ?? '').match(/Undefined variable\s+(.+)$/)?.[1] ?? '';
-          const name = undefinedVariableDeclarationName(raw);
-
-          const insertText = tracked.lang === 'scss'
-            ? `$${name}: ;\n`
-            : tracked.lang === 'less'
-              ? `@${name}: ;\n`
-              : `--${name}: ;\n`;
-
-          const edit: WorkspaceEdit = {
-            changes: {
-              [uri]: [
-                TextEdit.insert(Position.create(0, 0), insertText)
-              ]
-            }
-          };
-
-          actions.push({
-            title: `Create variable ${name}`,
-            kind: CodeActionKind.QuickFix,
-            diagnostics: [diag],
-            edit
-          });
-
-          pushDidYouMean(diag, name.replace(/^[$@]/, ''), declaredVars);
-        }
-
-        if (code === SEMANTIC_CODES.undefinedMixin) {
-          // The undefined mixin name is carried by the diagnostic message.
-          let name = String(diag?.message ?? '').match(/Undefined mixin\s+(.+)$/)?.[1] ?? '';
-          name = name.trim() || '.mixin';
-
-          const insertText = `${name}() {\n  \n}\n\n`;
-          const endPos = doc.positionAt(doc.getText().length);
-          const edit: WorkspaceEdit = {
-            changes: {
-              [uri]: [
-                TextEdit.insert(endPos, (endPos.character === 0 ? '' : '\n') + insertText)
-              ]
-            }
-          };
-
-          actions.push({
-            title: `Create mixin ${name}()`,
-            kind: CodeActionKind.QuickFix,
-            diagnostics: [diag],
-            edit
-          });
-
-          pushDidYouMean(diag, name.trim().replace(/^[.#]/, '').replace(/\(\s*\)\s*$/, ''), declaredMixins);
-        }
-      }
-
-      return actions;
+      void uri;
+      void _range;
+      void context;
+      return [];
     },
 
     formatDocument(uri) {
