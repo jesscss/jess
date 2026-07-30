@@ -724,6 +724,34 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('vendorPrefix (lint/vendor-prefix)', () => {
+      it('fires on CSS vendor-prefixed declarations missing the standard property', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { -webkit-transform: rotate(0); }\n.b { -webkit-transform: rotate(0); transform: rotate(0); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/vendor-prefix');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('-webkit-transform');
+      });
+
+      it('does not fire in dialect files before property facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '.a { -webkit-transform: rotate(0); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/vendor-prefix');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/vendor-prefix', 'ignore'));
+        const doc = createDocument('css', '.a { -webkit-transform: rotate(0); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/vendor-prefix');
+      });
+    });
+
     describe('boxModel (lint/box-model)', () => {
       it('stays quiet by default because VSCode marks boxModel opt-in', () => {
         const engine = createEngine();

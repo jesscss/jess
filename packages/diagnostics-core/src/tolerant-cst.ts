@@ -39,6 +39,7 @@ export const LINT_CODES = {
   propertyIgnoredDueToDisplay: 'lint/property-ignored-due-to-display',
   boxModel: 'lint/box-model',
   float: 'lint/float',
+  vendorPrefix: 'lint/vendor-prefix',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   duplicateModuleLoads: 'lint/no-duplicate-module-load',
@@ -528,6 +529,11 @@ type VariableDeclarationFact = {
 
 type SuspiciousMapKeyAccess = {
   readonly variable: string;
+  readonly span: DiagnosticSpan;
+};
+
+type VendorPrefixedDeclaration = {
+  readonly suffix: string;
   readonly span: DiagnosticSpan;
 };
 
@@ -4358,6 +4364,8 @@ export function cstLintDiagnostics(
     let hasDisplayBlock = false;
     let nonNoneFloatDeclarations: CssCstNode[] | undefined;
     let verticalAlignDeclarations: CssCstNode[] | undefined;
+    let standardProperties: Set<string> | undefined;
+    let vendorPrefixedDeclarations: VendorPrefixedDeclaration[] | undefined;
     let boxModelFacts: BoxModelFacts | undefined;
     let previousDeclarationKey: string | undefined;
     for (const child of cstChildrenOf(node)) {
@@ -4375,6 +4383,20 @@ export function cstLintDiagnostics(
           if (checkCssRulesetDeclarations) {
             boxModelFacts ??= createBoxModelFacts();
             applyBoxModelDeclaration(boxModelFacts, source, key, child);
+            const prefix = vendorPrefixOfName(key);
+            if (prefix === '') {
+              standardProperties ??= new Set();
+              standardProperties.add(key);
+            } else {
+              const suffix = unprefixedName(key);
+              if (cssData.isKnownProperty(suffix)) {
+                const nameStart = childStart + childSource.indexOf(name);
+                (vendorPrefixedDeclarations ??= []).push({
+                  suffix,
+                  span: spanAtOrContaining(child, nameStart, nameStart + name.length)
+                });
+              }
+            }
             const keywordValue = staticDeclarationKeywordValue(source, child);
             if (key === 'display') {
               hasDisplayInlineBlock ||= keywordValue === 'inline-block';
@@ -4487,6 +4509,17 @@ export function cstLintDiagnostics(
           LINT_CODES.float,
           'warning',
           'Avoid using float for layout',
+          declaration.span
+        );
+      }
+      for (const declaration of vendorPrefixedDeclarations ?? []) {
+        if (standardProperties?.has(declaration.suffix) === true) {
+          continue;
+        }
+        push(
+          LINT_CODES.vendorPrefix,
+          'warning',
+          `Also define the standard property "${declaration.suffix}" for compatibility`,
           declaration.span
         );
       }

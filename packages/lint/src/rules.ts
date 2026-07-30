@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 39;
+export const STABLE_LINT_RULE_SET_VERSION = 40;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -31,6 +31,7 @@ export const LINT_RULE_NAMES = {
   propertyIgnoredDueToDisplay: 'property-ignored-due-to-display',
   boxModel: 'box-model',
   float: 'float',
+  vendorPrefix: 'vendor-prefix',
   invalidImportPosition: 'no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'no-duplicate-at-import-rules',
   unknownAnimations: 'no-unknown-animations',
@@ -92,6 +93,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: LINT_CODES.propertyIgnoredDueToDisplay,
   [LINT_RULE_NAMES.boxModel]: LINT_CODES.boxModel,
   [LINT_RULE_NAMES.float]: LINT_CODES.float,
+  [LINT_RULE_NAMES.vendorPrefix]: LINT_CODES.vendorPrefix,
   [LINT_RULE_NAMES.invalidImportPosition]: LINT_CODES.invalidImportPosition,
   [LINT_RULE_NAMES.duplicateAtImportRules]: LINT_CODES.duplicateAtImportRules,
   [LINT_RULE_NAMES.unknownAnimations]: LINT_CODES.unknownAnimations,
@@ -140,6 +142,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.propertyIgnoredDueToDisplay]: LINT_RULE_NAMES.propertyIgnoredDueToDisplay,
   [LINT_CODES.boxModel]: LINT_RULE_NAMES.boxModel,
   [LINT_CODES.float]: LINT_RULE_NAMES.float,
+  [LINT_CODES.vendorPrefix]: LINT_RULE_NAMES.vendorPrefix,
   [LINT_CODES.invalidImportPosition]: LINT_RULE_NAMES.invalidImportPosition,
   [LINT_CODES.duplicateAtImportRules]: LINT_RULE_NAMES.duplicateAtImportRules,
   [LINT_CODES.unknownAnimations]: LINT_RULE_NAMES.unknownAnimations,
@@ -188,6 +191,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: 'warn',
   [LINT_RULE_NAMES.boxModel]: 'off',
   [LINT_RULE_NAMES.float]: 'off',
+  [LINT_RULE_NAMES.vendorPrefix]: 'warn',
   [LINT_RULE_NAMES.invalidImportPosition]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
   [LINT_RULE_NAMES.unknownAnimations]: 'warn',
@@ -250,6 +254,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: 'off',
   [LINT_RULE_NAMES.boxModel]: 'off',
   [LINT_RULE_NAMES.float]: 'off',
+  [LINT_RULE_NAMES.vendorPrefix]: 'off',
   [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'off',
   [LINT_RULE_NAMES.unknownCustomProperties]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
@@ -489,6 +494,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'off',
     comparison: 'vscode-equivalent',
     notes: 'Matches VSCode stylesheet-service float for definite CSS float declarations whose value is not none; dynamic or dialect values stay unknown until semantic facts exist.'
+  },
+  {
+    diagnosticCode: LINT_CODES.vendorPrefix,
+    ruleName: LINT_RULE_NAMES.vendorPrefix,
+    title: 'Vendor prefixes',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'vscode-equivalent',
+    notes: 'Matches VSCode stylesheet-service vendorPrefix for CSS vendor-prefixed declarations whose standard property is known but missing from the same ruleset; dialect semantic facts remain future work.'
   },
   {
     diagnosticCode: LINT_CODES.invalidImportPosition,
