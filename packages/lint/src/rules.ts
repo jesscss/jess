@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 49;
+export const STABLE_LINT_RULE_SET_VERSION = 60;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -34,9 +34,11 @@ export const LINT_RULE_NAMES = {
   float: 'float',
   propertyNoVendorPrefix: 'property-no-vendor-prefix',
   atRuleNoVendorPrefix: 'at-rule-no-vendor-prefix',
+  valueNoVendorPrefix: 'value-no-vendor-prefix',
   vendorPrefix: 'vendor-prefix',
   compatibleVendorPrefixes: 'compatible-vendor-prefixes',
   unknownVendorSpecificProperties: 'unknown-vendor-specific-properties',
+  ieHack: 'ie-hack',
   importStatement: 'import-statement',
   invalidImportPosition: 'no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'no-duplicate-at-import-rules',
@@ -45,6 +47,9 @@ export const LINT_RULE_NAMES = {
   unknownUnits: 'unit-no-unknown',
   unknownFunctions: 'function-no-unknown',
   linearGradientNonstandardDirection: 'function-linear-gradient-no-nonstandard-direction',
+  colorFunctionNotation: 'color-function-notation',
+  alphaValueNotation: 'alpha-value-notation',
+  hueDegreeNotation: 'hue-degree-notation',
   unknownMediaFeatureNames: 'media-feature-name-no-unknown',
   mediaFeatureNameNoVendorPrefix: 'media-feature-name-no-vendor-prefix',
   unknownMediaFeatureValues: 'media-feature-name-value-no-unknown',
@@ -58,10 +63,18 @@ export const LINT_RULE_NAMES = {
   unknownTypeSelectors: 'selector-type-no-unknown',
   selectorMaxId: 'selector-max-id',
   selectorMaxUniversal: 'selector-max-universal',
+  selectorMaxSpecificity: 'selector-max-specificity',
+  noDescendingSpecificity: 'no-descending-specificity',
   incompatibleMathFunctionUnits: 'jess/no-incompatible-math-function-units',
   invalidColorFunctionChannels: 'color-function-no-invalid-arguments',
+  invalidTypedCustomPropertyRegistration: 'jess/no-invalid-typed-custom-property-registration',
   invalidTypedCustomPropertyValue: 'jess/no-invalid-typed-custom-property-value',
+  shadowedTokens: 'jess/no-shadowed-token',
   unusedVariables: 'jess/no-unused-variable',
+  unusedMixins: 'jess/no-unused-mixin',
+  unusedFunctions: 'jess/no-unused-function',
+  impossibleGuards: 'jess/no-impossible-guard',
+  unusedDefaultBranches: 'jess/no-unused-default-branch',
   duplicateModuleLoads: 'jess/no-duplicate-module-load',
   unboundedExtends: 'jess/no-unbounded-extend',
   deadExtends: 'jess/no-dead-extend',
@@ -72,11 +85,16 @@ export const LINT_RULE_NAMES = {
 export type LintRuleName = typeof LINT_RULE_NAMES[keyof typeof LINT_RULE_NAMES];
 
 export interface StableLintRule {
+  /** Shared diagnostics-core / language-service problem identity. */
   readonly diagnosticCode: string;
+
+  /** Public `lint.rules` policy key, often Stylelint-named for migration. */
   readonly ruleName: LintRuleName;
   readonly title: string;
   readonly tier: LintRuleTier;
   readonly defaultPolicy: LintSeverity;
+
+  /** Coverage and benchmark metadata; not a third public name. */
   readonly comparison: LintRuleComparisonKind;
   readonly stylelintRule?: string;
   readonly notes: string;
@@ -109,9 +127,11 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.float]: LINT_CODES.float,
   [LINT_RULE_NAMES.propertyNoVendorPrefix]: LINT_CODES.propertyNoVendorPrefix,
   [LINT_RULE_NAMES.atRuleNoVendorPrefix]: LINT_CODES.atRuleNoVendorPrefix,
+  [LINT_RULE_NAMES.valueNoVendorPrefix]: LINT_CODES.valueNoVendorPrefix,
   [LINT_RULE_NAMES.vendorPrefix]: LINT_CODES.vendorPrefix,
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: LINT_CODES.compatibleVendorPrefixes,
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: LINT_CODES.unknownVendorSpecificProperties,
+  [LINT_RULE_NAMES.ieHack]: LINT_CODES.ieHack,
   [LINT_RULE_NAMES.importStatement]: LINT_CODES.importStatement,
   [LINT_RULE_NAMES.invalidImportPosition]: LINT_CODES.invalidImportPosition,
   [LINT_RULE_NAMES.duplicateAtImportRules]: LINT_CODES.duplicateAtImportRules,
@@ -120,6 +140,9 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unknownUnits]: LINT_CODES.unknownUnits,
   [LINT_RULE_NAMES.unknownFunctions]: LINT_CODES.unknownFunctions,
   [LINT_RULE_NAMES.linearGradientNonstandardDirection]: LINT_CODES.linearGradientNonstandardDirection,
+  [LINT_RULE_NAMES.colorFunctionNotation]: LINT_CODES.colorFunctionNotation,
+  [LINT_RULE_NAMES.alphaValueNotation]: LINT_CODES.alphaValueNotation,
+  [LINT_RULE_NAMES.hueDegreeNotation]: LINT_CODES.hueDegreeNotation,
   [LINT_RULE_NAMES.unknownMediaFeatureNames]: LINT_CODES.unknownMediaFeatureNames,
   [LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]: LINT_CODES.mediaFeatureNameNoVendorPrefix,
   [LINT_RULE_NAMES.unknownMediaFeatureValues]: LINT_CODES.unknownMediaFeatureValues,
@@ -133,10 +156,18 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unknownTypeSelectors]: LINT_CODES.unknownTypeSelectors,
   [LINT_RULE_NAMES.selectorMaxId]: LINT_CODES.selectorMaxId,
   [LINT_RULE_NAMES.selectorMaxUniversal]: LINT_CODES.selectorMaxUniversal,
+  [LINT_RULE_NAMES.selectorMaxSpecificity]: LINT_CODES.selectorMaxSpecificity,
+  [LINT_RULE_NAMES.noDescendingSpecificity]: LINT_CODES.noDescendingSpecificity,
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: LINT_CODES.incompatibleMathFunctionUnits,
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: LINT_CODES.invalidColorFunctionChannels,
+  [LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]: LINT_CODES.invalidTypedCustomPropertyRegistration,
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: LINT_CODES.invalidTypedCustomPropertyValue,
+  [LINT_RULE_NAMES.shadowedTokens]: LINT_CODES.shadowedTokens,
   [LINT_RULE_NAMES.unusedVariables]: LINT_CODES.unusedVariables,
+  [LINT_RULE_NAMES.unusedMixins]: LINT_CODES.unusedMixins,
+  [LINT_RULE_NAMES.unusedFunctions]: LINT_CODES.unusedFunctions,
+  [LINT_RULE_NAMES.impossibleGuards]: LINT_CODES.impossibleGuards,
+  [LINT_RULE_NAMES.unusedDefaultBranches]: LINT_CODES.unusedDefaultBranches,
   [LINT_RULE_NAMES.duplicateModuleLoads]: LINT_CODES.duplicateModuleLoads,
   [LINT_RULE_NAMES.unboundedExtends]: LINT_CODES.unboundedExtends,
   [LINT_RULE_NAMES.deadExtends]: LINT_CODES.deadExtends,
@@ -171,9 +202,11 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.float]: LINT_RULE_NAMES.float,
   [LINT_CODES.propertyNoVendorPrefix]: LINT_RULE_NAMES.propertyNoVendorPrefix,
   [LINT_CODES.atRuleNoVendorPrefix]: LINT_RULE_NAMES.atRuleNoVendorPrefix,
+  [LINT_CODES.valueNoVendorPrefix]: LINT_RULE_NAMES.valueNoVendorPrefix,
   [LINT_CODES.vendorPrefix]: LINT_RULE_NAMES.vendorPrefix,
   [LINT_CODES.compatibleVendorPrefixes]: LINT_RULE_NAMES.compatibleVendorPrefixes,
   [LINT_CODES.unknownVendorSpecificProperties]: LINT_RULE_NAMES.unknownVendorSpecificProperties,
+  [LINT_CODES.ieHack]: LINT_RULE_NAMES.ieHack,
   [LINT_CODES.importStatement]: LINT_RULE_NAMES.importStatement,
   [LINT_CODES.invalidImportPosition]: LINT_RULE_NAMES.invalidImportPosition,
   [LINT_CODES.duplicateAtImportRules]: LINT_RULE_NAMES.duplicateAtImportRules,
@@ -182,6 +215,9 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.unknownUnits]: LINT_RULE_NAMES.unknownUnits,
   [LINT_CODES.unknownFunctions]: LINT_RULE_NAMES.unknownFunctions,
   [LINT_CODES.linearGradientNonstandardDirection]: LINT_RULE_NAMES.linearGradientNonstandardDirection,
+  [LINT_CODES.colorFunctionNotation]: LINT_RULE_NAMES.colorFunctionNotation,
+  [LINT_CODES.alphaValueNotation]: LINT_RULE_NAMES.alphaValueNotation,
+  [LINT_CODES.hueDegreeNotation]: LINT_RULE_NAMES.hueDegreeNotation,
   [LINT_CODES.unknownMediaFeatureNames]: LINT_RULE_NAMES.unknownMediaFeatureNames,
   [LINT_CODES.mediaFeatureNameNoVendorPrefix]: LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix,
   [LINT_CODES.unknownMediaFeatureValues]: LINT_RULE_NAMES.unknownMediaFeatureValues,
@@ -195,10 +231,18 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.unknownTypeSelectors]: LINT_RULE_NAMES.unknownTypeSelectors,
   [LINT_CODES.selectorMaxId]: LINT_RULE_NAMES.selectorMaxId,
   [LINT_CODES.selectorMaxUniversal]: LINT_RULE_NAMES.selectorMaxUniversal,
+  [LINT_CODES.selectorMaxSpecificity]: LINT_RULE_NAMES.selectorMaxSpecificity,
+  [LINT_CODES.noDescendingSpecificity]: LINT_RULE_NAMES.noDescendingSpecificity,
   [LINT_CODES.incompatibleMathFunctionUnits]: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
   [LINT_CODES.invalidColorFunctionChannels]: LINT_RULE_NAMES.invalidColorFunctionChannels,
+  [LINT_CODES.invalidTypedCustomPropertyRegistration]: LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
   [LINT_CODES.invalidTypedCustomPropertyValue]: LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
+  [LINT_CODES.shadowedTokens]: LINT_RULE_NAMES.shadowedTokens,
   [LINT_CODES.unusedVariables]: LINT_RULE_NAMES.unusedVariables,
+  [LINT_CODES.unusedMixins]: LINT_RULE_NAMES.unusedMixins,
+  [LINT_CODES.unusedFunctions]: LINT_RULE_NAMES.unusedFunctions,
+  [LINT_CODES.impossibleGuards]: LINT_RULE_NAMES.impossibleGuards,
+  [LINT_CODES.unusedDefaultBranches]: LINT_RULE_NAMES.unusedDefaultBranches,
   [LINT_CODES.duplicateModuleLoads]: LINT_RULE_NAMES.duplicateModuleLoads,
   [LINT_CODES.unboundedExtends]: LINT_RULE_NAMES.unboundedExtends,
   [LINT_CODES.deadExtends]: LINT_RULE_NAMES.deadExtends,
@@ -233,9 +277,11 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.float]: 'off',
   [LINT_RULE_NAMES.propertyNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.atRuleNoVendorPrefix]: 'off',
+  [LINT_RULE_NAMES.valueNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.vendorPrefix]: 'warn',
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off',
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: 'off',
+  [LINT_RULE_NAMES.ieHack]: 'off',
   [LINT_RULE_NAMES.importStatement]: 'off',
   [LINT_RULE_NAMES.invalidImportPosition]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
@@ -244,6 +290,9 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownUnits]: 'warn',
   [LINT_RULE_NAMES.unknownFunctions]: 'warn',
   [LINT_RULE_NAMES.linearGradientNonstandardDirection]: 'warn',
+  [LINT_RULE_NAMES.colorFunctionNotation]: 'off',
+  [LINT_RULE_NAMES.alphaValueNotation]: 'off',
+  [LINT_RULE_NAMES.hueDegreeNotation]: 'off',
   [LINT_RULE_NAMES.unknownMediaFeatureNames]: 'warn',
   [LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.unknownMediaFeatureValues]: 'warn',
@@ -257,10 +306,18 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownTypeSelectors]: 'warn',
   [LINT_RULE_NAMES.selectorMaxId]: 'off',
   [LINT_RULE_NAMES.selectorMaxUniversal]: 'off',
+  [LINT_RULE_NAMES.selectorMaxSpecificity]: 'off',
+  [LINT_RULE_NAMES.noDescendingSpecificity]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'warn',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'error',
+  [LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]: 'warn',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'warn',
+  [LINT_RULE_NAMES.shadowedTokens]: 'off',
   [LINT_RULE_NAMES.unusedVariables]: 'off',
+  [LINT_RULE_NAMES.unusedMixins]: 'off',
+  [LINT_RULE_NAMES.unusedFunctions]: 'off',
+  [LINT_RULE_NAMES.impossibleGuards]: 'warn',
+  [LINT_RULE_NAMES.unusedDefaultBranches]: 'warn',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'warn',
   [LINT_RULE_NAMES.unboundedExtends]: 'warn',
   [LINT_RULE_NAMES.deadExtends]: 'warn',
@@ -309,9 +366,11 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.float]: 'off',
   [LINT_RULE_NAMES.propertyNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.atRuleNoVendorPrefix]: 'off',
+  [LINT_RULE_NAMES.valueNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.vendorPrefix]: 'off',
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off',
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: 'off',
+  [LINT_RULE_NAMES.ieHack]: 'off',
   [LINT_RULE_NAMES.importStatement]: 'off',
   [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'off',
   [LINT_RULE_NAMES.unknownCustomProperties]: 'off',
@@ -320,12 +379,23 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.selectorClassPattern]: 'off',
   [LINT_RULE_NAMES.customPropertyPattern]: 'off',
   [LINT_RULE_NAMES.keyframesNamePattern]: 'off',
+  [LINT_RULE_NAMES.colorFunctionNotation]: 'off',
+  [LINT_RULE_NAMES.alphaValueNotation]: 'off',
+  [LINT_RULE_NAMES.hueDegreeNotation]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'off',
+  [LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]: 'off',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'off',
+  [LINT_RULE_NAMES.shadowedTokens]: 'off',
   [LINT_RULE_NAMES.selectorMaxId]: 'off',
   [LINT_RULE_NAMES.selectorMaxUniversal]: 'off',
+  [LINT_RULE_NAMES.selectorMaxSpecificity]: 'off',
+  [LINT_RULE_NAMES.noDescendingSpecificity]: 'off',
   [LINT_RULE_NAMES.unusedVariables]: 'off',
+  [LINT_RULE_NAMES.unusedMixins]: 'off',
+  [LINT_RULE_NAMES.unusedFunctions]: 'off',
+  [LINT_RULE_NAMES.impossibleGuards]: 'off',
+  [LINT_RULE_NAMES.unusedDefaultBranches]: 'off',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'off',
   [LINT_RULE_NAMES.unboundedExtends]: 'off',
   [LINT_RULE_NAMES.deadExtends]: 'off',
@@ -611,6 +681,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Opt-in Stylelint migration rule that flags authored CSS vendor-prefixed keyframe at-rules; broader vendor at-rule facts can be added as metadata grows.'
   },
   {
+    diagnosticCode: LINT_CODES.valueNoVendorPrefix,
+    ruleName: LINT_RULE_NAMES.valueNoVendorPrefix,
+    title: 'Vendor-prefixed values',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'value-no-vendor-prefix',
+    notes: 'Opt-in Stylelint migration rule that flags static authored CSS vendor-prefixed value keywords and functions from Stylelint/autoprefixer removable value data.'
+  },
+  {
     diagnosticCode: LINT_CODES.vendorPrefix,
     ruleName: LINT_RULE_NAMES.vendorPrefix,
     title: 'Vendor prefixes',
@@ -636,6 +716,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'off',
     comparison: 'vscode-equivalent',
     notes: 'Matches VSCode stylesheet-service unknownVendorSpecificProperties for CSS declarations whose single-hyphen prefixed property name is not known; opt-in to match VSCode defaults.'
+  },
+  {
+    diagnosticCode: LINT_CODES.ieHack,
+    ruleName: LINT_RULE_NAMES.ieHack,
+    title: 'IE hack properties',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'vscode-equivalent',
+    notes: 'Opt-in VSCode stylesheet-service ieHack parity for CSS underscore-prefixed declarations whose stripped property name is known; star-prefixed declarations stay parser syntax errors until diagnostic recovery exposes them structurally.'
   },
   {
     diagnosticCode: LINT_CODES.importStatement,
@@ -715,6 +804,36 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-equivalent',
     stylelintRule: 'function-linear-gradient-no-nonstandard-direction',
     notes: 'Flags old side-or-corner direction syntax and unitless numeric directions in CSS linear-gradient() and repeating-linear-gradient() calls.'
+  },
+  {
+    diagnosticCode: LINT_CODES.colorFunctionNotation,
+    ruleName: LINT_RULE_NAMES.colorFunctionNotation,
+    title: 'Color function notation',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'color-function-notation',
+    notes: 'Opt-in Stylelint-named rule for legacy comma-separated rgb()/rgba()/hsl()/hsla() calls; configure with notation: "modern".'
+  },
+  {
+    diagnosticCode: LINT_CODES.alphaValueNotation,
+    ruleName: LINT_RULE_NAMES.alphaValueNotation,
+    title: 'Alpha value notation',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'alpha-value-notation',
+    notes: 'Opt-in Stylelint-named rule for static color alpha channels and opacity-like properties; configure with notation: "number" or "percentage".'
+  },
+  {
+    diagnosticCode: LINT_CODES.hueDegreeNotation,
+    ruleName: LINT_RULE_NAMES.hueDegreeNotation,
+    title: 'Hue degree notation',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'hue-degree-notation',
+    notes: 'Opt-in Stylelint-named rule for static hsl()/hsla() hue channels; configure with notation: "number" or "angle".'
   },
   {
     diagnosticCode: LINT_CODES.unknownMediaFeatureNames,
@@ -827,6 +946,26 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Opt-in VSCode universalSelector parity surfaced under the Stylelint selector-max-universal name; the initial subset reports any static CSS universal selector as max-0.'
   },
   {
+    diagnosticCode: LINT_CODES.selectorMaxSpecificity,
+    ruleName: LINT_RULE_NAMES.selectorMaxSpecificity,
+    title: 'Selector specificity',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'selector-max-specificity',
+    notes: 'Opt-in Stylelint-named rule for static CSS selector branches. Configure with max: "a,b,c" or maxSpecificity: "a,b,c"; functional pseudo specificity is included where the diagnostic CST exposes selector arguments.'
+  },
+  {
+    diagnosticCode: LINT_CODES.noDescendingSpecificity,
+    ruleName: LINT_RULE_NAMES.noDescendingSpecificity,
+    title: 'Descending selector specificity',
+    tier: 'maintainability',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'no-descending-specificity',
+    notes: 'Opt-in Stylelint-named rule for static CSS selector branches that target the same final compound selector in the same parent context. Dialect nested selector resolution remains future selector-facts work.'
+  },
+  {
     diagnosticCode: LINT_CODES.incompatibleMathFunctionUnits,
     ruleName: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
     title: 'Incompatible math function units',
@@ -845,6 +984,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Matches VSCode stylesheet-service argumentsInColorFunction for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors while leaving dynamic and nested values unknown.'
   },
   {
+    diagnosticCode: LINT_CODES.invalidTypedCustomPropertyRegistration,
+    ruleName: LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
+    title: 'Invalid typed custom property registrations',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags CSS @property rules missing required syntax/inherits descriptors, and missing initial-value when the syntax descriptor is not the universal "*".'
+  },
+  {
     diagnosticCode: LINT_CODES.invalidTypedCustomPropertyValue,
     ruleName: LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
     title: 'Invalid typed custom property values',
@@ -854,6 +1002,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags definite CSS @property initial-value descriptors that do not match simple syntax descriptors such as <length>, <integer>, or <color>; dynamic and unsupported syntax stays unknown.'
   },
   {
+    diagnosticCode: LINT_CODES.shadowedTokens,
+    ruleName: LINT_RULE_NAMES.shadowedTokens,
+    title: 'Shadowed tokens',
+    tier: 'maintainability',
+    defaultPolicy: 'off',
+    comparison: 'jess-only',
+    notes: 'Opt-in same-file dialect diagnostic for Less, SCSS, and Jess variables that redeclare a name from an outer ruleset or at-rule scope; module/import-aware token facts remain future work.'
+  },
+  {
     diagnosticCode: LINT_CODES.unusedVariables,
     ruleName: LINT_RULE_NAMES.unusedVariables,
     title: 'Unused variables',
@@ -861,6 +1018,42 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'off',
     comparison: 'jess-only',
     notes: 'Opt-in same-file dialect diagnostic for Less, SCSS, and Jess variables that are declared but never referenced in the parsed file; import/export-aware symbol facts remain future work.'
+  },
+  {
+    diagnosticCode: LINT_CODES.unusedMixins,
+    ruleName: LINT_RULE_NAMES.unusedMixins,
+    title: 'Unused mixins',
+    tier: 'maintainability',
+    defaultPolicy: 'off',
+    comparison: 'jess-only',
+    notes: 'Opt-in same-file dialect diagnostic for Less, SCSS, and Jess mixins that are declared but never called in a file with no imports, modules, or plugins; project callable facts remain future work.'
+  },
+  {
+    diagnosticCode: LINT_CODES.unusedFunctions,
+    ruleName: LINT_RULE_NAMES.unusedFunctions,
+    title: 'Unused functions',
+    tier: 'maintainability',
+    defaultPolicy: 'off',
+    comparison: 'jess-only',
+    notes: 'Opt-in same-file dialect diagnostic for SCSS @function rules and Jess yielding function values that are declared but never referenced in a file with no imports, modules, or plugins; project callable facts remain future work.'
+  },
+  {
+    diagnosticCode: LINT_CODES.impossibleGuards,
+    ruleName: LINT_RULE_NAMES.impossibleGuards,
+    title: 'Impossible guards',
+    tier: 'maintainability',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags definite static Less, SCSS, and Jess guards that evaluate to false, including literal false, null, same-unit numeric comparisons, keyword/string equality, and boolean not/and/or composition; dynamic values, default(), type predicates, and variables stay unknown.'
+  },
+  {
+    diagnosticCode: LINT_CODES.unusedDefaultBranches,
+    ruleName: LINT_RULE_NAMES.unusedDefaultBranches,
+    title: 'Unused default() branches',
+    tier: 'maintainability',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags Less mixin guard AND branches that contain both a bare default() condition and not(default()); full default-branch selection needs callable facts and remains future work.'
   },
   {
     diagnosticCode: LINT_CODES.duplicateModuleLoads,

@@ -68,6 +68,7 @@ export interface CssDiagnosticMetadata {
   isKnownPropertyValue(name: string, value: CssPropertyValueFact): boolean | undefined;
   isKnownAtRule(name: string): boolean;
   isKnownAtRuleDescriptor(atRuleName: string, descriptorName: string): boolean | undefined;
+  isKnownAtRuleDescriptorValue?(atRuleName: string, descriptorName: string, value: CssPropertyValueFact): boolean | undefined;
   isKnownFunction(name: string): boolean;
   isKnownMediaFeatureName(name: string): boolean;
   isKnownMediaFeatureValue(name: string, value: CssMediaFeatureValueFact): boolean | undefined;

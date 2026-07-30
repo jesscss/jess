@@ -106,6 +106,22 @@ describe('collectTolerantDiagnostics', () => {
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toBe(false);
   });
 
+  it('uses caller-provided CSS metadata for known at-rule descriptor values', () => {
+    const result = collectTolerantDiagnostics({
+      source: '@font-face { font-family: Inter; src: url(font.woff2); font-style: project-style; }',
+      language: 'css',
+      metadata: {
+        isKnownAtRuleDescriptorValue: (atRuleName, descriptorName, value) => atRuleName === 'font-face'
+          && descriptorName === 'font-style'
+          && value.normalized === 'project-style'
+          ? true
+          : undefined
+      }
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownAtRuleDescriptorValues)).toBe(false);
+  });
+
   it('uses caller-provided CSS metadata for known selector pseudos', () => {
     const result = collectTolerantDiagnostics({
       source: '.a:project-state::project-part { color: red; }',
@@ -279,6 +295,8 @@ describe('collectTolerantDiagnostics', () => {
       '  background-color: #fff;',
       '  background-color: rgb(1 2 3);',
       '  background-color: linear-gradient(red, blue);',
+      '  background: -webkit-linear-gradient(red, blue);',
+      '  display: -webkit-flex;',
       '  font-family: system-ui, sans-serif;',
       '}'
     ].join('\n');
@@ -292,6 +310,30 @@ describe('collectTolerantDiagnostics', () => {
       'Unknown value "2" for property "opacity"',
       'Unknown value "1px" for property "animation-duration"',
       'Unknown value "linear-gradient(red, blue)" for property "background-color"'
+    ]);
+  });
+
+  it('checks simple comma-separated property value members independently', () => {
+    const source = [
+      '.a {',
+      '  animation-duration: 1px, 200ms;',
+      '  display: block, nonsense;',
+      '  animation-duration: var(--duration), 2px;',
+      '  color: red blue;',
+      '}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'css' });
+    const unknownPropertyValues = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues
+    );
+
+    expect(unknownPropertyValues.map(diagnostic => [
+      diagnostic.message,
+      source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      ['Unknown value "1px" for property "animation-duration"', '1px'],
+      ['Unknown value "nonsense" for property "display"', 'nonsense'],
+      ['Unknown value "2px" for property "animation-duration"', '2px']
     ]);
   });
 
@@ -465,6 +507,179 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('does not report SCSS !default variables as unused locals', () => {
+    const source = '$brand: red !default;\n$local: blue;\n.a { color: white; }';
+    const result = collectTolerantDiagnostics({ source, language: 'scss' });
+
+    expect(result.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedVariables)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused variable "$local"', source.indexOf('$local'), source.indexOf('$local') + '$local'.length]
+    ]);
+  });
+
+  it('reports same-file shadowed variables in nested dialect scopes', () => {
+    const less = '@tone: red; .theme { @tone: blue; color: @tone; } .root { color: @tone; }';
+    const scss = '$tone: red; .theme { $tone: blue; color: $tone; } .root { color: $tone; }';
+    const jess = '$tone: red; .theme { $tone: blue; color: $tone; } .root { color: $tone; }';
+
+    const lessResult = collectTolerantDiagnostics({ source: less, language: 'less' });
+    const scssResult = collectTolerantDiagnostics({ source: scss, language: 'scss' });
+    const jessResult = collectTolerantDiagnostics({ source: jess, language: 'jess' });
+
+    expect(lessResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.shadowedTokens)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Variable "@tone" shadows "@tone" from an outer scope', less.indexOf('@tone: blue'), less.indexOf('@tone: blue') + '@tone'.length]
+    ]);
+    expect(scssResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.shadowedTokens)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Variable "$tone" shadows "$tone" from an outer scope', scss.indexOf('$tone: blue'), scss.indexOf('$tone: blue') + '$tone'.length]
+    ]);
+    expect(jessResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.shadowedTokens)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Variable "$tone" shadows "$tone" from an outer scope', jess.indexOf('$tone: blue'), jess.indexOf('$tone: blue') + '$tone'.length]
+    ]);
+  });
+
+  it('reports same-file unused mixins in dialect stylesheets without external module sources', () => {
+    const less = '.used() { color: red; }\n.unused() { color: blue; }\n.a { .used; }';
+    const lessNamespaced = '#ns() { .inner() { c: red; } }\n.a { #ns > .inner(); }';
+    const scss = '@mixin used() { color: red; }\n@mixin unused() { color: blue; }\n.a { @include used(); }';
+    const jess = 'used() { color: red; }\nunused() { color: blue; }\n.a { $ > used(); }';
+
+    expect(collectTolerantDiagnostics({ source: less, language: 'less' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused mixin ".unused"', less.indexOf('.unused'), less.indexOf('.unused') + '.unused'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: lessNamespaced, language: 'less' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused mixin "unused"', scss.indexOf('unused'), scss.indexOf('unused') + 'unused'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused mixin "unused"', jess.indexOf('unused'), jess.indexOf('unused') + 'unused'.length]
+    ]);
+  });
+
+  it('does not report same-file unused mixins when imports or modules can export them', () => {
+    const less = '@import "lib.less";\n.unused() { color: red; }';
+    const scss = '@use "lib";\n@mixin unused() { color: red; }';
+    const jess = '@-compose "lib";\nunused() { color: red; }';
+
+    expect(collectTolerantDiagnostics({ source: less, language: 'less' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)).toBe(false);
+  });
+
+  it('reports same-file unused functions in dialect stylesheets without external module sources', () => {
+    const scss = '@function used() { @return 1; }\n@function unused() { @return 2; }\n.a { w: used(); }';
+    const scssHyphen = '@function used_name() { @return 1; }\n.a { w: used-name(); }';
+    const jess = '$used: @() > { result: 1; }\n$unused: @() > { result: 2; }\n.a { w: $used(); }';
+    const jessExpression = '$used: @() > $(1 + 2);\n$unused: @() > $(3 + 4);\n.a { w: $used(); }';
+    const jessPlainMixinValue = '$fn: @($x) { color: $x; };\n.a { color: red; }';
+
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused function "unused"', scss.indexOf('unused'), scss.indexOf('unused') + 'unused'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: scssHyphen, language: 'scss' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused function "$unused"', jess.indexOf('$unused'), jess.indexOf('$unused') + '$unused'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: jessExpression, language: 'jess' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused function "$unused"', jessExpression.indexOf('$unused'), jessExpression.indexOf('$unused') + '$unused'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: jessPlainMixinValue, language: 'jess' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
+  });
+
+  it('does not report same-file unused functions when imports or modules can export them', () => {
+    const scss = '@use "lib";\n@function unused() { @return 1; }';
+    const jess = '@-compose "lib";\n$unused: @() > { result: 1; }';
+
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
+  });
+
+  it('does not report evaluator-dependent missing symbol diagnostics from CST facts', () => {
+    const less = '@used: red;\n.a { color: @used; background: @missing; border-color: @later; }\n@later: blue;';
+    const scss = '@mixin used() { color: red; }\n.a { @include used(); @include missing(); }';
+    const jess = 'used() { color: red; }\n.a { $ > used(); $ > missing(); }';
+
+    for (const [source, language] of [
+      [less, 'less'],
+      [scss, 'scss'],
+      [jess, 'jess']
+    ] as const) {
+      expect(collectTolerantDiagnostics({ source, language }).diagnostics
+        .some(diagnostic => diagnostic.code === 'var/undefined' || diagnostic.code === 'mixin/undefined')).toBe(false);
+    }
+  });
+
+  it('reports definitely impossible dialect guards without flagging dynamic guards', () => {
+    const less = '.a when (false) { color: red; }\n.m() when (1 > 2) { color: blue; }\n.ok() when (not(false)) { color: green; }\n.dyn(@value) when (@value = false) { color: yellow; }';
+    const scss = '@if false { .a { color: red; } } @else if 1px > 2px { .b { color: blue; } } @if not(false) { .c { color: green; } } @if $value { .d { color: yellow; } }';
+    const jess = '$if (null) { color: red; } $if (1 = 2) { color: blue; } $if (not(false)) { color: green; } m($value) when ($value = false) { color: yellow; }';
+
+    expect(collectTolerantDiagnostics({ source: less, language: 'less' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.impossibleGuards)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Guard is statically false; this branch can never run', less.indexOf('when (false)'), less.indexOf('when (false)') + 'when (false)'.length],
+      ['Guard is statically false; this branch can never run', less.indexOf('when (1 > 2)'), less.indexOf('when (1 > 2)') + 'when (1 > 2)'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.impossibleGuards)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Guard is statically false; this branch can never run', scss.indexOf('false'), scss.indexOf('false') + 'false'.length],
+      ['Guard is statically false; this branch can never run', scss.indexOf('1px > 2px'), scss.indexOf('1px > 2px') + '1px > 2px'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.impossibleGuards)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Guard is statically false; this branch can never run', jess.indexOf('(null)'), jess.indexOf('(null)') + '(null)'.length],
+      ['Guard is statically false; this branch can never run', jess.indexOf('(1 = 2)'), jess.indexOf('(1 = 2)') + '(1 = 2)'.length]
+    ]);
+  });
+
+  it('reports contradictory Less default guard branches without flagging alternatives or comparisons', () => {
+    const impossible = '.m(@x) when (default()) and not(default()) { color: red; }';
+    const alternatives = '.m(@x) when (default()), not(default()) { color: blue; }';
+    const comparison = '.m(@x) when (@x = default()) and not(default()) { color: green; }';
+
+    expect(collectTolerantDiagnostics({ source: impossible, language: 'less' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedDefaultBranches)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'default() guard branch can never match because it also requires not(default())',
+        impossible.indexOf('(default()) and not(default())'),
+        impossible.indexOf('(default()) and not(default())') + '(default()) and not(default())'.length
+      ]
+    ]);
+    expect(collectTolerantDiagnostics({ source: alternatives, language: 'less' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedDefaultBranches)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: comparison, language: 'less' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedDefaultBranches)).toBe(false);
+  });
+
   it('reports numeric key access against same-file map-like variables', () => {
     const less = '@tokens: { tone: blue; gap: 1px; };\n.a { color: @tokens[0]; bg: @tokens[tone]; }';
     const scss = '$tokens: (tone: blue, gap: 1px);\n.a { color: map-get($tokens, 0); bg: map-get($tokens, tone); }';
@@ -519,7 +734,10 @@ describe('collectTolerantDiagnostics', () => {
       '@property --bad-syntax-type { syntax: "<lenght>"; inherits: false; initial-value: 0px; }',
       '@property --ok-syntax { syntax: "<length> | auto"; inherits: false; initial-value: 0px; }',
       '@font-face { font-family: Inter; src: url(inter.woff2); font-display: sometimes; }',
-      '@font-face { font-family: Inter; src: url(inter.woff2); font-display: swap; }'
+      '@font-face { font-family: Inter; src: url(inter.woff2); font-style: sideways; }',
+      '@font-face { font-family: Inter; src: url(inter.woff2); font-display: swap; font-style: italic; }',
+      '@counter-style chapter { system: sideways; }',
+      '@counter-style section { system: numeric; }'
     ].join('\n');
     const result = collectTolerantDiagnostics({
       source,
@@ -531,7 +749,9 @@ describe('collectTolerantDiagnostics', () => {
       ['Unknown value "yes" for descriptor "inherits" in @property', source.indexOf('yes'), source.indexOf('yes') + 'yes'.length],
       ['Unknown value "<length>" for descriptor "syntax" in @property', source.indexOf('<length>;'), source.indexOf('<length>;') + '<length>'.length],
       ['Unknown value "<lenght>" for descriptor "syntax" in @property', source.indexOf('"<lenght>"'), source.indexOf('"<lenght>"') + '"<lenght>"'.length],
-      ['Unknown value "sometimes" for descriptor "font-display" in @font-face', source.indexOf('sometimes'), source.indexOf('sometimes') + 'sometimes'.length]
+      ['Unknown value "sometimes" for descriptor "font-display" in @font-face', source.indexOf('sometimes'), source.indexOf('sometimes') + 'sometimes'.length],
+      ['Unknown value "sideways" for descriptor "font-style" in @font-face', source.indexOf('sideways; }'), source.indexOf('sideways; }') + 'sideways'.length],
+      ['Unknown value "sideways" for descriptor "system" in @counter-style', source.indexOf('sideways; }', source.indexOf('@counter-style chapter')), source.indexOf('sideways; }', source.indexOf('@counter-style chapter')) + 'sideways'.length]
     ]);
   });
 
@@ -741,7 +961,7 @@ describe('collectTolerantDiagnostics', () => {
 
   it('reports opt-in vendor-prefix policy facts for authored CSS prefixes', () => {
     const source = [
-      '.a { -webkit-transform: rotate(0); transform: rotate(0); }',
+      '.a { -webkit-transform: rotate(0); transform: rotate(0); display: -webkit-flex; background: -webkit-linear-gradient(red, blue); }',
       '@keyframes spin { from { opacity: 0; } }',
       '@-webkit-keyframes spin { from { opacity: 0; } }'
     ].join('\n');
@@ -755,8 +975,13 @@ describe('collectTolerantDiagnostics', () => {
     const atRuleNoVendorPrefix = result.diagnostics.filter(
       diagnostic => diagnostic.code === LINT_CODES.atRuleNoVendorPrefix
     );
+    const valueNoVendorPrefix = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.valueNoVendorPrefix
+    );
     const propertyStart = source.indexOf('-webkit-transform');
     const atRuleStart = source.indexOf('@-webkit-keyframes');
+    const valueStart = source.indexOf('-webkit-flex');
+    const functionStart = source.indexOf('-webkit-linear-gradient');
 
     expect(propertyNoVendorPrefix.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
       [
@@ -770,6 +995,18 @@ describe('collectTolerantDiagnostics', () => {
         'Unexpected vendor-prefixed at-rule "@-webkit-keyframes"',
         atRuleStart,
         atRuleStart + '@-webkit-keyframes'.length
+      ]
+    ]);
+    expect(valueNoVendorPrefix.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Unexpected vendor-prefixed value "-webkit-flex"',
+        valueStart,
+        valueStart + '-webkit-flex'.length
+      ],
+      [
+        'Unexpected vendor-prefixed value "-webkit-linear-gradient"',
+        functionStart,
+        functionStart + '-webkit-linear-gradient'.length
       ]
     ]);
   });
@@ -803,6 +1040,25 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports underscore IE hack properties without treating the stripped property as unknown', () => {
+    const source = '.a { _color: red; _made-up: x; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const ieHack = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.ieHack);
+    const unknownProperties = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownProperties);
+    const colorStart = source.indexOf('_color');
+    const madeUpStart = source.indexOf('_made-up');
+
+    expect(ieHack.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['IE hack property: \'_color\'', colorStart, colorStart + '_color'.length]
+    ]);
+    expect(unknownProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown property: \'_made-up\'', madeUpStart, madeUpStart + '_made-up'.length]
+    ]);
+  });
+
   it('reports missing compatible vendor-prefixed CSS declarations', () => {
     const source = [
       '.partial { -webkit-user-select: none; user-select: none; }',
@@ -829,7 +1085,7 @@ describe('collectTolerantDiagnostics', () => {
 
   it('does not report vendor-prefix diagnostics in dialect files before property facts exist', () => {
     const source = [
-      '.a { -webkit-transform: rotate(0); }',
+      '.a { -webkit-transform: rotate(0); display: -webkit-flex; }',
       '@-webkit-keyframes spin { from { opacity: 0; } }'
     ].join('\n');
     const scss = collectTolerantDiagnostics({
@@ -847,6 +1103,8 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.propertyNoVendorPrefix)).toBe(false);
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.atRuleNoVendorPrefix)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.atRuleNoVendorPrefix)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.valueNoVendorPrefix)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.valueNoVendorPrefix)).toBe(false);
   });
 
   it('does not report unknown vendor-specific properties in dialect files before property facts exist', () => {
@@ -1440,6 +1698,68 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports static selector specificity facts for opt-in policy surfaces', () => {
+    const source = [
+      '#app .card[data-x]:hover > button::before { color: red; }',
+      ':not(#skipped) { color: blue; }',
+      ':is(.a, #b) > :where(#c) :not(button.primary) { color: green; }',
+      ':nth-child(2n of .item, #featured) { color: purple; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const specificity = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.selectorMaxSpecificity
+    );
+
+    expect(specificity.map(diagnostic => [
+      diagnostic.message,
+      diagnostic.qualifiers ?? [],
+      source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      ['Selector specificity is "1,3,2"', ['specificity:1,3,2'], '#app .card[data-x]:hover > button::before'],
+      ['Selector specificity is "1,0,0"', ['specificity:1,0,0'], ':not(#skipped)'],
+      ['Selector specificity is "1,1,1"', ['specificity:1,1,1'], ':is(.a, #b) > :where(#c) :not(button.primary)'],
+      ['Selector specificity is "1,1,0"', ['specificity:1,1,0'], ':nth-child(2n of .item, #featured)']
+    ]);
+  });
+
+  it('reports descending specificity for static CSS selectors in the same parent context', () => {
+    const source = [
+      '.a .b { color: red; }',
+      '.b { color: blue; }',
+      '.c .b:hover { color: green; }',
+      '.b::before { color: purple; }',
+      '.container .card { }',
+      '.card { color: orange; }',
+      '@media screen { #x .item { color: red; } .item { color: blue; } }',
+      '@supports (display: grid) { .item { color: green; } }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const descending = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.noDescendingSpecificity
+    );
+    const plainBStart = source.indexOf('.b { color: blue');
+    const mediaItemStart = source.indexOf('.item { color: blue');
+
+    expect(descending.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Expected selector ".b" to come before selector ".a .b", at line 1',
+        plainBStart,
+        plainBStart + '.b'.length
+      ],
+      [
+        'Expected selector ".item" to come before selector "#x .item", at line 7',
+        mediaItemStart,
+        mediaItemStart + '.item'.length
+      ]
+    ]);
+  });
+
   it('reports duplicate CSS selectors with Stylelint default scoping', () => {
     const source = '.a, .b, .a { color: red; }\n'
       + '.a, .b { color: red; }\n'
@@ -1485,6 +1805,8 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxId)).toBe(false);
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxUniversal)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxUniversal)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxSpecificity)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxSpecificity)).toBe(false);
   });
 
   it('reports unknown CSS declaration functions', () => {
@@ -1546,6 +1868,36 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownFunctions)).toBe(false);
   });
 
+  it('reports opt-in modern color notation facts from static CSS values', () => {
+    const source = [
+      '.a { color: rgb(1, 2, 3); }',
+      '.b { color: rgb(1 2 3 / .5); }',
+      '.c { opacity: 50%; }',
+      '.d { color: hsl(120 50% 50% / 25%); }',
+      '.e { color: hsl(120deg 50% 50% / .25); }',
+      '.f { color: rgb(var(--brand)); opacity: var(--alpha); }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const notation = result.diagnostics.filter(diagnostic =>
+      diagnostic.code === LINT_CODES.colorFunctionNotation
+      || diagnostic.code === LINT_CODES.alphaValueNotation
+      || diagnostic.code === LINT_CODES.hueDegreeNotation
+    );
+
+    expect(notation.map(diagnostic => [diagnostic.code, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [LINT_CODES.colorFunctionNotation, 'Expected modern color-function notation in rgb()', source.indexOf('rgb(1, 2, 3)'), source.indexOf('rgb(1, 2, 3)') + 'rgb('.length],
+      [LINT_CODES.alphaValueNotation, 'Alpha value ".5" does not match the configured notation', source.indexOf('.5'), source.indexOf('.5') + '.5'.length],
+      [LINT_CODES.alphaValueNotation, 'Alpha value "50%" does not match the configured notation', source.indexOf('50%'), source.indexOf('50%') + '50%'.length],
+      [LINT_CODES.alphaValueNotation, 'Alpha value "25%" does not match the configured notation', source.indexOf('25%'), source.indexOf('25%') + '25%'.length],
+      [LINT_CODES.hueDegreeNotation, 'Hue value "120" does not match the configured notation', source.indexOf('120 50%'), source.indexOf('120 50%') + '120'.length],
+      [LINT_CODES.alphaValueNotation, 'Alpha value ".25" does not match the configured notation', source.indexOf('.25'), source.indexOf('.25') + '.25'.length],
+      [LINT_CODES.hueDegreeNotation, 'Hue value "120deg" does not match the configured notation', source.indexOf('120deg'), source.indexOf('120deg') + '120deg'.length]
+    ]);
+  });
+
   it('reports definite invalid CSS color function channels', () => {
     const source = '.a { color: rgb(1px 0 0); background: hsl(120 50 50%); border-color: rgb(0 0); outline-color: rgb(var(--brand)); }';
     const result = collectTolerantDiagnostics({
@@ -1597,6 +1949,30 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports typed custom property registrations missing required descriptors', () => {
+    const source = [
+      '@property --missing-syntax { inherits: false; initial-value: red; }',
+      '@property --missing-inherits { syntax: "<color>"; initial-value: red; }',
+      '@property --missing-initial { syntax: "<color>"; inherits: false; }',
+      '@property --any { syntax: "*"; inherits: false; }',
+      '@property --invalid-syntax { syntax: <color>; inherits: false; }',
+      '@property --complete { syntax: "<color>"; inherits: false; initial-value: red; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'css' });
+    const registrations = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.invalidTypedCustomPropertyRegistration
+    );
+
+    const missingSyntaxStart = source.indexOf('@property --missing-syntax');
+    const missingInheritsStart = source.indexOf('@property --missing-inherits');
+    const missingInitialStart = source.indexOf('@property --missing-initial');
+    expect(registrations.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['@property rule must define "syntax"', missingSyntaxStart, missingSyntaxStart + '@property'.length],
+      ['@property rule must define "inherits"', missingInheritsStart, missingInheritsStart + '@property'.length],
+      ['@property rule must define "initial-value"', missingInitialStart, missingInitialStart + '@property'.length]
+    ]);
+  });
+
   it('does not report invalid typed custom property values in dialect files before value facts exist', () => {
     const scss = collectTolerantDiagnostics({
       source: '@property --gap { syntax: "<length>"; initial-value: red; inherits: false; }',
@@ -1609,6 +1985,34 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidTypedCustomPropertyValue)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidTypedCustomPropertyValue)).toBe(false);
+  });
+
+  it('reports unknown CSS @supports declaration-condition properties and values', () => {
+    const source = '@media (future-feature: 1) { @supports (display: grid) and (future-prop: grid) and (color: maybe) { .a { color: red; } } }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownProperties = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownProperties);
+    const unknownPropertyValues = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues);
+    const unknownMediaFeatures = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureNames);
+    const futurePropStart = source.indexOf('future-prop');
+    const maybeStart = source.indexOf('maybe');
+    const mediaFeatureStart = source.indexOf('future-feature');
+
+    expect(unknownProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toContainEqual([
+      'Unknown property: \'future-prop\'',
+      futurePropStart,
+      futurePropStart + 'future-prop'.length
+    ]);
+    expect(unknownPropertyValues.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toContainEqual([
+      'Unknown value "maybe" for property "color"',
+      maybeStart,
+      maybeStart + 'maybe'.length
+    ]);
+    expect(unknownMediaFeatures.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown media feature name "future-feature"', mediaFeatureStart, mediaFeatureStart + 'future-feature'.length]
+    ]);
   });
 
   it('reports unknown CSS media feature names', () => {

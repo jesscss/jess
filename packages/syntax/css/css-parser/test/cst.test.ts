@@ -29,8 +29,8 @@ describe('parseCssCst', () => {
     expect(childTypes(rule!)).toContain('Declaration');
   });
 
-  it('keeps basic selectors as honest CST nodes', () => {
-    const result = parseCssCst('.foo #bar { color: red; }');
+  it('classifies basic selector atoms as honest CST nodes', () => {
+    const result = parseCssCst('.foo #bar main * { color: red; }');
     const seen: string[] = [];
     const visit = (node: unknown) => {
       if (!isNode(node)) {
@@ -44,6 +44,27 @@ describe('parseCssCst', () => {
 
     visit(result.tree);
 
-    expect(seen.filter(t => t === 'BasicSelector')).toHaveLength(2);
+    expect(seen.filter(t => t === 'ClassSelector')).toHaveLength(1);
+    expect(seen.filter(t => t === 'IdSelector')).toHaveLength(1);
+    expect(seen.filter(t => t === 'TypeSelector')).toHaveLength(1);
+    expect(seen.filter(t => t === 'UniversalSelector')).toHaveLength(1);
+    expect(seen).not.toContain('BasicSelector');
+
+    const selectorTags: string[] = [];
+    const collectTags = (node: unknown) => {
+      if (!isNode(node)) {
+        return;
+      }
+      if (node.tags?.includes('Selector') === true) {
+        selectorTags.push(node.type);
+      }
+      for (const child of node.rules) {
+        collectTags(child);
+      }
+    };
+
+    collectTags(result.tree);
+
+    expect(selectorTags).toEqual(['ClassSelector', 'IdSelector', 'TypeSelector', 'UniversalSelector']);
   });
 });

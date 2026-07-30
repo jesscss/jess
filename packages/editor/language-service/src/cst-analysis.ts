@@ -32,6 +32,10 @@ function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
 }
 
+export function cstHasTag(node: CssCstNode, tag: string): boolean {
+  return node.tags?.includes(tag) === true;
+}
+
 export function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
   return node.rules;
 }
@@ -95,25 +99,100 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
  * Grammar types (raw `grammarType`, shared across css/less/scss/jess) grouped by
  * the symbol they yield — matching the AST-based `getDocumentSymbols` exactly.
  */
-const SELECTOR_TYPES = new Set(['Selector', 'SelectorList', 'ComplexSelector', 'CompoundSelector', 'InterpolatedSelector', 'BasicSelector']);
+const SELECTOR_TYPES = new Set([
+  'Selector',
+  'SelectorList',
+  'SelectorBranch',
+  'NestedSelector',
+  'ComplexSelector',
+  'RelativeComplex',
+  'Complex',
+  'CompoundSelector',
+  'Compound',
+  'InterpolatedSelector',
+  'BasicSelector',
+  'ClassSelector',
+  'IdSelector',
+  'TypeSelector',
+  'UniversalSelector'
+]);
+const LESS_SELECTOR_TYPES = new Set(['SelectorBranch', 'Compound']);
 const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBlock', 'QueryAtRuleBlock']);
+
+export function cstIsSelector(node: CssCstNode): boolean {
+  return cstHasTag(node, 'Selector') || SELECTOR_TYPES.has(node.grammarType);
+}
 
 /*
  * Mixin DEFINITIONS: the shared `MixinDefinition` label in Less/Jess and the
  * SCSS `MixinDefinitionRule` (`@mixin foo`) label.
  */
 const MIXIN_TYPES = new Set(['MixinDefinition', 'MixinDefinitionRule']);
+const MIXIN_STATEMENT_TYPE = 'MixinStatement';
 
 // Function DEFINITIONS: SCSS `@function`.
 const FUNC_TYPES = new Set(['FunctionRule']);
 
 function firstSelectorChild(node: CssCstNode): CssCstNode | null {
   for (const c of cstChildrenOf(node)) {
-    if (c._tag === 'node' && SELECTOR_TYPES.has(c.grammarType)) {
+    if (c._tag === 'node' && cstIsSelector(c)) {
       return c;
     }
   }
   return null;
+}
+
+function hasDescendantOfType(node: CssCstNode, grammarType: string): boolean {
+  for (const child of cstChildrenOf(node)) {
+    if (child._tag !== 'node') {
+      continue;
+    }
+    if (child.grammarType === grammarType || hasDescendantOfType(child, grammarType)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isMixinDefinitionNode(node: CssCstNode): boolean {
+  return MIXIN_TYPES.has(node.grammarType)
+    || (node.grammarType === MIXIN_STATEMENT_TYPE && hasDescendantOfType(node, 'MixinDefinition'));
+}
+
+function onlyTriviaBetween(source: string, start: number, end: number): boolean {
+  for (let i = start; i < end; i++) {
+    const code = source.charCodeAt(i);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function previousLessSelector(index: CstIndex, source: string, node: CssCstNode): CssCstNode | null {
+  const span = index.spanOf(node);
+  if (!span) {
+    return null;
+  }
+  let best: CstIndexEntry | null = null;
+  for (const entry of index.nodes) {
+    if (
+      !LESS_SELECTOR_TYPES.has(entry.node.grammarType)
+      || entry.end > span.start
+      || !onlyTriviaBetween(source, entry.end, span.start)
+    ) {
+      continue;
+    }
+    if (
+      best === null
+      || entry.end > best.end
+      || (entry.end === best.end && entry.start < best.start)
+      || (entry.end === best.end && entry.start === best.start && entry.node.grammarType === 'SelectorBranch')
+    ) {
+      best = entry;
+    }
+  }
+  return best?.node ?? null;
 }
 
 function toRange(doc: TextDocument, start: number, end: number): Range {
@@ -178,8 +257,8 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
 
   for (const { node } of index.nodes) {
     const gt = node.grammarType;
-    if (gt === 'Ruleset') {
-      const sel = firstSelectorChild(node);
+    if (gt === 'Ruleset' || gt === 'NestedRuleset') {
+      const sel = firstSelectorChild(node) ?? previousLessSelector(index, src, node);
       const name = sel ? sliceOf(sel) : sliceOf(node).split('{')[0]!.trim();
       add(name || 'ruleset', SymbolKind.Class, node, sel, true);
     } else if (ATRULE_TYPES.has(gt)) {
@@ -188,10 +267,14 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
     } else if (gt === 'VarDeclaration' || gt === 'VariableDeclaration') {
       const name = sliceOf(node).split(':')[0]!.trim();
       add(name || 'variable', SymbolKind.Variable, node, null, false);
-    } else if (MIXIN_TYPES.has(gt)) {
-      const raw = sliceOf(node);
+    } else if (isMixinDefinitionNode(node)) {
+      const sel = previousLessSelector(index, src, node);
+      const raw = sel ? sliceOf(sel) : sliceOf(node);
+      if (!sel && !raw.trim().startsWith('@')) {
+        continue;
+      }
       const name = raw.split(/[({]/)[0]!.trim();
-      add(name || 'mixin', SymbolKind.Function, node, null, true);
+      add(name || 'mixin', SymbolKind.Function, node, sel, true);
     } else if (FUNC_TYPES.has(gt)) {
       const name = sliceOf(node).split(/[({]/)[0]!.trim();
       add(name || 'function', SymbolKind.Function, node, null, true);
@@ -200,17 +283,24 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
   return result;
 }
 
-const FOLD_TYPES = new Set(['Ruleset', ...ATRULE_TYPES, ...MIXIN_TYPES, ...FUNC_TYPES]);
+const FOLD_TYPES = new Set(['Ruleset', 'NestedRuleset', ...ATRULE_TYPES, ...MIXIN_TYPES, ...FUNC_TYPES]);
 
 /** CST-grounded folding: every multi-line structural block. Matches the AST
  * folding set, sourced from the tolerant CST. */
 export function cstFoldingRanges(root: CssCstNode, doc: TextDocument): FoldingRange[] {
   const index = buildCstIndex(root);
+  const src = doc.getText();
   const out: FoldingRange[] = [];
   const seen = new Set<string>();
   for (const { node, start, end } of index.nodes) {
-    if (!FOLD_TYPES.has(node.grammarType)) {
+    if (!FOLD_TYPES.has(node.grammarType) && !isMixinDefinitionNode(node)) {
       continue;
+    }
+    if (MIXIN_TYPES.has(node.grammarType)) {
+      const spanText = src.slice(start, end).trim();
+      if (!spanText.startsWith('@') && previousLessSelector(index, src, node) === null) {
+        continue;
+      }
     }
     const s = doc.positionAt(start);
     const e = doc.positionAt(end);

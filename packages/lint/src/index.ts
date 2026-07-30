@@ -4,6 +4,8 @@ import { glob } from 'glob';
 import { Region, type LineContent, type TextStyle } from 'linecraft';
 import {
   collectTolerantDiagnostics,
+  type CssDiagnosticMetadata,
+  defaultCssDiagnosticMetadata,
   type DiagnosticSeverityName,
   type JessLanguage,
   LINT_CODES,
@@ -27,6 +29,7 @@ import {
 } from './rules.js';
 
 export type { LintConfig, LintRuleOptions, LintRuleSetting, LintSeverity };
+export type { CssDiagnosticMetadata } from '@jesscss/diagnostics-core';
 export {
   LINT_RULE_NAMES,
   PARSE_SYNTAX_ERROR_CODE,
@@ -57,6 +60,7 @@ export interface LintOptions {
   readonly maxWarnings?: number;
   readonly syntaxOnly?: boolean;
   readonly includeLegacyDiagnostics?: boolean;
+  readonly metadata?: Partial<CssDiagnosticMetadata>;
 }
 
 export interface LintTextInput {
@@ -126,9 +130,17 @@ function rulesFromDiagnostics(diagnostics: Record<string, LintSeverity> | undefi
   }
   const rules: Record<string, LintRuleSetting> = {};
   for (const [code, severity] of Object.entries(diagnostics)) {
-    rules[ruleNameForDiagnostic(code)] = severity;
+    const ruleName = lintRuleNameForDiagnostic(code);
+    if (ruleName !== undefined) {
+      rules[ruleName] = severity;
+    }
   }
   return rules;
+}
+
+function lintRuleNameForDiagnostic(code: string): string | undefined {
+  const ruleName = ruleNameForDiagnostic(code);
+  return ruleName === code ? undefined : ruleName;
 }
 
 function settingSeverity(setting: LintRuleSetting | LintSeverity | undefined): LintSeverity | null | undefined {
@@ -137,6 +149,40 @@ function settingSeverity(setting: LintRuleSetting | LintSeverity | undefined): L
 
 function settingOptions(setting: LintRuleSetting | undefined): LintRuleOptions | undefined {
   return Array.isArray(setting) ? setting[1] : undefined;
+}
+
+function normalizedValidProperties(config: LintConfig): Set<string> | null {
+  const validProperties = config.validProperties;
+  if (validProperties === undefined || validProperties.length === 0) {
+    return null;
+  }
+  const names = new Set<string>();
+  for (const property of validProperties) {
+    const name = property.trim().toLowerCase();
+    if (name.length > 0) {
+      names.add(name);
+    }
+  }
+  return names.size === 0 ? null : names;
+}
+
+function metadataForLintConfig(
+  metadata: Partial<CssDiagnosticMetadata> | undefined,
+  config: LintConfig
+): Partial<CssDiagnosticMetadata> | undefined {
+  const validProperties = normalizedValidProperties(config);
+  if (validProperties === null) {
+    return metadata;
+  }
+  return {
+    ...metadata,
+    isKnownProperty(name) {
+      if (validProperties.has(name.toLowerCase())) {
+        return true;
+      }
+      return metadata?.isKnownProperty?.(name) ?? defaultCssDiagnosticMetadata.isKnownProperty(name);
+    }
+  };
 }
 
 function ignoresRuleOption(options: LintRuleOptions | undefined, value: string): boolean {
@@ -176,6 +222,96 @@ function patternRuleOption(options: LintRuleOptions | undefined): RegExp | null 
   return null;
 }
 
+function notationRuleTarget(diagnostic: SourceDiagnostic, source: string): string | null {
+  if (
+    diagnostic.code === LINT_CODES.colorFunctionNotation
+    || diagnostic.code === LINT_CODES.alphaValueNotation
+    || diagnostic.code === LINT_CODES.hueDegreeNotation
+  ) {
+    return source.slice(diagnostic.start, diagnostic.end);
+  }
+  return null;
+}
+
+function notationRuleOption(options: LintRuleOptions | undefined): string | null {
+  return typeof options?.notation === 'string' ? options.notation : null;
+}
+
+type SpecificityTuple = readonly [number, number, number];
+
+function parseSpecificity(value: unknown): SpecificityTuple | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const parts = value.split(',');
+  if (parts.length !== 3) {
+    return null;
+  }
+  const numbers = parts.map(part => Number(part.trim()));
+  return numbers.every(number => Number.isInteger(number) && number >= 0)
+    ? [numbers[0]!, numbers[1]!, numbers[2]!]
+    : null;
+}
+
+function specificityFromDiagnostic(diagnostic: SourceDiagnostic): SpecificityTuple | null {
+  for (const qualifier of diagnostic.qualifiers ?? []) {
+    if (qualifier.startsWith('specificity:')) {
+      return parseSpecificity(qualifier.slice('specificity:'.length));
+    }
+  }
+  return null;
+}
+
+function maxSpecificityRuleOption(options: LintRuleOptions | undefined): SpecificityTuple | null {
+  return parseSpecificity(options?.max) ?? parseSpecificity(options?.maxSpecificity);
+}
+
+function specificityAllowed(actual: SpecificityTuple, max: SpecificityTuple): boolean {
+  return actual[0] < max[0]
+    || (actual[0] === max[0] && (
+      actual[1] < max[1]
+      || (actual[1] === max[1] && actual[2] <= max[2])
+    ));
+}
+
+function isAngleNotation(value: string): boolean {
+  const lower = value.toLowerCase();
+  return lower.endsWith('deg')
+    || lower.endsWith('grad')
+    || lower.endsWith('rad')
+    || lower.endsWith('turn');
+}
+
+function shouldSuppressByNotation(diagnostic: SourceDiagnostic, source: string, options: LintRuleOptions | undefined): boolean {
+  const target = notationRuleTarget(diagnostic, source);
+  if (target === null) {
+    return false;
+  }
+  const notation = notationRuleOption(options);
+  if (diagnostic.code === LINT_CODES.colorFunctionNotation) {
+    return notation !== 'modern';
+  }
+  if (diagnostic.code === LINT_CODES.alphaValueNotation) {
+    if (notation === 'percentage') {
+      return target.endsWith('%');
+    }
+    if (notation === 'number') {
+      return !target.endsWith('%');
+    }
+    return true;
+  }
+  if (diagnostic.code === LINT_CODES.hueDegreeNotation) {
+    if (notation === 'angle') {
+      return isAngleNotation(target);
+    }
+    if (notation === 'number') {
+      return !isAngleNotation(target);
+    }
+    return true;
+  }
+  return false;
+}
+
 function hasQualifier(diagnostic: SourceDiagnostic, value: string): boolean {
   return diagnostic.qualifiers?.includes(value) === true;
 }
@@ -193,6 +329,11 @@ function shouldSuppressByRuleOptions(
   if (diagnostic.code === LINT_CODES.emptyRules && hasQualifier(diagnostic, 'mixin-body')) {
     return !includesRuleOption(options, 'mixins');
   }
+  if (diagnostic.code === LINT_CODES.selectorMaxSpecificity) {
+    const actual = specificityFromDiagnostic(diagnostic);
+    const max = maxSpecificityRuleOption(options);
+    return actual === null || max === null || specificityAllowed(actual, max);
+  }
   const patternTarget = patternRuleTarget(diagnostic, source);
   if (patternTarget !== null) {
     const pattern = patternRuleOption(options);
@@ -201,6 +342,9 @@ function shouldSuppressByRuleOptions(
     }
     pattern.lastIndex = 0;
     return pattern.test(patternTarget);
+  }
+  if (shouldSuppressByNotation(diagnostic, source, options)) {
+    return true;
   }
   return false;
 }
@@ -248,8 +392,8 @@ function applyPolicy(
     if (config.reportSyntax === false && diagnostic.phase === 'parse') {
       continue;
     }
-    const policy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
-      ?? config.rules?.[diagnostic.code]
+    const ruleName = lintRuleNameForDiagnostic(diagnostic.code);
+    const policy = (ruleName !== undefined ? config.rules?.[ruleName] : undefined)
       ?? config.diagnostics?.[diagnostic.code];
     const severityPolicy = settingSeverity(policy);
     if (severityPolicy === null || severityPolicy === 'off') {
@@ -258,15 +402,13 @@ function applyPolicy(
     if (severityPolicy === undefined && diagnostic.phase !== 'parse') {
       continue;
     }
-    const rulePolicy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
-      ?? config.rules?.[diagnostic.code];
+    const rulePolicy = ruleName !== undefined ? config.rules?.[ruleName] : undefined;
     if (shouldSuppressByRuleOptions(diagnostic, rulePolicy, source)) {
       continue;
     }
-    const ruleName = ruleNameForDiagnostic(diagnostic.code);
     out.push({
       ...diagnostic,
-      ruleName: ruleName === diagnostic.code ? undefined : ruleName,
+      ruleName,
       severity: severityPolicy === 'error'
         ? 'error'
         : severityPolicy === 'warn'
@@ -341,10 +483,12 @@ function toLintResult(
 export async function lintText(input: LintTextInput, options: LintOptions = {}): Promise<LintResult> {
   const lintConfig = await resolveLintConfig(options);
   const language = languageFromPath(input.filePath, input.language ?? options.language);
+  const metadata = metadataForLintConfig(options.metadata, lintConfig);
   const collected = collectTolerantDiagnostics({
     source: input.source,
     filePath: input.filePath,
-    language
+    language,
+    metadata
   });
   return toLintResult(
     input.filePath,
@@ -379,10 +523,11 @@ export async function lintFiles(patterns: string | readonly string[], options: L
   files.sort();
 
   const results: LintResult[] = [];
+  const metadata = metadataForLintConfig(options.metadata, lintConfig);
   for (const filePath of files) {
     const source = await readFile(filePath, 'utf8');
     const language = languageFromPath(filePath, options.language);
-    const collected = collectTolerantDiagnostics({ source, filePath, language });
+    const collected = collectTolerantDiagnostics({ source, filePath, language, metadata });
     results.push(toLintResult(
       filePath,
       applyPolicy(collected.diagnostics, source, lintConfig, options),

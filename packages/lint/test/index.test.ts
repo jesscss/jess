@@ -49,9 +49,11 @@ describe('stable rule set', () => {
       LINT_CODES.float,
       LINT_CODES.propertyNoVendorPrefix,
       LINT_CODES.atRuleNoVendorPrefix,
+      LINT_CODES.valueNoVendorPrefix,
       LINT_CODES.vendorPrefix,
       LINT_CODES.compatibleVendorPrefixes,
       LINT_CODES.unknownVendorSpecificProperties,
+      LINT_CODES.ieHack,
       LINT_CODES.importStatement,
       LINT_CODES.invalidImportPosition,
       LINT_CODES.duplicateAtImportRules,
@@ -60,6 +62,9 @@ describe('stable rule set', () => {
       LINT_CODES.unknownUnits,
       LINT_CODES.unknownFunctions,
       LINT_CODES.linearGradientNonstandardDirection,
+      LINT_CODES.colorFunctionNotation,
+      LINT_CODES.alphaValueNotation,
+      LINT_CODES.hueDegreeNotation,
       LINT_CODES.unknownMediaFeatureNames,
       LINT_CODES.mediaFeatureNameNoVendorPrefix,
       LINT_CODES.unknownMediaFeatureValues,
@@ -71,10 +76,18 @@ describe('stable rule set', () => {
       LINT_CODES.unknownTypeSelectors,
       LINT_CODES.selectorMaxId,
       LINT_CODES.selectorMaxUniversal,
+      LINT_CODES.selectorMaxSpecificity,
+      LINT_CODES.noDescendingSpecificity,
       LINT_CODES.incompatibleMathFunctionUnits,
       LINT_CODES.invalidColorFunctionChannels,
+      LINT_CODES.invalidTypedCustomPropertyRegistration,
       LINT_CODES.invalidTypedCustomPropertyValue,
+      LINT_CODES.shadowedTokens,
       LINT_CODES.unusedVariables,
+      LINT_CODES.unusedMixins,
+      LINT_CODES.unusedFunctions,
+      LINT_CODES.impossibleGuards,
+      LINT_CODES.unusedDefaultBranches,
       LINT_CODES.duplicateModuleLoads,
       LINT_CODES.unboundedExtends,
       LINT_CODES.deadExtends,
@@ -110,9 +123,11 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.float,
       LINT_RULE_NAMES.propertyNoVendorPrefix,
       LINT_RULE_NAMES.atRuleNoVendorPrefix,
+      LINT_RULE_NAMES.valueNoVendorPrefix,
       LINT_RULE_NAMES.vendorPrefix,
       LINT_RULE_NAMES.compatibleVendorPrefixes,
       LINT_RULE_NAMES.unknownVendorSpecificProperties,
+      LINT_RULE_NAMES.ieHack,
       LINT_RULE_NAMES.importStatement,
       LINT_RULE_NAMES.invalidImportPosition,
       LINT_RULE_NAMES.duplicateAtImportRules,
@@ -121,6 +136,9 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownUnits,
       LINT_RULE_NAMES.unknownFunctions,
       LINT_RULE_NAMES.linearGradientNonstandardDirection,
+      LINT_RULE_NAMES.colorFunctionNotation,
+      LINT_RULE_NAMES.alphaValueNotation,
+      LINT_RULE_NAMES.hueDegreeNotation,
       LINT_RULE_NAMES.unknownMediaFeatureNames,
       LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix,
       LINT_RULE_NAMES.unknownMediaFeatureValues,
@@ -132,36 +150,57 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownTypeSelectors,
       LINT_RULE_NAMES.selectorMaxId,
       LINT_RULE_NAMES.selectorMaxUniversal,
+      LINT_RULE_NAMES.selectorMaxSpecificity,
+      LINT_RULE_NAMES.noDescendingSpecificity,
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.invalidColorFunctionChannels,
+      LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
+      LINT_RULE_NAMES.shadowedTokens,
       LINT_RULE_NAMES.unusedVariables,
+      LINT_RULE_NAMES.unusedMixins,
+      LINT_RULE_NAMES.unusedFunctions,
+      LINT_RULE_NAMES.impossibleGuards,
+      LINT_RULE_NAMES.unusedDefaultBranches,
       LINT_RULE_NAMES.duplicateModuleLoads,
       LINT_RULE_NAMES.unboundedExtends,
       LINT_RULE_NAMES.deadExtends,
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(49);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(60);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
+    expect(recommended[LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.vendorPrefix]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.boxModel]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.float]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.propertyNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.atRuleNoVendorPrefix]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.valueNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.compatibleVendorPrefixes]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unknownVendorSpecificProperties]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.ieHack]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.importStatement]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorMaxId]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.selectorMaxSpecificity]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.noDescendingSpecificity]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorClassPattern]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.customPropertyPattern]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.keyframesNamePattern]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.colorFunctionNotation]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.alphaValueNotation]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.hueDegreeNotation]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.shadowedTokens]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.unusedMixins]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.unusedFunctions]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.impossibleGuards]).toBe('warn');
+    expect(recommended[LINT_RULE_NAMES.unusedDefaultBranches]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.deadExtends]).toBe('warn');
@@ -211,9 +250,11 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.float]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.propertyNoVendorPrefix]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.atRuleNoVendorPrefix]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.valueNoVendorPrefix]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.vendorPrefix]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.compatibleVendorPrefixes]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownVendorSpecificProperties]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.ieHack]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.importStatement]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownAtRuleDescriptorValues]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownCustomProperties]).toBe('off');
@@ -222,12 +263,22 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorClassPattern]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.customPropertyPattern]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.keyframesNamePattern]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.colorFunctionNotation]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.alphaValueNotation]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.hueDegreeNotation]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyValue]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.shadowedTokens]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxId]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxSpecificity]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.noDescendingSpecificity]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedVariables]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedMixins]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedFunctions]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedDefaultBranches]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unboundedExtends]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.deadExtends]).toBe('off');
@@ -261,11 +312,12 @@ describe('lintText', () => {
   });
 
   it('applies policy to unknown property value diagnostics', async () => {
+    const input = {
+      source: '.a { display: block, flxe; }',
+      filePath: '/tmp/input.css'
+    };
     const result = await lintText(
-      {
-        source: '.a { display: flxe; }',
-        filePath: '/tmp/input.css'
-      },
+      input,
       {
         stylesConfig: {
           lint: {
@@ -282,6 +334,83 @@ describe('lintText', () => {
     ]);
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownPropertyValues, 'error']
+    ]);
+    expect(result.diagnostics.map(diagnostic => input.source.slice(diagnostic.start, diagnostic.end))).toEqual(['flxe']);
+  });
+
+  it('maps @supports declaration-condition diagnostics to stable lint rule names', async () => {
+    const input = {
+      source: '@supports (future-prop: grid) and (color: maybe) { .a { color: red; } }',
+      filePath: '/tmp/input.css'
+    };
+    const result = await lintText(input);
+
+    expect(result.diagnostics
+      .filter(diagnostic =>
+        diagnostic.code === LINT_CODES.unknownProperties
+        || diagnostic.code === LINT_CODES.unknownPropertyValues)
+      .map(diagnostic => [
+        diagnostic.ruleName,
+        diagnostic.code,
+        input.source.slice(diagnostic.start, diagnostic.end)
+      ])).toEqual([
+      [LINT_RULE_NAMES.unknownProperties, LINT_CODES.unknownProperties, 'future-prop'],
+      [LINT_RULE_NAMES.unknownPropertyValues, LINT_CODES.unknownPropertyValues, 'maybe']
+    ]);
+  });
+
+  it('passes caller CSS metadata into shared diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '@project base; @font-face { project-mode: compact; project-tone: loud; } .a { project-tone: brand; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        metadata: {
+          isKnownAtRule: name => name === 'project',
+          isKnownProperty: name => name === 'project-tone',
+          isKnownPropertyValue: (name, value) => name === 'project-tone' && value.normalized === 'brand',
+          isKnownAtRuleDescriptor: (atRuleName, descriptorName) => atRuleName === 'font-face'
+            && (descriptorName === 'project-mode' || descriptorName === 'project-tone'),
+          isKnownAtRuleDescriptorValue: (atRuleName, descriptorName, value) => atRuleName === 'font-face'
+            && (
+              (descriptorName === 'project-mode' && value.normalized === 'compact')
+              || (descriptorName === 'project-tone' && value.normalized === 'quiet')
+            )
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownAtRules);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownProperties);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownPropertyValues);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownAtRuleDescriptors);
+    expect(result.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unknownAtRuleDescriptorValues)
+      .map(diagnostic => diagnostic.message)).toEqual([
+      'Unknown value "loud" for descriptor "project-tone" in @font-face'
+    ]);
+  });
+
+  it('accepts VSCode-style validProperties from lint config', async () => {
+    const result = await lintText(
+      {
+        source: '.a { project-tone: brand; colr: red; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            validProperties: ['project-tone']
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)
+      .map(diagnostic => diagnostic.message)).toEqual([
+      'Unknown property: \'colr\''
     ]);
   });
 
@@ -325,8 +454,8 @@ describe('lintText', () => {
       }
     );
 
-    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
-      [LINT_CODES.zeroUnits, 'error']
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.zeroUnits, LINT_CODES.zeroUnits, 'error']
     ]);
   });
 
@@ -361,6 +490,47 @@ describe('lintText', () => {
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([PARSE_SYNTAX_ERROR_CODE]);
     expect(result.diagnostics[0]?.ruleName).toBeUndefined();
     expect(result.diagnostics[0]?.severity).toBe('error');
+  });
+
+  it('does not invent future evaluator diagnostics from diagnostic-code policy', async () => {
+    const undefinedVariableCode = 'var/undefined';
+    const undefinedMixinCode = 'mixin/undefined';
+    const input = {
+      source: '@used: red;\n.theme(@color) { color: @color; }\n.a { color: @used; background: @missing; .missing(); }',
+      filePath: '/tmp/input.less'
+    };
+    const defaults = await lintText(input, {
+      stylesConfig: {}
+    });
+    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === undefinedVariableCode)).toBe(false);
+    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === undefinedMixinCode)).toBe(false);
+
+    const configuredAsRules = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [undefinedVariableCode]: 'error',
+            [undefinedMixinCode]: 'warn'
+          }
+        }
+      }
+    });
+    expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === undefinedVariableCode)).toBe(false);
+    expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === undefinedMixinCode)).toBe(false);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          diagnostics: {
+            [undefinedVariableCode]: 'error',
+            [undefinedMixinCode]: 'warn'
+          }
+        }
+      }
+    });
+    expect(configured.diagnostics.some(diagnostic =>
+      diagnostic.code === undefinedVariableCode || diagnostic.code === undefinedMixinCode
+    )).toBe(false);
   });
 
   it('routes SCSS inputs through shared diagnostics policy', async () => {
@@ -668,6 +838,7 @@ describe('lintText', () => {
     const input = {
       source: [
         '.a { -webkit-transform: rotate(0); transform: rotate(0); }',
+        '.b { display: -webkit-flex; background: -webkit-linear-gradient(red, blue); }',
         '@keyframes spin { from { opacity: 0; } }',
         '@-webkit-keyframes spin { from { opacity: 0; } }'
       ].join('\n'),
@@ -681,6 +852,9 @@ describe('lintText', () => {
     expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
       LINT_CODES.atRuleNoVendorPrefix
     );
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.valueNoVendorPrefix
+    );
 
     const configured = await lintText(input, {
       stylesConfig: {
@@ -688,6 +862,9 @@ describe('lintText', () => {
           rules: {
             [LINT_RULE_NAMES.propertyNoVendorPrefix]: 'error',
             [LINT_RULE_NAMES.atRuleNoVendorPrefix]: 'warn',
+            [LINT_RULE_NAMES.valueNoVendorPrefix]: 'warn',
+            [LINT_RULE_NAMES.unknownPropertyValues]: 'off',
+            [LINT_RULE_NAMES.unknownFunctions]: 'off',
             [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off'
           }
         }
@@ -696,6 +873,8 @@ describe('lintText', () => {
 
     expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
       [LINT_CODES.propertyNoVendorPrefix, LINT_RULE_NAMES.propertyNoVendorPrefix, 'error'],
+      [LINT_CODES.valueNoVendorPrefix, LINT_RULE_NAMES.valueNoVendorPrefix, 'warning'],
+      [LINT_CODES.valueNoVendorPrefix, LINT_RULE_NAMES.valueNoVendorPrefix, 'warning'],
       [LINT_CODES.atRuleNoVendorPrefix, LINT_RULE_NAMES.atRuleNoVendorPrefix, 'warning']
     ]);
   });
@@ -723,6 +902,31 @@ describe('lintText', () => {
 
     expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownVendorSpecificProperties, LINT_RULE_NAMES.unknownVendorSpecificProperties, 'error']
+    ]);
+  });
+
+  it('keeps IE hack properties opt-in by lint rule name', async () => {
+    const input = {
+      source: '.a { _color: red; }',
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.ieHack);
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownProperties);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.ieHack]: 'error'
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
+      [LINT_CODES.ieHack, LINT_RULE_NAMES.ieHack, 'error']
     ]);
   });
 
@@ -915,7 +1119,7 @@ describe('lintText', () => {
   it('applies policy to unknown at-rule descriptor value diagnostics', async () => {
     const result = await lintText(
       {
-        source: '@property --gap { syntax: "<length>"; inherits: yes; initial-value: 1px; }',
+        source: '@font-face { font-family: Inter; src: url(inter.woff2); font-style: sideways; }',
         filePath: '/tmp/input.css'
       },
       {
@@ -1112,6 +1316,91 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.linearGradientNonstandardDirection, 'error']
+    ]);
+  });
+
+  it('keeps modern notation policies opt-in and filters by configured notation', async () => {
+    const input = {
+      source: [
+        '.a { color: rgb(1, 2, 3); background: rgb(1 2 3 / .5); }',
+        '.b { opacity: 50%; }',
+        '.c { color: hsl(120 50% 50% / 25%); }',
+        '.d { color: hsl(120deg 50% 50% / .25); }'
+      ].join('\n'),
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.colorFunctionNotation);
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.alphaValueNotation);
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.hueDegreeNotation);
+
+    const configuredWithoutNotation = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.alphaValueNotation]: 'warn'
+          }
+        }
+      }
+    });
+
+    expect(configuredWithoutNotation.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.alphaValueNotation
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.colorFunctionNotation]: ['warn', { notation: 'modern' }],
+            [LINT_RULE_NAMES.alphaValueNotation]: ['warn', { notation: 'percentage' }],
+            [LINT_RULE_NAMES.hueDegreeNotation]: ['warn', { notation: 'angle' }]
+          }
+        }
+      }
+    });
+
+    const configuredNotation = configured.diagnostics.filter(diagnostic =>
+      diagnostic.code === LINT_CODES.colorFunctionNotation
+      || diagnostic.code === LINT_CODES.alphaValueNotation
+      || diagnostic.code === LINT_CODES.hueDegreeNotation
+    );
+
+    expect(configuredNotation.map(diagnostic => [
+      diagnostic.code,
+      diagnostic.ruleName,
+      input.source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      [LINT_CODES.colorFunctionNotation, LINT_RULE_NAMES.colorFunctionNotation, 'rgb('],
+      [LINT_CODES.alphaValueNotation, LINT_RULE_NAMES.alphaValueNotation, '.5'],
+      [LINT_CODES.hueDegreeNotation, LINT_RULE_NAMES.hueDegreeNotation, '120'],
+      [LINT_CODES.alphaValueNotation, LINT_RULE_NAMES.alphaValueNotation, '.25']
+    ]);
+
+    const numberNotation = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.alphaValueNotation]: ['warn', { notation: 'number' }],
+            [LINT_RULE_NAMES.hueDegreeNotation]: ['warn', { notation: 'number' }]
+          }
+        }
+      }
+    });
+
+    const numberNotationDiagnostics = numberNotation.diagnostics.filter(diagnostic =>
+      diagnostic.code === LINT_CODES.alphaValueNotation
+      || diagnostic.code === LINT_CODES.hueDegreeNotation
+    );
+
+    expect(numberNotationDiagnostics.map(diagnostic => [
+      diagnostic.code,
+      input.source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      [LINT_CODES.alphaValueNotation, '50%'],
+      [LINT_CODES.alphaValueNotation, '25%'],
+      [LINT_CODES.hueDegreeNotation, '120deg']
     ]);
   });
 
@@ -1334,6 +1623,102 @@ describe('lintText', () => {
     ]);
   });
 
+  it('keeps selector specificity policy opt-in and filters by max option', async () => {
+    const input = {
+      source: [
+        '#app .card[data-x]:hover > button { color: red; }',
+        ':is(.card, #hero) .item { color: green; }',
+        '.card { color: blue; }'
+      ].join('\n'),
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.selectorMaxSpecificity
+    );
+
+    const configuredWithoutMax = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.selectorMaxSpecificity]: 'error'
+          }
+        }
+      }
+    });
+
+    expect(configuredWithoutMax.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.selectorMaxSpecificity
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.selectorMaxSpecificity]: ['error', { max: '0,2,0' }]
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [
+      diagnostic.code,
+      diagnostic.ruleName,
+      diagnostic.severity,
+      input.source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      [
+        LINT_CODES.selectorMaxSpecificity,
+        LINT_RULE_NAMES.selectorMaxSpecificity,
+        'error',
+        '#app .card[data-x]:hover > button'
+      ],
+      [
+        LINT_CODES.selectorMaxSpecificity,
+        LINT_RULE_NAMES.selectorMaxSpecificity,
+        'error',
+        ':is(.card, #hero) .item'
+      ]
+    ]);
+  });
+
+  it('keeps descending specificity policy opt-in by lint rule name', async () => {
+    const input = {
+      source: '.a .b { color: red; }\n.b { color: blue; }',
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.noDescendingSpecificity
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.noDescendingSpecificity]: 'error'
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [
+      diagnostic.code,
+      diagnostic.ruleName,
+      diagnostic.severity,
+      input.source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      [
+        LINT_CODES.noDescendingSpecificity,
+        LINT_RULE_NAMES.noDescendingSpecificity,
+        'error',
+        '.b'
+      ]
+    ]);
+  });
+
   it('applies policy to incompatible math function unit diagnostics', async () => {
     const result = await lintText(
       {
@@ -1400,9 +1785,35 @@ describe('lintText', () => {
     ]);
   });
 
+  it('applies policy to invalid typed custom property registration diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '@property --tone { syntax: "<color>"; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
+      [
+        LINT_CODES.invalidTypedCustomPropertyRegistration,
+        LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
+        'error'
+      ]
+    ]);
+  });
+
   it('keeps unused variables opt-in until project symbol facts exist', async () => {
     const input = {
-      source: '$used: red; $unused: blue; .a { color: $used; }',
+      source: '$used: red; $public: white !default; $unused: blue; .a { color: $used; }',
       filePath: '/tmp/input.scss'
     };
 
@@ -1420,8 +1831,127 @@ describe('lintText', () => {
         }
       }
     });
-    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
-      [LINT_CODES.unusedVariables, 'warning']
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.message, diagnostic.severity])).toEqual([
+      [LINT_CODES.unusedVariables, 'Unused variable "$unused"', 'warning']
+    ]);
+  });
+
+  it('keeps unused mixins opt-in until project callable facts exist', async () => {
+    const input = {
+      source: '@mixin used() { color: red; }\n@mixin unused() { color: blue; }\n.a { @include used(); }',
+      filePath: '/tmp/input.scss'
+    };
+
+    const defaults = await lintText(input, {
+      stylesConfig: {}
+    });
+    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)).toBe(false);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.unusedMixins]: 'warn'
+          }
+        }
+      }
+    });
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.unusedMixins, LINT_CODES.unusedMixins, 'warning']
+    ]);
+  });
+
+  it('keeps unused functions opt-in until project callable facts exist', async () => {
+    const input = {
+      source: '@function used() { @return 1; }\n@function unused() { @return 2; }\n.a { width: used(); }',
+      filePath: '/tmp/input.scss'
+    };
+
+    const defaults = await lintText(input, {
+      stylesConfig: {}
+    });
+    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.unusedFunctions]: 'warn'
+          }
+        }
+      }
+    });
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.unusedFunctions, LINT_CODES.unusedFunctions, 'warning']
+    ]);
+  });
+
+  it('keeps shadowed tokens opt-in until project symbol facts exist', async () => {
+    const input = {
+      source: '$tone: red; .theme { $tone: blue; color: $tone; } .root { color: $tone; }',
+      filePath: '/tmp/input.scss'
+    };
+
+    const defaults = await lintText(input, {
+      stylesConfig: {}
+    });
+    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.shadowedTokens)).toBe(false);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.shadowedTokens]: 'warn'
+          }
+        }
+      }
+    });
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.shadowedTokens, LINT_CODES.shadowedTokens, 'warning']
+    ]);
+  });
+
+  it('applies policy to impossible guard diagnostics by lint rule name', async () => {
+    const result = await lintText(
+      {
+        source: '@if false { .a { color: red; } }',
+        filePath: '/tmp/input.scss'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.impossibleGuards]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.impossibleGuards, LINT_CODES.impossibleGuards, 'error']
+    ]);
+  });
+
+  it('applies policy to unused Less default-branch diagnostics by lint rule name', async () => {
+    const result = await lintText(
+      {
+        source: '.m(@x) when (default()) and not(default()) { color: red; }',
+        filePath: '/tmp/input.less'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.unusedDefaultBranches]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.unusedDefaultBranches, LINT_CODES.unusedDefaultBranches, 'error']
     ]);
   });
 

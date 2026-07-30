@@ -414,6 +414,12 @@ export interface LintRuleOptions {
    */
   pattern?: string | RegExp;
 
+  /**
+   * Preferred notation for opt-in convention rules such as
+   * color-function-notation, alpha-value-notation, and hue-degree-notation.
+   */
+  notation?: string;
+
   /** Allow rule-specific options without forcing every rule into a shared shape. */
   [key: string]: unknown;
 }
@@ -440,6 +446,12 @@ export interface LintConfig {
   reportSyntax?: boolean;
 
   /**
+   * Additional CSS property names accepted by unknown-property diagnostics.
+   * Mirrors VSCode's `validProperties` stylesheet setting.
+   */
+  validProperties?: readonly string[];
+
+  /**
    * Per-rule policy. Jess uses Stylelint-familiar rule names where the rule
    * intent matches, and names Jess-only diagnostics under Jess-owned namespaces.
    * `null` and `off` suppress a rule; `warn` and `error` set its severity.
@@ -449,8 +461,9 @@ export interface LintConfig {
   rules?: Record<string, LintRuleSetting>;
 
   /**
-   * @deprecated Use `rules`. This compatibility alias accepts Jess diagnostic
-   * codes and maps them to the corresponding lint rule when one exists.
+   * Diagnostic-code policy for parser/compiler-style diagnostics and a
+   * compatibility alias for lint rules. When a code maps to a lint rule,
+   * `rules` is preferred; codes without lint rule names stay here.
    */
   diagnostics?: Record<string, LintSeverity>;
 }

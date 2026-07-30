@@ -63,8 +63,10 @@ interface PropertyValueData {
 }
 
 const PROPERTY_VALUE_DATA = new Map<string, PropertyValueData>();
+const AT_RULE_DESCRIPTOR_VALUE_DATA = new Map<string, PropertyValueData>();
 for (const property of arrayField(webCssData, 'properties')) {
   const name = stringField(property, 'name')?.toLowerCase();
+  const atRule = stringField(property, 'atRule')?.toLowerCase();
   if (name === undefined || name.length === 0) {
     continue;
   }
@@ -78,10 +80,15 @@ for (const property of arrayField(webCssData, 'properties')) {
   if (restrictionSet.size === 0 && values.length === 0) {
     continue;
   }
-  PROPERTY_VALUE_DATA.set(name, {
+  const data = {
     restrictions: restrictionSet,
     keywords: new Set(values)
-  });
+  };
+  if (atRule === undefined || atRule.length === 0) {
+    PROPERTY_VALUE_DATA.set(name, data);
+  } else {
+    AT_RULE_DESCRIPTOR_VALUE_DATA.set(`${atRule}\u0000${name}`, data);
+  }
 }
 const AT_RULE_SET = new Set(
   arrayField(webCssData, 'atDirectives')
@@ -171,6 +178,90 @@ const CSS_MATH_FUNCTIONS = new Set([
   'sin',
   'sqrt',
   'tan'
+]);
+export const VENDOR_PREFIXED_PROPERTY_VALUES = new Set([
+  '-moz-all',
+  '-moz-calc',
+  '-moz-crisp-edges',
+  '-moz-element',
+  '-moz-fit-content',
+  '-moz-grab',
+  '-moz-grabbing',
+  '-moz-initial',
+  '-moz-isolate',
+  '-moz-isolate-override',
+  '-moz-linear-gradient',
+  '-moz-max-content',
+  '-moz-min-content',
+  '-moz-pre-wrap',
+  '-moz-plaintext',
+  '-moz-radial-gradient',
+  '-moz-repeating-linear-gradient',
+  '-moz-repeating-radial-gradient',
+  '-moz-zoom-in',
+  '-moz-zoom-out',
+  '-ms-flexbox',
+  '-ms-grid',
+  '-ms-inline-grid',
+  '-ms-linear-gradient',
+  '-ms-radial-gradient',
+  '-ms-repeating-linear-gradient',
+  '-ms-repeating-radial-gradient',
+  '-o-crisp-edges',
+  '-o-linear-gradient',
+  '-o-pre-wrap',
+  '-o-radial-gradient',
+  '-o-repeating-linear-gradient',
+  '-o-repeating-radial-gradient',
+  '-webkit-calc',
+  '-webkit-cross-fade',
+  '-webkit-filter',
+  '-webkit-fit-content',
+  '-webkit-flex',
+  '-webkit-grab',
+  '-webkit-grabbing',
+  '-webkit-image-set',
+  '-webkit-inline-flex',
+  '-webkit-isolate',
+  '-webkit-linear-gradient',
+  '-webkit-max-content',
+  '-webkit-min-content',
+  '-webkit-plaintext',
+  '-webkit-radial-gradient',
+  '-webkit-repeating-linear-gradient',
+  '-webkit-repeating-radial-gradient',
+  '-webkit-sticky',
+  '-webkit-zoom-in',
+  '-webkit-zoom-out',
+  '-xv-digits',
+  '-xv-literal-punctuation',
+  '-xv-no-punctuation',
+  '-moz-arabic-indic',
+  '-moz-bengali',
+  '-moz-cjk-earthly-branch',
+  '-moz-cjk-heavenly-stem',
+  '-moz-devanagari',
+  '-moz-ethiopic-numeric',
+  '-moz-gujarati',
+  '-moz-gurmukhi',
+  '-moz-hangul',
+  '-moz-hangul-consonant',
+  '-moz-japanese-formal',
+  '-moz-japanese-informal',
+  '-moz-kannada',
+  '-moz-khmer',
+  '-moz-lao',
+  '-moz-malayalam',
+  '-moz-myanmar',
+  '-moz-oriya',
+  '-moz-persian',
+  '-moz-simp-chinese-formal',
+  '-moz-simp-chinese-informal',
+  '-moz-tamil',
+  '-moz-telugu',
+  '-moz-thai',
+  '-moz-trad-chinese-formal',
+  '-moz-trad-chinese-informal'
 ]);
 const RANGE_MEDIA_FEATURE_NAMES = [
   'aspect-ratio',
@@ -275,20 +366,28 @@ const EXPERIMENTAL_HTML_TYPE_SELECTORS = [
 const EXTRA_SVG_TYPE_SELECTORS = ['hatch', 'hatchpath', 'hatchPath'];
 const htmlTagList = ownValue(htmlTags, 'default');
 const mathmlTagList = ownValue(mathmlTagNames, 'mathmlTagNames');
-const HTML_TYPE_SELECTOR_SET = new Set([
+const HTML_TYPE_SELECTOR_NAMES = [
   ...(Array.isArray(htmlTagList) ? htmlTagList : []),
   ...DEPRECATED_HTML_TYPE_SELECTORS,
   ...EXPERIMENTAL_HTML_TYPE_SELECTORS
-].filter((name): name is string => typeof name === 'string' && name.length > 0).map(name => name.toLowerCase()));
-const SVG_TYPE_SELECTOR_SET = new Set([
+].filter((name): name is string => typeof name === 'string' && name.length > 0).map(name => name.toLowerCase());
+const SVG_TYPE_SELECTOR_NAMES = [
   ...(Array.isArray(svgTags) ? svgTags : []),
   ...EXTRA_SVG_TYPE_SELECTORS
-].filter((name): name is string => typeof name === 'string' && name.length > 0));
-const MATHML_TYPE_SELECTOR_SET = new Set(
-  (Array.isArray(mathmlTagList) ? mathmlTagList : [])
-    .filter((name): name is string => typeof name === 'string' && name.length > 0)
-    .map(name => name.toLowerCase())
-);
+].filter((name): name is string => typeof name === 'string' && name.length > 0);
+const MATHML_TYPE_SELECTOR_NAMES = (Array.isArray(mathmlTagList) ? mathmlTagList : [])
+  .filter((name): name is string => typeof name === 'string' && name.length > 0)
+  .map(name => name.toLowerCase());
+export const cssTypeSelectorNames: readonly string[] = Object.freeze([
+  ...new Set([
+    ...HTML_TYPE_SELECTOR_NAMES,
+    ...SVG_TYPE_SELECTOR_NAMES,
+    ...MATHML_TYPE_SELECTOR_NAMES
+  ])
+].sort((left, right) => left.localeCompare(right)));
+const HTML_TYPE_SELECTOR_SET = new Set(HTML_TYPE_SELECTOR_NAMES);
+const SVG_TYPE_SELECTOR_SET = new Set(SVG_TYPE_SELECTOR_NAMES);
+const MATHML_TYPE_SELECTOR_SET = new Set(MATHML_TYPE_SELECTOR_NAMES);
 const PSEUDO_CLASS_SET = new Set(
   arrayField(webCssData, 'pseudoClasses')
     .map(pseudo => stringField(pseudo, 'name')?.toLowerCase())
@@ -388,6 +487,72 @@ function hasNumericRestriction(restrictions: ReadonlySet<string>): boolean {
     || restrictions.has('resolution');
 }
 
+function knownCssDataValue(data: PropertyValueData, value: CssPropertyValueFact, allowCssWide: boolean): boolean | undefined {
+  const lowerValue = unprefixedIdentifier(value.normalized);
+  if (allowCssWide && CSS_WIDE_KEYWORDS.has(lowerValue)) {
+    return true;
+  }
+  if (data.keywords.has(lowerValue)) {
+    return true;
+  }
+  if (VENDOR_PREFIXED_PROPERTY_VALUES.has(lowerValue)) {
+    return true;
+  }
+  const restrictions = data.restrictions;
+  if (value.kind === 'unknown') {
+    return undefined;
+  }
+  if (value.kind === 'keyword') {
+    return restrictions.has('identifier') ? true : false;
+  }
+  if (value.kind === 'color') {
+    return restrictions.has('color');
+  }
+  if (value.kind === 'integer') {
+    const numberValue = value.numericValue;
+    return restrictions.has('integer')
+      || restrictions.has('number')
+      || (restrictions.has('number(0-1)') && numberValue !== undefined && numberValue >= 0 && numberValue <= 1)
+      || acceptsZeroLength(numberValue, restrictions);
+  }
+  if (value.kind === 'number') {
+    const numberValue = value.numericValue;
+    return restrictions.has('number')
+      || (restrictions.has('number(0-1)') && numberValue !== undefined && numberValue >= 0 && numberValue <= 1)
+      || acceptsZeroLength(numberValue, restrictions);
+  }
+  if (value.kind === 'percentage') {
+    return restrictions.has('percentage');
+  }
+  if (value.kind === 'dimension') {
+    if (!isKnownDimensionUnit(value.unit)) {
+      return undefined;
+    }
+    return acceptsDimension(value.unit, restrictions);
+  }
+  if (value.kind === 'function') {
+    const functionName = value.functionName;
+    if (functionName === undefined) {
+      return undefined;
+    }
+    if (data.keywords.has(`${functionName}()`)
+      || VENDOR_PREFIXED_PROPERTY_VALUES.has(functionName)
+      || (restrictions.has('url') && functionName === 'url')
+      || (restrictions.has('color') && COLOR_VALUE_FUNCTIONS.has(functionName))
+      || (restrictions.has('image') && IMAGE_VALUE_FUNCTIONS.has(functionName))
+      || acceptsNumericFunction(functionName, restrictions)) {
+      return true;
+    }
+    if (!CSS_FUNCTION_SET.has(functionName)) {
+      return undefined;
+    }
+    return restrictions.has('url') || restrictions.has('color') || restrictions.has('image') || hasNumericRestriction(restrictions)
+      ? false
+      : undefined;
+  }
+  return undefined;
+}
+
 export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
   isKnownProperty(name) {
     const lower = name.toLowerCase();
@@ -401,63 +566,7 @@ export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
     if (data === undefined) {
       return undefined;
     }
-    const lowerValue = unprefixedIdentifier(value.normalized);
-    if (CSS_WIDE_KEYWORDS.has(lowerValue)) {
-      return true;
-    }
-    if (data.keywords.has(lowerValue)) {
-      return true;
-    }
-    const restrictions = data.restrictions;
-    if (value.kind === 'unknown') {
-      return undefined;
-    }
-    if (value.kind === 'keyword') {
-      return restrictions.has('identifier') ? true : false;
-    }
-    if (value.kind === 'color') {
-      return restrictions.has('color');
-    }
-    if (value.kind === 'integer') {
-      const numberValue = value.numericValue;
-      return restrictions.has('integer')
-        || restrictions.has('number')
-        || (restrictions.has('number(0-1)') && numberValue !== undefined && numberValue >= 0 && numberValue <= 1)
-        || acceptsZeroLength(numberValue, restrictions);
-    }
-    if (value.kind === 'number') {
-      const numberValue = value.numericValue;
-      return restrictions.has('number')
-        || (restrictions.has('number(0-1)') && numberValue !== undefined && numberValue >= 0 && numberValue <= 1)
-        || acceptsZeroLength(numberValue, restrictions);
-    }
-    if (value.kind === 'percentage') {
-      return restrictions.has('percentage');
-    }
-    if (value.kind === 'dimension') {
-      if (!isKnownDimensionUnit(value.unit)) {
-        return undefined;
-      }
-      return acceptsDimension(value.unit, restrictions);
-    }
-    if (value.kind === 'function') {
-      const functionName = value.functionName;
-      if (functionName === undefined) {
-        return undefined;
-      }
-      if ((restrictions.has('color') && COLOR_VALUE_FUNCTIONS.has(functionName))
-        || (restrictions.has('image') && IMAGE_VALUE_FUNCTIONS.has(functionName))
-        || acceptsNumericFunction(functionName, restrictions)) {
-        return true;
-      }
-      if (!CSS_FUNCTION_SET.has(functionName)) {
-        return undefined;
-      }
-      return restrictions.has('color') || restrictions.has('image') || hasNumericRestriction(restrictions)
-        ? false
-        : undefined;
-    }
-    return undefined;
+    return knownCssDataValue(data, value, true);
   },
   isKnownAtRule(name) {
     const lower = name.startsWith('@') ? name.toLowerCase() : `@${name.toLowerCase()}`;
@@ -467,6 +576,11 @@ export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
     const lowerAtRule = atRuleName.startsWith('@') ? atRuleName.toLowerCase() : `@${atRuleName.toLowerCase()}`;
     const descriptors = AT_RULE_DESCRIPTOR_SET.get(lowerAtRule);
     return descriptors?.has(descriptorName.toLowerCase());
+  },
+  isKnownAtRuleDescriptorValue(atRuleName, descriptorName, value) {
+    const lowerAtRule = atRuleName.startsWith('@') ? atRuleName.toLowerCase() : `@${atRuleName.toLowerCase()}`;
+    const data = AT_RULE_DESCRIPTOR_VALUE_DATA.get(`${lowerAtRule}\u0000${descriptorName.toLowerCase()}`);
+    return data === undefined ? undefined : knownCssDataValue(data, value, false);
   },
   isKnownFunction(name) {
     return CSS_FUNCTION_SET.has(name.toLowerCase());

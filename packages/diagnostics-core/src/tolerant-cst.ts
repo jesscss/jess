@@ -1,9 +1,9 @@
 import { parseCssDiagnosticCst, parseCssDiagnosticDoc, type CssCstChild, type CssCstNode, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser';
-import { namedColor } from '@jesscss/core';
+import { namedColor, type Phase } from '@jesscss/core';
 import { parseJessDiagnosticCst, parseJessDiagnosticDoc } from '@jesscss/jess-parser/cst';
 import { parseLessDiagnosticCst, parseLessDiagnosticDoc } from '@jesscss/less-parser/cst';
 import { parseScssDiagnosticCst, parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst';
-import { defaultCssDiagnosticMetadata } from './metadata.js';
+import { defaultCssDiagnosticMetadata, VENDOR_PREFIXED_PROPERTY_VALUES } from './metadata.js';
 import type {
   CollectDiagnosticsInput,
   CollectDiagnosticsResult,
@@ -42,9 +42,11 @@ export const LINT_CODES = {
   float: 'lint/float',
   propertyNoVendorPrefix: 'lint/property-no-vendor-prefix',
   atRuleNoVendorPrefix: 'lint/at-rule-no-vendor-prefix',
+  valueNoVendorPrefix: 'lint/value-no-vendor-prefix',
   vendorPrefix: 'lint/vendor-prefix',
   compatibleVendorPrefixes: 'lint/compatible-vendor-prefixes',
   unknownVendorSpecificProperties: 'lint/unknown-vendor-specific-property',
+  ieHack: 'lint/ie-hack',
   importStatement: 'lint/import-statement',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
@@ -53,6 +55,9 @@ export const LINT_CODES = {
   unknownUnits: 'lint/unit-no-unknown',
   unknownFunctions: 'lint/function-no-unknown',
   linearGradientNonstandardDirection: 'lint/function-linear-gradient-no-nonstandard-direction',
+  colorFunctionNotation: 'lint/color-function-notation',
+  alphaValueNotation: 'lint/alpha-value-notation',
+  hueDegreeNotation: 'lint/hue-degree-notation',
   unknownMediaFeatureNames: 'lint/media-feature-name-no-unknown',
   mediaFeatureNameNoVendorPrefix: 'lint/media-feature-name-no-vendor-prefix',
   unknownMediaFeatureValues: 'lint/media-feature-name-value-no-unknown',
@@ -65,12 +70,20 @@ export const LINT_CODES = {
   unknownTypeSelectors: 'lint/selector-type-no-unknown',
   selectorMaxId: 'lint/selector-max-id',
   selectorMaxUniversal: 'lint/selector-max-universal',
+  selectorMaxSpecificity: 'lint/selector-max-specificity',
+  noDescendingSpecificity: 'lint/no-descending-specificity',
   unmatchableAnbSelectors: 'lint/selector-anb-no-unmatchable',
   duplicateSelectors: 'lint/no-duplicate-selectors',
   incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
   invalidColorFunctionChannels: 'lint/invalid-color-function-channels',
+  invalidTypedCustomPropertyRegistration: 'lint/invalid-typed-custom-property-registration',
   invalidTypedCustomPropertyValue: 'lint/invalid-typed-custom-property-value',
+  shadowedTokens: 'lint/no-shadowed-token',
   unusedVariables: 'lint/no-unused-variable',
+  unusedMixins: 'lint/no-unused-mixin',
+  unusedFunctions: 'lint/no-unused-function',
+  impossibleGuards: 'lint/no-impossible-guard',
+  unusedDefaultBranches: 'lint/no-unused-default-branch',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
   suspiciousMapKeyAccess: 'lint/no-suspicious-map-key-access',
@@ -102,6 +115,13 @@ const VERTICAL_GRADIENT_SIDES = new Set(['top', 'bottom']);
 const HORIZONTAL_GRADIENT_SIDES = new Set(['left', 'right']);
 const MATH_FUNCTION_NAMES = new Set(['min', 'max', 'clamp']);
 const COLOR_FUNCTION_NAMES = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+const OPACITY_PROPERTY_NAMES = new Set([
+  'opacity',
+  'fill-opacity',
+  'flood-opacity',
+  'stop-opacity',
+  'stroke-opacity'
+]);
 const LINEAR_GRADIENT_FUNCTION_NAMES = new Set(['linear-gradient', 'repeating-linear-gradient']);
 const FONT_DISPLAY_VALUES = new Set(['auto', 'block', 'swap', 'fallback', 'optional']);
 const PROPERTY_SYNTAX_TYPES = new Set([
@@ -284,7 +304,7 @@ const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule']);
 const MODULE_LOAD_TYPES = new Set(['UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport']);
 const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'ImportTarget', 'Url']);
 const EXTEND_TARGET_TYPES = new Set(['ExtendTargetComplex', 'Selector', 'PseudoSelectorComplex']);
-const EXTERNAL_SELECTOR_SOURCE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
+const EXTERNAL_SOURCE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'Map', 'ValueBlock']);
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
@@ -297,8 +317,21 @@ const ANB_PSEUDO_CLASSES = new Set([
   'nth-last-of-type',
   'nth-of-type'
 ]);
+const SELECTOR_ARGUMENT_PSEUDO_CLASSES = new Set(['is', 'not', 'has']);
+const ZERO_SPECIFICITY_PSEUDO_CLASSES = new Set(['where']);
+const ADDITIVE_SELECTOR_ARGUMENT_PSEUDO_CLASSES = new Set(['host', 'host-context']);
+const ADDITIVE_SELECTOR_ARGUMENT_PSEUDO_ELEMENTS = new Set(['slotted']);
 const NTH_ARGUMENT_TYPES = new Set(['PseudoArgument', 'OfTypePseudoArgument']);
-const BASIC_SELECTOR_TYPES = new Set(['BasicSelector']);
+const BASIC_SELECTOR_TYPES = new Set([
+  'BasicSelector',
+  'ClassSelector',
+  'IdSelector',
+  'TypeSelector',
+  'UniversalSelector'
+]);
+const CLASS_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector']);
+const TYPE_SELECTOR_TYPES = new Set(['BasicSelector', 'TypeSelector']);
+const ATTRIBUTE_SELECTOR_TYPES = new Set(['AttributeSelector']);
 const SELECTOR_LIST_TYPES = new Set(['SelectorList', 'TopLevelSelectorList']);
 const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector', 'RelativeSelector']);
 const RULE_SELECTOR_TYPES = new Set(['SelectorList', 'TopLevelSelectorList', 'SelectorListWithExtends', 'Selector']);
@@ -404,7 +437,7 @@ type ParseDiagnosticSource = {
 type VisitContext = {
   readonly inVarCall: boolean;
   readonly inDeclaration: boolean;
-  readonly inMediaAtRule: boolean;
+  readonly queryAtRuleKind: 'media' | 'supports' | null;
   readonly inCustomDeclaration: boolean;
   readonly inFontFaceAtRule: boolean;
   readonly descriptorAtRuleName: string | null;
@@ -414,6 +447,8 @@ type VisitContext = {
   readonly inIgnoredTypeSelectorPseudo: boolean;
   readonly allowResolutionXUnit: boolean;
   readonly selectorLists: Map<string, SelectorSeen>;
+  readonly descendingSpecificity: Map<string, DescendingSpecificitySeen[]>;
+  readonly variableScope: VariableScope;
 };
 
 type FontFamilyPart = {
@@ -467,6 +502,12 @@ type ColorFunctionChannelProblem = {
   readonly span: DiagnosticSpan;
 };
 
+type ColorNotationFacts = {
+  readonly channels: readonly ColorChannelFact[];
+  readonly alphaIndex: number | null;
+  readonly legacyCommaSyntax: boolean;
+};
+
 type AtRuleDescriptorValueProblem = {
   readonly descriptorName: string;
   readonly value: string;
@@ -514,6 +555,11 @@ type TypedCustomPropertyValueProblem = {
   readonly value: TypedCustomPropertyInitialValue;
 };
 
+type TypedCustomPropertyRegistrationProblem = {
+  readonly missing: readonly string[];
+  readonly span: DiagnosticSpan;
+};
+
 type SelectorSeen = {
   readonly line: number;
 };
@@ -522,6 +568,19 @@ type SelectorBranchFact = {
   readonly key: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
+  readonly node?: CssCstNode;
+};
+
+type SelectorSpecificity = {
+  readonly a: number;
+  readonly b: number;
+  readonly c: number;
+};
+
+type DescendingSpecificitySeen = {
+  readonly display: string;
+  readonly specificity: SelectorSpecificity;
+  readonly line: number;
 };
 
 type AnimationNameReference = {
@@ -538,6 +597,36 @@ type VariableDeclarationFact = {
   readonly name: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
+  readonly configurable: boolean;
+};
+
+type MixinDefinitionFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+type MixinReferenceFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+type VariableReferenceFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+type FunctionDefinitionFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+type VariableScope = {
+  readonly declarations: Map<string, VariableDeclarationFact>;
+  readonly parent: VariableScope | null;
 };
 
 type SuspiciousMapKeyAccess = {
@@ -566,10 +655,21 @@ type ExactExtendTargetFact = {
   readonly span: DiagnosticSpan;
 };
 
+type PropertyValueDiagnosticFact = {
+  readonly fact: CssPropertyValueFact;
+  readonly span: DiagnosticSpan;
+};
+
+type StaticGuardValue =
+  | { readonly kind: 'boolean'; readonly value: boolean }
+  | { readonly kind: 'null' }
+  | { readonly kind: 'number'; readonly value: number; readonly unit: string }
+  | { readonly kind: 'string'; readonly value: string };
+
 const ROOT_VISIT_CONTEXT_BASE = {
   inVarCall: false,
   inDeclaration: false,
-  inMediaAtRule: false,
+  queryAtRuleKind: null,
   inCustomDeclaration: false,
   inFontFaceAtRule: false,
   descriptorAtRuleName: null,
@@ -836,6 +936,27 @@ function isVendorPrefixedName(name: string): boolean {
     || name.startsWith('-o-');
 }
 
+function vendorPrefixedValueNameSpan(source: string, node: CssCstNode): { readonly value: string; readonly start: number; readonly end: number } | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return null;
+  }
+  if (node.grammarType === 'Call' || node.grammarType === 'FunctionCall') {
+    const functionName = functionNameOf(source, start, end);
+    return functionName !== null && VENDOR_PREFIXED_PROPERTY_VALUES.has(functionName)
+      ? { value: source.slice(start, start + functionName.length), start, end: start + functionName.length }
+      : null;
+  }
+  if (node.grammarType === 'Keyword') {
+    const text = source.slice(start, end);
+    return VENDOR_PREFIXED_PROPERTY_VALUES.has(text.toLowerCase())
+      ? { value: text, start, end }
+      : null;
+  }
+  return null;
+}
+
 function isCustomElementName(name: string): boolean {
   return name.includes('-') && name.toLowerCase() === name && isIdentStart(name.charCodeAt(0));
 }
@@ -985,6 +1106,34 @@ function mediaFeatureValue(source: string, node: CssCstNode): { fact: CssMediaFe
   return null;
 }
 
+function supportsFeatureValue(source: string, node: CssCstNode): PropertyValueDiagnosticFact | null {
+  for (const child of node.rules) {
+    if (child._tag !== 'node' || child.grammarType !== 'QueryValue') {
+      continue;
+    }
+    let start = absoluteStart(child);
+    let end = absoluteEnd(child);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      return null;
+    }
+    while (start < end && isCssWhitespace(source.charCodeAt(start))) {
+      start++;
+    }
+    while (end > start && isCssWhitespace(source.charCodeAt(end - 1))) {
+      end--;
+    }
+    if (end <= start) {
+      return null;
+    }
+    return propertyValueDiagnosticFact(
+      source,
+      source.slice(start, end),
+      spanAtOrContaining(child, start, end)
+    );
+  }
+  return null;
+}
+
 function mediaFeatureValueFact(source: string, start: number, end: number, raw: string): CssMediaFeatureValueFact {
   const normalized = raw.toLowerCase();
   if (hasDynamicSyntax(raw)) {
@@ -1020,38 +1169,37 @@ function mediaFeatureValueFact(source: string, start: number, end: number, raw: 
   return { raw, normalized, kind: 'unknown' };
 }
 
-function declarationPropertyValue(source: string, node: CssCstNode): { fact: CssPropertyValueFact; span: DiagnosticSpan } | null {
-  const value = declarationValueText(source, node);
-  if (value === null) {
-    return null;
-  }
-  const raw = value.text;
+function propertyValueDiagnosticFact(
+  source: string,
+  raw: string,
+  span: DiagnosticSpan
+): PropertyValueDiagnosticFact {
   const normalized = raw.toLowerCase();
   if (hasDynamicSyntax(raw)) {
     return {
       fact: { raw, normalized, kind: 'unknown' },
-      span: value.span
+      span
     };
   }
   if (isStaticCustomPropertyName(raw)) {
     return {
       fact: { raw, normalized, kind: 'unknown' },
-      span: value.span
+      span
     };
   }
-  const valueStart = value.span.start;
-  const valueEnd = value.span.end;
+  const valueStart = span.start;
+  const valueEnd = span.end;
   const functionName = functionNameOf(source, valueStart, valueEnd);
   if (functionName !== null) {
     return {
       fact: { raw, normalized, kind: 'function', functionName },
-      span: value.span
+      span
     };
   }
   if (isValidHexColor(raw) || normalized === 'currentcolor' || namedColor(normalized) !== undefined) {
     return {
       fact: { raw, normalized, kind: 'color' },
-      span: value.span
+      span
     };
   }
   const numberValue = cssNumberValue(raw);
@@ -1063,27 +1211,66 @@ function declarationPropertyValue(source: string, node: CssCstNode): { fact: Css
         kind: isIntegerNumber(raw) ? 'integer' : 'number',
         numericValue: numberValue
       },
-      span: value.span
+      span
     };
   }
   const percentageValue = cssPercentageValue(raw);
   if (percentageValue !== null) {
     return {
       fact: { raw, normalized, kind: 'percentage', numericValue: percentageValue },
-      span: value.span
+      span
     };
   }
   const unit = cssDimensionUnit(raw);
   if (unit !== null) {
     return {
       fact: { raw, normalized, kind: 'dimension', unit },
-      span: value.span
+      span
     };
   }
   return {
     fact: { raw, normalized, kind: isCssIdentifier(raw) ? 'keyword' : 'unknown' },
-    span: value.span
+    span
   };
+}
+
+function declarationPropertyValue(source: string, node: CssCstNode): PropertyValueDiagnosticFact | null {
+  const value = declarationValueText(source, node);
+  return value === null ? null : propertyValueDiagnosticFact(source, value.text, value.span);
+}
+
+function declarationPropertyValueCandidates(source: string, node: CssCstNode): readonly PropertyValueDiagnosticFact[] {
+  const value = declarationValueNode(node);
+  if (value === null) {
+    return [];
+  }
+  const sequences = childNodesOfType(value, 'ValueSequence');
+  if (sequences.length <= 1) {
+    const single = declarationPropertyValue(source, node);
+    return single === null ? [] : [single];
+  }
+  const candidates: PropertyValueDiagnosticFact[] = [];
+  for (const sequence of sequences) {
+    const values = childNodesOfType(sequence, 'Value');
+    if (values.length !== 1) {
+      continue;
+    }
+    const start = absoluteStart(sequence);
+    const end = absoluteEnd(sequence);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      continue;
+    }
+    const trimmed = trimOffsets(source.slice(start, end), start);
+    if (trimmed.start >= trimmed.end) {
+      continue;
+    }
+    candidates.push(propertyValueDiagnosticFact(
+      source,
+      source.slice(trimmed.start, trimmed.end),
+      spanAtOrContaining(sequence, trimmed.start, trimmed.end)
+    ));
+  }
+  return candidates;
 }
 
 function isValidHexColor(value: string): boolean {
@@ -1912,7 +2099,7 @@ function colorChannelFact(source: string, node: CssCstNode): ColorChannelFact {
   return { kind: 'unknown', text, span };
 }
 
-function colorFunctionChannels(source: string, node: CssCstNode): { readonly channels: readonly ColorChannelFact[]; readonly alphaIndex: number | null } | null {
+function colorFunctionChannels(source: string, node: CssCstNode): ColorNotationFacts | null {
   const argumentSequences: CssCstNode[] = [];
   for (const child of cstChildrenOf(node)) {
     if (isCstNode(child) && child.grammarType === 'ValueSequence') {
@@ -1920,12 +2107,13 @@ function colorFunctionChannels(source: string, node: CssCstNode): { readonly cha
     }
   }
   if (argumentSequences.length === 0) {
-    return { channels: [], alphaIndex: null };
+    return { channels: [], alphaIndex: null, legacyCommaSyntax: false };
   }
   if (argumentSequences.length > 1) {
     return {
       channels: argumentSequences.map(sequence => colorChannelFact(source, sequence)),
-      alphaIndex: argumentSequences.length === 4 ? 3 : null
+      alphaIndex: argumentSequences.length === 4 ? 3 : null,
+      legacyCommaSyntax: true
     };
   }
 
@@ -1944,7 +2132,7 @@ function colorFunctionChannels(source: string, node: CssCstNode): { readonly cha
     }
     channels.push(colorChannelFact(source, child));
   }
-  return { channels, alphaIndex };
+  return { channels, alphaIndex, legacyCommaSyntax: false };
 }
 
 function isRgbChannel(channel: ColorChannelFact): boolean {
@@ -2013,6 +2201,59 @@ function invalidColorFunctionChannels(source: string, node: CssCstNode, function
     }
   }
   return null;
+}
+
+function colorFunctionNotationProblem(source: string, node: CssCstNode, functionName: string): DiagnosticSpan | null {
+  const lowerName = functionName.toLowerCase();
+  if (!COLOR_FUNCTION_NAMES.has(lowerName)) {
+    return null;
+  }
+  const argsText = source.slice(absoluteStart(node), absoluteEnd(node));
+  if (hasDynamicSyntax(argsText)) {
+    return null;
+  }
+  const parsed = colorFunctionChannels(source, node);
+  return parsed?.legacyCommaSyntax === true
+    ? spanAtOrContaining(node, absoluteStart(node), absoluteStart(node) + functionName.length)
+    : null;
+}
+
+function alphaValueNotationProblems(source: string, node: CssCstNode, functionName: string): readonly ColorChannelFact[] {
+  const lowerName = functionName.toLowerCase();
+  if (!COLOR_FUNCTION_NAMES.has(lowerName)) {
+    return [];
+  }
+  const argsText = source.slice(absoluteStart(node), absoluteEnd(node));
+  if (hasDynamicSyntax(argsText)) {
+    return [];
+  }
+  const parsed = colorFunctionChannels(source, node);
+  if (parsed === null || parsed.alphaIndex === null) {
+    return [];
+  }
+  const alpha = parsed.channels[parsed.alphaIndex];
+  return alpha !== undefined && (alpha.kind === 'number' || alpha.kind === 'percentage')
+    ? [alpha]
+    : [];
+}
+
+function hueDegreeNotationProblems(source: string, node: CssCstNode, functionName: string): readonly ColorChannelFact[] {
+  const lowerName = functionName.toLowerCase();
+  if (lowerName !== 'hsl' && lowerName !== 'hsla') {
+    return [];
+  }
+  const argsText = source.slice(absoluteStart(node), absoluteEnd(node));
+  if (hasDynamicSyntax(argsText)) {
+    return [];
+  }
+  const parsed = colorFunctionChannels(source, node);
+  if (parsed === null) {
+    return [];
+  }
+  const hue = parsed.channels[0];
+  return hue !== undefined && (hue.kind === 'number' || hue.kind === 'angle')
+    ? [hue]
+    : [];
 }
 
 function declarationValueNode(node: CssCstNode): CssCstNode | null {
@@ -2304,6 +2545,7 @@ function simplePropertySyntaxType(value: string): string | null {
 function atRuleDescriptorValueProblem(
   source: string,
   node: CssCstNode,
+  metadata: CssDiagnosticMetadata,
   atRuleName: string,
   descriptorName: string
 ): AtRuleDescriptorValueProblem | null {
@@ -2336,6 +2578,10 @@ function atRuleDescriptorValueProblem(
         return { descriptorName, value: rawSyntax, span: value.span };
       }
     }
+  }
+  const propertyValue = declarationPropertyValue(source, node);
+  if (propertyValue !== null && metadata.isKnownAtRuleDescriptorValue?.(atRuleName, descriptorName, propertyValue.fact) === false) {
+    return { descriptorName, value: propertyValue.fact.raw, span: propertyValue.span };
   }
   if (
     lowerAtRule === 'font-face'
@@ -2509,6 +2755,50 @@ function typedCustomPropertyValueProblem(source: string, node: CssCstNode): Type
   return compatible === false ? { syntax, value } : null;
 }
 
+function typedCustomPropertyRegistrationProblem(source: string, node: CssCstNode): TypedCustomPropertyRegistrationProblem | null {
+  let hasInherits = false;
+  let hasInitialValue = false;
+  let syntaxRequiresInitialValue = false;
+  let hasSyntaxDescriptor = false;
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child) || !DECLARATION_TYPES.has(child.grammarType)) {
+      continue;
+    }
+    const start = absoluteStart(child);
+    const end = absoluteEnd(child);
+    const name = propNameOf(source.slice(start, end)).toLowerCase();
+    if (name === 'inherits') {
+      hasInherits = true;
+    } else if (name === 'initial-value') {
+      hasInitialValue = true;
+    } else if (name === 'syntax') {
+      hasSyntaxDescriptor = true;
+      const syntax = typedCustomPropertySyntax(source, child);
+      if (syntax !== null && syntax.kind !== 'any') {
+        syntaxRequiresInitialValue = true;
+      }
+    }
+  }
+
+  const missing: string[] = [];
+  if (!hasSyntaxDescriptor) {
+    missing.push('syntax');
+  }
+  if (!hasInherits) {
+    missing.push('inherits');
+  }
+  if (syntaxRequiresInitialValue && !hasInitialValue) {
+    missing.push('initial-value');
+  }
+
+  return missing.length > 0
+    ? {
+        missing,
+        span: spanFromNodeStart(node, absoluteStart(node), atRuleNameEnd(source, absoluteStart(node), absoluteEnd(node)))
+      }
+    : null;
+}
+
 function isResolutionMediaFeatureDimension(source: string, dimensionStart: number): boolean {
   const open = source.lastIndexOf('(', dimensionStart);
   if (open < 0) {
@@ -2540,6 +2830,20 @@ function firstChildNodeMatching(node: CssCstNode, grammarTypes: ReadonlySet<stri
   return undefined;
 }
 
+function childNodesOf(node: CssCstNode): CssCstNode[] {
+  const children: CssCstNode[] = [];
+  for (const child of cstChildrenOf(node)) {
+    if (isCstNode(child)) {
+      children.push(child);
+    }
+  }
+  return children;
+}
+
+function childNodesOfType(node: CssCstNode, grammarType: string): CssCstNode[] {
+  return childNodesOf(node).filter(child => child.grammarType === grammarType);
+}
+
 function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNode | undefined {
   for (const child of cstChildrenOf(node)) {
     if (!isCstNode(child)) {
@@ -2554,6 +2858,359 @@ function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNod
     }
   }
   return undefined;
+}
+
+function hasDescendantNodeOf(node: CssCstNode, grammarType: string): boolean {
+  return firstDescendantNodeOf(node, grammarType) !== undefined;
+}
+
+const GUARD_OR_TYPES = new Set(['GuardOr', 'IfGuardOr', 'MixinGuardTopOr', 'MixinGuardOr', 'IfCondition']);
+const GUARD_AND_TYPES = new Set(['GuardAnd', 'IfGuardAnd', 'MixinGuardTopAnd', 'MixinGuardAnd', 'IfAnd']);
+const GUARD_COMPARE_TYPES = new Set(['GuardCompare', 'IfGuardCompare']);
+const GUARD_WRAPPER_TYPES = new Set([
+  'MixinGuard',
+  'GuardPrimary',
+  'GuardValue',
+  'IfGuard',
+  'IfGuardPrimary',
+  'IfGuardValue',
+  'IfTerm',
+  'IfAtom',
+  'MixinGuardTopTerm',
+  'MixinGuardTerm',
+  'MixinGuardOperand',
+  'FunctionCondition',
+  'FunctionConditionOr',
+  'FunctionConditionAnd',
+  'FunctionConditionTerm',
+  'FunctionConditionOperand',
+  'FunctionConditionParen'
+]);
+const STATIC_VALUE_WRAPPER_TYPES = new Set([
+  'ExpressionSum',
+  'ExpressionProduct',
+  'ExpressionAtom',
+  'Value',
+  'ValueTerm',
+  'ValueSpaceGroup',
+  'ValueAtom',
+  'ValueListWithPriority',
+  'ValueList',
+  'ValueSequence',
+  'TopSumMaybeDivision',
+  'TopSum',
+  'FunctionScalarArgument',
+  'Keyword',
+  'NamedColor',
+  'Number'
+]);
+const GUARD_COMPARISON_OPERATORS = new Set(['=', '==', '!=', '<', '>', '<=', '>=', '=<', '=>']);
+const DYNAMIC_GUARD_VALUE_TYPES = new Set([
+  'VariableReference',
+  'VarCall',
+  'FunctionCall',
+  'Call',
+  'GuardCall',
+  'Interpolation',
+  'SassInterpolation',
+  'VariableInterpolation'
+]);
+
+function directLeafValues(node: CssCstNode): string[] {
+  const values: string[] = [];
+  for (const child of cstChildrenOf(node)) {
+    if (child._tag === 'leaf') {
+      values.push(child.value);
+    }
+  }
+  return values;
+}
+
+function hasDirectLeaf(node: CssCstNode, value: string): boolean {
+  return directLeafValues(node).some(leaf => leaf.trim().toLowerCase() === value);
+}
+
+function foldGuardOr(source: string, nodes: readonly CssCstNode[]): boolean | null {
+  let hasUnknown = false;
+  for (const node of nodes) {
+    const truth = staticGuardTruth(source, node);
+    if (truth === true) {
+      return true;
+    }
+    if (truth === null) {
+      hasUnknown = true;
+    }
+  }
+  return hasUnknown ? null : false;
+}
+
+function foldGuardAnd(source: string, nodes: readonly CssCstNode[]): boolean | null {
+  let hasUnknown = false;
+  for (const node of nodes) {
+    const truth = staticGuardTruth(source, node);
+    if (truth === false) {
+      return false;
+    }
+    if (truth === null) {
+      hasUnknown = true;
+    }
+  }
+  return hasUnknown ? null : true;
+}
+
+function trimGuardText(source: string, node: CssCstNode): string {
+  return source.slice(absoluteStart(node), absoluteEnd(node)).trim();
+}
+
+function staticGuardValue(source: string, node: CssCstNode): StaticGuardValue | null {
+  if (DYNAMIC_GUARD_VALUE_TYPES.has(node.grammarType)) {
+    return null;
+  }
+  const text = trimGuardText(source, node);
+  const lower = text.toLowerCase();
+  if (lower === 'true') {
+    return { kind: 'boolean', value: true };
+  }
+  if (lower === 'false') {
+    return { kind: 'boolean', value: false };
+  }
+  if (lower === 'null') {
+    return { kind: 'null' };
+  }
+  const numeric = /^([+-]?(?:\d*\.\d+|\d+))(?:([a-z%]+))?$/i.exec(text);
+  if (numeric !== null) {
+    return {
+      kind: 'number',
+      value: Number(numeric[1]),
+      unit: (numeric[2] ?? '').toLowerCase()
+    };
+  }
+  if (isQuotedCstNode(node) && text.length >= 2) {
+    return hasDynamicSyntax(text)
+      ? null
+      : { kind: 'string', value: text.slice(1, -1) };
+  }
+  if (/^-?[_a-z][_a-z0-9-]*$/i.test(text)) {
+    return { kind: 'string', value: lower };
+  }
+  const children = childNodesOf(node);
+  return children.length === 1 && STATIC_VALUE_WRAPPER_TYPES.has(node.grammarType)
+    ? staticGuardValue(source, children[0]!)
+    : null;
+}
+
+function guardValueTruth(value: StaticGuardValue | null): boolean | null {
+  if (value === null) {
+    return null;
+  }
+  if (value.kind === 'boolean') {
+    return value.value;
+  }
+  if (value.kind === 'null') {
+    return false;
+  }
+  return null;
+}
+
+function guardValuesEqual(left: StaticGuardValue, right: StaticGuardValue): boolean | null {
+  if (left.kind !== right.kind) {
+    return left.kind === 'null' || right.kind === 'null' || left.kind === 'boolean' || right.kind === 'boolean'
+      ? false
+      : null;
+  }
+  if (left.kind === 'null') {
+    return true;
+  }
+  if (left.kind === 'boolean') {
+    return left.value === right.value;
+  }
+  if (left.kind === 'string') {
+    return left.value === right.value;
+  }
+  return left.unit === right.unit ? left.value === right.value : null;
+}
+
+function compareStaticGuardValues(left: StaticGuardValue, operator: string, right: StaticGuardValue): boolean | null {
+  const normalizedOperator = operator === '=<' ? '<=' : operator === '=>' ? '>=' : operator;
+  if (normalizedOperator === '=' || normalizedOperator === '==') {
+    return guardValuesEqual(left, right);
+  }
+  if (normalizedOperator === '!=') {
+    const equal = guardValuesEqual(left, right);
+    return equal === null ? null : !equal;
+  }
+  if (left.kind !== 'number' || right.kind !== 'number' || left.unit !== right.unit) {
+    return null;
+  }
+  switch (normalizedOperator) {
+    case '<':
+      return left.value < right.value;
+    case '>':
+      return left.value > right.value;
+    case '<=':
+      return left.value <= right.value;
+    case '>=':
+      return left.value >= right.value;
+    default:
+      return null;
+  }
+}
+
+function comparisonOperatorOf(node: CssCstNode): string | null {
+  for (const value of directLeafValues(node)) {
+    const trimmed = value.trim();
+    if (GUARD_COMPARISON_OPERATORS.has(trimmed)) {
+      return trimmed;
+    }
+  }
+  return null;
+}
+
+function staticComparisonTruth(source: string, node: CssCstNode): boolean | null {
+  const operator = comparisonOperatorOf(node);
+  if (operator === null) {
+    return null;
+  }
+  const operands = childNodesOf(node);
+  if (operands.length !== 2) {
+    return null;
+  }
+  const left = staticGuardValue(source, operands[0]!);
+  const right = staticGuardValue(source, operands[1]!);
+  return left === null || right === null ? null : compareStaticGuardValues(left, operator, right);
+}
+
+function staticGuardTruth(source: string, node: CssCstNode): boolean | null {
+  if (GUARD_OR_TYPES.has(node.grammarType)) {
+    return foldGuardOr(source, childNodesOf(node));
+  }
+  if (GUARD_AND_TYPES.has(node.grammarType)) {
+    return foldGuardAnd(source, childNodesOf(node));
+  }
+  if (GUARD_COMPARE_TYPES.has(node.grammarType)) {
+    return staticComparisonTruth(source, node);
+  }
+  const termComparison = staticComparisonTruth(source, node);
+  if (termComparison !== null) {
+    return termComparison;
+  }
+  const children = childNodesOf(node);
+  if (hasDirectLeaf(node, 'not')) {
+    const truth = children.length === 1 ? staticGuardTruth(source, children[0]!) : null;
+    return truth === null ? null : !truth;
+  }
+  const valueTruth = guardValueTruth(staticGuardValue(source, node));
+  if (valueTruth !== null) {
+    return valueTruth;
+  }
+  return children.length === 1 && GUARD_WRAPPER_TYPES.has(node.grammarType)
+    ? staticGuardTruth(source, children[0]!)
+    : null;
+}
+
+function compactGuardText(text: string): string {
+  let compact = '';
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      compact += text[i]!.toLowerCase();
+    }
+  }
+  return compact;
+}
+
+function outerParensWrapWholeText(text: string): boolean {
+  if (text.length < 2 || text.charCodeAt(0) !== 40 /* ( */ || text.charCodeAt(text.length - 1) !== 41 /* ) */) {
+    return false;
+  }
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code === 40 /* ( */) {
+      depth++;
+    } else if (code === 41 /* ) */) {
+      depth--;
+      if (depth === 0 && i !== text.length - 1) {
+        return false;
+      }
+      if (depth < 0) {
+        return false;
+      }
+    }
+  }
+  return depth === 0;
+}
+
+function stripOuterGuardParens(text: string): string {
+  let current = text.trim();
+  while (outerParensWrapWholeText(current)) {
+    current = current.slice(1, -1).trim();
+  }
+  return current;
+}
+
+function defaultGuardTermPolarity(source: string, node: CssCstNode): 'positive' | 'negative' | null {
+  if (!hasDescendantNodeOf(node, 'MixinGuardDefaultOperand')) {
+    return null;
+  }
+  const negative = hasDirectLeaf(node, 'not');
+  let text = trimGuardText(source, node);
+  if (negative) {
+    text = text.trimStart().slice('not'.length);
+  }
+  return compactGuardText(stripOuterGuardParens(text)) === 'default()'
+    ? negative ? 'negative' : 'positive'
+    : null;
+}
+
+function contradictoryDefaultBranchSpan(source: string, node: CssCstNode): DiagnosticSpan | null {
+  if (node.grammarType === 'MixinGuardTopAnd') {
+    let hasPositive = false;
+    let hasNegative = false;
+    for (const term of childNodesOfType(node, 'MixinGuardTopTerm')) {
+      const polarity = defaultGuardTermPolarity(source, term);
+      if (polarity === 'positive') {
+        hasPositive = true;
+      } else if (polarity === 'negative') {
+        hasNegative = true;
+      }
+    }
+    if (hasPositive && hasNegative) {
+      return node.span;
+    }
+  }
+  for (const child of childNodesOf(node)) {
+    const span = contradictoryDefaultBranchSpan(source, child);
+    if (span !== null) {
+      return span;
+    }
+  }
+  return null;
+}
+
+function ownedMixinGuardNode(node: CssCstNode): CssCstNode | null {
+  const direct = firstChildNodeOf(node, 'MixinGuard');
+  if (direct !== undefined) {
+    return direct;
+  }
+  const lessDefinition = lessMixinDefinitionChild(node);
+  if (lessDefinition !== undefined) {
+    return firstChildNodeOf(lessDefinition, 'MixinGuard') ?? null;
+  }
+  const signature = firstChildNodeOf(node, 'MixinSignature');
+  if (signature === undefined) {
+    return null;
+  }
+  return firstChildNodeOf(signature, 'MixinGuard') ?? null;
+}
+
+function isVariableNameChar(code: number): boolean {
+  return code === 45
+    || code === 95
+    || code >= 128
+    || (code >= 48 && code <= 57)
+    || (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122);
 }
 
 function authoredVariableNameOf(source: string, start: number, end: number): { name: string; start: number; end: number } | null {
@@ -2574,15 +3231,7 @@ function authoredVariableNameOf(source: string, start: number, end: number): { n
   }
   let nameEnd = nameStart + 1;
   while (nameEnd < end) {
-    const code = source.charCodeAt(nameEnd);
-    if (
-      code === 45
-      || code === 95
-      || code >= 128
-      || (code >= 48 && code <= 57)
-      || (code >= 65 && code <= 90)
-      || (code >= 97 && code <= 122)
-    ) {
+    if (isVariableNameChar(source.charCodeAt(nameEnd))) {
       nameEnd++;
       continue;
     }
@@ -2592,6 +3241,22 @@ function authoredVariableNameOf(source: string, start: number, end: number): { n
     return null;
   }
   return { name: source.slice(nameStart, nameEnd), start: nameStart, end: nameEnd };
+}
+
+function authoredLessInterpolationVariableNameOf(source: string, start: number, end: number): string | null {
+  let nameStart = start;
+  while (nameStart < end) {
+    const code = source.charCodeAt(nameStart);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      break;
+    }
+    nameStart++;
+  }
+  let nameEnd = nameStart;
+  while (nameEnd < end && isVariableNameChar(source.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  return nameEnd > nameStart ? source.slice(nameStart, nameEnd) : null;
 }
 
 function variableDeclarationOf(source: string, node: CssCstNode, language: JessLanguage): VariableDeclarationFact | null {
@@ -2611,8 +3276,292 @@ function variableDeclarationOf(source: string, node: CssCstNode, language: JessL
   return {
     name: normalizedVariableName(authored.name, language),
     display: authored.name,
-    span: nameNode !== undefined ? nameNode.span : spanFromNodeStart(node, authored.start, authored.end)
+    span: nameNode !== undefined ? nameNode.span : spanFromNodeStart(node, authored.start, authored.end),
+    configurable: language === 'scss' && directLeafValues(node).includes('!default')
   };
+}
+
+function firstIdentifierSpan(source: string, start: number, end: number): { value: string; start: number; end: number } | null {
+  let cursor = start;
+  while (cursor < end && isCssWhitespace(source.charCodeAt(cursor))) {
+    cursor++;
+  }
+  if (cursor >= end || !isIdentStart(source.charCodeAt(cursor))) {
+    return null;
+  }
+  const nameStart = cursor;
+  cursor++;
+  while (cursor < end) {
+    const code = source.charCodeAt(cursor);
+    if (!isIdentChar(code)) {
+      break;
+    }
+    cursor++;
+  }
+  return { value: source.slice(nameStart, cursor), start: nameStart, end: cursor };
+}
+
+function scssNamedRuleName(source: string, node: CssCstNode, keyword: string): MixinDefinitionFact | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  const nameStart = start + keyword.length;
+  const name = firstIdentifierSpan(source, nameStart, end);
+  return name === null
+    ? null
+    : {
+        name: normalizedScssCallableName(name.value),
+        display: name.value,
+        span: spanFromNodeStart(node, name.start, name.end)
+      };
+}
+
+function scssMixinCallName(source: string, node: CssCstNode): string | null {
+  const fact = scssMixinCallFactOf(source, node);
+  return fact === null ? null : fact.name;
+}
+
+function scssMixinCallFactOf(source: string, node: CssCstNode): MixinReferenceFact | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  const nameStart = start + '@include'.length;
+  const name = firstIdentifierSpan(source, nameStart, end);
+  return name === null
+    ? null
+    : {
+        name: normalizedScssCallableName(name.value),
+        display: name.value,
+        span: spanFromNodeStart(node, name.start, name.end)
+      };
+}
+
+function normalizedScssCallableName(name: string): string {
+  return name.replace(/_/g, '-');
+}
+
+function lessMixinNameFromSelector(source: string, selector: CssCstNode): MixinDefinitionFact | null {
+  const start = absoluteStart(selector);
+  const end = absoluteEnd(selector);
+  const raw = source.slice(start, end);
+  if (raw.includes('@{')) {
+    return null;
+  }
+  const normalized = normalizedSelectorText(source, start, end);
+  return normalized.length === 0
+    ? null
+    : {
+        name: normalized,
+        display: selectorDisplay(source, start, end),
+        span: selector.span
+      };
+}
+
+function lessMixinStatementChild(node: CssCstNode): CssCstNode | undefined {
+  return node.grammarType === 'Statement' ? firstChildNodeOf(node, 'MixinStatement') : undefined;
+}
+
+function lessMixinDefinitionChild(node: CssCstNode): CssCstNode | undefined {
+  const statement = lessMixinStatementChild(node);
+  return statement === undefined
+    ? firstChildNodeOf(node, 'MixinDefinition')
+    : firstChildNodeOf(statement, 'MixinDefinition');
+}
+
+function lessMixinCallChild(node: CssCstNode): CssCstNode | undefined {
+  const statement = lessMixinStatementChild(node);
+  return statement === undefined
+    ? firstChildNodeOf(node, 'MixinCall')
+    : firstChildNodeOf(statement, 'MixinCall');
+}
+
+function jessMixinNameSpan(source: string, node: CssCstNode): MixinDefinitionFact | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  const open = source.indexOf('(', start);
+  if (open < 0 || open >= end) {
+    return null;
+  }
+  const trimmed = trimOffsets(source.slice(start, open), start);
+  if (trimmed.start >= trimmed.end || source.slice(trimmed.start, trimmed.end).includes('{')) {
+    return null;
+  }
+  const display = source.slice(trimmed.start, trimmed.end);
+  return {
+    name: display,
+    display,
+    span: spanFromNodeStart(node, trimmed.start, trimmed.end)
+  };
+}
+
+function jessMixinCallName(source: string, node: CssCstNode): string | null {
+  const fact = jessMixinCallFactOf(source, node);
+  return fact === null ? null : fact.name;
+}
+
+function jessMixinCallFactOf(source: string, node: CssCstNode): MixinReferenceFact | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  const open = source.indexOf('(', start);
+  if (open < 0 || open >= end) {
+    return null;
+  }
+  const targetStart = source.lastIndexOf('>', open);
+  const trimmed = trimOffsets(source.slice(targetStart < start ? start : targetStart + 1, open), targetStart < start ? start : targetStart + 1);
+  if (trimmed.start >= trimmed.end) {
+    return null;
+  }
+  const display = source.slice(trimmed.start, trimmed.end);
+  return {
+    name: display,
+    display,
+    span: spanFromNodeStart(node, trimmed.start, trimmed.end)
+  };
+}
+
+function mixinDefinitionOf(source: string, node: CssCstNode, language: JessLanguage): MixinDefinitionFact | null {
+  if (language === 'css') {
+    return null;
+  }
+  if (language === 'less') {
+    if (node.grammarType !== 'Statement' || lessMixinDefinitionChild(node) === undefined) {
+      return null;
+    }
+    const selector = firstChildNodeOf(node, 'SelectorBranch');
+    return selector === undefined ? null : lessMixinNameFromSelector(source, selector);
+  }
+  if (language === 'scss') {
+    return node.grammarType === 'MixinDefinition' ? scssNamedRuleName(source, node, '@mixin') : null;
+  }
+  return MIXIN_DEFINITION_TYPES.has(node.grammarType) ? jessMixinNameSpan(source, node) : null;
+}
+
+function mixinCallNamesOf(source: string, node: CssCstNode, language: JessLanguage): readonly string[] {
+  if (language === 'css') {
+    return [];
+  }
+  if (language === 'less') {
+    if (node.grammarType !== 'Statement' || lessMixinCallChild(node) === undefined) {
+      return [];
+    }
+    const selector = firstChildNodeOf(node, 'SelectorBranch');
+    if (selector === undefined) {
+      return [];
+    }
+    const start = absoluteStart(selector);
+    const end = absoluteEnd(selector);
+    const names = new Set<string>();
+    const full = normalizedSelectorText(source, start, end);
+    if (full.length > 0) {
+      names.add(full);
+    }
+    const text = source.slice(start, end);
+    let cursor = 0;
+    while (cursor < text.length) {
+      const marker = text.charCodeAt(cursor);
+      if (marker !== 35 && marker !== 46) {
+        cursor++;
+        continue;
+      }
+      let nameEnd = cursor + 1;
+      while (nameEnd < text.length && isIdentChar(text.charCodeAt(nameEnd))) {
+        nameEnd++;
+      }
+      if (nameEnd > cursor + 1) {
+        names.add(text.slice(cursor, nameEnd));
+      }
+      cursor = nameEnd;
+    }
+    return [...names];
+  }
+  if (language === 'scss') {
+    const name = node.grammarType === 'MixinCall' ? scssMixinCallName(source, node) : null;
+    return name === null ? [] : [name];
+  }
+  const name = node.grammarType === 'MixinCall' ? jessMixinCallName(source, node) : null;
+  return name === null ? [] : [name];
+}
+
+function exactDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNode | null {
+  const descendant = firstDescendantNodeOf(node, grammarType);
+  return descendant !== undefined
+    && absoluteStart(descendant) === absoluteStart(node)
+    && absoluteEnd(descendant) === absoluteEnd(node)
+    ? descendant
+    : null;
+}
+
+function blockLambdaYieldsValue(source: string, node: CssCstNode): boolean {
+  if (node.grammarType !== 'BlockLambda') {
+    return false;
+  }
+  const params = firstChildNodeOf(node, 'MixinParams');
+  if (params === undefined) {
+    return false;
+  }
+  const start = absoluteEnd(params);
+  const end = absoluteEnd(node);
+  const bodyStart = source.indexOf('{', start);
+  return bodyStart >= start && bodyStart < end && source.slice(start, bodyStart).includes('>');
+}
+
+function jessFunctionValueNode(node: CssCstNode): CssCstNode | null {
+  const value = firstChildNodeMatching(node, MAP_LIKE_VALUE_TYPES) ?? firstChildNodeOf(node, 'Value');
+  if (value === undefined) {
+    return null;
+  }
+  const expressionLambda = exactDescendantNodeOf(value, 'ExpressionLambda');
+  if (expressionLambda !== null) {
+    return expressionLambda;
+  }
+  const blockLambda = exactDescendantNodeOf(value, 'BlockLambda');
+  return blockLambda !== null ? blockLambda : null;
+}
+
+function functionDefinitionOf(source: string, node: CssCstNode, language: JessLanguage): FunctionDefinitionFact | null {
+  if (language === 'scss') {
+    return node.grammarType === 'FunctionRule' ? scssNamedRuleName(source, node, '@function') : null;
+  }
+  if (language !== 'jess') {
+    return null;
+  }
+  const declaration = variableDeclarationOf(source, node, language);
+  const value = declaration === null ? null : jessFunctionValueNode(node);
+  if (declaration === null || value === null) {
+    return null;
+  }
+  if (value.grammarType === 'BlockLambda' && !blockLambdaYieldsValue(source, value)) {
+    return null;
+  }
+  return declaration;
+}
+
+function functionReferenceNameOf(source: string, node: CssCstNode, language: JessLanguage): string | null {
+  if (language === 'scss' && node.grammarType === 'Call') {
+    const name = functionNameOf(source, absoluteStart(node), absoluteEnd(node));
+    return name === null ? null : normalizedScssCallableName(name);
+  }
+  if (language === 'jess') {
+    return variableReferenceNameOf(source, node, language);
+  }
+  return null;
+}
+
+function createChildVariableScope(parent: VariableScope): VariableScope {
+  return {
+    declarations: new Map(),
+    parent
+  };
+}
+
+function nearestOuterVariableDeclaration(scope: VariableScope, name: string): VariableDeclarationFact | null {
+  let current = scope.parent;
+  while (current !== null) {
+    const declaration = current.declarations.get(name);
+    if (declaration !== undefined) {
+      return declaration;
+    }
+    current = current.parent;
+  }
+  return null;
 }
 
 function nodeContainsExactDescendant(node: CssCstNode, grammarType: string): boolean {
@@ -2655,6 +3604,46 @@ function variableReferenceNameOf(source: string, node: CssCstNode, language: Jes
     return null;
   }
   return normalizedVariableName(authored.name, language);
+}
+
+function variableReferenceFactOf(source: string, node: CssCstNode, language: JessLanguage): VariableReferenceFact | null {
+  if (language === 'css') {
+    return null;
+  }
+  if (node.grammarType === 'VariableInterpolation') {
+    const start = absoluteStart(node);
+    const end = absoluteEnd(node);
+    if (language === 'less' && source.charCodeAt(start) === 64 /* @ */ && source.charCodeAt(start + 1) === 123 /* { */) {
+      const name = authoredLessInterpolationVariableNameOf(source, start + 2, end);
+      if (name === null) {
+        return null;
+      }
+      return {
+        name: normalizedVariableName(`@${name}`, language),
+        display: source.slice(start, end),
+        span: node.span
+      };
+    }
+    return null;
+  }
+  if (node.grammarType !== 'VariableReference' && node.grammarType !== 'Reference') {
+    return null;
+  }
+  const authored = authoredVariableNameOf(source, absoluteStart(node), absoluteEnd(node));
+  if (authored === null) {
+    return null;
+  }
+  if (language === 'less' && authored.name.charCodeAt(0) !== 64) {
+    return null;
+  }
+  if ((language === 'scss' || language === 'jess') && authored.name.charCodeAt(0) !== 36) {
+    return null;
+  }
+  return {
+    name: normalizedVariableName(authored.name, language),
+    display: authored.name,
+    span: spanFromNodeStart(node, authored.start, authored.end)
+  };
 }
 
 function numericBracketAccessSpan(source: string, node: CssCstNode): DiagnosticSpan | null {
@@ -2895,7 +3884,8 @@ function selectorBranches(source: string, selectorList: CssCstNode): readonly Se
     branches.push({
       key,
       display: selectorDisplay(source, start, end),
-      span: child.span
+      span: child.span,
+      node: child
     });
   }
   return branches;
@@ -2903,6 +3893,21 @@ function selectorBranches(source: string, selectorList: CssCstNode): readonly Se
 
 function selectorListKey(branches: readonly SelectorBranchFact[]): string {
   return branches.map(branch => branch.key).sort().join('\n');
+}
+
+function rulesetContainsCascadeDeclaration(node: CssCstNode): boolean {
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (DECLARATION_TYPES.has(child.grammarType) || CUSTOM_DECLARATION_TYPES.has(child.grammarType)) {
+      return true;
+    }
+    if (ATRULE_TYPES.has(child.grammarType) && rulesetContainsCascadeDeclaration(child)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function collectRuleSelectorBranches(source: string, selector: CssCstNode): SelectorBranchFact[] {
@@ -2916,7 +3921,8 @@ function collectRuleSelectorBranches(source: string, selector: CssCstNode): Sele
         branches.push({
           key,
           display: selectorDisplay(source, start, end),
-          span: node.span
+          span: node.span,
+          node
         });
       }
       return;
@@ -2929,6 +3935,216 @@ function collectRuleSelectorBranches(source: string, selector: CssCstNode): Sele
   };
   visit(selector);
   return branches;
+}
+
+function lastCompoundSelectorNode(node: CssCstNode): CssCstNode | null {
+  let found: CssCstNode | null = node.grammarType === 'CompoundSelector' ? node : null;
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    const nested = lastCompoundSelectorNode(child);
+    if (nested !== null) {
+      found = nested;
+    }
+  }
+  return found;
+}
+
+function noDescendingSpecificityReferenceKey(source: string, branch: CssCstNode): string | null {
+  const compound = lastCompoundSelectorNode(branch);
+  if (compound === null) {
+    return null;
+  }
+  let reference = '';
+  for (const child of cstChildrenOf(compound)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (PSEUDO_SELECTOR_TYPES.has(child.grammarType)) {
+      const start = absoluteStart(child);
+      const end = absoluteEnd(child);
+      const pseudo = pseudoNameSpan(source, start, end);
+      if (pseudo === null) {
+        return null;
+      }
+      const bare = pseudo.bare.toLowerCase();
+      if (pseudo.colonCount !== 2 && !LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS.has(bare)) {
+        continue;
+      }
+    }
+    reference += normalizedSelectorText(source, absoluteStart(child), absoluteEnd(child));
+  }
+  return reference.length === 0 ? null : reference;
+}
+
+function specificityLabel(specificity: SelectorSpecificity): string {
+  return `${specificity.a},${specificity.b},${specificity.c}`;
+}
+
+function compareSpecificity(left: SelectorSpecificity, right: SelectorSpecificity): number {
+  if (left.a !== right.a) {
+    return left.a - right.a;
+  }
+  if (left.b !== right.b) {
+    return left.b - right.b;
+  }
+  return left.c - right.c;
+}
+
+function addSpecificity(left: SelectorSpecificity, right: SelectorSpecificity): SelectorSpecificity {
+  return {
+    a: left.a + right.a,
+    b: left.b + right.b,
+    c: left.c + right.c
+  };
+}
+
+function maxSpecificity(left: SelectorSpecificity | null, right: SelectorSpecificity): SelectorSpecificity {
+  if (left === null) {
+    return right;
+  }
+  if (right.a !== left.a) {
+    return right.a > left.a ? right : left;
+  }
+  if (right.b !== left.b) {
+    return right.b > left.b ? right : left;
+  }
+  return right.c > left.c ? right : left;
+}
+
+function selectorArgumentMaxSpecificity(source: string, node: CssCstNode): SelectorSpecificity | null {
+  let best: SelectorSpecificity | null = null;
+  let supported = true;
+  const visit = (current: CssCstNode) => {
+    if (!supported) {
+      return;
+    }
+    if (SELECTOR_BRANCH_TYPES.has(current.grammarType)) {
+      const specificity = staticSelectorSpecificity(source, current);
+      if (specificity === null) {
+        supported = false;
+        return;
+      }
+      best = maxSpecificity(best, specificity);
+      return;
+    }
+    for (const child of cstChildrenOf(current)) {
+      if (isCstNode(child)) {
+        visit(child);
+      }
+    }
+  };
+  for (const child of cstChildrenOf(node)) {
+    if (isCstNode(child)) {
+      visit(child);
+    }
+  }
+  return supported ? best : null;
+}
+
+function pseudoSelectorSpecificity(source: string, node: CssCstNode, start: number, end: number): SelectorSpecificity | null {
+  const pseudo = pseudoNameSpan(source, start, end);
+  if (pseudo === null) {
+    return null;
+  }
+  const bare = pseudo.bare.toLowerCase();
+  const isPseudoElement = pseudo.colonCount === 2 || LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS.has(bare);
+  if (isPseudoElement) {
+    const base = { a: 0, b: 0, c: 1 };
+    if (!ADDITIVE_SELECTOR_ARGUMENT_PSEUDO_ELEMENTS.has(bare)) {
+      return base;
+    }
+    const argument = selectorArgumentMaxSpecificity(source, node);
+    return argument === null ? base : addSpecificity(base, argument);
+  }
+  if (ZERO_SPECIFICITY_PSEUDO_CLASSES.has(bare)) {
+    return { a: 0, b: 0, c: 0 };
+  }
+  if (SELECTOR_ARGUMENT_PSEUDO_CLASSES.has(bare)) {
+    return selectorArgumentMaxSpecificity(source, node);
+  }
+  const base = { a: 0, b: 1, c: 0 };
+  if (ANB_PSEUDO_CLASSES.has(bare) || ADDITIVE_SELECTOR_ARGUMENT_PSEUDO_CLASSES.has(bare)) {
+    const argument = selectorArgumentMaxSpecificity(source, node);
+    return argument === null ? base : addSpecificity(base, argument);
+  }
+  return base;
+}
+
+function staticSelectorSpecificity(source: string, branch: CssCstNode): SelectorSpecificity | null {
+  const start = absoluteStart(branch);
+  const end = absoluteEnd(branch);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return null;
+  }
+  const text = source.slice(start, end);
+  if (hasDynamicSyntax(text)) {
+    return null;
+  }
+
+  let a = 0;
+  let b = 0;
+  let c = 0;
+  let supported = true;
+  const visit = (node: CssCstNode) => {
+    if (!supported) {
+      return;
+    }
+    const nodeStart = absoluteStart(node);
+    const nodeEnd = absoluteEnd(node);
+    if (!Number.isFinite(nodeStart) || !Number.isFinite(nodeEnd) || nodeEnd <= nodeStart) {
+      supported = false;
+      return;
+    }
+    if (PSEUDO_SELECTOR_TYPES.has(node.grammarType)) {
+      const specificity = pseudoSelectorSpecificity(source, node, nodeStart, nodeEnd);
+      if (specificity === null) {
+        supported = false;
+        return;
+      }
+      a += specificity.a;
+      b += specificity.b;
+      c += specificity.c;
+      return;
+    }
+    if (ATTRIBUTE_SELECTOR_TYPES.has(node.grammarType)) {
+      b++;
+      return;
+    }
+    if (BASIC_SELECTOR_TYPES.has(node.grammarType)) {
+      const raw = basicSelectorText(source, node)?.trim();
+      if (raw === undefined || raw.length === 0) {
+        supported = false;
+        return;
+      }
+      if (raw === '*') {
+        return;
+      }
+      const first = raw.charCodeAt(0);
+      if (first === 35 /* # */) {
+        a++;
+        return;
+      }
+      if (first === 46 /* . */ || first === 91 /* [ */) {
+        b++;
+        return;
+      }
+      if (first === 38 /* & */) {
+        supported = false;
+        return;
+      }
+      c++;
+      return;
+    }
+    for (const child of cstChildrenOf(node)) {
+      if (isCstNode(child)) {
+        visit(child);
+      }
+    }
+  };
+  visit(branch);
+  return supported ? { a, b, c } : null;
 }
 
 function exactExtendTargetFact(source: string, target: CssCstNode): ExactExtendTargetFact | null {
@@ -3637,19 +4853,118 @@ function invalidImportPositionSpans(source: string): DiagnosticSpan[] {
   return spans;
 }
 
+type UnsupportedForwardSpan = {
+  readonly kind: 'prefix' | 'visibility';
+  readonly span: DiagnosticSpan;
+};
+
+function unsupportedScssForwardSpans(source: string): UnsupportedForwardSpan[] {
+  const spans: UnsupportedForwardSpan[] = [];
+  const scan = blankStringsAndComments(source);
+  const forwardRe = /@forward\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = forwardRe.exec(scan)) !== null) {
+    const start = match.index;
+    const nameEnd = start + '@forward'.length;
+    const construct = cssConstructEnd(source, nameEnd, source.length);
+    const rawPrelude = source.slice(nameEnd, construct.end).replace(/;+\s*$/, '');
+    const prelude = stripComments(rawPrelude).replace(/\s+/g, ' ').trim();
+    if (FORWARD_AS_PREFIX.test(prelude)) {
+      spans.push({ kind: 'prefix', span: sourceSpan(source, start, construct.end) });
+    }
+    if (FORWARD_VISIBILITY.test(prelude)) {
+      spans.push({ kind: 'visibility', span: sourceSpan(source, start, construct.end) });
+    }
+    forwardRe.lastIndex = Math.max(forwardRe.lastIndex, construct.end);
+  }
+  return spans;
+}
+
+function conditionEndBeforeBlock(source: string, start: number): number {
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  for (let i = start; i < source.length; i++) {
+    const code = source.charCodeAt(i);
+    if (code === 40 /* ( */) {
+      parenDepth++;
+    } else if (code === 41 /* ) */) {
+      parenDepth = Math.max(0, parenDepth - 1);
+    } else if (code === 91 /* [ */) {
+      bracketDepth++;
+    } else if (code === 93 /* ] */) {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+    } else if (code === 123 /* { */ && parenDepth === 0 && bracketDepth === 0) {
+      return i;
+    }
+  }
+  return start;
+}
+
+function staticGuardTextTruth(text: string): boolean | null {
+  const value = stripOuterGuardParens(text).trim();
+  const lower = value.toLowerCase();
+  if (lower === 'true') {
+    return true;
+  }
+  if (lower === 'false' || lower === 'null') {
+    return false;
+  }
+  if (lower.startsWith('not(') && lower.endsWith(')')) {
+    const truth = staticGuardTextTruth(value.slice(4, -1));
+    return truth === null ? null : !truth;
+  }
+  const numericComparison = /^([+-]?(?:\d*\.\d+|\d+))([a-z%]*)\s*(<=|>=|=<|=>|==|!=|=|<|>)\s*([+-]?(?:\d*\.\d+|\d+))([a-z%]*)$/i.exec(value);
+  if (numericComparison === null) {
+    return null;
+  }
+  const leftUnit = numericComparison[2]!.toLowerCase();
+  const rightUnit = numericComparison[5]!.toLowerCase();
+  if (leftUnit !== rightUnit) {
+    return null;
+  }
+  return compareStaticGuardValues(
+    { kind: 'number', value: Number(numericComparison[1]), unit: leftUnit },
+    numericComparison[3]!,
+    { kind: 'number', value: Number(numericComparison[4]), unit: rightUnit }
+  );
+}
+
+function impossibleScssIfConditionSpans(source: string): DiagnosticSpan[] {
+  const spans: DiagnosticSpan[] = [];
+  const scan = blankStringsAndComments(source);
+  const ifRe = /@(?:else\s+)?if\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = ifRe.exec(scan)) !== null) {
+    const rawStart = match.index + match[0]!.length;
+    const end = conditionEndBeforeBlock(scan, rawStart);
+    if (end <= rawStart) {
+      continue;
+    }
+    const trimmed = trimOffsets(source.slice(rawStart, end), rawStart);
+    if (trimmed.start >= trimmed.end) {
+      continue;
+    }
+    if (staticGuardTextTruth(source.slice(trimmed.start, trimmed.end)) === false) {
+      spans.push(sourceSpan(source, trimmed.start, trimmed.end));
+    }
+  }
+  return spans;
+}
+
 function diagnostic(
   code: string,
   defaultSeverity: DiagnosticSeverityName,
   message: string,
   span: DiagnosticSpan,
   filePath?: string,
-  qualifiers?: readonly string[]
+  qualifiers?: readonly string[],
+  phase?: Phase
 ): SourceDiagnostic {
   const start = Number(span.start);
   const end = Number(span.end);
   return {
     code,
-    phase: code.startsWith('parse/') ? 'parse' : 'lint',
+    phase: phase ?? (code.startsWith('parse/') ? 'parse' : 'lint'),
     source: 'jess',
     message,
     reason: '',
@@ -3664,6 +4979,87 @@ function diagnostic(
     endColumn: span.endColumn,
     qualifiers
   };
+}
+
+type SourceDiagnosticPusher = (
+  code: string,
+  severity: DiagnosticSeverityName,
+  message: string,
+  span: DiagnosticSpan,
+  qualifiers?: readonly string[]
+) => void;
+
+function pushTolerantSourceScanDiagnostics(
+  source: string,
+  language: JessLanguage,
+  push: SourceDiagnosticPusher
+): void {
+  if (language === 'css') {
+    for (const span of invalidImportPositionSpans(source)) {
+      push(
+        LINT_CODES.invalidImportPosition,
+        'warning',
+        'Invalid position for @import rule',
+        span
+      );
+    }
+  }
+  if (language === 'scss') {
+    for (const forward of unsupportedScssForwardSpans(source)) {
+      push(
+        LINT_CODES.unsupportedSassForm,
+        'warning',
+        forward.kind === 'prefix'
+          ? '@forward with "as <prefix>-*" prefixing is not supported in Jess and will never be. Use explicit namespacing instead.'
+          : '@forward with "show"/"hide" lists is not supported in Jess and will never be. Visibility control belongs to the module itself.',
+        forward.span
+      );
+    }
+    for (const span of impossibleScssIfConditionSpans(source)) {
+      push(
+        LINT_CODES.impossibleGuards,
+        'warning',
+        'Guard is statically false; this branch can never run',
+        span
+      );
+    }
+  }
+
+  const sourceForHexScan = blankStringsAndComments(source);
+  const sourceHexRe = /#([0-9a-fA-F]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = sourceHexRe.exec(sourceForHexScan)) !== null) {
+    const digits = match[1]!.length;
+    if (digits !== 3 && digits !== 4 && digits !== 6 && digits !== 8 && isDeclarationValueContext(sourceForHexScan, match.index)) {
+      push(
+        LINT_CODES.hexColorLength,
+        'error',
+        `Hex color '${match[0]}' does not have 3, 4, 6 or 8 digits`,
+        spanFromOffsets(match.index, match.index + match[0].length)
+      );
+    }
+  }
+}
+
+function tolerantSourceScanDiagnostics(
+  source: string,
+  language: JessLanguage,
+  filePath?: string
+): SourceDiagnostic[] {
+  const out: SourceDiagnostic[] = [];
+  const emitted = new Set<string>();
+  const push: SourceDiagnosticPusher = (code, severity, message, span, qualifiers) => {
+    const start = Number(span.start);
+    const end = Number(span.end);
+    const key = `${code}:${start}:${Math.max(start, end)}:${message}`;
+    if (emitted.has(key)) {
+      return;
+    }
+    emitted.add(key);
+    out.push(diagnostic(code, severity, message, span, filePath, qualifiers));
+  };
+  pushTolerantSourceScanDiagnostics(source, language, push);
+  return out;
 }
 
 function spanFromOffsets(start: number, end: number): DiagnosticSpan {
@@ -3729,6 +5125,10 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
     isKnownAtRuleDescriptor(atRuleName, descriptorName) {
       return metadata?.isKnownAtRuleDescriptor?.(atRuleName, descriptorName)
         ?? defaultCssDiagnosticMetadata.isKnownAtRuleDescriptor(atRuleName, descriptorName);
+    },
+    isKnownAtRuleDescriptorValue(atRuleName, descriptorName, value) {
+      return metadata?.isKnownAtRuleDescriptorValue?.(atRuleName, descriptorName, value)
+        ?? defaultCssDiagnosticMetadata.isKnownAtRuleDescriptorValue?.(atRuleName, descriptorName, value);
     },
     isKnownFunction(name) {
       return metadata?.isKnownFunction?.(name) ?? defaultCssDiagnosticMetadata.isKnownFunction(name);
@@ -3814,13 +5214,16 @@ export function parseDiagnosticsForDoc(doc: ParseDiagnosticSource, filePath?: st
 }
 
 export function cstLintDiagnostics(
-  root: CssCstNode,
+  root: CssCstNode | null,
   source: string,
   language: JessLanguage,
   metadata?: Partial<CssDiagnosticMetadata>,
   filePath?: string,
   tolerantSourceScan = true
 ): SourceDiagnostic[] {
+  if (root === null) {
+    return tolerantSourceScan ? tolerantSourceScanDiagnostics(source, language, filePath) : [];
+  }
   const out: SourceDiagnostic[] = [];
   const emitted = new Set<string>();
   const seenImports = new Map<string, ImportKey>();
@@ -3832,18 +5235,24 @@ export function cstLintDiagnostics(
   const customPropertyReferences: CustomPropertyReference[] = [];
   const variableDeclarations: VariableDeclarationFact[] = [];
   const variableReferences = new Set<string>();
+  const mixinDefinitions: MixinDefinitionFact[] = [];
+  const mixinReferences = new Set<string>();
+  const functionDefinitions: FunctionDefinitionFact[] = [];
+  const functionReferences = new Set<string>();
+  const functionDefinitionNames = new Set<string>();
   const mapLikeVariables = new Set<string>();
   const ruleSelectorKeys = new Set<string>();
   const exactExtendTargets: ExactExtendTargetFact[] = [];
-  let hasExternalSelectorSources = false;
+  let hasExternalSources = false;
   const cssData = metadataWithDefaults(metadata);
   const dialectAtRules = DIALECT_AT_RULES[language];
-  const push = (
+  const pushDiagnostic = (
     code: string,
     severity: DiagnosticSeverityName,
     message: string,
     span: DiagnosticSpan,
-    qualifiers?: readonly string[]
+    qualifiers?: readonly string[],
+    phase?: Phase
   ) => {
     const start = Number(span.start);
     const end = Number(span.end);
@@ -3852,7 +5261,16 @@ export function cstLintDiagnostics(
       return;
     }
     emitted.add(key);
-    out.push(diagnostic(code, severity, message, span, filePath, qualifiers));
+    out.push(diagnostic(code, severity, message, span, filePath, qualifiers, phase));
+  };
+  const push = (
+    code: string,
+    severity: DiagnosticSeverityName,
+    message: string,
+    span: DiagnosticSpan,
+    qualifiers?: readonly string[]
+  ) => {
+    pushDiagnostic(code, severity, message, span, qualifiers);
   };
 
   const visit = (node: CssCstNode, context: VisitContext) => {
@@ -3862,7 +5280,7 @@ export function cstLintDiagnostics(
       return;
     }
     const gt = node.grammarType;
-    hasExternalSelectorSources ||= EXTERNAL_SELECTOR_SOURCE_TYPES.has(gt);
+    hasExternalSources ||= EXTERNAL_SOURCE_TYPES.has(gt);
     const declarationName = DECLARATION_TYPES.has(gt)
       ? propNameOf(source.slice(start, end)).toLowerCase()
       : null;
@@ -3878,13 +5296,16 @@ export function cstLintDiagnostics(
     const isMediaAtRule = gt === 'QueryAtRuleBlock'
       && source.charCodeAt(start) === 64
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'media';
+    const isSupportsAtRule = gt === 'QueryAtRuleBlock'
+      && source.charCodeAt(start) === 64
+      && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'supports';
     const isFontFaceAtRule = (gt === 'DescriptorBlock' || ATRULE_TYPES.has(gt))
       && source.charCodeAt(start) === 64
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'font-face';
     const nodeContext: VisitContext = {
       inVarCall: context.inVarCall || gt === 'VarCall',
       inDeclaration: context.inDeclaration || DECLARATION_TYPES.has(gt),
-      inMediaAtRule: context.inMediaAtRule || isMediaAtRule,
+      queryAtRuleKind: isMediaAtRule ? 'media' : isSupportsAtRule ? 'supports' : context.queryAtRuleKind,
       inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
       inFontFaceAtRule: context.inFontFaceAtRule || isFontFaceAtRule,
       descriptorAtRuleName: descriptorAtRuleName ?? context.descriptorAtRuleName,
@@ -3893,7 +5314,9 @@ export function cstLintDiagnostics(
       inUrlFunction: context.inUrlFunction || isUrlFunction,
       inIgnoredTypeSelectorPseudo: context.inIgnoredTypeSelectorPseudo || (gt === 'PseudoSelector' && ignoresTypeSelectorsInPseudo(source, start, end)),
       allowResolutionXUnit: context.allowResolutionXUnit || isImageSetFunction || declarationName === 'image-resolution',
-      selectorLists: context.selectorLists
+      selectorLists: context.selectorLists,
+      descendingSpecificity: context.descendingSpecificity,
+      variableScope: context.variableScope
     };
 
     if (language === 'css' && RULESET_TYPES.has(gt) && !nodeContext.inKeyframeBlock) {
@@ -3901,7 +5324,49 @@ export function cstLintDiagnostics(
       if (selectorList !== undefined) {
         const branches = selectorBranches(source, selectorList);
         const seenBranches = new Map<string, SelectorSeen>();
+        const canCompareDescendingSpecificity = rulesetContainsCascadeDeclaration(node);
         for (const branch of branches) {
+          const specificity = branch.node === undefined ? null : staticSelectorSpecificity(source, branch.node);
+          if (specificity !== null) {
+            const label = specificityLabel(specificity);
+            push(
+              LINT_CODES.selectorMaxSpecificity,
+              'warning',
+              `Selector specificity is "${label}"`,
+              branch.span,
+              [`specificity:${label}`]
+            );
+            const referenceKey = canCompareDescendingSpecificity
+              ? noDescendingSpecificityReferenceKey(source, branch.node)
+              : null;
+            if (referenceKey !== null) {
+              const priorSelectors = nodeContext.descendingSpecificity.get(referenceKey);
+              if (priorSelectors === undefined) {
+                nodeContext.descendingSpecificity.set(referenceKey, [{
+                  display: branch.display,
+                  specificity,
+                  line: branch.span.startLine ?? 1
+                }]);
+              } else {
+                for (const prior of priorSelectors) {
+                  if (compareSpecificity(specificity, prior.specificity) < 0) {
+                    push(
+                      LINT_CODES.noDescendingSpecificity,
+                      'warning',
+                      `Expected selector "${branch.display}" to come before selector "${prior.display}", at line ${prior.line}`,
+                      branch.span
+                    );
+                    break;
+                  }
+                }
+                priorSelectors.push({
+                  display: branch.display,
+                  specificity,
+                  line: branch.span.startLine ?? 1
+                });
+              }
+            }
+          }
           const previous = seenBranches.get(branch.key);
           if (previous !== undefined) {
             push(
@@ -3956,9 +5421,56 @@ export function cstLintDiagnostics(
       push(LINT_CODES.emptyRules, 'warning', 'Do not use empty mixin bodies', node.span, ['mixin-body']);
     }
 
+    if (language !== 'css') {
+      if (MIXIN_DEFINITION_TYPES.has(gt) || RULESET_TYPES.has(gt)) {
+        const guard = ownedMixinGuardNode(node);
+        if (guard !== null && staticGuardTruth(source, guard) === false) {
+          push(
+            LINT_CODES.impossibleGuards,
+            'warning',
+            'Guard is statically false; this branch can never run',
+            guard.span
+          );
+        }
+        if (language === 'less' && guard !== null) {
+          const span = contradictoryDefaultBranchSpan(source, guard);
+          if (span !== null) {
+            push(
+              LINT_CODES.unusedDefaultBranches,
+              'warning',
+              'default() guard branch can never match because it also requires not(default())',
+              span
+            );
+          }
+        }
+      }
+      if (gt === 'If' || gt === 'IfRule') {
+        for (const condition of childNodesOfType(node, 'IfCondition')) {
+          if (staticGuardTruth(source, condition) === false) {
+            push(
+              LINT_CODES.impossibleGuards,
+              'warning',
+              'Guard is statically false; this branch can never run',
+              condition.span
+            );
+          }
+        }
+      }
+    }
+
     const variableDeclaration = variableDeclarationOf(source, node, language);
     if (variableDeclaration !== null) {
       variableDeclarations.push(variableDeclaration);
+      const shadowed = nearestOuterVariableDeclaration(context.variableScope, variableDeclaration.name);
+      if (shadowed !== null) {
+        push(
+          LINT_CODES.shadowedTokens,
+          'warning',
+          `Variable "${variableDeclaration.display}" shadows "${shadowed.display}" from an outer scope`,
+          variableDeclaration.span
+        );
+      }
+      context.variableScope.declarations.set(variableDeclaration.name, variableDeclaration);
       if (variableDeclarationIsMapLike(node, language)) {
         mapLikeVariables.add(variableDeclaration.name);
       } else {
@@ -3966,9 +5478,28 @@ export function cstLintDiagnostics(
       }
     }
 
-    const variableReference = variableReferenceNameOf(source, node, language);
+    const variableReference = variableReferenceFactOf(source, node, language);
     if (variableReference !== null) {
-      variableReferences.add(variableReference);
+      variableReferences.add(variableReference.name);
+    }
+
+    const mixinDefinition = mixinDefinitionOf(source, node, language);
+    if (mixinDefinition !== null) {
+      mixinDefinitions.push(mixinDefinition);
+    }
+
+    for (const mixinReference of mixinCallNamesOf(source, node, language)) {
+      mixinReferences.add(mixinReference);
+    }
+    const functionDefinition = functionDefinitionOf(source, node, language);
+    if (functionDefinition !== null) {
+      functionDefinitions.push(functionDefinition);
+      functionDefinitionNames.add(functionDefinition.name);
+    }
+
+    const functionReference = functionReferenceNameOf(source, node, language);
+    if (functionReference !== null) {
+      functionReferences.add(functionReference);
     }
 
     const suspiciousMapKeyAccess = suspiciousMapKeyAccessOf(source, node, language, mapLikeVariables);
@@ -3990,6 +5521,16 @@ export function cstLintDiagnostics(
           'warning',
           `Custom property "${registeredName.name}" does not match the configured pattern`,
           registeredName.span
+        );
+      }
+      const registrationProblem = typedCustomPropertyRegistrationProblem(source, node);
+      if (registrationProblem !== null) {
+        const requirement = registrationProblem.missing.map(name => `"${name}"`).join(' and ');
+        push(
+          LINT_CODES.invalidTypedCustomPropertyRegistration,
+          'warning',
+          `@property rule must define ${requirement}`,
+          registrationProblem.span
         );
       }
       const problem = typedCustomPropertyValueProblem(source, node);
@@ -4174,7 +5715,7 @@ export function cstLintDiagnostics(
           'Avoid universal selectors',
           node.span
         );
-      } else if (basicSelector?.startsWith('#') === true) {
+      } else if (gt === 'IdSelector' || basicSelector?.startsWith('#') === true) {
         push(
           LINT_CODES.selectorMaxId,
           'warning',
@@ -4184,7 +5725,7 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (BASIC_SELECTOR_TYPES.has(gt)) {
+    if (CLASS_SELECTOR_TYPES.has(gt)) {
       const classSelector = classSelectorNameSpan(source, node);
       if (classSelector !== null) {
         push(
@@ -4196,7 +5737,7 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (language === 'css' && !nodeContext.inIgnoredTypeSelectorPseudo && BASIC_SELECTOR_TYPES.has(gt)) {
+    if (language === 'css' && !nodeContext.inIgnoredTypeSelectorPseudo && TYPE_SELECTOR_TYPES.has(gt)) {
       const selector = typeSelectorNameSpan(source, node);
       if (
         selector !== null
@@ -4212,7 +5753,7 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (language === 'css' && nodeContext.inMediaAtRule && MEDIA_FEATURE_NAME_TYPES.has(gt)) {
+    if (language === 'css' && nodeContext.queryAtRuleKind === 'media' && MEDIA_FEATURE_NAME_TYPES.has(gt)) {
       const feature = mediaFeatureNameSpan(source, node);
       if (feature !== null) {
         const lower = feature.name.toLowerCase();
@@ -4244,6 +5785,46 @@ export function cstLintDiagnostics(
             );
           }
         }
+      }
+    }
+
+    if (language === 'css' && nodeContext.queryAtRuleKind === 'supports' && MEDIA_FEATURE_NAME_TYPES.has(gt)) {
+      const feature = mediaFeatureNameSpan(source, node);
+      if (feature !== null) {
+        const lower = feature.name.toLowerCase();
+        const skip = lower.startsWith('--')
+          || lower.startsWith('-')
+          || hasDynamicSyntax(lower);
+        if (!skip && !cssData.isKnownProperty(lower)) {
+          push(
+            LINT_CODES.unknownProperties,
+            'warning',
+            `Unknown property: '${feature.name}'`,
+            spanAtOrContaining(node, feature.start, feature.end)
+          );
+        } else if (!skip && cssData.isKnownProperty(lower)) {
+          const propertyValue = supportsFeatureValue(source, node);
+          if (propertyValue !== null && cssData.isKnownPropertyValue(lower, propertyValue.fact) === false) {
+            push(
+              LINT_CODES.unknownPropertyValues,
+              'warning',
+              `Unknown value "${propertyValue.fact.raw}" for property "${feature.name}"`,
+              propertyValue.span
+            );
+          }
+        }
+      }
+    }
+
+    if (language === 'css' && nodeContext.inDeclaration && (gt === 'Keyword' || gt === 'Call' || gt === 'FunctionCall')) {
+      const prefixedValue = vendorPrefixedValueNameSpan(source, node);
+      if (prefixedValue !== null) {
+        push(
+          LINT_CODES.valueNoVendorPrefix,
+          'warning',
+          `Unexpected vendor-prefixed value "${prefixedValue.value}"`,
+          spanFromNodeStart(node, prefixedValue.start, prefixedValue.end)
+        );
       }
     }
 
@@ -4280,6 +5861,31 @@ export function cstLintDiagnostics(
           'warning',
           `Expected standard direction syntax in ${functionName}()`,
           gradientDirection
+        );
+      }
+      const colorNotation = colorFunctionNotationProblem(source, node, functionName);
+      if (colorNotation !== null) {
+        push(
+          LINT_CODES.colorFunctionNotation,
+          'warning',
+          `Expected modern color-function notation in ${functionName}()`,
+          colorNotation
+        );
+      }
+      for (const alpha of alphaValueNotationProblems(source, node, functionName)) {
+        push(
+          LINT_CODES.alphaValueNotation,
+          'warning',
+          `Alpha value "${alpha.text}" does not match the configured notation`,
+          alpha.span
+        );
+      }
+      for (const hue of hueDegreeNotationProblems(source, node, functionName)) {
+        push(
+          LINT_CODES.hueDegreeNotation,
+          'warning',
+          `Hue value "${hue.text}" does not match the configured notation`,
+          hue.span
         );
       }
       const colorProblem = invalidColorFunctionChannels(source, node, functionName);
@@ -4359,8 +5965,15 @@ export function cstLintDiagnostics(
           || lower.includes('@{')
           || lower.includes('${');
         const nameStart = start + slice.indexOf(name);
+        const strippedIeHackName = language === 'css'
+          && descriptor?.status === undefined
+          && lower.startsWith('_')
+          && cssData.isKnownProperty(lower.slice(1))
+          ? lower.slice(1)
+          : null;
+        const propertyMetadataName = strippedIeHackName ?? lower;
         const propertyStatus = language === 'css' && descriptor?.status === undefined && !skip
-          ? cssData.cssPropertyStatus?.(lower)
+          ? cssData.cssPropertyStatus?.(propertyMetadataName)
           : undefined;
         if (descriptor !== null && descriptor.status === false) {
           push(
@@ -4376,6 +5989,13 @@ export function cstLintDiagnostics(
             LINT_CODES.deprecatedProperties,
             'warning',
             `Deprecated property: '${name}'`,
+            spanAtOrContaining(node, nameStart, nameStart + name.length)
+          );
+        } else if (strippedIeHackName !== null) {
+          push(
+            LINT_CODES.ieHack,
+            'warning',
+            `IE hack property: '${name}'`,
             spanAtOrContaining(node, nameStart, nameStart + name.length)
           );
         } else if (
@@ -4394,7 +6014,7 @@ export function cstLintDiagnostics(
             `Unknown vendor-specific property: '${name}'`,
             spanAtOrContaining(node, nameStart, nameStart + name.length)
           );
-        } else if (descriptor?.status === undefined && !skip && !cssData.isKnownProperty(lower)) {
+        } else if (descriptor?.status === undefined && !skip && !cssData.isKnownProperty(propertyMetadataName)) {
           push(LINT_CODES.unknownProperties, 'warning', `Unknown property: '${name}'`, spanAtOrContaining(node, nameStart, nameStart + name.length));
         }
       }
@@ -4417,7 +6037,7 @@ export function cstLintDiagnostics(
         const absoluteValueStart = start + valueStart;
         const absoluteValueEnd = important ? absoluteStart(important) : end;
         if (language === 'css' && descriptor?.status === true) {
-          const descriptorValueProblem = atRuleDescriptorValueProblem(source, node, descriptor.atRuleName, lowerName);
+          const descriptorValueProblem = atRuleDescriptorValueProblem(source, node, cssData, descriptor.atRuleName, lowerName);
           if (descriptorValueProblem !== null) {
             push(
               LINT_CODES.unknownAtRuleDescriptorValues,
@@ -4428,18 +6048,36 @@ export function cstLintDiagnostics(
           }
         }
         if (language === 'css' && descriptor?.status === undefined && name.length > 0 && !lowerName.startsWith('--')) {
-          const propertyValue = declarationPropertyValue(source, node);
-          if (propertyValue !== null && cssData.isKnownPropertyValue(lowerName, propertyValue.fact) === false) {
-            push(
-              LINT_CODES.unknownPropertyValues,
-              'warning',
-              `Unknown value "${propertyValue.fact.raw}" for property "${name}"`,
-              propertyValue.span
-            );
+          const propertyMetadataName = lowerName.startsWith('_') && cssData.isKnownProperty(lowerName.slice(1))
+            ? lowerName.slice(1)
+            : lowerName;
+          for (const propertyValue of declarationPropertyValueCandidates(source, node)) {
+            if (cssData.isKnownPropertyValue(propertyMetadataName, propertyValue.fact) === false) {
+              push(
+                LINT_CODES.unknownPropertyValues,
+                'warning',
+                `Unknown value "${propertyValue.fact.raw}" for property "${name}"`,
+                propertyValue.span
+              );
+            }
           }
         }
         if (language === 'css' && (lowerName === 'animation' || lowerName === 'animation-name')) {
           animationReferences.push(...animationNameReferences(source, node, name, absoluteValueStart, absoluteValueEnd));
+        }
+        if (language === 'css' && OPACITY_PROPERTY_NAMES.has(lowerName)) {
+          const propertyValue = declarationPropertyValue(source, node);
+          if (
+            propertyValue !== null
+            && (propertyValue.fact.kind === 'number' || propertyValue.fact.kind === 'percentage')
+          ) {
+            push(
+              LINT_CODES.alphaValueNotation,
+              'warning',
+              `Alpha value "${propertyValue.fact.raw}" does not match the configured notation`,
+              propertyValue.span
+            );
+          }
         }
         const fontFamilyStart = lowerName === 'font-family'
           ? absoluteValueStart
@@ -4576,7 +6214,9 @@ export function cstLintDiagnostics(
     const childContext: VisitContext = RULESET_TYPES.has(gt) || ATRULE_TYPES.has(gt)
       ? {
           ...nodeContext,
-          selectorLists: new Map()
+          selectorLists: new Map(),
+          descendingSpecificity: new Map(),
+          variableScope: createChildVariableScope(context.variableScope)
         }
       : nodeContext;
     const checkCssRulesetDeclarations = language === 'css' && RULESET_TYPES.has(gt) && !nodeContext.inKeyframeBlock;
@@ -4803,7 +6443,12 @@ export function cstLintDiagnostics(
 
   visit(root, {
     ...ROOT_VISIT_CONTEXT_BASE,
-    selectorLists: new Map()
+    selectorLists: new Map(),
+    descendingSpecificity: new Map(),
+    variableScope: {
+      declarations: new Map(),
+      parent: null
+    }
   });
 
   for (const group of keyframesVendorGroups.values()) {
@@ -4858,7 +6503,7 @@ export function cstLintDiagnostics(
 
   if (language !== 'css') {
     for (const declaration of variableDeclarations) {
-      if (!variableReferences.has(declaration.name)) {
+      if (!declaration.configurable && !functionDefinitionNames.has(declaration.name) && !variableReferences.has(declaration.name)) {
         push(
           LINT_CODES.unusedVariables,
           'warning',
@@ -4868,7 +6513,29 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (!hasExternalSelectorSources) {
+    if (!hasExternalSources) {
+      for (const definition of functionDefinitions) {
+        if (!functionReferences.has(definition.name)) {
+          push(
+            LINT_CODES.unusedFunctions,
+            'warning',
+            `Unused function "${definition.display}"`,
+            definition.span
+          );
+        }
+      }
+
+      for (const definition of mixinDefinitions) {
+        if (!mixinReferences.has(definition.name)) {
+          push(
+            LINT_CODES.unusedMixins,
+            'warning',
+            `Unused mixin "${definition.display}"`,
+            definition.span
+          );
+        }
+      }
+
       for (const target of exactExtendTargets) {
         if (!ruleSelectorKeys.has(target.key)) {
           push(
@@ -4883,31 +6550,7 @@ export function cstLintDiagnostics(
   }
 
   if (tolerantSourceScan) {
-    if (language === 'css') {
-      for (const span of invalidImportPositionSpans(source)) {
-        push(
-          LINT_CODES.invalidImportPosition,
-          'warning',
-          'Invalid position for @import rule',
-          span
-        );
-      }
-    }
-
-    const sourceForHexScan = blankStringsAndComments(source);
-    const sourceHexRe = /#([0-9a-fA-F]+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = sourceHexRe.exec(sourceForHexScan)) !== null) {
-      const digits = match[1]!.length;
-      if (digits !== 3 && digits !== 4 && digits !== 6 && digits !== 8 && isDeclarationValueContext(sourceForHexScan, match.index)) {
-        push(
-          LINT_CODES.hexColorLength,
-          'error',
-          `Hex color '${match[0]}' does not have 3, 4, 6 or 8 digits`,
-          spanFromOffsets(match.index, match.index + match[0].length)
-        );
-      }
-    }
+    pushTolerantSourceScanDiagnostics(source, language, push);
   }
 
   return out;
@@ -4925,7 +6568,9 @@ export function collectTolerantDiagnostics(input: CollectDiagnosticsInput): Coll
         input.filePath,
         needsTolerantSourceScan
       )
-    : [];
+    : needsTolerantSourceScan
+      ? tolerantSourceScanDiagnostics(input.source, input.language, input.filePath)
+      : [];
   return {
     diagnostics: [
       ...parseDiagnosticsForDoc(result, input.filePath),

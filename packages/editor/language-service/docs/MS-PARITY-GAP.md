@@ -2,6 +2,9 @@
 
 Goal: reach and exceed parity with Microsoft's built-in VS Code CSS/SCSS/Less
 support (the `vscode-css-languageservice` library) across css / scss / less.
+Microsoft's service is the coverage baseline; TypeScript-style hovers and
+completions are the presentation target for Jess: code/signature first, concise
+symbol category, docs next, metadata last.
 
 - **Side A (MS):** `microsoft/vscode-css-languageservice` — `src/cssLanguageService.ts`,
   `src/services/{cssCompletion,scssCompletion,lessCompletion,cssHover,cssNavigation,scssNavigation,cssValidation,lintRules,cssCodeActions,cssFolding,cssSelectionRange,cssDocumentSymbol}.ts`,
@@ -22,46 +25,44 @@ to have / niche.
 Depth is judged honestly, not yes/no. "✓" without qualification means genuinely
 comparable; a qualifier ("names only", "no context") flags shallow support.
 
-> **Status note:** the matrix below is the ORIGINAL gap snapshot. Section 2 is the
-> live tracker — all P0/P1 items and the P2 completion tail (#14–17) are now ✅ done
-> and merged, for css/less/scss **and** `.jess`. Rows still reading "Missing" below
-> are superseded by the ✅ entries in section 2.
+> **Status note:** the matrix tracks current implementation depth. Section 2 is
+> the implementation ledger for completed slices and remaining polish.
 
 ### Completions (the P0 area)
 
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
-| **Property names** | Full, relevance-scored, in declaration context | ✓ names from `known-css-properties`, gated on `depth>0` brace count (naive) | Ranking + context precision | P1 |
-| **Property VALUES (per-property)** | Extensive: enum values, units, functions, color fns, timing fns, shapes, box keywords, image fns — driven by each property's `restrictions` | Completions use `values[]` plus restrictions; diagnostics validate simple static values against values/restrictions | Compound value grammar validation, richer function/value facts, ranking + context precision | P1 |
-| **`var()` / CSS-wide fns** | ✓ (`var()`, `calc()`, `env()` …) | ✗ | Missing | P1 |
-| **At-rule keywords** | ✓ context-aware (top-level vs nested) | ✓ every `@name` from web-custom-data, triggered only on leading `@` or empty suggest — no nesting context | No context; unfiltered list | P1 |
-| **At-rule bodies** (`@media` features/values, `@supports` conditions, `@font-face` descriptors, `@keyframes` `from/to`, `@page`) | ✓ media descriptors + discrete values, `@supports` conditions | ✗ | Missing entirely | P1 |
-| **Pseudo-classes** (`:hover`, `:nth-child(...)`) | ✓ incl. argument snippets | ✗ | Missing | **P0** |
-| **Pseudo-elements** (`::before`, single+double colon) | ✓ | ✗ | Missing | **P0** |
-| **`!important`** | ✓ | ✗ | Missing (trivial) | P1 |
-| **Selectors / combinators / element tags** | ✓ HTML5+SVG tags at top level, class selectors mined from document | ✗ | Missing | P2 |
-| **Named colors + color fns as values** | ✓ named colors + `rgb()/hsl()/…` in color contexts, with color swatch | ✗ (color *detection* exists, but not color *completion*) | Missing | P1 |
-| **`url()` path completion** | ✓ (via completion participants / `doComplete2`) | ✗ | Missing | P2 |
-| **@import path completion** | ✓ (participant-based) | ✗ (links resolve, but no completion) | Missing | P2 |
-| **SCSS/Less variable names** | ✓ mined from document + imports | ✓ **declared names off the tolerant CST** (`cstVariableNames`), sigil-wrapped, prefix-filtered — survives half-typed input | Roughly at parity for local vars; no cross-import var completion | P1 |
-| **SCSS/Less mixin completion** (`@include`, `.mixin()`) | ✓ mixin references + params | ✗ (mixins are found for def/refs/rename, but not offered as completions) | Missing | **P0** |
+| **Property names** | Full, relevance-scored, in declaration context | ✓ names from `known-css-properties`, with TypeScript-style detail/docs when web-custom-data has metadata | Ranking + context precision | P1 |
+| **Property VALUES (per-property)** | Extensive: enum values, units, functions, color fns, timing fns, shapes, box keywords, image fns — driven by each property's `restrictions` | ✓ `values[]` + restrictions + CSS-wide keywords/functions, all with TypeScript-style detail/docs when metadata or synthetic facts are available; diagnostics validate simple static values against values/restrictions | Compound value grammar validation, richer function/value facts, ranking + context precision | P1 |
+| **`var()` / CSS-wide fns** | ✓ (`var()`, `calc()`, `env()` …) | ✓ `var()` / `env()` / `calc()` plus CSS-wide keywords; rich completion docs | Add broader CSS function families as data warrants | P1 |
+| **At-rule keywords** | ✓ context-aware (top-level vs nested) | ✓ web-custom-data at-rules with context filtering and TypeScript-style detail/docs | Ranking + deeper context precision | P1 |
+| **At-rule bodies** (`@media` features/values, `@supports` conditions, `@font-face` descriptors, `@keyframes` `from/to`, `@page`) | ✓ media descriptors + discrete values, `@supports` conditions | Partial: `@media` prelude names/types/operators, `@supports` declaration/value/function helpers, descriptor names/values for `@font-face`/`@property`/`@counter-style`/`@page`, and `@keyframes` `from`/`to`, all with rich detail/docs | Deeper descriptor snippets, `@page` margin boxes, and richer condition grammar | P1 |
+| **Pseudo-classes** (`:hover`, `:nth-child(...)`) | ✓ incl. argument snippets | ✓ with TypeScript-style detail/docs | At parity; argument-specific docs/signatures remain polish | **P0** |
+| **Pseudo-elements** (`::before`, single+double colon) | ✓ | ✓ with TypeScript-style detail/docs | At parity | **P0** |
+| **`!important`** | ✓ | ✓ with rich detail/docs | At parity | P1 |
+| **Selectors / combinators / element tags** | ✓ HTML5+SVG tags at top level, class selectors mined from document | Partial: known HTML/SVG/MathML type-selector completions plus document-local class selectors at root and nested dialect selector sites | Combinator-specific snippets remain polish | P2 |
+| **Named colors + color fns as values** | ✓ named colors + `rgb()/hsl()/…` in color contexts, with color swatch | ✓ named colors with swatches plus modern color functions with rich detail/docs | Function parameter snippets/docs remain future polish | P1 |
+| **`url()` path completion** | ✓ (via completion participants / `doComplete2`) | ✓ filesystem path completion | At parity | P2 |
+| **@import path completion** | ✓ (participant-based) | ✓ filesystem path completion for `@import` / `@use` | At parity | P2 |
+| **SCSS/Less variable names** | ✓ mined from document + imports | ✓ declared names off the tolerant CST (`cstVariableNames`), sigil-wrapped, prefix-filtered, rich detail/docs — survives half-typed input | Cross-import variable completion remains future polish | P1 |
+| **SCSS/Less mixin completion** (`@include`, `.mixin()`) | ✓ mixin references + params | ✓ CST-mined mixins with rich detail/docs | Parameter-aware snippets remain future polish | **P0** |
 | **SCSS/Less function completion** | ✓ user functions + all built-in Sass/Less fns | ✗ | Missing | P1 |
-| **SCSS placeholders `%name`** | ✓ | ✗ | Missing | P2 |
-| **Built-in Sass modules** (`sass:math`, `sass:color`, `sass:list`, `sass:map`, `sass:string`, `sass:selector`, `sass:meta`) | ✓ all 7 modules + members, with doc links | ✗ | Missing | P1 |
+| **SCSS placeholders `%name`** | ✓ | ✓ placeholder completions with rich detail/docs | At parity for document-local placeholders | P2 |
+| **Built-in Sass modules** (`sass:math`, `sass:color`, `sass:list`, `sass:map`, `sass:string`, `sass:selector`, `sass:meta`) | ✓ all 7 modules + members, with doc links | ✓ all 7 modules + members with rich detail/docs | Per-member Sass docs and signatures remain future polish | P1 |
 | **`@use` / `@forward` namespacing** (`namespace.$var`, `namespace.fn()`) | ✓ | ✗ | Missing | P1 |
-| **Interpolation `#{}` / `@{}`** | ✓ completes inside interpolation | ✗ | Missing | P2 |
-| **Snippet completions** (`@media {…}`, at-rule bodies) | ✓ | ✗ (all completions are plain `textEdit`, no `insertText`/snippet) | Missing | P1 |
+| **Interpolation `#{}` / `@{}`** | ✓ completes inside interpolation | ✓ variable completion inside Less/Jess/SCSS interpolation with rich detail/docs | At parity for variables | P2 |
+| **Snippet completions** (`@media {…}`, at-rule bodies) | ✓ | Partial: function completions insert snippets, including CSS value and `@supports` helpers; at-rule body snippets are not implemented | Add at-rule/body snippets | P1 |
 
 ### Hover
 
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
-| Property hover | ✓ MDN description + **browser-compat table + MDN "syntax" + spec/MDN links** | ✓ description string from web-custom-data only | No browser-compat, no links, no syntax | P1 |
-| Property-value hover | ✓ | ✓ value description from web-custom-data | Comparable (shallower text) | P2 |
-| At-rule hover | ✓ | ✓ description from web-custom-data | Comparable | P2 |
-| Pseudo-class/element hover | ✓ | ✗ | Missing | P1 |
-| Selector-specificity hover | ✓ (shows computed specificity for a selector) | ✗ | Missing | P2 |
-| Variable / mixin hover (show value/definition) | partial (SCSS) | ✗ | Missing | P1 |
+| Property hover | ✓ MDN description + **browser-compat table + MDN "syntax" + spec/MDN links** | ✓ TypeScript-style code block + category, description, formal syntax, Baseline, browser support summary, and MDN link from web-custom-data | Comparable coverage; keep improving richness/ranking beyond MS formatting | P2 |
+| Property-value hover | ✓ | ✓ TypeScript-style value hover with description, Baseline, and browser support summary when web-custom-data includes it | Comparable coverage; richer compound values remain future work | P2 |
+| At-rule hover | ✓ | ✓ TypeScript-style at-rule hover from web-custom-data | Comparable | P2 |
+| Pseudo-class/element hover | ✓ | ✓ TypeScript-style selector hover from web-custom-data | Comparable | P1 |
+| Selector-specificity hover | ✓ (shows computed specificity for a selector) | ✓ static CSS selector branches | Dialect nested/interpolated selector specificity remains future work | P2 |
+| Variable / mixin hover (show value/definition) | partial (SCSS) | ✓ CST-grounded authored definition hover for variables and mixins | Shows definitions, not evaluated values/signatures; evaluator-backed richness remains future work | P1 |
 
 ### Navigation
 
@@ -88,9 +89,9 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | `propertyIgnoredDueToDisplay`, `fontFaceProperties` | ✓ (Warning) | ✓ shared diagnostics default to Warning | At parity for CSS @font-face required descriptors and display/property interactions | — |
 | `boxModel` | ✓ (Ignore by default) | ✓ shared diagnostic, opt-in | At parity for definite CSS width/height plus padding/border size risks | — |
 | `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `importStatement` | ✓ (mostly default-Ignore, opt-in) | ✓ shared diagnostics; opinionated rules remain opt-in | At parity for CSS source facts | — |
-| `ieHack` | ✓ (Ignore by default) | ✗ | Missing: current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule | P3 |
-| Configurable severities | ✓ per-rule | ✓ for semantic codes and shared lint diagnostic codes | Naming bridge from lint rule names into editor settings remains future polish | P2 |
-| **Semantic: undefined variable / mixin** | ✗ (MS does not resolve semantics this deeply) | ✓ `var/undefined`, `mixin/undefined` + escalate-to-error when modern features present | **Jess AHEAD** | — |
+| `ieHack` | ✓ (Ignore by default) | ✓ shared diagnostic, opt-in for underscore-prefixed CSS declarations whose stripped property is known | `*property` remains parser-blocked until diagnostic recovery exposes it structurally; no source scan | P3 |
+| Configurable severities | ✓ per-rule | ✓ for shared diagnostic codes and lint rule-name aliases | Per-language settings shape remains future polish | P2 |
+| **Semantic: undefined variable / mixin** | ✗ (MS does not resolve semantics this deeply) | Future evaluator-backed work | Do not report from CST-only facts; needs project/module/evaluation context | Future |
 
 MS lint rules with default levels (`src/services/lintRules.ts`):
 `compatibleVendorPrefixes`=Ignore, `vendorPrefix`=Warning, `duplicateProperties`=Ignore,
@@ -128,10 +129,10 @@ MS lint rules with default levels (`src/services/lintRules.ts`):
 
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
-| Property data | MDN-sourced `languageFacts` + `@vscode/web-custom-data`: descriptions, **`restrictions`**, `values`, `status`, **`browsers`/compat** | `known-css-properties` (names) + web-custom-data (descriptions, values, restrictions, status) | Browser-compat data remains missing | P2 |
+| Property data | MDN-sourced `languageFacts` + `@vscode/web-custom-data`: descriptions, **`restrictions`**, `values`, `status`, **`browsers`/compat** | `known-css-properties` (names) + web-custom-data (descriptions, values, restrictions, status, browser support summaries) | Rich compat table UI remains missing | P2 |
 | At-rule data | ✓ rich | ✓ web-custom-data | Comparable | P2 |
-| Pseudo-class / pseudo-element data | ✓ (names + descriptions + compat) | ✗ (not loaded at all) | Missing dataset | **P0** |
-| Custom-data provider API (`setDataProviders`) | ✓ extensible | ✗ | Missing extensibility | P2 |
+| Pseudo-class / pseudo-element data | ✓ (names + descriptions + compat) | ✓ web-custom-data names, descriptions, Baseline, browser support summaries, and MDN links | Rich compat table UI remains missing | P2 |
+| Custom-data provider API (`setDataProviders`) | ✓ extensible | ✓ custom properties, at-rules, pseudos, completions, hover, and shared CSS diagnostics | Per-language settings shape remains future polish | P2 |
 | Built-in Sass/Less function catalog | ✓ (baked into scss/less completion) | ✗ | Missing dataset | P1 |
 
 ---
@@ -179,9 +180,19 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    `propertyIgnoredDueToDisplay`, `boxModel`, and follow-on CSS validity diagnostics.
    Detection lives in diagnostics-core; lint and the language service only
    configure and surface the shared records.
-10. ✅ **DONE.** **Hover enrichment** — pseudo-class/element hover added; property +
-    at-rule hover append formal `syntax`, Baseline status, and the MDN reference
-    link (from web-custom-data `references`/`baseline`/`syntax`).
+10. ✅ **DONE.** **Hover enrichment** — pseudo-class/element hover added; property,
+    value, pseudo, and at-rule hover use a TypeScript-style shape (code block /
+    category first, docs second, metadata last) and include formal `syntax`,
+    Baseline status, browser support summaries, and the MDN reference link when
+    web-custom-data provides those fields.
+10a. ✅ **DONE.** **Selector specificity hover** — static CSS selector branches
+    show specificity from `postcss-selector-parser` + CSSTools specificity
+    calculation. Dialect nested/interpolated selector specificity remains future
+    work.
+10b. ✅ **DONE.** **Variable / mixin definition hover** — CST-grounded hover uses the
+    existing definition resolver and shows the authored definition/signature for
+    Less/SCSS/Jess variables and mixins without claiming evaluated values or
+    callable overload resolution.
 11. ✅ **DONE (highlights all occurrences of the symbol under the cursor).** **`findDocumentHighlights`** — add to the engine interface; reuse
     `collectReferenceSet` but scope to the current document only.
 12. ✅ **DONE (named colors w/ swatch + color functions; units on numeric prefix).** **Named-color + color-function value completions** in color contexts, with
@@ -191,6 +202,11 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
     hidden whenever nested; `@font-face`/`@keyframes`/… hidden inside a style rule
     but kept in conditional-group at-rules; `@media`/`@supports`/… stay offered
     inside style rules.
+13a. ✅ **DONE.** **Selector completions** — known HTML/SVG/MathML type selectors
+     use the same metadata as `selector-type-no-unknown`; static class selectors
+     are mined from CST simple selector nodes and completed at root selector
+     sites plus nested Less/SCSS/Jess selector contexts. Combinator-specific
+     snippets remain future polish.
 
 **P2 — polish / niche**
 
@@ -201,8 +217,17 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
 16. ✅ **DONE.** `var()` custom-property completions mined across the document + imports.
 17. ✅ **DONE.** Region-comment folding (`/* #region */`), range formatting (formats
     the top-level rules the selection intersects), and `setDataProviders`-style
-    custom-data extensibility (custom properties + at-rules → completion & hover).
+    custom-data extensibility (custom properties, at-rules, and pseudos →
+    completion, hover, and shared CSS diagnostics).
     *Remaining niche:* richer format options (indent size, etc.).
+18. ✅ **DONE.** TypeScript-style completion details/docs for metadata-backed CSS
+    property, property-value, pseudo selector, and at-rule completions, plus
+    synthetic CSS/value/dialect completions that Microsoft also surfaces as
+    language-service messages.
+19. ✅ **DONE.** Data-backed at-rule body completion slice: `@supports`
+    declaration conditions, CSS descriptor names/values for `@font-face`,
+    `@property`, `@counter-style`, and `@page`, plus `env()` as a CSS-wide value
+    function.
 
 ---
 
@@ -218,15 +243,16 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
   folding, def/refs/rename, variable completion) run straight off the CST
   without an AST reparse. Frame this as *performance/latency*, not as "we
   tolerate errors and they don't."
-- **True semantic analysis.** `var/undefined` and `mixin/undefined` diagnostics
-  come from actually resolving symbols against a real evaluating engine
-  (jess/less/scss), with cross-file import resolution (`@jesscss/style-resolver`)
-  and severity escalation when modern features (`@use`/`@from`/`@compose`) are
-  present. MS does not do this depth of semantic validation.
+- **Future semantic analysis.** Call resolution, scope leakage, undefined
+  symbol certainty, and overload/named-argument diagnostics need evaluator-backed
+  facts plus project/module resolution before Jess should claim them in lint or
+  the language service. MS does not do this depth of semantic validation.
 - **Semantic tokens** (`getSemanticTokens`) — not offered by
   `vscode-css-languageservice` at all (VS Code colors CSS via TextMate).
 - **Broader modern color coverage** in document colors / presentations
   (`hwb/lab/lch/oklab/oklch`).
+- **Compact browser-support hover summaries** from the same web-custom-data used
+  by VS Code; MS still presents richer browser tables.
 
 Net: Jess leads on *engine semantics, incremental performance, and
 navigation/rename quality*; MS leads massively on *breadth of completion + the
@@ -251,8 +277,8 @@ MDN data behind it + lint*.
 - **Signature help** — neither side ships it; not a parity item.
 - **`@vscode/web-custom-data` is shared**, so the raw property/at-rule dataset is
   common ground. The MS *advantage* is the additional MDN-derived `languageFacts`
-  layer (restrictions, browser compat, pseudo data, specificity) that Jess does
-  not yet load — closing that data gap unlocks most of the P0 completion depth
-  for free.
+  layer (richer browser compat presentation and specificity) that Jess does not
+  fully mirror yet — closing that presentation/data gap unlocks more polish
+  without changing parser semantics.
 </content>
 </invoke>
