@@ -6,7 +6,7 @@ import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseJessCst } from '../src/cst.js';
 import { parse } from '../src/index.js';
-import { jessAstGrammar } from '../src/grammar.js';
+import { jessGrammar } from '../src/grammar.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object'
@@ -68,9 +68,9 @@ function hasCstGrammar(node: unknown, grammarType: string): boolean {
 describe('Jess AST grammar facts', () => {
   it('keeps ordinary adjacency as a raw value array and reserves List for explicit separators', () => {
     const direct = run(
-      jessAstGrammar.Stylesheet,
+      jessGrammar.Stylesheet,
       '$space: red blue; $comma: red, blue; $w: 1; .x { slash: $w / 2; }',
-      { trivia: jessAstGrammar.whitespace }
+      { trivia: jessGrammar.whitespace }
     );
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -85,7 +85,7 @@ describe('Jess AST grammar facts', () => {
 
   it('constructs ordered $if / $else if / $else branches directly and renders only the selected branch', () => {
     const source = '$theme: "dark"; $if ($theme = "light") { .card { color: black; } } $else if ($theme = "dark") { .card { color: white; } } $else { .card { color: gray; } }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -108,7 +108,7 @@ describe('Jess AST grammar facts', () => {
 
   it('constructs strict logical $if guard trees directly and evaluates their selected branch', () => {
     const source = '$enabled: true; $disabled: false; $if ((($enabled=true) and not($disabled)) or false) { .card { color: green; } } $else { .card { color: red; } }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -141,7 +141,7 @@ describe('Jess AST grammar facts', () => {
 
   it('retains CST-admitted adjacent $if comparison operators through public parse and render', () => {
     const source = '$size: 6; $if ($size>5) { .card { color: green; } } $else { .card { color: red; } }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -161,7 +161,7 @@ describe('Jess AST grammar facts', () => {
       '$if ($type.iscolor(red)) { color: red; }',
       '$if (not true) { color: red; }'
     ]) {
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
@@ -169,7 +169,7 @@ describe('Jess AST grammar facts', () => {
 
   it('publishes selected branch declarations into the containing live and scoped stores', () => {
     const source = '$tone: gray; $if (true) { $tone := blue; $^tone := navy; $if (true) { $nested: green; } } .after { live: $tone; scoped: $^tone; nested: $^nested; }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -249,7 +249,7 @@ describe('Jess AST grammar facts', () => {
 
   it('admits existing callable and loop statements inside selected direct $if bodies', () => {
     const source = 'paint() { color: red; } $held: @{ background: blue; }; $items: one, two; .host { $if (true) { $ > paint(); $held(); $apply .unused; $for ($item of $items) { .item-${item} { order: $item; } } } }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
@@ -280,7 +280,7 @@ describe('Jess AST grammar facts', () => {
       '$if (true) { @-compose "./theme.jess"; }',
       '$if (true) { @-use "sass:math"; }'
     ]) {
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
@@ -288,7 +288,7 @@ describe('Jess AST grammar facts', () => {
 
   it('constructs a first-class class-only Apply fact and rejects broader targets by default', () => {
     const source = '$apply .rounded, .shadow;';
-    const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.value).toMatchObject({ rules: [{
       type: 'Apply', selectors: [
@@ -297,7 +297,7 @@ describe('Jess AST grammar facts', () => {
       ]
     }] });
     for (const invalid of ['$apply #theme;', '$apply button[data-x]:hover;', '$apply paint;', '$apply $[.rounded];', '$apply .rounded-$[tone];']) {
-      const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null && (() => {
         try {
           parse(invalid);
@@ -317,7 +317,7 @@ describe('Jess AST grammar facts', () => {
 
   it('keeps $apply first-class inside mixin and $for bodies', () => {
     const source = '.paint { color: red; } wrapper() { $apply .paint; } $items: one, two; .host { $ > wrapper(); $for ($item of $items) { $apply .paint; } }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
@@ -345,7 +345,7 @@ describe('Jess AST grammar facts', () => {
   it('hoists rule-body static $extend targets while rejecting unrepresentable root and dynamic forms', () => {
     const source = '.target { color: red; } .source { $extend .target, .other !exact; }';
     const cst = parseJessCst(source);
-    const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -366,7 +366,7 @@ describe('Jess AST grammar facts', () => {
     );
 
     for (const invalid of ['$extend .target;', '.source { $extend .target-$[tone]; }', '.source { $extend $type; }']) {
-      const direct = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, invalid).toBe(false);
     }
   });
@@ -386,7 +386,7 @@ describe('Jess AST grammar facts', () => {
 
   it('constructs documented Jess member and index references as one typed value chain', () => {
     const source = '.card { member: $theme.colors.primary; last: $sizes[-1]; dynamic: $theme[$key]; }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -415,7 +415,7 @@ describe('Jess AST grammar facts', () => {
 
   it('parses declaration-member lookups without treating them as property-only accessors', () => {
     const source = '$tokens: { tone: blue; }; .card { value: $(.type.isnumber(.math.e)); namespaced: $tokens.tone; normal: $.tokens.tone; decimal: $(.1); }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -594,7 +594,7 @@ describe('Jess AST grammar facts', () => {
 
   it('lowers Jess live/scoped references and lookup-bearing writes directly', () => {
     const source = '$live: one; $^scoped: two; $live?: three; $^scoped?: four; $live := five; $^scoped := six; .card { live: $live; scoped: $^scoped; }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -797,7 +797,7 @@ describe('Jess AST grammar facts', () => {
       '.card { color: red ! // between marker and name\n IMPORTANT; background: blue; }',
       '.card { color: red !important // after name\n; background: blue; }'
     ]) {
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok, source).toBe(true);
       expect(direct.unconsumedFrom, source).toBeNull();
       const document = parse(source);
@@ -818,7 +818,7 @@ describe('Jess AST grammar facts', () => {
       '.outer { .inner { color: red // before marker\n !important // after priority\n; background: blue; } }',
       '@media screen { color: red // before marker\n !important // after priority\n; background: blue; }'
     ]) {
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok, source).toBe(true);
       expect(direct.unconsumedFrom, source).toBeNull();
       expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css, source).toContain(
@@ -837,7 +837,7 @@ describe('Jess AST grammar facts', () => {
        */
       '.card { color: red !important // consumes terminator; }'
     ]) {
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
     }
   });
@@ -845,7 +845,7 @@ describe('Jess AST grammar facts', () => {
   it('keeps arithmetic expression-only while preserving slash and signed value boundaries', () => {
     const source = '$w: 2px; .card { signed: $w -1; slash: $w / 2; scoped: $^w; wrapped: $($w / 2); scoped-wrapped: $(^w + 1px); scoped-compare: $(^w > 0px); }';
     const cst = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -900,7 +900,7 @@ describe('Jess AST grammar facts', () => {
       '$w: 2px; .card { x: ^w; }',
       '$w: 2px; .card { x: ^w + 1px; }'
     ]) {
-      const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -909,7 +909,7 @@ describe('Jess AST grammar facts', () => {
   it('parses a static selector list between *[…] delimiters and rejects dynamic selector content', () => {
     const source = '$targets: *[.notice, main > .card:not(.muted, .disabled):nth-child(2n+1 of .item), .tail:nth-child(-n+2)];';
     const cst = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -933,7 +933,7 @@ describe('Jess AST grammar facts', () => {
     });
 
     for (const invalid of ['$targets: * [.notice];', '$targets: *[$[selector]];', '$targets: *[.card-$[tone]];', '$targets: *[.card:not($[tone])];', '$targets: *[.card:nth-child(2n+1of .item)];']) {
-      const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -945,8 +945,8 @@ describe('Jess AST grammar facts', () => {
       'main > .card:not(.muted, .disabled):nth-child(2n+1 of .item)',
       '.tail:nth-child(-n+2), [lang|=en]'
     ]) {
-      const captured = run(jessAstGrammar.PseudoSelectorList, source, { trivia: jessAstGrammar.whitespace });
-      const ordinary = run(jessAstGrammar.Selector, source, { trivia: jessAstGrammar.whitespace });
+      const captured = run(jessGrammar.PseudoSelectorList, source, { trivia: jessGrammar.whitespace });
+      const ordinary = run(jessGrammar.Selector, source, { trivia: jessGrammar.whitespace });
       expect(captured.ok && captured.unconsumedFrom === null, source).toBe(true);
       expect(ordinary.ok && ordinary.unconsumedFrom === null, source).toBe(true);
       expect(captured.value).toEqual(ordinary.value);
@@ -955,7 +955,7 @@ describe('Jess AST grammar facts', () => {
 
   it('retains whitelisted selector-function pseudo arguments as structure, not baked text', () => {
     const secondSimple = (source: string): SimpleToken => {
-      const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
       const rule = stylesheet(result.value).rules.find((child): child is Ruleset => isRecord(child) && child.type === 'Ruleset');
       expect(rule, source).toBeDefined();
@@ -1005,7 +1005,7 @@ describe('Jess AST grammar facts', () => {
      * identically whether or not the source had a space after the comma.
      */
     for (const source of ['.x:is(.a,.b) { c: d; }', '.x:is(.a, .b) { c: d; }']) {
-      const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(serialize(stylesheet(result.value)).css).toBe('.x:is(.a, .b) {\n  c: d;\n}\n');
     }
 
@@ -1016,7 +1016,7 @@ describe('Jess AST grammar facts', () => {
      * rule does not fully parse).
      */
     for (const interpolated of ['.x:not(.a-$[t]) { c: d; }', '.x:is(.card-$[t]) { c: d; }']) {
-      const rejected = run(jessAstGrammar.Stylesheet, interpolated, { trivia: jessAstGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, interpolated, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, interpolated).toBe(false);
     }
   });
@@ -1036,7 +1036,7 @@ describe('Jess AST grammar facts', () => {
       '.x:nth-last-of-type { color: red; }',
       '.x:not(2n+1) { color: red; }'
     ]) {
-      const rejected = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, source).toBe(false);
     }
 
@@ -1047,7 +1047,7 @@ describe('Jess AST grammar facts', () => {
       '.x:is(.a, .b) { color: red; }',
       '.x:lang(en) { color: red; }'
     ]) {
-      const accepted = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const accepted = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(accepted.ok && accepted.unconsumedFrom === null, source).toBe(true);
     }
   });
@@ -1057,7 +1057,7 @@ describe('Jess AST grammar facts', () => {
       '.card : hover { color: red; }',
       '.card: hover { color: red; }'
     ]) {
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
     }
@@ -1103,7 +1103,7 @@ describe('Jess AST grammar facts', () => {
       '.x:nth-child(- 2n) { color: red; }',
       '.x:totally-made-up($name) { color: red; }'
     ]) {
-      const rejected = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, source).toBe(false);
     }
   });
@@ -1141,7 +1141,7 @@ describe('Jess AST grammar facts', () => {
       'a:nth-last-of-type(-n+3 of .a) { color: red; }',
       'a:nth-last-of-type(even of .a) { color: red; }'
     ]) {
-      const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -1202,7 +1202,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('constructs CSS at-rule facts directly, including nested documented media blocks', () => {
-    const query = run(jessAstGrammar.QueryFeature, '(min-width: 48rem)', { trivia: jessAstGrammar.whitespace });
+    const query = run(jessGrammar.QueryFeature, '(min-width: 48rem)', { trivia: jessGrammar.whitespace });
     expect(query.ok && query.unconsumedFrom === null).toBe(true);
     for (const source of [
       '@media screen { .card { color: blue; } }',
@@ -1213,7 +1213,7 @@ describe('Jess AST grammar facts', () => {
       '.card { @media screen { color: blue; } }',
       '.card { @media screen { @supports (display: grid) { display: grid; } } }'
     ]) {
-      const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
     }
     const source = [
@@ -1228,7 +1228,7 @@ describe('Jess AST grammar facts', () => {
       '}'
     ].join('\n');
     const cst = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -1261,7 +1261,7 @@ describe('Jess AST grammar facts', () => {
     });
 
     const compilerBeforeLiteral = '@-import "legacy.less"; @import url(theme.css);';
-    const compilerBeforeLiteralDirect = run(jessAstGrammar.Stylesheet, compilerBeforeLiteral, { trivia: jessAstGrammar.whitespace });
+    const compilerBeforeLiteralDirect = run(jessGrammar.Stylesheet, compilerBeforeLiteral, { trivia: jessGrammar.whitespace });
     expect(compilerBeforeLiteralDirect.ok).toBe(true);
     expect(compilerBeforeLiteralDirect.unconsumedFrom).toBeNull();
     expect(parse(compilerBeforeLiteral)).toMatchObject({
@@ -1287,7 +1287,7 @@ describe('Jess AST grammar facts', () => {
       '@import url(${path});',
       '@import "theme.css" $media;'
     ]) {
-      const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -1409,7 +1409,7 @@ describe('Jess AST grammar facts', () => {
      * top-level `$`, so nothing is hidden in raw bytes.
      */
     for (const source of ['@scope ($sel) { a { color: red; } }', '@scope (.a) to ($end) { a { color: red; } }']) {
-      const rejected = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, source).toBe(false);
     }
   });
@@ -1466,7 +1466,7 @@ describe('Jess AST grammar facts', () => {
       expect(hasCstGrammar(cst.tree, 'AtRuleBlock'), source).toBe(true);
       expect(hasCstGrammar(cst.tree, 'DollarBrace'), source).toBe(true);
 
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
     }
 
@@ -1486,7 +1486,7 @@ describe('Jess AST grammar facts', () => {
     ]) {
       const cst = parseJessCst(source);
       expect(cst.errors.length > 0 || cst.unconsumedFrom !== null || !cst.ok, source).toBe(true);
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
     }
   });
@@ -1496,7 +1496,7 @@ describe('Jess AST grammar facts', () => {
       rules: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
     });
     const invalid = '@media only (min-width: 1px) { .card { color: red; } }';
-    const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
+    const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
     expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
     expect(() => parse('@container only screen { .card { color: red; } }')).toThrow(SyntaxError);
     expect(parse('@media not (min-width: 1px) { .card { color: red; } }')).toMatchObject({
@@ -1538,7 +1538,7 @@ describe('Jess AST grammar facts', () => {
       ['@container sidebar (30rem < width < 80rem) { .card { color: blue; } }', '<'],
       ['@container sidebar (30rem <= width <= 80rem) { .card { color: blue; } }', '<=']
     ]) {
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
       expect(parse(source).rules[0], source).toMatchObject({
         type: 'AtRuleBlock',
@@ -1573,7 +1573,7 @@ describe('Jess AST grammar facts', () => {
       ['@container (aspect-ratio: 16/9) { .card { color: blue; } }', ':'],
       ['@media (aspect-ratio >= 16/9) { .card { color: blue; } }', '>=']
     ] as const) {
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
       expect(parse(source).rules[0], source).toMatchObject({
         type: 'AtRuleBlock',
@@ -1626,7 +1626,7 @@ describe('Jess AST grammar facts', () => {
 
   it('constructs and renders a static CSS @property custom-property header directly', () => {
     const source = '@property --accent { syntax: "<color>"; inherits: false; initial-value: red; }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(parse(source)).toMatchObject({
@@ -1718,7 +1718,7 @@ describe('Jess AST grammar facts', () => {
   it('retains Jess @supports general-enclosed bodies as structural interpolation templates', () => {
     const source = '@supports selector(.card-${tone}:has([data-x="${state}"])) { .card { color: blue; } }';
     const cst = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(direct.ok).toBe(true);
@@ -1762,7 +1762,7 @@ describe('Jess AST grammar facts', () => {
       '@supports selector(a $(x) b) { .card { color: blue; } }'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
     }
 
@@ -1838,7 +1838,7 @@ describe('Jess AST grammar facts', () => {
 
   it('constructs CSS and vendor keyframes as typed at-rule blocks with selector-only descriptor bodies', () => {
     const source = '@KEYFRAMES fade { from /* selector delimiter */, 50% { opacity: 0; } to { opacity: 1; } } @-MOZ-KEYFRAMES "zoom" { from { opacity: 0; } }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -1870,7 +1870,7 @@ describe('Jess AST grammar facts', () => {
   it('keeps block and line comments in trivia instead of statement children', () => {
     const source = '// root\n$theme: blue; /* between */ .card { // inside\n color: $theme; /* tail */ }';
     const legacy = parseJessCst(source);
-    const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -1929,9 +1929,9 @@ describe('Jess AST grammar facts', () => {
     const source = '$base: "dark";\n$tone: $base;\n$accent: blue;\n$hex: #0a1B2c;\n$gap: -1.5e2rem;\n$ratio: .5;\n$percent: 50%;\n$shade: rgb(0, 10%, mix(blue, $percent));\n.card { color: $tone; margin: 1rem; filter: blur(2px); }';
     const legacy = parseJessCst(source);
     const result = run(
-      jessAstGrammar.Stylesheet,
+      jessGrammar.Stylesheet,
       source,
-      { trivia: jessAstGrammar.whitespace }
+      { trivia: jessGrammar.whitespace }
     );
 
     expect(legacy.errors).toHaveLength(0);
@@ -1991,7 +1991,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs static CSS url values as Url facts rather than generic calls', () => {
     const source = '.asset { quoted: url("images/icon.svg"); raw: url(images/icon.svg); empty: url(); }';
     const cst = parseJessCst(source);
-    const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -2012,7 +2012,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs modern CSS slash-separated function components while retaining existing variable-led call expressions', () => {
     const source = '.card { box-shadow: rgb(15 23 42 / 0.22); }';
     const cst = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -2050,7 +2050,7 @@ describe('Jess AST grammar facts', () => {
       '.card { color: rgb(15 23 42 / 0.22 / 1); }'
     ]) {
       const cst = parseJessCst(invalid);
-      const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
       expect(!cst.ok || cst.errors.length + Number(cst.unconsumedFrom !== null) > 0, invalid).toBe(true);
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
@@ -2060,7 +2060,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs structured Jess interpolation in ordinary URL value targets', () => {
     const source = '$path: "images/icon.svg"; $file: "hero"; .asset { direct: url(${path}); joined: url(images/${file}.svg); quoted: url("assets/${file}.svg"); }';
     const cst = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -2106,7 +2106,7 @@ describe('Jess AST grammar facts', () => {
 
   it('constructs and evaluates a live dynamic variable name without changing existing bracket interpolation', () => {
     const source = '$name: color; $color: navy; $color := blue; .card { dynamic: $[$name]; existing: $[color]; color: red; property: $[color]; }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -2152,7 +2152,7 @@ describe('Jess AST grammar facts', () => {
       '.asset { image: url($[asset]); }',
       '.asset { image: url("${file}/$(.path).svg"); }'
     ]) {
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
     }
     const rule = parse('.asset { image: url("${file}/$(.path).svg"); }').rules[0];
@@ -2180,7 +2180,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs public static selector lists, compounds, combinators, and nested rules directly', () => {
     const source = '.card:hover > .title.active, #hero + button::before { color: blue; .icon ~ .label { color: red; } }';
     const legacy = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2223,7 +2223,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs public static attribute selectors as exact canonical SimpleSelector atoms', () => {
     const source = '[role], [data-kind="primary" i], [lang|=en] { color: blue; }';
     const legacy = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2253,7 +2253,7 @@ describe('Jess AST grammar facts', () => {
      */
     const source = '.parent { & { color: blue; } &:hover { color: red; } & + & { color: green; } [foo]& { color: teal; } }';
     const legacy = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2279,7 +2279,7 @@ describe('Jess AST grammar facts', () => {
      */
     const source = '.block { &__el { color: blue; } &--mod { color: red; } &-suffix { color: green; } &(-1) { color: teal; } }';
     const legacy = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2303,7 +2303,7 @@ describe('Jess AST grammar facts', () => {
      * and append to that; only the fused atom distributes per parent.
      */
     const source = '$tone: primary; .a, .b { &-${tone} { color: blue; } }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -2334,7 +2334,7 @@ describe('Jess AST grammar facts', () => {
      */
     for (const source of ['.a { &-1 { color: blue; } }', '.a { &1 { color: blue; } }', '.a { &() { color: blue; } }', '.a { &(\'\') { color: blue; } }', '.a { &(nil) { color: blue; } }', '.a { &-$[tone] { color: blue; } }']) {
       const cst = parseJessCst(source);
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value)).toBe(false);
     }
@@ -2343,7 +2343,7 @@ describe('Jess AST grammar facts', () => {
   it('parses `&` in $extend while public parse keeps $extend and $apply class-only by default', () => {
     const source = '.a { color: blue; } .b { .c { $extend &; $apply .a-1; } }';
     const legacy = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2366,7 +2366,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs public `${...}` selector templates as Interp-backed SimpleSelector atoms', () => {
     const source = '$side: left; .widget-${side}-${[tone]} { tone: dark; color: blue; }';
     const legacy = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2447,7 +2447,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs Jess value lookups and expressions, plus string interpolation', () => {
     const source = '$tone: blue; $gap: 2px; $key: $[tone]; $quoted-key: $["theme"]; $single-quoted-key: $[\'theme\']; $math: $(1 + 2 * $gap); $compare: $(1  +  2 = 3); $quoted-compare: $("a-${tone}" = foo); .card { content: "tone-${tone}-$(1 + 2)"; color: rgb($[tone], $(1 + 2), blue); }';
     const legacy = parseJessCst(source);
-    const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2491,7 +2491,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs public Jess $for single, comma, and bracket bindings directly', () => {
     const source = '$for ($item of $items) { .single { value: $item; } }\n$for ($item, $key, $counter of $items) { .comma { value: $item; key: $key; counter: $counter; } }\n$for ([$key, $value] of $collection) { .bracket { key: $key; value: $value; } }';
     const legacy = parseJessCst(source);
-    const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2543,7 +2543,7 @@ describe('Jess AST grammar facts', () => {
 
   it('recognizes a documented $for loop as one direct grammar production', () => {
     const source = '$for ($item of $items) { .item { value: $item; } }';
-    const result = run(jessAstGrammar.For, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessGrammar.For, source, { trivia: jessGrammar.whitespace });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -2558,7 +2558,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs typed Jess $for ranges, including an exclusive end', () => {
     const source = '$for ($i of 1 to 3) { .inclusive { value: $i; } }\n$for ($i of 1 to <3) { .exclusive { value: $i; } }';
     const legacy = parseJessCst(source);
-    const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2594,7 +2594,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs a documented Jess collection RHS for public bracket $for rendering', () => {
     const source = '$collection: { header: red; footer: blue; }; $for ([$key, $value] of $collection) { .box-${key} { color: $value; } }';
     const legacy = parseJessCst(source);
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2638,7 +2638,7 @@ describe('Jess AST grammar facts', () => {
   it('preserves public variable range bounds, exclusions, steps, and descending order as typed Range fields', () => {
     const source = '$start: 9; $end: 1; $step: 2; $for ($i of >$start to <$end step $step) { .item { value: $i; } }';
     const legacy = parseJessCst(source);
-    const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2669,7 +2669,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs public Jess mixin definitions, defaults, calls, and namespace chains directly', () => {
     const source = 'button-base($bg: #1a73e8, $pad: 1rem) { color: $bg; padding: $pad; }\n#ns() { .inner() { color: blue; } }\n.button { $ > button-base(); $ > #ns > .inner(); }';
     const legacy = parseJessCst(source);
-    const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -2710,7 +2710,7 @@ describe('Jess AST grammar facts', () => {
 
   it('constructs named Jess mixin arguments as canonical CallArg facts and evaluates defaults', () => {
     const source = 'button-base($bg: #1a73e8, $pad: 1rem) { color: $bg; padding: $pad; } .button { $ > button-base($pad: 0.25rem); }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -2729,7 +2729,7 @@ describe('Jess AST grammar facts', () => {
 
   it('keeps named mixin arguments source-ordered and variable-valued arguments positional', () => {
     const source = '.button { $ > button-base($pad: 2px, $bg: red); $ > button-base($tone); }';
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -2762,7 +2762,7 @@ describe('Jess AST grammar facts', () => {
   it('constructs static Jess mixin guards directly, retains the CST guard route, and exposes them through public parse', () => {
     const source = 'match($value) when (($value = true) and not(false)) { color: red; } fallback($value) when (default()) { color: blue; } either() when (false or true) { color: green; } numeric($value) when ($type.isnumber($value)) { color: purple; } unit($value) when ($type.isunit($value, px)) { color: orange; } .yes { $ > match(true); } .no { $ > fallback(false); } .or { $ > either(); } .number { $ > numeric(2px); } .word { $ > numeric(word); } .unit { $ > unit(3px); }';
     const cst = parseJessCst('match($value) when ($value = true) {}');
-    const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -2799,7 +2799,7 @@ describe('Jess AST grammar facts', () => {
       'm($value) when ($type.isnumber($value, px)) {}',
       'm($value) when ($type.isunit($value, px, extra)) {}'
     ]) {
-      const directInvalid = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
+      const directInvalid = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
       expect(directInvalid.ok && directInvalid.unconsumedFrom === null, invalid).toBe(false);
     }
   });
@@ -2814,7 +2814,7 @@ describe('Jess AST grammar facts', () => {
       '.button { $ > mixin($a := red); }',
       '.button { $ > mixin($[a]: red); }'
     ]) {
-      const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
     }
   });
@@ -2822,7 +2822,7 @@ describe('Jess AST grammar facts', () => {
   it('matches public rejection of malformed Jess interpolation without a text fallback', () => {
     for (const source of ['$key: $[];', '$key: $[tone;', '$key: $ [tone];', '$key: $[ tone];', '$key: $[tone ];', '$key: $(1 + );', '$key: "tone-$[tone";']) {
       const legacy = parseJessCst(source);
-      const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(legacy.errors.length + Number(legacy.unconsumedFrom !== null), source).toBeGreaterThan(0);
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
@@ -3281,7 +3281,7 @@ describe('Jess AST grammar facts', () => {
        */
       '.card { --: blue; }'
     ]) {
-      const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
   });

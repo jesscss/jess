@@ -6265,10 +6265,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
 };
 
 export const lessGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, lessGrammarFactory)]);
-export const lessAstGrammar = lessGrammar;
 
 export const lessLineGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], trackLines: true }, lessGrammarFactory)]);
-export const lessAstLineGrammar = lessLineGrammar;
 
 /** Public Less CST artifact: the same grammar factory compiled in CST mode. */
 export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst' }, lessGrammarFactory)]);
@@ -6285,5 +6283,5 @@ export function lessGrammarFor(options: LessGrammarOptions = {}) {
   if (options.cst) {
     return options.trackLines ? lessDiagnosticCstGrammar : lessCstGrammar;
   }
-  return options.trackLines ? lessAstLineGrammar : lessAstGrammar;
+  return options.trackLines ? lessLineGrammar : lessGrammar;
 }

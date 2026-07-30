@@ -5750,14 +5750,10 @@ export const jessGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssP
   jessFactory
 )]);
 
-export const jessAstGrammar = jessGrammar;
-
 export const jessLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, trackLines: true },
   jessFactory
 )]);
-
-export const jessAstLineGrammar = jessLineGrammar;
 
 export const jessCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, hostMode: 'cst' },
@@ -5778,5 +5774,5 @@ export function jessGrammarFor(options: JessGrammarOptions = {}) {
   if (options.cst) {
     return options.trackLines ? jessDiagnosticCstGrammar : jessCstGrammar;
   }
-  return options.trackLines ? jessAstLineGrammar : jessAstGrammar;
+  return options.trackLines ? jessLineGrammar : jessGrammar;
 }

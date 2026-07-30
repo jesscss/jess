@@ -689,10 +689,18 @@ state.
 
 ## Working sequence
 
+Canonical grammar artifact naming, 2026-07-30: `cssGrammar`, `lessGrammar`,
+`scssGrammar`, and `jessGrammar` are the default AST artifacts. Their
+line-tracked counterparts are `*LineGrammar`; `*CstGrammar` remains explicit
+because it selects a distinct host mode. The redundant `*AstGrammar` and
+`*AstLineGrammar` exports were deleted from every public `./grammar` subpath.
+Do not reintroduce them as compatibility aliases: the grammar name is the
+stable concept, not an implementation mode.
+
 1. **CSS folded; continue focused quality cleanup without blocking dialect
    repair.** CSS now has
    one `src/grammar.ts`, one `cssFactory`, and two macro-compiled host outputs:
-   `cssGrammar` / `cssAstGrammar` for AST mode and `cssCstGrammar` for CST
+   `cssGrammar` for the default mode and `cssCstGrammar` for CST
    mode. The physical CSS fold is paid; do not recreate
    `src/ast/grammar.ts`. The current Less byte-identity oracle is red in the
    integrated checkout because of later folded Less CST ownership deltas, so do
@@ -716,7 +724,7 @@ state.
 2. **Less folded; make it exemplary and classify CST residue.** Less now ships
    AST and CST from one
    host-mode grammar source. `packages/syntax/less/less-parser/src/ast/grammar.ts`
-   is deleted, the old CST bridge body is gone, and `lessAstGrammar` /
+   is deleted, the old CST bridge body is gone, and `lessGrammar` /
    `lessCstGrammar` compile the same Less-owned factory in the appropriate host
    mode. The active Less work is now quality plus CST residue classification:
    delete `DirectLess*` migration names as each family is reviewed, replace broad
@@ -4546,8 +4554,8 @@ semantic local grammar facts (`dollarName`, `expressionBoundary`,
 `generalTemplateText`, `urlInterpolatedText`, `pseudoRawDoubleQuoted`,
 `pseudoRawSingleQuoted`, `pseudoRawArgument`, and `caseInsensitiveWhen`). This
 is source-only naming cleanup: exported dialect entrypoints such as
-`jessFactory`, `jessGrammar`, `jessAstGrammar`, and `jessCstGrammar` still name
-the package surface, and no grammar branch, public CST/AST node label, reducer
+`jessFactory`, `jessGrammar`, and `jessCstGrammar` name the package surface,
+and no grammar branch, public CST/AST node label, reducer
 shape, regex body, or scanner/trivia behavior changed.
 
 Evidence for the Jess parser-local terminal vocabulary cleanup: `rg` finds no

@@ -1,6 +1,6 @@
 import { createServer } from 'vite';
 import { parseCst } from '@jesscss/css-parser/cst';
-import { lessAstGrammar, lessCstGrammar, lessGrammar } from '../src/grammar.js';
+import { lessCstGrammar, lessGrammar } from '../src/grammar.js';
 
 function hasGrammarNode(value: unknown, grammarType: string): boolean {
   if (typeof value !== 'object' || value === null) {
@@ -16,8 +16,7 @@ function hasGrammarNode(value: unknown, grammarType: string): boolean {
   return Array.isArray(record.rules) && record.rules.some(child => hasGrammarNode(child, grammarType));
 }
 
-test('canonical Less grammar is the AST artifact while CST remains explicit', () => {
-  expect(lessGrammar).toBe(lessAstGrammar);
+test('canonical Less grammar is the default artifact while CST remains explicit', () => {
   expect(lessCstGrammar).not.toBe(lessGrammar);
   expect(lessGrammar.VarDeclaration).toBeDefined();
 });

@@ -4,7 +4,7 @@ import { createTriviaMapFromParseman, triviaMapOf, valueLayoutOf, withSourceSpan
 import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
-import { cssAstGrammar } from '../src/grammar.js';
+import { cssGrammar } from '../src/grammar.js';
 import { parseCssCst } from '../src/cst-css.js';
 import { parse } from '../src/index.js';
 import { wptAnbParsing } from './wpt-syntax-vectors.js';
@@ -18,7 +18,7 @@ function isStylesheet(value: unknown): value is Stylesheet {
 }
 
 function parseAst(input: string): Stylesheet {
-  const result = run(cssAstGrammar.Stylesheet, input, { trivia: cssAstGrammar.whitespace });
+  const result = run(cssGrammar.Stylesheet, input, { trivia: cssGrammar.whitespace });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     throw new Error(`CSS AST grammar did not consume the document: ${JSON.stringify(result)}`);
   }
@@ -1508,7 +1508,7 @@ describe('CSS canonical-AST grammar', () => {
   });
 
   it('keeps @import outside the generic statement family and rejects malformed typed boundaries', () => {
-    const result = run(cssAstGrammar.AtRuleStatement, '@import "theme.css";', { trivia: cssAstGrammar.whitespace });
+    const result = run(cssGrammar.AtRuleStatement, '@import "theme.css";', { trivia: cssGrammar.whitespace });
 
     expect(result.ok).toBe(false);
     for (const input of [
@@ -1518,7 +1518,7 @@ describe('CSS canonical-AST grammar', () => {
     ]) {
       expect(() => parseAst(input)).toThrow();
     }
-    expect(run(cssAstGrammar.ImportStatement, '@imported "theme.css";', { trivia: cssAstGrammar.whitespace }).ok).toBe(false);
+    expect(run(cssGrammar.ImportStatement, '@imported "theme.css";', { trivia: cssGrammar.whitespace }).ok).toBe(false);
   });
 
   it('constructs quoted, url, and function values without a value re-parser', () => {
@@ -1645,7 +1645,7 @@ describe('CSS canonical-AST grammar', () => {
   });
 
   it('commits url() after its opener instead of falling back to a generic call', () => {
-    const result = run(cssAstGrammar.Value, 'url(foo bar)', { trivia: cssAstGrammar.whitespace });
+    const result = run(cssGrammar.Value, 'url(foo bar)', { trivia: cssGrammar.whitespace });
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({ expected: [')'] });
@@ -1738,7 +1738,7 @@ describe('CSS canonical-AST grammar', () => {
     const source = '.a { a: url(x) / cover; b: var(--x) solid; c: rgb(1,2,3) / .5; d: foo(bar) baz; e: calc(1px + var(--x)); f: calc(var(--x, 1px + 2px) + 2px); g: calc(var(--x, red blue) + 2px); h: 0 calc(-1 * var(--x)); }';
 
     expect(parseCssCst(source).errors).toHaveLength(0);
-    const directVar = run(cssAstGrammar.VarCall, 'var(--x, 1px + 2px)', { trivia: cssAstGrammar.whitespace });
+    const directVar = run(cssGrammar.VarCall, 'var(--x, 1px + 2px)', { trivia: cssGrammar.whitespace });
     expect(directVar.ok, JSON.stringify(directVar)).toBe(true);
     expect(directVar.unconsumedFrom).toBeNull();
     const document = parseAst(source);
@@ -1867,7 +1867,7 @@ describe('CSS canonical-AST grammar', () => {
       '.a { x: calc(var(--x, [(a)) + 2px); }',
       '.a { x: calc(var(--x, {[a]) + 2px); }'
     ]) {
-      const direct = run(cssAstGrammar.Stylesheet, invalid, { trivia: cssAstGrammar.whitespace });
+      const direct = run(cssGrammar.Stylesheet, invalid, { trivia: cssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow();
     }
@@ -1897,7 +1897,7 @@ describe('CSS canonical-AST grammar', () => {
       '.a { width: calc(1px -2px); }'
     ]) {
       try {
-        const result = run(cssAstGrammar.Stylesheet, input, { trivia: cssAstGrammar.whitespace });
+        const result = run(cssGrammar.Stylesheet, input, { trivia: cssGrammar.whitespace });
         expect(result.ok && result.unconsumedFrom === null).toBe(false);
       } catch (error) {
         throw new Error(`${input}: ${error instanceof Error ? error.message : String(error)}`);

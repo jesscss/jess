@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { run } from 'parseman';
 
-import { scssAstGrammar } from '../src/grammar.js';
+import { scssGrammar } from '../src/grammar.js';
 import { parseScssCst } from '../src/cst.js';
 
 /**
@@ -54,7 +54,7 @@ describe('SCSS grammar compose integrity', () => {
       '@detached: { color: red; };'
     ]) {
       const cst = parseScssCst(source);
-      const ast = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const ast = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
       expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
       expect(ast.ok && ast.unconsumedFrom === null, source).toBe(false);
@@ -76,7 +76,7 @@ describe('SCSS grammar compose integrity', () => {
         rules: [{ type: 'Ruleset', rules: [{ type: 'AtRuleStatement', name: '@detached', prelude: { type: 'Any', src: '()' } }] }]
       }]
     ] as const) {
-      const ast = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const ast = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
       expect(ast.ok && ast.unconsumedFrom === null, source).toBe(true);
       if (!ast.ok || ast.unconsumedFrom !== null) {

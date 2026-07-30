@@ -2,7 +2,7 @@ import { run } from 'parseman';
 import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseLessCst, type LessCstChild } from '../src/cst.js';
-import { lessAstGrammar } from '../src/grammar.js';
+import { lessGrammar } from '../src/grammar.js';
 import {
   LessBareVariableInterpolationError,
   LessDynamicCharsetError,
@@ -30,8 +30,8 @@ function stylesheet(value: unknown): Stylesheet {
 
 function parsesCompleteStylesheet(source: string): boolean {
   try {
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
     return (
       result.ok && result.unconsumedFrom === null && isStylesheet(result.value)
@@ -107,9 +107,9 @@ function cstIssueCount(result: ReturnType<typeof parseLessCst>): number {
 describe('Less AST grammar facts', () => {
   it('keeps ordinary adjacency as a raw value array and reserves List for explicit separators', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@space: red blue; @comma: red, blue; .x { value: @space; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -133,9 +133,9 @@ describe('Less AST grammar facts', () => {
 
   it('treats a standalone root block comment before an escaped selector as trivia', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '/* escaped selector note */ \\62\\6c\\6f\\63\\6b { color: silver; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -157,18 +157,18 @@ describe('Less AST grammar facts', () => {
     });
 
     const rootRelative = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '> .second { color: purple; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(rootRelative.ok && rootRelative.unconsumedFrom === null && isStylesheet(rootRelative.value)).toBe(false);
   });
 
   it('completes a document with final Less line-comment trivia', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@tone: red; // final override\n',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -180,9 +180,9 @@ describe('Less AST grammar facts', () => {
 
   it('completes a namespaced document before terminal line-comment trivia', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '#ns { .m() { color: red; } }\n// compatibility note\n',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -194,9 +194,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps a generic block at-rule function prelude structural', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@document url-prefix() { .child { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -216,9 +216,9 @@ describe('Less AST grammar facts', () => {
 
   it('accepts valid CSS component preludes on generic Less at-rules', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@unknown [data-x="}"] and (--flag: value) { .child { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -238,9 +238,9 @@ describe('Less AST grammar facts', () => {
 
   it('accepts valid CSS component preludes on generic Less at-rule statements', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@unknown (--flag: value);',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -259,9 +259,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps typed generic at-rule preludes structural before the CSS component fallback', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@unknown foo 42 (bar) { .child { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -281,9 +281,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps CSS-compatible generic at-rule function preludes structural', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@-moz-document regexp("(\\d{0,15})") { a { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -307,9 +307,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps generic at-rule calc preludes as glued function calls', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@unknown calc(1px + 2px) { a { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -340,9 +340,9 @@ describe('Less AST grammar facts', () => {
 
   it('uses the CSS component fallback for generic prelude syntax outside the typed Less subset', () => {
     const block = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@-moz-document/* near */ /* filter */ url("example.com/{") /* a */ {}',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(block.ok).toBe(true);
     expect(block.unconsumedFrom).toBeNull();
@@ -359,9 +359,9 @@ describe('Less AST grammar facts', () => {
     });
 
     const statement = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@arbitrary value after ();',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(statement.ok).toBe(true);
     expect(statement.unconsumedFrom).toBeNull();
@@ -378,8 +378,8 @@ describe('Less AST grammar facts', () => {
   });
 
   it('keeps generic at-rule prelude fallback behind Less-specific at routes', () => {
-    const detachedCall = run(lessAstGrammar.Document, '@rules();', {
-      trivia: lessAstGrammar.whitespace
+    const detachedCall = run(lessGrammar.Document, '@rules();', {
+      trivia: lessGrammar.whitespace
     });
     expect(detachedCall.ok).toBe(true);
     expect(detachedCall.unconsumedFrom).toBeNull();
@@ -392,8 +392,8 @@ describe('Less AST grammar facts', () => {
   it('preserves the historical doubled-quote function argument as one opaque fact', () => {
     const source =
       '@-x-document url-prefix(""github.com"") { h1 { color: red; } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -417,9 +417,9 @@ describe('Less AST grammar facts', () => {
     );
 
     const generic = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@unknown custom(""github.com"") { h1 { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(generic.ok).toBe(true);
     expect(generic.unconsumedFrom).toBeNull();
@@ -439,9 +439,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps a block comment before a function argument comma as layout trivia', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.card { background: linear-gradient(#333 /* keep */, #111); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -481,8 +481,8 @@ describe('Less AST grammar facts', () => {
       '.a { b: e(1px;\n  // c\n  2px); }'
     ];
     for (const source of sources) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
@@ -491,9 +491,9 @@ describe('Less AST grammar facts', () => {
 
   it('retains the authored delimiter gap when a line comment follows a function argument comma', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.a { b: max(1px,\n  // c\n  2px); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -531,9 +531,9 @@ describe('Less AST grammar facts', () => {
 
   it('skips line-comment trivia after a delimiter in a call-argument function', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@m: { a: 1; }\neach(@m,\n  // c\n  #(@v, @k) { .@{k} { x: @v; } });',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -559,8 +559,8 @@ describe('Less AST grammar facts', () => {
       '.a { b: calc(@w + 2vw) @v; }'
     ];
     const shape = (source: string): unknown => {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
@@ -576,8 +576,8 @@ describe('Less AST grammar facts', () => {
   });
 
   it('keeps a glued variable reference out of the value when the gap is a statement boundary', () => {
-    const result = run(lessAstGrammar.Document, '@x: 1px;\n@v: 2px;', {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, '@x: 1px;\n@v: 2px;', {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -604,8 +604,8 @@ describe('Less AST grammar facts', () => {
       '@v: .m(@a)[];',
       '@v: #ns > .m(@a)[];'
     ]) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
@@ -613,8 +613,8 @@ describe('Less AST grammar facts', () => {
   });
 
   it('keeps a bare mixin call as a variable value when no lookup follows', () => {
-    const result = run(lessAstGrammar.Document, '@v: #m(@a);', {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, '@v: #m(@a);', {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -633,9 +633,9 @@ describe('Less AST grammar facts', () => {
 
   it('lowers an inline detached-ruleset each() iterable with a parameterized callback', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'each({ margin: m; padding: p; }, #(@abbrev, @prop) { .@{abbrev} { @{prop}: 0; } });',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -653,9 +653,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps an interpolated pseudo argument structural', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.a { &:lang(@{lang}) ~ .b::after { content: @value; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -724,8 +724,8 @@ describe('Less AST grammar facts', () => {
       ':not(@{s}) { a: b; }',
       ':lang(x@{l}y) { a: b; }'
     ]) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
@@ -733,8 +733,8 @@ describe('Less AST grammar facts', () => {
   });
 
   it('leaves a fully static pseudo argument on the static route', () => {
-    const result = run(lessAstGrammar.Document, ':lang(en) { a: b; }', {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, ':lang(en) { a: b; }', {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -758,9 +758,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps a CSS escape hack as a typed declaration-value suffix', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.x { background-color: #000 \\9; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -789,8 +789,8 @@ describe('Less AST grammar facts', () => {
 
   it('keeps a generic at-rule parenthesized group structural after ordinary terms', () => {
     const source = '@unknown foo 42 (bar) { x { y: z; } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -823,8 +823,8 @@ describe('Less AST grammar facts', () => {
 
   it('keeps @page pseudo-pages as one typed header atom', () => {
     const source = '@page :first { margin: 3cm; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -848,8 +848,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@targets: *[.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1)];';
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const direct = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -881,8 +881,8 @@ describe('Less AST grammar facts', () => {
       '@targets: *[.card:not(@{tone})];',
       '@targets: * [.notice];'
     ]) {
-      const rejected = run(lessAstGrammar.Document, invalid, {
-        trivia: lessAstGrammar.whitespace
+      const rejected = run(lessGrammar.Document, invalid, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         rejected.ok
@@ -897,8 +897,8 @@ describe('Less AST grammar facts', () => {
     const source =
       'each(@items, .(@entry) { value: @entry; });\neach(@items, .(@item, @key, @index) { value: @item; key: @key; index: @index; });\neach(@items, { value: @value; key: @key; index: @index; });';
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(legacy.errors).toHaveLength(0);
@@ -1024,9 +1024,9 @@ describe('Less AST grammar facts', () => {
 
   it('requires the Less each() opener to be glued', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'each (1, { value: @value; });',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(
@@ -1036,8 +1036,8 @@ describe('Less AST grammar facts', () => {
 
   it('accepts hash-prefixed Less each() callbacks as the same canonical For binding', () => {
     const source = 'each(@items, #(@item, @key) { value: @item; key: @key; });';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -1081,8 +1081,8 @@ describe('Less AST grammar facts', () => {
   it('accepts semicolon-separated anonymous each() callback bindings', () => {
     const source =
       '.entry { each(a b, .(@value; @index) { item-@{index}: @value; }); }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -1105,8 +1105,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.values() { first: red; second: blue; } each(.values(), .(@value, @key) { .item { value: @value; key: @key; } });';
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const direct = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -1131,8 +1131,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.library { .values() { first: red; second: blue; } } each(.library > .values(), .(@value, @key) { .item { value: @value; key: @key; } });';
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const direct = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -1177,8 +1177,8 @@ describe('Less AST grammar facts', () => {
       'each(.library > .values() !important, { color: red; });',
       'each(.library > .values();, { color: red; });'
     ]) {
-      const direct = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         direct.ok
@@ -1193,8 +1193,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.make-map() { tone: blue; } @map: .make-map(red, @tone: blue);';
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const direct = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -1226,8 +1226,8 @@ describe('Less AST grammar facts', () => {
   it('drops only authored empty statements from simple and named each callbacks', () => {
     const source =
       'each(1, { ; value: @value; ; }); each(2, .(@entry) { ; value: @entry; ; });';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -1253,8 +1253,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@theme: { @keyframes fade { from { opacity: 0; } } }; each(1, { @-webkit-keyframes "slide" { 50% { opacity: @value; } } });';
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const direct = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -1294,9 +1294,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs canonical import, variable, declaration, and ruleset facts directly', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@theme: "dark";\n.a { /* note */ color: red; }\n@import "theme.less";\n@-import \'tokens.less\';',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -1370,8 +1370,8 @@ describe('Less AST grammar facts', () => {
   it('constructs an indirect variable as a typed two-step reference and evaluates it', () => {
     const source = '@name: tone; @tone: red; .card { color: @@name; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -1413,8 +1413,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@a: 2; .math { sum: 1 + 2 * 3; grouped: (1 + 2) * 3; neg: -(@a + 1); signed: -2px + 3px; ratio: 12px / 1.5; compact: 1 +2; spacedMinus: 1 -23; calc: calc(100% - (20px / 2)); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -1560,8 +1560,8 @@ describe('Less AST grammar facts', () => {
       expect(cstIssueCount(cst), source).toBe(0);
       expect(findCstNodes(cst.tree, cstNode).length, source).toBeGreaterThan(0);
 
-      const direct = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(direct.ok, source).toBe(true);
       expect(direct.unconsumedFrom, source).toBeNull();
@@ -1588,8 +1588,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.modern { background: rgb(from blue calc(r + 100) g b); accent: oklch(from #0000FF calc(l / 2) c h); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cstIssueCount(cst)).toBe(0);
@@ -1658,8 +1658,8 @@ describe('Less AST grammar facts', () => {
   it('keeps comment-aware product operators as one flat arithmetic stream', () => {
     const source =
       '.math { product: 2 * // factor\n 3; modulo: 7 // divisor follows\n % 3; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -1702,9 +1702,9 @@ describe('Less AST grammar facts', () => {
     );
 
     const malformed = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.math { product: 2 * // missing operand\n; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(malformed.ok && malformed.unconsumedFrom === null).toBe(false);
   });
@@ -1715,9 +1715,9 @@ describe('Less AST grammar facts', () => {
      * whitespace) block and line comments count as separating trivia.
      */
     const product = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.m { star: 1/**/*/**/2; mod: 7 /* x */ % /* y */ 3; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(product.ok && product.unconsumedFrom === null).toBe(true);
     expect(product.value).toMatchObject({
@@ -1756,17 +1756,17 @@ describe('Less AST grammar facts', () => {
      * the required whitespace, so a comment-separated `-` is not a subtraction.
      */
     const commentSum = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.m { x: 1/**/-/**/2; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(
       JSON.stringify(commentSum.value ?? {}).includes('"operator":"-"')
     ).toBe(false);
 
     // Real whitespace around `-` still IS a subtraction (unchanged).
-    const spacedSum = run(lessAstGrammar.Document, '.m { x: 1 - 2; }', {
-      trivia: lessAstGrammar.whitespace
+    const spacedSum = run(lessGrammar.Document, '.m { x: 1 - 2; }', {
+      trivia: lessGrammar.whitespace
     });
     expect(spacedSum.value).toMatchObject({
       rules: [
@@ -1778,8 +1778,8 @@ describe('Less AST grammar facts', () => {
   it('keeps the comments2 variable/parens product on the same math route', () => {
     const source =
       '@column-width: @base * 6em; @columns: 12; @gridsystem-width: (@column-width * // total columns */\n @columns) + ( // width */\n @gutter-width * // gutters */\n @columns);';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -1800,8 +1800,8 @@ describe('Less AST grammar facts', () => {
   it('keeps a glued top-level Less slash group structural for later calc evaluation', () => {
     const source =
       '@ratio: 50vh/2; .card { direct: @ratio; calc: calc(100% - (@ratio - 20px)); }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -1834,8 +1834,8 @@ describe('Less AST grammar facts', () => {
       '  function: min(12px/1.5/3, 2px);',
       '}'
     ].join('\n');
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -1904,9 +1904,9 @@ describe('Less AST grammar facts', () => {
     });
 
     const malformed = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.case { malformed: 12px / * 2px; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(malformed.ok && malformed.unconsumedFrom === null).toBe(false);
   });
@@ -1914,8 +1914,8 @@ describe('Less AST grammar facts', () => {
   it('constructs zero-argument variable calls as final Reference steps directly', () => {
     const source = '@theme(); .card { @theme(); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -1953,8 +1953,8 @@ describe('Less AST grammar facts', () => {
   it('constructs bare function-call statements as existing FunctionCall facts', () => {
     const source = 'e("x"); .card { e("y"); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -1986,8 +1986,8 @@ describe('Less AST grammar facts', () => {
   it('constructs deprecated Less percent-format syntax as the existing percent FunctionCall', () => {
     const source = '.card { text: %("hello %s", "world"); modulo: 10 % 3; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -2025,8 +2025,8 @@ describe('Less AST grammar facts', () => {
       '.card { text: %foo; }',
       '.card { text: %("x",); }'
     ]) {
-      const direct = run(lessAstGrammar.Document, invalid, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, invalid, {
+        trivia: lessGrammar.whitespace
       });
       expect(direct.ok && direct.unconsumedFrom === null, invalid).toBe(false);
     }
@@ -2035,8 +2035,8 @@ describe('Less AST grammar facts', () => {
   it('keeps a static Less escaped quote inside percent-format arguments', () => {
     const source = '.card { text: %(~"hello %s", "world"); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -2069,8 +2069,8 @@ describe('Less AST grammar facts', () => {
   it('constructs static body and inline extends with exact/all multi-target semantics', () => {
     const source =
       '.target { color: navy; } .rules { &:extend(.target, .other !all); } .first, .inline:extend(.target all), .sibling { color: red; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -2115,8 +2115,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.first, .inline:extend(.target all), .sibling { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -2168,8 +2168,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.ext3 > .leaf:extend(.foo all), .ext4:hover:extend(.bar !all), .plain {}';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -2241,8 +2241,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.active&:extend(.target), .ext1 .ext2 :extend(.foo all) { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -2307,8 +2307,8 @@ describe('Less AST grammar facts', () => {
       '.a:extend(.b all).c { color: red; }'
     ]) {
       const cst = parseLessCst(source);
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
 
       expect(cstIssueCount(cst), source).toBeGreaterThan(0);
@@ -2323,9 +2323,9 @@ describe('Less AST grammar facts', () => {
 
   it('stops direct extend targets before terminal all and !all flags', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.subject { &:extend(.a .b all, .c > .d !all); color: black; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -2368,8 +2368,8 @@ describe('Less AST grammar facts', () => {
   it('uses the ordinary direct statement body inside an inline extend rule', () => {
     const source =
       '.paint() { color: red; } .target { width: 1px; } .inline:extend(.target) { .paint(); each(1, { order: @value; }); @media screen { display: block; } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -2394,9 +2394,9 @@ describe('Less AST grammar facts', () => {
 
   it('accepts an optional statement terminator after an inline extend ruleset', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.target { color: navy; } .alias:extend(.target) {};',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -2410,8 +2410,8 @@ describe('Less AST grammar facts', () => {
   it('constructs recursively grammar-built detached-ruleset variable bindings directly', () => {
     const source = '@theme: { ; @accent: blue; color: @accent; ; };';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -2447,8 +2447,8 @@ describe('Less AST grammar facts', () => {
   it('retains numeric detached-ruleset map keys as declaration facts', () => {
     const source =
       '@grays: { 100: #f8f9fa; 900: #212529; <: %3c; #: %23; (: %28; };';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -2486,8 +2486,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@theme: { .nested { color: red; } @media screen { .media { color: blue; } } .tone() { color: green; } each(1, { .item { order: @value; } }); };\neach(1, .(@entry) { .entry { order: @entry; } @media print { .print { color: black; } } });';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -2540,8 +2540,8 @@ describe('Less AST grammar facts', () => {
       'each(1, { &:extend(.target); });'
     ]) {
       const cst = parseLessCst(source);
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
 
       expect(cstIssueCount(cst), source).toBeGreaterThan(0);
@@ -2557,8 +2557,8 @@ describe('Less AST grammar facts', () => {
   it('retains argument-bearing variable calls as typed final Reference steps', () => {
     const source = '@theme(red);';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -2583,8 +2583,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@theme: { color: red; }; .m(@default: { width: 1px; }) { } .m({ color: blue; }); .m(@named: { color: green; }); fn({ display: block; });';
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const direct = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -2654,9 +2654,9 @@ describe('Less AST grammar facts', () => {
     });
 
     const valueArgument = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'value: fn({ color: red; });',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(valueArgument.ok).toBe(true);
     expect(valueArgument.unconsumedFrom).toBeNull();
@@ -2681,9 +2681,9 @@ describe('Less AST grammar facts', () => {
     });
 
     const finalRootDeclaration = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'value: fn({ color: red; })',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(finalRootDeclaration.ok).toBe(true);
     expect(finalRootDeclaration.unconsumedFrom).toBeNull();
@@ -2708,9 +2708,9 @@ describe('Less AST grammar facts', () => {
     });
 
     const separatedRootDeclaration = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'value: red; @media all { x: y; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(separatedRootDeclaration.ok).toBe(true);
     expect(separatedRootDeclaration.unconsumedFrom).toBeNull();
@@ -2727,8 +2727,8 @@ describe('Less AST grammar facts', () => {
       '.card { color: red @media all { color: blue; } }'
     ]) {
       const cst = parseLessCst(rejected);
-      const result = run(lessAstGrammar.Document, rejected, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, rejected, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         cst.errors.length + (cst.unconsumedFrom === null ? 0 : 1),
@@ -2743,9 +2743,9 @@ describe('Less AST grammar facts', () => {
     }
 
     const customValueKeepsAtRuleBytes = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.card { --x:red @media all {x:y} }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(customValueKeepsAtRuleBytes.ok).toBe(true);
     expect(customValueKeepsAtRuleBytes.unconsumedFrom).toBeNull();
@@ -2766,9 +2766,9 @@ describe('Less AST grammar facts', () => {
     });
 
     const customValueWithSeparator = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.card { --x:red; @media all { x: y; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(customValueWithSeparator.ok).toBe(true);
     expect(customValueWithSeparator.unconsumedFrom).toBeNull();
@@ -2790,8 +2790,8 @@ describe('Less AST grammar facts', () => {
       'value: %({ color: red; });'
     ]) {
       const legacy = parseLessCst(rejected);
-      const result = run(lessAstGrammar.Document, rejected, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, rejected, {
+        trivia: lessGrammar.whitespace
       });
       expect(legacy.unconsumedFrom, rejected).not.toBeNull();
       expect(
@@ -2808,8 +2808,8 @@ describe('Less AST grammar facts', () => {
      */
     const rawDetachedBody = '@theme: { <: %3c; };';
     const rawLegacy = parseLessCst(rawDetachedBody);
-    const rawResult = run(lessAstGrammar.Document, rawDetachedBody, {
-      trivia: lessAstGrammar.whitespace
+    const rawResult = run(lessGrammar.Document, rawDetachedBody, {
+      trivia: lessGrammar.whitespace
     });
     expect(rawLegacy.errors).toHaveLength(0);
     expect(rawLegacy.unconsumedFrom).toBeNull();
@@ -2835,9 +2835,9 @@ describe('Less AST grammar facts', () => {
       ]
     });
     const nestedConditionalArgument = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.m({ @media (tv) { color: black; } });',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(nestedConditionalArgument.ok).toBe(true);
     expect(nestedConditionalArgument.unconsumedFrom).toBeNull();
@@ -2845,9 +2845,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs static import options, url targets, and recursively balanced tails directly', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@import (less, multiple) url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -2880,9 +2880,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs a variable-bearing import query tail without an opaque tail fallback', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@var: 100px; @import url("//ha.com/file.css") (min-width:@var);',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -2918,9 +2918,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs quoted Less import interpolation as a structural target fact', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@import (less, multiple) "theme-@{name}.css" screen;',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -2957,9 +2957,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs one complete interpolated import tail as a structural fact', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@import (reference) "theme.less" @{media};',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -2996,8 +2996,8 @@ describe('Less AST grammar facts', () => {
   it('constructs unquoted dynamic URL values and import targets as typed interpolation', () => {
     const source =
       '@asset: icons; @theme: theme; .asset { variable: url(@asset/path.svg); template: url(@{theme}/icon.svg); } @import url(@{theme}.css);';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -3063,8 +3063,8 @@ describe('Less AST grammar facts', () => {
       '@import "theme-@{ x }.css";',
       '@import "theme-@{}.css";'
     ]) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -3099,8 +3099,8 @@ describe('Less AST grammar facts', () => {
       '@import "theme.less" screen and (min-width: 600px)};',
       '@import (unknown) "theme.less";'
     ]) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -3113,9 +3113,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs keyword and variable-reference values without recovering value text', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@base: red;\n@theme: @base;\n.a { color: @theme; background: red; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -3171,9 +3171,9 @@ describe('Less AST grammar facts', () => {
 
   it('feeds top-level and ruleset-local variable facts straight into the canonical serializer', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@base: red;\n.a { @tone: @base; color: @tone; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     if (
@@ -3188,8 +3188,8 @@ describe('Less AST grammar facts', () => {
 
   it('constructs a commented multiline comma-list variable value with a trailing comma', () => {
     const source = '.items { @values:\n  // fruit\n  apple,\n  banana,\n; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -3222,8 +3222,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.a { margin: +1.5e2rem 0 -2%; color: #ff00aa; background: url(icons/a.svg); empty: url(); escaped: url(foo\\ bar); shadow: rgb(255, 0, 128),\n inset 0 1px #000; }';
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     /*
@@ -3331,8 +3331,8 @@ describe('Less AST grammar facts', () => {
 
   it('constructs a bare percent sign as a keyword function argument', () => {
     const source = 'size: unit(100, %);';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -3354,9 +3354,9 @@ describe('Less AST grammar facts', () => {
       ]
     });
     const serializable = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       `.test { ${source} }`,
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(serializable.ok).toBe(true);
     expect(serializable.unconsumedFrom).toBeNull();
@@ -3367,16 +3367,16 @@ describe('Less AST grammar facts', () => {
 
   it('constructs a comparison condition in a Less function argument', () => {
     const full = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '#boolean { a: boolean(not(2 < 1)); b: boolean(not(2 > 1) and (true)); c: boolean(not(boolean(true))); f: boolean((2 > 1) = (3 > 2)); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(full.ok).toBe(true);
     expect(full.unconsumedFrom).toBeNull();
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'x: boolean(not(2 < 1));',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -3398,9 +3398,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs a Less function condition comparison between parenthesized conditions', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'x: boolean((2 > 1) = (3 > 2));',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -3457,17 +3457,17 @@ describe('Less AST grammar facts', () => {
 
   it('constructs a truth condition in a multi-argument Less function call', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'x: if(not(false), 1, 2);',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
   });
 
   it('constructs arithmetic inside Less function arguments as an operation', () => {
-    const result = run(lessAstGrammar.Document, 'x: round(32 / 3);', {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, 'x: round(32 / 3);', {
+      trivia: lessGrammar.whitespace
     });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -3486,8 +3486,8 @@ describe('Less AST grammar facts', () => {
 
   it('keeps an inter-argument block comment as function layout trivia', () => {
     const source = 'x: mix(blue, #FFF /* explanation */, 50%);';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -3510,8 +3510,8 @@ describe('Less AST grammar facts', () => {
 
   it('keeps a generic function argument as one space-separated value slot while treating comments as trivia', () => {
     const source = 'grid-template-columns: repeat(14, 10px /* gap */ 60px);';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -3539,8 +3539,8 @@ describe('Less AST grammar facts', () => {
   it('keeps variable-initializer comments out of later typed call arguments', () => {
     const source =
       '@color: #FFF/* source note */; html { color: mix(blue, @color, 50%); }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -3578,9 +3578,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps detached rulesets as typed arguments of a Less function value', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'x: if(not(false), { c: 3 }, { d: 4 });',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -3622,8 +3622,8 @@ describe('Less AST grammar facts', () => {
     ];
     for (let count = 1; count <= statements.length; count += 1) {
       const source = `#if { ${statements.slice(0, count).join(' ')} }`;
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(result.ok, `first ${count} function-condition statements`).toBe(
         true
@@ -3637,9 +3637,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs escaped parenthesized Less lists as typed, iterable values', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.x { value: ~(1, 2, 3); each(~(1 2 3); { item: @value; }); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -3685,9 +3685,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps CSS custom-property tokens structural in nested Less function arguments', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.a { color: rgba(var(--color-accent), 0.2); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -3722,9 +3722,9 @@ describe('Less AST grammar facts', () => {
   it('retains multiline declaration value slots as canonical facts', () => {
     const source =
       '.grid { grid-template-areas:\n  "header header"\n  "content sidebar"; }';
-    const result = run(lessAstGrammar.Document, source, {
+    const result = run(lessGrammar.Document, source, {
       state: { source },
-      trivia: lessAstGrammar.whitespace
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -3761,8 +3761,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.asset { direct: url(@asset); interpolated: url(@{asset}.svg); quoted: url("@{base}/icon.svg"); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -3827,8 +3827,8 @@ describe('Less AST grammar facts', () => {
   it('retains declaration-head and value comments as trivia', () => {
     const source =
       '.card { color/* property */: grey; margin /* before merge */ + /* before colon */: 0; border: /* value */ solid black; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -3872,8 +3872,8 @@ describe('Less AST grammar facts', () => {
   });
 
   it('keeps fallback CSS at-rule prelude comments in trivia, not semantic bytes', () => {
-    const result = run(lessAstGrammar.AtRulePrelude, 'a/* note */b', {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.AtRulePrelude, 'a/* note */b', {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -3886,8 +3886,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@accent: navy !important; .card { box-shadow+: @accent; box-shadow+: white; font+_: serif !important; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -3947,8 +3947,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@charset "utf-8"; @namespace url(http://www.w3.org/1999/xhtml); @namespace foo url(http://www.example.com); @font-face { font-family: Inter; src: url(font.woff2); } @media screen { .card { color: red; } } .outer { @layer utilities { color: blue; } }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -4047,8 +4047,8 @@ describe('Less AST grammar facts', () => {
       '@custom foo@{query};',
       '@custom foo @{query};'
     ]) {
-      const rejected = run(lessAstGrammar.Document, dynamic, {
-        trivia: lessAstGrammar.whitespace
+      const rejected = run(lessGrammar.Document, dynamic, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         rejected.ok
@@ -4062,8 +4062,8 @@ describe('Less AST grammar facts', () => {
   it('keeps generic CSS opaque at-rule blocks narrow in Less', () => {
     const source = '@future {!!:foo > ; > ?bar}';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -4087,16 +4087,16 @@ describe('Less AST grammar facts', () => {
       '@custom foo @{query};',
       '@theme: { &:extend(.target); };'
     ]) {
-      const opaque = run(lessAstGrammar.OpaqueAtRuleBlock, dynamic, {
-        trivia: lessAstGrammar.whitespace
+      const opaque = run(lessGrammar.OpaqueAtRuleBlock, dynamic, {
+        trivia: lessGrammar.whitespace
       });
       expect(opaque.ok && opaque.unconsumedFrom === null, dynamic).toBe(false);
     }
   });
 
   it('keeps opaque at-rule prelude comments in trivia, not semantic bytes', () => {
-    const result = run(lessAstGrammar.OpaqueAtRuleBlock, '@future a/* note */b { color: red; }', {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.OpaqueAtRuleBlock, '@future a/* note */b { color: red; }', {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -4113,8 +4113,8 @@ describe('Less AST grammar facts', () => {
   it('keeps charset on the static generic route while retaining typed namespace interpolation', () => {
     const source =
       '@charset "UTF-8"; @ns: less; @namespace @{ns} "http://lesscss.org";';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -4164,9 +4164,9 @@ describe('Less AST grammar facts', () => {
 
     expect(() =>
       run(
-        lessAstGrammar.Document,
+        lessGrammar.Document,
         '@Eight: 8; @charset "UTF-@{Eight}";',
-        { trivia: lessAstGrammar.whitespace }
+        { trivia: lessGrammar.whitespace }
       )
     ).toThrow(LessDynamicCharsetError);
 
@@ -4174,8 +4174,8 @@ describe('Less AST grammar facts', () => {
       '@charset @{encoding};',
       '@custom foo@{name};'
     ]) {
-      const rejected = run(lessAstGrammar.Document, rejectedSource, {
-        trivia: lessAstGrammar.whitespace
+      const rejected = run(lessGrammar.Document, rejectedSource, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         rejected.ok
@@ -4188,8 +4188,8 @@ describe('Less AST grammar facts', () => {
 
   it('recognizes inline backtick JavaScript as removed Less syntax', () => {
     expect(() =>
-      run(lessAstGrammar.Document, '.entry { value: `1 + 1`; }', {
-        trivia: lessAstGrammar.whitespace
+      run(lessGrammar.Document, '.entry { value: `1 + 1`; }', {
+        trivia: lessGrammar.whitespace
       })
     ).toThrow(LessInlineJavaScriptError);
   });
@@ -4204,17 +4204,17 @@ describe('Less AST grammar facts', () => {
     ]) {
       expect(
         () =>
-          run(lessAstGrammar.Document, source, {
-            trivia: lessAstGrammar.whitespace
+          run(lessGrammar.Document, source, {
+            trivia: lessGrammar.whitespace
           }),
         source
       ).toThrow(LessBareVariableInterpolationError);
     }
 
     const valid = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@media (min-width: @w) { .card { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(valid.ok).toBe(true);
     expect(valid.unconsumedFrom).toBeNull();
@@ -4235,8 +4235,8 @@ describe('Less AST grammar facts', () => {
     ]) {
       expect(
         () =>
-          run(lessAstGrammar.Document, source, {
-            trivia: lessAstGrammar.whitespace
+          run(lessGrammar.Document, source, {
+            trivia: lessGrammar.whitespace
           }),
         source
       ).toThrow(LessUnsupportedVariableNameError);
@@ -4249,8 +4249,8 @@ describe('Less AST grammar facts', () => {
     ]) {
       expect(
         () =>
-          run(lessAstGrammar.Document, source, {
-            trivia: lessAstGrammar.whitespace
+          run(lessGrammar.Document, source, {
+            trivia: lessGrammar.whitespace
           }),
         source
       ).toThrow(LessUnsupportedMixinNameError);
@@ -4260,8 +4260,8 @@ describe('Less AST grammar facts', () => {
   it('constructs interpolated and dotted layer headers through canonical at-rule nodes', () => {
     const source =
       '@layer-name: theme; @layer @{layer-name} { .card { color: red; } } @layer framework.buttons { .button { color: blue; } } @layer reset, base;';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -4332,8 +4332,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@keyframes fade { from, 50% { opacity: 0; } to { opacity: 1; } } @-webkit-keyframes "slide" { 0%, 100% { left: 0; } } @keyframes ~"spin" { from { opacity: 0; } }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -4406,10 +4406,10 @@ describe('Less AST grammar facts', () => {
 
     expect(() =>
       run(
-        lessAstGrammar.Document,
+        lessGrammar.Document,
         '@keyframes @name { from { opacity: 0; } }',
         {
-          trivia: lessAstGrammar.whitespace
+          trivia: lessGrammar.whitespace
         }
       )
     ).toThrow(LessBareVariableInterpolationError);
@@ -4418,8 +4418,8 @@ describe('Less AST grammar facts', () => {
       '@keyframes fade { @{step} { opacity: 0; } }',
       '@keyframes fade { 10 { opacity: 0; } }'
     ]) {
-      const direct = run(lessAstGrammar.Document, rejected, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, rejected, {
+        trivia: lessGrammar.whitespace
       });
       expect(direct.ok && direct.unconsumedFrom === null, rejected).toBe(false);
     }
@@ -4428,8 +4428,8 @@ describe('Less AST grammar facts', () => {
   it('treats Less keyframe comments as trivia', () => {
     const bodyComment =
       '@keyframes fade { from { /* body note */ opacity: 0; } }';
-    const direct = run(lessAstGrammar.Document, bodyComment, {
-      trivia: lessAstGrammar.whitespace
+    const direct = run(lessGrammar.Document, bodyComment, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(direct.ok).toBe(true);
@@ -4457,8 +4457,8 @@ describe('Less AST grammar facts', () => {
       '@keyframes fade { from, /* selector note */ 50% { opacity: 0; } }',
       '@keyframes fade { from /* selector note */ { opacity: 0; } }'
     ]) {
-      const accepted = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const accepted = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(accepted.ok && accepted.unconsumedFrom === null, source).toBe(
         true
@@ -4469,8 +4469,8 @@ describe('Less AST grammar facts', () => {
   it('matches public acceptance of an empty statement inside a generic at-rule body without inventing an AST node', () => {
     const source = '@foo { ; color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -4502,8 +4502,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@supports ((display: grid) or (color: red)) and (hover) { .card { color: red; } }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -4558,8 +4558,8 @@ describe('Less AST grammar facts', () => {
   it('renders bounded @supports parentheses without changing quoted or escaped feature values', () => {
     const source =
       '@supports (font-family: "A  \\"B\\"") and ((display: grid) or (color: red)) { .card { color: red; } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -4576,8 +4576,8 @@ describe('Less AST grammar facts', () => {
   it('keeps multi-token @supports feature values structural and canonicalizes their padding', () => {
     const source =
       '@supports ( box-shadow: 2px 2px 2px black ) or ( -moz-box-shadow: 2px 2px 2px black ) { .card { color: red; } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -4623,8 +4623,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@limit: 40rem; @media screen and (min-width: @limit), print { .card { color: red; } } @container (400px < width < @limit) { .card { color: blue; } }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -4690,8 +4690,8 @@ describe('Less AST grammar facts', () => {
 
   it('constructs a bare parenthesized media feature as a typed query node', () => {
     const source = '@media (tv) { .card { color: red; } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -4736,8 +4736,8 @@ describe('Less AST grammar facts', () => {
        */
       ['@media (aspect-ratio >= 16/9) { .card { color: red; } }', '>=']
     ] as const) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
       expect(result.value, source).toMatchObject({
@@ -4754,9 +4754,9 @@ describe('Less AST grammar facts', () => {
     }
 
     const range = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@media (16/9 < aspect-ratio < 2/1) { .card { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(range.ok && range.unconsumedFrom === null).toBe(true);
     expect(range.value).toMatchObject({
@@ -4794,9 +4794,9 @@ describe('Less AST grammar facts', () => {
      * slash group rather than becoming a ratio operation.
      */
     const styleQuery = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@container style(--ratio: 16/9) { .card { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(styleQuery.ok && styleQuery.unconsumedFrom === null).toBe(true);
     expect(styleQuery.value).toMatchObject({
@@ -4822,12 +4822,12 @@ describe('Less AST grammar facts', () => {
     const source =
       '@size: 640px; @tablet: (min-width: @size); @media @{tablet} { .card { color: red; } }';
     const feature = run(
-      lessAstGrammar.QueryColonFeature,
+      lessGrammar.QueryColonFeature,
       '(min-width: @size)',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(feature).toMatchObject({ ok: true, span: { start: 0, end: 18 } });
@@ -4859,9 +4859,9 @@ describe('Less AST grammar facts', () => {
     );
 
     const incoherent = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.card { value: (12px 13px); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(incoherent.ok && incoherent.unconsumedFrom === null).toBe(false);
   });
@@ -4878,8 +4878,8 @@ describe('Less AST grammar facts', () => {
 #ns { .sizes() { @small: 480px; } }
 .valToGet() { keyword: small; }
 @media #ns.breakpoint(.valToGet[])[@max] { .selector { prop: val; } }`;
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -4938,8 +4938,8 @@ describe('Less AST grammar facts', () => {
   it('constructs top-level negated media query conditions structurally', () => {
     const source =
       '@media not (width <= -100px) { body { background: green; } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -4973,8 +4973,8 @@ describe('Less AST grammar facts', () => {
   it('constructs nested negated container-query conditions structurally', () => {
     const source =
       '@container (width > 760px) and (not (height > 670px)) { .card { color: red; } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -5022,8 +5022,8 @@ describe('Less AST grammar facts', () => {
   it('constructs typed container style queries and permits them in shared conditional bodies', () => {
     const source =
       '@container card (inline-size > 30em) { @container style(--responsive: true) { .card { color: red; } } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -5063,8 +5063,8 @@ describe('Less AST grammar facts', () => {
   it('constructs an interpolated Less container name with a structural condition', () => {
     const source =
       '@name: card; @limit: 30em; @container @{name} (inline-size > @limit) { .card { color: red; } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -5110,9 +5110,9 @@ describe('Less AST grammar facts', () => {
 
   it('treats media-query prelude comments as trivia', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@media screen /* comment */, print /* another */ { body { font-size: 12pt; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -5135,8 +5135,8 @@ describe('Less AST grammar facts', () => {
       '@container only screen { .card { color: red; } }',
       '@container selector(.card) { .card { color: red; } }'
     ]) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -5149,15 +5149,15 @@ describe('Less AST grammar facts', () => {
       '@media screen { .card { color: red; } }',
       '@container (width > 10px) { .card { color: red; } }'
     ]) {
-      const generic = run(lessAstGrammar.AtRuleBlock, source, {
-        trivia: lessAstGrammar.whitespace
+      const generic = run(lessGrammar.AtRuleBlock, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(generic.ok && generic.unconsumedFrom === null, source).toBe(false);
     }
     const namedOnly = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@container only (width > 10px) { .card { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(
       namedOnly.ok
@@ -5169,8 +5169,8 @@ describe('Less AST grammar facts', () => {
       '@container only { .card { color: red; } }',
       '@container card (inline-size > 30em), style(--large: true) { .card { color: red; } }'
     ]) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -5184,8 +5184,8 @@ describe('Less AST grammar facts', () => {
   it('constructs complete Less interpolation headers as typed media, supports, and keyframe preludes', () => {
     const source =
       '@query: screen; @condition: "(display: grid)"; @animation: fade; @media @{query} { .media { color: red; } } @supports @{condition} { .supports { display: grid; } } @keyframes @{animation} { from { opacity: 0; } }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -5250,8 +5250,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@feature: kind; @supports selector(  .card-@{feature} /* keep */ :is(.a, .b) ) { .card { color: red; } }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -5292,8 +5292,8 @@ describe('Less AST grammar facts', () => {
       '@supports (font-tech(color-COLRv1)) { .card { color: red; } }',
       '@supports (@{feature}: grid) { .card { color: red; } }'
     ]) {
-      const direct = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         direct.ok
@@ -5307,8 +5307,8 @@ describe('Less AST grammar facts', () => {
       '@supports selector([.card) { .card { color: red; } }',
       '@supports (display: grid), (color: red) { .card { color: red; } }'
     ]) {
-      const direct = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         direct.ok
@@ -5318,9 +5318,9 @@ describe('Less AST grammar facts', () => {
       ).toBe(false);
     }
     const genericSupports = run(
-      lessAstGrammar.AtRuleBlock,
+      lessGrammar.AtRuleBlock,
       '@supports (display: grid) { .card { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(genericSupports.ok && genericSupports.unconsumedFrom === null).toBe(
       false
@@ -5331,8 +5331,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.space(@amount, @color: blue) { padding: @amount; color: @color; } .card { .space(2px, red); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -5399,14 +5399,14 @@ describe('Less AST grammar facts', () => {
       '.gradient-mixin(@color) { background: svg-gradient(to bottom, fade(@color, 0%) 0%); }',
       source
     ]) {
-      const result = run(lessAstGrammar.Document, candidate, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, candidate, {
+        trivia: lessGrammar.whitespace
       });
       expect(result.ok, candidate).toBe(true);
       expect(result.unconsumedFrom, candidate).toBeNull();
     }
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
@@ -5429,8 +5429,8 @@ describe('Less AST grammar facts', () => {
 
   it('keeps CSS-escaped mixin names as direct canonical calls', () => {
     const source = '.mixin\\!tUp() { color: red; } .card { .mixin\\!tUp(); }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -5451,8 +5451,8 @@ describe('Less AST grammar facts', () => {
 
   it('accepts an optional statement terminator after a Less mixin definition', () => {
     const source = '.wrap(@value) { color: @value; }; .card { .wrap(red); }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -5482,8 +5482,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@plugin "../../plugin/plugin-preeval"; .two(@rules: {}) { :root.two & { @rules(); } } .one { .two({ --foo: @replace !important; }); } @stop: end;';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cstIssueCount(cst)).toBe(0);
@@ -5571,9 +5571,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs semicolon-separated mixin parameters with detached-ruleset defaults', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.configure(@a: {}; @b: { default: works; };) { @a(); @b(); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -5601,9 +5601,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs semicolon-separated detached-ruleset mixin arguments', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.configure(@a; @b) {} .card { .configure({ direct: works; }; @b: { named: works; }); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -5641,9 +5641,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps a single semicolon-terminated mixin argument on the semicolon branch', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.tone(@color) {} .card { .tone(red;); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -5668,9 +5668,9 @@ describe('Less AST grammar facts', () => {
 
   it('groups comma runs into list-valued arguments when semicolons separate Less mixin arguments', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.generic(@left; @right) { left: @left; right: @right; } .out { .generic(a, b, c; a, b, c); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -5726,8 +5726,8 @@ describe('Less AST grammar facts', () => {
       '  .multi-bg(linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url("/images/hero.jpg") center/cover no-repeat);',
       '}'
     ].join('\n');
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -5766,8 +5766,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.badge(red, @gap, @rest...) { padding: @gap; } .card { .badge(red, 2px, 4px); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -5823,8 +5823,8 @@ describe('Less AST grammar facts', () => {
   it('constructs a Less mixin argument expansion through the existing spread field', () => {
     const source =
       '.pair(@a, @b) { first: @a; second: @b; } @args: one, two; .card { .pair(@args...); }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -5863,8 +5863,8 @@ describe('Less AST grammar facts', () => {
   it('constructs static namespaced mixin calls through the existing path contract', () => {
     const source = '.card { .library > .colors .tone(red); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -5895,8 +5895,8 @@ describe('Less AST grammar facts', () => {
 
   it('keeps nested callable mixin arguments as MixinCall facts, not value-shaped source recovery', () => {
     const source = '.wrapper(.something(foo)); .wrapper(.output-height());';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -5928,16 +5928,16 @@ describe('Less AST grammar facts', () => {
     });
 
     const arithmetic = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.wrapper(.something(foo) + 1);',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(arithmetic.ok && arithmetic.unconsumedFrom === null).toBe(false);
 
     const lexical = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@caller: 10px; .wrapper(@m) { @m(); } .something(@value) { width: @value; } .output-height() { height: 10px; } .x { .wrapper(.something(@caller)); .wrapper(.output-height()); }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(lexical.ok).toBe(true);
     expect(serialize(stylesheet(lexical.value)).css).toBe(
@@ -5948,8 +5948,8 @@ describe('Less AST grammar facts', () => {
   it('constructs static namespace/map reads as References over the existing MixinCall path base', () => {
     const source =
       '.out { a: #ns1[foo]; b: #ns1.vars[$sub]; c: #DEF.colors[primary]; d: #library.add-one(1px)[@return]; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6053,8 +6053,8 @@ describe('Less AST grammar facts', () => {
 }
 .out { value: #library.seed()[@next](42)[answer]; member: @theme[key].next(1); }
 `;
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6138,9 +6138,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs $@variable namespace property keys without flattening their indirection', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@prop-name: my-prop; #namespace { my-prop: prop-value; } .test { value: #namespace[$@prop-name]; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -6186,9 +6186,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps a namespaced mixin map value and its call-level important flag typed', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@theme-colors: #theme.dark.navbar.colors() !important;',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -6221,8 +6221,8 @@ describe('Less AST grammar facts', () => {
 @ns: { @options: { val2: 20px; } }
 .foo { val: #ns.options[val1] + @ns[@options][val2] + 5px; }
 `;
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6300,8 +6300,8 @@ describe('Less AST grammar facts', () => {
 #library { .implicit() { @return: blue; } .explicit(@x) { @return: 2px; } }
 .out { implicit: #library.implicit[@return]; explicit: #library.explicit(1px)[@return]; }
 `;
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6322,8 +6322,8 @@ describe('Less AST grammar facts', () => {
 @key: return;
 .out { ordinary: #library.m()[@key]; returned: #library.m()[@return]; }
 `;
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6353,8 +6353,8 @@ describe('Less AST grammar facts', () => {
 .out { @defaults(); direct: @defaults[@default-color]; nested: @defaults[@nested][@color]; indirect: @defaults[@@varToGet]; }
 @defaults: { @default-color: red; @nested: { @color: yellow; }; };
 `;
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6415,8 +6415,8 @@ describe('Less AST grammar facts', () => {
 #ns1 { .vars() { sub: tres; } }
 .out { sub: #ns1.vars[$sub]; }
 `;
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6432,8 +6432,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '#theme { .mixin() { color: red; } } .card { #theme > .mixin; } .important { #theme > .mixin !important; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -6471,8 +6471,8 @@ describe('Less AST grammar facts', () => {
     });
 
     for (const invalid of ['.card { #theme > .mixin }']) {
-      const direct = run(lessAstGrammar.Document, invalid, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, invalid, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         direct.ok
@@ -6486,8 +6486,8 @@ describe('Less AST grammar facts', () => {
   it('constructs the public call-level !important mixin override directly', () => {
     const source = '.card { .space(2px) !important; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -6526,8 +6526,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.card { .library > .colors .tone(@shade: red, @gap: 2px); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -6571,8 +6571,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.wide(@width) when (@width >= 20px) { width: @width; } .enabled() when (true) { display: block; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -6632,8 +6632,8 @@ describe('Less AST grammar facts', () => {
 & when (@ns[@options][option]) { .dr { a: b; } }
 & when (@ns[@options][option] = true) { .dr-2 { c: d; } }
 & when (@ns[@options][option] = false) { .dr-no-reach { c: d; } }`;
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6727,8 +6727,8 @@ describe('Less AST grammar facts', () => {
   it('constructs quoted Less mixin guard operands as existing typed values', () => {
     const source =
       '.match(@value) when (@value = "ok") { color: green; } .yes { .match("ok"); }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6756,8 +6756,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.match(@value) when (not (@value < 2) and iscolor(red), default()) { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -6799,8 +6799,8 @@ describe('Less AST grammar facts', () => {
   it('constructs default() as the typed comparison operand used by mixin dispatch', () => {
     const source =
       '.fallback(@value) when (@value = default()) { color: red; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6829,8 +6829,8 @@ describe('Less AST grammar facts', () => {
   it('requires default() rather than widening the dispatch guard to a bare keyword', () => {
     const source = '.fallback() when default { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     /*
@@ -6846,8 +6846,8 @@ describe('Less AST grammar facts', () => {
 
   it('rejects URL control characters that have no valid URL-token representation', () => {
     for (const source of ['background: url(foo\u0007bar);']) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
 
       expect(
@@ -6862,8 +6862,8 @@ describe('Less AST grammar facts', () => {
   it('constructs wrapped unquoted data URLs without widening ordinary URL text', () => {
     const source =
       '.asset { data: url(data:image/png;charset=utf-8;base64,\n  kiVBORw0K\n  k//+l2Z/dA==); escaped: url(http://example.test/a\\(b\\)); plain: url( icons/a.svg ); }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6910,8 +6910,8 @@ describe('Less AST grammar facts', () => {
       '.asset { value: url(foo bar); }',
       '.asset { value: url(foo\nbar); }'
     ]) {
-      const rejected = run(lessAstGrammar.Document, invalid, {
-        trivia: lessAstGrammar.whitespace
+      const rejected = run(lessGrammar.Document, invalid, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         rejected.ok
@@ -6924,8 +6924,8 @@ describe('Less AST grammar facts', () => {
   it('routes glued identifier functions without stealing spaced parens or ident interpolation', () => {
     const source =
       '.x { glued: foo(1); spaced: foo (1); dyn: foo-@{tone}; asset: URL(@asset); math: CALC(100% - 1px); }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -6993,9 +6993,9 @@ describe('Less AST grammar facts', () => {
 
   it('retains outer list separators, accepts newline function separators, and keeps boundary comments as trivia', () => {
     const listResult = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'shadow: 0,\n  1px;',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(listResult.ok).toBe(true);
     expect(listResult.unconsumedFrom).toBeNull();
@@ -7016,8 +7016,8 @@ describe('Less AST grammar facts', () => {
     });
 
     for (const source of ['shadow: rgb(1,\n2);']) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -7042,8 +7042,8 @@ describe('Less AST grammar facts', () => {
     }
 
     const source = 'shadow: rgb(1, /* note */ 2);';
-    const commented = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const commented = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
     expect(commented.ok).toBe(true);
     expect(commented.unconsumedFrom).toBeNull();
@@ -7066,9 +7066,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps escaped and legacy-hack spelling confined to declaration names and CSS-escaped mixins', () => {
     const accepts = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@base: red; -theme: blue; @import "plain.less";',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(
       accepts.ok
@@ -7077,8 +7077,8 @@ describe('Less AST grammar facts', () => {
     ).toBe(true);
 
     for (const source of ['*color: red;', '\\63 olor: red;']) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -7097,8 +7097,8 @@ describe('Less AST grammar facts', () => {
       '\\\ncolor: red;',
       '*\\\ncolor: red;'
     ]) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -7108,9 +7108,9 @@ describe('Less AST grammar facts', () => {
     }
 
     const escapedMixin = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.\\63 lass() { color: red; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(
       escapedMixin.ok
@@ -7123,8 +7123,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.x { content: "pre-@{theme}-${tone}"; color: @{map[key]}; fallback: ${tone}; mixed: pre-@{theme}-${tone}; pre-@{theme}-${tone}: @{theme}; --theme-@{theme}-${tone}: "x"; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -7249,8 +7249,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@name: accent; .x { --theme: pre-@{name}-post (@{map[key]}) [@{index}] { @{nested} }; --literal: @name; color: red }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -7325,8 +7325,8 @@ describe('Less AST grammar facts', () => {
      */
     const source =
       '@n: accent; .x { --a: red !important; --b: red    !important; --c: red!important; --d: red ! important; --e: red !IMPORTANT; --f: red ! /*c*/ important; --g: !important; --h: @{n} !important; --@{n}: red !important; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -7414,8 +7414,8 @@ describe('Less AST grammar facts', () => {
   it('keeps a custom-property priority marker that is not the declaration trailer inside the value', () => {
     const source =
       '.x { --a: red !importantx; --b: a !important b; --c: "a !important"; --d: f(a !important); --e: [a !important]; --f: a !important !important; --g: red; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -7477,8 +7477,8 @@ describe('Less AST grammar facts', () => {
 
   it('round-trips a custom-property priority marker through serialization', () => {
     const source = '.x { --accent: red !important; color: blue !important; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -7496,8 +7496,8 @@ describe('Less AST grammar facts', () => {
       '.x { color: ${ spaced }; }'
     ]) {
       const cst = parseLessCst(source);
-      const direct = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         cst.errors.length + Number(cst.unconsumedFrom !== null),
@@ -7516,8 +7516,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.x { plain: "a\\"b\\@{literal}-${tone}"; interpolated: "a\\"b\\@{literal}-@{theme}-${tone}"; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -7583,8 +7583,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.x { double: ~"a/b"; single: ~\'c d\'; ordinary: "e\\\\ f"; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -7637,8 +7637,8 @@ describe('Less AST grammar facts', () => {
 
   it('constructs escaped quoted Less interpolation as an unquoted structural template', () => {
     const source = '@tone: red; .x { color: ~"pre-@{tone}"; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -7679,9 +7679,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs child-combinator and comma-list selectors structurally', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '.a > .b, #c { color: red; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -7718,9 +7718,9 @@ describe('Less AST grammar facts', () => {
 
   it('treats outer Less selector comments as trivia', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '#a /* first */, /* second */ .b { x: y; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -7748,8 +7748,8 @@ describe('Less AST grammar facts', () => {
   it('constructs repeated static combinators as canonical complex segments', () => {
     const source = '.a + .b ~ #c | * || article { color: red; }';
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(legacy.errors).toHaveLength(0);
@@ -7793,8 +7793,8 @@ describe('Less AST grammar facts', () => {
   it('constructs adjacent static simple selectors as one canonical compound', () => {
     const source = 'button.primary#submit, &.is-open { color: red; }';
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(legacy.errors).toHaveLength(0);
@@ -7839,8 +7839,8 @@ describe('Less AST grammar facts', () => {
   it('constructs production-parity static ampersand parent selectors directly', () => {
     const source = '&, &-active, &1 { color: red; }';
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     /*
@@ -7877,8 +7877,8 @@ describe('Less AST grammar facts', () => {
     // Parent-selector transforms still have no typed AST/evaluator model.
     for (const unsupported of ['&(1) { color: red; }']) {
       const production = parseLessCst(unsupported);
-      const direct = run(lessAstGrammar.Document, unsupported, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, unsupported, {
+        trivia: lessGrammar.whitespace
       });
       expect(cstIssueCount(production)).toBeGreaterThan(0);
       expect(
@@ -7891,9 +7891,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs nested Less relative selectors directly', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '#first { > .second { + #third { color: purple; } } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -7940,8 +7940,8 @@ describe('Less AST grammar facts', () => {
   it('constructs descendant selectors as canonical space-combinator segments', () => {
     const source = '.a .b > .c { color: red; }';
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(legacy.errors).toHaveLength(0);
@@ -7973,8 +7973,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@name: card; @state: active; .@{name}-item, #tone-@{state} { color: red; &.@{state} { color: blue; } }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -8069,9 +8069,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps a bare interpolation with a glued selector suffix as typed interpolation segments', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@base: ~".foo"; .outer { & @{base}.bbb { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -8119,8 +8119,8 @@ describe('Less AST grammar facts', () => {
   it('constructs adjacent captured and quoted selector interpolations as one typed simple', () => {
     const source =
       '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -8198,8 +8198,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@suffix: active; @left: x; @right: y; .button { &-@{suffix}, &@{left}-@{right} { color: red; } }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -8279,8 +8279,8 @@ describe('Less AST grammar facts', () => {
       '. @{name}-item { color: red; }',
       '.@{name}:extend(.target) { color: red; }'
     ]) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -8294,8 +8294,8 @@ describe('Less AST grammar facts', () => {
   it('constructs interpolated Less pseudo names as selector interpolation atoms', () => {
     const source = '@pseudo: hover; .card:@{pseudo} { color: black; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -8338,8 +8338,8 @@ describe('Less AST grammar facts', () => {
   it('constructs static single- and double-colon pseudos as existing SimpleSelector text in compounds and lists', () => {
     const source = '.card:hover::before, .note:focus { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -8379,8 +8379,8 @@ describe('Less AST grammar facts', () => {
   it('routes bare and glued functional pseudos through one static pseudo opener', () => {
     const source = '.card:hover:not(.disabled):lang(en) { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -8435,8 +8435,8 @@ describe('Less AST grammar facts', () => {
       '.card : hover { color: red; }',
       '.card: hover { color: red; }'
     ]) {
-      const direct = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
 
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
@@ -8447,8 +8447,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.card:nth-child(odd):nth-last-child(2n + 1), .note:nth-child(even) { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -8511,8 +8511,8 @@ describe('Less AST grammar facts', () => {
         'a:nth-child(2n+1) {\n  color: red;\n}\n'
       ]
     ] as const) {
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -8531,8 +8531,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.card:not(.disabled):has(.child > .grandchild), .note:is(.a, .b) { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -8596,8 +8596,8 @@ describe('Less AST grammar facts', () => {
 
   it('structures whitelisted selector-function pseudos while interpolated and :extend forms stay opaque', () => {
     const headTokens = (source: string): unknown[] => {
-      const parsed = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const parsed = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
       expect(parsed.ok, source).toBe(true);
       expect(parsed.unconsumedFrom, source).toBeNull();
@@ -8695,8 +8695,8 @@ describe('Less AST grammar facts', () => {
   it('retains leading combinators inside nested functional pseudo selectors', () => {
     const source =
       ':is(:not(:has(>.foo)), :has(>.foo.bar)) { overflow: clip; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);
@@ -8735,8 +8735,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.card:lang(en-US)::part(icon):state(foo /* note */ [bar]) { color: blue; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -8794,8 +8794,8 @@ describe('Less AST grammar facts', () => {
       '.card:lang(@locale) { color: blue; }',
       '.card:lang(@@locale) { color: blue; }'
     ]) {
-      const direct = run(lessAstGrammar.Document, invalid, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, invalid, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         direct.ok
@@ -8813,8 +8813,8 @@ describe('Less AST grammar facts', () => {
       '.card:lang(@{locale}) { color: blue; }',
       '.card::part(icon-@{name}) { color: blue; }'
     ]) {
-      const direct = run(lessAstGrammar.Document, interpolated, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, interpolated, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         direct.ok
@@ -8828,8 +8828,8 @@ describe('Less AST grammar facts', () => {
   it('constructs the complete static An+B pseudo family without raw fallback', () => {
     const source =
       '.child:nth-child(-n+2 of .item):nth-last-child(2n + 1), .type:nth-of-type(odd):nth-last-of-type(3n) { color: blue; }';
-    const direct = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const direct = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(direct.ok).toBe(true);
@@ -8878,8 +8878,8 @@ describe('Less AST grammar facts', () => {
       'a:nth-of-type(n of .a) { color: red; }',
       'a:nth-last-of-type(-n+3 of .a) { color: red; }'
     ]) {
-      const result = run(lessAstGrammar.Document, rejected, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, rejected, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -8894,8 +8894,8 @@ describe('Less AST grammar facts', () => {
       'a:nth-of-type(2n+1) { color: red; }',
       'a:nth-last-of-type(odd) { color: red; }'
     ]) {
-      const result = run(lessAstGrammar.Document, accepted, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, accepted, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         result.ok
@@ -8911,9 +8911,9 @@ describe('Less AST grammar facts', () => {
      * SimpleSelector, not a raw selector reparse.
      */
     const interp = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'a:nth-child(@{n}) { color: red; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
     expect(
       interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)
@@ -8947,8 +8947,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.card:not(/* before */ .disabled, /* between */ .muted):nth-child(/* numeric */ 2n + 1) { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -8990,8 +8990,8 @@ describe('Less AST grammar facts', () => {
       '.card:extend/* not a pseudo */(.target) { color: red; }'
     ]) {
       const cst = parseLessCst(source);
-      const result = run(lessAstGrammar.Document, source, {
-        trivia: lessAstGrammar.whitespace
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
       });
 
       expect(cstIssueCount(cst), source).toBeGreaterThan(0);
@@ -9008,8 +9008,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.card[data-state][role=button][title="Save" i] { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -9042,9 +9042,9 @@ describe('Less AST grammar facts', () => {
 
   it('constructs CSS-escaped attribute names structurally', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '[ng\\:cloak], ng\\:form { display: none; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -9068,8 +9068,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '.card[svg|role=button][*|data-state][|title="Save" i] { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -9103,8 +9103,8 @@ describe('Less AST grammar facts', () => {
   it('keeps static namespace type selectors as one SimpleSelector rather than a column-combinator complex', () => {
     const source = 'svg|a, *|a, |a, svg|* { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -9144,9 +9144,9 @@ describe('Less AST grammar facts', () => {
 
   it('keeps the ordinary column combinator distinct from namespace type selector syntax', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       'a | b { color: red; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -9174,8 +9174,8 @@ describe('Less AST grammar facts', () => {
     const source =
       '@field: state; @value: active; @name: role; @quoted: button; .card[data-@{field}=@{value}][svg|@{name}="@{quoted}"] { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(cst.errors).toHaveLength(0);
@@ -9271,8 +9271,8 @@ describe('Less AST grammar facts', () => {
       '.card[@{ spaced }=button] { color: red; }',
       '@{namespace}|a { color: red; }'
     ]) {
-      const direct = run(lessAstGrammar.Document, invalid, {
-        trivia: lessAstGrammar.whitespace
+      const direct = run(lessGrammar.Document, invalid, {
+        trivia: lessGrammar.whitespace
       });
       expect(
         direct.ok
@@ -9285,9 +9285,9 @@ describe('Less AST grammar facts', () => {
 
   it('retains a quoted Less variable when it fills an unquoted attribute-selector value', () => {
     const result = run(
-      lessAstGrammar.Document,
+      lessGrammar.Document,
       '@value: "test3"; .card[data=@{value}] { color: red; }',
-      { trivia: lessAstGrammar.whitespace }
+      { trivia: lessGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -9302,8 +9302,8 @@ describe('Less AST grammar facts', () => {
 
   it('keeps the |= attribute operator distinct from a namespace prefix with interpolation', () => {
     const source = '@num: 3; [prop|="value@{num}"] { attributes: yes; }';
-    const result = run(lessAstGrammar.Document, source, {
-      trivia: lessAstGrammar.whitespace
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
     });
 
     expect(result.ok).toBe(true);

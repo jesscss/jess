@@ -65,7 +65,7 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | `@jesscss/jess-parser` (`.`) | `parseJessCst`, `jessGrammar` | Convenience exports for the public CST parser and canonical grammar artifact. |
 | `@jesscss/jess-parser` (`.`) | `JessCstNode`, `JessCstLeaf`, `JessCstError`, `JessCstChild`, `JessCstParseResult`, `JessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/jess-parser/cst` | `parseJessCst`, CST types | Same core-free CST parser (explicit subpath). |
-| `@jesscss/jess-parser/grammar` | `jessFactory`, `jessGrammar`, `jessAstGrammar`, `jessCstGrammar` | The single host-mode grammar source and its AST/CST compiled artifacts. |
+| `@jesscss/jess-parser/grammar` | `jessFactory`, `jessGrammar`, `jessCstGrammar` | The single host-mode grammar source and its default/CST compiled artifacts. |
 
 ## Default CST shape
 
