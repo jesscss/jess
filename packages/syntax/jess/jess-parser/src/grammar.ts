@@ -2507,16 +2507,11 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     )),
     children => interpolatedSimpleSelector(templateInterpolationFromChildren(children))
   );
-  const attributeDoubleQuoted = noTrivia(sequence(
-    literal('"'),
-    g.DoubleQuotedText,
-    literal('"')
-  ));
-  const attributeSingleQuoted = noTrivia(sequence(
-    literal('\''),
-    g.SingleQuotedText,
-    literal('\'')
-  ));
+
+  /*
+   * CSS owns the attribute frame. Its quoted value is static selector syntax,
+   * so the Jess-specific string override is the restricted LiteralQuoted slot.
+   */
   const Attribute = node<SimpleSelector>(
     'Attribute',
     sequence(
@@ -2525,15 +2520,14 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       optional(sequence(
         g.AttributeOperator,
         choice(
-          attributeDoubleQuoted,
-          attributeSingleQuoted,
+          g.LiteralQuoted,
           g.Identifier
         ),
         optional(g.AttributeModifier)
       )),
       literal(']')
     ),
-    children => simpleSelector(children.map(requireToken).map(token => token.value).join(''))
+    children => simpleSelector(children.map(child => isQuoted(child) ? child.src : requireToken(child).value).join(''))
   );
 
   /*
