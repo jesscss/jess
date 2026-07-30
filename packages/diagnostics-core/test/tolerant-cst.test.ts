@@ -465,6 +465,32 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports same-file shadowed variables in nested dialect scopes', () => {
+    const less = '@tone: red; .theme { @tone: blue; color: @tone; } .root { color: @tone; }';
+    const scss = '$tone: red; .theme { $tone: blue; color: $tone; } .root { color: $tone; }';
+    const jess = '$tone: red; .theme { $tone: blue; color: $tone; } .root { color: $tone; }';
+
+    const lessResult = collectTolerantDiagnostics({ source: less, language: 'less' });
+    const scssResult = collectTolerantDiagnostics({ source: scss, language: 'scss' });
+    const jessResult = collectTolerantDiagnostics({ source: jess, language: 'jess' });
+
+    expect(lessResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.shadowedTokens)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Variable "@tone" shadows "@tone" from an outer scope', less.indexOf('@tone: blue'), less.indexOf('@tone: blue') + '@tone'.length]
+    ]);
+    expect(scssResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.shadowedTokens)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Variable "$tone" shadows "$tone" from an outer scope', scss.indexOf('$tone: blue'), scss.indexOf('$tone: blue') + '$tone'.length]
+    ]);
+    expect(jessResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.shadowedTokens)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Variable "$tone" shadows "$tone" from an outer scope', jess.indexOf('$tone: blue'), jess.indexOf('$tone: blue') + '$tone'.length]
+    ]);
+  });
+
   it('reports numeric key access against same-file map-like variables', () => {
     const less = '@tokens: { tone: blue; gap: 1px; };\n.a { color: @tokens[0]; bg: @tokens[tone]; }';
     const scss = '$tokens: (tone: blue, gap: 1px);\n.a { color: map-get($tokens, 0); bg: map-get($tokens, tone); }';

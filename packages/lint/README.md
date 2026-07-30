@@ -118,6 +118,7 @@ export default {
       'float': 'off',
       'color-function-no-invalid-arguments': 'error',
       'jess/no-invalid-typed-custom-property-value': 'warn',
+      'jess/no-shadowed-token': 'off',
       'jess/no-unused-variable': 'off',
       'jess/no-duplicate-module-load': 'warn',
       'jess/no-unbounded-extend': 'warn',
@@ -212,6 +213,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess value diagnostic |
 | `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode `argumentsInColorFunction` parity |
 | `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess value diagnostic |
+| `jess/no-shadowed-token` | `lint/no-shadowed-token` | Jess same-file symbol diagnostic, opt-in |
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Jess same-file symbol diagnostic, opt-in |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess same-file module diagnostic |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess static extend target diagnostic |

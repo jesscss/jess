@@ -73,6 +73,7 @@ export const LINT_CODES = {
   incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
   invalidColorFunctionChannels: 'lint/invalid-color-function-channels',
   invalidTypedCustomPropertyValue: 'lint/invalid-typed-custom-property-value',
+  shadowedTokens: 'lint/no-shadowed-token',
   unusedVariables: 'lint/no-unused-variable',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
@@ -424,6 +425,7 @@ type VisitContext = {
   readonly inIgnoredTypeSelectorPseudo: boolean;
   readonly allowResolutionXUnit: boolean;
   readonly selectorLists: Map<string, SelectorSeen>;
+  readonly variableScope: VariableScope;
 };
 
 type FontFamilyPart = {
@@ -554,6 +556,11 @@ type VariableDeclarationFact = {
   readonly name: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
+};
+
+type VariableScope = {
+  readonly declarations: Map<string, VariableDeclarationFact>;
+  readonly parent: VariableScope | null;
 };
 
 type SuspiciousMapKeyAccess = {
@@ -2685,6 +2692,25 @@ function variableDeclarationOf(source: string, node: CssCstNode, language: JessL
   };
 }
 
+function createChildVariableScope(parent: VariableScope): VariableScope {
+  return {
+    declarations: new Map(),
+    parent
+  };
+}
+
+function nearestOuterVariableDeclaration(scope: VariableScope, name: string): VariableDeclarationFact | null {
+  let current = scope.parent;
+  while (current !== null) {
+    const declaration = current.declarations.get(name);
+    if (declaration !== undefined) {
+      return declaration;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
 function nodeContainsExactDescendant(node: CssCstNode, grammarType: string): boolean {
   const descendant = firstDescendantNodeOf(node, grammarType);
   return descendant !== undefined
@@ -3963,7 +3989,8 @@ export function cstLintDiagnostics(
       inUrlFunction: context.inUrlFunction || isUrlFunction,
       inIgnoredTypeSelectorPseudo: context.inIgnoredTypeSelectorPseudo || (gt === 'PseudoSelector' && ignoresTypeSelectorsInPseudo(source, start, end)),
       allowResolutionXUnit: context.allowResolutionXUnit || isImageSetFunction || declarationName === 'image-resolution',
-      selectorLists: context.selectorLists
+      selectorLists: context.selectorLists,
+      variableScope: context.variableScope
     };
 
     if (language === 'css' && RULESET_TYPES.has(gt) && !nodeContext.inKeyframeBlock) {
@@ -4029,6 +4056,16 @@ export function cstLintDiagnostics(
     const variableDeclaration = variableDeclarationOf(source, node, language);
     if (variableDeclaration !== null) {
       variableDeclarations.push(variableDeclaration);
+      const shadowed = nearestOuterVariableDeclaration(context.variableScope, variableDeclaration.name);
+      if (shadowed !== null) {
+        push(
+          LINT_CODES.shadowedTokens,
+          'warning',
+          `Variable "${variableDeclaration.display}" shadows "${shadowed.display}" from an outer scope`,
+          variableDeclaration.span
+        );
+      }
+      context.variableScope.declarations.set(variableDeclaration.name, variableDeclaration);
       if (variableDeclarationIsMapLike(node, language)) {
         mapLikeVariables.add(variableDeclaration.name);
       } else {
@@ -4685,7 +4722,8 @@ export function cstLintDiagnostics(
     const childContext: VisitContext = RULESET_TYPES.has(gt) || ATRULE_TYPES.has(gt)
       ? {
           ...nodeContext,
-          selectorLists: new Map()
+          selectorLists: new Map(),
+          variableScope: createChildVariableScope(context.variableScope)
         }
       : nodeContext;
     const checkCssRulesetDeclarations = language === 'css' && RULESET_TYPES.has(gt) && !nodeContext.inKeyframeBlock;
@@ -4912,7 +4950,11 @@ export function cstLintDiagnostics(
 
   visit(root, {
     ...ROOT_VISIT_CONTEXT_BASE,
-    selectorLists: new Map()
+    selectorLists: new Map(),
+    variableScope: {
+      declarations: new Map(),
+      parent: null
+    }
   });
 
   for (const group of keyframesVendorGroups.values()) {

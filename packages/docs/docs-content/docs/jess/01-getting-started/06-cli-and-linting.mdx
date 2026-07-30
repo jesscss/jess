@@ -105,6 +105,7 @@ export default {
       'alpha-value-notation': ['off', { notation: 'percentage' }],
       'hue-degree-notation': ['off', { notation: 'angle' }],
       'float': 'off',
+      'jess/no-shadowed-token': 'off',
       'jess/unsupported-sass-form': 'warn'
     }
   }
@@ -158,6 +159,7 @@ Jess's stable lint set is deliberately small:
 | `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | Opt-in unknown CSS vendor-prefixed declarations |
 | `import-statement` | `lint/import-statement` | Opt-in CSS `@import` loading warnings |
 | `float` | `lint/float` | Opt-in CSS `float` layout warnings |
+| `jess/no-shadowed-token` | `lint/no-shadowed-token` | Opt-in same-file nested variable shadowing |
 | `selector-max-id` | `lint/selector-max-id` | Opt-in CSS ID selector warnings |
 | `selector-max-universal` | `lint/selector-max-universal` | Opt-in CSS universal selector warnings |
 | `selector-no-vendor-prefix` | `lint/selector-no-vendor-prefix` | Opt-in authored CSS vendor-prefixed pseudo selectors |
