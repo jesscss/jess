@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 26;
+export const STABLE_LINT_RULE_SET_VERSION = 27;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -42,7 +42,7 @@ export const LINT_RULE_NAMES = {
   unmatchableAnbSelectors: 'selector-anb-no-unmatchable',
   unknownTypeSelectors: 'selector-type-no-unknown',
   incompatibleMathFunctionUnits: 'jess/no-incompatible-math-function-units',
-  invalidColorFunctionChannels: 'jess/no-invalid-color-function-channels',
+  invalidColorFunctionChannels: 'color-function-no-invalid-arguments',
   invalidTypedCustomPropertyValue: 'jess/no-invalid-typed-custom-property-value',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
@@ -175,7 +175,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unmatchableAnbSelectors]: 'warn',
   [LINT_RULE_NAMES.unknownTypeSelectors]: 'warn',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'warn',
-  [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'warn',
+  [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'error',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
 };
@@ -567,9 +567,9 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     ruleName: LINT_RULE_NAMES.invalidColorFunctionChannels,
     title: 'Invalid color function channels',
     tier: 'css-validity',
-    defaultPolicy: 'warn',
-    comparison: 'jess-only',
-    notes: 'Flags definite invalid rgb()/rgba()/hsl()/hsla() channel arity and channel types while leaving dynamic and nested values unknown.'
+    defaultPolicy: 'error',
+    comparison: 'vscode-equivalent',
+    notes: 'Matches VSCode stylesheet-service argumentsInColorFunction for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors while leaving dynamic and nested values unknown.'
   },
   {
     code: LINT_CODES.invalidTypedCustomPropertyValue,

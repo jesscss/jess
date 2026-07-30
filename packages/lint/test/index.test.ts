@@ -98,8 +98,9 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(26);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(27);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
+    expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
 

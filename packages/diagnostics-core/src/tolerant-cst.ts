@@ -3240,7 +3240,7 @@ export function cstLintDiagnostics(
       if (colorProblem !== null) {
         push(
           LINT_CODES.invalidColorFunctionChannels,
-          'warning',
+          'error',
           colorProblem.message,
           colorProblem.span
         );

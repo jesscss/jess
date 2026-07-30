@@ -83,7 +83,7 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | `unknownAtRules` | ✓ (Warning) | ✗ | Missing | P1 |
 | `emptyRules` | ✓ (Warning) | ✗ | Missing | P1 |
 | `duplicateProperties` | ✓ | ✗ | Missing | P1 |
-| `hexColorLength` / `argumentsInColorFunction` | ✓ (Error) | ✗ | Missing | P1 |
+| `hexColorLength` / `argumentsInColorFunction` | ✓ (Error) | ✓ shared diagnostics default to Error | At parity for hex length and rgb()/rgba()/hsl()/hsla() definite argument errors | — |
 | `vendorPrefix` / `compatibleVendorPrefixes` / `unknownVendorSpecificProperties` | ✓ | ✗ | Missing | P2 |
 | `boxModel`, `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `ieHack`, `importStatement`, `propertyIgnoredDueToDisplay`, `fontFaceProperties` | ✓ (mostly default-Ignore, opt-in) | ✗ | Missing | P2 |
 | Configurable severities | ✓ per-rule | ✓ but only for the 2 semantic Jess codes (`var/undefined`, `mixin/undefined`) | Framework exists; needs rules to configure | P1 |

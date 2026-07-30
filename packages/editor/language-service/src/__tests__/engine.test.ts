@@ -765,6 +765,33 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('invalidColorFunctionChannels (lint/invalid-color-function-channels)', () => {
+      it('fires on invalid CSS color function arguments as an error', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: hsl(120 50 50%); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/invalid-color-function-channels');
+
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(1); // Error
+      });
+
+      it('does not fire in dialect files before value facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('less', '.a { color: hsl(120 50 50%); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/invalid-color-function-channels');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/invalid-color-function-channels', 'ignore'));
+        const doc = createDocument('css', '.a { color: hsl(120 50 50%); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/invalid-color-function-channels');
+      });
+    });
+
     it('lint rules stay tolerant: they fire despite a syntax error elsewhere', () => {
       const engine = createEngine();
 

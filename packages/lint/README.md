@@ -101,6 +101,7 @@ export default {
       'length-zero-no-unit': 'warn',
       'function-linear-gradient-no-nonstandard-direction': 'warn',
       'font-face-no-missing-required-properties': 'warn',
+      'color-function-no-invalid-arguments': 'error',
       'jess/no-invalid-typed-custom-property-value': 'warn',
       'jess/unsupported-sass-form': 'warn'
     }
@@ -116,7 +117,7 @@ Jess-native names for Jess-only diagnostics.
 
 The current stable rule set is intentionally small and migration-friendly:
 
-| Rule name | Jess diagnostic code | Stylelint comparison |
+| Rule name | Jess diagnostic code | Comparison |
 | --- | --- | --- |
 | `block-no-empty` | `lint/empty-rules` | `block-no-empty` |
 | `property-no-unknown` | `lint/unknown-property` | near `property-no-unknown` |
@@ -152,7 +153,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `selector-anb-no-unmatchable` | `lint/selector-anb-no-unmatchable` | `selector-anb-no-unmatchable` |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | near `selector-type-no-unknown` |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess value diagnostic |
-| `jess/no-invalid-color-function-channels` | `lint/invalid-color-function-channels` | Jess value diagnostic |
+| `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode `argumentsInColorFunction` parity |
 | `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
 
