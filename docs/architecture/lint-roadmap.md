@@ -135,7 +135,6 @@ of matched benchmark mode until its behavior is comparable enough.
 | `jess/no-unused-mixin` | `lint/no-unused-mixin` | Jess-only callable diagnostic, opt-in |
 | `jess/no-unused-function` | `lint/no-unused-function` | Jess-only callable diagnostic, opt-in |
 | `jess/no-leaky-scope-dependence` | `lint/no-leaky-scope-dependence` | Jess-only Less migration diagnostic |
-| `jess/no-ambiguous-mixin-call` | `lint/no-ambiguous-mixin-call` | Jess-only Less callable diagnostic |
 | `jess/no-impossible-guard` | `lint/no-impossible-guard` | Jess-only static guard diagnostic |
 | `jess/no-unused-default-branch` | `lint/no-unused-default-branch` | Jess-only Less default-branch diagnostic |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess-only module diagnostic |
@@ -279,7 +278,6 @@ can detect over authored source.
 | Landed | At-rule descriptor values | `at-rule-descriptor-value-no-unknown` | Flags definite invalid descriptor values in parsed CSS descriptor blocks; covers special `@property` `syntax` checks plus simple static descriptor values from VSCode web custom data such as `@font-face font-style` and `@counter-style system`. |
 | Landed | Color function arguments | `color-function-no-invalid-arguments` | Matches VSCode `argumentsInColorFunction` for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |
 | Landed | Typed custom properties | `jess/no-invalid-typed-custom-property-registration`, `jess/no-invalid-typed-custom-property-value` | Flags CSS `@property` rules missing required `syntax`/`inherits` descriptors, missing `initial-value` for non-universal syntax, and definite `initial-value` mismatches for simple syntax descriptors; full CSS value-definition syntax and dialect value facts remain future work. |
-| Landed | Less callable ambiguity | `jess/no-ambiguous-mixin-call` | Initial conservative same-file diagnostic for Less calls that match multiple unguarded static mixin definitions with the same fixed positional arity; guards, defaults, rest params, patterns, namespaces, and external sources wait for callable facts. |
 | P3 | Browser legacy hacks | `ie-hack` | VSCode has opt-in `ieHack`, but current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule. |
 | Landed | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Opt-in Stylelint-named convention rules for static color function notation, alpha values, and HSL hue units. CLI and language-service configuration require a secondary `notation` option; comparison remains Stylelint-near until the option surface is broader. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |
@@ -332,7 +330,7 @@ Stylelint.
 | `jess/no-unused-function` | off, then warn when project facts land | Callable refs | Initial opt-in same-file SCSS `@function` and Jess yielding function-value check landed; suppresses files with imports/modules/plugins and still needs project export/reference/import facts. |
 | `jess/no-shadowed-token` | off | Scope facts | Initial opt-in same-file nested variable shadowing diagnostic landed; imported/exported token shadowing still needs module graph facts. |
 | `jess/no-leaky-scope-dependence` | warn when allowed | Same-file Less mixin variables now; effect facts later | Initial conservative Less diagnostic flags rulesets that call a same-file mixin and then read a variable declared inside that mixin; files with imports/modules/plugins, ordinary declarations, detached rulesets, and richer flow stay unknown until semantic facts land. |
-| `jess/no-ambiguous-mixin-call` | warn | Callable facts | A call matches multiple overloads with incompatible bodies or signatures. |
+| Callable resolution conflicts | future | Evaluator-backed callable facts | A call resolves to an actually conflicting overload set after imports, guards, plugins, and ambient definitions are known. Ordinary Less/Jess overloads are valid and must not be reported merely because multiple definitions match. |
 | `jess/no-mixin-output-mismatch` | off | Call signatures | A mixin used as declarations emits nested rules, or a value callable emits declarations. |
 | `jess/no-unsafe-reference-compose` | warn | Module facts | Extending or reading through a protected boundary that cannot surface output. |
 | `jess/no-impossible-guard` | warn | Static guard facts now; semantic facts later | Initial Less/SCSS/Jess diagnostic flags literal false/null, same-unit numeric comparisons, keyword/string equality, and boolean not/and/or guard compositions that are definitely false; variables, `default()`, type predicates, and dynamic values stay unknown. |

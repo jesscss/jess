@@ -146,7 +146,6 @@ export default {
       'jess/no-unused-mixin': 'off',
       'jess/no-unused-function': 'off',
       'jess/no-leaky-scope-dependence': 'warn',
-      'jess/no-ambiguous-mixin-call': 'warn',
       'jess/no-impossible-guard': 'warn',
       'jess/no-unused-default-branch': 'warn',
       'jess/no-duplicate-module-load': 'warn',
@@ -267,8 +266,6 @@ The current stable rule set is intentionally small and migration-friendly:
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Jess same-file symbol diagnostic, opt-in |
 | `jess/no-unused-mixin` | `lint/no-unused-mixin` | Jess same-file callable diagnostic, opt-in |
 | `jess/no-unused-function` | `lint/no-unused-function` | Jess same-file callable diagnostic, opt-in |
-| `jess/no-leaky-scope-dependence` | `lint/no-leaky-scope-dependence` | Jess Less migration diagnostic |
-| `jess/no-ambiguous-mixin-call` | `lint/no-ambiguous-mixin-call` | Jess same-file Less callable diagnostic |
 | `jess/no-impossible-guard` | `lint/no-impossible-guard` | Jess static guard diagnostic |
 | `jess/no-unused-default-branch` | `lint/no-unused-default-branch` | Jess Less default-branch diagnostic |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess same-file module diagnostic |

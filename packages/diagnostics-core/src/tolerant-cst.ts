@@ -80,7 +80,6 @@ export const LINT_CODES = {
   unusedMixins: 'lint/no-unused-mixin',
   unusedFunctions: 'lint/no-unused-function',
   leakyScopeDependence: 'lint/no-leaky-scope-dependence',
-  ambiguousMixinCalls: 'lint/no-ambiguous-mixin-call',
   impossibleGuards: 'lint/no-impossible-guard',
   unusedDefaultBranches: 'lint/no-unused-default-branch',
   unboundedExtends: 'lint/no-unbounded-extend',
@@ -2801,24 +2800,6 @@ function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNod
   return undefined;
 }
 
-function hasDescendantNodeOf(node: CssCstNode, grammarType: string): boolean {
-  return firstDescendantNodeOf(node, grammarType) !== undefined;
-}
-
-function countDescendantNodesOf(node: CssCstNode, grammarType: string): number {
-  let count = 0;
-  for (const child of cstChildrenOf(node)) {
-    if (!isCstNode(child)) {
-      continue;
-    }
-    if (child.grammarType === grammarType) {
-      count++;
-    }
-    count += countDescendantNodesOf(child, grammarType);
-  }
-  return count;
-}
-
 const GUARD_OR_TYPES = new Set(['GuardOr', 'IfGuardOr', 'MixinGuardTopOr', 'MixinGuardOr', 'IfCondition']);
 const GUARD_AND_TYPES = new Set(['GuardAnd', 'IfGuardAnd', 'MixinGuardTopAnd', 'MixinGuardAnd', 'IfAnd']);
 const GUARD_COMPARE_TYPES = new Set(['GuardCompare', 'IfGuardCompare']);
@@ -4091,68 +4072,6 @@ function lessLeakyScopeDiagnostics(
   };
 
   analyzeRuleset(root);
-}
-
-function collectLessFixedMixinFacts(
-  source: string,
-  node: CssCstNode,
-  definitions: Map<string, LessFixedMixinDefinitionFact[]>,
-  calls: LessFixedMixinCallFact[]
-): void {
-  const definition = lessFixedMixinDefinitionOf(source, node);
-  if (definition !== null) {
-    const key = `${definition.name}\0${definition.arity}`;
-    const existing = definitions.get(key);
-    if (existing === undefined) {
-      definitions.set(key, [definition]);
-    } else {
-      existing.push(definition);
-    }
-    return;
-  }
-
-  const call = lessFixedMixinCallOf(source, node);
-  if (call !== null) {
-    calls.push(call);
-    return;
-  }
-
-  for (const child of cstChildrenOf(node)) {
-    if (isCstNode(child)) {
-      collectLessFixedMixinFacts(source, child, definitions, calls);
-    }
-  }
-}
-
-function lessAmbiguousMixinCallDiagnostics(
-  source: string,
-  root: CssCstNode,
-  hasExternalSources: boolean,
-  push: (code: string, severity: DiagnosticSeverityName, message: string, span: DiagnosticSpan, qualifiers?: readonly string[]) => void
-): void {
-  if (hasExternalSources) {
-    return;
-  }
-  const definitions = new Map<string, LessFixedMixinDefinitionFact[]>();
-  const calls: LessFixedMixinCallFact[] = [];
-  collectLessFixedMixinFacts(source, root, definitions, calls);
-  if (calls.length === 0 || definitions.size === 0) {
-    return;
-  }
-
-  for (const call of calls) {
-    const candidates = definitions.get(`${call.name}\0${call.arity}`);
-    if (candidates === undefined || candidates.length < 2) {
-      continue;
-    }
-    const argumentLabel = call.arity === 1 ? 'argument' : 'arguments';
-    push(
-      LINT_CODES.ambiguousMixinCalls,
-      'warning',
-      `Mixin call "${call.display}" matches ${candidates.length} same-file unguarded definitions with ${call.arity} ${argumentLabel}`,
-      call.span
-    );
-  }
 }
 
 function normalizedVariableName(name: string, language: JessLanguage): string {
@@ -6578,7 +6497,6 @@ export function cstLintDiagnostics(
 
   if (language === 'less') {
     lessLeakyScopeDiagnostics(source, root, hasExternalSources, push);
-    lessAmbiguousMixinCallDiagnostics(source, root, hasExternalSources, push);
   }
 
   for (const group of keyframesVendorGroups.values()) {
