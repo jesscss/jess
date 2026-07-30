@@ -4899,3 +4899,43 @@ parser-shared; `pnpm run check:macro` reported parser-shared, CSS, Less, SCSS,
 and Jess all fully compiled with 0 interpreter fallbacks; `pnpm run
 verify:compose-integrity` passed; and `git diff --check` passed. This slice
 makes no speed claim.
+
+Horizontal routing reset, 2026-07-30: grammar cleanup now proceeds by grammar
+family across CSS/Less/SCSS/Jess, not by dialect-local sweeps. All CSS structure
+is CSS-owned unless a downstream grammar changes that exact structure, and even
+then the derived grammar overrides only the smallest changed child, value slot,
+or reference. A dialect change is not a license to replace the whole CSS rule.
+The three CSS-derived grammars should stay lean overlays: describe only the
+syntax they add or the specific CSS substructure they change, and otherwise link
+back to CSS-owned structure. Downstream interpolation support is a leaf/value
+extension point, not a reason to reimplement the surrounding CSS production from
+scratch. At-rules are one current high-priority example: consume the at-keyword
+once, select tails with `dispatch(...)` and a grammar-local `makeWhen(...)`, and
+use `routed()` so the selected node owns the consumed keyword/span. Do not
+replace at-keyword regexes with `word(...)` / `makeWord(...)` as a final cleanup
+shape. `@supports` is the same CSS structural at-rule in every downstream
+grammar unless a dialect actually changes `@supports` syntax; downstream
+grammars may plug in their own body item set or interpolation-capable value
+leaves, but they should not keep custom `@supports` terminals or a bespoke
+structural route.
+
+Evidence slice, 2026-07-30: SCSS and Jess now reuse the shared CSS
+`@supports` keyword leaf instead of spelling dialect-local `@supports`
+terminals. A CSS `ConditionalBlock` / `NestedConditionalBlock` dispatch rewrite
+was tested and intentionally not landed because the first attempt preserved CST
+recovery but changed AST rejection for malformed known conditional at-rules; the
+next at-rule dispatch slice needs a designed committed-error shape that keeps
+AST and CST host modes aligned. Verification for the landed leaf-reuse/docs
+slice: `pnpm --filter @jesscss/parser-shared build`;
+`pnpm --filter @jesscss/css-parser test -- test/conditional-at-rule-value.test.ts
+test/ast-grammar.test.ts test/cst-public.test.ts test/macro-compiled.test.ts
+--reporter=dot`; `pnpm --filter @jesscss/scss-parser test --
+test/conditional-at-rule-value.test.ts test/ast-grammar.test.ts
+test/cst-public.test.ts test/ast-macro-compiled.test.ts
+test/compose-integrity.test.ts --reporter=dot`; `pnpm --filter
+@jesscss/jess-parser test -- test/conditional-at-rule-value.test.ts
+test/ast-grammar.test.ts test/cst-public.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot`; parser builds for CSS, SCSS,
+and Jess; `pnpm run check:macro` with 0 interpreter fallbacks across
+parser-shared/CSS/Less/SCSS/Jess; `pnpm run verify:compose-integrity`; and `git
+diff --check`.

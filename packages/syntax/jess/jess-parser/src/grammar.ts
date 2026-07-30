@@ -224,6 +224,7 @@ type SharedCssSyntax = {
   CssSyntaxQueryOnly: Combinator<string>;
   CssSyntaxQueryComparisonOperator: Combinator<string>;
   CssSyntaxContainerAtKeyword: Combinator<string>;
+  CssSyntaxSupportsAtKeyword: Combinator<string>;
   CssSyntaxSingleQuotedText: Combinator<string>;
   CssSyntaxDimensionUnit: Combinator<string>;
   CssSyntaxUrlOpen: Combinator<string>;
@@ -1418,7 +1419,6 @@ const compilerAtRuleName = keywords(
 const genericAtRuleName = regex(/@(?!(?:charset|import|supports|property|media|container|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
 const charsetAtRuleName = word('@charset', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
 const importAtRuleName = word('@import', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
-const supportsAtRuleName = word('@supports', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
 const propertyAtRuleName = word('@property', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
 const scopeAtRuleName = word('@scope', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
 const keyframeEndpoint = keywords(
@@ -4261,7 +4261,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const SupportsAtRuleBlock = node<AtRuleBlock>(
     'SupportsAtRuleBlock',
     sequence(
-      supportsAtRuleName,
+      g.CssSyntaxSupportsAtKeyword,
       g.SupportsCondition,
       literal('{'),
       many(atBlockStatement),

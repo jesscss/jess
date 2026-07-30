@@ -68,10 +68,15 @@ Every written rule must answer:
 
 1. **Is this from CSS?** Does it need to be duplicated? Is it called a different
    name — and if so, why, and is that justified? This is a question about
-   _duplication_, not about naming style. A production that restates a CSS
+   _duplication_, not about naming style. All CSS structure is CSS-owned unless a
+   downstream grammar changes that exact structure. Even then, override only the
+   smallest changed child, value slot, or reference; a dialect change is not a
+   license to replace the whole CSS rule. A production that restates a CSS
    construct the base grammar already defines should compose on it, not re-spell
    it. `less-parser` carried a byte-identical copy of a shared rule; the shared
-   rule's docstring even named the local copy.
+   rule's docstring even named the local copy. Less, SCSS, and Jess should be
+   lean overlays that describe only the syntax they add or the specific CSS
+   substructure they change.
 
 2. **Is it readable and well formatted?** In practice this splits into items 3
    and 4, which fail differently — see _the floor and the bar_ below.

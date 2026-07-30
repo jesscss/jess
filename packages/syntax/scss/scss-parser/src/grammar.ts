@@ -1040,8 +1040,9 @@ const scssScanSkipSingleString = noTrivia(sequence(
  * CSS block keywords locally too resolves the cluster's first-set to `@` and lets
  * the compiler skip the entire cluster on any non-`@` statement (ordinary rules,
  * and every block-close where the cluster is otherwise entered speculatively).
+ * `@supports` uses the shared CSS supports at-keyword; it is not a
+ * dialect-local leaf.
  */
-const supportsAtKeyword = regex(/@supports(?![-\w])/i);
 const mediaAtKeyword = regex(/@media(?![-\w])/i);
 const containerAtKeyword = regex(/@container(?![-\w])/i);
 const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
@@ -3063,7 +3064,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'IfStaticConditionalBlock',
     choice(
       sequence(
-        supportsAtKeyword,
+        g.CssSyntaxSupportsAtKeyword,
         g.SupportsPrelude,
         g.IfBody
       ),
@@ -3777,7 +3778,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'ConditionalBlock',
     choice(
       sequence(
-        supportsAtKeyword,
+        g.CssSyntaxSupportsAtKeyword,
         g.SupportsPrelude,
         literal('{'),
         conditionalBlockBody,
@@ -4013,7 +4014,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'NestedConditionalBlock',
     choice(
       sequence(
-        supportsAtKeyword,
+        g.CssSyntaxSupportsAtKeyword,
         g.SupportsPrelude,
         literal('{'),
         nestedKeyframesBody,
