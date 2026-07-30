@@ -39,7 +39,7 @@ type InterpolationAccessorFact = { readonly key: ValueNode | number; readonly ke
 /** A typed continuation of a left-associated public Reference chain. */
 type ReferenceTailFact = { readonly step: Reference['steps'][number]; readonly src: string };
 type ComplexTailFact = { readonly combinator: ' ' | '>' | '+' | '~' | '|' | '||'; readonly term: SelectorTerm };
-type MixinPathTailFact = { readonly combinator: ' ' | '>'; readonly selector: string };
+type MixinPathSegmentFact = { readonly combinator: ' ' | '>'; readonly selector: string };
 type LessEachCallback = { readonly binding: ForBinding; readonly rules: Statement[] };
 type MixinGuard = NonNullable<MixinDefinition['guard']>;
 type MixinCallArgument = MixinCall['args'][number];
@@ -147,7 +147,7 @@ type LessRules = {
   FlatMixinCall: Combinator<MixinCall>;
   NamespacedMixinCall: Combinator<MixinCall>;
   NamespacedMixinValue: Combinator<MixinCall>;
-  MixinPathTail: Combinator<MixinPathTailFact>;
+  MixinPathTail: Combinator<MixinPathSegmentFact>;
   MixinReference: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
   MixinGuard: Combinator<MixinGuard>;
@@ -1607,7 +1607,7 @@ function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExt
   return value;
 }
 
-function isMixinPathTail(value: unknown): value is MixinPathTailFact {
+function isMixinPathTail(value: unknown): value is MixinPathSegmentFact {
   return typeof value === 'object' && value !== null && 'combinator' in value
     && (value.combinator === ' ' || value.combinator === '>') && 'selector' in value && typeof value.selector === 'string';
 }
@@ -2200,7 +2200,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         : withSourceSpan(base, span);
     }
   );
-  const MixinPathTail = node<MixinPathTailFact>(
+  const MixinPathTail = node<MixinPathSegmentFact>(
     'MixinPathTail',
     sequence(optional(mixinPathCombinator), mixinName),
     (children) => {

@@ -284,7 +284,7 @@ around lint rules, `rules` arrays, rule bodies, and visitor hook names.
 Prior shapes:
 
 - `CompoundSelector.simples`
-- `PathSeg.comb`
+- abbreviated mixin path segment field `.comb`
 - `ComplexSelector.head` / `tail`
 - no explicit `RelativeSelector` node in AST v2, though the shape is distinct
 
@@ -292,14 +292,10 @@ Implemented recommendation:
 
 - `CompoundSelector.value`
 - `ComplexSelector.value`
-- `PathSeg.combinator` / `PathSeg.selector`
+- `RelativeSelector.value`
+- `MixinPathSegment.combinator` / `MixinPathSegment.selector`
 - construction helpers accept `term` and `combinator`, then emit flat canonical
   selector values
-
-Remaining recommendation:
-
-- add/keep `RelativeSelector` as the relative-selector counterpart when that
-  authored shape matters
 - keep combinators as primitive string values inside the selector sequence; do
   not introduce a full object wrapper just to carry a combinator
 

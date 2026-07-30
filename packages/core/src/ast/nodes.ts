@@ -932,7 +932,7 @@ export interface MixinDefinition {
  * One segment of a namespaced-call path: a combinator (`' '` descendant or
  * `'>'` child) and a selector string (`#namespace`, `.borders`).
  */
-export interface PathSeg {
+export interface MixinPathSegment {
   combinator: Combinator;
   selector: string;
 }
@@ -947,7 +947,7 @@ export interface MixinCall {
   readonly type: 'MixinCall';
   readonly name: string;
   readonly args: CallArg[];
-  readonly path: PathSeg[];
+  readonly path: MixinPathSegment[];
   readonly important: boolean;
 }
 
