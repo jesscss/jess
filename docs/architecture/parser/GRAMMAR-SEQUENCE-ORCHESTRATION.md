@@ -5190,3 +5190,35 @@ syntax. `$[...]` remains legal only as a value/expression lookup; it is not a
 selector, declaration-name, custom-property-name, or quoted-string
 interpolation form. Parser-shared then Jess builds and the focused Jess AST/CST
 suite (2 files / 121 tests) passed. No performance claim was made.
+
+Less parser profiling ladder, 2026-07-30: a loaded-source CPU profile of the
+built AST parser on `tests-unit` puts the value/math family first:
+`Value`, `ValueSequence`, `ValueList`, `MathUnary`, `TopProduct`, and `TopSum`.
+The per-const review finds that product/sum continuation is already correctly
+operator-led (`many(sequence(operator, atom))`), so those are not dispatch
+candidates. `ValueList`'s accessor-bearing `MixinReference` route has already
+consumed and dispatched its first `[]` / `[` / `.` / `(` delimiter; its outer
+`attempt(...)` remains necessary because the same `.foo` / `#fff` lexical
+prefix can still be an ordinary value or color until a complete reference tail
+exists. Do not replace it with a broad prefix scan or a premature router.
+
+Parseman 0.43's three-pass profile adds the allocation boundary to that CPU
+evidence. On 129 accepted files from the 136-file Less unit corpus (117,354
+bytes), AST recognition took 102.641 ms, structural capture took 81.460 ms for
+64,481 grammar nodes / 94,183 child slots / 93,612 raw slots / 11,676 trivia
+slots, and direct AST construction took 104.640 ms with no generic build-host
+calls. The CST surface accepted 130 files (126,710 bytes): 106.908 ms
+recognition, 87.461 ms structural capture for 72,450 nodes, and 47,790 CST host
+calls. These are single profiling passes, not benchmark deltas; their stable
+counts identify the recognizer-side value/condition and opaque-scan routes as
+the next queue, rather than a generic CST-allocation cleanup.
+
+The current `FunctionArgument` condition detector is a specific audit target:
+it uses `peek(scanTo(...))` to discover a comparison/logical word before an
+argument delimiter. It correctly distinguishes a true top-level condition, but
+also sees an inner operator in `boolean(foo(1 = 1))`; removing it requires a
+one-pass, context-aware condition production that preserves nested function
+arguments and the original diagnostic span. It is not acceptable to delete or
+replace that scan with `peek(...)` alone. The scan inventory remains governed by
+the question "can this be structured or trivia-owned?"; `scanTo(...)` is kept
+only where an opaque language region is actually the accepted syntax.
