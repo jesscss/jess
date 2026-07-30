@@ -60,6 +60,18 @@ describe('collectTolerantDiagnostics', () => {
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownFunctions)).toBe(false);
   });
 
+  it('uses caller-provided CSS metadata for known media feature names', () => {
+    const result = collectTolerantDiagnostics({
+      source: '@media (project-feature: enabled) { .a { color: red; } }',
+      language: 'css',
+      metadata: {
+        isKnownMediaFeatureName: name => name === 'project-feature'
+      }
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureNames)).toBe(false);
+  });
+
   it('recognizes lint-relevant nodes from direct SCSS and Jess grammars', () => {
     const scss = collectTolerantDiagnostics({
       source: '.a { .b {} }',
@@ -283,5 +295,35 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownFunctions)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownFunctions)).toBe(false);
+  });
+
+  it('reports unknown CSS media feature names', () => {
+    const source = '@media (min-width: 1px) and (future-feature: 3) and (600px < project-range < 900px) and (-webkit-device-pixel-ratio: 2) { .a { color: red; } }\n@container (future-feature: 3) { .a { color: red; } }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownMediaFeatures = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureNames);
+    const futureStart = source.indexOf('future-feature');
+    const rangeStart = source.indexOf('project-range');
+
+    expect(unknownMediaFeatures.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown media feature name "future-feature"', futureStart, futureStart + 'future-feature'.length],
+      ['Unknown media feature name "project-range"', rangeStart, rangeStart + 'project-range'.length]
+    ]);
+  });
+
+  it('does not report unknown media feature names in dialect files before media facts exist', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '@media (project-feature: $value) { .a { color: red; } }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '@media (project-feature: @value) { .a { color: red; } }',
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureNames)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureNames)).toBe(false);
   });
 });

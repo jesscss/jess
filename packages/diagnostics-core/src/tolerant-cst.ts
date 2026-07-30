@@ -27,6 +27,7 @@ export const LINT_CODES = {
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   unknownUnits: 'lint/unit-no-unknown',
   unknownFunctions: 'lint/function-no-unknown',
+  unknownMediaFeatureNames: 'lint/media-feature-name-no-unknown',
   unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
   unsupportedSassForm: 'unsupported/sass-form'
@@ -89,6 +90,7 @@ const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
 const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
 const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'StaticImportRule']);
 const FUNCTION_TYPES = new Set(['Call', 'StaticCall', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
+const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
 const LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS = new Set(['before', 'after', 'first-line', 'first-letter']);
 const DIALECT_PSEUDO_CLASSES: Record<JessLanguage, Set<string>> = {
@@ -154,6 +156,7 @@ type ParseDiagnosticSource = {
 type VisitContext = {
   readonly inVarCall: boolean;
   readonly inDeclaration: boolean;
+  readonly inMediaAtRule: boolean;
   readonly inCustomDeclaration: boolean;
   readonly inFontFaceAtRule: boolean;
   readonly inKeyframeBlock: boolean;
@@ -177,6 +180,7 @@ type ImportKey = {
 const ROOT_VISIT_CONTEXT: VisitContext = {
   inVarCall: false,
   inDeclaration: false,
+  inMediaAtRule: false,
   inCustomDeclaration: false,
   inFontFaceAtRule: false,
   inKeyframeBlock: false,
@@ -352,6 +356,31 @@ function isVendorPseudoName(bareName: string): boolean {
     || bareName.startsWith('-moz-')
     || bareName.startsWith('-ms-')
     || bareName.startsWith('-o-');
+}
+
+function isVendorPrefixedName(name: string): boolean {
+  return name.startsWith('-webkit-')
+    || name.startsWith('-moz-')
+    || name.startsWith('-ms-')
+    || name.startsWith('-o-');
+}
+
+function mediaFeatureNameSpan(source: string, node: CssCstNode): { name: string; start: number; end: number } | null {
+  for (const child of node.rules) {
+    if (child._tag === 'node' && child.grammarType === 'Property') {
+      const start = absoluteStart(child);
+      const end = absoluteEnd(child);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return null;
+      }
+      return {
+        name: source.slice(start, end),
+        start,
+        end
+      };
+    }
+  }
+  return null;
 }
 
 function blankStrings(value: string): string {
@@ -925,6 +954,9 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
     isKnownFunction(name) {
       return metadata?.isKnownFunction?.(name) ?? defaultCssDiagnosticMetadata.isKnownFunction(name);
     },
+    isKnownMediaFeatureName(name) {
+      return metadata?.isKnownMediaFeatureName?.(name) ?? defaultCssDiagnosticMetadata.isKnownMediaFeatureName(name);
+    },
     isKnownPseudoClass(name) {
       return metadata?.isKnownPseudoClass?.(name) ?? defaultCssDiagnosticMetadata.isKnownPseudoClass(name);
     },
@@ -1038,12 +1070,16 @@ export function cstLintDiagnostics(
     const functionName = FUNCTION_TYPES.has(gt) ? functionNameOf(source, start, end) : null;
     const isUrlFunction = gt === 'Url' || functionName === 'url';
     const isImageSetFunction = functionName !== null && unprefixedName(functionName) === 'image-set';
+    const isMediaAtRule = gt === 'QueryAtRuleBlock'
+      && source.charCodeAt(start) === 64
+      && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'media';
     const isFontFaceAtRule = (gt === 'DescriptorBlock' || ATRULE_TYPES.has(gt))
       && source.charCodeAt(start) === 64
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'font-face';
     const nodeContext: VisitContext = {
       inVarCall: context.inVarCall || gt === 'VarCall',
       inDeclaration: context.inDeclaration || DECLARATION_TYPES.has(gt),
+      inMediaAtRule: context.inMediaAtRule || isMediaAtRule,
       inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
       inFontFaceAtRule: context.inFontFaceAtRule || isFontFaceAtRule,
       inKeyframeBlock: context.inKeyframeBlock || KEYFRAME_BLOCK_TYPES.has(gt),
@@ -1145,6 +1181,21 @@ export function cstLintDiagnostics(
               spanAtOrContaining(node, pseudo.start, pseudo.end)
             );
           }
+        }
+      }
+    }
+
+    if (language === 'css' && nodeContext.inMediaAtRule && MEDIA_FEATURE_NAME_TYPES.has(gt)) {
+      const feature = mediaFeatureNameSpan(source, node);
+      if (feature !== null) {
+        const lower = feature.name.toLowerCase();
+        if (!lower.startsWith('--') && !isVendorPrefixedName(lower) && !cssData.isKnownMediaFeatureName(lower)) {
+          push(
+            LINT_CODES.unknownMediaFeatureNames,
+            'warning',
+            `Unknown media feature name "${feature.name}"`,
+            spanAtOrContaining(node, feature.start, feature.end)
+          );
         }
       }
     }

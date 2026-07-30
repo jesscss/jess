@@ -66,6 +66,7 @@ a `jess/` prefix.
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
 | `unit-no-unknown` | `lint/unit-no-unknown` | Stylelint-near |
 | `function-no-unknown` | `lint/function-no-unknown` | Stylelint-near |
+| `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | Stylelint-near |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | Stylelint-near |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | Stylelint-near |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
@@ -129,8 +130,8 @@ using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 236-finding rule set:
 
 | Path | Median |
 | --- | --- |
-| Jess lint stable rules | `20.71 ms/op` |
-| Stylelint comparable rules | `23.43 ms/op` |
+| Jess lint stable rules | `21.97 ms/op` |
+| Stylelint comparable rules | `21.34 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -155,7 +156,8 @@ can detect over authored source.
 | P2 | Selector validity | `selector-type-no-unknown` | Needs element/custom-element metadata and dialect escapes. |
 | Landed | Units | `unit-no-unknown` | Flags unknown Dimension units; URL values and resolution `x` contexts are suppressed. |
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
-| P2 | Function/value validity | `media-feature-name-no-unknown` | Better once value facts exist. |
+| Landed | Media feature names | `media-feature-name-no-unknown` | Flags unknown CSS `@media` feature names; dialect media facts and value validation remain future work. |
+| P2 | Function/value validity | `media-feature-name-value-no-unknown` | Better once value facts exist. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |
 | P2 | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Project-policy heavy; opt-in only. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |

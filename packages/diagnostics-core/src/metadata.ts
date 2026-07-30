@@ -42,6 +42,53 @@ const CSS_FUNCTION_SET = new Set(
     .map(fn => typeof fn === 'string' ? fn.toLowerCase() : undefined)
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
 );
+const RANGE_MEDIA_FEATURE_NAMES = [
+  'aspect-ratio',
+  'color',
+  'color-index',
+  'device-aspect-ratio',
+  'device-height',
+  'device-width',
+  'height',
+  'horizontal-viewport-segments',
+  'monochrome',
+  'resolution',
+  'vertical-viewport-segments',
+  'width'
+];
+const DISCRETE_MEDIA_FEATURE_NAMES = [
+  'any-hover',
+  'any-pointer',
+  'color-gamut',
+  'display-mode',
+  'dynamic-range',
+  'environment-blending',
+  'forced-colors',
+  'grid',
+  'hover',
+  'inverted-colors',
+  'light-level',
+  'nav-controls',
+  'orientation',
+  'overflow-block',
+  'overflow-inline',
+  'pointer',
+  'prefers-color-scheme',
+  'prefers-contrast',
+  'prefers-reduced-data',
+  'prefers-reduced-motion',
+  'prefers-reduced-transparency',
+  'scan',
+  'scripting',
+  'update',
+  'video-color-gamut',
+  'video-dynamic-range'
+];
+const MEDIA_FEATURE_NAME_SET = new Set([
+  ...RANGE_MEDIA_FEATURE_NAMES,
+  ...RANGE_MEDIA_FEATURE_NAMES.flatMap(name => [`min-${name}`, `max-${name}`]),
+  ...DISCRETE_MEDIA_FEATURE_NAMES
+]);
 const PSEUDO_CLASS_SET = new Set(
   arrayField(webCssData, 'pseudoClasses')
     .map(pseudo => stringField(pseudo, 'name')?.toLowerCase())
@@ -64,6 +111,9 @@ export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
   },
   isKnownFunction(name) {
     return CSS_FUNCTION_SET.has(name.toLowerCase());
+  },
+  isKnownMediaFeatureName(name) {
+    return MEDIA_FEATURE_NAME_SET.has(name.toLowerCase());
   },
   isKnownPseudoClass(name) {
     const lower = name.startsWith(':') ? name.toLowerCase() : `:${name.toLowerCase()}`;
