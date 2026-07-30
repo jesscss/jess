@@ -3255,10 +3255,10 @@ rewriting choices.
   extend collection keeps its context-owned selector-list path. Keep nth-family
   pseudos outside this dispatcher, and keep selector-capture pseudos static-only
   so dynamic interpolation-bearing arguments still reject in static capture
-  positions. This preserves the old public CST branch ownership
-  (`DirectLessStaticSelectorPseudo`, `DirectLessStaticNonSelectorPseudo`, and
-  `DirectLessInterpolatedArgumentPseudo`) while avoiding function-opener
-  reparsing in ordinary selector positions.
+  positions. This preserves semantic CST branch ownership
+  (`PseudoSelector`, `GenericPseudo`, and `InterpolatedArgumentPseudo`) while
+  avoiding function-opener reparsing in ordinary selector positions; the old
+  `DirectLess*` labels are historical only.
 
 Evidence after the namespace/media fixes: `pnpm --filter @jesscss/less-parser
 test -- ast-grammar.test.ts public-parse.test.ts cst-public.test.ts
@@ -3371,13 +3371,19 @@ shared-opener work this way:
    ownership.
 3. Less selector branches with inline extends: this is probably not an outer
    `dispatch(...)` target. The target is one context-aware selector branch that
-   parses the branch once, collects inline extends, and removes the broad
-   `DirectLessSelectorBranch` / `DirectLessDynamicSelectorBranch` fallback
-   competition.
+   parses the branch once, collects inline extends, and removes the static /
+   dynamic selector-branch fallback competition. Its semantic public owner is
+   `SelectorBranch`; historical `DirectLess*` labels are not a contract.
 4. Less mixin statement family: mixin definitions, mixin calls, and bare mixin
-   calls still restart from the same name/path surface. A routed consumed mixin
-   opener plus suffix routing is plausible, but it must preserve the boundary
-   between `MixinOrQualifiedRule`, `MixinCall`, bare calls, and rulesets.
+   calls still restart from the same name/path surface. A class/id character or
+   even a single `.name` is not enough to route: `.a.b`, `.a .b`, and
+   `.a > .b` can be a namespaced call when they end in `(` or a selector when
+   they end in `{`, and only the simple `.name(...)` form can define a mixin.
+   The eventual one-pass shape must retain that parsed prefix, including its
+   adjacency/trivia/combinator facts, and feed it into a selector continuation
+   with `routed()` when the tail selects a ruleset. Do not replace the current
+   broad gate with a narrower `peek(...)`, a scan, or a route that reparses the
+   prefix.
 5. Less query feature parentheses: several `(`-led query arms decide only after
    entering the parentheses. This may become a dispatch/left-factor target, but
    public `QueryAtRuleBlock` CST children and media/container query AST shapes
@@ -3753,19 +3759,15 @@ CSS/Less dispatch-vs-choice hotspot queue, 2026-07-27:
   baseline, with the known folded aggregates
   `ast=1ad5b5183e984dd4e7fc596ba392e747c89205c32b32c895ead7c3a52ff68c03`
   and `cst=8880f56555332407b722652c7b48865746350bdb275dea4897ee5523991a1698`.
-- Less pseudo shared-opener dispatch landed, 2026-07-27: `DirectLessPseudo` and
-  `DirectLessStaticPseudo` now route one `:name` / glued `:name(` opener through
-  `dispatch(...)`, with selector-function, generic-function, interpolation
-  argument, and bare-pseudo branches consuming the opener via `routed()`. This
-  removes the previous function-opener-then-bare-fallback split. Public CST owner
-  names stay `DirectLessStaticSelectorPseudo`,
-  `DirectLessStaticNonSelectorPseudo`, and
-  `DirectLessInterpolatedArgumentPseudo`, and `ast-grammar.test.ts` now pins the
-  bare/function routed cases. The next cleanup in this area is naming only:
-  names should move toward `PseudoFunction`, `SelectorPseudo`, `OpaquePseudo`,
-  and `InterpolatedPseudo` when the public CST contract is deliberately migrated;
-  adjective stacks like `DirectLessStaticNonSelectorPseudoRouted` remain review
-  findings unless the accepted language really diverges.
+- Less pseudo shared-opener dispatch landed, 2026-07-27: one `:name` / glued
+  `:name(` opener routes through `dispatch(...)`, with selector-function,
+  generic-function, interpolation-argument, and bare-pseudo branches consuming
+  it through `routed()`. This removes the previous function-opener-then-bare
+  fallback split. The semantic CST owners are `PseudoSelector`, `GenericPseudo`,
+  `PseudoArgumentSelector`, `PseudoArgumentText`, and
+  `InterpolatedArgumentPseudo`; historical `DirectLess*` labels were removed
+  rather than preserved as a contract. `ast-grammar.test.ts` pins the
+  bare/function routed cases.
 - Evidence for the Less pseudo shared-opener slice: the focused Less parser set
   (`cst-public.test.ts ast-grammar.test.ts macro-compiled.test.ts
   public-parse.test.ts`) passed 330 tests; `pnpm run check:macro` passed with

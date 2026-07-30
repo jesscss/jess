@@ -3,15 +3,16 @@
  *
  * CSS base: ../../../css/css-parser/src/grammar.ts
  *
- * SCSS adds and overrides:
+ * SCSS extends CSS and adds or overrides only:
  * - Language-specific features: $variables, Sass interpolation, modules,
  *   mixins, functions, control rules, placeholder selectors, @extend, and
  *   Sass import/use/forward forms.
  * - Expanded CSS shapes: expression/map/list values, nested properties,
  *   interpolated selectors/properties/at-rule preludes, and selector forms
  *   where SCSS adds authored syntax inside otherwise CSS-owned structure.
- * - SCSS is a sibling grammar over CSS/shared syntax; it must not inherit Less
- *   routes or keep Less-only compatibility seams.
+ * Unchanged CSS productions remain CSS-owned; an override changes the smallest
+ * child, value slot, or reference that SCSS syntax actually changes. SCSS must
+ * not inherit Less routes or keep Less-only compatibility seams.
  *
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
