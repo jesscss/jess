@@ -3408,17 +3408,21 @@ shared-opener work this way:
    parses the branch once, collects inline extends, and removes the static /
    dynamic selector-branch fallback competition. Its semantic public owner is
    `SelectorBranch`; historical `DirectLess*` labels are not a contract.
-4. Less mixin statement family: the class/id router now parses the prefix once.
+4. Less mixin statement family: the class/id router parses the prefix once.
    `.a.b`, `.a .b`, and `.a > .b` retain their compound/complex selector facts
    until `(`/`;` selects a namespace call or the ruleset continuation selects
    `:extend`, `,`, `when`, or `{`. A definition is permitted only for one
-   class/id name, so `.a.b() {}` remains rejected. The router still has one
-   narrow `attempt(MixinDefinitionTail)` after an already-consumed `(`: Less
-   parameter and call-argument grammars are not interchangeable, so do not
-   erase it by parsing one as the other. The next reduction must retain a
-   truly shared parenthesized fact with separator and value semantics intact,
-   then prove the mixin/qualified-rule backtracking rate. Do not reintroduce a
-   prefix scanner or a route that reparses the selector.
+   class/id name, so `.a.b() {}` remains rejected. `MixinInterior` consumes
+   the opening `(`, each item, and separators once, but leaves `)` for the
+   selected continuation. A bare `@name` is a binding only at a comma,
+   semicolon, or closing-parenthesis boundary; `@name - 1` therefore remains
+   a positional call value. `MixinDefinitionContinuation` and
+   `MixinCallContinuation` each consume `)`, so the narrow definition attempt
+   can retry only its delimiter and tail, never the parenthesized interior.
+   The public parameter-list entry reuses that same interior and reduces it to
+   `Param[]`. The generic positional-value fallback is intentionally local to
+   an already-open interior; do not turn it into a class/id prefix scanner or
+   a route that reparses the selector.
 5. Less query feature parentheses: several `(`-led query arms decide only after
    entering the parentheses. This may become a dispatch/left-factor target, but
    public `QueryAtRuleBlock` CST children and media/container query AST shapes
