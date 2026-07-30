@@ -106,9 +106,11 @@ enough.
 | `function-no-unknown` | `lint/function-no-unknown` | Stylelint-near |
 | `function-linear-gradient-no-nonstandard-direction` | `lint/function-linear-gradient-no-nonstandard-direction` | Stylelint-equivalent |
 | `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | Stylelint-near |
+| `media-feature-name-no-vendor-prefix` | `lint/media-feature-name-no-vendor-prefix` | Stylelint-near, opt-in |
 | `media-feature-name-value-no-unknown` | `lint/media-feature-name-value-no-unknown` | Stylelint-near |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | Stylelint-near |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | Stylelint-near |
+| `selector-no-vendor-prefix` | `lint/selector-no-vendor-prefix` | Stylelint-near, opt-in |
 | `selector-anb-no-unmatchable` | `lint/selector-anb-no-unmatchable` | Stylelint-equivalent |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | Stylelint-near |
 | `selector-max-id` | `lint/selector-max-id` | Stylelint-near, opt-in |
@@ -235,11 +237,13 @@ can detect over authored source.
 | Landed | Unknown vendor-specific properties | `unknown-vendor-specific-properties` | Opt-in VSCode `unknownVendorSpecificProperties` parity for CSS single-hyphen prefixed declarations whose full property name is not known; custom validProperties support stays future work. |
 | Landed | Import statement warning | `import-statement` | Opt-in VSCode `importStatement` parity for CSS `@import` rules that may block parallel stylesheet loading. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
+| Landed | Selector vendor prefixes | `selector-no-vendor-prefix` | Opt-in Stylelint-name diagnostic for authored CSS vendor-prefixed pseudo-class and pseudo-element selectors. |
 | Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
 | Landed | Selector policy | `selector-max-id`, `selector-max-universal` | Opt-in VSCode `idSelector` and `universalSelector` parity surfaced under Stylelint names; the initial subset reports any static CSS ID or universal selector as max-0. |
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
 | Landed | Gradient directions | `function-linear-gradient-no-nonstandard-direction` | Flags old side-or-corner direction syntax and unitless numeric directions in CSS `linear-gradient()` / `repeating-linear-gradient()` calls. |
 | Landed | Media feature names and values | `media-feature-name-no-unknown`, `media-feature-name-value-no-unknown` | Flags unknown CSS `@media` feature names and definite invalid static values; dialect media facts remain future work. |
+| Landed | Media feature vendor prefixes | `media-feature-name-no-vendor-prefix` | Opt-in Stylelint-name diagnostic for authored CSS vendor-prefixed `@media` feature names. |
 | Landed | At-rule descriptors | `at-rule-descriptor-no-unknown` | Flags unknown descriptors in parsed CSS descriptor blocks, including `@page` page-context and margin-box descriptors. |
 | Landed | At-rule descriptor values | `at-rule-descriptor-value-no-unknown` | Flags definite invalid descriptor values in parsed CSS descriptor blocks; the first subset covers `@property` `syntax`/`inherits` and `@font-face` `font-display`. |
 | Landed | Color function arguments | `color-function-no-invalid-arguments` | Matches VSCode `argumentsInColorFunction` for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |

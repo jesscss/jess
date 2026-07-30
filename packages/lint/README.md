@@ -177,9 +177,11 @@ The current stable rule set is intentionally small and migration-friendly:
 | `function-no-unknown` | `lint/function-no-unknown` | near `function-no-unknown` |
 | `function-linear-gradient-no-nonstandard-direction` | `lint/function-linear-gradient-no-nonstandard-direction` | `function-linear-gradient-no-nonstandard-direction` |
 | `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | near `media-feature-name-no-unknown` |
+| `media-feature-name-no-vendor-prefix` | `lint/media-feature-name-no-vendor-prefix` | near `media-feature-name-no-vendor-prefix`, opt-in |
 | `media-feature-name-value-no-unknown` | `lint/media-feature-name-value-no-unknown` | near `media-feature-name-value-no-unknown` |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | near `selector-pseudo-class-no-unknown` |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | near `selector-pseudo-element-no-unknown` |
+| `selector-no-vendor-prefix` | `lint/selector-no-vendor-prefix` | near `selector-no-vendor-prefix`, opt-in |
 | `selector-anb-no-unmatchable` | `lint/selector-anb-no-unmatchable` | `selector-anb-no-unmatchable` |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | near `selector-type-no-unknown` |
 | `selector-max-id` | `lint/selector-max-id` | near `selector-max-id`, opt-in |

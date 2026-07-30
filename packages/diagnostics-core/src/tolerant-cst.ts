@@ -54,9 +54,11 @@ export const LINT_CODES = {
   unknownFunctions: 'lint/function-no-unknown',
   linearGradientNonstandardDirection: 'lint/function-linear-gradient-no-nonstandard-direction',
   unknownMediaFeatureNames: 'lint/media-feature-name-no-unknown',
+  mediaFeatureNameNoVendorPrefix: 'lint/media-feature-name-no-vendor-prefix',
   unknownMediaFeatureValues: 'lint/media-feature-name-value-no-unknown',
   unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
+  selectorNoVendorPrefix: 'lint/selector-no-vendor-prefix',
   unknownTypeSelectors: 'lint/selector-type-no-unknown',
   selectorMaxId: 'lint/selector-max-id',
   selectorMaxUniversal: 'lint/selector-max-universal',
@@ -4076,6 +4078,14 @@ export function cstLintDiagnostics(
             );
           }
         }
+        if (language === 'css' && isVendorPseudoName(bareLower)) {
+          push(
+            LINT_CODES.selectorNoVendorPrefix,
+            'warning',
+            `Unexpected vendor-prefixed selector "${pseudo.name}"`,
+            spanAtOrContaining(node, pseudo.start, pseudo.end)
+          );
+        }
         if (
           !bareLower.startsWith('--')
           && !isVendorPseudoName(bareLower)
@@ -4145,6 +4155,14 @@ export function cstLintDiagnostics(
       if (feature !== null) {
         const lower = feature.name.toLowerCase();
         const shouldCheckFeature = !lower.startsWith('--') && !isVendorPrefixedName(lower);
+        if (isVendorPrefixedName(lower)) {
+          push(
+            LINT_CODES.mediaFeatureNameNoVendorPrefix,
+            'warning',
+            `Unexpected vendor-prefixed media feature name "${feature.name}"`,
+            spanAtOrContaining(node, feature.start, feature.end)
+          );
+        }
         if (shouldCheckFeature && !cssData.isKnownMediaFeatureName(lower)) {
           push(
             LINT_CODES.unknownMediaFeatureNames,

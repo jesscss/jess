@@ -1296,6 +1296,31 @@ describe('collectTolerantDiagnostics', () => {
     )).toBe(false);
   });
 
+  it('reports opt-in CSS vendor-prefixed selector policy facts', () => {
+    const source = '.a::-webkit-scrollbar, .b:-moz-placeholder, .c:focus-visible { color: red; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const vendorSelectors = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.selectorNoVendorPrefix);
+    const webkitStart = source.indexOf('::-webkit-scrollbar');
+    const mozStart = source.indexOf(':-moz-placeholder');
+
+    expect(vendorSelectors.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unexpected vendor-prefixed selector "::-webkit-scrollbar"', webkitStart, webkitStart + '::-webkit-scrollbar'.length],
+      ['Unexpected vendor-prefixed selector ":-moz-placeholder"', mozStart, mozStart + ':-moz-placeholder'.length]
+    ]);
+  });
+
+  it('does not report vendor-prefixed selector policy facts in dialect files before selector facts exist', () => {
+    const source = '.a::-webkit-scrollbar { color: red; }';
+    const scss = collectTolerantDiagnostics({ source, language: 'scss' });
+    const less = collectTolerantDiagnostics({ source, language: 'less' });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorNoVendorPrefix)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorNoVendorPrefix)).toBe(false);
+  });
+
   it('reports unmatchable An+B selector pseudos', () => {
     const source = 'a:nth-child(0), b:nth-child(+0), c:nth-child(-0n+0 of .item), d:nth-of-type(0n-0), e:nth-last-child(n), f:nth-child(00), g:nth-child(0n+00) { color: red; }';
     const result = collectTolerantDiagnostics({
@@ -1551,6 +1576,26 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports opt-in CSS vendor-prefixed media feature policy facts', () => {
+    const source = '@media (-webkit-device-pixel-ratio: 2) and (min-width: 1px) { .a { color: red; } }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const vendorFeatures = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.mediaFeatureNameNoVendorPrefix
+    );
+    const featureStart = source.indexOf('-webkit-device-pixel-ratio');
+
+    expect(vendorFeatures.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Unexpected vendor-prefixed media feature name "-webkit-device-pixel-ratio"',
+        featureStart,
+        featureStart + '-webkit-device-pixel-ratio'.length
+      ]
+    ]);
+  });
+
   it('reports unknown CSS media feature values', () => {
     const source = '@media (orientation: sideways) and (hover: maybe) and (grid: 2) and (resolution: infinite) and (width: 10px) and (aspect-ratio: 16/9) and (min-width: 0) { .a { color: red; } }';
     const result = collectTolerantDiagnostics({
@@ -1597,5 +1642,7 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureNames)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureNames)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.mediaFeatureNameNoVendorPrefix)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.mediaFeatureNameNoVendorPrefix)).toBe(false);
   });
 });

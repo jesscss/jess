@@ -59,9 +59,11 @@ describe('stable rule set', () => {
       LINT_CODES.unknownFunctions,
       LINT_CODES.linearGradientNonstandardDirection,
       LINT_CODES.unknownMediaFeatureNames,
+      LINT_CODES.mediaFeatureNameNoVendorPrefix,
       LINT_CODES.unknownMediaFeatureValues,
       LINT_CODES.unknownPseudoClasses,
       LINT_CODES.unknownPseudoElements,
+      LINT_CODES.selectorNoVendorPrefix,
       LINT_CODES.unmatchableAnbSelectors,
       LINT_CODES.unknownTypeSelectors,
       LINT_CODES.selectorMaxId,
@@ -115,9 +117,11 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownFunctions,
       LINT_RULE_NAMES.linearGradientNonstandardDirection,
       LINT_RULE_NAMES.unknownMediaFeatureNames,
+      LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix,
       LINT_RULE_NAMES.unknownMediaFeatureValues,
       LINT_RULE_NAMES.unknownPseudoClasses,
       LINT_RULE_NAMES.unknownPseudoElements,
+      LINT_RULE_NAMES.selectorNoVendorPrefix,
       LINT_RULE_NAMES.unmatchableAnbSelectors,
       LINT_RULE_NAMES.unknownTypeSelectors,
       LINT_RULE_NAMES.selectorMaxId,
@@ -132,7 +136,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(47);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(48);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -146,6 +150,8 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.importStatement]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorMaxId]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.selectorNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
@@ -202,6 +208,8 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.importStatement]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownAtRuleDescriptorValues]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownCustomProperties]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorNoVendorPrefix]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyValue]).toBe('off');
@@ -1027,6 +1035,30 @@ describe('lintText', () => {
     ]);
   });
 
+  it('keeps vendor-prefixed selector policy opt-in by lint rule name', async () => {
+    const input = {
+      source: '.a::-webkit-scrollbar { color: red; }',
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.selectorNoVendorPrefix);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.selectorNoVendorPrefix]: 'error'
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
+      [LINT_CODES.selectorNoVendorPrefix, LINT_RULE_NAMES.selectorNoVendorPrefix, 'error']
+    ]);
+  });
+
   it('applies policy to unknown function diagnostics', async () => {
     const result = await lintText(
       {
@@ -1112,6 +1144,32 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownMediaFeatureNames, 'error']
+    ]);
+  });
+
+  it('keeps vendor-prefixed media feature policy opt-in by lint rule name', async () => {
+    const input = {
+      source: '@media (-webkit-device-pixel-ratio: 2) { .a { color: red; } }',
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.mediaFeatureNameNoVendorPrefix
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]: 'error'
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
+      [LINT_CODES.mediaFeatureNameNoVendorPrefix, LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix, 'error']
     ]);
   });
 

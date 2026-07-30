@@ -1032,6 +1032,35 @@ describe('JessLanguageServiceEngine', () => {
         expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('*');
       });
 
+      it('keeps vendor-prefixed selector and media feature diagnostics opt-in', () => {
+        const source = [
+          '.a::-webkit-scrollbar { color: red; }',
+          '@media (-webkit-device-pixel-ratio: 2) { .a { color: red; } }'
+        ].join('\n');
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/selector-no-vendor-prefix');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/media-feature-name-no-vendor-prefix');
+
+        const configured = createEngine();
+        configured.configure({
+          diagnostics: {
+            severity: {
+              ['lint/selector-no-vendor-prefix']: 'warning',
+              ['lint/media-feature-name-no-vendor-prefix']: 'warning'
+            }
+          }
+        });
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const codes = codesOf(configured, configuredDoc.uri);
+
+        expect(codes).toContain('lint/selector-no-vendor-prefix');
+        expect(codes).toContain('lint/media-feature-name-no-vendor-prefix');
+      });
+
       it('does not fire in dialect files before selector facts exist', () => {
         const engine = createEngine();
         engine.configure({
