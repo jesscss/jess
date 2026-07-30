@@ -3002,12 +3002,11 @@ describe('public Less parse()', () => {
     expect(() => parse('e("x") e("y")')).toThrow(SyntaxError);
   });
 
-  it('does not mistake a condition operator hidden inside a string function argument (ambient scanSkip)', () => {
+  it('keeps condition syntax scoped to the current function argument', () => {
     /*
-     * Regression for the raw-scanTo footgun: the condition-ahead guard scanned
-     * a function argument for a comparison/logical operator and matched the `or`
-     * INSIDE the quoted string, mis-committing the argument to a Less condition.
-     * The grammar-level `scanSkip` now treats the string as opaque during the scan.
+     * A quoted argument is a completed value piece, so comparison and logical
+     * bytes inside it cannot route its containing argument through the Less
+     * condition production.
      */
     const evaluator = buildEvaluator(makeLessRegistry());
 
