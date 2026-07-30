@@ -10,9 +10,10 @@
  * - Expanded CSS shapes: expression-bearing values, selector captures, static
  *   CSS headers/descriptors that deliberately reject Jess runtime forms, and
  *   the narrow dynamic at-rule/header leaves Jess actually supports.
- * - Jess is a sibling grammar over CSS/shared syntax; shared preprocessor
- *   constructs belong in parser-shared only after they prove real reuse, and
- *   CSS structure stays CSS-owned unless Jess changes one specific subshape.
+ * - Jess extends CSS: unchanged CSS structure stays CSS-owned and this grammar
+ *   overrides only the smallest changed child, value slot, or reference.
+ *   Shared preprocessor constructs belong in parser-shared only after they
+ *   prove real reuse.
  *
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
