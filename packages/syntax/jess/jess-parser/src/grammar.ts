@@ -2936,11 +2936,12 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * Value-position identifiers and glued function openers are one CSS family.
-   * Route the consumed spelling exactly once: `url(` keeps its dedicated body,
-   * `var(` retains its comma rule, generic functions own Call, and a bare
-   * identifier remains a Keyword. This prevents a malformed known URL from
-   * falling through to GenericCall after its URL production rejects.
+   * CSS keeps custom-property values as their own atom; ordinary identifiers
+   * and glued function openers are the routed family. Route that consumed
+   * spelling exactly once: `url(` keeps its dedicated body, `var(` retains its
+   * comma rule, generic functions own Call, and a bare identifier remains a
+   * Keyword. This prevents a malformed known URL from falling through to
+   * GenericCall after its URL production rejects.
    */
   const CustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
@@ -2948,17 +2949,9 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     children => keyword(requireToken(children[0]).value)
   );
   const identifierOrFunction = token(noTrivia(sequence(
-    choice(
-      g.CustomPropertyName,
-      g.Identifier
-    ),
+    g.Identifier,
     optional(literal('('))
   )));
-  const RoutedCustomPropertyValue = node<Keyword>(
-    'CustomPropertyValue',
-    routed(),
-    children => keyword(requireToken(children[0]).value)
-  );
   const KeywordValue = node<Keyword>(
     'Keyword',
     routed(),
@@ -3033,10 +3026,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     when(
       endsWith('('),
       GenericCall
-    ),
-    when(
-      startsWith('--'),
-      RoutedCustomPropertyValue
     ),
     otherwise(KeywordValue)
   );
@@ -3310,6 +3299,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     g.ExpressionLambda,
     g.InterpolatedValue,
     g.SelectorCapture,
+    g.CustomPropertyValue,
     g.IdentifierOrFunction,
     g.Quoted,
     g.Color,

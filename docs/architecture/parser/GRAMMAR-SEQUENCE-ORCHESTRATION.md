@@ -5114,3 +5114,15 @@ lookup body forms. `check:macro` had zero interpreter fallbacks and
 `verify:compose-integrity` passed. The 1.9KB snapshot was noisy and mixed
 (0.4933ms AST / 0.4460ms CST medians, warmup 12, timed 45), so it is not a
 speed claim.
+
+Jess identifier/function horizontal alignment, 2026-07-30: CSS treats
+`CustomPropertyValue` as a sibling typed value atom, not an identifier/function
+opener. Jess now follows that frame: `IdentifierOrFunction` consumes only the
+ordinary CSS `Identifier` plus an optional glued `(`, while
+`CustomPropertyValue` precedes it in the value-atom family. This deletes the
+overlapping `choice(CustomPropertyName, Identifier)` and the now-unneeded routed
+custom-property keyword branch; `var(--name)` remains owned by the CSS-shaped
+`VarCall` body. The generated Parseman `IdentifierOrFunction#0` diagnostic is
+gone. Parser-shared then Jess builds, the focused AST/CST tests, the full Jess
+parser suite, `check:macro` (zero interpreter fallbacks), and
+`verify:compose-integrity` passed. No performance claim was made.
