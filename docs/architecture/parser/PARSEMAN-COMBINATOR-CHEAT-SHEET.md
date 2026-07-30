@@ -136,12 +136,17 @@ CSS examples:
   construct-family `choice(...)`; route `@` through the at-keyword family;
   send class/id starts through the mixin-or-qualified-rule gate where that
   dialect has one; send identifier and interpolation starts through one
-  declaration-or-qualified-rule helper; send every remaining selector start
-  straight to a qualified rule. That helper parses the name/interpolation
-  prefix once and retains it for both continuations. Its final choice is a
-  later-delimiter/context decision (`b:c { ... }` is a nested rule), so
-  left-factor it or use a context helper; do not dispatch on a bare property
-  name before the grammar has consumed enough syntax to decide the branch.
+  `IdentifierOrInterpolation` declaration-or-qualified-rule helper; send every
+  remaining selector start straight to a qualified rule. That helper parses the
+  name/interpolation prefix once and retains it for both continuations.
+- The identifier/interpolation helper is a context decision, shared across all
+  four grammars. After the retained prefix: no `:` continues as a qualified
+  rule; `:` followed by trivia commits a declaration; `:` glued to the next
+  identifier remains the pseudo-qualified-rule ambiguity. For that final glued
+  shape, continue through the selector structure to its opening `{` before
+  choosing the qualified-rule path; otherwise retain the declaration parsing
+  error. Do not dispatch on the bare prefix alone, and do not replace this
+  route with a broad declaration-name `peek(...)`.
 - CSS owns the static statement-start family. Less, SCSS, and Jess override
   only the precise prefix atom or continuation they expand (for example an
   interpolation-bearing name), never the whole body or qualified-rule shape.
