@@ -40,8 +40,13 @@
  *
  *   ... --gate            compare against the committed baseline, exit 1 on breach
  *   ... --write-baseline  rewrite the baseline (requires an owner signoff, see below)
+ *   ... --runs=N          fold the median across N independent processes
+ *                         (default 5 when gating or baselining, 1 otherwise)
  *
- * WARMUP / ROUNDS overridable via env.
+ * Exit codes: 0 pass, 1 breach, 2 usage, 3 measurement too noisy to mean
+ * anything (re-run; this is NOT a pass and NOT a failure of the change).
+ *
+ * WARMUP / ROUNDS / ITERATIONS / RUNS overridable via env.
  */
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -195,13 +200,14 @@ const iterations = Number(process.env.ITERATIONS ?? 5);
 const gateQualityNoiseFloorPct = Number(process.env.MAX_NOISE_FLOOR_PCT ?? 6);
 
 /*
- * The identical-case floor measures sampling noise WITHIN one process. It
- * understates variance BETWEEN processes, where JIT and GC state differ: four
- * clean runs at these settings reported within-run floors of 1.5-5.2% while the
- * same case's ratio moved up to 12% across them. The gate's ceiling therefore
- * never sits tighter than this, or every second honest run is red.
+ * The identical-case floor measures sampling noise WITHIN one process and
+ * understates variance BETWEEN processes, where JIT and GC state differ: clean
+ * runs reported within-process floors of 1.5-5.2% while the same case's ratio
+ * moved 12.9% across processes. Gating a single process needed a ~13% ceiling,
+ * which is loose enough to swallow a real regression. Folding the median across
+ * several processes (see `--runs`) is what buys this tighter floor back.
  */
-const minimumTolerance = 0.12;
+const minimumTolerance = 0.08;
 for (const [name, value] of [['WARMUP', warmup], ['ROUNDS', rounds], ['ITERATIONS', iterations]]) {
   if (!Number.isInteger(value) || value < (name === 'WARMUP' ? 0 : 1)) {
     console.error(`${name} must be a positive integer.`);
@@ -427,6 +433,79 @@ const report = {
   sink
 };
 
+/* ------------------------------------------------------ across-process fold */
+
+/*
+ * One process is not a measurement. The identical-case floor inside a process
+ * lands at 1-5%, but the SAME case's ratio moved 12.9% across eight clean
+ * processes here — JIT tier-up and heap state differ per process, and a
+ * single-process baseline is fragile enough that the gate went red with no
+ * source change at all. Widening the ceiling to absorb that would be exactly
+ * the drift-laundering this gate exists to prevent, so the fix is to make the
+ * number stable instead: gate and baseline runs fold the median across several
+ * independent processes.
+ */
+const isChild = process.env.JESS_BAR_CHILD === '1';
+const defaultRuns = (runGate || writeBaseline) ? 5 : 1;
+const runs = isChild ? 1 : Number(arg('runs') ?? process.env.RUNS ?? defaultRuns);
+if (!Number.isInteger(runs) || runs < 1) {
+  console.error('--runs must be a positive integer.');
+  process.exit(2);
+}
+
+const reports = [report];
+if (runs > 1) {
+  const childArgv = argv.filter(
+    value => value !== '--gate' && value !== '--write-baseline' && !value.startsWith('--runs=')
+  );
+  for (let i = 1; i < runs; i++) {
+    const child = execFileSync(process.execPath, [fileURLToPath(import.meta.url), ...childArgv], {
+      encoding: 'utf8',
+      maxBuffer: 1 << 26,
+      env: { ...process.env, JESS_BAR_CHILD: '1' }
+    });
+    reports.push(JSON.parse(child));
+  }
+}
+
+const medianOf = (values) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[sorted.length >> 1];
+};
+
+/* Fold: the gated number is the median ACROSS processes, per named case. */
+const folded = measured.map((result) => {
+  const ratios = reports.map(
+    entry => entry.results.find(other => other.case === result.case).ratioVsPostcss
+  );
+  const sorted = [...ratios].sort((a, b) => a - b);
+  const median = medianOf(ratios);
+  return {
+    case: result.case,
+    fixture: result.fixture,
+    surface: result.surface,
+    ratioVsPostcss: round4(median),
+    perProcessRatios: ratios.map(round4),
+    betweenProcessSpreadPct: round4(((sorted[sorted.length - 1] - sorted[0]) / median) * 100),
+    jessMedianMs: result.jess.medianMs,
+    postcssMedianMs: result.postcss.medianMs
+  };
+});
+const foldedNoiseFloorPct = round4(medianOf(reports.map(entry => entry.observedNoiseFloorPct)));
+const worstBetweenProcessSpreadPct = round4(
+  Math.max(...folded.map(result => result.betweenProcessSpreadPct))
+);
+
+report.processes = runs;
+report.fold = runs > 1
+  ? {
+      note: 'ratioVsPostcss in foldedResults is the median across `processes` independent runs.',
+      foldedNoiseFloorPct,
+      worstBetweenProcessSpreadPct
+    }
+  : { note: 'single process; foldedResults equals results. Not gate-quality on its own.' };
+report.foldedResults = folded;
+
 /* --------------------------------------------------------------- baseline */
 
 const baselineShape = () => ({
@@ -443,11 +522,12 @@ const baselineShape = () => ({
       + 'ignores ownerSignoff entirely; it exists to make an unauthorised rebaseline visible '
       + 'in review.',
     toleranceRationale:
-      'maxRatioVsPostcss = recorded ratio x (1 + toleranceFraction). toleranceFraction is the '
-      + `recording run's measured identical-case noise floor, floored at ${minimumTolerance}. `
-      + 'The floor is not arbitrary: the identical-case figure measures sampling noise within '
-      + 'one process, and the same case moved up to 12% across four clean processes. A ceiling '
-      + 'tighter than that is red on honest runs; a ceiling looser than that absorbs real decay.'
+      'maxRatioVsPostcss = recorded ratio x (1 + toleranceFraction). Both the recorded ratio '
+      + 'and a gate run\'s ratio are medians across `processes` independent processes, which is '
+      + 'what makes a tolerance this tight survivable: a single process moved the same case '
+      + `12.9% here with no source change. toleranceFraction is floored at ${minimumTolerance} `
+      + 'and otherwise tracks the measured noise. Do not widen it to clear a red gate — that is '
+      + 'the drift-laundering this gate exists to prevent.'
   },
   ownerSignoff: null,
   recordedOn: {
@@ -459,16 +539,19 @@ const baselineShape = () => ({
     parseman: `${parsemanMeta.name}@${parsemanMeta.version}`,
     postcss: `${postcssMeta.name}@${postcssMeta.version}`,
     upstreamCommit: report.comparator.upstreamCommit,
-    observedNoiseFloorPct
+    processes: runs,
+    foldedNoiseFloorPct,
+    worstBetweenProcessSpreadPct
   },
-  toleranceFraction: round4(Math.max(minimumTolerance, observedNoiseFloorPct / 100)),
+  toleranceFraction: round4(Math.max(minimumTolerance, foldedNoiseFloorPct / 100)),
   fixtures: Object.fromEntries(fixtures.map(f => [f.name, { bytes: f.bytes, sha256: f.sha256 }])),
-  cases: Object.fromEntries(measured.map(result => [
+  cases: Object.fromEntries(folded.map(result => [
     result.case,
     {
       recordedRatioVsPostcss: result.ratioVsPostcss,
+      perProcessRatios: result.perProcessRatios,
       maxRatioVsPostcss: round4(
-        result.ratioVsPostcss * (1 + Math.max(minimumTolerance, observedNoiseFloorPct / 100))
+        result.ratioVsPostcss * (1 + Math.max(minimumTolerance, foldedNoiseFloorPct / 100))
       )
     }
   ]))
@@ -479,11 +562,10 @@ const baselineShape = () => ({
  * Exit 3 distinguishes "unusable measurement" from "real breach" (1) so a CI
  * wiring can retry rather than fail a change.
  */
-const gateQualityFailure = observedNoiseFloorPct > gateQualityNoiseFloorPct
-  ? `Measured noise floor ${observedNoiseFloorPct}% exceeds the gate-quality limit of `
-  + `${gateQualityNoiseFloorPct}%. Two identical PostCSS cases disagreed by that much in `
-  + 'this run, so every ratio in it is contaminated. This is not a result. Re-run on an '
-  + 'idle machine.'
+const gateQualityFailure = foldedNoiseFloorPct > gateQualityNoiseFloorPct
+  ? `Measured noise floor ${foldedNoiseFloorPct}% exceeds the gate-quality limit of `
+  + `${gateQualityNoiseFloorPct}%. Two identical PostCSS cases disagreed by that much, `
+  + 'so every ratio here is contaminated. This is not a result. Re-run on an idle machine.'
   : null;
 
 if ((writeBaseline || runGate) && gateQualityFailure) {
@@ -533,7 +615,7 @@ if (runGate) {
   }
 
   for (const [name, pinned] of Object.entries(baseline.cases)) {
-    const actual = measured.find(result => result.case === name);
+    const actual = folded.find(result => result.case === name);
     if (!actual) {
       failures.push(`case ${name} is in the baseline but was not measured`);
       continue;
@@ -541,17 +623,21 @@ if (runGate) {
     const delta = (actual.ratioVsPostcss / pinned.recordedRatioVsPostcss - 1) * 100;
     const line = `${name}: ratio ${actual.ratioVsPostcss} vs recorded `
       + `${pinned.recordedRatioVsPostcss} (ceiling ${pinned.maxRatioVsPostcss}), `
-      + `${delta >= 0 ? '+' : ''}${delta.toFixed(2)}%`;
+      + `${delta >= 0 ? '+' : ''}${delta.toFixed(2)}%, `
+      + `between-process spread ${actual.betweenProcessSpreadPct}%`;
     if (actual.ratioVsPostcss > pinned.maxRatioVsPostcss) {
       failures.push(`${line} — BREACH`);
-    } else if (Math.abs(delta) <= observedNoiseFloorPct) {
-      notes.push(`${line} — within the measured noise floor (${observedNoiseFloorPct}%), inconclusive`);
+    } else if (Math.abs(delta) <= foldedNoiseFloorPct) {
+      notes.push(`${line} — within the measured noise floor (${foldedNoiseFloorPct}%), inconclusive`);
     } else {
       notes.push(line);
     }
   }
 
-  console.error(`measured noise floor: ${observedNoiseFloorPct}%`);
+  console.error(
+    `processes: ${runs}, folded noise floor: ${foldedNoiseFloorPct}%, `
+    + `worst between-process spread: ${worstBetweenProcessSpreadPct}%`
+  );
   for (const note of notes) {
     console.error(`  ok   ${note}`);
   }
