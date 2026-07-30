@@ -139,6 +139,12 @@ CSS examples:
   `IdentifierOrInterpolation` declaration-or-qualified-rule helper; send every
   remaining selector start straight to a qualified rule. That helper parses the
   name/interpolation prefix once and retains it for both continuations.
+- "Retains" is mechanical, not a new grammar concept: do not introduce an
+  `IdentifierStart` fact, a generic `Statement` node, or another CST wrapper to
+  carry the prefix. The selected existing semantic node (`Declaration`,
+  `Ruleset`, `MixinCall`, or `MixinDefinition`) owns the replayed prefix and
+  builds its normal result directly. Ordinary valid statement traffic must not
+  enter an `attempt(...)` rollback path merely to choose one of those families.
 - The identifier/interpolation helper is a context decision, shared across all
   four grammars. After the retained prefix: no `:` continues as a qualified
   rule; `:` followed by trivia commits a declaration; `:` glued to the next
