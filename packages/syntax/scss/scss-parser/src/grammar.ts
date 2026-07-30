@@ -2218,11 +2218,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const ImportQualifier = node<ValueNode>(
     'ImportQualifier',
     choice(
-      sequence(
-        g.ImportLayer,
-        g.ImportSupports
-      ),
-      g.ImportLayer,
+      sequence(g.ImportLayer, optional(g.ImportSupports)),
       g.ImportSupports
     ),
     (children) => {
@@ -2370,11 +2366,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const ImportTail = node<ValueNode>(
     'ImportTail',
     choice(
-      sequence(
-        g.ImportQualifier,
-        g.ImportMediaPrelude
-      ),
-      g.ImportQualifier,
+      sequence(g.ImportQualifier, optional(g.ImportMediaPrelude)),
       g.ImportMediaPrelude
     ),
     (children) => {
