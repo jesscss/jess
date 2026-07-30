@@ -212,7 +212,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'warn',
     comparison: 'stylelint-near',
     stylelintRule: 'at-rule-descriptor-no-unknown',
-    notes: 'Flags unknown descriptors in parsed CSS descriptor blocks using shared CSS metadata; @page descriptor support remains future work.'
+    notes: 'Flags unknown descriptors in parsed CSS descriptor blocks using shared CSS metadata, including CSS @page page-context and margin-box descriptors.'
   },
   {
     code: LINT_CODES.duplicateProperties,
