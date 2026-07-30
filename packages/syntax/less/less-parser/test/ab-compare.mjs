@@ -23,6 +23,10 @@
  * - INTERLEAVED `B A B A ...` across several rounds, multiple PROCESSES per version.
  *   Thermal drift and per-process JIT variation are large enough to invent a result
  *   if you run all of one version and then all of the other.
+ * - `FILES` must list the WHOLE `src/` surface of the three built packages, not just
+ *   the files you think your change touched. Anything left out keeps the WORKING
+ *   TREE's copy on both sides, which silently attributes its delta to the swapped
+ *   files. Check it against `git ls-files .../src` when you add or delete a source.
  * - Reports median AND min AND spread AND win-rate. A single median is not a result.
  * - Both surfaces are timed. If your change touches only one grammar, the untouched
  *   surface is a same-run CONTROL: it shows what this harness's noise floor is on
@@ -44,18 +48,34 @@ const warmup = process.argv[4] ?? '8';
 const timed = process.argv[5] ?? '25';
 
 const FILES = [
-  'packages/parser-shared/src/recognition.ts',
   'packages/parser-shared/src/opaque-at-rule.ts',
   'packages/parser-shared/src/pseudo-consts.ts',
+  'packages/parser-shared/src/recognition.ts',
+  'packages/syntax/css/css-parser/src/cst-host.ts',
+  'packages/syntax/css/css-parser/src/cst.ts',
+  'packages/syntax/css/css-parser/src/cst/positions.ts',
   'packages/syntax/css/css-parser/src/grammar.ts',
-  'packages/syntax/css/css-parser/src/ast/grammar.ts',
-  'packages/syntax/css/css-parser/src/cst.ts',
-  'packages/syntax/css/css-parser/src/cst.ts',
+  'packages/syntax/css/css-parser/src/grammar/ast.ts',
+  'packages/syntax/css/css-parser/src/grammar/ast/positions.ts',
+  'packages/syntax/css/css-parser/src/grammar/cst.ts',
+  'packages/syntax/css/css-parser/src/grammar/cst/positions.ts',
   'packages/syntax/css/css-parser/src/index.ts',
-  'packages/syntax/less/less-parser/src/grammar.ts',
-  'packages/syntax/less/less-parser/src/ast/grammar.ts',
+  'packages/syntax/css/css-parser/src/parse-error.ts',
+  'packages/syntax/css/css-parser/src/parse-with.ts',
+  'packages/syntax/css/css-parser/src/positions.ts',
+  'packages/syntax/css/css-parser/src/trivia-labels.ts',
   'packages/syntax/less/less-parser/src/cst.ts',
+  'packages/syntax/less/less-parser/src/cst/positions.ts',
+  'packages/syntax/less/less-parser/src/grammar.ts',
+  'packages/syntax/less/less-parser/src/grammar/ast.ts',
+  'packages/syntax/less/less-parser/src/grammar/ast/positions.ts',
+  'packages/syntax/less/less-parser/src/grammar/cst.ts',
+  'packages/syntax/less/less-parser/src/grammar/cst/positions.ts',
   'packages/syntax/less/less-parser/src/index.ts',
+  'packages/syntax/less/less-parser/src/parse-error.ts',
+  'packages/syntax/less/less-parser/src/parse-with.ts',
+  'packages/syntax/less/less-parser/src/positions.ts',
+  'packages/syntax/less/less-parser/src/trivia-labels.ts',
   'packages/syntax/less/less-parser/tsdown.config.ts'
 ];
 const snapDir = mkdtempSync(join(tmpdir(), 'less-ab-'));
