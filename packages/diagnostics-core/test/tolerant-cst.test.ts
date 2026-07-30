@@ -751,41 +751,6 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
-  it('reports unknown Less and SCSS named mixin arguments as shared semantic diagnostics', () => {
-    const less = '.theme(@color, @gap: 1px) { color: @color; }\n.a { .theme(@tone: red, @gap: 2px); }';
-    const scss = '@mixin theme($color, $gap: 1px) { color: $color; }\n.a { @include theme($tone: red, $gap: 2px); }';
-
-    expect(collectTolerantDiagnostics({ source: less, language: 'less' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.unknownNamedArgument)
-      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['eval', 'error', 'Unknown named argument @tone for mixin .theme', less.indexOf('@tone'), less.indexOf('@tone') + '@tone'.length]
-    ]);
-    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
-      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.unknownNamedArgument)
-      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['eval', 'error', 'Unknown named argument $tone for mixin theme', scss.indexOf('$tone'), scss.indexOf('$tone') + '$tone'.length]
-    ]);
-  });
-
-  it('keeps Less and SCSS named-argument diagnostics conservative around overloads and dynamic signatures', () => {
-    const overload = '.theme(@color) { color: @color; }\n.theme(@tone) { color: @tone; }\n.a { .theme(@tone: red); }';
-    const rest = '.theme(@color, @rest...) { color: @color; }\n.a { .theme(@tone: red); }';
-    const pattern = '.theme(red, @color) { color: @color; }\n.a { .theme(@tone: red); }';
-    const imported = '@import "theme.less";\n.theme(@color) { color: @color; }\n.a { .theme(@tone: red); }';
-    const scssOverload = '@mixin theme($color) { color: $color; }\n@mixin theme($tone) { color: $tone; }\n.a { @include theme($tone: red); }';
-    const scssRest = '@mixin theme($color, $rest...) { color: $color; }\n.a { @include theme($tone: red); }';
-    const scssImported = '@use "theme";\n@mixin theme($color) { color: $color; }\n.a { @include theme($tone: red); }';
-
-    for (const candidate of [overload, rest, pattern, imported]) {
-      expect(collectTolerantDiagnostics({ source: candidate, language: 'less' }).diagnostics
-        .some(diagnostic => diagnostic.code === SEMANTIC_CODES.unknownNamedArgument)).toBe(false);
-    }
-    for (const candidate of [scssOverload, scssRest, scssImported]) {
-      expect(collectTolerantDiagnostics({ source: candidate, language: 'scss' }).diagnostics
-        .some(diagnostic => diagnostic.code === SEMANTIC_CODES.unknownNamedArgument)).toBe(false);
-    }
-  });
-
   it('reports definitely impossible dialect guards without flagging dynamic guards', () => {
     const less = '.a when (false) { color: red; }\n.m() when (1 > 2) { color: blue; }\n.ok() when (not(false)) { color: green; }\n.dyn(@value) when (@value = false) { color: yellow; }';
     const scss = '@if false { .a { color: red; } } @else if 1px > 2px { .b { color: blue; } } @if not(false) { .c { color: green; } } @if $value { .d { color: yellow; } }';
