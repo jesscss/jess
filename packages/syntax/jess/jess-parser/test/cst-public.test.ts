@@ -87,6 +87,25 @@ describe('@jesscss/jess-parser/cst', () => {
     expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
   });
 
+  it('uses semantic CST labels for CSS at-rule preludes and headers', () => {
+    const result = parseJessCst('@media screen and (width >= 1px) { .a { color: red; } } @container card (width > 1px) { .b { color: blue; } } @unknown screen;');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AtRulePrelude')).toBeGreaterThan(0);
+    expect(grammarTypes.get('AtRulePreludeTerm')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryFeature')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryComparisonFeature')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryFeatureName')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryValue')).toBeGreaterThan(0);
+    expect(grammarTypes.get('ContainerQueryClause')).toBe(1);
+    expect(grammarTypes.get('ContainerQueryPrelude')).toBe(1);
+    expect(grammarTypes.get('ContainerPrelude')).toBe(1);
+    expect(grammarTypes.get('AtRuleStatementHeader')).toBe(1);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+  });
+
   /*
    * The editor route must recognize `${…}` too, or valid source that compiles
    * would light up red in the language service. Selector interpolation and value
