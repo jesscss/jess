@@ -86,7 +86,8 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | `hexColorLength` / `argumentsInColorFunction` | ✓ (Error) | ✓ shared diagnostics default to Error | At parity for hex length and rgb()/rgba()/hsl()/hsla() definite argument errors | — |
 | `vendorPrefix` / `compatibleVendorPrefixes` / `unknownVendorSpecificProperties` | ✓ | ✗ | Missing | P2 |
 | `propertyIgnoredDueToDisplay`, `fontFaceProperties` | ✓ (Warning) | ✓ shared diagnostics default to Warning | At parity for CSS @font-face required descriptors and display/property interactions | — |
-| `boxModel`, `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `ieHack`, `importStatement` | ✓ (mostly default-Ignore, opt-in) | ✗ | Missing | P2 |
+| `boxModel` | ✓ (Ignore by default) | ✓ shared diagnostic, opt-in | At parity for definite CSS width/height plus padding/border size risks | — |
+| `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `ieHack`, `importStatement` | ✓ (mostly default-Ignore, opt-in) | ✗ | Missing | P2 |
 | Configurable severities | ✓ per-rule | ✓ but only for the 2 semantic Jess codes (`var/undefined`, `mixin/undefined`) | Framework exists; needs rules to configure | P1 |
 | **Semantic: undefined variable / mixin** | ✗ (MS does not resolve semantics this deeply) | ✓ `var/undefined`, `mixin/undefined` + escalate-to-error when modern features present | **Jess AHEAD** | — |
 
@@ -173,7 +174,7 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    stylesheet-service subset first: `emptyRules`, `unknownProperties`,
    `declaration-property-value-no-unknown`, `unknownAtRules`,
    `duplicateProperties`, `hexColorLength`, `zeroUnits`, `fontFaceProperties`,
-   `propertyIgnoredDueToDisplay`, and follow-on CSS validity diagnostics.
+   `propertyIgnoredDueToDisplay`, `boxModel`, and follow-on CSS validity diagnostics.
    Detection lives in diagnostics-core; lint and the language service only
    configure and surface the shared records.
 10. ✅ **DONE.** **Hover enrichment** — pseudo-class/element hover added; property +
@@ -234,7 +235,7 @@ MDN data behind it + lint*.
 ## 4. Features that don't map cleanly
 
 - **MS lint rules that are style opinions** (`float`, `idSelector`,
-  `universalSelector`, `boxModel`, `ieHack`, `important`) default to *Ignore*
+  `universalSelector`, `ieHack`, `important`) default to *Ignore*
   even in MS. Port the objective correctness rules first (unknown/duplicate/empty
   /hex-color); treat the opinionated ones as opt-in P2, not parity-critical.
 - **Jess-only language surface** — `.jess` control-flow (`$if`/`$for`/`${}`

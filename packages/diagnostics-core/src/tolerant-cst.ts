@@ -37,6 +37,7 @@ export const LINT_CODES = {
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
   fontFaceMissingRequiredProperties: 'lint/font-face-missing-required-properties',
   propertyIgnoredDueToDisplay: 'lint/property-ignored-due-to-display',
+  boxModel: 'lint/box-model',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   unknownAnimations: 'lint/no-unknown-animations',
@@ -1791,6 +1792,217 @@ function staticDeclarationKeywordValue(source: string, node: CssCstNode): string
   return value.text.toLowerCase();
 }
 
+type BoxModelSide = 'top' | 'right' | 'bottom' | 'left';
+
+interface BoxModelFacts {
+  width: CssCstNode | null;
+  height: CssCstNode | null;
+  hasBoxSizing: boolean;
+  top: CssCstNode[];
+  right: CssCstNode[];
+  bottom: CssCstNode[];
+  left: CssCstNode[];
+}
+
+function createBoxModelFacts(): BoxModelFacts {
+  return {
+    width: null,
+    height: null,
+    hasBoxSizing: false,
+    top: [],
+    right: [],
+    bottom: [],
+    left: []
+  };
+}
+
+function boxSideFromNameSegment(value: string | undefined): BoxModelSide | null {
+  switch (value) {
+    case 'top':
+      return 'top';
+    case 'right':
+      return 'right';
+    case 'bottom':
+      return 'bottom';
+    case 'left':
+      return 'left';
+    default:
+      return null;
+  }
+}
+
+function addUniqueDeclaration(nodes: CssCstNode[], node: CssCstNode): void {
+  if (!nodes.includes(node)) {
+    nodes.push(node);
+  }
+}
+
+function boxSideDeclarations(facts: BoxModelFacts, side: BoxModelSide): CssCstNode[] {
+  switch (side) {
+    case 'top':
+      return facts.top;
+    case 'right':
+      return facts.right;
+    case 'bottom':
+      return facts.bottom;
+    case 'left':
+      return facts.left;
+  }
+}
+
+function updateBoxModelWithValue(
+  facts: BoxModelFacts,
+  side: BoxModelSide | null,
+  value: boolean,
+  node: CssCstNode
+): void {
+  if (!value) {
+    return;
+  }
+  if (side !== null) {
+    addUniqueDeclaration(boxSideDeclarations(facts, side), node);
+    return;
+  }
+  addUniqueDeclaration(facts.top, node);
+  addUniqueDeclaration(facts.right, node);
+  addUniqueDeclaration(facts.bottom, node);
+  addUniqueDeclaration(facts.left, node);
+}
+
+function updateBoxModelWithList(facts: BoxModelFacts, values: readonly boolean[], node: CssCstNode): void {
+  switch (values.length) {
+    case 1:
+      updateBoxModelWithValue(facts, null, values[0]!, node);
+      break;
+    case 2:
+      updateBoxModelWithValue(facts, 'top', values[0]!, node);
+      updateBoxModelWithValue(facts, 'bottom', values[0]!, node);
+      updateBoxModelWithValue(facts, 'right', values[1]!, node);
+      updateBoxModelWithValue(facts, 'left', values[1]!, node);
+      break;
+    case 3:
+      updateBoxModelWithValue(facts, 'top', values[0]!, node);
+      updateBoxModelWithValue(facts, 'right', values[1]!, node);
+      updateBoxModelWithValue(facts, 'left', values[1]!, node);
+      updateBoxModelWithValue(facts, 'bottom', values[2]!, node);
+      break;
+    case 4:
+      updateBoxModelWithValue(facts, 'top', values[0]!, node);
+      updateBoxModelWithValue(facts, 'right', values[1]!, node);
+      updateBoxModelWithValue(facts, 'bottom', values[2]!, node);
+      updateBoxModelWithValue(facts, 'left', values[3]!, node);
+      break;
+  }
+}
+
+function staticBoxModelTokens(value: string): readonly string[] | null {
+  if (hasDynamicSyntax(value)) {
+    return null;
+  }
+  const tokens: string[] = [];
+  let tokenStart = -1;
+  for (let i = 0; i <= value.length; i++) {
+    const code = i < value.length ? value.charCodeAt(i) : 32;
+    if (code === 40 || code === 41 || code === 44 || code === 47 || code === 34 || code === 39) {
+      return null;
+    }
+    if (i < value.length && !isCssWhitespace(code)) {
+      if (tokenStart < 0) {
+        tokenStart = i;
+      }
+      continue;
+    }
+    if (tokenStart >= 0) {
+      tokens.push(value.slice(tokenStart, i).toLowerCase());
+      tokenStart = -1;
+    }
+  }
+  return tokens.length === 0 ? null : tokens;
+}
+
+function boxLineWidthIsNonZero(token: string, allowCssWideKeywords: boolean): boolean {
+  if (allowCssWideKeywords && CSS_WIDE_KEYWORDS.has(token)) {
+    return false;
+  }
+  return Number.parseFloat(token) !== 0;
+}
+
+function boxLineStyleIsNonZero(token: string, allowCssWideKeywords: boolean): boolean {
+  if (token === 'none' || token === 'hidden') {
+    return false;
+  }
+  return !allowCssWideKeywords || !CSS_WIDE_KEYWORDS.has(token);
+}
+
+function boxLineWidthList(tokens: readonly string[], allowCssWideKeywords: boolean): boolean[] {
+  return tokens.map(token => boxLineWidthIsNonZero(token, allowCssWideKeywords));
+}
+
+function boxLineStyleList(tokens: readonly string[], allowCssWideKeywords: boolean): boolean[] {
+  return tokens.map(token => boxLineStyleIsNonZero(token, allowCssWideKeywords));
+}
+
+function borderShorthandIsNonZero(tokens: readonly string[]): boolean {
+  if (tokens.length === 1) {
+    return boxLineWidthIsNonZero(tokens[0]!, true) && boxLineStyleIsNonZero(tokens[0]!, true);
+  }
+  for (const token of tokens) {
+    if (!boxLineWidthIsNonZero(token, false) || !boxLineStyleIsNonZero(token, false)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function applyBoxModelDeclaration(
+  facts: BoxModelFacts,
+  source: string,
+  name: string,
+  node: CssCstNode
+): void {
+  if (name === 'box-sizing') {
+    facts.hasBoxSizing = true;
+    return;
+  }
+  if (name === 'width') {
+    facts.width = node;
+    return;
+  }
+  if (name === 'height') {
+    facts.height = node;
+    return;
+  }
+
+  const value = declarationValueText(source, node);
+  if (value === null) {
+    return;
+  }
+  const tokens = staticBoxModelTokens(value.text);
+  if (tokens === null) {
+    return;
+  }
+  const segments = name.split('-');
+  if (segments[0] === 'border') {
+    const side = boxSideFromNameSegment(segments[1]);
+    const qualifierIndex = side === null ? 1 : 2;
+    const qualifier = segments[qualifierIndex];
+    if (qualifier === undefined) {
+      updateBoxModelWithValue(facts, side, borderShorthandIsNonZero(tokens), node);
+    } else if (qualifier === 'width') {
+      updateBoxModelWithList(facts, boxLineWidthList(tokens, false), node);
+    } else if (qualifier === 'style') {
+      updateBoxModelWithList(facts, boxLineStyleList(tokens, true), node);
+    }
+  } else if (segments[0] === 'padding') {
+    const side = boxSideFromNameSegment(segments[1]);
+    if (side === null && segments.length === 1) {
+      updateBoxModelWithList(facts, boxLineWidthList(tokens, true), node);
+    } else if (side !== null && segments.length === 2 && tokens.length === 1) {
+      updateBoxModelWithValue(facts, side, boxLineWidthIsNonZero(tokens[0]!, true), node);
+    }
+  }
+}
+
 function fontFaceMissingRequiredProperties(source: string, node: CssCstNode): readonly string[] {
   const required = new Set(['font-family', 'src']);
   for (const child of cstChildrenOf(node)) {
@@ -3490,12 +3702,14 @@ export function cstLintDiagnostics(
           selectorLists: new Map()
         }
       : nodeContext;
+    const checkCssRulesetDeclarations = language === 'css' && RULESET_TYPES.has(gt) && !nodeContext.inKeyframeBlock;
     let seenProps: Map<string, string> | undefined;
     let seenCustomProps: Set<string> | undefined;
     let hasDisplayInlineBlock = false;
     let hasDisplayBlock = false;
-    const nonNoneFloatDeclarations: CssCstNode[] = [];
-    const verticalAlignDeclarations: CssCstNode[] = [];
+    let nonNoneFloatDeclarations: CssCstNode[] | undefined;
+    let verticalAlignDeclarations: CssCstNode[] | undefined;
+    let boxModelFacts: BoxModelFacts | undefined;
     for (const child of cstChildrenOf(node)) {
       if (!isCstNode(child)) {
         continue;
@@ -3508,17 +3722,19 @@ export function cstLintDiagnostics(
         const name = propNameOf(childSource);
         if (name.length > 0 && !name.includes('#{') && !name.includes('@{') && !name.includes('${')) {
           const key = name.toLowerCase();
-          if (language === 'css' && RULESET_TYPES.has(gt) && !nodeContext.inKeyframeBlock) {
+          if (checkCssRulesetDeclarations) {
+            boxModelFacts ??= createBoxModelFacts();
+            applyBoxModelDeclaration(boxModelFacts, source, key, child);
             const keywordValue = staticDeclarationKeywordValue(source, child);
             if (key === 'display') {
               hasDisplayInlineBlock ||= keywordValue === 'inline-block';
               hasDisplayBlock ||= keywordValue === 'block';
             } else if (key === 'float') {
               if (keywordValue !== null && keywordValue !== 'none') {
-                nonNoneFloatDeclarations.push(child);
+                (nonNoneFloatDeclarations ??= []).push(child);
               }
             } else if (key === 'vertical-align') {
-              verticalAlignDeclarations.push(child);
+              (verticalAlignDeclarations ??= []).push(child);
             }
           }
           seenProps ??= new Map();
@@ -3563,9 +3779,43 @@ export function cstLintDiagnostics(
       }
       visit(child, childContext);
     }
-    if (language === 'css' && RULESET_TYPES.has(gt) && !nodeContext.inKeyframeBlock) {
+    if (checkCssRulesetDeclarations) {
+      if (boxModelFacts !== undefined && !boxModelFacts.hasBoxSizing) {
+        const widthProblems = [...boxModelFacts.left, ...boxModelFacts.right];
+        if (boxModelFacts.width !== null && widthProblems.length > 0) {
+          const warned = new Set<CssCstNode>();
+          for (const declaration of [boxModelFacts.width, ...widthProblems]) {
+            if (warned.has(declaration)) {
+              continue;
+            }
+            warned.add(declaration);
+            push(
+              LINT_CODES.boxModel,
+              'warning',
+              'Width with horizontal padding or border can make the box wider than expected',
+              declaration.span
+            );
+          }
+        }
+        const heightProblems = [...boxModelFacts.top, ...boxModelFacts.bottom];
+        if (boxModelFacts.height !== null && heightProblems.length > 0) {
+          const warned = new Set<CssCstNode>();
+          for (const declaration of [boxModelFacts.height, ...heightProblems]) {
+            if (warned.has(declaration)) {
+              continue;
+            }
+            warned.add(declaration);
+            push(
+              LINT_CODES.boxModel,
+              'warning',
+              'Height with vertical padding or border can make the box taller than expected',
+              declaration.span
+            );
+          }
+        }
+      }
       if (hasDisplayInlineBlock) {
-        for (const declaration of nonNoneFloatDeclarations) {
+        for (const declaration of nonNoneFloatDeclarations ?? []) {
           push(
             LINT_CODES.propertyIgnoredDueToDisplay,
             'warning',
@@ -3575,7 +3825,7 @@ export function cstLintDiagnostics(
         }
       }
       if (hasDisplayBlock) {
-        for (const declaration of verticalAlignDeclarations) {
+        for (const declaration of verticalAlignDeclarations ?? []) {
           push(
             LINT_CODES.propertyIgnoredDueToDisplay,
             'warning',
