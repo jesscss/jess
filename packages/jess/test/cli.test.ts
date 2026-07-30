@@ -82,8 +82,8 @@ describe('jess CLI', () => {
       const result = await run(['lint', input]);
       expect(result.code).toBe(0);
       expect(result.stderr).toBe('');
-      expect(result.stdout).toContain('lint/unknown-property');
-      expect(result.stdout).toContain('lint/zero-units');
+      expect(result.stdout).toContain('property-no-unknown');
+      expect(result.stdout).toContain('length-zero-no-unit');
       expect(result.stdout).toContain('0 error(s), 2 warning(s)');
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
@@ -102,7 +102,7 @@ describe('jess CLI', () => {
 
       const json = JSON.parse(result.stdout) as {
         results: Array<{
-          diagnostics: Array<{ code: string; severity: string }>;
+          diagnostics: Array<{ code: string; ruleName?: string; severity: string }>;
         }>;
         warningCount: number;
         errorCount: number;
@@ -112,6 +112,7 @@ describe('jess CLI', () => {
       expect(json.results[0]?.diagnostics).toEqual([
         expect.objectContaining({
           code: 'lint/unknown-property',
+          ruleName: 'property-no-unknown',
           severity: 'warning'
         })
       ]);
@@ -134,8 +135,8 @@ describe('jess CLI', () => {
       const quiet = await run(['lint', input, '--quiet']);
       expect(quiet.code).toBe(0);
       expect(quiet.stderr).toBe('');
-      expect(quiet.stdout).not.toContain('lint/unknown-property');
-      expect(quiet.stdout).not.toContain('lint/zero-units');
+      expect(quiet.stdout).not.toContain('property-no-unknown');
+      expect(quiet.stdout).not.toContain('length-zero-no-unit');
       expect(quiet.stdout).toContain('0 error(s), 2 warning(s)');
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
@@ -154,8 +155,8 @@ describe('jess CLI', () => {
       expect(result.stdout).toContain(input);
       expect(result.stdout).toContain('2:3');
       expect(result.stdout).toContain('3:10');
-      expect(result.stdout).toContain('lint/unknown-property');
-      expect(result.stdout).toContain('lint/zero-units');
+      expect(result.stdout).toContain('property-no-unknown');
+      expect(result.stdout).toContain('length-zero-no-unit');
       expect(result.stdout).not.toContain('\u001B');
       expect(result.stdout).not.toContain('colr: red;');
       expect(result.stdout).not.toContain('width: 0px;');
