@@ -24,6 +24,8 @@ export interface SourceDiagnostic {
 export interface CssDiagnosticMetadata {
   isKnownProperty(name: string): boolean;
   isKnownAtRule(name: string): boolean;
+  isKnownPseudoClass(name: string): boolean;
+  isKnownPseudoElement(name: string): boolean;
 }
 
 export interface CollectDiagnosticsInput {

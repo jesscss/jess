@@ -65,6 +65,8 @@ a `jess/` prefix.
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
 | `unit-no-unknown` | `lint/unit-no-unknown` | Stylelint-near |
+| `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | Stylelint-near |
+| `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | Stylelint-near |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -126,8 +128,8 @@ using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 204-finding rule set:
 
 | Path | Median |
 | --- | --- |
-| Jess lint stable rules | `19.81 ms/op` |
-| Stylelint comparable rules | `15.25 ms/op` |
+| Jess lint stable rules | `22.56 ms/op` |
+| Stylelint comparable rules | `21.74 ms/op` |
 | Normal CSS CST parse | `8.85 ms/op` |
 | Line-tracked CSS diagnostic CST parse | `10.60 ms/op` |
 | Diagnostics walk only | `3.70 ms/op` |
@@ -151,7 +153,8 @@ can detect over authored source.
 | P1 | Duplicate selectors | `no-duplicate-selectors` | Needs selector normalization over the canonical selector AST. |
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
 | Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Checks definite `font-family` values; dynamic values stay unknown. |
-| P2 | Selector validity | `selector-type-no-unknown`, `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Needs modern selector metadata and dialect escapes. |
+| Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
+| P2 | Selector validity | `selector-type-no-unknown` | Needs element/custom-element metadata and dialect escapes. |
 | Landed | Units | `unit-no-unknown` | Flags unknown Dimension units; URL values and resolution `x` contexts are suppressed. |
 | P2 | Function/value validity | `function-no-unknown`, `media-feature-name-no-unknown` | Better once value facts exist. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |

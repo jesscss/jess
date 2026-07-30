@@ -34,6 +34,20 @@ describe('collectTolerantDiagnostics', () => {
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toBe(false);
   });
 
+  it('uses caller-provided CSS metadata for known selector pseudos', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a:project-state::project-part { color: red; }',
+      language: 'css',
+      metadata: {
+        isKnownPseudoClass: name => name === ':project-state',
+        isKnownPseudoElement: name => name === '::project-part'
+      }
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownPseudoClasses)).toBe(false);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownPseudoElements)).toBe(false);
+  });
+
   it('recognizes lint-relevant nodes from direct SCSS and Jess grammars', () => {
     const scss = collectTolerantDiagnostics({
       source: '.a { .b {} }',
@@ -193,5 +207,38 @@ describe('collectTolerantDiagnostics', () => {
       '.a { background: url(1quux); image: image-set(url(a.png) 1x, url(b.png) 2foo); image-resolution: 1x; width: 1'.length,
       '.a { background: url(1quux); image: image-set(url(a.png) 1x, url(b.png) 2foo); image-resolution: 1x; width: 1x; }\n@media (min-resolution: 2x) and (min-width: 1'.length
     ]);
+  });
+
+  it('reports unknown selector pseudo-classes and pseudo-elements', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a:focus-visible::before { color: red; }\n.b:foo::bar { color: blue; }',
+      language: 'css'
+    });
+    const pseudos = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.unknownPseudoClasses || diagnostic.code === LINT_CODES.unknownPseudoElements
+    );
+
+    expect(pseudos.map(diagnostic => [diagnostic.code, diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      [LINT_CODES.unknownPseudoClasses, 'Unknown pseudo-class selector ":foo"', 2, 3],
+      [LINT_CODES.unknownPseudoElements, 'Unknown pseudo-element selector "::bar"', 2, 7]
+    ]);
+  });
+
+  it('suppresses legacy, custom, vendor, and dialect selector pseudos', () => {
+    const css = collectTolerantDiagnostics({
+      source: '.a:before:--project::-webkit-scrollbar { color: red; }',
+      language: 'css'
+    });
+    const scss = collectTolerantDiagnostics({
+      source: ':global(.x), :local(.y) { color: red; }',
+      language: 'scss'
+    });
+
+    expect(css.diagnostics.some(
+      diagnostic => diagnostic.code === LINT_CODES.unknownPseudoClasses || diagnostic.code === LINT_CODES.unknownPseudoElements
+    )).toBe(false);
+    expect(scss.diagnostics.some(
+      diagnostic => diagnostic.code === LINT_CODES.unknownPseudoClasses || diagnostic.code === LINT_CODES.unknownPseudoElements
+    )).toBe(false);
   });
 });

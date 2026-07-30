@@ -36,6 +36,16 @@ const AT_RULE_SET = new Set(
     .map(rule => stringField(rule, 'name')?.toLowerCase())
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
 );
+const PSEUDO_CLASS_SET = new Set(
+  arrayField(webCssData, 'pseudoClasses')
+    .map(pseudo => stringField(pseudo, 'name')?.toLowerCase())
+    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+);
+const PSEUDO_ELEMENT_SET = new Set(
+  arrayField(webCssData, 'pseudoElements')
+    .map(pseudo => stringField(pseudo, 'name')?.toLowerCase())
+    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+);
 
 export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
   isKnownProperty(name) {
@@ -45,5 +55,13 @@ export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
   isKnownAtRule(name) {
     const lower = name.startsWith('@') ? name.toLowerCase() : `@${name.toLowerCase()}`;
     return AT_RULE_SET.has(lower);
+  },
+  isKnownPseudoClass(name) {
+    const lower = name.startsWith(':') ? name.toLowerCase() : `:${name.toLowerCase()}`;
+    return PSEUDO_CLASS_SET.has(lower);
+  },
+  isKnownPseudoElement(name) {
+    const lower = name.startsWith('::') ? name.toLowerCase() : `::${name.replace(/^:/, '').toLowerCase()}`;
+    return PSEUDO_ELEMENT_SET.has(lower);
   }
 };

@@ -26,6 +26,8 @@ export const LINT_CODES = {
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   unknownUnits: 'lint/unit-no-unknown',
+  unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
+  unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -86,6 +88,14 @@ const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
 const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
 const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'StaticImportRule']);
 const FUNCTION_TYPES = new Set(['Call', 'StaticCall', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
+const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
+const LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS = new Set(['before', 'after', 'first-line', 'first-letter']);
+const DIALECT_PSEUDO_CLASSES: Record<JessLanguage, Set<string>> = {
+  css: new Set(),
+  less: new Set(),
+  scss: new Set(['global', 'local']),
+  jess: new Set(['global', 'local'])
+};
 const CSS_WIDE_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
 const GENERIC_FONT_FAMILIES = new Set([
   'serif',
@@ -302,6 +312,43 @@ function unprefixedName(name: string): string {
     return name.slice(3);
   }
   return name;
+}
+
+function pseudoNameSpan(source: string, start: number, end: number): { name: string; bare: string; colonCount: 1 | 2; start: number; end: number } | null {
+  if (start >= end || source.charCodeAt(start) !== 58 /* : */) {
+    return null;
+  }
+  let i = start + 1;
+  let colonCount: 1 | 2 = 1;
+  if (i < end && source.charCodeAt(i) === 58 /* : */) {
+    colonCount = 2;
+    i++;
+  }
+  const nameStart = i;
+  if (i >= end || !isIdentStart(source.charCodeAt(i))) {
+    return null;
+  }
+  i++;
+  while (i < end && isIdentChar(source.charCodeAt(i))) {
+    i++;
+  }
+  const nameEnd = i;
+  const prefix = colonCount === 2 ? '::' : ':';
+  const bare = source.slice(nameStart, nameEnd);
+  return {
+    name: `${prefix}${bare}`,
+    bare,
+    colonCount,
+    start,
+    end: nameEnd
+  };
+}
+
+function isVendorPseudoName(bareName: string): boolean {
+  return bareName.startsWith('-webkit-')
+    || bareName.startsWith('-moz-')
+    || bareName.startsWith('-ms-')
+    || bareName.startsWith('-o-');
 }
 
 function blankStrings(value: string): string {
@@ -871,6 +918,12 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
     },
     isKnownAtRule(name) {
       return metadata?.isKnownAtRule?.(name) ?? defaultCssDiagnosticMetadata.isKnownAtRule(name);
+    },
+    isKnownPseudoClass(name) {
+      return metadata?.isKnownPseudoClass?.(name) ?? defaultCssDiagnosticMetadata.isKnownPseudoClass(name);
+    },
+    isKnownPseudoElement(name) {
+      return metadata?.isKnownPseudoElement?.(name) ?? defaultCssDiagnosticMetadata.isKnownPseudoElement(name);
     }
   };
 }
@@ -1052,6 +1105,39 @@ export function cstLintDiagnostics(
           );
         } else {
           seenImports.set(importKey.key, importKey);
+        }
+      }
+    }
+
+    if (PSEUDO_SELECTOR_TYPES.has(gt)) {
+      const pseudo = pseudoNameSpan(source, start, end);
+      if (pseudo !== null) {
+        const bareLower = pseudo.bare.toLowerCase();
+        if (
+          !bareLower.startsWith('--')
+          && !isVendorPseudoName(bareLower)
+          && !DIALECT_PSEUDO_CLASSES[language].has(bareLower)
+        ) {
+          if (pseudo.colonCount === 2) {
+            if (!cssData.isKnownPseudoElement(pseudo.name)) {
+              push(
+                LINT_CODES.unknownPseudoElements,
+                'warning',
+                `Unknown pseudo-element selector "${pseudo.name}"`,
+                spanAtOrContaining(node, pseudo.start, pseudo.end)
+              );
+            }
+          } else if (
+            !LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS.has(bareLower)
+            && !cssData.isKnownPseudoClass(pseudo.name)
+          ) {
+            push(
+              LINT_CODES.unknownPseudoClasses,
+              'warning',
+              `Unknown pseudo-class selector "${pseudo.name}"`,
+              spanAtOrContaining(node, pseudo.start, pseudo.end)
+            );
+          }
         }
       }
     }
