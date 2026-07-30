@@ -3261,8 +3261,8 @@ describe('Jess AST grammar facts', () => {
 
       /*
        * `--` alone is reserved by css-variables-1 §2, so it is not a custom
-       * property name in any dialect. (`--$[property]` IS one, and is asserted
-       * in custom-property.test.ts alongside the less/scss equivalents.)
+       * property name in any dialect. Jess `${...}` is the only dynamic
+       * custom-property-name form, as asserted in custom-property.test.ts.
        */
       '.card { --: blue; }'
     ]) {
