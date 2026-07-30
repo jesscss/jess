@@ -1323,6 +1323,20 @@ describe('JessLanguageServiceEngine', () => {
         expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-duplicate-module-load');
       });
 
+      it('surfaces ambiguous Less mixin-call diagnostics by default and allows disable', () => {
+        const source = '.theme(@x) { color: @x; }\n.theme(@x) { background: @x; }\n.a { .theme(red); }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('less', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-ambiguous-mixin-call');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-ambiguous-mixin-call', 'ignore'));
+        const disabledDoc = createDocument('less', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-ambiguous-mixin-call');
+      });
+
       it('surfaces unbounded extend diagnostics by default and allows disable', () => {
         const source = '.a { @extend div; }';
         const enabled = createEngine();

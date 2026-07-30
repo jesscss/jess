@@ -79,6 +79,7 @@ export const LINT_CODES = {
   unusedMixins: 'lint/no-unused-mixin',
   unusedFunctions: 'lint/no-unused-function',
   leakyScopeDependence: 'lint/no-leaky-scope-dependence',
+  ambiguousMixinCalls: 'lint/no-ambiguous-mixin-call',
   impossibleGuards: 'lint/no-impossible-guard',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
@@ -572,6 +573,19 @@ type MixinDefinitionFact = {
 type MixinLeakedVariableFact = {
   readonly variableName: string;
   readonly mixinDisplay: string;
+};
+
+type LessFixedMixinDefinitionFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly arity: number;
+};
+
+type LessFixedMixinCallFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly arity: number;
+  readonly span: DiagnosticSpan;
 };
 
 type VariableReferenceFact = {
@@ -2707,6 +2721,24 @@ function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNod
   return undefined;
 }
 
+function hasDescendantNodeOf(node: CssCstNode, grammarType: string): boolean {
+  return firstDescendantNodeOf(node, grammarType) !== undefined;
+}
+
+function countDescendantNodesOf(node: CssCstNode, grammarType: string): number {
+  let count = 0;
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (child.grammarType === grammarType) {
+      count++;
+    }
+    count += countDescendantNodesOf(child, grammarType);
+  }
+  return count;
+}
+
 const GUARD_OR_TYPES = new Set(['GuardOr', 'IfGuardOr', 'MixinGuardTopOr', 'MixinGuardOr', 'IfCondition']);
 const GUARD_AND_TYPES = new Set(['GuardAnd', 'IfGuardAnd', 'MixinGuardTopAnd', 'MixinGuardAnd', 'IfAnd']);
 const GUARD_COMPARE_TYPES = new Set(['GuardCompare', 'IfGuardCompare']);
@@ -3082,6 +3114,81 @@ function lessMixinNameFromSelector(source: string, selector: CssCstNode): MixinD
         name: normalized,
         display: selectorDisplay(source, start, end),
         span: selector.span
+      };
+}
+
+function lessSimpleMixinNameFromSelector(source: string, selector: CssCstNode): MixinDefinitionFact | null {
+  const start = absoluteStart(selector);
+  const end = absoluteEnd(selector);
+  const raw = source.slice(start, end);
+  const trimmed = trimOffsets(raw, start);
+  if (trimmed.end <= trimmed.start + 1 || raw.includes('@{')) {
+    return null;
+  }
+  const first = source.charCodeAt(trimmed.start);
+  if (first !== 35 && first !== 46) {
+    return null;
+  }
+  for (let i = trimmed.start + 1; i < trimmed.end; i++) {
+    if (!isIdentChar(source.charCodeAt(i))) {
+      return null;
+    }
+  }
+  const display = source.slice(trimmed.start, trimmed.end);
+  return {
+    name: display,
+    display,
+    span: spanFromNodeStart(selector, trimmed.start, trimmed.end)
+  };
+}
+
+function lessFixedMixinDefinitionOf(source: string, node: CssCstNode): LessFixedMixinDefinitionFact | null {
+  if (node.grammarType !== 'Statement') {
+    return null;
+  }
+  const definition = firstChildNodeOf(node, 'MixinDefinition');
+  if (definition === undefined) {
+    return null;
+  }
+  const signature = firstChildNodeOf(definition, 'MixinSignature');
+  if (
+    signature === undefined
+    || hasDescendantNodeOf(signature, 'MixinGuard')
+    || hasDescendantNodeOf(signature, 'MixinRestParam')
+    || hasDescendantNodeOf(signature, 'MixinAnonymousRestParam')
+    || hasDescendantNodeOf(signature, 'MixinPatternParam')
+    || hasDescendantNodeOf(signature, 'MixinParamValueTerm')
+  ) {
+    return null;
+  }
+  const selector = firstChildNodeOf(node, 'SelectorBranch');
+  const name = selector === undefined ? null : lessSimpleMixinNameFromSelector(source, selector);
+  return name === null
+    ? null
+    : {
+        name: name.name,
+        display: name.display,
+        arity: countDescendantNodesOf(signature, 'MixinParamWithSignatureTrivia')
+      };
+}
+
+function lessFixedMixinCallOf(source: string, node: CssCstNode): LessFixedMixinCallFact | null {
+  if (node.grammarType !== 'Statement') {
+    return null;
+  }
+  const call = firstChildNodeOf(node, 'MixinCall');
+  if (call === undefined) {
+    return null;
+  }
+  const selector = firstChildNodeOf(node, 'SelectorBranch');
+  const name = selector === undefined ? null : lessSimpleMixinNameFromSelector(source, selector);
+  return name === null
+    ? null
+    : {
+        name: name.name,
+        display: name.display,
+        arity: countDescendantNodesOf(call, 'PositionalMixinArgument'),
+        span: name.span
       };
 }
 
@@ -3567,6 +3674,68 @@ function lessLeakyScopeDiagnostics(
   };
 
   analyzeRuleset(root);
+}
+
+function collectLessFixedMixinFacts(
+  source: string,
+  node: CssCstNode,
+  definitions: Map<string, LessFixedMixinDefinitionFact[]>,
+  calls: LessFixedMixinCallFact[]
+): void {
+  const definition = lessFixedMixinDefinitionOf(source, node);
+  if (definition !== null) {
+    const key = `${definition.name}\0${definition.arity}`;
+    const existing = definitions.get(key);
+    if (existing === undefined) {
+      definitions.set(key, [definition]);
+    } else {
+      existing.push(definition);
+    }
+    return;
+  }
+
+  const call = lessFixedMixinCallOf(source, node);
+  if (call !== null) {
+    calls.push(call);
+    return;
+  }
+
+  for (const child of cstChildrenOf(node)) {
+    if (isCstNode(child)) {
+      collectLessFixedMixinFacts(source, child, definitions, calls);
+    }
+  }
+}
+
+function lessAmbiguousMixinCallDiagnostics(
+  source: string,
+  root: CssCstNode,
+  hasExternalSources: boolean,
+  push: (code: string, severity: DiagnosticSeverityName, message: string, span: DiagnosticSpan, qualifiers?: readonly string[]) => void
+): void {
+  if (hasExternalSources) {
+    return;
+  }
+  const definitions = new Map<string, LessFixedMixinDefinitionFact[]>();
+  const calls: LessFixedMixinCallFact[] = [];
+  collectLessFixedMixinFacts(source, root, definitions, calls);
+  if (calls.length === 0 || definitions.size === 0) {
+    return;
+  }
+
+  for (const call of calls) {
+    const candidates = definitions.get(`${call.name}\0${call.arity}`);
+    if (candidates === undefined || candidates.length < 2) {
+      continue;
+    }
+    const argumentLabel = call.arity === 1 ? 'argument' : 'arguments';
+    push(
+      LINT_CODES.ambiguousMixinCalls,
+      'warning',
+      `Mixin call "${call.display}" matches ${candidates.length} same-file unguarded definitions with ${call.arity} ${argumentLabel}`,
+      call.span
+    );
+  }
 }
 
 function normalizedVariableName(name: string, language: JessLanguage): string {
@@ -5746,6 +5915,7 @@ export function cstLintDiagnostics(
 
   if (language === 'less') {
     lessLeakyScopeDiagnostics(source, root, hasExternalSources, push);
+    lessAmbiguousMixinCallDiagnostics(source, root, hasExternalSources, push);
   }
 
   for (const group of keyframesVendorGroups.values()) {

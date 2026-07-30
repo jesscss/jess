@@ -130,6 +130,7 @@ enough.
 | `jess/no-unused-mixin` | `lint/no-unused-mixin` | Jess-only callable diagnostic, opt-in |
 | `jess/no-unused-function` | `lint/no-unused-function` | Jess-only callable diagnostic, opt-in |
 | `jess/no-leaky-scope-dependence` | `lint/no-leaky-scope-dependence` | Jess-only Less migration diagnostic |
+| `jess/no-ambiguous-mixin-call` | `lint/no-ambiguous-mixin-call` | Jess-only Less callable diagnostic |
 | `jess/no-impossible-guard` | `lint/no-impossible-guard` | Jess-only static guard diagnostic |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess-only module diagnostic |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess-only selector diagnostic |
@@ -269,6 +270,7 @@ can detect over authored source.
 | Landed | At-rule descriptor values | `at-rule-descriptor-value-no-unknown` | Flags definite invalid descriptor values in parsed CSS descriptor blocks; covers special `@property` `syntax` checks plus simple static descriptor values from VSCode web custom data such as `@font-face font-style` and `@counter-style system`. |
 | Landed | Color function arguments | `color-function-no-invalid-arguments` | Matches VSCode `argumentsInColorFunction` for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |
 | Landed | Typed custom properties | `jess/no-invalid-typed-custom-property-value` | Flags definite CSS `@property` `initial-value` mismatches for simple syntax descriptors; full CSS value-definition syntax and dialect value facts remain future work. |
+| Landed | Less callable ambiguity | `jess/no-ambiguous-mixin-call` | Initial conservative same-file diagnostic for Less calls that match multiple unguarded static mixin definitions with the same fixed positional arity; guards, defaults, rest params, patterns, namespaces, and external sources wait for callable facts. |
 | P3 | Browser legacy hacks | `ie-hack` | VSCode has opt-in `ieHack`, but current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule. |
 | Landed | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Opt-in Stylelint-named convention rules for static color function notation, alpha values, and HSL hue units. CLI and language-service configuration require a secondary `notation` option; comparison remains Stylelint-near until the option surface is broader. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |
