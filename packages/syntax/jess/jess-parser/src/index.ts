@@ -1,4 +1,3 @@
-export { jessDiagnosticCstGrammar, jessGrammar } from './grammar.js';
 export { parseJessCst, parseJessDiagnosticCst, parseJessDiagnosticDoc, parseJessDoc } from './cst.js';
 export type {
   JessCstChild, JessCstError, JessCstLeaf, JessCstNode, JessCstParseResult, JessCstType
@@ -21,7 +20,8 @@ import {
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { ApplySelectorKind, ExtendSelectorKind } from '@jesscss/core';
-import { grammarFor } from './grammar.js';
+import { jessGrammar } from './grammar/ast.js';
+import { jessPositionsGrammar } from './grammar/ast/positions.js';
 import { commentTriviaLabels } from './cst.js';
 
 export interface JessParseOptions {
@@ -183,7 +183,7 @@ function lineOptions(span: Span): {
 
 /** Parse Jess directly into the canonical AST v2 document. */
 export function parse(input: string, options: JessParseOptions = {}): Stylesheet {
-  const grammar = grammarFor({ trackLines: options.trackLines });
+  const grammar = options.trackLines ? jessPositionsGrammar : jessGrammar;
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {

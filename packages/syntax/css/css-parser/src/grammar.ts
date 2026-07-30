@@ -4044,7 +4044,8 @@ export const cssGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPs
   cssFactory
 )]);
 
-export const cssLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+/** AST artifact with Parseman line/column tracking enabled. */
+export const cssPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], trackLines: true },
   cssFactory
 )]);
@@ -4054,58 +4055,8 @@ export const cssCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cs
   cssFactory
 )]);
 
-export const cssDiagnosticCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+/** CST artifact with Parseman line/column tracking enabled. */
+export const cssCstPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], hostMode: 'cst', trackLines: true },
   cssFactory
 )]);
-
-export type GrammarOptions = {
-  readonly cst?: boolean;
-  readonly trackLines?: boolean;
-};
-
-export function grammarFor(options: GrammarOptions = {}) {
-  if (options.cst) {
-    return options.trackLines ? cssDiagnosticCstGrammar : cssCstGrammar;
-  }
-  return options.trackLines ? cssLineGrammar : cssGrammar;
-}
-export const {
-  Stylesheet,
-  ComplexSelector,
-  BasicSelector,
-  AttributeSelector,
-  PseudoSelector,
-  CustomDeclaration,
-  Call,
-  AtRuleStatement
-} = cssCstGrammar;
-
-/*
- * These eight names are also imported as core AST types above. Binding them
- * locally and re-exporting under the public name avoids a declaration merge
- * between the type import and the exported const -- TypeScript requires every
- * declaration of a merged name to be uniformly exported or uniformly local.
- * The public export names are unchanged.
- */
-const {
-  Ruleset: RulesetRule,
-  SelectorList: SelectorListRule,
-  CompoundSelector: CompoundSelectorRule,
-  Declaration: DeclarationRule,
-  Dimension: DimensionRule,
-  Color: ColorRule,
-  Url: UrlRule,
-  Quoted: QuotedRule
-} = cssCstGrammar;
-
-export {
-  RulesetRule as Ruleset,
-  SelectorListRule as SelectorList,
-  CompoundSelectorRule as CompoundSelector,
-  DeclarationRule as Declaration,
-  DimensionRule as Dimension,
-  ColorRule as Color,
-  UrlRule as Url,
-  QuotedRule as Quoted
-};

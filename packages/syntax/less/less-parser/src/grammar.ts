@@ -6334,22 +6334,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
 
 export const lessGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, lessGrammarFactory)]);
 
-export const lessLineGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], trackLines: true }, lessGrammarFactory)]);
+/** AST artifact with Parseman line/column tracking enabled. */
+export const lessPositionsGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], trackLines: true }, lessGrammarFactory)]);
 
 /** Public Less CST artifact: the same grammar factory compiled in CST mode. */
 export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst' }, lessGrammarFactory)]);
 
-/** Diagnostic Less CST artifact: CST mode with Parseman line tracking enabled. */
-export const lessDiagnosticCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst', trackLines: true }, lessGrammarFactory)]);
-
-export type GrammarOptions = {
-  readonly cst?: boolean;
-  readonly trackLines?: boolean;
-};
-
-export function grammarFor(options: GrammarOptions = {}) {
-  if (options.cst) {
-    return options.trackLines ? lessDiagnosticCstGrammar : lessCstGrammar;
-  }
-  return options.trackLines ? lessLineGrammar : lessGrammar;
-}
+/** CST artifact with Parseman line/column tracking enabled. */
+export const lessCstPositionsGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst', trackLines: true }, lessGrammarFactory)]);

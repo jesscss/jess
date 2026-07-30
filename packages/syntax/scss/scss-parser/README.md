@@ -86,8 +86,31 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | --- | --- | --- |
 | `@jesscss/scss-parser/cst` | `parseScssCst` | Core-free parse of an SCSS string to a CST. |
 | `@jesscss/scss-parser/cst` | `ScssCstNode`, `ScssCstLeaf`, `ScssCstError`, `ScssCstChild`, `ScssCstParseResult`, `ScssCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
-| `@jesscss/scss-parser/grammar` | `scssGrammar` | The compiled SCSS grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
+| `@jesscss/scss-parser/grammar` | `scssGrammar` | The compiled SCSS AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
 | `@jesscss/scss-parser` (`.`) | `parse` | Parse SCSS directly to canonical AST v2 `Stylesheet`. It does not load the CST grammar. |
+
+### Choosing a grammar build
+
+Each compiled grammar is a standalone multi-megabyte artifact, so the four
+variants ship as four separate files. Importing one never loads the others.
+Pick by the two questions the subpath name answers — which tree, and whether
+source positions are tracked:
+
+| Subpath | Export | Tree | Positions |
+| --- | --- | --- | --- |
+| `@jesscss/scss-parser/grammar/ast` | `scssGrammar` | AST | no |
+| `@jesscss/scss-parser/grammar/ast/positions` | `scssPositionsGrammar` | AST | yes |
+| `@jesscss/scss-parser/grammar/cst` | `scssCstGrammar` | CST | no |
+| `@jesscss/scss-parser/grammar/cst/positions` | `scssCstPositionsGrammar` | CST | yes |
+
+`@jesscss/scss-parser/grammar` is an alias for `/grammar/ast`, the build the
+shipping `parse()` route uses. It is not a barrel: it exposes the AST variant
+only, so importing it cannot pull the other three in.
+
+Positions are the `trackLines` option: the variant sets `startLine`/`startColumn`
+on every span. Error tolerance is not a property of a build — the CST runner
+collects `result.errors` on either CST variant.
+
 
 ## Default CST shape
 

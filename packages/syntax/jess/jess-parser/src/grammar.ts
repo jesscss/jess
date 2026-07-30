@@ -5733,7 +5733,8 @@ export const jessGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssP
   jessFactory
 )]);
 
-export const jessLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+/** AST artifact with Parseman line/column tracking enabled. */
+export const jessPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted], trackLines: true },
   jessFactory
 )]);
@@ -5743,19 +5744,8 @@ export const jessCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, c
   jessFactory
 )]);
 
-export const jessDiagnosticCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+/** CST artifact with Parseman line/column tracking enabled. */
+export const jessCstPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted], hostMode: 'cst', trackLines: true },
   jessFactory
 )]);
-
-export type GrammarOptions = {
-  readonly cst?: boolean;
-  readonly trackLines?: boolean;
-};
-
-export function grammarFor(options: GrammarOptions = {}) {
-  if (options.cst) {
-    return options.trackLines ? jessDiagnosticCstGrammar : jessCstGrammar;
-  }
-  return options.trackLines ? jessLineGrammar : jessGrammar;
-}

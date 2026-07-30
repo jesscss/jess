@@ -100,7 +100,16 @@ for (const pkg of PARSERS) {
     const result = spawnSync('pnpm', ['--filter', name, 'build'], {
       cwd: root,
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+
+      /*
+       * A parser package compiles its grammar once per build config, and each
+       * compile dumps the full parseman gating report. Past spawnSync's 1 MiB
+       * default the child is killed with ENOBUFS, which surfaces here as a
+       * build that "failed" with a truncated log and a half-written lib/ —
+       * indistinguishable from a real degrade. Give it room.
+       */
+      maxBuffer: 256 * 1024 * 1024
     });
     output = String(result.stdout ?? '') + String(result.stderr ?? '');
     if (result.status !== 0) {

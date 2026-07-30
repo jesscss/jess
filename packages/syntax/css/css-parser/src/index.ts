@@ -1,4 +1,3 @@
-export { cssCstGrammar, cssDiagnosticCstGrammar, cssGrammar } from './grammar.js';
 export {
   cssCstBuildHost, parseCst, parseDocCst, parseCssCst, parseCssDiagnosticCst, parseCssDiagnosticDoc, parseCssDoc,
   type CssCstChild, type CssCstError, type CssCstLeaf, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type CssCstType, type ParseDoc
@@ -11,7 +10,8 @@ import {
   withTriviaMap,
   type Stylesheet
 } from '@jesscss/core/ast';
-import { grammarFor } from './grammar.js';
+import { cssGrammar } from './grammar/ast.js';
+import { cssPositionsGrammar } from './grammar/ast/positions.js';
 import { commentTriviaLabels } from './cst.js';
 
 export type CssParseOptions = {
@@ -75,7 +75,7 @@ function lineOptions(span: Span): {
 
 /** Parse CSS directly into the canonical AST v2 document. */
 export function parse(input: string, options: CssParseOptions = {}): Stylesheet {
-  const grammar = grammarFor({ trackLines: options.trackLines });
+  const grammar = options.trackLines ? cssPositionsGrammar : cssGrammar;
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {

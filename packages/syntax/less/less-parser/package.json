@@ -23,9 +23,29 @@
       "require": "./lib/cst.cjs"
     },
     "./grammar": {
-      "types": "./lib/grammar.d.ts",
-      "import": "./lib/grammar.js",
-      "require": "./lib/grammar.cjs"
+      "types": "./lib/grammar/ast.d.ts",
+      "import": "./lib/grammar/ast.js",
+      "require": "./lib/grammar/ast.cjs"
+    },
+    "./grammar/ast": {
+      "types": "./lib/grammar/ast.d.ts",
+      "import": "./lib/grammar/ast.js",
+      "require": "./lib/grammar/ast.cjs"
+    },
+    "./grammar/ast/positions": {
+      "types": "./lib/grammar/ast/positions.d.ts",
+      "import": "./lib/grammar/ast/positions.js",
+      "require": "./lib/grammar/ast/positions.cjs"
+    },
+    "./grammar/cst": {
+      "types": "./lib/grammar/cst.d.ts",
+      "import": "./lib/grammar/cst.js",
+      "require": "./lib/grammar/cst.cjs"
+    },
+    "./grammar/cst/positions": {
+      "types": "./lib/grammar/cst/positions.d.ts",
+      "import": "./lib/grammar/cst/positions.js",
+      "require": "./lib/grammar/cst/positions.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -36,7 +56,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",

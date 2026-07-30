@@ -6,7 +6,8 @@ import {
   withTriviaMap,
   type Stylesheet
 } from '@jesscss/core/ast';
-import { grammarFor } from './grammar.js';
+import { scssGrammar } from './grammar/ast.js';
+import { scssPositionsGrammar } from './grammar/ast/positions.js';
 import { commentTriviaLabels } from './cst.js';
 
 export type ScssParseOptions = {
@@ -70,7 +71,7 @@ function lineOptions(span: Span): {
 
 /** Parse SCSS directly into the canonical AST v2 document. */
 export function parse(input: string, options: ScssParseOptions = {}): Stylesheet {
-  const grammar = grammarFor({ trackLines: options.trackLines });
+  const grammar = options.trackLines ? scssPositionsGrammar : scssGrammar;
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {

@@ -1,5 +1,6 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
-import { grammarFor, scssDiagnosticCstGrammar } from './grammar.js';
+import { scssCstGrammar } from './grammar/cst.js';
+import { scssCstPositionsGrammar } from './grammar/cst/positions.js';
 
 /* The SCSS grammar labels its trivia arms `whitespace` and `comment`: a
  * statement-level block comment is a `Comment` node rather than trivia, so the
@@ -13,7 +14,7 @@ export function parseScssCst(
   options?: CssCstParseOptions
 ): CssCstParseResult {
   return parseCst(
-    grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
+    (options?.trackLines ? scssCstPositionsGrammar : scssCstGrammar) as Record<string, unknown>,
     input,
     startRule,
     options,
@@ -27,7 +28,7 @@ export function parseScssDiagnosticCst(
   options?: CssCstParseOptions
 ): CssCstParseResult {
   return parseCst(
-    scssDiagnosticCstGrammar as Record<string, unknown>,
+    scssCstPositionsGrammar as Record<string, unknown>,
     input,
     startRule,
     options,
@@ -42,7 +43,7 @@ export function parseScssDoc(
   options?: Pick<CssCstParseOptions, 'trackLines'>
 ): ParseDoc<CssCstNode> {
   return parseDocCst(
-    grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
+    (options?.trackLines ? scssCstPositionsGrammar : scssCstGrammar) as Record<string, unknown>,
     input,
     startRule
   );
@@ -50,7 +51,7 @@ export function parseScssDoc(
 
 export function parseScssDiagnosticDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
   return parseDocCst(
-    scssDiagnosticCstGrammar as Record<string, unknown>,
+    scssCstPositionsGrammar as Record<string, unknown>,
     input,
     startRule
   );

@@ -7,7 +7,8 @@ import {
   withTriviaMap,
   type Stylesheet
 } from '@jesscss/core/ast';
-import { grammarFor } from './grammar.js';
+import { lessGrammar } from './grammar/ast.js';
+import { lessPositionsGrammar } from './grammar/ast/positions.js';
 import { LessParseError } from './parse-error.js';
 import { commentTriviaLabels } from './cst.js';
 
@@ -52,7 +53,7 @@ function lineOptions(span: Span): {
 
 /** Parse Less directly into the canonical AST v2 document. */
 export function parse(input: string, options: LessParseOptions = {}): Stylesheet {
-  const grammar = grammarFor({ trackLines: options.trackLines });
+  const grammar = options.trackLines ? lessPositionsGrammar : lessGrammar;
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {

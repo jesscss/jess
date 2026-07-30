@@ -1,4 +1,5 @@
-import * as G from '../src/grammar.js';
+/* The individual CST rule handles live with the CST build they destructure. */
+import * as G from '../src/grammar/cst.js';
 import { createServer } from 'vite';
 import { compiledGrammarCoverageDefinitions, createGrammarCoverageCollector, createGrammarInstrumentationContext, run } from 'parseman';
 import { cssGrammar, cssCstGrammar } from '../src/grammar.js';

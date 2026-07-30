@@ -134,7 +134,7 @@ for (const [dialect, rel] of ARTIFACTS) {
 
   // instance slices
   const bounds = [];
-  const re = new RegExp(`^const (${dialect}Grammar|${dialect}LineGrammar|${dialect}CstGrammar|${dialect}DiagnosticCstGrammar) =`);
+  const re = new RegExp(`^const (${dialect}Grammar|${dialect}PositionsGrammar|${dialect}CstGrammar|${dialect}CstPositionsGrammar) =`);
   for (let i = 0; i < lines.length; i++) {
     const m = re.exec(lines[i]);
     if (m) bounds.push({ name: m[1], line: i });

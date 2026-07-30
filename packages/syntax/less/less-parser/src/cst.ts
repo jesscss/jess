@@ -1,5 +1,6 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
-import { grammarFor, lessDiagnosticCstGrammar } from './grammar.js';
+import { lessCstGrammar } from './grammar/cst.js';
+import { lessCstPositionsGrammar } from './grammar/cst/positions.js';
 
 /* The Less grammar labels its document trivia arms `whitespace`,
  * `lineComment`, and `blockComment`; only the comment arms need a root entry. */
@@ -11,7 +12,7 @@ export function parseLessCst(
   options?: CssCstParseOptions
 ): CssCstParseResult {
   return parseCst(
-    grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
+    (options?.trackLines ? lessCstPositionsGrammar : lessCstGrammar) as Record<string, unknown>,
     input,
     startRule,
     options,
@@ -24,7 +25,7 @@ export function parseLessDiagnosticCst(
   startRule = 'Stylesheet',
   options?: CssCstParseOptions
 ): CssCstParseResult {
-  return parseCst(lessDiagnosticCstGrammar as Record<string, unknown>, input, startRule, options, commentTriviaLabels);
+  return parseCst(lessCstPositionsGrammar as Record<string, unknown>, input, startRule, options, commentTriviaLabels);
 }
 
 /** Incremental (`.edit()`-able) Less document — see `parseDocCst`. */
@@ -34,14 +35,14 @@ export function parseLessDoc(
   options?: Pick<CssCstParseOptions, 'trackLines'>
 ): ParseDoc<CssCstNode> {
   return parseDocCst(
-    grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
+    (options?.trackLines ? lessCstPositionsGrammar : lessCstGrammar) as Record<string, unknown>,
     input,
     startRule
   );
 }
 
 export function parseLessDiagnosticDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
-  return parseDocCst(lessDiagnosticCstGrammar as Record<string, unknown>, input, startRule);
+  return parseDocCst(lessCstPositionsGrammar as Record<string, unknown>, input, startRule);
 }
 
 export type {

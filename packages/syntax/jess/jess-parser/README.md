@@ -62,10 +62,32 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | Entry | Export | Purpose |
 | --- | --- | --- |
 | `@jesscss/jess-parser` (`.`) | `parse`, `JessParseError` | Parse Jess directly to canonical AST v2 `Stylesheet`; malformed input throws `JessParseError` with an offset and expected facts. |
-| `@jesscss/jess-parser` (`.`) | `parseJessCst`, `jessGrammar` | Convenience exports for the public CST parser and canonical grammar artifact. |
+| `@jesscss/jess-parser` (`.`) | `parseJessCst` | Convenience export for the public CST parser. Compiled grammars are no longer re-exported here — reach for a `/grammar` subpath so the main entry never loads a grammar build you did not ask for. |
 | `@jesscss/jess-parser` (`.`) | `JessCstNode`, `JessCstLeaf`, `JessCstError`, `JessCstChild`, `JessCstParseResult`, `JessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/jess-parser/cst` | `parseJessCst`, CST types | Same core-free CST parser (explicit subpath). |
-| `@jesscss/jess-parser/grammar` | `jessFactory`, `jessGrammar`, `jessCstGrammar` | The single host-mode grammar source and its default/CST compiled artifacts. |
+| `@jesscss/jess-parser/grammar` | `jessGrammar` | The compiled Jess AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
+
+### Choosing a grammar build
+
+Each compiled grammar is a standalone multi-megabyte artifact, so the four
+variants ship as four separate files. Importing one never loads the others.
+Pick by the two questions the subpath name answers — which tree, and whether
+source positions are tracked:
+
+| Subpath | Export | Tree | Positions |
+| --- | --- | --- | --- |
+| `@jesscss/jess-parser/grammar/ast` | `jessGrammar` | AST | no |
+| `@jesscss/jess-parser/grammar/ast/positions` | `jessPositionsGrammar` | AST | yes |
+| `@jesscss/jess-parser/grammar/cst` | `jessCstGrammar` | CST | no |
+| `@jesscss/jess-parser/grammar/cst/positions` | `jessCstPositionsGrammar` | CST | yes |
+
+`@jesscss/jess-parser/grammar` is an alias for `/grammar/ast`, the build the
+shipping `parse()` route uses. It is not a barrel: it exposes the AST variant
+only, so importing it cannot pull the other three in.
+
+Positions are the `trackLines` option: the variant sets `startLine`/`startColumn`
+on every span. Error tolerance is not a property of a build — the CST runner
+collects `result.errors` on either CST variant.
 
 ## Default CST shape
 

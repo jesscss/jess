@@ -77,8 +77,31 @@ Pass a different `startRule` (any capitalized grammar rule, e.g. `'SelectorList'
 | --- | --- | --- |
 | `@jesscss/less-parser/cst` | `parseLessCst` | Core-free parse of a Less string to a CST. |
 | `@jesscss/less-parser/cst` | `LessCstNode`, `LessCstLeaf`, `LessCstError`, `LessCstChild`, `LessCstParseResult`, `LessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
-| `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
+| `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
 | `@jesscss/less-parser` (`.`) | `parse` | Parse Less directly to canonical AST v2 `Stylesheet`. It does not load the CST grammar. |
+
+### Choosing a grammar build
+
+Each compiled grammar is a standalone multi-megabyte artifact, so the four
+variants ship as four separate files. Importing one never loads the others.
+Pick by the two questions the subpath name answers — which tree, and whether
+source positions are tracked:
+
+| Subpath | Export | Tree | Positions |
+| --- | --- | --- | --- |
+| `@jesscss/less-parser/grammar/ast` | `lessGrammar` | AST | no |
+| `@jesscss/less-parser/grammar/ast/positions` | `lessPositionsGrammar` | AST | yes |
+| `@jesscss/less-parser/grammar/cst` | `lessCstGrammar` | CST | no |
+| `@jesscss/less-parser/grammar/cst/positions` | `lessCstPositionsGrammar` | CST | yes |
+
+`@jesscss/less-parser/grammar` is an alias for `/grammar/ast`, the build the
+shipping `parse()` route uses. It is not a barrel: it exposes the AST variant
+only, so importing it cannot pull the other three in.
+
+Positions are the `trackLines` option: the variant sets `startLine`/`startColumn`
+on every span. Error tolerance is not a property of a build — the CST runner
+collects `result.errors` on either CST variant.
+
 
 ## Default CST shape
 

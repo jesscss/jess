@@ -62,7 +62,7 @@ for (const [dialect, rel] of TARGETS) {
     console.log(`\n=== ${dialect}: no generated artifact found under ${rel} ===`);
     continue;
   }
-  const boundRe = new RegExp(`^const (${dialect}Grammar|${dialect}LineGrammar|${dialect}CstGrammar|${dialect}DiagnosticCstGrammar) =`, 'gm');
+  const boundRe = new RegExp(`^const (${dialect}Grammar|${dialect}PositionsGrammar|${dialect}CstGrammar|${dialect}CstPositionsGrammar) =`, 'gm');
   const bounds = [];
   let m;
   while ((m = boundRe.exec(src)) !== null) bounds.push([m[1], m.index]);

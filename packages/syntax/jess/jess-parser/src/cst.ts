@@ -1,5 +1,6 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
-import { grammarFor, jessDiagnosticCstGrammar } from './grammar.js';
+import { jessCstGrammar } from './grammar/cst.js';
+import { jessCstPositionsGrammar } from './grammar/cst/positions.js';
 
 /* The Jess grammar labels its document trivia arms `whitespace` and `comment`;
  * only the comment arm needs a root entry. */
@@ -11,7 +12,7 @@ export function parseJessCst(
   options?: CssCstParseOptions
 ): CssCstParseResult {
   return parseCst(
-    grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
+    (options?.trackLines ? jessCstPositionsGrammar : jessCstGrammar) as Record<string, unknown>,
     input,
     startRule,
     options,
@@ -25,7 +26,7 @@ export function parseJessDiagnosticCst(
   options?: CssCstParseOptions
 ): CssCstParseResult {
   return parseCst(
-    jessDiagnosticCstGrammar as Record<string, unknown>,
+    jessCstPositionsGrammar as Record<string, unknown>,
     input,
     startRule,
     options,
@@ -40,7 +41,7 @@ export function parseJessDoc(
   options?: Pick<CssCstParseOptions, 'trackLines'>
 ): ParseDoc<CssCstNode> {
   return parseDocCst(
-    grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
+    (options?.trackLines ? jessCstPositionsGrammar : jessCstGrammar) as Record<string, unknown>,
     input,
     startRule
   );
@@ -48,7 +49,7 @@ export function parseJessDoc(
 
 export function parseJessDiagnosticDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
   return parseDocCst(
-    jessDiagnosticCstGrammar as Record<string, unknown>,
+    jessCstPositionsGrammar as Record<string, unknown>,
     input,
     startRule
   );

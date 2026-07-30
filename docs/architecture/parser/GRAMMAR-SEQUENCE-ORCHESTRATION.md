@@ -714,12 +714,24 @@ state.
 ## Working sequence
 
 Canonical grammar artifact naming, 2026-07-30: `cssGrammar`, `lessGrammar`,
-`scssGrammar`, and `jessGrammar` are the default AST artifacts. Their
-line-tracked counterparts are `*LineGrammar`; `*CstGrammar` remains explicit
-because it selects a distinct host mode. The redundant `*AstGrammar` and
-`*AstLineGrammar` exports were deleted from every public `./grammar` subpath.
-Do not reintroduce them as compatibility aliases: the grammar name is the
-stable concept, not an implementation mode.
+`scssGrammar`, and `jessGrammar` are the default AST artifacts. The four
+artifacts per dialect are a 2×2 of surface × position tracking, and the names
+say which cell: `*Grammar` / `*PositionsGrammar` for AST, `*CstGrammar` /
+`*CstPositionsGrammar` for CST. `*LineGrammar` and `*DiagnosticCstGrammar` were
+the former names; the latter was a misnomer, since that artifact differs only
+by `trackLines` and has nothing to do with diagnostics — error tolerance is a
+property of the CST runner, available on either CST artifact. The redundant
+`*AstGrammar` and `*AstLineGrammar` exports were deleted from every public
+`./grammar` subpath. Do not reintroduce any of them as compatibility aliases:
+the grammar name is the stable concept, not an implementation mode.
+
+Each artifact is its own build output — `lib/grammar/ast.js`,
+`lib/grammar/ast/positions.js`, `lib/grammar/cst.js`,
+`lib/grammar/cst/positions.js` — behind matching `./grammar/*` subpath exports,
+with `./grammar` aliasing the AST build. They are built one entry at a time
+(`tools/tsdown/grammar-variants.mts`) because a single build with four entries
+hoists the shared factory into one chunk that every entry re-imports, which is
+what made a consumer of one artifact load all four.
 
 1. **CSS folded; continue focused quality cleanup without blocking dialect
    repair.** CSS now has

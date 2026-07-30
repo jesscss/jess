@@ -5015,7 +5015,8 @@ export const scssGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssS
   scssFactory
 )]);
 
-export const scssLineGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+/** AST artifact with Parseman line/column tracking enabled. */
+export const scssPositionsGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], trackLines: true },
   scssFactory
 )]);
@@ -5025,19 +5026,8 @@ export const scssCstGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([c
   scssFactory
 )]);
 
-export const scssDiagnosticCstGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+/** CST artifact with Parseman line/column tracking enabled. */
+export const scssCstPositionsGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], hostMode: 'cst', trackLines: true },
   scssFactory
 )]);
-
-export type GrammarOptions = {
-  readonly cst?: boolean;
-  readonly trackLines?: boolean;
-};
-
-export function grammarFor(options: GrammarOptions = {}) {
-  if (options.cst) {
-    return options.trackLines ? scssDiagnosticCstGrammar : scssCstGrammar;
-  }
-  return options.trackLines ? scssLineGrammar : scssGrammar;
-}

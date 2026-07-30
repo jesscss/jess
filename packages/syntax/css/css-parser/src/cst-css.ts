@@ -1,5 +1,6 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult } from './cst.js';
-import { cssDiagnosticCstGrammar, grammarFor } from './grammar.js';
+import { cssCstGrammar } from './grammar/cst.js';
+import { cssCstPositionsGrammar } from './grammar/cst/positions.js';
 import type { ParseDoc } from 'parseman';
 
 export type { ParseDoc } from 'parseman';
@@ -9,7 +10,7 @@ export function parseCssCst(
   startRule = 'Stylesheet',
   options?: CssCstParseOptions
 ): CssCstParseResult {
-  const grammar = grammarFor({ cst: true, trackLines: options?.trackLines });
+  const grammar = (options?.trackLines ? cssCstPositionsGrammar : cssCstGrammar);
   return parseCst(
     grammar as Record<string, unknown>,
     input,
@@ -24,7 +25,7 @@ export function parseCssDiagnosticCst(
   options?: CssCstParseOptions
 ): CssCstParseResult {
   return parseCst(
-    cssDiagnosticCstGrammar as Record<string, unknown>,
+    cssCstPositionsGrammar as Record<string, unknown>,
     input,
     startRule,
     options
@@ -38,7 +39,7 @@ export function parseCssDoc(
   options?: Pick<CssCstParseOptions, 'trackLines'>
 ): ParseDoc<CssCstNode> {
   return parseDocCst(
-    grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
+    (options?.trackLines ? cssCstPositionsGrammar : cssCstGrammar) as Record<string, unknown>,
     input,
     startRule
   );
@@ -46,7 +47,7 @@ export function parseCssDoc(
 
 export function parseCssDiagnosticDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
   return parseDocCst(
-    cssDiagnosticCstGrammar as Record<string, unknown>,
+    cssCstPositionsGrammar as Record<string, unknown>,
     input,
     startRule
   );
