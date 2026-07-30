@@ -1545,6 +1545,83 @@ involved.
   `pnpm run verify:aggressive-cutting-review`, `pnpm run verify:less-alpha`,
   `pnpm run check:macro`, and `pnpm run verify:compose-integrity` passed. No
   measured performance claim is made.
+- Latest pass: AST extend IR naming normalization on 2026-07-29.
+- Architecture surface: private extend-solver IR naming changed intentionally.
+  The existing lowered selector facts are now spelled `SelectorPart`,
+  `segments`, `combinator`, and `Compound.value`. The public canonical selector
+  AST remains the flat selector-term/combinator sequence; the lowered
+  `{ combinator, compound }` shape stays private to the extend matcher and is
+  not a visitor or parser-output precedent.
+- Separation/duplication: improved slightly. The private IR no longer carries
+  separate shorthand vocabulary (`Seg`/`segs`/`comb`/`simples`) that conflicts
+  with the canonical AST naming rules. The exported `ComplexSelectorPart` alias
+  is gone; public AST types speak directly in `SelectorTerm | Combinator`.
+- Cumulative node weight: neutral. No AST node, selector wrapper, side table,
+  runtime validator, or compatibility alias was added or removed.
+- New traversal: none. Existing extend loops were renamed in place; no planner
+  pass, matcher pass, selector scan, parser replay, or diagnostics crawl was
+  added.
+- New node/materialization: none. Existing arrays, spreads, and object literals
+  in the extend solver retain their current ownership and are only renamed.
+- Render path: unchanged. The serializer still constructs the same private
+  extend IR after selector interpolation and emits the same CSS; no output
+  policy or fallback path changed.
+- Helper/API surface: no public helper was added. The public
+  `ComplexSelectorPart` alias was removed from the AST barrel surface; the
+  remaining `SelectorPart` type is private to `ast/extend`.
+- Metadata mutations: none. Existing `key` and `bnd` provenance fields keep
+  their behavior; this pass adds no parent/source/frozen/trivia mutation.
+- Behavior evidence: `pnpm --filter @jesscss/core test -- --run src/ast`
+  passed 38/38 files and 342/342 tests after the rename.
+- Build evidence: `pnpm --filter @jesscss/core build` passed after the final
+  public-alias cleanup; `pnpm run verify:types` passed 25/25 configs.
+- Boundary evidence: `pnpm run verify:types` proved removing the exported
+  `ComplexSelectorPart` alias does not break workspace consumers; the public
+  AST shape remains inline `SelectorTerm | Combinator`.
+- Evidence: behavior, build, type, and boundary evidence are listed above. No
+  measured performance claim is made.
+- Review-flagged diff tokens: [loop/traversal], [array helper], [array
+  spread/materialization], and [materialized array/object] are existing extend
+  solver loops/arrays/objects renamed in place; no new loop, allocation family,
+  spread path, or materialized selector wrapper was introduced.
+- Verdict: accepted as a neutral private naming cleanup with no speed claim and
+  no canonical AST shape change.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "This pass changes naming inside the existing AST-v2 extend owner rather than introducing a new optimization boundary. The private solver still performs the same composition, matching, interpolation resolution, and fixpoint solve work; the patch removes misleading public/internal names without claiming cost neutrality or speed.",
+    "dangerTokensJustification": "The flagged loops, maps, spreads, arrays, and object literals are existing extend solver work with renamed fields/types. No planner pass, matcher pass, selector traversal, allocation family, render policy, public selector wrapper, or runtime validation was added.",
+    "behaviorEvidence": "pnpm --filter @jesscss/core test -- --run src/ast passed 38 files / 342 tests.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passed after the final public-alias cleanup; pnpm run verify:types passed 25/25 configs.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  }
+]
+```
 - Latest pass: Less alpha parser/error integration state on 2026-07-27. The working diff includes
   the one-grammar parser fold, Parseman 0.41 grammar cleanup, parser-owned diagnostics, trivia
   extraction work, and the recursive reference error fix that graduated the Less recursion fixtures

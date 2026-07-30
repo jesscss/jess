@@ -2,7 +2,7 @@
  * Element/ID conflict guard for partial `:is()`-wrap substitution.
  *
  * A partial extend wraps a matched compound in place as `S:is(matched, extender…)`,
- * where `S` is the compound's SURROUNDING simples (the ones left outside the `:is`).
+ * where `S` is the compound's SURROUNDING simple tokens (the ones left outside the `:is`).
  * On serialization each `:is()` branch distributes back over `S`, so extender `e`
  * yields the compound `S · terminal(e)`. That compound is INVALID CSS when it holds
  * two distinct element TYPE selectors (`a` + `div` → `adiv…`) or two distinct IDs
@@ -16,7 +16,7 @@
  * SEPARATE fallback engine (`UNSUPPORTED`), whereas AST-v2 builds the output
  * directly, so an over-reject would emit a WRONG (unchanged) selector:
  *
- *   1. Scope is the MATCHED COMPOUND'S surrounding simples, not the whole subject
+ *   1. Scope is the MATCHED COMPOUND'S surrounding simple tokens, not the whole subject
  *      selector. Type/id atoms sitting in a different compound (a different combinator
  *      context, e.g. `a > .x` extended at `.x`) never share a compound with the wrap
  *      and so never conflict.
@@ -82,8 +82,8 @@ function collect(text: string, types: Set<string>, ids: Set<string>): void {
  * compound would place >1 distinct element type OR >1 distinct id into a single
  * compound — the invalid-CSS shape extend must reject.
  *
- * `surrounding` are the matched compound's text simples left OUTSIDE the `:is()`
- * (the wrapped/matched atoms excluded). `extenderTerminal` are the text simples of
+ * `surrounding` are the matched compound's text simple tokens left OUTSIDE the `:is()`
+ * (the wrapped/matched atoms excluded). `extenderTerminal` are the text simple tokens of
  * the extender branch's terminal compound. Pure and allocation-light: two tiny Sets
  * over O(surrounding + extender) atoms, no serialization.
  */

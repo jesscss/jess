@@ -580,7 +580,6 @@ export const compoundHasAmpersand = (c: CompoundSelector): boolean => {
 };
 
 export type SelectorTerm = SimpleToken | CompoundSelector;
-export type ComplexSelectorPart = SelectorTerm | Combinator;
 
 /**
  * A flat selector-term / combinator sequence. A `ComplexSelector` is only for
@@ -589,7 +588,7 @@ export type ComplexSelectorPart = SelectorTerm | Combinator;
  */
 export interface ComplexSelector {
   readonly type: 'ComplexSelector';
-  readonly value: [SelectorTerm, ...ComplexSelectorPart[]];
+  readonly value: [SelectorTerm, ...(SelectorTerm | Combinator)[]];
 
   /** Serializer-owned memo of the canonical join (lazy). */
   _canon?: string;
@@ -607,7 +606,7 @@ export interface ComplexSelector {
  */
 export interface RelativeSelector {
   readonly type: 'RelativeSelector';
-  readonly value: [Combinator, SelectorTerm, ...ComplexSelectorPart[]];
+  readonly value: [Combinator, SelectorTerm, ...(SelectorTerm | Combinator)[]];
 
   /** Serializer-owned memo of the canonical join (lazy). */
   _canon?: string;
@@ -1185,11 +1184,11 @@ export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]):
 export const compoundSelector = (first: string, second: string, ...rest: string[]): CompoundSelector =>
   compoundSelectorOf([simpleSelector(first), simpleSelector(second), ...rest.map(simpleSelector)]);
 
-type ComplexSelectorSegment = { combinator?: Combinator; term: SelectorTerm };
+type SelectorPartInput = { combinator?: Combinator; term: SelectorTerm };
 
 /** `complexSelector([{ term: simpleSelector('.a') }, { combinator: '>', term: simpleSelector('.b') }])` => `.a > .b`. */
 export const complexSelector = (
-  segments: [ComplexSelectorSegment, ComplexSelectorSegment, ...ComplexSelectorSegment[]]
+  segments: [SelectorPartInput, SelectorPartInput, ...SelectorPartInput[]]
 ): ComplexSelector => {
   const [head, ...tail] = segments;
   const value: ComplexSelector['value'] = [
@@ -1203,7 +1202,7 @@ export const complexSelector = (
 };
 export const relativeSelector = (
   combinator: Combinator,
-  segments: [ComplexSelectorSegment, ...ComplexSelectorSegment[]]
+  segments: [SelectorPartInput, ...SelectorPartInput[]]
 ): RelativeSelector => {
   const [head, ...tail] = segments;
   const value: RelativeSelector['value'] = [
@@ -1216,7 +1215,7 @@ export const relativeSelector = (
     value
   };
 };
-export const selectorBranchOf = (segments: readonly [ComplexSelectorSegment, ...ComplexSelectorSegment[]]): SelectorBranch => {
+export const selectorBranchOf = (segments: readonly [SelectorPartInput, ...SelectorPartInput[]]): SelectorBranch => {
   const [first, second, ...rest] = segments;
   return second === undefined ? first.term : complexSelector([first, second, ...rest]);
 };

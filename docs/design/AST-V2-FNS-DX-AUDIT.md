@@ -41,6 +41,9 @@ Implemented in `codex/ast-v2-dx-fns`:
   related types) so fns and plugin authors do not need a `/value` escape hatch.
 - Function bodies receive typed semantic value nodes at the author boundary,
   not parser literals, raw source strings, or old tree classes.
+- The internal AST-v2 extend selector IR now follows the same naming pressure:
+  `SelectorPart`, `segments`, `combinator`, and `Compound.value` replace the old
+  `Seg`/`segs`/`comb`/`simples` shorthand.
 
 Still recommended, not implemented here: continue deleting old tree internals
 rather than treating them as protected API. The exception is evidence-based
@@ -350,6 +353,13 @@ boundaries, and parser AST tests. Diagnostics may optionally audit invalid AST
 shapes for tooling, but diagnostics are not the mechanism that makes the
 canonical nodes valid.
 
+The private extend solver IR is a different boundary. It may keep a lowered
+`SelectorPart { combinator, compound }` shape when that makes the matcher cheap:
+the solver compares each compound together with its incoming combinator and
+carries per-part boundary provenance. That internal shape should stay private,
+well named, and covered by extend op-budget tests; it is not a public AST
+visitor shape and does not justify wrapping canonical selector terms.
+
 Leading-combinator selectors also need contextual grammar pressure. They should
 not be accepted by a generic selector production and normalized later. Each
 dialect should admit relative selectors only in positions where that dialect
@@ -387,7 +397,7 @@ shape fixes are pending.
 
 ### P1: Clean remaining node and field names that affect visitation
 
-1. Decide whether/when to export the internal canonical traversal surface.
+1. Canonical traversal is exported from `@jesscss/core/ast`.
 2. Model selector-list branches as `SelectorTerm | ComplexSelector |
    RelativeSelector`.
 3. Model `ComplexSelector.value` as alternating selector-term/combinator-string
@@ -409,6 +419,9 @@ shape fixes are pending.
 9. Apply the no-aggressive-wrapping rule generally: do not introduce
    single-element arrays or one-child wrapper nodes without authored structure
    that justifies them.
+10. Extend IR internals should use readable names when they intentionally lower
+    canonical selectors for matching: `SelectorPart`, `segments`, `combinator`,
+    and `Compound.value`, not abbreviations or one-off payload names.
 
 ### P1: Finish deleting protected old-tree assumptions
 

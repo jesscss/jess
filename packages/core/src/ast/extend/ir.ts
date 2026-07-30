@@ -10,7 +10,7 @@
 import { renderCombinator } from '../node.js';
 import type { Combinator } from '../node.js';
 import { selectorBranchHasInterp, simpleTokenText } from '../nodes.js';
-import type { ComplexSelectorPart, SelectorBranch, SelectorList, SelectorTerm, SimpleToken } from '../nodes.js';
+import type { SelectorBranch, SelectorList, SelectorTerm, SimpleToken } from '../nodes.js';
 
 /* --------------------------------------------------------------------- types */
 
@@ -19,13 +19,13 @@ export type Simple = { t: 'text'; text: string } | { t: 'is'; branches: Branch[]
 
 /** A run of simple tokens with no separator (`.a.b`). */
 export interface Compound {
-  simples: Simple[];
+  value: Simple[];
 }
 
-/** One `(combinator, compound)` segment. The head segment's `comb` is the
+/** One `(combinator, compound)` segment. The head segment's `combinator` is the
  * leading combinator (`' '` when none). */
-export interface Seg {
-  comb: Combinator;
+export interface SelectorPart {
+  combinator: Combinator;
   compound: Compound;
 }
 
@@ -39,28 +39,28 @@ export interface Seg {
  * engine is byte-identical. The serializer drops all-hidden rules and the hidden
  * branches of a mixed rule. */
 export interface Branch {
-  segs: Seg[];
+  segments: SelectorPart[];
 
   /**
    * Memoized `branchText(this)`. PRE-DECLARED (initialized `undefined`) by the sole
    * `mkBranch` factory so every branch is born with this field, and `branchText`'s
-   * `b.key = out` write is an in-place value store — never a `{segs}`→`{segs,key}`
+   * `b.key = out` write is an in-place value store — never a `{segments}`→`{segments,key}`
    * hidden-class transition (V8 invariant 1 / R4). Sound because branches are never
-   * mutated in place: every transform builds a FRESH branch, so a branch's `segs`
+   * mutated in place: every transform builds a FRESH branch, so a branch's `segments`
    * (hence its text) is fixed for its lifetime. `hidden`/`ext` are provenance only
    * and ignored by `branchText`, so stamping them after a text read cannot stale it. */
   key?: string;
 
   /**
    * [&-boundary] Per-SEGMENT ampersand-compose origin, one `Int8Array` entry per
-   * `segs[i]`. `bnd[i] === 0` ⇒ the segment is the ruleset's OWN-LOCAL selector;
+   * `segments[i]`. `bnd[i] === 0` ⇒ the segment is the ruleset's OWN-LOCAL selector;
    * `bnd[i] === k > 0` ⇒ it was spliced in from the k-th enclosing ancestor by an
    * `&`-compose (`composePath`). PRE-DECLARED `undefined` by the sole `mkBranch`
    * factory (exactly like `key`) so a later `b.bnd = …` write lands on an existing
    * field — never a hidden-class transition (V8 invariant 1 / R4). A branch with no
    * boundary information (a bare target, an `:is()`-arg sub-branch) leaves it
    * `undefined`, which every reader treats as "all own-local". `branchText`,
-   * `collectBranchAtoms`, `textSimples`, `branchSharesAtom` all IGNORE it (it is
+   * `collectBranchAtoms`, `textSimpleTokens`, `branchSharesAtom` all IGNORE it (it is
    * origin provenance, not selector text); `cloneBranch` copies it. */
   bnd?: Int8Array;
   hidden?: boolean;
@@ -74,12 +74,12 @@ export interface Branch {
 }
 
 /**
- * The SOLE Branch factory. Every branch is born `{ segs, key: undefined }` so the
+ * The SOLE Branch factory. Every branch is born `{ segments, key: undefined }` so the
  * `branchText` memo write lands on a pre-declared field (one hidden class on the
  * fixpoint's hot path). `hidden`/`ext` are stamped after construction by the
  * provenance-carrying sites (`cloneBranch`, `buildContribs`), exactly as before. */
-export function mkBranch(segs: Seg[]): Branch {
-  return { segs, key: undefined, bnd: undefined };
+export function mkBranch(segments: SelectorPart[]): Branch {
+  return { segments, key: undefined, bnd: undefined };
 }
 
 /** A selector list level (a rule's own-local alternatives / an `:is()` arg). */
@@ -96,7 +96,7 @@ export function simpleText(s: Simple): string {
 
 export function compoundText(c: Compound): string {
   let out = '';
-  for (const s of c.simples) {
+  for (const s of c.value) {
     out += simpleText(s);
   }
   return out;
@@ -107,15 +107,15 @@ export function branchText(b: Branch): string {
     return b.key;
   }
   let out = '';
-  for (let i = 0; i < b.segs.length; i++) {
-    const seg = b.segs[i]!;
+  for (let i = 0; i < b.segments.length; i++) {
+    const seg = b.segments[i]!;
     if (i === 0) {
-      if (seg.comb !== ' ') {
-        out += renderCombinator(seg.comb).trimStart();
+      if (seg.combinator !== ' ') {
+        out += renderCombinator(seg.combinator).trimStart();
       }
       out += compoundText(seg.compound);
     } else {
-      out += renderCombinator(seg.comb) + compoundText(seg.compound);
+      out += renderCombinator(seg.combinator) + compoundText(seg.compound);
     }
   }
   b.key = out;
@@ -124,9 +124,9 @@ export function branchText(b: Branch): string {
 
 /* ---------------------------------------------------------------- construct */
 
-/** A single-segment descendant branch wrapping the given simples. */
-export function descendantBranch(simples: Simple[]): Branch {
-  return mkBranch([{ comb: ' ', compound: { simples } }]);
+/** A single-segment descendant branch wrapping the given value. */
+export function descendantBranch(value: Simple[]): Branch {
+  return mkBranch([{ combinator: ' ', compound: { value } }]);
 }
 
 /** An `:is(...)` simple wrapping the given branches. */
@@ -135,15 +135,15 @@ export function isSimple(branches: Branch[]): Simple {
 }
 
 /**
- * The substitution simples for an `all` sub-match: DEDUP identical branches, and
- * when a single unique single-segment branch survives, INLINE its compound simples
+ * The substitution value for an `all` sub-match: DEDUP identical branches, and
+ * when a single unique single-segment branch survives, INLINE its compound value
  * instead of an `:is(...)` wrap. A self-extend (`.class:extend(.class all)`) or any
  * extender equal to the matched span would otherwise emit `:is(x, x)`; since
  * `:is(x, x)` and `:is(x)` are both semantically `x`, this is a byte-transparent
  * collapse that never alters a group of genuinely-distinct branches. Returns the
  * simple(s) to splice in place of the matched slot.
  */
-export function isOrPlainSimples(branches: Branch[]): Simple[] {
+export function isOrPlainSimpleTokens(branches: Branch[]): Simple[] {
   const seen = new Set<string>();
   const uniq: Branch[] = [];
   for (const b of branches) {
@@ -153,8 +153,8 @@ export function isOrPlainSimples(branches: Branch[]): Simple[] {
       uniq.push(b);
     }
   }
-  if (uniq.length === 1 && uniq[0]!.segs.length === 1) {
-    return uniq[0]!.segs[0]!.compound.simples.map(cloneSimple);
+  if (uniq.length === 1 && uniq[0]!.segments.length === 1) {
+    return uniq[0]!.segments[0]!.compound.value.map(cloneSimple);
   }
   return [isSimple(uniq)];
 }
@@ -165,8 +165,8 @@ export function cloneSimple(s: Simple): Simple {
   return s.t === 'text' ? { t: 'text', text: s.text } : { t: 'is', branches: s.branches.map(cloneBranch) };
 }
 
-export function cloneSeg(seg: Seg): Seg {
-  return { comb: seg.comb, compound: { simples: seg.compound.simples.map(cloneSimple) } };
+export function cloneSeg(seg: SelectorPart): SelectorPart {
+  return { combinator: seg.combinator, compound: { value: seg.compound.value.map(cloneSimple) } };
 }
 
 export function cloneBranch(b: Branch): Branch {
@@ -174,11 +174,11 @@ export function cloneBranch(b: Branch): Branch {
    * [import:reference] `hidden`/`ext` are provenance, not text — preserve them across
    * every clone so a branch's visibility survives compose/solve/compaction unchanged.
    */
-  const out: Branch = mkBranch(b.segs.map(cloneSeg));
+  const out: Branch = mkBranch(b.segments.map(cloneSeg));
 
   /*
    * [&-boundary] `bnd` is per-segment origin provenance, not text — carry it across
-   * every clone (a fresh `Int8Array`, since a clone's segs are a fresh array too).
+   * every clone (a fresh `Int8Array`, since a clone's segments are a fresh array too).
    */
   if (b.bnd) {
     out.bnd = Int8Array.from(b.bnd);
@@ -227,8 +227,8 @@ function simpleFromToken(sim: SimpleToken): Simple {
   return { t: 'text', text: simpleTokenText(sim) };
 }
 
-function compoundFromTokens(simples: SimpleToken[]): Compound {
-  return { simples: simples.map(simpleFromToken) };
+function compoundFromTokens(value: SimpleToken[]): Compound {
+  return { value: value.map(simpleFromToken) };
 }
 
 function termFromSelector(term: SelectorTerm): Compound {
@@ -237,7 +237,7 @@ function termFromSelector(term: SelectorTerm): Compound {
     : compoundFromTokens([term]);
 }
 
-function branchParts(c: SelectorBranch): readonly ComplexSelectorPart[] {
+function branchParts(c: SelectorBranch): readonly (SelectorTerm | Combinator)[] {
   return c.type === 'ComplexSelector'
     ? c.value
     : c.type === 'RelativeSelector'
@@ -246,7 +246,7 @@ function branchParts(c: SelectorBranch): readonly ComplexSelectorPart[] {
 }
 
 export function branchFromSelector(c: SelectorBranch): Branch {
-  const segs: Seg[] = [];
+  const segments: SelectorPart[] = [];
   let first = true;
   let pendingComb: Combinator = c.type === 'RelativeSelector' ? c.value[0] : ' ';
   for (const part of branchParts(c)) {
@@ -254,13 +254,13 @@ export function branchFromSelector(c: SelectorBranch): Branch {
       pendingComb = part;
       continue;
     }
-    segs.push({
-      comb: first ? pendingComb : pendingComb,
+    segments.push({
+      combinator: first ? pendingComb : pendingComb,
       compound: termFromSelector(part)
     });
     first = false;
   }
-  return mkBranch(segs);
+  return mkBranch(segments);
 }
 
 export function levelFromSelectorList(list: SelectorList): Level {
@@ -269,10 +269,10 @@ export function levelFromSelectorList(list: SelectorList): Level {
 
 /* --------------------------------------------------------------------- atoms */
 
-/** Multiset of a compound's plain-text simples (ignores `:is` grafts). */
-export function textSimples(c: Compound): string[] {
+/** Multiset of a compound's plain-text simple tokens (ignores `:is` grafts). */
+export function textSimpleTokens(c: Compound): string[] {
   const out: string[] = [];
-  for (const s of c.simples) {
+  for (const s of c.value) {
     if (s.t === 'text') {
       out.push(s.text);
     }
@@ -284,15 +284,15 @@ export function textSimples(c: Compound): string[] {
  * Collect every individual plain-text simple atom in a branch into `out`,
  * RECURSING into `:is()` grafts. This is the atom granularity/normalization the
  * matcher actually uses: compounds are split per-simple (`.a.b` → `.a`, `.b`,
- * exactly like `textSimples`/`multisetSubset`), grafts are walked so simples that
+ * exactly like `textSimpleTokens`/`multisetSubset`), grafts are walked so simple tokens that
  * only appear inside an `:is()` (`:is(.p1, .p2) .c` → `.p1`, `.p2`, `.c`) are
- * captured — never dropped the way `textSimples` drops grafts. Text is taken RAW
+ * captured — never dropped the way `textSimpleTokens` drops grafts. Text is taken RAW
  * (case-sensitive, no trim/fold), the same `branchFromSelector` → `s.text ?? ''`
  * value both sides carry.
  */
 export function collectBranchAtoms(b: Branch, out: Set<string>): void {
-  for (const seg of b.segs) {
-    for (const s of seg.compound.simples) {
+  for (const seg of b.segments) {
+    for (const s of seg.compound.value) {
       if (s.t === 'text') {
         out.add(s.text);
       } else {
@@ -311,8 +311,8 @@ export function collectBranchAtoms(b: Branch, out: Set<string>): void {
  * seed can neither match nor chain any instruction target before running solve.
  */
 export function branchSharesAtom(b: Branch, atoms: Set<string>): boolean {
-  for (const seg of b.segs) {
-    for (const s of seg.compound.simples) {
+  for (const seg of b.segments) {
+    for (const s of seg.compound.value) {
       if (s.t === 'text') {
         if (atoms.has(s.text)) {
           return true;
@@ -367,13 +367,13 @@ export function multisetEqual(a: string[], b: string[]): boolean {
 }
 
 /**
- * The full serialized simples of a compound, INCLUDING `:is()` grafts (each graft is
- * one opaque `:is(...)` token). Unlike `textSimples` (plain-text simples only, grafts
+ * The full serialized value of a compound, INCLUDING `:is()` grafts (each graft is
+ * one opaque `:is(...)` token). Unlike `textSimpleTokens` (plain-text simple tokens only, grafts
  * dropped) this keeps grafts as tokens so a multiset comparison over the result treats
  * `.a` and `.a:is(.b)` as distinct — matching the pre-fix `branchText` string equality,
  * which the exact-mode equivalence must not loosen. Order-independent by construction:
  * the caller multiset-compares, so simple order within the compound is irrelevant.
  */
 export function simpleTexts(c: Compound): string[] {
-  return c.simples.map(simpleText);
+  return c.value.map(simpleText);
 }

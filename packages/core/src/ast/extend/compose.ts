@@ -4,7 +4,7 @@
  * substitution against the parent context.
  *
  * [&-boundary] A `&`-compose now SPLICES the parent's segments in as SEPARATE
- * `Seg`s (`.f {…}` under `.outer .mid` yields the three segments `.outer .mid .leaf`,
+ * `SelectorPart`s (`.f {…}` under `.outer .mid` yields the three segments `.outer .mid .leaf`,
  * never one embedded-space text simple), and every composed branch carries a
  * per-segment `bnd` origin (`0` = own-local, `k>0` = the k-th enclosing `&`-hop).
  * The `bnd` marker is what lets the matcher tell a match that stays inside the
@@ -23,11 +23,11 @@ import {
   isSimple,
   mkBranch
 } from './ir.js';
-import type { Branch, Level, Seg, Simple } from './ir.js';
+import type { Branch, Level, SelectorPart, Simple } from './ir.js';
 
 function branchHasAmp(b: Branch): boolean {
-  for (const seg of b.segs) {
-    for (const s of seg.compound.simples) {
+  for (const seg of b.segments) {
+    for (const s of seg.compound.value) {
       if (s.t === 'text') {
         if (s.text.includes('&')) {
           return true;
@@ -63,61 +63,61 @@ function withBnd(b: Branch, arr: number[]): Branch {
 /** True when a compound is exactly one bare `&` simple (`&`, as its own segment) —
  * the standalone ampersand that SPLICES the parent's segments in. A fused `.f&` or a
  * pure-`&` self-compound (`&&`) is NOT this case (handled by text substitution). */
-function isBareAmp(seg: Seg): boolean {
-  const s = seg.compound.simples;
+function isBareAmp(seg: SelectorPart): boolean {
+  const s = seg.compound.value;
   return s.length === 1 && s[0]!.t === 'text' && s[0]!.text === '&';
 }
 
 /**
  * Substitute every `&` in `child` against the parent selector, producing a branch
  * whose `bnd` records each output segment's origin. A STANDALONE `&` (its own
- * segment) splices the parent's SEGMENTS in place — separate `Seg`s carrying
+ * segment) splices the parent's SEGMENTS in place — separate `SelectorPart`s carrying
  * `bnd = parentBnd + 1` — so a multi-segment parent (`.outer .mid`) stays matchable
- * per segment. A `&` FUSED into a compound alongside other simples keeps the prior
+ * per segment. A `&` FUSED into a compound alongside other value keeps the prior
  * behavior: under a MULTI-segment parent it wraps in `:is(...)` so the compound
  * stays one element target (`.f&` → `.f:is(.outer .mid)`); under a single-compound
  * parent it substitutes the parent's bare text. Fused/own segments are `bnd = 0`.
  */
 function substituteAmp(child: Branch, parent: Branch): Branch {
   const parentStr = branchText(parent);
-  const parentMultiSeg = parent.segs.length > 1;
-  const outSegs: Seg[] = [];
+  const parentMultiSeg = parent.segments.length > 1;
+  const outSegs: SelectorPart[] = [];
   const outBnd: number[] = [];
-  for (const seg of child.segs) {
+  for (const seg of child.segments) {
     if (isBareAmp(seg)) {
       /*
        * Splice the parent's segments in. The first spliced segment takes THIS `&`
        * segment's combinator (its position in the child complex); the rest keep the
        * parent's own internal combinators. Each carries the parent's origin + 1.
        */
-      for (let k = 0; k < parent.segs.length; k++) {
-        const ps = parent.segs[k]!;
-        outSegs.push({ comb: k === 0 ? seg.comb : ps.comb, compound: { simples: ps.compound.simples.map(cloneSimple) } });
+      for (let k = 0; k < parent.segments.length; k++) {
+        const ps = parent.segments[k]!;
+        outSegs.push({ combinator: k === 0 ? seg.combinator : ps.combinator, compound: { value: ps.compound.value.map(cloneSimple) } });
         outBnd.push(bndAt(parent, k) + 1);
       }
       continue;
     }
-    const fused = seg.compound.simples.length > 1;
+    const fused = seg.compound.value.length > 1;
     const wrap = parentMultiSeg && fused;
-    const simples: Simple[] = [];
-    for (const s of seg.compound.simples) {
+    const value: Simple[] = [];
+    for (const s of seg.compound.value) {
       if (s.t === 'text' && s.text.includes('&')) {
         if (wrap) {
           // Splice `:is(parent)` in place of each `&`, preserving any fused text.
           const parts = s.text.split('&');
           for (let i = 0; i < parts.length; i++) {
             if (parts[i]!.length > 0) {
-              simples.push({ t: 'text', text: parts[i]! });
+              value.push({ t: 'text', text: parts[i]! });
             }
             if (i < parts.length - 1) {
-              simples.push(isSimple([parent]));
+              value.push(isSimple([parent]));
             }
           }
         } else {
-          simples.push({ t: 'text', text: s.text.split('&').join(parentStr) });
+          value.push({ t: 'text', text: s.text.split('&').join(parentStr) });
         }
       } else {
-        simples.push(cloneSimple(s));
+        value.push(cloneSimple(s));
       }
     }
 
@@ -125,7 +125,7 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
      * A fused/own segment is the ruleset's own element target (the parent is sealed
      * inside an `:is()` when wrapped), so it is own-local (`bnd = 0`).
      */
-    outSegs.push({ comb: seg.comb, compound: { simples } });
+    outSegs.push({ combinator: seg.combinator, compound: { value } });
     outBnd.push(0);
   }
   return withBnd(mkBranch(outSegs), outBnd);
@@ -156,13 +156,13 @@ function composeOne(parent: Branch, child: Branch): Branch {
    * deeper (origin + 1); the child's own segments keep their origin (own-local `0`).
    */
   const outBnd: number[] = [];
-  for (let k = 0; k < parent.segs.length; k++) {
+  for (let k = 0; k < parent.segments.length; k++) {
     outBnd.push(bndAt(parent, k) + 1);
   }
-  for (let k = 0; k < child.segs.length; k++) {
+  for (let k = 0; k < child.segments.length; k++) {
     outBnd.push(bndAt(child, k));
   }
-  return withBnd(mkBranch([...parent.segs.map(cloneSeg), ...cloneBranch(child).segs]), outBnd);
+  return withBnd(mkBranch([...parent.segments.map(cloneSeg), ...cloneBranch(child).segments]), outBnd);
 }
 
 /** Compose a child selector list under a parent selector list. */
@@ -188,27 +188,27 @@ function stripRootAmp(b: Branch): Branch | null {
   if (!branchHasAmp(b)) {
     return cloneBranch(b);
   }
-  const segs: Seg[] = [];
-  for (const seg of b.segs) {
-    const simples: Simple[] = [];
-    for (const s of seg.compound.simples) {
+  const segments: SelectorPart[] = [];
+  for (const seg of b.segments) {
+    const value: Simple[] = [];
+    for (const s of seg.compound.value) {
       if (s.t !== 'text') {
-        simples.push(cloneSimple(s));
+        value.push(cloneSimple(s));
         continue;
       }
       const text = s.text.split('&').join('');
       if (text.length > 0) {
-        simples.push({ t: 'text', text });
+        value.push({ t: 'text', text });
       }
     }
-    if (simples.length > 0) {
-      segs.push({ comb: segs.length === 0 ? ' ' : seg.comb, compound: { simples } });
+    if (value.length > 0) {
+      segments.push({ combinator: segments.length === 0 ? ' ' : seg.combinator, compound: { value } });
     }
   }
-  if (segs.length === 0) {
+  if (segments.length === 0) {
     return null;
   }
-  const out = mkBranch(segs);
+  const out = mkBranch(segments);
   if (b.hidden) {
     out.hidden = true;
   }

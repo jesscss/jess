@@ -41,7 +41,7 @@ import {
   mkBranch,
   multisetSubset,
   simpleText,
-  textSimples
+  textSimpleTokens
 } from './ir.js';
 import type { Branch, Compound, Level, Simple } from './ir.js';
 import { composePath } from './compose.js';
@@ -142,7 +142,7 @@ export interface ExtendResults {
 
 /** The single compound of a one-segment branch, or null. */
 function branchSingleCompound(b: Branch): Compound | null {
-  return b.segs.length === 1 ? b.segs[0]!.compound : null;
+  return b.segments.length === 1 ? b.segments[0]!.compound : null;
 }
 
 /** [&-boundary] The number of LEADING segments of a composed branch whose `bnd`
@@ -155,7 +155,7 @@ function leadingWrapperSegs(b: Branch, maxBnd: number): number {
     return 0;
   }
   let n = 0;
-  while (n < b.segs.length && (b.bnd[n] ?? 0) > maxBnd) {
+  while (n < b.segments.length && (b.bnd[n] ?? 0) > maxBnd) {
     n++;
   }
   return n;
@@ -169,26 +169,26 @@ function dropLeadingSegs(b: Branch, n: number): Branch {
   if (n <= 0) {
     return cloneBranch(b);
   }
-  const segs = b.segs.slice(n).map(cloneSeg);
-  if (segs.length > 0) {
-    segs[0] = { comb: ' ', compound: segs[0]!.compound };
+  const segments = b.segments.slice(n).map(cloneSeg);
+  if (segments.length > 0) {
+    segments[0] = { combinator: ' ', compound: segments[0]!.compound };
   }
-  const out = mkBranch(segs);
+  const out = mkBranch(segments);
   if (b.hidden) {
     out.hidden = true;
   }
   return out;
 }
 
-/** True when `target`'s text-simples are ⊆ some compound in `level`. */
+/** True when `target`'s text-value are ⊆ some compound in `level`. */
 function compoundHitsLevel(target: Compound, level: Level): boolean {
-  const need = textSimples(target);
+  const need = textSimpleTokens(target);
   if (need.length === 0) {
     return false;
   }
   for (const b of level) {
-    for (const seg of b.segs) {
-      if (multisetSubset(need, textSimples(seg.compound))) {
+    for (const seg of b.segments) {
+      if (multisetSubset(need, textSimpleTokens(seg.compound))) {
         return true;
       }
     }
@@ -268,18 +268,18 @@ function siblingCompact(branches: Branch[], allowMultiSeg: boolean): Branch[] {
  * differ in structure or in more than one compound. Multi-segment rows only merge
  * when `allowMultiSeg` (see {@link siblingCompact}). */
 function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch | null {
-  if (a.segs.length !== b.segs.length) {
+  if (a.segments.length !== b.segments.length) {
     return null;
   }
-  const multiSeg = a.segs.length > 1;
+  const multiSeg = a.segments.length > 1;
   if (multiSeg && !allowMultiSeg) {
     return null;
   }
   let diff = -1;
-  for (let i = 0; i < a.segs.length; i++) {
-    const as = a.segs[i]!;
-    const bs = b.segs[i]!;
-    if (as.comb !== bs.comb) {
+  for (let i = 0; i < a.segments.length; i++) {
+    const as = a.segments[i]!;
+    const bs = b.segments[i]!;
+    if (as.combinator !== bs.combinator) {
       return null;
     }
     if (compoundText(as.compound) !== compoundText(bs.compound)) {
@@ -298,18 +298,18 @@ function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch 
    * (no shared segment context), only merge if the compounds share a suffix — two
    * whole branches sharing NOTHING (`.ext8.ext9` / `.fuu`) stay a comma list.
    */
-  const merged = mergeCompoundsToIs(a.segs[diff]!.compound, b.segs[diff]!.compound, multiSeg);
+  const merged = mergeCompoundsToIs(a.segments[diff]!.compound, b.segments[diff]!.compound, multiSeg);
   if (!merged) {
     return null;
   }
-  const segs = a.segs.map((s, i) => (i === diff ? { comb: s.comb, compound: merged } : cloneSeg(s)));
+  const segments = a.segments.map((s, i) => (i === diff ? { combinator: s.combinator, compound: merged } : cloneSeg(s)));
 
   /*
    * [import:reference] the merged branch is visible if EITHER source is visible (an
    * `:is(a, b)` emits its whole group). Only two hidden branches merge to hidden
    * (stamped after the factory, exactly as `cloneBranch` carries provenance).
    */
-  const out = mkBranch(segs);
+  const out = mkBranch(segments);
   if (a.hidden && b.hidden) {
     out.hidden = true;
   }
@@ -324,8 +324,8 @@ function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch 
  */
 function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): Compound | null {
   // Find the longest shared trailing simple run (by text).
-  const as = a.simples;
-  const bs = b.simples;
+  const as = a.value;
+  const bs = b.value;
   let suffix = 0;
   while (
     suffix < as.length
@@ -350,8 +350,8 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
     return [descendantBranch(lead.map(cloneSimple))];
   };
   const isGroup = isSimple([...leadBranch(aLead), ...leadBranch(bLead)]);
-  const suffixSimples = as.slice(as.length - suffix).map(cloneSimple);
-  return { simples: [isGroup, ...suffixSimples] };
+  const suffixTokens = as.slice(as.length - suffix).map(cloneSimple);
+  return { value: [isGroup, ...suffixTokens] };
 }
 
 /* ------------------------------------------------- relative extender folding */
@@ -486,11 +486,11 @@ export function computeExtends(
       return false;
     }
     const br = s.ownLocal[0]!;
-    if (br.segs.length !== 1) {
+    if (br.segments.length !== 1) {
       return false;
     }
-    const simples = br.segs[0]!.compound.simples;
-    return simples.length >= 2 && simples.every(x => x.t === 'text' && x.text === '&');
+    const value = br.segments[0]!.compound.value;
+    return value.length >= 2 && value.every(x => x.t === 'text' && x.text === '&');
   };
   for (const p of plan.subjects) {
     let onlyRule: Statement | null = null;
@@ -708,7 +708,7 @@ export function computeExtends(
        * matches stay with trigger X (which keeps the extender-descends-from-parent
        * guard the match span alone cannot express).
        */
-      if (!inst.partial || inst.target.segs.length < 2) {
+      if (!inst.partial || inst.target.segments.length < 2) {
         continue;
       }
       for (const b of raw) {

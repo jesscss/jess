@@ -213,6 +213,9 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/ast/value-guards.ts",
       "packages/core/src/ast/value-list.ts",
       "packages/core/src/ast/extend/compose.ts",
+      "packages/core/src/ast/extend/emit.ts",
+      "packages/core/src/ast/extend/ir.ts",
+      "packages/core/src/ast/extend/match.ts",
       "packages/core/src/ast/extend/plan.ts",
       "packages/core/src/ast/extend/solve.ts"
     ],
@@ -386,18 +389,6 @@ a blanket optimization exemption or a new active architecture queue.
     }
   },
   {
-    "id": "ast-extend-emit-lint-only-normalization",
-    "kind": "neutral-or-negative",
-    "surface": "mechanical ESLint normalization in the existing AST extend emitter",
-    "files": ["packages/core/src/ast/extend/emit.ts"],
-    "neutralRefactor": {
-      "costDelta": "neutral",
-      "allowsProsecutedDangerTokens": true,
-      "why": "This slice changes only ESLint-required braces, operator layout, arrow-parameter style, and trailing commas in the existing AST extend emitter. It adds no planner, selector traversal, allocation, or output policy; the emitted extend facts and dispatch path are unchanged.",
-      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
-    }
-  },
-  {
     "id": "bounded-core-tree-lint-guards",
     "kind": "semantic-runtime",
     "surface": "bounded core tree list and validation helper type-safety cleanup",
@@ -439,6 +430,11 @@ active owners of the current `origin/dev..HEAD` integration delta:
 `ast-extend-prefilter-toggle-deletion`,
 `ast-evaluator-stale-adapter-comment-deletion`, and
 `ast-extend-public-toggle-export-deletion`.
+
+`ast-extend-emit-lint-only-normalization` is also retired as of the AST extend
+IR naming cleanup: `emit.ts` now belongs to the broader
+`ast-semantic-runtime-cutover` owner, and the old lint-only record would
+incorrectly claim a non-lint patch.
 
 They are deliberately absent from the machine-readable registry. Several owned
 files now contain independent AST-v2/runtime work (in particular

@@ -6361,10 +6361,10 @@ function rejectAsyncSelectorInterp(
 }
 
 /**
- * [extend/selector-interp] Resolve a compound's interpolated simples in place, in
+ * [extend/selector-interp] Resolve a compound's interpolated simple tokens in place, in
  * `frame`, replacing each `@{…}` token with the static resolved text — the SAME
  * per-simple resolution {@link resolveCompound} performs at emit, so the mutated
- * compound serializes byte-identically. Static (`&`, `.a`) simples are untouched.
+ * compound serializes byte-identically. Static (`&`, `.a`) simple tokens are untouched.
  * The lazy `_hasInterp` / `_canon` memos are cleared so the fast static path recomputes.
  */
 function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | null, e: EvalCtx): void {
@@ -6521,25 +6521,25 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
  * old static prepass this never rewrites selector nodes: loop bodies are shared
  * canonical AST and can resolve differently on every iteration. */
 function resolvedExtendBranch(node: SelectorBranch, frame: Frame, e: EvalCtx): MaybePromise<Branch> {
-  const compound = (part: CompoundSelector): MaybePromise<{ simples: Branch['segs'][number]['compound']['simples'] }> =>
+  const compound = (part: CompoundSelector): MaybePromise<Branch['segments'][number]['compound']> =>
     combineAll(part.value.map(simple => resolveSimpleText(simple, frame, e)), texts => ({
-      simples: texts.map(text => ({ t: 'text' as const, text }))
+      value: texts.map(text => ({ t: 'text' as const, text }))
     }));
-  const term = (part: SelectorTerm): MaybePromise<{ simples: Branch['segs'][number]['compound']['simples'] }> =>
+  const term = (part: SelectorTerm): MaybePromise<Branch['segments'][number]['compound']> =>
     part.type === 'CompoundSelector'
       ? compound(part)
-      : mapMaybe(resolveSimpleText(part, frame, e), text => ({ simples: [{ t: 'text' as const, text }] }));
+      : mapMaybe(resolveSimpleText(part, frame, e), text => ({ value: [{ t: 'text' as const, text }] }));
   const terms = selectorBranchTerms(node);
   const combinators = selectorBranchCombinators(node);
   const parts = terms.map(part => term(part));
   return combineAll(parts, (compounds) => {
     const start = node.type === 'RelativeSelector' ? 1 : 0;
-    const segs: Branch['segs'] = [{ comb: node.type === 'RelativeSelector' ? combinators[0]! : ' ', compound: compounds[0]! }];
+    const segments: Branch['segments'] = [{ combinator: node.type === 'RelativeSelector' ? combinators[0]! : ' ', compound: compounds[0]! }];
     for (let index = start; index < combinators.length; index++) {
       const valueIndex = node.type === 'RelativeSelector' ? index : index + 1;
-      segs.push({ comb: combinators[index]!, compound: compounds[valueIndex]! });
+      segments.push({ combinator: combinators[index]!, compound: compounds[valueIndex]! });
     }
-    return mkBranch(segs);
+    return mkBranch(segments);
   });
 }
 
