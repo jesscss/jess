@@ -3899,7 +3899,7 @@ describe('Less AST grammar facts', () => {
   });
 
   it('keeps fallback CSS at-rule prelude comments in trivia, not semantic bytes', () => {
-    const result = run(lessAstGrammar.CssAtRulePrelude, 'a/* note */b', {
+    const result = run(lessAstGrammar.AtRulePrelude, 'a/* note */b', {
       trivia: lessAstGrammar.whitespace
     });
 

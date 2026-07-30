@@ -124,16 +124,16 @@ separate follow-ups: SCSS has ambient scan skips but also routes through
 composed quoted syntax, while Jess currently lacks a root `scanSkip` policy and
 must decide that grammar shape before shrinking the pseudo scanner.
 
-SCSS conditional-at-rule dispatch probe, 2026-07-29: do not mechanically replace
-the repeated local `choice(@media, @container + not(only))` arms with a tiny
-`dispatch(...)` helper unless the branch shape preserves the known-rule
-rejection tests. A local probe accepted `@container only; screen { ... }`
-instead of rejecting it as a malformed known CSS conditional rule. The
-accepted-language contract is that `@container` is CSS-owned known syntax, so a
-malformed header cannot be rescued as an at-rule statement followed by a
-ruleset. The next attempt should either compose the CSS conditional/container
-structure directly or introduce a committed known-at-rule dispatcher that proves
-public CST and AST rejection remain unchanged.
+SCSS conditional-at-rule dispatch probe, 2026-07-29: CSS already owns the
+`@container` rule through `ContainerPrelude`; do not invent a second local
+container language while replacing repeated `choice(@media, @container + guard)`
+arms. A local SCSS dispatch probe accepted `@container only; screen { ... }`
+because the malformed known-rule header fell through as an at-rule statement
+plus a ruleset. That is the historical rejection path to preserve: malformed
+known CSS must fail as known CSS, not be rescued by a generic at-rule branch.
+The next attempt should compose the CSS conditional/container structure
+directly, or introduce one committed known-at-rule dispatcher whose routed arms
+reuse the CSS-owned prelude and prove public CST and AST rejection unchanged.
 Less lookahead inventory, 2026-07-29 current-dev recheck: grammar sources are
 clean for `Direct*` / `CssAst*` prefixes, but Less still has the last explicit
 `not(not(...))` code sites. The declaration-head interpolated-property gate was
@@ -419,9 +419,10 @@ highest-priority non-Parseman grammar surfaces:
   dialect body substitutions. Share the at-rule frame/reducer pattern where the
   accepted header language is unchanged; keep local bodies where the dialect
   admits extra statements.
-- Less `CssAtRulePrelude` is CSS raw-prelude skeleton plus Less interpolation.
+- Less `AtRulePrelude` is the raw-prelude skeleton plus Less interpolation.
   Share the whitespace/comma/group/quoted/text skeleton and keep only the Less
-  interpolation override local.
+  interpolation override local; do not reintroduce a `Css*` provenance name for
+  the grammar-family node.
 
 Less naming/composition rule, 2026-07-27: `DirectLess*` is migration scaffolding,
 not grammar vocabulary. When a Less rule is the dialect version of a CSS

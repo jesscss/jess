@@ -199,7 +199,7 @@ type LessRules = {
   StaticAtRuleAtom: Combinator<ValueNode>;
   StaticAtRuleTerm: Combinator<ValueNode>;
   StaticAtRulePrelude: Combinator<ValueNode>;
-  CssAtRulePrelude: Combinator<ValueNode | null>;
+  AtRulePrelude: Combinator<ValueNode | null>;
   NamespacePrelude: Combinator<ValueNode>;
   AtRuleBlock: Combinator<AtRuleBlock>;
   OpaqueAtPrelude: Combinator<string | null>;
@@ -4952,8 +4952,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     scanSkipSingleString
   ));
   const atPreludeText = noTrivia(regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
-  const CssAtRulePrelude = node<ValueNode | null>(
-    'CssAtRulePrelude',
+  const AtRulePrelude = node<ValueNode | null>(
+    'AtRulePrelude',
     parser(
       { trivia: atPreludeCommentTrivia },
       many(choice(
@@ -5024,7 +5024,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     )),
     sequence(
       not(peek(regex(/[ \t\n\r\f]*:/))),
-      g.CssAtRulePrelude,
+      g.AtRulePrelude,
       atRuleBlockBody
     )
   );
@@ -5132,7 +5132,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
             )),
             sequence(
               not(peek(regex(/[ \t\n\r\f]*:/))),
-              g.CssAtRulePrelude,
+              g.AtRulePrelude,
               literal(';')
             )
           )
@@ -5957,7 +5957,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     StaticAtRuleAtom,
     StaticAtRuleTerm,
     StaticAtRulePrelude,
-    CssAtRulePrelude,
+    AtRulePrelude,
     NamespacePrelude,
     AtRuleBlock,
     OpaqueAtPrelude,
