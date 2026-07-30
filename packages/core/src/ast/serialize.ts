@@ -6359,6 +6359,19 @@ interface Leaf {
 
 const pendingLeafBlockComments = new WeakMap<Leaf[], string[]>();
 
+function hasPendingLeafBlockComments(group: Leaf[]): boolean {
+  return (pendingLeafBlockComments.get(group)?.length ?? 0) !== 0;
+}
+
+function takePendingLeafBlockComments(group: Leaf[]): readonly string[] {
+  const pending = pendingLeafBlockComments.get(group);
+  if (pending === undefined) {
+    return [];
+  }
+  pendingLeafBlockComments.delete(group);
+  return pending;
+}
+
 function queueLeafBlockComments(group: Leaf[], comments: readonly string[]): void {
   if (comments.length === 0) {
     return;
@@ -7769,7 +7782,7 @@ function flattenWithHeader(
   (frame.rulePlacements ??= new Map()).set(rule, childFrame);
   const group: Leaf[] = [];
   const flush = (): MaybePromise<void> => {
-    if (group.length) {
+    if (group.length || hasPendingLeafBlockComments(group)) {
       /*
        * [adjacent-merge] `parent` (the parent expansion this rule was composed
        * against) keys sibling merges: two nested rulesets with the same parent ref
@@ -7788,7 +7801,7 @@ function flattenWithHeader(
    * of an emitted child merely to make the selector output smaller.
    */
   const emitBlock = (leaves: Leaf[]): MaybePromise<void> => {
-    if (leaves.length) {
+    if (leaves.length || hasPendingLeafBlockComments(leaves)) {
       return flushBlock(header, leaves, e, rule.selector, parent, rule);
     }
   };
@@ -7808,7 +7821,7 @@ function flattenWithHeader(
       }
     };
     if (!partition.encounteredContainer) {
-      if (group.length === 0 && hasBodyBlockCommentTrivia(rule, e)) {
+      if (group.length === 0 && !hasPendingLeafBlockComments(group) && hasBodyBlockCommentTrivia(rule, e)) {
         return flushBlock(header, [], e, rule.selector, parent, rule);
       }
       return flush();
@@ -7847,8 +7860,13 @@ function flattenWithHeader(
 
 /** [partition] Queue the direct leaves preceding a collapsed child as one parent block. */
 function queueLeadingGroup(group: Leaf[], p: Partition): void {
-  if (group.length) {
+  if (group.length || hasPendingLeafBlockComments(group)) {
     const batch = group.splice(0, group.length);
+    const trailing = takePendingLeafBlockComments(group);
+    if (trailing.length > 0) {
+      pendingLeafBlockComments.set(batch, [...trailing]);
+    }
+    p.lastLeadingGroup = batch;
     p.trailing.push(() => p.emitBlock(batch));
   }
 }
@@ -7863,13 +7881,106 @@ function flushPending(p: Partition): void {
 }
 
 /** [partition] Buffer every ordinary leaf after an emitted collapsed child. */
-function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, _forceLeading: boolean): void {
+function addLeaf(
+  group: Leaf[],
+  partition: Partition | null,
+  leaf: Leaf,
+  _forceLeading: boolean,
+  e: Emit,
+  bodyTrivia?: BodyTriviaReplay
+): void {
+  queueBodyTriviaBefore(bodyTrivia, leaf.node, group, e);
   const next = attachPendingLeafBlockComments(group, leaf);
   if (partition && partition.encounteredContainer) {
     partition.pending.push(next);
   } else {
     group.push(next);
   }
+}
+
+/** Sparse body-comment cursor used only while replaying a callable body. */
+interface BodyTriviaReplay {
+  readonly runs: readonly Trivia[];
+  readonly end: number;
+  index: number;
+}
+
+function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined {
+  const body = bodySpanForTriviaReplay(owner, e);
+  const runs = e.trivia?.commentRuns();
+  if (body === undefined || runs === undefined || runs.length === 0) {
+    return undefined;
+  }
+  let low = 0;
+  let high = runs.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (runs[middle]!.start < body.start) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  const run = runs[low];
+  return run !== undefined && run.start < body.end ? { runs, end: body.end, index: low } : undefined;
+}
+
+function queueBodyTriviaBefore(
+  replay: BodyTriviaReplay | undefined,
+  before: Statement,
+  group: Leaf[],
+  e: Emit
+): void {
+  const end = statementStartOf(before);
+  if (replay === undefined || end === undefined) {
+    return;
+  }
+  const comments: string[] = [];
+  while (replay.index < replay.runs.length) {
+    const run = replay.runs[replay.index]!;
+    if (run.start >= end || run.start >= replay.end) {
+      break;
+    }
+    replay.index++;
+    if (run.end <= replay.end && !e.emittedBlockTrivia.has(run)) {
+      const texts = blockCommentsIn(run);
+      if (texts.length > 0) {
+        e.emittedBlockTrivia.add(run);
+        comments.push(...texts);
+      }
+    }
+  }
+  queueLeafBlockComments(group, comments);
+}
+
+function queueBodyTriviaTail(
+  replay: BodyTriviaReplay | undefined,
+  group: Leaf[],
+  partition: Partition | null,
+  e: Emit
+): void {
+  if (replay === undefined) {
+    return;
+  }
+  const comments: string[] = [];
+  while (replay.index < replay.runs.length) {
+    const run = replay.runs[replay.index]!;
+    if (run.start >= replay.end) {
+      break;
+    }
+    replay.index++;
+    if (run.end <= replay.end && !e.emittedBlockTrivia.has(run)) {
+      const texts = blockCommentsIn(run);
+      if (texts.length > 0) {
+        e.emittedBlockTrivia.add(run);
+        comments.push(...texts);
+      }
+    }
+  }
+  const target = partition?.encounteredContainer === true && partition.lastLeadingGroup !== undefined
+    ? partition.lastLeadingGroup
+    : group;
+  queueLeafBlockComments(target, comments);
 }
 
 /**
@@ -7890,6 +8001,9 @@ interface Partition {
 
   /** Emit a run of leaves as ONE block reusing this ruleset's header + merge key. */
   emitBlock: (leaves: Leaf[]) => MaybePromise<void>;
+
+  /** The direct run that immediately precedes the next collapsed child. */
+  lastLeadingGroup?: Leaf[];
 }
 
 /**
@@ -7911,10 +8025,14 @@ function walkBody(
   forceLeading = false,
   propertyScope: Frame = frame, // Less `$property` visibility owner
   applyExpansion = false,
-  expandBubbledSelectorList = false
+  expandBubbledSelectorList = false,
+  bodyTrivia?: BodyTriviaReplay
 ): MaybePromise<void> {
   for (let index = 0; index < statements.length; index++) {
     const node = statements[index]!;
+    if (node.type !== 'Declaration' && node.type !== 'Comment') {
+      queueBodyTriviaBefore(bodyTrivia, node, group, e);
+    }
     switch (node.type) {
       case 'Declaration': {
         /*
@@ -7934,7 +8052,7 @@ function walkBody(
             frame,
             ...(imp ? { important: true } : {}),
             ...(applyExpansion ? { fromApply: true } : {})
-          }, forceLeading);
+          }, forceLeading, e, bodyTrivia);
         };
 
         /*
@@ -7961,7 +8079,7 @@ function walkBody(
           node,
           frame,
           ...(imp ? { important: true } : {})
-        }, forceLeading);
+        }, forceLeading, e, bodyTrivia);
         break;
       case 'Ruleset': {
         /*
@@ -8123,7 +8241,7 @@ function walkBody(
          * leading block, matching the legacy flatten order.
          */
         if (staysNested(node.name)) {
-          addLeaf(group, partition, { node, frame }, forceLeading);
+          addLeaf(group, partition, { node, frame }, forceLeading, e, bodyTrivia);
           break;
         }
         const atNode = node;
@@ -8157,7 +8275,7 @@ function walkBody(
       }
       case 'AtRuleStatement': {
         if (staysNested(node.name)) {
-          addLeaf(group, partition, { node, frame }, forceLeading);
+          addLeaf(group, partition, { node, frame }, forceLeading, e, bodyTrivia);
           break;
         }
         const atNode = node;
@@ -8228,7 +8346,7 @@ function walkBody(
             ));
           }
         } else if (partition !== null && composed !== null) {
-          addLeaf(group, partition, { node, frame }, forceLeading);
+          addLeaf(group, partition, { node, frame }, forceLeading, e, bodyTrivia);
         } else {
           const flushed = flush();
           if (isThenable(flushed)) {
@@ -8352,7 +8470,7 @@ function walkBody(
        * decl group first so it emits at its authored position, then the line.
        */
       case 'FunctionCall': {
-        addLeaf(group, partition, { node, frame }, forceLeading);
+        addLeaf(group, partition, { node, frame }, forceLeading, e, bodyTrivia);
         break;
       }
       case 'MixinDefinition':
@@ -8537,9 +8655,30 @@ function expandCall(
          * share it and merge.
          */
         const bodyComposed = composed === null ? null : composed.slice();
+        const bodyTrivia = bodyTriviaReplay(def, e);
         const executeBody = () => mapMaybe(
           prepareBodyPlugins(def.rules, callFrame, e),
-          () => walkBody(def.rules, bodyComposed, ancestor, callFrame, group, flush, partition, e, bodyImp, bodyForceLeading, propertyScope, applyExpansion)
+          () => mapMaybe(
+            walkBody(
+              def.rules,
+              bodyComposed,
+              ancestor,
+              callFrame,
+              group,
+              flush,
+              partition,
+              e,
+              bodyImp,
+              bodyForceLeading,
+              propertyScope,
+              applyExpansion,
+              false,
+              bodyTrivia
+            ),
+            () => {
+              queueBodyTriviaTail(bodyTrivia, group, partition, e);
+            }
+          )
         );
         const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
         return mapMaybe(emitted, () => {
@@ -9772,6 +9911,7 @@ function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: Select
     }
   }
   const emit = (kept: Leaf[], merged = false): void => {
+    const trailingBlockComments = takePendingLeafBlockComments(group);
     // [atrule] indent by the current block depth (0 at top level == prior behavior).
     const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
     const authoredHeader = parentKey === null && selector.length === selNode?.selectors.length
@@ -9802,7 +9942,7 @@ function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: Select
       }
       put(e, ' {\n');
     }
-    if (owner !== undefined && kept.length === 0) {
+    if (owner !== undefined && kept.length === 0 && trailingBlockComments.length === 0) {
       emitBodyBlockCommentTrivia(owner, e, e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT);
     }
     if (merged) {
@@ -9825,6 +9965,11 @@ function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: Select
       if (body !== undefined) {
         emitBlockCommentTriviaBetween(e, bodyTriviaCursor, body.end, INDENT.repeat(e.depth + 1));
       }
+    }
+    for (const comment of trailingBlockComments) {
+      put(e, INDENT.repeat(e.depth + 1));
+      put(e, comment);
+      put(e, '\n');
     }
     if (idt) {
       put(e, idt);

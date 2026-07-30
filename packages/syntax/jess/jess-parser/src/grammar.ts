@@ -113,6 +113,10 @@ type JessRules = {
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoSelector: Combinator<SimpleToken>;
   PseudoSelectorArgument: Combinator<SelectorList>;
+  GenericPseudoText: Combinator<string>;
+  GenericPseudoEscape: Combinator<string>;
+  GenericPseudoItem: Combinator<string>;
+  GenericPseudoGroup: Combinator<string>;
   GenericPseudoArgument: Combinator<string>;
   Compound: Combinator<SelectorTerm>;
   PseudoSelectorCompound: Combinator<SelectorTerm>;
@@ -2811,28 +2815,48 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * the whole stylesheet parseable. This is its own structural `<any-value>`
    * production, not a speculative selector parse: only the explicitly routed
    * selector pseudo names accept `PseudoSelectorArgument`. A top-level `$` ends
-   * this bounded capture, so the required `)` then fails and a Jess interpolation
-   * cannot become a generic pseudo-argument byte sequence.
+   * this structured argument, so the required `)` then fails and a Jess
+   * interpolation cannot become a generic pseudo-argument byte sequence.
    */
-  const genericPseudoContent = scanTo(
+  const GenericPseudoText = node<string>(
+    'GenericPseudoText',
+    regex(/[^$()[\]{}'"\\]+/),
+    children => requireToken(children[0]).value
+  );
+  const GenericPseudoEscape = node<string>(
+    'GenericPseudoEscape',
+    regex(/\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])/),
+    children => requireToken(children[0]).value
+  );
+  const GenericPseudoItem = node<string>(
+    'GenericPseudoItem',
     choice(
-      literal('$'),
-      literal(')')
+      g.GenericPseudoText,
+      g.GenericPseudoEscape,
+      g.LiteralQuoted,
+      g.GenericPseudoGroup
     ),
-    {
-      skip: [
-        balanced('(', ')'),
-        balanced('[', ']')
-      ]
+    (children) => {
+      const child = children[0];
+      return isQuoted(child) ? child.src : requireString(child);
     }
+  );
+  const GenericPseudoGroup = node<string>(
+    'GenericPseudoGroup',
+    choice(
+      sequence(literal('('), many(g.GenericPseudoItem), literal(')')),
+      sequence(literal('['), many(g.GenericPseudoItem), literal(']')),
+      sequence(literal('{'), many(g.GenericPseudoItem), literal('}'))
+    ),
+    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
   const GenericPseudoArgument = node<string>(
     'GenericPseudoArgument',
     sequence(
-      genericPseudoContent,
+      many(g.GenericPseudoItem),
       literal(')')
     ),
-    children => requireToken(children[0]).value
+    children => children.filter((child): child is string => typeof child === 'string').join('')
   );
   const SelectorCapture = node<SelectorCapture>(
     'SelectorCapture',
@@ -5662,6 +5686,10 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     AttributeSelector,
     PseudoSelector,
     PseudoSelectorArgument,
+    GenericPseudoText,
+    GenericPseudoEscape,
+    GenericPseudoItem,
+    GenericPseudoGroup,
     GenericPseudoArgument,
     Compound,
     PseudoSelectorCompound,

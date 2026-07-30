@@ -15,16 +15,16 @@ them; sampling profiles rank investigations, not release claims.
 
 ## Current profile: PostCSS preprocessor workload
 
-Initial profile date: 2026-07-29. Latest reprofile: 2026-07-30, Jess commit
-`bda41a0bb`; Node `v24.11.1`,
+Initial profile date: 2026-07-29. The latest cross-engine reprofile is
+2026-07-30 on Jess commit `bbbc97f78`; Node `v24.11.1`,
 Darwin arm64; built `jess`, `@jesscss/core`, and
 `@jesscss/less-parser` `2.0.0-alpha.5`; resolved
 `parseman@0.43.0`. The upstream checkout was
 `postcss/benchmark@ddc1a86710a65de302e0675ef3a5a1cc7db270bd`.
 
-The workload must not be called "Bootstrap Less". Its 288,434-byte Less input
-contains 279,683 bytes of compiled Bootstrap CSS and 8,751 appended bytes of
-Less variables, mixins, calls, and nesting: **96.97% of the input is the
+The workload must not be called "Bootstrap Less". Its 288,937-byte Less input
+contains 279,683 bytes of compiled Bootstrap CSS and 9,254 appended bytes of
+Less variables, mixins, calls, and nesting: **96.80% of the input is the
 compiled-CSS base**. It does perform full parse + eval + emit, but primarily
 measures a Less frontend compiling CSS.
 
@@ -166,8 +166,8 @@ with SHA-256 `3ea6c1bdae41511923deece75676d453ff470cb447f531aae935b44eae6f5083`.
   `bda41a0bb`: legacy labeled logs stream contiguous comment ranges directly,
   and comment-only emission uses an exact binary search over those sparse runs.
   The larger root-capture cost remains until Parseman 0.44.0 is published. Its
-  release branch `release/0.44.0-root-trivia` (currently `0d5ddfd`) adds
-  `run(..., { rootTrivia: { selectedKinds } })`: labeled `blockComment` and
+  release branch `release/0.44.0-root-trivia` (currently `e5f5341`) adds
+  `run(..., { rootTrivia: { select } })`: labeled `blockComment` and
   `lineComment` markers retain their complete owning gap without storing every
   whitespace entry. The release fix also carries selected markers through
   semantic `leaf()` wrappers and uses the requested label table rather than a
@@ -178,7 +178,8 @@ with SHA-256 `3ea6c1bdae41511923deece75676d453ff470cb447f531aae935b44eae6f5083`.
   A disposable local Jess build against that branch passes the Less
   custom-property comment round trip, `check:macro` (zero interpreter
   fallbacks), `verify:compose-integrity`, the AST-v2 production ratchet, and
-  the all-Less corpus. On the exact 288,434-byte source it reduces Parseman's
+  the all-Less corpus apart from the four known baseline failures also present
+  without the branch. On the exact 288,434-byte source it reduces Parseman's
   root payload from 67,989 numbers / 22,663 entries / 22,631 gaps to 100 numbers
   / 20 selected entries / 16 gaps. This is an allocation and retained-memory
   correction, not a claimed end-to-end speedup: one local 61-sample eval+emit
@@ -186,6 +187,27 @@ with SHA-256 `3ea6c1bdae41511923deece75676d453ff470cb447f531aae935b44eae6f5083`.
   parser timing remains order-sensitive. Do not put an unavailable dependency
   range on Jess; adopt it through the Less parser only once `parseman@0.44.0`
   exists in the registry, then re-run all-Less and this exact eval+emit harness.
+
+  Latest confirmation (2026-07-30): an accidental removal of the legacy sparse
+  comment-run path was isolated with a clean-HEAD versus dirty-worktree
+  differential. It made ordinary comment emission call the generic
+  `TriviaMap.lookup()` path, reintroducing Parseman 0.43's full whitespace-gap
+  map: a clean build was 42.11 ms median on the corrected workload, while the
+  change alone was 53.00 ms. Restoring the direct packed-entry route is required
+  until selected-root capture is available.
+
+  The restored Jess-Less-only `--cpu-prof` run (10 warmups, 100 renders, Node
+  `v24.11.1`) produced 4,977 samples. The removed diagnostic/source-frame path
+  remains at zero samples and Parseman root-trivia has only 3 samples (0.06%).
+  The remaining direct source groups are Less macro parsing (51.80%), core
+  evaluation/emission (25.14%), and GC (10.71%). Sparse selected root capture
+  remains an allocation/retention correction, but it is no longer the CPU target
+  for this legacy capture path.
+
+  The matching 8-warmup/51-sample interleaved comparison records Jess Less at
+  45.57 ms median, Less 4.8.1 at 33.63 ms, Jess SCSS at 34.90 ms, and PostCSS
+  at 17.35 ms. It is a CSS-heavy parse + evaluate + emit workload, not a claim
+  of equivalent language coverage or a parser-only comparison.
 
 - **Selector-atom re-derivation:** do not land a partial direct-traversal
   rewrite. A 2026-07-30 prototype replaced

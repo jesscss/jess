@@ -2085,11 +2085,13 @@ const mathTrivia = trivia(lessTriviaGap);
 const functionTrivia = trivia(lessTriviaGap);
 // Mixin signatures and guards are invisible definition syntax. Unlike an
 // ordinary declaration value, a block comment at one of their token boundaries
-// is lexical trivia (the legacy MixinArgs production used the same rule). Keep
-// this wider trivia local: output-bearing value comments remain typed facts.
+// is lexical trivia (the legacy MixinArgs production used the same rule). The
+// signature scope still needs the normal classified trivia: it spans a
+// continuation which may contain a block body, so collapsing comments into a
+// synthetic `whitespace` label here would hide them from selected root capture.
 const mixinSignatureGap = regex(/(?:(?:[ \t\n\r\f]+)|(?:\/\/[^\n\r]*)|(?:\/\*(?:[^*]|\*(?!\/))*\*\/))+/);
 const mixinGuardGap = regex(/(?:(?:[ \t\n\r\f]+)|(?:\/\/[^\n\r]*)|(?:\/\*(?:[^*]|\*(?!\/))*\*\/))+/);
-const mixinSignatureTrivia = trivia(label('whitespace', mixinSignatureGap));
+const mixinSignatureTrivia = whitespace;
 const mixinGuardTrivia = trivia(label('whitespace', mixinGuardGap));
 // Selector grammar components used inside functional pseudos retain their
 // established lexical-comment behavior.
@@ -5961,7 +5963,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const MixinDefinitionContinuation = node<MixinDefinitionFact>(
     'MixinDefinition',
-    sequence(
+    parser({ trivia: mixinSignatureTrivia }, sequence(
+      literal(')'),
       choice(
         sequence(g.MixinGuard, optional(mixinSignatureGap), literal('{')),
         literal('{')
@@ -5970,7 +5973,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.Call),
       literal('}'),
       optional(literal(';'))
-    ),
+    )),
     (children, _fields, _span, rawChildren) => {
       const bodySpan = bodySpanFromRaw(rawChildren);
       return {
@@ -5983,11 +5986,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const MixinCallContinuation = node<MixinCallFact>(
     'MixinCall',
-    sequence(
+    parser({ trivia: mixinSignatureTrivia }, sequence(
+      literal(')'),
       not(whenGuardAhead),
       optional(literal('!important')),
       optional(literal(';'))
-    ),
+    )),
     children => ({
       args: [],
       important: children.some(child => isTerminalText(child, '!important'))
@@ -5995,13 +5999,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const MixinStatementTail = node<MixinStatementFact>(
     'MixinStatement',
-    sequence(
-      g.MixinInterior,
-      parser({ trivia: mixinSignatureTrivia }, sequence(
-        literal(')'),
-        choice(MixinDefinitionContinuation, MixinCallContinuation)
-      ))
-    ),
+    sequence(g.MixinInterior, choice(attempt(MixinDefinitionContinuation), MixinCallContinuation)),
     (children) => {
       const interior = children.find((value): value is MixinInteriorFact =>
         typeof value === 'object' && value !== null && 'items' in value && 'separators' in value

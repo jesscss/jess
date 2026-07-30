@@ -51,6 +51,27 @@ statement-start railroad: remove ordinary declaration/ruleset/mixin
 speculation without introducing new grammar concepts, AST facts, or CST wrapper
 nodes.
 
+**Next agent role: orchestrator, not a broad implementer.** Start from a clean
+worktree at `origin/dev`; keep the main checkout available only for integration.
+Delegate independent, bounded investigations to separate agents and require each
+to report the exact SHA, resolved Parseman path/version, focused test names, and
+whether it changed source. The three current assignments are:
+
+1. profile the corrected PostCSS Less eval+emit workload's macro-parser share;
+   do not reopen sparse trivia unless a new profile attributes material CPU to it;
+2. isolate the remaining `tests-unit/extend/extend.less` `ext4` selector-expansion
+   mismatch with a minimal fixture and a named baseline; do not update expected
+   CSS or label it caused by trivia without proof;
+3. after Parseman 0.44 is published, make a clean Jess dependency integration
+   branch, prove the resolved package is 0.44, then run the Less comment/
+   custom-property surface, macro/compose gates, and all-Less before proposing a
+   range update.
+
+The orchestrator owns merge ordering and the final `dev` gate only. It must not
+combine unreviewed experimental branches, push a red `dev`, or treat a passing
+parser build as proof of emitted CSS. For source changes, rebuild in dependency
+order and keep behavior, macro/compose, and benchmark evidence separate.
+
 Two commits on `dev` are the current guardrails:
 
 - `1517e97c5` requires a rebuilt-artifact before/after parser benchmark before
@@ -114,6 +135,62 @@ showing zero interpreter fallbacks. Before a new grammar commit, rebuild in
 dependency order, run the focused semantic/CST tests, macro/compose gates, and
 the required interleaved A/B. Do not claim speed until both the route and its
 profile evidence are real.
+
+### 2026-07-30 handoff — sparse trivia correctness, not a CPU target
+
+The corrected PostCSS preprocessor workload profile rules out trivia as the
+current CPU target: Parseman root-trivia work accounted for 3 / 4,977 samples
+(0.06%) in the restored legacy-capture run. Do not add maps, full source line
+splits, or formatting streams in response to that profile. The next CPU work is
+macro parsing and core evaluation/emission; see `PERF_IDEAS.md` for the measured
+workload and comparator numbers.
+
+Parseman PR #97 is now `release/0.44.0-root-trivia` commit `45ce7c8`. It fixes
+selected-root trivia scope exclusion (`rootCapture: 'opaque'`), keeps classified
+trivia through compose/IR lowering, rejects nullable or overlapping classified
+categories, and carries the document-root selection metadata rather than an
+inner parser's local labels. Its full coverage, package, and documentation gates
+pass. Jess still resolves registry Parseman 0.43.0; do not change the workspace
+range or claim a 0.44 integration until the owner publishes it.
+
+The current Jess batch is intentionally in progress but buildable. Less mixin
+signature continuations now use the normal classified trivia scope, so a block
+comment in an expanded mixin body remains a document comment rather than being
+collapsed into synthetic whitespace. The renderer replays only comment runs in
+the invoked callable body's retained span: it binary-searches the existing
+source-ordered sparse runs once, advances a monotonic cursor while walking that
+body, and writes comment strings directly. It does not create AST nodes, walk a
+full trivia map, or make a performance claim. The test surface is:
+
+- release build: green;
+- Less public + mixin signature tests: 93 / 93 green;
+- core provenance: 15 / 15 green;
+- Jess CST public grammar: 19 / 19 green;
+- all-Less: 109 / 110 fixtures; the sole red is the pre-existing
+  `tests-unit/extend/extend.less` omitted `ext4` selector expansion, unchanged
+  by this batch.
+
+#### Aggressive Cutting Self-Prosecution — callable-body comment replay
+
+- **Review-flagged diff tokens:** **[loop/traversal]** one binary search plus
+  two monotonic sparse-run scans; **[array spread/materialization]** pending
+  render-only comment strings preserve their authored block boundary;
+  **[materialized array/object]** the cursor and pending string arrays are
+  bounded render ordering state, never AST/copy/materialization state.
+- **New traversal:** one binary search into `TriviaMap.commentRuns()` followed
+  by a monotonic scan of runs inside a mixin body. The parser has already paid
+  to retain sparse comment ranges; direct output needs their authored placement,
+  and no parent/source rediscovery occurs.
+- **New node/materialization:** none. Comment text is sent directly to the
+  existing writer; the small pending string array is render-only ordering state,
+  not an AST or copied body.
+- **Render path:** no output node construction or generic trivia-map lookup.
+  The path emits the existing source substring at the established block boundary.
+- **Helper/API surface:** private renderer helpers only; no exported API added.
+- **Metadata mutations:** none. The existing `emittedBlockTrivia` de-dup set
+  remains the ownership guard for a source comment emitted through expansion.
+- **Evidence:** the focused tests above prove behavior. Profiling specifically
+  says this is not a speed claim; the spare-trivia CPU lane remains shelved.
 
 ### 2026-07-27 update — grammar fold complete; Less alpha guard green on parseman 0.41.0
 
@@ -2118,6 +2195,67 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-07-30 callable-body comment replay and classified Less
+  mixin-signature trivia. This is a correctness batch, not a performance pass.
+- Architecture surface: private Less grammar trivia scope, parser provenance,
+  and AST serializer output ordering. No public AST field, node family, parser
+  host, or package API is added.
+- Separation/duplication: a mixin continuation uses the existing classified
+  document trivia rather than a local catch-all whitespace label. The renderer
+  reuses `TriviaMap.commentRuns()` instead of inventing a source scanner or a
+  second full-gap map.
+- Cumulative node weight: none. Canonical AST bodies remain unchanged and no
+  comments become semantic child nodes.
+- New traversal: one binary search finds the first sparse comment run inside a
+  called body; two monotonic cursors consume only runs before successive body
+  statements and its tail. This is necessary because mixin expansion moves
+  output placement while source comments remain document-owned provenance.
+- New node/materialization: no nodes or body copies. Pending comment strings
+  are render-only boundary state until the existing writer outputs them.
+- Render path: direct writer output from existing comment runs; no general
+  trivia lookup, line split, full-source scan, or AST rewalk is added.
+- Helper/API surface: private serializer helpers only; no public method or type
+  is added.
+- Metadata mutations: none. The existing emitted-comment set continues to
+  de-duplicate a source run across expansion paths.
+- Review-flagged diff tokens: [loop/traversal] one binary search and two
+  bounded monotonic sparse-run scans; [array spread/materialization] pending
+  comment strings carry authored block order only; [materialized array/object]
+  cursor and pending arrays are transient render state, not AST materialization.
+- Evidence: release build passed; Less public + mixin signature tests 93/93,
+  core provenance 15/15, and Jess CST public grammar 19/19 passed. Macro and
+  compose-integrity gates both passed with zero interpreter fallbacks. The
+  all-Less corpus remains 109/110; its only red case is the known unrelated
+  `tests-unit/extend/extend.less` selector expansion mismatch.
+- Behavior evidence: the Less parser tests assert the comment is attached to
+  document trivia and rendered after mixin expansion; provenance verifies a
+  compact Parseman view cannot hide later comment gaps.
+- Build evidence: `pnpm run build:release` completed after rebuilding parser
+  dependencies before core and Jess.
+- Boundary evidence: the Less public parse and Jess CST tests exercise both
+  canonical AST output and public CST grammar paths; macro/compose gates prove
+  the shipped macro parsers did not fall back to the interpreter.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "This callable-body comment replay preserves the established parser-to-provenance-to-writer ownership while mixin expansion changes output placement. It is a semantic correctness repair: no output node, source scanner, generic root-gap map, or benchmark speed claim is introduced.",
+    "dangerTokensJustification": "One binary search and two monotonic cursors consume only pre-existing sparse comment ranges in the invoked body. Pending comment strings are transient render ordering state, not copied AST state; they are written through the existing serializer and never materialize a generic trivia structure.",
+    "behaviorEvidence": "Focused Less public/mixin signature tests passed 93/93 and core provenance passed 15/15; each asserts attachment and emitted comment placement.",
+    "buildEvidence": "pnpm run build:release passed, rebuilding parser-shared and parser artifacts before core and jess.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 45.57, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  }
+]
+```
+- Verdict: accepted as an in-progress correctness batch. The Parseman 0.44
+  selected-root-trivia repair is on its own pushed PR branch; Jess remains on
+  registry Parseman 0.43 until publication and this pass makes no speed claim.
+
 - Latest pass: 2026-07-30 custom-property comment-trivia alignment. Less,
   SCSS, and Jess custom-property parts and nested groups now consume block
   comments as trivia, leaving semantic value text comment-free. The core
@@ -2371,3 +2509,39 @@ involved.
 - Verdict: accepted as a measured cost cut. The PostCSS workload still has
   Jess Less behind Less and PostCSS, so this is one committed batch in the
   active performance goal, not completion.
+
+- Latest pass: 2026-07-30 callable-body comment replay and classified Less
+  mixin-signature trivia. This is a correctness batch, not a performance pass.
+- Architecture surface: private Less grammar trivia scope, parser provenance,
+  and AST serializer output ordering. No public AST field, node family, parser
+  host, or package API is added.
+- Separation/duplication: a mixin continuation uses the existing classified
+  document trivia rather than a local catch-all whitespace label. The renderer
+  reuses `TriviaMap.commentRuns()` instead of inventing a source scanner or a
+  second full-gap map.
+- Cumulative node weight: none. Canonical AST bodies remain unchanged and no
+  comments become semantic child nodes.
+- New traversal: one binary search finds the first sparse comment run inside a
+  called body; two monotonic cursors consume only runs before successive body
+  statements and its tail. This is necessary because mixin expansion moves
+  output placement while source comments remain document-owned provenance.
+- New node/materialization: no nodes or body copies. Pending comment strings
+  are render-only boundary state until the existing writer outputs them.
+- Render path: direct writer output from existing comment runs; no general
+  trivia lookup, line split, full-source scan, or AST rewalk is added.
+- Helper/API surface: private serializer helpers only; no public method or type
+  is added.
+- Metadata mutations: none. The existing emitted-comment set continues to
+  de-duplicate a source run across expansion paths.
+- Review-flagged diff tokens: [loop/traversal] one binary search and two
+  bounded monotonic sparse-run scans; [array spread/materialization] pending
+  comment strings carry authored block order only; [materialized array/object]
+  cursor and pending arrays are transient render state, not AST materialization.
+- Evidence: release build passed; Less public + mixin signature tests 93/93,
+  core provenance 15/15, and Jess CST public grammar 19/19 passed. Macro and
+  compose-integrity gates both passed with zero interpreter fallbacks. The
+  all-Less corpus remains 109/110; its only red case is the known unrelated
+  `tests-unit/extend/extend.less` selector expansion mismatch.
+- Verdict: accepted as an in-progress correctness batch. The Parseman 0.44
+  selected-root-trivia repair is on its own pushed PR branch; Jess remains on
+  registry Parseman 0.43 until publication and this pass makes no speed claim.

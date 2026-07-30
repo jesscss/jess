@@ -792,6 +792,20 @@ describe('public Less parse()', () => {
     );
   });
 
+  it('retains comments in a mixin definition body after its signature closes', () => {
+    const source =
+      '.theme() { color: red; /* keep body trivia */ background: blue; } .card { .theme(); }';
+    const document = parse(source);
+    const trivia = triviaMapOf(document);
+
+    expect(
+      trivia?.commentRuns().map(run => source.slice(run.start, run.end))
+    ).toContain(' /* keep body trivia */ ');
+    expect(
+      serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe('.card {\n  color: red;\n  /* keep body trivia */\n  background: blue;\n}\n');
+  });
+
   it('serializes function-boundary block comments from public trivia, not value nodes', () => {
     const source =
       '.card { shadow: rgb(1, /* note */ 2); mixed: mix(blue, #FFF /* explanation */, 50%); }';

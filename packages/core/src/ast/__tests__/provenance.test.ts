@@ -268,36 +268,38 @@ describe('canonical AST source provenance', () => {
     expect(gapsCalls).toBe(0);
   });
 
-  it('derives legacy labeled comment gaps from packed entries without building Parseman maps', () => {
-    const src = '  /* keep */\n  .a{}';
-    const starts = [0, 2, 12];
-    const ends = [2, 12, 15];
-    const kinds = ['whitespace', 'blockComment', 'whitespace'];
+  it('gets every labeled comment gap from Parseman rather than assuming packed entries are complete', () => {
+    const src = '/* first */\n.a{}\n/* second */\n.b{}';
+    const first = { start: 0, end: 12, hasKind: (kind: string) => kind === 'blockComment' };
+    const second = { start: 17, end: 30, hasKind: (kind: string) => kind === 'blockComment' };
     const trivia = createTriviaMapFromParseman(src, {
       labels: ['whitespace', 'blockComment'],
       entries: {
-        length: starts.length,
-        start(index) {
-          return starts[index]!;
+        /* A root index may expose a compact entry view that omits later
+         * comment-bearing gaps. `gapsWithKind()` is the completeness contract. */
+        length: 1,
+        start() {
+          return first.start;
         },
-        end(index) {
-          return ends[index]!;
-        },
-        kind(index) {
-          return kinds[index];
+        end() {
+          return first.end;
         }
       },
       gapBefore: () => undefined,
       gapAfter: () => undefined,
       gaps() {
-        throw new Error('commentRuns must not build every root gap');
+        throw new Error('commentRuns must select labeled gaps');
       },
-      gapsWithKind() {
-        throw new Error('commentRuns must not materialize legacy root maps');
+      gapsWithKind(kinds) {
+        expect(kinds).toEqual(['comment', 'blockComment', 'lineComment']);
+        return [first, second];
       }
     });
 
-    expect(trivia.commentRuns()).toEqual([{ start: 0, end: 15, src, hasComment: true }]);
+    expect(trivia.commentRuns()).toEqual([
+      { start: 0, end: 12, src, hasComment: true },
+      { start: 17, end: 30, src, hasComment: true }
+    ]);
   });
 
   it('falls back to source detection when a labeled gap is not comment-labeled', () => {

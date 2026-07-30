@@ -108,31 +108,31 @@ const postcssProcessor = postcss([
   postcssMixins
 ]);
 
-let postcssSource = css;
-postcssSource += '$size: 100px;';
-postcssSource += '@define-mixin icon { width: 16px; height: 16px; }';
+let postcssSource = `${css}\n`;
+postcssSource += '$size: 100px;\n';
+postcssSource += '@define-mixin icon { width: 16px; height: 16px; }\n';
 
-let scssSource = css;
-scssSource += '$size: 100px;';
-scssSource += '@mixin icon { width: 16px; height: 16px; }';
+let scssSource = `${css}\n`;
+scssSource += '$size: 100px;\n';
+scssSource += '@mixin icon { width: 16px; height: 16px; }\n';
 
 let lessSource = css.replace(/--[-\w]+:\s*;/g, '');
 const lessBaseBytes = Buffer.byteLength(lessSource);
-lessSource += '@size: 100px;';
-lessSource += '.icon() { width: 16px; height: 16px; }';
+lessSource += '\n@size: 100px;\n';
+lessSource += '.icon() { width: 16px; height: 16px; }\n';
 
 for (let i = 0; i < 100; i++) {
-  postcssSource += 'body { h1 { a { color: black; } } }';
-  postcssSource += 'h2 { width: $size; }';
-  postcssSource += '.search { fill: black; @mixin icon; }';
+  postcssSource += '\nbody { h1 { a { color: black; } } }\n';
+  postcssSource += 'h2 { width: $size; }\n';
+  postcssSource += '.search { fill: black; @mixin icon; }\n';
 
-  scssSource += 'body { h1 { a { color: black; } } }';
-  scssSource += 'h2 { width: $size; }';
-  scssSource += '.search { fill: black; @include icon; }';
+  scssSource += '\nbody { h1 { a { color: black; } } }\n';
+  scssSource += 'h2 { width: $size; }\n';
+  scssSource += '.search { fill: black; @include icon; }\n';
 
-  lessSource += 'body { h1 { a { color: black; } } }';
-  lessSource += 'h2 { width: @size; }';
-  lessSource += '.search { fill: black; .icon() }';
+  lessSource += '\nbody { h1 { a { color: black; } } }\n';
+  lessSource += 'h2 { width: @size; }\n';
+  lessSource += '.search { fill: black; .icon(); }\n';
 }
 
 const jessLess = new Compiler({
