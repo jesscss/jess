@@ -58,9 +58,6 @@ type MixinInteriorFact = {
   readonly trailingSeparator?: ',' | ';';
 };
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
-/** Private grammar reduction: delimiters remain parser facts, while the public
- * MixinDefinition receives only the semantic Param array. */
-type MixinParameterListFact = { readonly params: readonly Param[] };
 type AttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
 type AttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
@@ -1650,11 +1647,6 @@ function isReferenceCall(value: unknown): value is Reference {
 function isParam(value: unknown): value is Param {
   return typeof value === 'object' && value !== null && !('type' in value)
     && ('name' in value || 'pattern' in value || 'rest' in value);
-}
-
-function isMixinParameterListFact(value: unknown): value is MixinParameterListFact {
-  return typeof value === 'object' && value !== null && 'params' in value
-    && Array.isArray(value.params) && value.params.every(isParam);
 }
 
 function isAttributeNameFact(value: unknown): value is AttributeNameFact {
@@ -3609,69 +3601,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         decl(requireToken(children[0]).value, value === undefined ? any('') : value),
         span
       );
-    }
-  );
-  // A parameter default stops before a line-comment signature boundary. The
-  // ordinary value term deliberately treats a whitespace run as the start of a
-  // next value piece; guard that transition here so `@x: 1 // note\n )` leaves
-  // the comment to the signature rather than committing the whitespace first.
-  const mixinParamValueTerm = node<ValueSlot>(
-    'MixinParamValueTerm',
-    noTrivia(sequence(
-      valuePiece,
-      many(valueContinuation)
-    )),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
-  );
-  const MixinParam: Combinator<Param> = choice(
-    node<Param>(
-      'MixinRestParam',
-      sequence(literal('@'), lessVariableName, literal('...')),
-      (children, _fields, span) => ({
-        name: requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1),
-        rest: true
-      })
-    ),
-    node<Param>('MixinAnonymousRestParam', literal('...'), () => ({ rest: true })),
-    node<Param>(
-      'MixinBoundParam',
-      sequence(
-        literal('@'),
-        lessVariableName,
-        optional(sequence(
-          literal(':'),
-          choice(g.ValueBlock, mixinParamValueTerm),
-          optional(whitespace)
-        ))
-      ),
-      (children, _fields, span) => {
-        const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
-        const value = children.at(-1);
-        return isValueSlotValue(value) ? { name, default: value } : { name };
-      }
-    ),
-    node<Param>(
-      'MixinPatternParam',
-      sequence(mixinParamValueTerm, optional(whitespace)),
-      children => ({ pattern: requireValueSlot(children[0]) })
-    )
-  );
-  // The signature owns trivia at every delimiter boundary: mixin name → `(`,
-  // after `(`, between params/separators, after the final param, after `)`, and
-  // before `when`/`{`. The common interior retains delimiter facts until the
-  // definition/call continuation is known; this public entry reduces it to the
-  // deliberately semantic `Param[]` surface.
-  const MixinParameterList = node<MixinParameterListFact>(
-    'MixinParameterList',
-    parser({ trivia: mixinSignatureTrivia }, sequence(g.MixinInterior, literal(')'))),
-    (children) => {
-      const interior = children.find((value): value is MixinInteriorFact =>
-        typeof value === 'object' && value !== null && 'items' in value && 'separators' in value
-      );
-      if (interior === undefined) {
-        throw new TypeError('Less mixin parameter list lost its parenthesized interior.');
-      }
-      return { params: mixinParamsFromInterior(interior) };
     }
   );
   const PositionalMixinCallArgument = node<MixinCallArgument>(
