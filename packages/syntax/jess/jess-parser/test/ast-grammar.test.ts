@@ -2282,7 +2282,7 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
-  it('fuses a parent selector with a glued $[…] template into one selector atom', () => {
+  it('fuses a parent selector with a glued `${...}` template into one selector atom', () => {
     /*
      * A split representation would resolve the bare `&` to `:is(parents)` first
      * and append to that; only the fused atom distributes per parent.
@@ -2317,7 +2317,7 @@ describe('Jess AST grammar facts', () => {
      * `@at-root`), which has no AST v2 carrier, and `nil` is not a Jess keyword,
      * so neither may degrade into an append of nothing.
      */
-    for (const source of ['.a { &-1 { color: blue; } }', '.a { &1 { color: blue; } }', '.a { &() { color: blue; } }', '.a { &(\'\') { color: blue; } }', '.a { &(nil) { color: blue; } }']) {
+    for (const source of ['.a { &-1 { color: blue; } }', '.a { &1 { color: blue; } }', '.a { &() { color: blue; } }', '.a { &(\'\') { color: blue; } }', '.a { &(nil) { color: blue; } }', '.a { &-$[tone] { color: blue; } }']) {
       const cst = parseJessCst(source);
       const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
       expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
@@ -2348,7 +2348,7 @@ describe('Jess AST grammar facts', () => {
     expect(() => parse('.a { .b { $apply &(-1); } }')).toThrow(SyntaxError);
   });
 
-  it('constructs public $[…] selector templates as Interp-backed SimpleSelector atoms', () => {
+  it('constructs public `${...}` selector templates as Interp-backed SimpleSelector atoms', () => {
     const source = '$side: left; .widget-${side}-${[tone]} { tone: dark; color: blue; }';
     const legacy = parseJessCst(source);
     const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
@@ -2382,7 +2382,7 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
-  it('evaluates parsed bare and quoted selector templates in their nesting scope', () => {
+  it('evaluates parsed bare and bracketed `${...}` selector templates in their nesting scope', () => {
     const document = parse('$side: left; .shell { tone: dark; .widget-${side}-${[tone]} { color: blue; } }');
 
     expect(serialize(document).css).toBe(
@@ -2395,7 +2395,7 @@ describe('Jess AST grammar facts', () => {
     );
   });
 
-  it('feeds parsed bare and quoted selector templates through the extend planner', () => {
+  it('feeds parsed bare and bracketed `${...}` selector templates through the extend planner', () => {
     const parsed = parse('$side: bare; .scope { tone: quoted; .target { color: blue; } .bare-${side} {} .quoted-${[tone]} {} }');
     const scope = parsed.rules[1];
     if (scope?.type !== 'Ruleset') {
@@ -2430,7 +2430,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('constructs structural Jess key and expression interpolation in values and quoted strings', () => {
-    const source = '$tone: blue; $gap: 2px; $key: $[tone]; $quoted-key: $["theme"]; $math: $(1 + 2 * $gap); $compare: $(1  +  2 = 3); $quoted-compare: $("a-${tone}" = foo); .card { content: "tone-${tone}-$(1 + 2)"; color: rgb($[tone], $(1 + 2), blue); }';
+    const source = '$tone: blue; $gap: 2px; $key: $[tone]; $quoted-key: $["theme"]; $single-quoted-key: $[\'theme\']; $math: $(1 + 2 * $gap); $compare: $(1  +  2 = 3); $quoted-compare: $("a-${tone}" = foo); .card { content: "tone-${tone}-$(1 + 2)"; color: rgb($[tone], $(1 + 2), blue); }';
     const legacy = parseJessCst(source);
     const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
 
@@ -2445,6 +2445,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'gap' },
         { type: 'VariableDeclaration', name: 'key', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'tone' }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'PropertyReference', name: 'theme', raw: '$["theme"]' }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'single-quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'PropertyReference', name: 'theme', raw: '$[\'theme\']' }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '+' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-${tone}" = foo' } }, unquote: true }] } },
@@ -2902,6 +2903,9 @@ describe('Jess AST grammar facts', () => {
 
     // Quotes are escaping only — `a b` is not a valid identifier.
     expect(parts('.w-${["a b"]} { a: b; }')).toMatchObject({
+      ref: { type: 'PropertyReference', name: 'a b' }
+    });
+    expect(parts('.w-${[\'a b\']} { a: b; }')).toMatchObject({
       ref: { type: 'PropertyReference', name: 'a b' }
     });
 

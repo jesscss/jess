@@ -760,7 +760,7 @@ function dollarBraceInterpolation(
   children: readonly unknown[],
   span?: { readonly start: number; readonly end: number }
 ): Interpolation {
-  if (requireToken(children[0]).value !== '${[') {
+  if (requireToken(children[1]).value !== '[') {
     const ref = variableReference(
       requireToken(children[1]).value,
       'live'
@@ -773,10 +773,10 @@ function dollarBraceInterpolation(
     }
     return interpolation([{ ref, unquote: true }]);
   }
-  const head = requireToken(children[1]).value;
+  const head = requireToken(children[2]).value;
   if (head === '$') {
     const named = variableReference(
-      requireToken(children[2]).value,
+      requireToken(children[3]).value,
       'live'
     );
     if (span) {
@@ -790,7 +790,7 @@ function dollarBraceInterpolation(
       'live'
     ), unquote: true }]);
   }
-  const name = head === '"' || head === '\'' ? requireToken(children[2]).value : head;
+  const name = head === '"' || head === '\'' ? requireToken(children[3]).value : head;
   return interpolation([{ ref: propertyReference(
     name,
     tokenSource(children)
@@ -1302,67 +1302,75 @@ const typeNamespace = regex(/\$type\./);
  * Bare interpolation (no braces) is impossible because `-` is an identifier byte,
  * so `--$name-color` has no unambiguous name boundary.
  *
- * The `${[` / `]}` openers are ONE literal each so that the bracketed arms carry
- * the same child layout as `dollarInterpolationStructure` and share its reducer —
- * two reducers for one body grammar would drift.
+ * Consume `${` once, then branch on `[` versus a bare name; the bracket body
+ * branches again on `$`, a name, or a quote. Those are disjoint continuation
+ * sets, so this is structural factoring rather than five competing `${...}`
+ * alternatives.
  */
-const dollarBraceStructure = noTrivia(choice(
-  sequence(
-    literal('${['),
-    literal('$'),
-    dollarName,
-    literal(']}')
-  ),
-  sequence(
-    literal('${['),
-    dollarName,
-    literal(']}')
-  ),
-  sequence(
-    literal('${['),
-    literal('\''),
-    regex(/(?:[^'\\]|\\[\s\S])*/),
-    literal('\''),
-    literal(']}')
-  ),
-  sequence(
-    literal('${['),
-    literal('"'),
-    regex(/(?:[^"\\]|\\[\s\S])*/),
-    literal('"'),
-    literal(']}')
-  ),
-  sequence(
-    literal('${'),
-    dollarName,
-    literal('}')
+const dollarBraceStructure = noTrivia(sequence(
+  literal('${'),
+  choice(
+    sequence(
+      literal('['),
+      choice(
+        sequence(
+          literal('$'),
+          dollarName,
+          literal(']}')
+        ),
+        sequence(
+          dollarName,
+          literal(']}')
+        ),
+        sequence(
+          literal('\''),
+          regex(/(?:[^'\\]|\\[\s\S])*/),
+          literal('\''),
+          literal(']}')
+        ),
+        sequence(
+          literal('"'),
+          regex(/(?:[^"\\]|\\[\s\S])*/),
+          literal('"'),
+          literal(']}')
+        )
+      )
+    ),
+    sequence(
+      dollarName,
+      literal('}')
+    )
   )
 ));
-const dollarInterpolationStructure = noTrivia(choice(
-  sequence(
-    literal('$['),
-    literal('$'),
-    dollarName,
-    literal(']')
-  ),
-  sequence(
-    literal('$['),
-    dollarName,
-    literal(']')
-  ),
-  sequence(
-    literal('$['),
-    literal('\''),
-    regex(/(?:[^'\\]|\\[\s\S])*/),
-    literal('\''),
-    literal(']')
-  ),
-  sequence(
-    literal('$['),
-    literal('"'),
-    regex(/(?:[^"\\]|\\[\s\S])*/),
-    literal('"'),
-    literal(']')
+
+/*
+ * Direct `$[...]` lookup is value/expression-only. Unlike `${...}`, it never
+ * appears in a selector/name interpolation position.
+ */
+const dollarInterpolationStructure = noTrivia(sequence(
+  literal('$['),
+  choice(
+    sequence(
+      literal('$'),
+      dollarName,
+      literal(']')
+    ),
+    sequence(
+      dollarName,
+      literal(']')
+    ),
+    sequence(
+      literal('\''),
+      regex(/(?:[^'\\]|\\[\s\S])*/),
+      literal('\''),
+      literal(']')
+    ),
+    sequence(
+      literal('"'),
+      regex(/(?:[^"\\]|\\[\s\S])*/),
+      literal('"'),
+      literal(']')
+    )
   )
 ));
 const customPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
@@ -2476,22 +2484,20 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * `&` glued to a `$[…]` template is ONE parent-suffix selector atom, not a
+   * `&` glued to a `${...}` template is ONE parent-suffix selector atom, not a
    * parent reference followed by a second compound member. Only the fused shape
    * distributes the concatenation per parent; a split one would resolve the bare
    * `&` to `:is(parents)` first and then append to that.
    *
-   * The literal run between `&` and the template is a template FRAGMENT, not a
+   * The literal run between `&` and the template is a template fragment, not a
    * completed identifier, so the fused terminal's identifier rule does not apply
-   * to it: `&-$[tone]` is the authored spelling of `&-primary`. The lookahead is
-   * the same fast reject `InterpolatedSimple` uses, so an ordinary `&`
-   * compound member never pays a failed template scan.
+   * to it: `&-${tone}` is the authored spelling of `&-primary`. The required
+   * `DollarBrace` is the decisive continuation, so this production owns that
+   * decision directly rather than pre-scanning it with `peek(...)`.
    */
-  const interpolatedParentSuffixAhead = peek(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
   const InterpolatedParentSuffix = node<SimpleSelector>(
     'InterpolatedParentSuffix',
     noTrivia(sequence(
-      interpolatedParentSuffixAhead,
       literal('&'),
       many(selectorTextRun),
       g.DollarBrace,
@@ -2500,7 +2506,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
         selectorTextRun
       ))
     )),
-    children => interpolatedSimpleSelector(templateInterpolationFromChildren(children.filter(child => !isToken(child) || !child.value.includes('$'))))
+    children => interpolatedSimpleSelector(templateInterpolationFromChildren(children))
   );
   const attributeDoubleQuoted = noTrivia(sequence(
     literal('"'),
