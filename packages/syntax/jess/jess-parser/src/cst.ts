@@ -3,7 +3,7 @@ import { grammarFor, jessDiagnosticCstGrammar } from './grammar.js';
 
 /* The Jess grammar labels its document trivia arms `whitespace` and `comment`;
  * only the comment arm needs a root entry. */
-export const commentTriviaLabels = ['comment'];
+export const commentTriviaLabels = ['comment'] as const;
 
 export function parseJessCst(
   input: string,
@@ -14,7 +14,8 @@ export function parseJessCst(
     grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
     input,
     startRule,
-    { ...options, commentTriviaLabels }
+    options,
+    commentTriviaLabels
   );
 }
 
@@ -27,7 +28,8 @@ export function parseJessDiagnosticCst(
     jessDiagnosticCstGrammar as Record<string, unknown>,
     input,
     startRule,
-    { ...options, commentTriviaLabels }
+    options,
+    commentTriviaLabels
   );
 }
 

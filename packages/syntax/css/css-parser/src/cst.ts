@@ -32,7 +32,7 @@ export type CssCstChild = CssCstNode | CssCstLeaf | CssCstError;
 
 /* The CSS grammar labels its document trivia arms `whitespace` and
  * `blockComment`; only the comment arm needs a root entry. */
-export const commentTriviaLabels = ['blockComment'];
+export const commentTriviaLabels = ['blockComment'] as const;
 
 export type CssCstParseResult = {
   readonly ok: boolean;
@@ -49,11 +49,6 @@ export type CssCstParseResult = {
 export type CssCstParseOptions = {
   readonly collapse?: boolean;
   readonly trackLines?: boolean;
-
-  /* Root trivia labels to retain, when the dialect's grammar labels its
-   * comment arms differently from CSS. Parseman rejects a label the grammar
-   * never declares, so a composing dialect must name its own. */
-  readonly commentTriviaLabels?: readonly string[];
 };
 
 type BuildHostArgs = Parameters<BuildHost>;
@@ -382,11 +377,18 @@ function cssCstBuildHostFor(options: CssCstParseOptions): BuildHost {
   );
 }
 
+/*
+ * `select` names the grammar's own comment trivia arms. Parseman validates it
+ * against the entry grammar's label table and throws on a name that grammar
+ * never declares, so it belongs to the composing dialect, not to a caller's
+ * options.
+ */
 export function parseCst(
   grammar: Record<string, unknown>,
   input: string,
   startRule = 'Stylesheet',
-  options: CssCstParseOptions = {}
+  options: CssCstParseOptions = {},
+  select: readonly string[] = commentTriviaLabels
 ): CssCstParseResult {
   const result = run(
     rule(
@@ -400,7 +402,7 @@ export function parseCst(
         grammar,
         'rw'
       ),
-      rootTrivia: { select: options.commentTriviaLabels ?? commentTriviaLabels }
+      rootTrivia: { select }
     }
   );
   const tree = isCssCstChild(result.value) && result.value._tag === 'node'

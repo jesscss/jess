@@ -293,9 +293,18 @@ function semanticGapText(text: string): string {
   return out;
 }
 
+/*
+ * A per-node trivia entry is `[start, end, insertIndex]`, plus a trailing
+ * kind index once the scope's arms are labeled. Every CSS trivia scope is
+ * `classifiedTrivia()`, so the stride is four and the raw-child insertion
+ * boundary sits at offset two. Reading it at the unlabeled stride would treat
+ * source offsets as child indices and silently drop prelude gaps.
+ */
+const CSS_NODE_TRIVIA_STRIDE = 4;
+
 function semanticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
   const gapBefore = new Set<number>();
-  for (let index = 2; index < triviaLog.length; index += 3) {
+  for (let index = 2; index < triviaLog.length; index += CSS_NODE_TRIVIA_STRIDE) {
     gapBefore.add(triviaLog[index] ?? 0);
   }
 
@@ -730,17 +739,11 @@ const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 /*
  * Document trivia arms carry their category so root capture can retain just the
  * comment gaps the renderer replays, the way the other three dialects do.
- *
- * Parseman trivia labels belong to terminal identity, so the arm needs its own
- * terminal: labeling the shared `blockComment` would also class every comment
- * the ambient `scanSkip` steps over inside an opaque custom value, and the
- * renderer would replay those bytes a second time outside the value.
  */
 const whitespaceRun = regex(/[ \t\n\r\f]+/);
-const triviaBlockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const whitespace = classifiedTrivia({
   whitespace: whitespaceRun,
-  blockComment: triviaBlockComment
+  blockComment
 });
 
 /*
@@ -756,10 +759,10 @@ const cssValueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
  */
 const interstitialTrivia = classifiedTrivia({
   whitespace: whitespaceRun,
-  blockComment: triviaBlockComment
+  blockComment
 });
-const compoundTrivia = classifiedTrivia({ blockComment: triviaBlockComment });
-const commentTrivia = classifiedTrivia({ blockComment: triviaBlockComment });
+const compoundTrivia = classifiedTrivia({ blockComment });
+const commentTrivia = classifiedTrivia({ blockComment });
 const calcWhitespace = regex(/[ \t\n\r\f]+/);
 const calcProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
 const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);

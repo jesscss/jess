@@ -2456,6 +2456,14 @@ involved.
 - Helper/API surface: two private helpers only—`labeledCommentRangesFromEntries`
   and `commentTriviaAfter`; parser compatibility is structural and adds no public
   Jess API.
+- SUPERSEDED by the parseman 0.44 migration. `labeledCommentRangesFromEntries`
+  and the `rootCaptureMode` discriminator are gone: 0.44 root capture is always
+  sparse selected-kind rows, whose entry spans name markers inside an owned
+  range and are therefore not renderable gap ranges. The legacy all-entries
+  grouping loop this batch added had no remaining producer, so `commentRuns()`
+  now goes through `gapsWithKind()` alone. The cost this batch was cutting is
+  cut further upstream instead: whitespace no longer produces a root entry at
+  all, because only comment categories are selected.
 - Metadata mutations: unchanged. Existing canonical trivia ranges remain interned
   by source range; no AST/source/parent metadata is added or mutated.
 - Review-flagged diff tokens: [loop/traversal] one packed-entry grouping loop and

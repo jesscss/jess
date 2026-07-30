@@ -3,7 +3,7 @@ import { grammarFor, lessDiagnosticCstGrammar } from './grammar.js';
 
 /* The Less grammar labels its document trivia arms `whitespace`,
  * `lineComment`, and `blockComment`; only the comment arms need a root entry. */
-export const commentTriviaLabels = ['lineComment', 'blockComment'];
+export const commentTriviaLabels = ['lineComment', 'blockComment'] as const;
 
 export function parseLessCst(
   input: string,
@@ -14,7 +14,8 @@ export function parseLessCst(
     grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
     input,
     startRule,
-    { ...options, commentTriviaLabels }
+    options,
+    commentTriviaLabels
   );
 }
 
@@ -23,7 +24,7 @@ export function parseLessDiagnosticCst(
   startRule = 'Stylesheet',
   options?: CssCstParseOptions
 ): CssCstParseResult {
-  return parseCst(lessDiagnosticCstGrammar as Record<string, unknown>, input, startRule, { ...options, commentTriviaLabels });
+  return parseCst(lessDiagnosticCstGrammar as Record<string, unknown>, input, startRule, options, commentTriviaLabels);
 }
 
 /** Incremental (`.edit()`-able) Less document — see `parseDocCst`. */

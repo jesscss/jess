@@ -1513,6 +1513,36 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
+  /*
+   * A custom-property value is one opaque token, so a comment the balanced-group
+   * scanner steps over inside it is already part of the value bytes. Without the
+   * value's opaque root-capture scope the renderer replays it a second time at
+   * block level.
+   */
+  it('does not replay a comment inside an opaque custom value at block level', () => {
+    for (const source of [':root{--x: (a /*c*/ b);}', ':root{--x: [a /*c*/ b];}']) {
+      expect(serialize(parseAst(source)).css).not.toContain('\n  /*c*/');
+    }
+    expect(serialize(parseAst(':root{--x: (a /*c*/ b);}')).css)
+      .toBe(':root {\n  --x: (a /*c*/ b);\n}\n');
+  });
+
+  /*
+   * One comment only exercises the first per-node trivia entry, which reads
+   * correctly at any stride. Three separated tokens are what distinguishes the
+   * labeled stride from the unlabeled one: at the wrong stride the later
+   * entries decode source offsets as child indices and their gaps vanish.
+   */
+  it('keeps every prelude gap when several comments separate the tokens', () => {
+    const document = parseAst('@unknown a/* 1 */b/* 2 */c/* 3 */d;');
+
+    expect(document.rules[0]).toMatchObject({
+      type: 'AtRuleStatement',
+      name: '@unknown',
+      prelude: { type: 'Any', src: 'a b c d' }
+    });
+  });
+
   it('keeps @import outside the generic statement family and rejects malformed typed boundaries', () => {
     const result = run(cssGrammar.AtRuleStatement, '@import "theme.css";', { trivia: cssGrammar.whitespace });
 

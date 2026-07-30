@@ -14,7 +14,6 @@ import {
 import { grammarFor } from './grammar.js';
 import { commentTriviaLabels } from './cst.js';
 
-
 export type CssParseOptions = {
   readonly trackLines?: boolean;
 };
