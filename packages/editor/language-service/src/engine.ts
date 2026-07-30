@@ -414,6 +414,7 @@ type AtDirectiveEntry = { name: string; description?: string | { value: string; 
 type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; status?: string; values?: Array<{ name: string; description?: string | { value: string; kind?: string } } & Enrich>; restrictions?: string[] } & Enrich;
 type PseudoEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
 type HoverEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
+type CompletionInfo = Pick<CompletionItem, 'detail' | 'documentation'>;
 type WebCssData = {
   atDirectives?: AtDirectiveEntry[];
   properties?: PropertyEntry[];
@@ -469,7 +470,7 @@ const CSS_PROPERTY_SET = new Set<string>(CSS_PROPERTIES.map(p => p.toLowerCase()
 
 // Build property name -> property data map for hover/completions.
 const PROPERTIES_MAP = new Map<string, PropertyEntry>();
-const PROPERTY_VALUES = new Map<string, string[]>();
+const PROPERTY_VALUE_ENTRIES = new Map<string, NonNullable<PropertyEntry['values']>>();
 
 /*
  * `restrictions` is the value-KIND hint (color/length/timing-function/…) that
@@ -481,7 +482,8 @@ for (const prop of webCssData.properties ?? []) {
     const key = prop.name.toLowerCase();
     PROPERTIES_MAP.set(key, prop);
     if (prop.values) {
-      PROPERTY_VALUES.set(key, prop.values.map(v => v.name).filter(Boolean) as string[]);
+      const values = prop.values.filter(v => Boolean(v.name));
+      PROPERTY_VALUE_ENTRIES.set(key, values);
     }
     if (prop.restrictions) {
       PROPERTY_RESTRICTIONS.set(key, prop.restrictions);
@@ -581,6 +583,44 @@ function cssHover(entry: HoverEntry, kind: 'property' | 'value' | 'at-rule' | 'p
   return `${signature}\n${label}${desc ? `\n\n${desc}` : ''}${hoverExtras(entry)}`;
 }
 
+function cssCompletionInfo(entry: HoverEntry, kind: 'property' | 'value' | 'at-rule' | 'pseudo'): CompletionInfo {
+  const detail =
+    kind === 'property'
+      ? 'CSS property'
+      : kind === 'value'
+        ? 'CSS value'
+        : kind === 'at-rule'
+          ? 'CSS at-rule'
+          : 'CSS selector';
+  return {
+    detail,
+    documentation: {
+      kind: MarkupKind.Markdown,
+      value: cssHover(entry, kind)
+    }
+  };
+}
+
+function markdownCompletionInfo(detail: string, signature: string, body: string): CompletionInfo {
+  return {
+    detail,
+    documentation: {
+      kind: MarkupKind.Markdown,
+      value: `\`\`\`css\n${signature}\n\`\`\`\n**${detail}**\n\n${body}`
+    }
+  };
+}
+
+function languageCompletionInfo(label: string, detail: string, language: string, body: string): CompletionInfo {
+  return {
+    detail,
+    documentation: {
+      kind: MarkupKind.Markdown,
+      value: `\`\`\`${language}\n${label}\n\`\`\`\n**${detail}**\n\n${body}`
+    }
+  };
+}
+
 function languageLabel(lang: JessLang): string {
   return lang === 'scss' ? 'SCSS' : lang === 'less' ? 'Less' : lang === 'jess' ? 'Jess' : 'CSS';
 }
@@ -650,7 +690,7 @@ const UNITS_BY_RESTRICTION: Record<string, string[]> = {
 function buildValueCompletions(propName: string, prefix: string, replaceRange: Range): CompletionItem[] {
   const items: CompletionItem[] = [];
   const seen = new Set<string>();
-  const add = (label: string, kind: CompletionItemKind, documentation?: string) => {
+  const add = (label: string, kind: CompletionItemKind, info?: CompletionInfo) => {
     const lower = label.toLowerCase();
     if (seen.has(lower)) {
       return;
@@ -667,29 +707,40 @@ function buildValueCompletions(propName: string, prefix: string, replaceRange: R
     if (isFn) {
       item.insertTextFormat = InsertTextFormat.Snippet;
     }
-    if (documentation !== undefined) {
-      item.documentation = documentation;
+    if (info?.detail !== undefined) {
+      item.detail = info.detail;
+    }
+    if (info?.documentation !== undefined) {
+      item.documentation = info.documentation;
     }
     items.push(item);
   };
   const key = propName.toLowerCase();
   const restrictions = PROPERTY_RESTRICTIONS.get(key) ?? [];
-  for (const v of PROPERTY_VALUES.get(key) ?? []) {
-    add(v, CompletionItemKind.Value);
+  for (const v of PROPERTY_VALUE_ENTRIES.get(key) ?? []) {
+    add(v.name, CompletionItemKind.Value, cssCompletionInfo(v, 'value'));
   }
   if (restrictions.includes('color')) {
     for (const f of COLOR_FUNCTIONS) {
-      add(f, CompletionItemKind.Function);
+      add(
+        f,
+        CompletionItemKind.Function,
+        markdownCompletionInfo('CSS color function', f, 'Creates a color value for color-capable CSS properties.')
+      );
     }
 
     // Named CSS colors rendered with a swatch (kind Color + hex documentation).
     for (const [name, hex] of Object.entries(colorUtils.colorKeywords)) {
-      add(name, CompletionItemKind.Color, hex);
+      add(name, CompletionItemKind.Color, { documentation: hex });
     }
   }
   if (restrictions.includes('timing-function')) {
     for (const t of TIMING_FUNCTIONS) {
-      add(t, CompletionItemKind.Value);
+      add(
+        t,
+        CompletionItemKind.Value,
+        markdownCompletionInfo('CSS timing function', t, 'Controls the pacing curve for transitions and animations.')
+      );
     }
   }
 
@@ -702,14 +753,18 @@ function buildValueCompletions(propName: string, prefix: string, replaceRange: R
       }
     }
     for (const u of units) {
-      add(`${prefix}${u}`, CompletionItemKind.Unit);
+      add(
+        `${prefix}${u}`,
+        CompletionItemKind.Unit,
+        markdownCompletionInfo('CSS unit', `${prefix}${u}`, `Adds the \`${u}\` unit to the numeric value.`)
+      );
     }
   }
   for (const k of CSS_WIDE_KEYWORDS) {
-    add(k, CompletionItemKind.Keyword);
+    add(k, CompletionItemKind.Keyword, markdownCompletionInfo('CSS-wide keyword', k, 'Applies a global cascade keyword to this property.'));
   }
-  add('var()', CompletionItemKind.Function);
-  add('calc()', CompletionItemKind.Function);
+  add('var()', CompletionItemKind.Function, markdownCompletionInfo('CSS function', 'var()', 'References a custom property, with an optional fallback value.'));
+  add('calc()', CompletionItemKind.Function, markdownCompletionInfo('CSS function', 'calc()', 'Computes a numeric CSS value from an expression.'));
   return items;
 }
 
@@ -1640,8 +1695,15 @@ export function createEngine(): JessLanguageServiceEngine {
       const wantsIdent = suggestions.some(t => t.includes('ident')) || suggestions.length === 0;
 
       const items: CompletionItem[] = [];
-      const push = (label: string, kind: CompletionItemKind, insert?: string) => {
-        items.push({ label, kind, textEdit: TextEdit.replace(replaceRange, insert ?? label) });
+      const push = (label: string, kind: CompletionItemKind, insert?: string, info?: CompletionInfo) => {
+        const item: CompletionItem = { label, kind, textEdit: TextEdit.replace(replaceRange, insert ?? label) };
+        if (info?.detail !== undefined) {
+          item.detail = info.detail;
+        }
+        if (info?.documentation !== undefined) {
+          item.documentation = info.documentation;
+        }
+        items.push(item);
       };
 
       /*
@@ -1679,7 +1741,12 @@ export function createEngine(): JessLanguageServiceEngine {
           if (prefix.length > 1 && !ph.toLowerCase().startsWith(prefix)) {
             continue;
           }
-          push(ph, CompletionItemKind.Class);
+          push(
+            ph,
+            CompletionItemKind.Class,
+            undefined,
+            languageCompletionInfo(ph, 'SCSS placeholder selector', tracked.lang, 'A placeholder selector that can be reused with `@extend`.')
+          );
         }
         if (items.length > 0) {
           return { isIncomplete: false, items };
@@ -1696,7 +1763,12 @@ export function createEngine(): JessLanguageServiceEngine {
             if (prefix && !name.toLowerCase().startsWith(prefix)) {
               continue;
             }
-            push(name, CompletionItemKind.Variable);
+            push(
+              name,
+              CompletionItemKind.Variable,
+              undefined,
+              languageCompletionInfo(name, 'CSS custom property', 'css', 'A custom property available to `var()` in this document or its imports.')
+            );
           }
           if (items.length > 0) {
             return { isIncomplete: false, items };
@@ -1721,7 +1793,12 @@ export function createEngine(): JessLanguageServiceEngine {
             if (prefix && !name.toLowerCase().startsWith(prefix)) {
               continue;
             }
-            push(name, CompletionItemKind.Variable);
+            push(
+              name,
+              CompletionItemKind.Variable,
+              undefined,
+              languageCompletionInfo(name, `${languageLabel(tracked.lang)} variable`, tracked.lang, 'A variable available inside this interpolation.')
+            );
           }
           if (items.length > 0) {
             return { isIncomplete: false, items };
@@ -1748,7 +1825,12 @@ export function createEngine(): JessLanguageServiceEngine {
           if (prefix && !label.toLowerCase().startsWith(prefix)) {
             continue;
           }
-          push(label, CompletionItemKind.Variable);
+          push(
+            label,
+            CompletionItemKind.Variable,
+            undefined,
+            languageCompletionInfo(label, `${languageLabel(tracked.lang)} variable`, tracked.lang, 'A variable declared in this document.')
+          );
         }
         if (items.length > 0) {
           return { isIncomplete: false, items };
@@ -1767,7 +1849,12 @@ export function createEngine(): JessLanguageServiceEngine {
           if (prefix && !name.toLowerCase().startsWith(prefix)) {
             continue;
           }
-          push(name, CompletionItemKind.Function);
+          push(
+            name,
+            CompletionItemKind.Function,
+            undefined,
+            languageCompletionInfo(name, 'SCSS mixin', 'scss', 'A mixin declared in this document.')
+          );
         }
         return { isIncomplete: false, items };
       }
@@ -1783,7 +1870,13 @@ export function createEngine(): JessLanguageServiceEngine {
           if (bare && !name.toLowerCase().startsWith(bare)) {
             continue;
           }
-          push(`.${name}()`, CompletionItemKind.Function);
+          const label = `.${name}()`;
+          push(
+            label,
+            CompletionItemKind.Function,
+            undefined,
+            languageCompletionInfo(label, `${languageLabel(tracked.lang)} mixin`, tracked.lang, 'A mixin declared in this document.')
+          );
         }
         if (items.length > 0) {
           return { isIncomplete: false, items };
@@ -1810,6 +1903,12 @@ export function createEngine(): JessLanguageServiceEngine {
             if (isFn) {
               item.insertTextFormat = InsertTextFormat.Snippet;
             }
+            const detail = isFn ? 'Sass module function' : 'Sass module variable';
+            item.detail = detail;
+            item.documentation = {
+              kind: MarkupKind.Markdown,
+              value: `\`\`\`scss\n${full}\n\`\`\`\n**${detail}**\n\nBuilt-in member from the Sass \`${ns}\` module.`
+            };
             items.push(item);
           }
           if (items.length > 0) {
@@ -1824,7 +1923,13 @@ export function createEngine(): JessLanguageServiceEngine {
           if (prefix && !f.toLowerCase().startsWith(prefix)) {
             continue;
           }
-          push(f, CompletionItemKind.Property);
+          const detail = MEDIA_FEATURES.includes(f) ? 'CSS media feature' : 'CSS media query keyword';
+          push(
+            f,
+            CompletionItemKind.Property,
+            undefined,
+            markdownCompletionInfo(detail, f, 'Allowed inside an `@media` query prelude.')
+          );
         }
         if (items.length > 0) {
           return { isIncomplete: false, items };
@@ -1837,7 +1942,12 @@ export function createEngine(): JessLanguageServiceEngine {
           if (prefix && !k.startsWith(prefix)) {
             continue;
           }
-          push(k, CompletionItemKind.Keyword);
+          push(
+            k,
+            CompletionItemKind.Keyword,
+            undefined,
+            markdownCompletionInfo('CSS keyframe selector', k, 'Marks a keyframe position inside an `@keyframes` block.')
+          );
         }
         if (items.length > 0) {
           return { isIncomplete: false, items };
@@ -1853,15 +1963,23 @@ export function createEngine(): JessLanguageServiceEngine {
         const propBeforeColon = findPropertyNameBeforeColon(text, offset);
         const isValueColon = propBeforeColon !== null && PROPERTIES_MAP.has(propBeforeColon.toLowerCase());
         if (!isValueColon) {
-          const pool = doubleColon ? PSEUDO_ELEMENTS : [...PSEUDO_CLASSES, ...PSEUDO_ELEMENTS];
-          for (const name of pool) {
+          const pool = doubleColon
+            ? [...PSEUDO_ELEMENTS_MAP.values(), ...customPseudoElementMap.values()]
+            : [
+                ...PSEUDO_CLASSES_MAP.values(),
+                ...PSEUDO_ELEMENTS_MAP.values(),
+                ...customPseudoClassMap.values(),
+                ...customPseudoElementMap.values()
+              ];
+          for (const entry of pool) {
+            const name = entry.name;
             const bare = name.replace(/^:+/, '');
             if (prefix && !bare.toLowerCase().startsWith(prefix)) {
               continue;
             }
 
             // Insert the bare name — the `:`/`::` the user typed is before wordStart.
-            push(name, doubleColon ? CompletionItemKind.Function : CompletionItemKind.Value, bare);
+            push(name, doubleColon ? CompletionItemKind.Function : CompletionItemKind.Value, bare, cssCompletionInfo(entry, 'pseudo'));
           }
           if (items.length > 0) {
             return { isIncomplete: false, items };
@@ -1887,7 +2005,8 @@ export function createEngine(): JessLanguageServiceEngine {
           if (inStyleRule && STYLE_RULE_INVALID_AT_RULES.has(bare)) {
             continue;
           }
-          push(name, CompletionItemKind.Keyword);
+          const entry = AT_RULES_MAP.get(name.toLowerCase()) ?? customAtRuleMap.get(name.toLowerCase());
+          push(name, CompletionItemKind.Keyword, undefined, entry === undefined ? undefined : cssCompletionInfo(entry, 'at-rule'));
         }
         return { isIncomplete: false, items };
       }
@@ -1898,7 +2017,12 @@ export function createEngine(): JessLanguageServiceEngine {
         if (propName) {
           const valueItems = buildValueCompletions(propName, prefix, replaceRange);
           if (!prefix || '!important'.startsWith(prefix)) {
-            valueItems.push({ label: '!important', kind: CompletionItemKind.Keyword, textEdit: TextEdit.replace(replaceRange, '!important') });
+            valueItems.push({
+              label: '!important',
+              kind: CompletionItemKind.Keyword,
+              textEdit: TextEdit.replace(replaceRange, '!important'),
+              ...markdownCompletionInfo('CSS declaration priority', '!important', 'Raises this declaration above normal cascade priority.')
+            });
           }
           if (valueItems.length > 0) {
             return { isIncomplete: false, items: valueItems };
@@ -1920,7 +2044,8 @@ export function createEngine(): JessLanguageServiceEngine {
             if (prefix && !name.toLowerCase().startsWith(prefix)) {
               continue;
             }
-            push(name, CompletionItemKind.Property);
+            const entry = PROPERTIES_MAP.get(name.toLowerCase()) ?? customPropertyMap.get(name.toLowerCase());
+            push(name, CompletionItemKind.Property, undefined, entry === undefined ? undefined : cssCompletionInfo(entry, 'property'));
           }
           return { isIncomplete: false, items };
         }

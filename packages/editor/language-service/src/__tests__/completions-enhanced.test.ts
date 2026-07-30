@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CompletionItemKind, InsertTextFormat } from 'vscode-languageserver-types';
+import { type CompletionItem, CompletionItemKind, InsertTextFormat } from 'vscode-languageserver-types';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { createEngine } from '../engine.js';
 
 // `|` marks the caret; it's stripped before parsing and its index is the position.
-function completeAt(lang: string, contentWithCaret: string): string[] {
+function completeItemsAt(lang: string, contentWithCaret: string): CompletionItem[] {
   const ext = lang === 'scss' ? 'scss' : lang === 'less' ? 'less' : lang === 'jess' ? 'jess' : 'css';
   const caret = contentWithCaret.indexOf('|');
   const text = contentWithCaret.replace('|', '');
@@ -12,7 +12,11 @@ function completeAt(lang: string, contentWithCaret: string): string[] {
   const engine = createEngine();
   engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
   const list = engine.getCompletions(doc.uri, doc.positionAt(caret));
-  return list.items.map(i => (typeof i.label === 'string' ? i.label : i.label.label));
+  return list.items;
+}
+
+function completeAt(lang: string, contentWithCaret: string): string[] {
+  return completeItemsAt(lang, contentWithCaret).map(i => (typeof i.label === 'string' ? i.label : i.label.label));
 }
 
 describe('enhanced completions (MS-parity: values / pseudo / mixin / !important)', () => {
@@ -79,6 +83,54 @@ describe('enhanced completions (MS-parity: values / pseudo / mixin / !important)
     expect(red).toBeDefined();
     expect(red!.kind).toBe(CompletionItemKind.Color);
     expect(String(red!.documentation)).toMatch(/^#/); // hex → VS Code renders a swatch
+  });
+
+  it('CSS completions carry TypeScript-style detail and documentation', () => {
+    const property = completeItemsAt('css', '.a { ga| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'gap');
+    expect(property?.detail).toBe('CSS property');
+    expect(JSON.stringify(property?.documentation)).toContain('**CSS property** gap');
+
+    const value = completeItemsAt('css', '.a { display: fl| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'flex');
+    expect(value?.detail).toBe('CSS value');
+    expect(JSON.stringify(value?.documentation)).toContain('**CSS value** flex');
+
+    const pseudo = completeItemsAt('css', '.a:ho|')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === ':hover');
+    expect(pseudo?.detail).toBe('CSS selector');
+    expect(JSON.stringify(pseudo?.documentation)).toContain('**CSS selector** :hover');
+
+    const atRule = completeItemsAt('css', '@med|')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === '@media');
+    expect(atRule?.detail).toBe('CSS at-rule');
+    expect(JSON.stringify(atRule?.documentation)).toContain('**CSS at-rule** @media');
+  });
+
+  it('synthetic CSS and dialect completions carry rich detail messages', () => {
+    const cssWide = completeItemsAt('css', '.a { display: re| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'revert');
+    expect(cssWide?.detail).toBe('CSS-wide keyword');
+
+    const colorFn = completeItemsAt('css', '.a { color: rgb| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'rgb()');
+    expect(colorFn?.detail).toBe('CSS color function');
+
+    const important = completeItemsAt('css', '.a { color: red !im| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === '!important');
+    expect(important?.detail).toBe('CSS declaration priority');
+
+    const mediaFeature = completeItemsAt('css', '@media (min-w|')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'min-width');
+    expect(mediaFeature?.detail).toBe('CSS media feature');
+
+    const sassMember = completeItemsAt('scss', '.a { width: math.di| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'math.div()');
+    expect(sassMember?.detail).toBe('Sass module function');
+
+    const lessMixin = completeItemsAt('less', '.card() { color: red; }\n.a { .| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === '.card()');
+    expect(lessMixin?.detail).toBe('Less mixin');
   });
 
   it('units complete on a numeric prefix (length restriction)', () => {
