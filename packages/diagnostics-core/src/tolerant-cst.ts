@@ -2381,6 +2381,7 @@ function simplePropertySyntaxType(value: string): string | null {
 function atRuleDescriptorValueProblem(
   source: string,
   node: CssCstNode,
+  metadata: CssDiagnosticMetadata,
   atRuleName: string,
   descriptorName: string
 ): AtRuleDescriptorValueProblem | null {
@@ -2413,6 +2414,10 @@ function atRuleDescriptorValueProblem(
         return { descriptorName, value: rawSyntax, span: value.span };
       }
     }
+  }
+  const propertyValue = declarationPropertyValue(source, node);
+  if (propertyValue !== null && metadata.isKnownAtRuleDescriptorValue?.(atRuleName, descriptorName, propertyValue.fact) === false) {
+    return { descriptorName, value: propertyValue.fact.raw, span: propertyValue.span };
   }
   if (
     lowerAtRule === 'font-face'
@@ -3826,6 +3831,10 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
       return metadata?.isKnownAtRuleDescriptor?.(atRuleName, descriptorName)
         ?? defaultCssDiagnosticMetadata.isKnownAtRuleDescriptor(atRuleName, descriptorName);
     },
+    isKnownAtRuleDescriptorValue(atRuleName, descriptorName, value) {
+      return metadata?.isKnownAtRuleDescriptorValue?.(atRuleName, descriptorName, value)
+        ?? defaultCssDiagnosticMetadata.isKnownAtRuleDescriptorValue?.(atRuleName, descriptorName, value);
+    },
     isKnownFunction(name) {
       return metadata?.isKnownFunction?.(name) ?? defaultCssDiagnosticMetadata.isKnownFunction(name);
     },
@@ -4549,7 +4558,7 @@ export function cstLintDiagnostics(
         const absoluteValueStart = start + valueStart;
         const absoluteValueEnd = important ? absoluteStart(important) : end;
         if (language === 'css' && descriptor?.status === true) {
-          const descriptorValueProblem = atRuleDescriptorValueProblem(source, node, descriptor.atRuleName, lowerName);
+          const descriptorValueProblem = atRuleDescriptorValueProblem(source, node, cssData, descriptor.atRuleName, lowerName);
           if (descriptorValueProblem !== null) {
             push(
               LINT_CODES.unknownAtRuleDescriptorValues,

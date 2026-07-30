@@ -931,7 +931,7 @@ describe('lintText', () => {
   it('applies policy to unknown at-rule descriptor value diagnostics', async () => {
     const result = await lintText(
       {
-        source: '@property --gap { syntax: "<length>"; inherits: yes; initial-value: 1px; }',
+        source: '@font-face { font-family: Inter; src: url(inter.woff2); font-style: sideways; }',
         filePath: '/tmp/input.css'
       },
       {

@@ -163,7 +163,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `declaration-property-value-no-unknown` | `lint/unknown-property-value` | near `declaration-property-value-no-unknown` |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | near `at-rule-no-unknown` |
 | `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | near `at-rule-descriptor-no-unknown` |
-| `at-rule-descriptor-value-no-unknown` | `lint/at-rule-descriptor-value-no-unknown` | near `at-rule-descriptor-value-no-unknown` |
+| `at-rule-descriptor-value-no-unknown` | `lint/at-rule-descriptor-value-no-unknown` | near `at-rule-descriptor-value-no-unknown`, VSCode descriptor data subset |
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | `declaration-block-no-duplicate-properties` |
 | `declaration-block-no-shorthand-property-overrides` | `lint/declaration-block-no-shorthand-property-overrides` | near `declaration-block-no-shorthand-property-overrides` |
 | `declaration-block-no-duplicate-custom-properties` | `lint/declaration-block-no-duplicate-custom-properties` | `declaration-block-no-duplicate-custom-properties` |
@@ -253,8 +253,8 @@ source:
 - Diagnostics that can be shared with the language service instead of
   reimplemented as CLI-only checks.
 - CSS metadata checks from VSCode web custom data that know about properties,
-  simple static values, dialect variables, interpolation, custom properties,
-  vendor prefixes, and Jess support boundaries.
+  descriptors, simple static values, dialect variables, interpolation, custom
+  properties, vendor prefixes, and Jess support boundaries.
 - Source diagnostics that run before rendering, so they point at the authored
   stylesheet rather than a PostCSS approximation or emitted CSS.
 

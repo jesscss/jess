@@ -106,6 +106,22 @@ describe('collectTolerantDiagnostics', () => {
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toBe(false);
   });
 
+  it('uses caller-provided CSS metadata for known at-rule descriptor values', () => {
+    const result = collectTolerantDiagnostics({
+      source: '@font-face { font-family: Inter; src: url(font.woff2); font-style: project-style; }',
+      language: 'css',
+      metadata: {
+        isKnownAtRuleDescriptorValue: (atRuleName, descriptorName, value) => atRuleName === 'font-face'
+          && descriptorName === 'font-style'
+          && value.normalized === 'project-style'
+          ? true
+          : undefined
+      }
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownAtRuleDescriptorValues)).toBe(false);
+  });
+
   it('uses caller-provided CSS metadata for known selector pseudos', () => {
     const result = collectTolerantDiagnostics({
       source: '.a:project-state::project-part { color: red; }',
@@ -545,7 +561,10 @@ describe('collectTolerantDiagnostics', () => {
       '@property --bad-syntax-type { syntax: "<lenght>"; inherits: false; initial-value: 0px; }',
       '@property --ok-syntax { syntax: "<length> | auto"; inherits: false; initial-value: 0px; }',
       '@font-face { font-family: Inter; src: url(inter.woff2); font-display: sometimes; }',
-      '@font-face { font-family: Inter; src: url(inter.woff2); font-display: swap; }'
+      '@font-face { font-family: Inter; src: url(inter.woff2); font-style: sideways; }',
+      '@font-face { font-family: Inter; src: url(inter.woff2); font-display: swap; font-style: italic; }',
+      '@counter-style chapter { system: sideways; }',
+      '@counter-style section { system: numeric; }'
     ].join('\n');
     const result = collectTolerantDiagnostics({
       source,
@@ -557,7 +576,9 @@ describe('collectTolerantDiagnostics', () => {
       ['Unknown value "yes" for descriptor "inherits" in @property', source.indexOf('yes'), source.indexOf('yes') + 'yes'.length],
       ['Unknown value "<length>" for descriptor "syntax" in @property', source.indexOf('<length>;'), source.indexOf('<length>;') + '<length>'.length],
       ['Unknown value "<lenght>" for descriptor "syntax" in @property', source.indexOf('"<lenght>"'), source.indexOf('"<lenght>"') + '"<lenght>"'.length],
-      ['Unknown value "sometimes" for descriptor "font-display" in @font-face', source.indexOf('sometimes'), source.indexOf('sometimes') + 'sometimes'.length]
+      ['Unknown value "sometimes" for descriptor "font-display" in @font-face', source.indexOf('sometimes'), source.indexOf('sometimes') + 'sometimes'.length],
+      ['Unknown value "sideways" for descriptor "font-style" in @font-face', source.indexOf('sideways; }'), source.indexOf('sideways; }') + 'sideways'.length],
+      ['Unknown value "sideways" for descriptor "system" in @counter-style', source.indexOf('sideways; }', source.indexOf('@counter-style chapter')), source.indexOf('sideways; }', source.indexOf('@counter-style chapter')) + 'sideways'.length]
     ]);
   });
 
