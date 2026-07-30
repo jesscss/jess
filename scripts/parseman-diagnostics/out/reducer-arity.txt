@@ -1,0 +1,129 @@
+REDUCER CAPTURE-COST SURVEY (AST mode) — parseman 0.43.0
+
+arity→cost: >=1 children · >=2 fields · >=4 raw · >=5 trivia · >=6 state · null = ALL
+
+==========================================================================
+css  (packages/syntax/css/css-parser/src/grammar.ts)
+  node() sites: 141  |  with reducer: 135  |  structural: 6
+  arity histogram: 0→3  1→92  2→8  3→3  4→27  5→2
+  UNCONFIRMABLE (fails open to all five): 0
+  zero-arity () => (first-set guard DELETED): 3
+    packages/syntax/css/css-parser/src/grammar.ts:1409  NestingSelector
+    packages/syntax/css/css-parser/src/grammar.ts:1899  VarFallbackEmpty
+    packages/syntax/css/css-parser/src/grammar.ts:2415  Important
+  reducer passed by BARE NAME (helper signature sets the cost): 2
+    packages/syntax/css/css-parser/src/grammar.ts:686  CalcProduct  named-ref:foldOperation(function-declaration)  arity=1  params=function foldOperation(children: readonly unknown[])
+    packages/syntax/css/css-parser/src/grammar.ts:686  CalcSum  named-ref:foldOperation(function-declaration)  arity=1  params=function foldOperation(children: readonly unknown[])
+  TRAILING unused params buying a facility for nothing: 0
+  RUNTIME: 122 node defs reached | guards silently disabled: 3
+    NestingSelector  arity=0  firstSet=ranges
+    VarFallbackEmpty  arity=0  firstSet=ranges
+    Important  arity=0  firstSet=ranges
+  fields slot: 6 node(s) actually capture fields; 28 have arity >= 2 but no field() in the parser (no cost)
+==========================================================================
+less  (packages/syntax/less/less-parser/src/grammar.ts)
+  node() sites: 260  |  with reducer: 260  |  structural: 0
+  arity histogram: 0→4  1→177  2→7  3→40  4→13  5→4  6→15
+  UNCONFIRMABLE (fails open to all five): 0
+  zero-arity () => (first-set guard DELETED): 4
+    packages/syntax/less/less-parser/src/grammar.ts:2319  InterpolationLastAccessor
+    packages/syntax/less/less-parser/src/grammar.ts:3686  MixinRestParam
+    packages/syntax/less/less-parser/src/grammar.ts:3771  InterpolationLastAccessor
+    packages/syntax/less/less-parser/src/grammar.ts:4009  MixinGuardDefaultOperand
+  reducer passed by BARE NAME (helper signature sets the cost): 13
+    packages/syntax/less/less-parser/src/grammar.ts:1326  Call  named-ref:argumentFunctionFromChildren(function-declaration)  arity=3  params=function argumentFunctionFromChildren(
+  children: readonly unknown[],
+  fields: FieldMap | undefined,
+  span: SourceSpan
+)
+    packages/syntax/less/less-parser/src/grammar.ts:2002  MathProduct  named-ref:foldOperation(function-declaration)  arity=4  params=function foldOperation(children: readonly unknown[], _fields: FieldMap, _span: Span, rawChildren: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:2002  MathSum  named-ref:foldOperation(function-declaration)  arity=4  params=function foldOperation(children: readonly unknown[], _fields: FieldMap, _span: Span, rawChildren: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:2002  TopProduct  named-ref:foldOperation(function-declaration)  arity=4  params=function foldOperation(children: readonly unknown[], _fields: FieldMap, _span: Span, rawChildren: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:2002  TopSum  named-ref:foldOperation(function-declaration)  arity=4  params=function foldOperation(children: readonly unknown[], _fields: FieldMap, _span: Span, rawChildren: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:756  GeneralEnclosedQuoted  named-ref:generalEnclosedInterpolationFromChildren(function-declaration)  arity=1  params=function generalEnclosedInterpolationFromChildren(children: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:756  GeneralEnclosedGroup  named-ref:generalEnclosedInterpolationFromChildren(function-declaration)  arity=1  params=function generalEnclosedInterpolationFromChildren(children: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:756  GeneralEnclosedContent  named-ref:generalEnclosedInterpolationFromChildren(function-declaration)  arity=1  params=function generalEnclosedInterpolationFromChildren(children: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:2002  QueryFeatureValue  named-ref:foldOperation(function-declaration)  arity=4  params=function foldOperation(children: readonly unknown[], _fields: FieldMap, _span: Span, rawChildren: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:1107  PseudoArgumentComplexTail  named-ref:combinatorTailReducer(function-declaration)  arity=1  params=function combinatorTailReducer(children: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:1107  ComplexTail  named-ref:combinatorTailReducer(function-declaration)  arity=1  params=function combinatorTailReducer(children: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:1107  InlineExtendSubjectComplexTail  named-ref:combinatorTailReducer(function-declaration)  arity=1  params=function combinatorTailReducer(children: readonly unknown[])
+    packages/syntax/less/less-parser/src/grammar.ts:1107  ExtendTargetComplexTail  named-ref:combinatorTailReducer(function-declaration)  arity=1  params=function combinatorTailReducer(children: readonly unknown[])
+  TRAILING unused params buying a facility for nothing: 0
+  RUNTIME: 232 node defs reached | guards silently disabled: 3
+    InterpolationLastAccessor  arity=0  firstSet=ranges
+    MixinRestParam  arity=0  firstSet=ranges
+    MixinGuardDefaultOperand  arity=0  firstSet=ranges
+  fields slot: 14 node(s) actually capture fields; 56 have arity >= 2 but no field() in the parser (no cost)
+==========================================================================
+scss  (packages/syntax/scss/scss-parser/src/grammar.ts)
+  node() sites: 158  |  with reducer: 158  |  structural: 0
+  arity histogram: 0→1  1→155  3→2
+  UNCONFIRMABLE (fails open to all five): 0
+  zero-arity () => (first-set guard DELETED): 1
+    packages/syntax/scss/scss-parser/src/grammar.ts:4589  NestingSelector
+  reducer passed by BARE NAME (helper signature sets the cost): 13
+    packages/syntax/scss/scss-parser/src/grammar.ts:243  Quoted  named-ref:staticQuoted(function-declaration)  arity=1  params=function staticQuoted(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:243  Quoted  named-ref:staticQuoted(function-declaration)  arity=1  params=function staticQuoted(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:574  MathProduct  named-ref:foldOperation(function-declaration)  arity=1  params=function foldOperation(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:574  MathSum  named-ref:foldOperation(function-declaration)  arity=1  params=function foldOperation(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:574  MathTopProduct  named-ref:foldOperation(function-declaration)  arity=1  params=function foldOperation(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:574  MathTopSum  named-ref:foldOperation(function-declaration)  arity=1  params=function foldOperation(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:496  GeneralTemplateGroup  named-ref:interpolationFromTemplateChildren(function-declaration)  arity=1  params=function interpolationFromTemplateChildren(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:496  GeneralTemplateQuoted  named-ref:interpolationFromTemplateChildren(function-declaration)  arity=1  params=function interpolationFromTemplateChildren(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:496  GeneralTemplate  named-ref:interpolationFromTemplateChildren(function-declaration)  arity=1  params=function interpolationFromTemplateChildren(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:236  AtRulePreludeGroup  named-ref:joinTokenValue(function-declaration)  arity=1  params=function joinTokenValue(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:236  AtRulePreludeQuoted  named-ref:joinTokenValue(function-declaration)  arity=1  params=function joinTokenValue(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:231  PseudoArgumentGroup  named-ref:joinSourceText(function-declaration)  arity=1  params=function joinSourceText(children: readonly unknown[])
+    packages/syntax/scss/scss-parser/src/grammar.ts:231  PseudoArgument  named-ref:joinSourceText(function-declaration)  arity=1  params=function joinSourceText(children: readonly unknown[])
+  TRAILING unused params buying a facility for nothing: 0
+  RUNTIME: 145 node defs reached | guards silently disabled: 1
+    NestingSelector  arity=0  firstSet=ranges
+  fields slot: 0 node(s) actually capture fields; 2 have arity >= 2 but no field() in the parser (no cost)
+==========================================================================
+jess  (packages/syntax/jess/jess-parser/src/grammar.ts)
+  node() sites: 172  |  with reducer: 172  |  structural: 0
+  arity histogram: 1→159  2→2  3→11
+  UNCONFIRMABLE (fails open to all five): 0
+  zero-arity () => (first-set guard DELETED): 0
+  reducer passed by BARE NAME (helper signature sets the cost): 26
+    packages/syntax/jess/jess-parser/src/grammar.ts:1132  GuardValue  named-ref:reduceGuardTruth(function-declaration)  arity=1  params=function reduceGuardTruth(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1135  GuardCompare  named-ref:reduceGuardCompare(function-declaration)  arity=1  params=function reduceGuardCompare(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1143  GuardAnd  named-ref:reduceGuardAnd(function-declaration)  arity=1  params=function reduceGuardAnd(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1150  GuardOr  named-ref:reduceGuardOr(function-declaration)  arity=1  params=function reduceGuardOr(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1040  Url  named-ref:urlFromChildren(function-declaration)  arity=1  params=function urlFromChildren(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1203  PseudoSelectorCompound  named-ref:reduceCompound(function-declaration)  arity=1  params=function reduceCompound(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1206  PseudoSelectorTail  named-ref:reduceSelectorTail(function-declaration)  arity=1  params=function reduceSelectorTail(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1209  PseudoSelectorList  named-ref:reduceSelectorList(function-declaration)  arity=1  params=function reduceSelectorList(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1040  Url  named-ref:urlFromChildren(function-declaration)  arity=1  params=function urlFromChildren(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1040  Url  named-ref:urlFromChildren(function-declaration)  arity=1  params=function urlFromChildren(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:541  GeneralTemplateGroup  named-ref:templateInterpolationFromChildren(function-declaration)  arity=1  params=function templateInterpolationFromChildren(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:541  GeneralTemplateQuoted  named-ref:templateInterpolationFromChildren(function-declaration)  arity=1  params=function templateInterpolationFromChildren(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:541  GeneralTemplate  named-ref:templateInterpolationFromChildren(function-declaration)  arity=1  params=function templateInterpolationFromChildren(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:541  GeneralQuotedTemplateGroup  named-ref:templateInterpolationFromChildren(function-declaration)  arity=1  params=function templateInterpolationFromChildren(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:541  GeneralQuotedTemplateQuoted  named-ref:templateInterpolationFromChildren(function-declaration)  arity=1  params=function templateInterpolationFromChildren(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:541  GeneralQuotedTemplate  named-ref:templateInterpolationFromChildren(function-declaration)  arity=1  params=function templateInterpolationFromChildren(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1157  VariableDeclaration  named-ref:reduceVarDeclaration(function-declaration)  arity=1  params=function reduceVarDeclaration(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1157  ValueBlockDeclaration  named-ref:reduceVarDeclaration(function-declaration)  arity=1  params=function reduceVarDeclaration(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1183  BlockLambda  named-ref:reduceLambda(function-declaration)  arity=1  params=function reduceLambda(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1132  IfGuardValue  named-ref:reduceGuardTruth(function-declaration)  arity=1  params=function reduceGuardTruth(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1135  IfGuardCompare  named-ref:reduceGuardCompare(function-declaration)  arity=1  params=function reduceGuardCompare(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1143  IfGuardAnd  named-ref:reduceGuardAnd(function-declaration)  arity=1  params=function reduceGuardAnd(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1150  IfGuardOr  named-ref:reduceGuardOr(function-declaration)  arity=1  params=function reduceGuardOr(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1203  Compound  named-ref:reduceCompound(function-declaration)  arity=1  params=function reduceCompound(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1206  SelectorTail  named-ref:reduceSelectorTail(function-declaration)  arity=1  params=function reduceSelectorTail(children: readonly unknown[])
+    packages/syntax/jess/jess-parser/src/grammar.ts:1209  Selector  named-ref:reduceSelectorList(function-declaration)  arity=1  params=function reduceSelectorList(children: readonly unknown[])
+  TRAILING unused params buying a facility for nothing: 0
+  RUNTIME: 165 node defs reached | guards silently disabled: 0
+  fields slot: 2 node(s) actually capture fields; 10 have arity >= 2 but no field() in the parser (no cost)
+
+==========================================================================
+TOTALS: unconfirmable=0  trailing-droppable=0
+
+==========================================================================
+AST-ONLY CAPTURE COST BY DIALECT (CST mode pays all of these unconditionally)
+
+dialect  nodes  children  raw(>=4)  trivia(>=5)  state(>=6)  fields(real)  guards-deleted
+css        135       132        29            2           0             6               3
+less       260       256        32           19          15            14               3
+scss       158       157         0            0           0             0               1
+jess       172       172         0            0           0             2               0
