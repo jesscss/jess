@@ -1921,19 +1921,27 @@ function bareDimensionOrPercentageFact(source: string, arg: CssCstNode): MathArg
   const argStart = absoluteStart(arg);
   const argEnd = absoluteEnd(arg);
   const trimmed = trimOffsets(source.slice(argStart, argEnd), argStart);
-  let found: CssCstNode | null = null;
-  const visit = (node: CssCstNode) => {
-    if (found === null && (DIMENSION_TYPES.has(node.grammarType) || PERCENTAGE_TYPES.has(node.grammarType))) {
-      found = node;
-      return;
+
+  /*
+   * Returning the hit rather than assigning a captured `let` keeps the result
+   * typed: control-flow analysis does not see assignments made inside a
+   * closure, so the accumulator form narrowed to `never` after the null check.
+   */
+  const findFirst = (node: CssCstNode): CssCstNode | null => {
+    if (DIMENSION_TYPES.has(node.grammarType) || PERCENTAGE_TYPES.has(node.grammarType)) {
+      return node;
     }
     for (const child of cstChildrenOf(node)) {
       if (isCstNode(child)) {
-        visit(child);
+        const hit = findFirst(child);
+        if (hit !== null) {
+          return hit;
+        }
       }
     }
+    return null;
   };
-  visit(arg);
+  const found = findFirst(arg);
   if (found === null) {
     return null;
   }
@@ -3021,13 +3029,22 @@ function guardValuesEqual(left: StaticGuardValue, right: StaticGuardValue): bool
   if (left.kind === 'null') {
     return true;
   }
-  if (left.kind === 'boolean') {
+
+  /*
+   * `left.kind !== right.kind` already returned above, so each `right` conjunct
+   * below is redundant at runtime; it is present because narrowing one
+   * discriminated union does not narrow a second, independent one.
+   */
+  if (left.kind === 'boolean' && right.kind === 'boolean') {
     return left.value === right.value;
   }
-  if (left.kind === 'string') {
+  if (left.kind === 'string' && right.kind === 'string') {
     return left.value === right.value;
   }
-  return left.unit === right.unit ? left.value === right.value : null;
+  if (left.kind === 'number' && right.kind === 'number') {
+    return left.unit === right.unit ? left.value === right.value : null;
+  }
+  return null;
 }
 
 function compareStaticGuardValues(left: StaticGuardValue, operator: string, right: StaticGuardValue): boolean | null {
@@ -5326,8 +5343,9 @@ export function cstLintDiagnostics(
         const seenBranches = new Map<string, SelectorSeen>();
         const canCompareDescendingSpecificity = rulesetContainsCascadeDeclaration(node);
         for (const branch of branches) {
-          const specificity = branch.node === undefined ? null : staticSelectorSpecificity(source, branch.node);
-          if (specificity !== null) {
+          const branchNode = branch.node;
+          const specificity = branchNode === undefined ? null : staticSelectorSpecificity(source, branchNode);
+          if (specificity !== null && branchNode !== undefined) {
             const label = specificityLabel(specificity);
             push(
               LINT_CODES.selectorMaxSpecificity,
@@ -5337,7 +5355,7 @@ export function cstLintDiagnostics(
               [`specificity:${label}`]
             );
             const referenceKey = canCompareDescendingSpecificity
-              ? noDescendingSpecificityReferenceKey(source, branch.node)
+              ? noDescendingSpecificityReferenceKey(source, branchNode)
               : null;
             if (referenceKey !== null) {
               const priorSelectors = nodeContext.descendingSpecificity.get(referenceKey);

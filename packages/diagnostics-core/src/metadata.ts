@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import type { CssDiagnosticMetadata, CssFeatureStatus } from './types.js';
+import type { CssDiagnosticMetadata, CssFeatureStatus, CssPropertyValueFact } from './types.js';
 
 const require = createRequire(import.meta.url);
 const webCssData: unknown = require('@vscode/web-custom-data/data/browsers.css-data.json');

@@ -143,8 +143,19 @@ function lintRuleNameForDiagnostic(code: string): string | undefined {
   return ruleName === code ? undefined : ruleName;
 }
 
+/**
+ * `Array.isArray` is declared as `arg is any[]`, which does not remove a
+ * `readonly` tuple from the union on the false branch. This predicate narrows
+ * both branches; the runtime check is unchanged.
+ */
+function isSettingTuple(
+  setting: LintRuleSetting | LintSeverity | undefined
+): setting is readonly [LintSeverity | null, LintRuleOptions?] {
+  return Array.isArray(setting);
+}
+
 function settingSeverity(setting: LintRuleSetting | LintSeverity | undefined): LintSeverity | null | undefined {
-  return Array.isArray(setting) ? setting[0] : setting;
+  return isSettingTuple(setting) ? setting[0] : setting;
 }
 
 function settingOptions(setting: LintRuleSetting | undefined): LintRuleOptions | undefined {

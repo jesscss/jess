@@ -26,6 +26,7 @@ export type {
   CssFeatureStatus,
   CssMediaFeatureValueFact,
   CssMediaFeatureValueKind,
+  CssPropertyValueFact,
   DiagnosticSeverityName,
   JessLanguage,
   SourceDiagnostic

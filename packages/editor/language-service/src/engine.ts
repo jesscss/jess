@@ -729,7 +729,21 @@ const SASS_MODULES: Record<string, string[]> = {
 const TIMING_FUNCTIONS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end', 'cubic-bezier()', 'steps()'];
 
 // Units to append to a numeric prefix, keyed by the property's restriction kind.
-const UNITS_BY_RESTRICTION: Record<string, string[]> = {
+/**
+ * Indexing by an arbitrary restriction name stays `string[] | undefined` (call
+ * sites use `?? []`), while the six restrictions this table is known to define
+ * are pinned as present so direct property access does not need a null check.
+ */
+type UnitRestrictionTable = Record<string, string[] | undefined> & {
+  length: string[];
+  percentage: string[];
+  time: string[];
+  angle: string[];
+  frequency: string[];
+  resolution: string[];
+};
+
+const UNITS_BY_RESTRICTION: UnitRestrictionTable = {
   length: ['px', 'em', 'rem', 'vh', 'vw', 'vmin', 'vmax', 'pt', 'cm', 'mm', 'in', 'pc', 'ex', 'ch', 'q'],
   percentage: ['%'],
   time: ['s', 'ms'],
