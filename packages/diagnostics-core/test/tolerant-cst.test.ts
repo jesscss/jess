@@ -34,6 +34,18 @@ describe('collectTolerantDiagnostics', () => {
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toBe(false);
   });
 
+  it('uses caller-provided CSS metadata for known property values', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { display: project-layout; }',
+      language: 'css',
+      metadata: {
+        isKnownPropertyValue: (name, value) => name === 'display' && value.normalized === 'project-layout'
+      }
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues)).toBe(false);
+  });
+
   it('uses caller-provided CSS metadata for known at-rule descriptors', () => {
     const result = collectTolerantDiagnostics({
       source: '@font-face { project-src: url(font.woff2); }',
@@ -166,6 +178,36 @@ describe('collectTolerantDiagnostics', () => {
     });
 
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownCustomProperties)).toBe(false);
+  });
+
+  it('reports definite unknown CSS property keyword values from metadata', () => {
+    const source = '.a { display: flxe; position: abolute; visibility: collapse; color: grue; display: var(--kind); }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownPropertyValues = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues
+    );
+
+    expect(unknownPropertyValues.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown value "flxe" for property "display"', source.indexOf('flxe'), source.indexOf('flxe') + 'flxe'.length],
+      ['Unknown value "abolute" for property "position"', source.indexOf('abolute'), source.indexOf('abolute') + 'abolute'.length]
+    ]);
+  });
+
+  it('does not report unknown property values in dialect files before value facts exist', () => {
+    const less = collectTolerantDiagnostics({
+      source: '.a { display: flxe; }',
+      language: 'less'
+    });
+    const scss = collectTolerantDiagnostics({
+      source: '.a { display: flxe; }',
+      language: 'scss'
+    });
+
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues)).toBe(false);
   });
 
   it('reports duplicate custom properties in one declaration block', () => {

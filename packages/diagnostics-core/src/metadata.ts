@@ -35,6 +35,25 @@ const WEB_PROPERTY_SET = new Set(
     .map(property => stringField(property, 'name')?.toLowerCase())
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
 );
+const CSS_WIDE_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
+const PROPERTY_KEYWORD_VALUES = new Map<string, Set<string>>();
+for (const property of arrayField(webCssData, 'properties')) {
+  const name = stringField(property, 'name')?.toLowerCase();
+  if (name === undefined || name.length === 0) {
+    continue;
+  }
+  const restrictions = arrayField(property, 'restrictions');
+  if (restrictions.length !== 1 || restrictions[0] !== 'enum') {
+    continue;
+  }
+  const values = arrayField(property, 'values')
+    .map(value => stringField(value, 'name')?.toLowerCase())
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
+  if (values.length === 0) {
+    continue;
+  }
+  PROPERTY_KEYWORD_VALUES.set(name, new Set(values));
+}
 const AT_RULE_SET = new Set(
   arrayField(webCssData, 'atDirectives')
     .map(rule => stringField(rule, 'name')?.toLowerCase())
@@ -263,6 +282,17 @@ export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
   isKnownProperty(name) {
     const lower = name.toLowerCase();
     return CSS_PROPERTY_SET.has(lower) || WEB_PROPERTY_SET.has(lower);
+  },
+  isKnownPropertyValue(name, value) {
+    if (value.kind !== 'keyword') {
+      return undefined;
+    }
+    const lowerValue = unprefixedIdentifier(value.normalized);
+    if (CSS_WIDE_KEYWORDS.has(lowerValue)) {
+      return true;
+    }
+    const values = PROPERTY_KEYWORD_VALUES.get(name.toLowerCase());
+    return values?.has(lowerValue);
   },
   isKnownAtRule(name) {
     const lower = name.startsWith('@') ? name.toLowerCase() : `@${name.toLowerCase()}`;

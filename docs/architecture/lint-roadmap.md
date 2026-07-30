@@ -6,14 +6,17 @@ diagnostic output, JSON output, named rule config, PostCSS parser oracles,
 Stylelint comparison harnesses, and opt-in line-tracked diagnostic CST
 entrypoints are landed on `origin/dev`.
 
-This is the single tracking doc for Jess linting. It replaces the older
-`docs/design/JESS-LINT-PACKAGE-SPEC.md` design spec and the local
+This is the single tracking doc for Jess stylesheet diagnostics. It replaces
+the older `docs/design/JESS-LINT-PACKAGE-SPEC.md` design spec and the local
 `lint-roadmap.md` draft.
 
 ## Goal
 
-Jess lint should expose the problems Jess already understands, not grow a second
-detector stack. The lint package owns policy and presentation:
+Jess diagnostics should first target parity with VSCode's stylesheet language
+service for CSS/Less/SCSS author feedback, then use Stylelint as the migration
+and naming guide for CLI lint users. Jess lint should expose the problems Jess
+already understands, not grow a second detector stack. The lint package owns
+policy and presentation:
 
 - which diagnostics are enabled;
 - whether each diagnostic is a warning or error;
@@ -25,6 +28,11 @@ Problem detection belongs below lint: parsers, diagnostics-core, compiler facts,
 resolver facts, and the language service. A diagnostic that appears in
 `jess lint` should also be usable by the editor unless it is purely CLI policy,
 such as "no files matched".
+
+Normal parse, eval, and render paths must not pay for diagnostics. Diagnostic
+CST entrypoints may opt into line tracking and metadata checks; ordinary parser
+and compiler entrypoints should remain offset-only and diagnostics-free unless a
+caller explicitly asks for diagnostics.
 
 ## Current packages and commands
 
@@ -54,6 +62,7 @@ a `jess/` prefix.
 | --- | --- | --- |
 | `block-no-empty` | `lint/empty-rules` | Stylelint-equivalent |
 | `property-no-unknown` | `lint/unknown-property` | Stylelint-near |
+| `declaration-property-value-no-unknown` | `lint/unknown-property-value` | Stylelint-near |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | Stylelint-near |
 | `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | Stylelint-near |
 | `at-rule-descriptor-value-no-unknown` | `lint/at-rule-descriptor-value-no-unknown` | Stylelint-near |
@@ -116,6 +125,10 @@ Diagnostics-core routes CSS, Less, SCSS, and Jess through diagnostic CST parser
 entrypoints compiled from the same grammar factories with `hostMode: 'cst'` and
 line tracking enabled. Normal AST/CST parser entrypoints remain offset-only.
 
+The diagnostics package is consumed by `@jesscss/lint` and
+`@jesscss/language-service`; it is not imported by core parse/eval/render
+packages. Keep that dependency boundary intact when adding diagnostics.
+
 The hot diagnostic record is neutral and LSP-free: code, severity, message,
 source offsets, and parser-captured line/column coordinates. The lint CLI turns
 that into compact per-file lines. The language service should adapt the same
@@ -167,6 +180,7 @@ can detect over authored source.
 | Priority | Stylelint rule family | Jess rule name | Notes |
 | --- | --- | --- | --- |
 | P0 | Unknown CSS | existing `property-no-unknown`, `at-rule-no-unknown` | Keep metadata current and dialect-aware. |
+| Landed | Property values | `declaration-property-value-no-unknown` | Flags definite unknown CSS enum keyword values from VSCode web custom data; non-enum value grammars, colors, dynamic values, and dialect values stay unknown until richer value facts exist. |
 | P0 | Duplicates | existing `declaration-block-no-duplicate-properties` | Add ignore-consecutive and expand shorthand/longhand property-table coverage. |
 | P0 | Empty blocks | existing `block-no-empty` | Extend to empty mixin bodies only when configured. Empty mixins can be API placeholders. |
 | Landed | Custom properties | `custom-property-no-missing-var-function`, `no-unknown-custom-properties` | Flags `color: --x` and same-file unknown `var(--x)` references; reference files and import graph facts remain future work. |

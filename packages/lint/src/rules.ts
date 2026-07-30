@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 24;
+export const STABLE_LINT_RULE_SET_VERSION = 25;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -10,6 +10,7 @@ export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestio
 export const LINT_RULE_NAMES = {
   emptyRules: 'block-no-empty',
   unknownProperties: 'property-no-unknown',
+  unknownPropertyValues: 'declaration-property-value-no-unknown',
   unknownAtRules: 'at-rule-no-unknown',
   unknownAtRuleDescriptors: 'at-rule-descriptor-no-unknown',
   unknownAtRuleDescriptorValues: 'at-rule-descriptor-value-no-unknown',
@@ -61,6 +62,7 @@ export interface StableLintRule {
 const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.emptyRules]: LINT_CODES.emptyRules,
   [LINT_RULE_NAMES.unknownProperties]: LINT_CODES.unknownProperties,
+  [LINT_RULE_NAMES.unknownPropertyValues]: LINT_CODES.unknownPropertyValues,
   [LINT_RULE_NAMES.unknownAtRules]: LINT_CODES.unknownAtRules,
   [LINT_RULE_NAMES.unknownAtRuleDescriptors]: LINT_CODES.unknownAtRuleDescriptors,
   [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: LINT_CODES.unknownAtRuleDescriptorValues,
@@ -99,6 +101,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
 const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.emptyRules]: LINT_RULE_NAMES.emptyRules,
   [LINT_CODES.unknownProperties]: LINT_RULE_NAMES.unknownProperties,
+  [LINT_CODES.unknownPropertyValues]: LINT_RULE_NAMES.unknownPropertyValues,
   [LINT_CODES.unknownAtRules]: LINT_RULE_NAMES.unknownAtRules,
   [LINT_CODES.unknownAtRuleDescriptors]: LINT_RULE_NAMES.unknownAtRuleDescriptors,
   [LINT_CODES.unknownAtRuleDescriptorValues]: LINT_RULE_NAMES.unknownAtRuleDescriptorValues,
@@ -137,6 +140,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
 const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.emptyRules]: 'warn',
   [LINT_RULE_NAMES.unknownProperties]: 'warn',
+  [LINT_RULE_NAMES.unknownPropertyValues]: 'warn',
   [LINT_RULE_NAMES.unknownAtRules]: 'warn',
   [LINT_RULE_NAMES.unknownAtRuleDescriptors]: 'warn',
   [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'warn',
@@ -205,6 +209,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
 
 const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateSelectors]: 'off',
+  [LINT_RULE_NAMES.unknownPropertyValues]: 'off',
   [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'off',
   [LINT_RULE_NAMES.unknownCustomProperties]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
@@ -233,6 +238,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'property-no-unknown',
     notes: 'Uses Jess language metadata and suppresses dialect variables, custom properties, vendor-prefixed properties, and interpolated names.'
+  },
+  {
+    code: LINT_CODES.unknownPropertyValues,
+    ruleName: LINT_RULE_NAMES.unknownPropertyValues,
+    title: 'Unknown property values',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'declaration-property-value-no-unknown',
+    notes: 'Flags definite unknown CSS enum keyword values from VSCode web custom data; dynamic values, non-enum value grammars, colors, and dialect values stay unknown until richer value facts exist.'
   },
   {
     code: LINT_CODES.unknownAtRules,

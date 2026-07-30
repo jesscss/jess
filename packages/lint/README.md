@@ -95,6 +95,7 @@ export default {
     reportSyntax: true,
     rules: {
       'property-no-unknown': 'error',
+      'declaration-property-value-no-unknown': 'warn',
       'at-rule-descriptor-value-no-unknown': 'warn',
       'no-unknown-custom-properties': 'warn',
       'length-zero-no-unit': 'warn',
@@ -118,6 +119,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | --- | --- | --- |
 | `block-no-empty` | `lint/empty-rules` | `block-no-empty` |
 | `property-no-unknown` | `lint/unknown-property` | near `property-no-unknown` |
+| `declaration-property-value-no-unknown` | `lint/unknown-property-value` | near `declaration-property-value-no-unknown` |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | near `at-rule-no-unknown` |
 | `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | near `at-rule-descriptor-no-unknown` |
 | `at-rule-descriptor-value-no-unknown` | `lint/at-rule-descriptor-value-no-unknown` | near `at-rule-descriptor-value-no-unknown` |
@@ -175,8 +177,9 @@ source:
   used by Jess tooling.
 - Diagnostics that can be shared with the language service instead of
   reimplemented as CLI-only checks.
-- CSS metadata checks that know about dialect variables, interpolation, custom
-  properties, vendor prefixes, and Jess support boundaries.
+- CSS metadata checks from VSCode web custom data that know about properties,
+  enum keyword values, dialect variables, interpolation, custom properties,
+  vendor prefixes, and Jess support boundaries.
 - Source diagnostics that run before rendering, so they point at the authored
   stylesheet rather than a PostCSS approximation or emitted CSS.
 

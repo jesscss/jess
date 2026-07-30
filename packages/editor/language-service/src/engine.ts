@@ -767,6 +767,7 @@ export function createEngine(): JessLanguageServiceEngine {
      */
     [LINT_CODES.emptyRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownPropertyValues]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownAtRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.duplicateProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.hexColorLength]: DiagnosticSeverity.Error,

@@ -167,11 +167,13 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    web-custom-data at-rule `values`.
 8. ✅ **DONE (function completions insert as `name($1)` snippets).** **Snippet completions** — emit `InsertTextFormat.Snippet` for at-rules and
    function calls (`@media $1 { $0 }`), instead of plain `textEdit`.
-9. ✅ **DONE (6 configurable CST rules: empty-rules, unknown-property,
-    unknown-at-rule, duplicate-property, hex-color-length, zero-units).** **Lint rules** — port the high-value subset first: `emptyRules`,
-   `unknownProperties`, `unknownAtRules`, `duplicateProperties`,
-   `hexColorLength`, `argumentsInColorFunction`. Data + CST walk; wire into the
-   existing configurable-severity map (extend beyond the 2 semantic codes).
+9. ✅ **DONE (configurable shared diagnostics, including VSCode-data-backed
+   property/value warnings).** **Diagnostics / lint rules** — port the high-value
+   stylesheet-service subset first: `emptyRules`, `unknownProperties`,
+   `declaration-property-value-no-unknown`, `unknownAtRules`,
+   `duplicateProperties`, `hexColorLength`, `zeroUnits`, and follow-on CSS
+   validity diagnostics. Detection lives in diagnostics-core; lint and the
+   language service only configure and surface the shared records.
 10. ✅ **DONE.** **Hover enrichment** — pseudo-class/element hover added; property +
     at-rule hover append formal `syntax`, Baseline status, and the MDN reference
     link (from web-custom-data `references`/`baseline`/`syntax`).

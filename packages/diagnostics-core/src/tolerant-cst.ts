@@ -9,6 +9,7 @@ import type {
   CollectDiagnosticsResult,
   CssDiagnosticMetadata,
   CssMediaFeatureValueFact,
+  CssPropertyValueFact,
   DiagnosticSeverityName,
   JessLanguage,
   SourceDiagnostic
@@ -17,6 +18,7 @@ import type {
 export const LINT_CODES = {
   emptyRules: 'lint/empty-rules',
   unknownProperties: 'lint/unknown-property',
+  unknownPropertyValues: 'lint/unknown-property-value',
   unknownAtRules: 'lint/unknown-at-rule',
   unknownAtRuleDescriptors: 'lint/at-rule-descriptor-no-unknown',
   unknownAtRuleDescriptorValues: 'lint/at-rule-descriptor-value-no-unknown',
@@ -857,6 +859,25 @@ function mediaFeatureValueFact(source: string, start: number, end: number, raw: 
     return { raw, normalized, kind: 'keyword' };
   }
   return { raw, normalized, kind: 'unknown' };
+}
+
+function declarationPropertyValue(source: string, node: CssCstNode): { fact: CssPropertyValueFact; span: DiagnosticSpan } | null {
+  const value = declarationValueText(source, node);
+  if (value === null) {
+    return null;
+  }
+  const raw = value.text;
+  const normalized = raw.toLowerCase();
+  if (hasDynamicSyntax(raw) || namedColor(normalized) !== undefined) {
+    return {
+      fact: { raw, normalized, kind: 'unknown' },
+      span: value.span
+    };
+  }
+  return {
+    fact: { raw, normalized, kind: isCssIdentifier(raw) ? 'keyword' : 'unknown' },
+    span: value.span
+  };
 }
 
 function isCssWhitespace(code: number): boolean {
@@ -2778,6 +2799,9 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
     isKnownProperty(name) {
       return metadata?.isKnownProperty?.(name) ?? defaultCssDiagnosticMetadata.isKnownProperty(name);
     },
+    isKnownPropertyValue(name, value) {
+      return metadata?.isKnownPropertyValue?.(name, value) ?? defaultCssDiagnosticMetadata.isKnownPropertyValue(name, value);
+    },
     isKnownAtRule(name) {
       return metadata?.isKnownAtRule?.(name) ?? defaultCssDiagnosticMetadata.isKnownAtRule(name);
     },
@@ -3295,6 +3319,17 @@ export function cstLintDiagnostics(
               'warning',
               `Unknown value "${descriptorValueProblem.value}" for descriptor "${descriptorValueProblem.descriptorName}" in @${descriptor.atRuleName}`,
               descriptorValueProblem.span
+            );
+          }
+        }
+        if (language === 'css' && descriptor?.status === undefined && name.length > 0 && !lowerName.startsWith('--')) {
+          const propertyValue = declarationPropertyValue(source, node);
+          if (propertyValue !== null && cssData.isKnownPropertyValue(lowerName, propertyValue.fact) === false) {
+            push(
+              LINT_CODES.unknownPropertyValues,
+              'warning',
+              `Unknown value "${propertyValue.fact.raw}" for property "${name}"`,
+              propertyValue.span
             );
           }
         }

@@ -23,6 +23,7 @@ describe('stable rule set', () => {
     expect(STABLE_LINT_RULES.map(rule => rule.code)).toEqual([
       LINT_CODES.emptyRules,
       LINT_CODES.unknownProperties,
+      LINT_CODES.unknownPropertyValues,
       LINT_CODES.unknownAtRules,
       LINT_CODES.unknownAtRuleDescriptors,
       LINT_CODES.unknownAtRuleDescriptorValues,
@@ -60,6 +61,7 @@ describe('stable rule set', () => {
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
       LINT_RULE_NAMES.emptyRules,
       LINT_RULE_NAMES.unknownProperties,
+      LINT_RULE_NAMES.unknownPropertyValues,
       LINT_RULE_NAMES.unknownAtRules,
       LINT_RULE_NAMES.unknownAtRuleDescriptors,
       LINT_RULE_NAMES.unknownAtRuleDescriptorValues,
@@ -94,7 +96,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(24);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(25);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -134,6 +136,7 @@ describe('stable rule set', () => {
     ].sort());
     expect(STYLELINT_COMPARISON_LINT_CONFIG.reportSyntax).toBe(false);
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateSelectors]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownPropertyValues]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownAtRuleDescriptorValues]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownCustomProperties]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
@@ -165,6 +168,28 @@ describe('lintText', () => {
 
     expect(result.errors.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.unknownProperties);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.zeroUnits)).toBe(false);
+  });
+
+  it('applies policy to unknown property value diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { display: flxe; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.unknownPropertyValues]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.unknownPropertyValues, 'error']
+    ]);
   });
 
   it('keeps diagnostic-code config as a compatibility alias', async () => {
@@ -396,7 +421,7 @@ describe('lintText', () => {
   it('applies policy to unknown animation diagnostics', async () => {
     const result = await lintText(
       {
-        source: '.a { animation-name: missing; }',
+        source: '.a { animation: missing 1s; }',
         filePath: '/tmp/input.css'
       },
       {

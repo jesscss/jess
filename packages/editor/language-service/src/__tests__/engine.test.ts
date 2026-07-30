@@ -570,6 +570,40 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('unknownPropertyValues (lint/unknown-property-value)', () => {
+      it('fires on a definite unknown CSS property keyword value', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { display: flxe; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/unknown-property-value');
+
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(2); // Warning
+        const slice = doc.getText().slice(doc.offsetAt(diag!.range.start), doc.offsetAt(diag!.range.end));
+        expect(slice).toBe('flxe');
+      });
+
+      it('does not fire on dynamic values, color names, or dialect files before value facts exist', () => {
+        const css = createEngine();
+        const cssDoc = createDocument('css', '.a { display: var(--kind); color: grue; }');
+        css.open(cssDoc.uri, cssDoc.languageId, cssDoc.version, cssDoc.getText());
+        expect(codesOf(css, cssDoc.uri)).not.toContain('lint/unknown-property-value');
+
+        const less = createEngine();
+        const lessDoc = createDocument('less', '.a { display: flxe; }');
+        less.open(lessDoc.uri, lessDoc.languageId, lessDoc.version, lessDoc.getText());
+        expect(codesOf(less, lessDoc.uri)).not.toContain('lint/unknown-property-value');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/unknown-property-value', 'ignore'));
+        const doc = createDocument('css', '.a { display: flxe; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-property-value');
+      });
+    });
+
     describe('unknownAtRules (lint/unknown-at-rule)', () => {
       it('fires on an unknown at-rule', () => {
         const engine = createEngine();

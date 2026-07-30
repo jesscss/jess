@@ -40,8 +40,17 @@ export interface CssMediaFeatureValueFact {
   readonly functionName?: string;
 }
 
+export type CssPropertyValueKind = 'keyword' | 'unknown';
+
+export interface CssPropertyValueFact {
+  readonly raw: string;
+  readonly normalized: string;
+  readonly kind: CssPropertyValueKind;
+}
+
 export interface CssDiagnosticMetadata {
   isKnownProperty(name: string): boolean;
+  isKnownPropertyValue(name: string, value: CssPropertyValueFact): boolean | undefined;
   isKnownAtRule(name: string): boolean;
   isKnownAtRuleDescriptor(atRuleName: string, descriptorName: string): boolean | undefined;
   isKnownFunction(name: string): boolean;
