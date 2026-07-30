@@ -726,10 +726,25 @@ exceeds the harness noise band in the positive direction — whether in one step
 or accumulated across many — stop and re-measure absolutely before adding
 another grammar commit. Report the accumulation, not just the latest step.
 
-**Status: the committed baseline artifact does not exist yet.** Until it does,
-item 4 is satisfied by (a) the `Perf-AB` trailer on every grammar commit, and
-(b) measuring the candidate against the *oldest* cleanup-era commit you can
-still build, not only against your parent, recording both deltas. Durable
+**Status: the gate is IMPLEMENTED and DISABLED; the committed baseline artifact
+still does not exist.** The machinery that consumes it lives in
+`scripts/perf-gate/` and is documented, with an owner enablement checklist, in
+[`docs/perf/PERF-DRIFT-GATE.md`](../../perf/PERF-DRIFT-GATE.md). `PERF_GATE`
+defaults to `off` and every not-a-pass outcome exits zero, so it cannot misfire
+before an owner turns it on.
+
+Two measured findings from that work bear directly on this section. First, the
+largest corpus available today (`less/ast/test-data`, 136 files / 136.7 KB)
+resolves only **±8.3% at 25 rounds** — it cannot enforce a 5% threshold, and
+needs ~70 rounds to reach ±4.9%. Second, the measured ratio moved **3.864x →
+3.564x between two runs of identical code**, so cross-run bias, not within-run
+precision, is the binding constraint. Until the same-commit null calibration
+supplies that number, no threshold below roughly 10% is defensible.
+
+Until the baseline lands, item 4 is satisfied by (a) the `Perf-AB` trailer on
+every grammar commit, and (b) measuring the candidate against the *oldest*
+cleanup-era commit you can still build, not only against your parent, recording
+both deltas. Durable
 timing rows also go in
 [`PARSEMAN-BENCHMARK-LEDGER.md`](./PARSEMAN-BENCHMARK-LEDGER.md), which already
 requires that the parser was rebuilt from the measured commit and that the

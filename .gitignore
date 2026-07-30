@@ -90,3 +90,7 @@ packages/editor/vscode/out/
 
 # benchmark ast-driver diagnostic renders (generated)
 packages/core/.bmark-ast/
+
+# perf drift gate baseline proposals are never committed directly;
+# promoting one is an explicit owner action (docs/perf/PERF-DRIFT-GATE.md)
+*.baseline.json.new

@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function currentBranch() {
   try {
@@ -21,6 +24,27 @@ function currentBranch() {
  * only re-checks that the branch is still an alpha source projection with a
  * valid publish set, avoiding an accidental second build/test/pack dry-run.
  */
+/*
+ * The perf drift gate tiers itself off the changed-file set: docs-only and
+ * non-hot-path pushes take a fast path with no build and no benchmark, so the
+ * cost here stays at one process spawn. It ships DISABLED (`PERF_GATE=off` by
+ * default) and cannot fail a push until an owner enables it — see
+ * `docs/perf/PERF-DRIFT-GATE.md` for the enablement checklist.
+ *
+ * Resolved relative to THIS script, not to cwd, and skipped outright when
+ * absent. A push must never be blocked because the gate itself is missing: an
+ * infrastructure gap is not evidence of a performance regression, and a gate
+ * that fails for reasons unrelated to what it measures is the fastest route to
+ * habitual `--no-verify`.
+ */
+const perfGate = resolve(dirname(fileURLToPath(import.meta.url)), 'perf-gate/index.mjs');
+if (existsSync(perfGate)) {
+  const perf = spawnSync(process.execPath, [perfGate], { stdio: 'inherit' });
+  if (perf.status !== 0) {
+    process.exit(perf.status ?? 1);
+  }
+}
+
 if (currentBranch() !== 'alpha') {
   console.log('pre-push: fast path (no build/test). Run `pnpm verify:pr` for the full gate; PR CI runs it server-side.');
   process.exit(0);
