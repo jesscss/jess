@@ -39,6 +39,7 @@ describe('stable rule set', () => {
       LINT_CODES.unknownMediaFeatureNames,
       LINT_CODES.unknownPseudoClasses,
       LINT_CODES.unknownPseudoElements,
+      LINT_CODES.unknownTypeSelectors,
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
@@ -60,9 +61,10 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownMediaFeatureNames,
       LINT_RULE_NAMES.unknownPseudoClasses,
       LINT_RULE_NAMES.unknownPseudoElements,
+      LINT_RULE_NAMES.unknownTypeSelectors,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(8);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(9);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -84,6 +86,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownMediaFeatureNames,
       LINT_RULE_NAMES.unknownPseudoClasses,
       LINT_RULE_NAMES.unknownPseudoElements,
+      LINT_RULE_NAMES.unknownTypeSelectors,
       LINT_RULE_NAMES.keyframeDeclarationNoImportant,
       LINT_RULE_NAMES.keyframeDuplicateSelectors,
       LINT_RULE_NAMES.unknownAtRules,
@@ -366,6 +369,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownMediaFeatureNames, 'error']
+    ]);
+  });
+
+  it('applies policy to unknown type selector diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: 'projectpanel { color: red; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.unknownTypeSelectors]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.unknownTypeSelectors, 'error']
     ]);
   });
 });

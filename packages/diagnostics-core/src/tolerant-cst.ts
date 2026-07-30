@@ -31,6 +31,7 @@ export const LINT_CODES = {
   unknownMediaFeatureNames: 'lint/media-feature-name-no-unknown',
   unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
+  unknownTypeSelectors: 'lint/selector-type-no-unknown',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -93,7 +94,22 @@ const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'StaticImp
 const FUNCTION_TYPES = new Set(['Call', 'StaticCall', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
+const BASIC_SELECTOR_TYPES = new Set(['BasicSelector']);
 const LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS = new Set(['before', 'after', 'first-line', 'first-letter']);
+const IGNORED_TYPE_SELECTOR_PSEUDO_CLASSES = new Set([
+  'active-view-transition-type',
+  'dir',
+  '-moz-locale-dir',
+  'state',
+  'lang'
+]);
+const IGNORED_TYPE_SELECTOR_PSEUDO_ELEMENTS = new Set([
+  'highlight',
+  'view-transition-group',
+  'view-transition-image-pair',
+  'view-transition-new',
+  'view-transition-old'
+]);
 const DIALECT_PSEUDO_CLASSES: Record<JessLanguage, Set<string>> = {
   css: new Set(),
   less: new Set(),
@@ -162,6 +178,7 @@ type VisitContext = {
   readonly inFontFaceAtRule: boolean;
   readonly inKeyframeBlock: boolean;
   readonly inUrlFunction: boolean;
+  readonly inIgnoredTypeSelectorPseudo: boolean;
   readonly allowResolutionXUnit: boolean;
 };
 
@@ -186,6 +203,7 @@ const ROOT_VISIT_CONTEXT: VisitContext = {
   inFontFaceAtRule: false,
   inKeyframeBlock: false,
   inUrlFunction: false,
+  inIgnoredTypeSelectorPseudo: false,
   allowResolutionXUnit: false
 };
 
@@ -364,6 +382,45 @@ function isVendorPrefixedName(name: string): boolean {
     || name.startsWith('-moz-')
     || name.startsWith('-ms-')
     || name.startsWith('-o-');
+}
+
+function isCustomElementName(name: string): boolean {
+  return name.includes('-') && name.toLowerCase() === name && isIdentStart(name.charCodeAt(0));
+}
+
+function typeSelectorNameSpan(source: string, node: CssCstNode): { name: string; start: number; end: number } | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return null;
+  }
+  const name = source.slice(start, end);
+  if (
+    name === '*'
+    || name.startsWith('.')
+    || name.startsWith('#')
+    || name.startsWith('&')
+    || name.includes('@{')
+    || name.includes('#{')
+    || name.includes('${')
+  ) {
+    return null;
+  }
+  if (end < source.length && source.charCodeAt(end) === 124 /* | */) {
+    return null;
+  }
+  return { name, start, end };
+}
+
+function ignoresTypeSelectorsInPseudo(source: string, start: number, end: number): boolean {
+  const pseudo = pseudoNameSpan(source, start, end);
+  if (pseudo === null) {
+    return false;
+  }
+  const bare = pseudo.bare.toLowerCase();
+  return pseudo.colonCount === 2
+    ? IGNORED_TYPE_SELECTOR_PSEUDO_ELEMENTS.has(bare)
+    : IGNORED_TYPE_SELECTOR_PSEUDO_CLASSES.has(bare);
 }
 
 function mediaFeatureNameSpan(source: string, node: CssCstNode): { name: string; start: number; end: number } | null {
@@ -1136,6 +1193,9 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
     },
     isKnownPseudoElement(name) {
       return metadata?.isKnownPseudoElement?.(name) ?? defaultCssDiagnosticMetadata.isKnownPseudoElement(name);
+    },
+    isKnownTypeSelector(name) {
+      return metadata?.isKnownTypeSelector?.(name) ?? defaultCssDiagnosticMetadata.isKnownTypeSelector(name);
     }
   };
 }
@@ -1258,6 +1318,7 @@ export function cstLintDiagnostics(
       inFontFaceAtRule: context.inFontFaceAtRule || isFontFaceAtRule,
       inKeyframeBlock: context.inKeyframeBlock || KEYFRAME_BLOCK_TYPES.has(gt),
       inUrlFunction: context.inUrlFunction || isUrlFunction,
+      inIgnoredTypeSelectorPseudo: context.inIgnoredTypeSelectorPseudo || (gt === 'PseudoSelector' && ignoresTypeSelectorsInPseudo(source, start, end)),
       allowResolutionXUnit: context.allowResolutionXUnit || isImageSetFunction || declarationName === 'image-resolution'
     };
 
@@ -1356,6 +1417,22 @@ export function cstLintDiagnostics(
             );
           }
         }
+      }
+    }
+
+    if (language === 'css' && !nodeContext.inIgnoredTypeSelectorPseudo && BASIC_SELECTOR_TYPES.has(gt)) {
+      const selector = typeSelectorNameSpan(source, node);
+      if (
+        selector !== null
+        && !isCustomElementName(selector.name)
+        && !cssData.isKnownTypeSelector(selector.name)
+      ) {
+        push(
+          LINT_CODES.unknownTypeSelectors,
+          'warning',
+          `Unknown type selector "${selector.name}"`,
+          spanAtOrContaining(node, selector.start, selector.end)
+        );
       }
     }
 

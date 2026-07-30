@@ -28,6 +28,7 @@ export interface CssDiagnosticMetadata {
   isKnownMediaFeatureName(name: string): boolean;
   isKnownPseudoClass(name: string): boolean;
   isKnownPseudoElement(name: string): boolean;
+  isKnownTypeSelector(name: string): boolean;
 }
 
 export interface CollectDiagnosticsInput {
