@@ -669,6 +669,30 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports missing compatible vendor-prefixed CSS declarations', () => {
+    const source = [
+      '.partial { -webkit-user-select: none; user-select: none; }',
+      '.complete { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }',
+      '.single { -webkit-mask-image: url(mask.svg); mask-image: url(mask.svg); }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const compatibleVendorPrefixes = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.compatibleVendorPrefixes
+    );
+    const webkitStart = source.indexOf('-webkit-user-select');
+
+    expect(compatibleVendorPrefixes.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Always include all vendor-specific properties: Missing: -moz-user-select, -ms-user-select',
+        webkitStart,
+        webkitStart + '-webkit-user-select'.length
+      ]
+    ]);
+  });
+
   it('does not report vendor-prefix diagnostics in dialect files before property facts exist', () => {
     const source = '.a { -webkit-transform: rotate(0); }';
     const scss = collectTolerantDiagnostics({
@@ -697,6 +721,21 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownVendorSpecificProperties)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownVendorSpecificProperties)).toBe(false);
+  });
+
+  it('does not report compatible vendor-prefix diagnostics in dialect files before property facts exist', () => {
+    const source = '.a { -webkit-user-select: none; user-select: none; }';
+    const scss = collectTolerantDiagnostics({
+      source,
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source,
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.compatibleVendorPrefixes)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.compatibleVendorPrefixes)).toBe(false);
   });
 
   it('reports definite CSS box-model size risks', () => {

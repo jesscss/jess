@@ -781,6 +781,35 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('compatibleVendorPrefixes (lint/compatible-vendor-prefixes)', () => {
+      it('stays quiet by default because VSCode marks compatibleVendorPrefixes opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { -webkit-user-select: none; user-select: none; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/compatible-vendor-prefixes');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/compatible-vendor-prefixes', 'warning'));
+        const doc = createDocument('css', '.a { -webkit-user-select: none; user-select: none; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/compatible-vendor-prefixes');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('-webkit-user-select');
+      });
+
+      it('does not fire in dialect files before property facts exist', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/compatible-vendor-prefixes', 'warning'));
+        const doc = createDocument('scss', '.a { -webkit-user-select: none; user-select: none; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/compatible-vendor-prefixes');
+      });
+    });
+
     describe('boxModel (lint/box-model)', () => {
       it('stays quiet by default because VSCode marks boxModel opt-in', () => {
         const engine = createEngine();

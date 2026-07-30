@@ -40,6 +40,7 @@ export const LINT_CODES = {
   boxModel: 'lint/box-model',
   float: 'lint/float',
   vendorPrefix: 'lint/vendor-prefix',
+  compatibleVendorPrefixes: 'lint/compatible-vendor-prefixes',
   unknownVendorSpecificProperties: 'lint/unknown-vendor-specific-property',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
@@ -538,6 +539,11 @@ type VendorPrefixedDeclaration = {
   readonly span: DiagnosticSpan;
 };
 
+type VendorPrefixGroup = {
+  readonly actual: Set<string>;
+  readonly spans: DiagnosticSpan[];
+};
+
 type ExactExtendTargetFact = {
   readonly key: string;
   readonly display: string;
@@ -712,20 +718,30 @@ function unprefixedName(name: string): string {
   return name;
 }
 
+const VENDOR_PREFIXES = ['-webkit-', '-moz-', '-ms-', '-o-'] as const;
+
 function vendorPrefixOfName(name: string): string {
-  if (name.startsWith('-webkit-')) {
-    return '-webkit-';
-  }
-  if (name.startsWith('-moz-')) {
-    return '-moz-';
-  }
-  if (name.startsWith('-ms-')) {
-    return '-ms-';
-  }
-  if (name.startsWith('-o-')) {
-    return '-o-';
+  for (const prefix of VENDOR_PREFIXES) {
+    if (name.startsWith(prefix)) {
+      return prefix;
+    }
   }
   return '';
+}
+
+function missingVendorPrefixedProperties(
+  metadata: CssDiagnosticMetadata,
+  suffix: string,
+  actual: ReadonlySet<string>
+): string[] {
+  const missing: string[] = [];
+  for (const prefix of VENDOR_PREFIXES) {
+    const prefixed = `${prefix}${suffix}`;
+    if (metadata.isKnownProperty(prefixed) && !actual.has(prefixed)) {
+      missing.push(prefixed);
+    }
+  }
+  return missing;
 }
 
 function descriptorStatusForContext(
@@ -4383,6 +4399,7 @@ export function cstLintDiagnostics(
     let verticalAlignDeclarations: CssCstNode[] | undefined;
     let standardProperties: Set<string> | undefined;
     let vendorPrefixedDeclarations: VendorPrefixedDeclaration[] | undefined;
+    let vendorPrefixGroups: Map<string, VendorPrefixGroup> | undefined;
     let boxModelFacts: BoxModelFacts | undefined;
     let previousDeclarationKey: string | undefined;
     for (const child of cstChildrenOf(node)) {
@@ -4408,10 +4425,24 @@ export function cstLintDiagnostics(
               const suffix = unprefixedName(key);
               if (cssData.isKnownProperty(suffix)) {
                 const nameStart = childStart + childSource.indexOf(name);
+                const nameSpan = spanAtOrContaining(child, nameStart, nameStart + name.length);
                 (vendorPrefixedDeclarations ??= []).push({
                   suffix,
-                  span: spanAtOrContaining(child, nameStart, nameStart + name.length)
+                  span: nameSpan
                 });
+                if (cssData.isKnownProperty(key)) {
+                  vendorPrefixGroups ??= new Map();
+                  const group = vendorPrefixGroups.get(suffix);
+                  if (group === undefined) {
+                    vendorPrefixGroups.set(suffix, {
+                      actual: new Set([key]),
+                      spans: [nameSpan]
+                    });
+                  } else {
+                    group.actual.add(key);
+                    group.spans.push(nameSpan);
+                  }
+                }
               }
             }
             const keywordValue = staticDeclarationKeywordValue(source, child);
@@ -4539,6 +4570,20 @@ export function cstLintDiagnostics(
           `Also define the standard property "${declaration.suffix}" for compatibility`,
           declaration.span
         );
+      }
+      for (const [suffix, group] of vendorPrefixGroups ?? []) {
+        const missing = missingVendorPrefixedProperties(cssData, suffix, group.actual);
+        if (missing.length === 0) {
+          continue;
+        }
+        for (const span of group.spans) {
+          push(
+            LINT_CODES.compatibleVendorPrefixes,
+            'warning',
+            `Always include all vendor-specific properties: Missing: ${missing.join(', ')}`,
+            span
+          );
+        }
       }
       if (hasDisplayBlock) {
         for (const declaration of verticalAlignDeclarations ?? []) {
