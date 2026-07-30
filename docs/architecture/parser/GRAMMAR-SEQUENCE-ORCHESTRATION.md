@@ -5021,7 +5021,7 @@ for CSS-owned at-keywords whose structure it only specializes below the keyword:
 leaves from parser-shared. The SCSS grammar still owns the downstream prelude
 and body choices where Sass syntax changes the CSS shape. This is leaf reuse
 only, not the final at-rule dispatch route; the analyzer now reports the
-remaining same-`@` `IfStaticConditionalBlock`, `ConditionalBlock`, and
+remaining same-`@` `IfBodyConditionalBlock`, `ConditionalBlock`, and
 `NestedConditionalBlock` choices as the next routed-family work. Verification:
 `pnpm --filter @jesscss/parser-shared build`; `pnpm --filter
 @jesscss/scss-parser test -- test/conditional-at-rule-value.test.ts

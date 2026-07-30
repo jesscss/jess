@@ -113,8 +113,8 @@ type ScssRules = {
   IfAtom: Combinator<GuardNode>;
   IfComparison: Combinator<GuardNode>;
   IfBody: Combinator<Statement[]>;
-  IfStaticRule: Combinator<Ruleset>;
-  IfStaticConditionalBlock: Combinator<AtRuleBlock>;
+  IfBodyRule: Combinator<Ruleset>;
+  IfBodyConditionalBlock: Combinator<AtRuleBlock>;
   IfRule: Combinator<If>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
@@ -3084,7 +3084,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.VariableDeclaration,
         g.NestedPropertyDeclaration,
         g.Declaration,
-        g.IfStaticConditionalBlock,
+        g.IfBodyConditionalBlock,
         g.DocumentBlock,
         g.PageBlock,
         g.FontFeatureValuesBlock,
@@ -3095,7 +3095,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.IfRule,
         g.AtRootFilter,
         g.AtRootBlock,
-        g.IfStaticRule
+        g.IfBodyRule
       )),
       literal('}')
     ),
@@ -3107,8 +3107,8 @@ export const scssFactory = (g: ScssInputRules) => {
       true
     )
   );
-  const IfStaticRule = node<Ruleset>(
-    'IfStaticRule',
+  const IfBodyRule = node<Ruleset>(
+    'IfBodyRule',
     sequence(
       g.Selector,
       g.IfBody
@@ -3118,8 +3118,8 @@ export const scssFactory = (g: ScssInputRules) => {
       requireStatementList(children[1])
     )
   );
-  const IfStaticConditionalBlock = node<AtRuleBlock>(
-    'IfStaticConditionalBlock',
+  const IfBodyConditionalBlock = node<AtRuleBlock>(
+    'IfBodyConditionalBlock',
     choice(
       sequence(
         g.SupportsAtKeyword,
@@ -5130,8 +5130,8 @@ export const scssFactory = (g: ScssInputRules) => {
     IfAtom,
     IfComparison,
     IfBody,
-    IfStaticRule,
-    IfStaticConditionalBlock,
+    IfBodyRule,
+    IfBodyConditionalBlock,
     IfRule,
     QueryFeature,
     QueryFunction,

@@ -36,7 +36,7 @@ function stats(tree: CstNode) {
 }
 
 function isModeLabel(type: string): boolean {
-  return type.startsWith('Direct') || type.includes('Ast') || type.includes('Cst');
+  return type.startsWith('Direct') || type.startsWith('Static') || type.includes('Ast') || type.includes('Cst');
 }
 
 function expectNoModeLabels(tree: CstNode) {
@@ -74,8 +74,8 @@ describe('@jesscss/scss-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
-  it('uses contextual CST labels for plain quoted and pseudo-selector syntax', () => {
-    const result = parseScssCst('@use "theme"; .a[data-label="open"]:not(:where([data-kind="open"])) { color: red; } .c:nth-child(2n) { color: blue; }');
+  it('uses contextual CST labels for quoted, pseudo-selector, and $if-body syntax', () => {
+    const result = parseScssCst('@use "theme"; .a[data-label="open"]:not(:where([data-kind="open"])) { color: red; } .c:nth-child(2n) { color: blue; } @if true { .when-true { color: green; } @media screen { .nested { color: lime; } } }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
@@ -87,7 +87,9 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(grammarTypes.get('PseudoArgumentSquare')).toBeGreaterThan(0);
     expect(grammarTypes.get('PseudoSelectorArgumentText')).toBeGreaterThan(0);
     expect(grammarTypes.get('PseudoSelectorArgumentTextItem')).toBeGreaterThan(0);
-    expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+    expect(grammarTypes.get('IfBodyRule')).toBeGreaterThan(0);
+    expect(grammarTypes.get('IfBodyConditionalBlock')).toBe(1);
+    expectNoModeLabels(result.tree);
   });
 
   it('preserves direct import CST facts without a split CST-only route', () => {
@@ -111,7 +113,7 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(grammarTypes.get('AtRulePrelude')).toBe(1);
     expect(grammarTypes.get('AtRulePreludeAtom')).toBeGreaterThan(0);
     expect(grammarTypes.get('StatementPrelude')).toBe(1);
-    expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+    expectNoModeLabels(result.tree);
   });
 
   it('collapses transparent CST wrappers without dropping leaves', () => {
