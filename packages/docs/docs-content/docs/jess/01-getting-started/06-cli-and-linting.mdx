@@ -98,6 +98,7 @@ export default {
       'vendor-prefix': 'warn',
       'compatible-vendor-prefixes': 'off',
       'unknown-vendor-specific-properties': 'off',
+      'value-no-vendor-prefix': 'off',
       'selector-class-pattern': ['off', { pattern: '^[a-z][a-z0-9-]*$' }],
       'custom-property-pattern': ['off', { pattern: '^--[a-z][a-z0-9-]*$' }],
       'keyframes-name-pattern': ['off', { pattern: '^[a-z][a-z0-9-]*$' }],
@@ -153,6 +154,7 @@ Jess's stable lint set is deliberately small:
 | `vendor-prefix` | `lint/vendor-prefix` | CSS vendor-prefixed declarations/keyframes without the standard form |
 | `property-no-vendor-prefix` | `lint/property-no-vendor-prefix` | Opt-in authored CSS vendor-prefixed property names |
 | `at-rule-no-vendor-prefix` | `lint/at-rule-no-vendor-prefix` | Opt-in authored CSS vendor-prefixed keyframe at-rules |
+| `value-no-vendor-prefix` | `lint/value-no-vendor-prefix` | Opt-in authored CSS vendor-prefixed value keywords and functions |
 | `custom-property-pattern` | `lint/custom-property-pattern` | Opt-in static custom property naming convention |
 | `keyframes-name-pattern` | `lint/keyframes-name-pattern` | Opt-in static keyframes naming convention |
 | `color-function-notation` | `lint/color-function-notation` | Opt-in modern CSS color function notation |

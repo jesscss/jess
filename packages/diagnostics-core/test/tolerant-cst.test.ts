@@ -295,6 +295,8 @@ describe('collectTolerantDiagnostics', () => {
       '  background-color: #fff;',
       '  background-color: rgb(1 2 3);',
       '  background-color: linear-gradient(red, blue);',
+      '  background: -webkit-linear-gradient(red, blue);',
+      '  display: -webkit-flex;',
       '  font-family: system-ui, sans-serif;',
       '}'
     ].join('\n');
@@ -788,7 +790,7 @@ describe('collectTolerantDiagnostics', () => {
 
   it('reports opt-in vendor-prefix policy facts for authored CSS prefixes', () => {
     const source = [
-      '.a { -webkit-transform: rotate(0); transform: rotate(0); }',
+      '.a { -webkit-transform: rotate(0); transform: rotate(0); display: -webkit-flex; background: -webkit-linear-gradient(red, blue); }',
       '@keyframes spin { from { opacity: 0; } }',
       '@-webkit-keyframes spin { from { opacity: 0; } }'
     ].join('\n');
@@ -802,8 +804,13 @@ describe('collectTolerantDiagnostics', () => {
     const atRuleNoVendorPrefix = result.diagnostics.filter(
       diagnostic => diagnostic.code === LINT_CODES.atRuleNoVendorPrefix
     );
+    const valueNoVendorPrefix = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.valueNoVendorPrefix
+    );
     const propertyStart = source.indexOf('-webkit-transform');
     const atRuleStart = source.indexOf('@-webkit-keyframes');
+    const valueStart = source.indexOf('-webkit-flex');
+    const functionStart = source.indexOf('-webkit-linear-gradient');
 
     expect(propertyNoVendorPrefix.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
       [
@@ -817,6 +824,18 @@ describe('collectTolerantDiagnostics', () => {
         'Unexpected vendor-prefixed at-rule "@-webkit-keyframes"',
         atRuleStart,
         atRuleStart + '@-webkit-keyframes'.length
+      ]
+    ]);
+    expect(valueNoVendorPrefix.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Unexpected vendor-prefixed value "-webkit-flex"',
+        valueStart,
+        valueStart + '-webkit-flex'.length
+      ],
+      [
+        'Unexpected vendor-prefixed value "-webkit-linear-gradient"',
+        functionStart,
+        functionStart + '-webkit-linear-gradient'.length
       ]
     ]);
   });
@@ -876,7 +895,7 @@ describe('collectTolerantDiagnostics', () => {
 
   it('does not report vendor-prefix diagnostics in dialect files before property facts exist', () => {
     const source = [
-      '.a { -webkit-transform: rotate(0); }',
+      '.a { -webkit-transform: rotate(0); display: -webkit-flex; }',
       '@-webkit-keyframes spin { from { opacity: 0; } }'
     ].join('\n');
     const scss = collectTolerantDiagnostics({
@@ -894,6 +913,8 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.propertyNoVendorPrefix)).toBe(false);
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.atRuleNoVendorPrefix)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.atRuleNoVendorPrefix)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.valueNoVendorPrefix)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.valueNoVendorPrefix)).toBe(false);
   });
 
   it('does not report unknown vendor-specific properties in dialect files before property facts exist', () => {

@@ -3,7 +3,7 @@ import { namedColor } from '@jesscss/core';
 import { parseJessDiagnosticCst, parseJessDiagnosticDoc } from '@jesscss/jess-parser/cst';
 import { parseLessDiagnosticCst, parseLessDiagnosticDoc } from '@jesscss/less-parser/cst';
 import { parseScssDiagnosticCst, parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst';
-import { defaultCssDiagnosticMetadata } from './metadata.js';
+import { defaultCssDiagnosticMetadata, VENDOR_PREFIXED_PROPERTY_VALUES } from './metadata.js';
 import type {
   CollectDiagnosticsInput,
   CollectDiagnosticsResult,
@@ -42,6 +42,7 @@ export const LINT_CODES = {
   float: 'lint/float',
   propertyNoVendorPrefix: 'lint/property-no-vendor-prefix',
   atRuleNoVendorPrefix: 'lint/at-rule-no-vendor-prefix',
+  valueNoVendorPrefix: 'lint/value-no-vendor-prefix',
   vendorPrefix: 'lint/vendor-prefix',
   compatibleVendorPrefixes: 'lint/compatible-vendor-prefixes',
   unknownVendorSpecificProperties: 'lint/unknown-vendor-specific-property',
@@ -857,6 +858,27 @@ function isVendorPrefixedName(name: string): boolean {
     || name.startsWith('-moz-')
     || name.startsWith('-ms-')
     || name.startsWith('-o-');
+}
+
+function vendorPrefixedValueNameSpan(source: string, node: CssCstNode): { readonly value: string; readonly start: number; readonly end: number } | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return null;
+  }
+  if (node.grammarType === 'Call' || node.grammarType === 'FunctionCall') {
+    const functionName = functionNameOf(source, start, end);
+    return functionName !== null && VENDOR_PREFIXED_PROPERTY_VALUES.has(functionName)
+      ? { value: source.slice(start, start + functionName.length), start, end: start + functionName.length }
+      : null;
+  }
+  if (node.grammarType === 'Keyword') {
+    const text = source.slice(start, end);
+    return VENDOR_PREFIXED_PROPERTY_VALUES.has(text.toLowerCase())
+      ? { value: text, start, end }
+      : null;
+  }
+  return null;
 }
 
 function isCustomElementName(name: string): boolean {
@@ -4360,6 +4382,18 @@ export function cstLintDiagnostics(
             );
           }
         }
+      }
+    }
+
+    if (language === 'css' && nodeContext.inDeclaration && (gt === 'Keyword' || gt === 'Call' || gt === 'FunctionCall')) {
+      const prefixedValue = vendorPrefixedValueNameSpan(source, node);
+      if (prefixedValue !== null) {
+        push(
+          LINT_CODES.valueNoVendorPrefix,
+          'warning',
+          `Unexpected vendor-prefixed value "${prefixedValue.value}"`,
+          spanFromNodeStart(node, prefixedValue.start, prefixedValue.end)
+        );
       }
     }
 

@@ -108,6 +108,7 @@ export default {
       'vendor-prefix': 'warn',
       'compatible-vendor-prefixes': 'off',
       'unknown-vendor-specific-properties': 'off',
+      'value-no-vendor-prefix': 'off',
       'selector-class-pattern': ['off', { pattern: '^[a-z][a-z0-9-]*$' }],
       'custom-property-pattern': ['off', { pattern: '^--[a-z][a-z0-9-]*$' }],
       'keyframes-name-pattern': ['off', { pattern: '^[a-z][a-z0-9-]*$' }],
@@ -185,6 +186,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `float` | `lint/float` | VSCode `float` parity, opt-in |
 | `property-no-vendor-prefix` | `lint/property-no-vendor-prefix` | near `property-no-vendor-prefix`, opt-in |
 | `at-rule-no-vendor-prefix` | `lint/at-rule-no-vendor-prefix` | near `at-rule-no-vendor-prefix`, opt-in |
+| `value-no-vendor-prefix` | `lint/value-no-vendor-prefix` | near `value-no-vendor-prefix`, opt-in |
 | `vendor-prefix` | `lint/vendor-prefix` | VSCode `vendorPrefix` parity |
 | `compatible-vendor-prefixes` | `lint/compatible-vendor-prefixes` | VSCode `compatibleVendorPrefixes` parity, opt-in |
 | `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | VSCode `unknownVendorSpecificProperties` parity, opt-in |

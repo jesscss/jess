@@ -179,6 +179,90 @@ const CSS_MATH_FUNCTIONS = new Set([
   'sqrt',
   'tan'
 ]);
+export const VENDOR_PREFIXED_PROPERTY_VALUES = new Set([
+  '-moz-all',
+  '-moz-calc',
+  '-moz-crisp-edges',
+  '-moz-element',
+  '-moz-fit-content',
+  '-moz-grab',
+  '-moz-grabbing',
+  '-moz-initial',
+  '-moz-isolate',
+  '-moz-isolate-override',
+  '-moz-linear-gradient',
+  '-moz-max-content',
+  '-moz-min-content',
+  '-moz-pre-wrap',
+  '-moz-plaintext',
+  '-moz-radial-gradient',
+  '-moz-repeating-linear-gradient',
+  '-moz-repeating-radial-gradient',
+  '-moz-zoom-in',
+  '-moz-zoom-out',
+  '-ms-flexbox',
+  '-ms-grid',
+  '-ms-inline-grid',
+  '-ms-linear-gradient',
+  '-ms-radial-gradient',
+  '-ms-repeating-linear-gradient',
+  '-ms-repeating-radial-gradient',
+  '-o-crisp-edges',
+  '-o-linear-gradient',
+  '-o-pre-wrap',
+  '-o-radial-gradient',
+  '-o-repeating-linear-gradient',
+  '-o-repeating-radial-gradient',
+  '-webkit-calc',
+  '-webkit-cross-fade',
+  '-webkit-filter',
+  '-webkit-fit-content',
+  '-webkit-flex',
+  '-webkit-grab',
+  '-webkit-grabbing',
+  '-webkit-image-set',
+  '-webkit-inline-flex',
+  '-webkit-isolate',
+  '-webkit-linear-gradient',
+  '-webkit-max-content',
+  '-webkit-min-content',
+  '-webkit-plaintext',
+  '-webkit-radial-gradient',
+  '-webkit-repeating-linear-gradient',
+  '-webkit-repeating-radial-gradient',
+  '-webkit-sticky',
+  '-webkit-zoom-in',
+  '-webkit-zoom-out',
+  '-xv-digits',
+  '-xv-literal-punctuation',
+  '-xv-no-punctuation',
+  '-moz-arabic-indic',
+  '-moz-bengali',
+  '-moz-cjk-earthly-branch',
+  '-moz-cjk-heavenly-stem',
+  '-moz-devanagari',
+  '-moz-ethiopic-numeric',
+  '-moz-gujarati',
+  '-moz-gurmukhi',
+  '-moz-hangul',
+  '-moz-hangul-consonant',
+  '-moz-japanese-formal',
+  '-moz-japanese-informal',
+  '-moz-kannada',
+  '-moz-khmer',
+  '-moz-lao',
+  '-moz-malayalam',
+  '-moz-myanmar',
+  '-moz-oriya',
+  '-moz-persian',
+  '-moz-simp-chinese-formal',
+  '-moz-simp-chinese-informal',
+  '-moz-tamil',
+  '-moz-telugu',
+  '-moz-thai',
+  '-moz-trad-chinese-formal',
+  '-moz-trad-chinese-informal'
+]);
 const RANGE_MEDIA_FEATURE_NAMES = [
   'aspect-ratio',
   'color',
@@ -403,6 +487,9 @@ function knownCssDataValue(data: PropertyValueData, value: CssPropertyValueFact,
   if (data.keywords.has(lowerValue)) {
     return true;
   }
+  if (VENDOR_PREFIXED_PROPERTY_VALUES.has(lowerValue)) {
+    return true;
+  }
   const restrictions = data.restrictions;
   if (value.kind === 'unknown') {
     return undefined;
@@ -441,6 +528,7 @@ function knownCssDataValue(data: PropertyValueData, value: CssPropertyValueFact,
       return undefined;
     }
     if (data.keywords.has(`${functionName}()`)
+      || VENDOR_PREFIXED_PROPERTY_VALUES.has(functionName)
       || (restrictions.has('url') && functionName === 'url')
       || (restrictions.has('color') && COLOR_VALUE_FUNCTIONS.has(functionName))
       || (restrictions.has('image') && IMAGE_VALUE_FUNCTIONS.has(functionName))

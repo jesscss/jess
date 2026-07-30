@@ -96,6 +96,7 @@ enough.
 | `float` | `lint/float` | VSCode-equivalent, opt-in |
 | `property-no-vendor-prefix` | `lint/property-no-vendor-prefix` | Stylelint-near, opt-in |
 | `at-rule-no-vendor-prefix` | `lint/at-rule-no-vendor-prefix` | Stylelint-near, opt-in |
+| `value-no-vendor-prefix` | `lint/value-no-vendor-prefix` | Stylelint-near, opt-in |
 | `vendor-prefix` | `lint/vendor-prefix` | VSCode-equivalent |
 | `compatible-vendor-prefixes` | `lint/compatible-vendor-prefixes` | VSCode-equivalent, opt-in |
 | `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | VSCode-equivalent, opt-in |
@@ -239,7 +240,7 @@ can detect over authored source.
 | Landed | Box model | `box-model` | Opt-in VSCode `boxModel` parity for definite CSS `width`/`height` with non-zero padding or border; `box-sizing` suppresses the rule, and dynamic/dialect values stay unknown until semantic facts exist. |
 | Landed | Float layout | `float` | Opt-in VSCode `float` parity for definite CSS `float` declarations whose value is not `none`; dynamic/dialect values stay unknown until semantic facts exist. |
 | Landed | Vendor prefixes | `vendor-prefix` | Matches VSCode `vendorPrefix` for CSS vendor-prefixed declarations and keyframe at-rules whose standard form is missing. |
-| Landed | Vendor-prefix style policy | `property-no-vendor-prefix`, `at-rule-no-vendor-prefix` | Opt-in Stylelint-named lint rules backed by Jess diagnostic codes for authored CSS vendor-prefixed property names and keyframe at-rules; distinct from recommended VSCode `vendor-prefix` missing-standard diagnostics. |
+| Landed | Vendor-prefix style policy | `property-no-vendor-prefix`, `at-rule-no-vendor-prefix`, `value-no-vendor-prefix` | Opt-in Stylelint-named lint rules backed by Jess diagnostic codes for authored CSS vendor-prefixed property names, keyframe at-rules, and removable value keywords/functions; distinct from recommended VSCode `vendor-prefix` missing-standard diagnostics. |
 | Landed | Compatible vendor prefixes | `compatible-vendor-prefixes` | Opt-in VSCode `compatibleVendorPrefixes` parity for CSS declarations and keyframe at-rules that use one known vendor-prefixed form but omit other known vendor-prefixed siblings. |
 | Landed | Unknown vendor-specific properties | `unknown-vendor-specific-properties` | Opt-in VSCode `unknownVendorSpecificProperties` parity for CSS single-hyphen prefixed declarations whose full property name is not known; custom validProperties support stays future work. |
 | Landed | Import statement warning | `import-statement` | Opt-in VSCode `importStatement` parity for CSS `@import` rules that may block parallel stylesheet loading. |

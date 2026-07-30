@@ -49,6 +49,7 @@ describe('stable rule set', () => {
       LINT_CODES.float,
       LINT_CODES.propertyNoVendorPrefix,
       LINT_CODES.atRuleNoVendorPrefix,
+      LINT_CODES.valueNoVendorPrefix,
       LINT_CODES.vendorPrefix,
       LINT_CODES.compatibleVendorPrefixes,
       LINT_CODES.unknownVendorSpecificProperties,
@@ -114,6 +115,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.float,
       LINT_RULE_NAMES.propertyNoVendorPrefix,
       LINT_RULE_NAMES.atRuleNoVendorPrefix,
+      LINT_RULE_NAMES.valueNoVendorPrefix,
       LINT_RULE_NAMES.vendorPrefix,
       LINT_RULE_NAMES.compatibleVendorPrefixes,
       LINT_RULE_NAMES.unknownVendorSpecificProperties,
@@ -150,7 +152,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(51);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(52);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -159,6 +161,7 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.float]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.propertyNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.atRuleNoVendorPrefix]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.valueNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.compatibleVendorPrefixes]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unknownVendorSpecificProperties]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.importStatement]).toBe('off');
@@ -223,6 +226,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.float]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.propertyNoVendorPrefix]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.atRuleNoVendorPrefix]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.valueNoVendorPrefix]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.vendorPrefix]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.compatibleVendorPrefixes]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownVendorSpecificProperties]).toBe('off');
@@ -684,6 +688,7 @@ describe('lintText', () => {
     const input = {
       source: [
         '.a { -webkit-transform: rotate(0); transform: rotate(0); }',
+        '.b { display: -webkit-flex; background: -webkit-linear-gradient(red, blue); }',
         '@keyframes spin { from { opacity: 0; } }',
         '@-webkit-keyframes spin { from { opacity: 0; } }'
       ].join('\n'),
@@ -697,6 +702,9 @@ describe('lintText', () => {
     expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
       LINT_CODES.atRuleNoVendorPrefix
     );
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.valueNoVendorPrefix
+    );
 
     const configured = await lintText(input, {
       stylesConfig: {
@@ -704,6 +712,9 @@ describe('lintText', () => {
           rules: {
             [LINT_RULE_NAMES.propertyNoVendorPrefix]: 'error',
             [LINT_RULE_NAMES.atRuleNoVendorPrefix]: 'warn',
+            [LINT_RULE_NAMES.valueNoVendorPrefix]: 'warn',
+            [LINT_RULE_NAMES.unknownPropertyValues]: 'off',
+            [LINT_RULE_NAMES.unknownFunctions]: 'off',
             [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off'
           }
         }
@@ -712,6 +723,8 @@ describe('lintText', () => {
 
     expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
       [LINT_CODES.propertyNoVendorPrefix, LINT_RULE_NAMES.propertyNoVendorPrefix, 'error'],
+      [LINT_CODES.valueNoVendorPrefix, LINT_RULE_NAMES.valueNoVendorPrefix, 'warning'],
+      [LINT_CODES.valueNoVendorPrefix, LINT_RULE_NAMES.valueNoVendorPrefix, 'warning'],
       [LINT_CODES.atRuleNoVendorPrefix, LINT_RULE_NAMES.atRuleNoVendorPrefix, 'warning']
     ]);
   });

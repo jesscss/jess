@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 51;
+export const STABLE_LINT_RULE_SET_VERSION = 52;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -34,6 +34,7 @@ export const LINT_RULE_NAMES = {
   float: 'float',
   propertyNoVendorPrefix: 'property-no-vendor-prefix',
   atRuleNoVendorPrefix: 'at-rule-no-vendor-prefix',
+  valueNoVendorPrefix: 'value-no-vendor-prefix',
   vendorPrefix: 'vendor-prefix',
   compatibleVendorPrefixes: 'compatible-vendor-prefixes',
   unknownVendorSpecificProperties: 'unknown-vendor-specific-properties',
@@ -113,6 +114,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.float]: LINT_CODES.float,
   [LINT_RULE_NAMES.propertyNoVendorPrefix]: LINT_CODES.propertyNoVendorPrefix,
   [LINT_RULE_NAMES.atRuleNoVendorPrefix]: LINT_CODES.atRuleNoVendorPrefix,
+  [LINT_RULE_NAMES.valueNoVendorPrefix]: LINT_CODES.valueNoVendorPrefix,
   [LINT_RULE_NAMES.vendorPrefix]: LINT_CODES.vendorPrefix,
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: LINT_CODES.compatibleVendorPrefixes,
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: LINT_CODES.unknownVendorSpecificProperties,
@@ -179,6 +181,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.float]: LINT_RULE_NAMES.float,
   [LINT_CODES.propertyNoVendorPrefix]: LINT_RULE_NAMES.propertyNoVendorPrefix,
   [LINT_CODES.atRuleNoVendorPrefix]: LINT_RULE_NAMES.atRuleNoVendorPrefix,
+  [LINT_CODES.valueNoVendorPrefix]: LINT_RULE_NAMES.valueNoVendorPrefix,
   [LINT_CODES.vendorPrefix]: LINT_RULE_NAMES.vendorPrefix,
   [LINT_CODES.compatibleVendorPrefixes]: LINT_RULE_NAMES.compatibleVendorPrefixes,
   [LINT_CODES.unknownVendorSpecificProperties]: LINT_RULE_NAMES.unknownVendorSpecificProperties,
@@ -245,6 +248,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.float]: 'off',
   [LINT_RULE_NAMES.propertyNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.atRuleNoVendorPrefix]: 'off',
+  [LINT_RULE_NAMES.valueNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.vendorPrefix]: 'warn',
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off',
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: 'off',
@@ -325,6 +329,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.float]: 'off',
   [LINT_RULE_NAMES.propertyNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.atRuleNoVendorPrefix]: 'off',
+  [LINT_RULE_NAMES.valueNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.vendorPrefix]: 'off',
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off',
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: 'off',
@@ -629,6 +634,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'at-rule-no-vendor-prefix',
     notes: 'Opt-in Stylelint migration rule that flags authored CSS vendor-prefixed keyframe at-rules; broader vendor at-rule facts can be added as metadata grows.'
+  },
+  {
+    diagnosticCode: LINT_CODES.valueNoVendorPrefix,
+    ruleName: LINT_RULE_NAMES.valueNoVendorPrefix,
+    title: 'Vendor-prefixed values',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'value-no-vendor-prefix',
+    notes: 'Opt-in Stylelint migration rule that flags static authored CSS vendor-prefixed value keywords and functions from Stylelint/autoprefixer removable value data.'
   },
   {
     diagnosticCode: LINT_CODES.vendorPrefix,
