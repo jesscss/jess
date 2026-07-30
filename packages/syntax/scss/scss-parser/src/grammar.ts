@@ -85,7 +85,6 @@ type ScssRules = {
   ImportAtRule: Combinator<ImportAtRule>;
   UseNamespace: Combinator<string>;
   UseRule: Combinator<StyleImport | ModuleImport>;
-  ForwardTail: Combinator<Token | null>;
   ForwardRule: Combinator<StyleImport>;
   ModuleDirective: Combinator<StyleImport | ModuleImport>;
   ImportUrl: Combinator<Url>;
@@ -2469,15 +2468,11 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       routed(),
       ModulePathQuoted,
-      g.ForwardTail,
       literal(';')
     ),
     (children) => {
       if (!isQuoted(children[1])) {
         throw new TypeError('SCSS @forward requires a quoted module path.');
-      }
-      if (children[2] !== null) {
-        throw new TypeError('SCSS @forward modifiers are not representable in the canonical import fact.');
       }
       return styleImport(
         children[1],
@@ -2498,17 +2493,6 @@ export const scssFactory = (g: ScssInputRules) => {
     atRuleKeyword,
     caseInsensitive('@use', UseRule),
     caseInsensitive('@forward', ForwardRule)
-  );
-  const ForwardTail = node<Token | null>(
-    'ForwardTail',
-    optional(scanTo(
-      literal(';'),
-      { skip: [balanced('(', ')')] }
-    )),
-    (children) => {
-      const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
-      return text === '' ? null : { value: text };
-    }
   );
 
   /*
@@ -5031,7 +5015,6 @@ export const scssFactory = (g: ScssInputRules) => {
     ImportAtRule,
     UseNamespace,
     UseRule,
-    ForwardTail,
     ForwardRule,
     ModuleDirective,
     ImportUrl,

@@ -493,15 +493,6 @@ describe('SCSS canonical-AST grammar', () => {
   });
 
   it('uses the ambient quoted-span skipper in opaque SCSS scans', () => {
-    const forwardTail = run(
-      scssGrammar.ForwardTail,
-      ' as "theme;variant";',
-      { trivia: scssGrammar.whitespace }
-    );
-    expect(forwardTail.ok).toBe(true);
-    expect(forwardTail.unconsumedFrom).toBe(19);
-    expect(forwardTail.value).toEqual({ value: 'as "theme;variant"' });
-
     const queryFunction = run(
       scssGrammar.QueryFunction,
       'selector([data-state=")"])',

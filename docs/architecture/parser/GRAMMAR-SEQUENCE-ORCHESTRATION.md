@@ -5305,4 +5305,8 @@ third arm because it is ordinary stylesheet syntax, not prefix-only module
 syntax. The dispatcher itself remains unlabeled routing machinery; public CST
 continues to expose `UseRule` and `ForwardRule`. The wider stylesheet/body
 at-rule choices remain a separate context-sensitive dispatch design task, not a
-reason to reintroduce individual `@use` / `@forward` opener regexes.
+reason to reintroduce individual `@use` / `@forward` opener regexes. The former
+`ForwardTail` opaque `scanTo(';')` was deleted: no accepted SCSS module form
+needs that raw tail, and the `literal(';')` in `ForwardRule` now rejects every
+unsupported modifier at its actual grammar boundary instead of scanning and
+discarding it.
