@@ -4826,3 +4826,25 @@ removal. The target is comments in Parseman/core trivia, with render-time
 empty-rule behavior fixed against trivia spans instead of comment AST children.
 Avoid half-measures that merely hide comments inside separator text; the end
 state is no semantic comment nodes for parser comments.
+
+Jess module directive routing, 2026-07-30: Jess `StyleImport` and
+`ModuleImport` now consume their preprocessor directive word once with
+case-sensitive `keywords(...)`, then route the selected tail through
+`dispatch(...)` / `when(...)` / `routed()`. This removes two same-family
+directive `choice(...)` clusters without changing the public AST/CST labels or
+turning Jess keywords into case-insensitive CSS words. The nested
+`@-from ... import ...` binding form remains a `choice(...)` because the branch
+is decided by later delimiter/context facts (`* as`, default plus grouped
+named imports, single default, or grouped named imports), not by the already
+consumed `@-from` directive.
+
+Evidence for the Jess module directive routing: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 119 tests. `ast-grammar.test.ts` now rejects uppercase
+Jess module/style directive words and uppercase `IMPORT`/`AS` in those forms,
+pinning the current case-sensitive keyword policy. `pnpm --filter
+@jesscss/jess-parser build` passed after rebuilding parser-shared; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled with 0 interpreter fallbacks; `pnpm run verify:compose-integrity`
+passed; and `git diff --check` passed. This slice makes no speed claim.

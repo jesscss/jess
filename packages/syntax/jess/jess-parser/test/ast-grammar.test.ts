@@ -1078,7 +1078,16 @@ describe('Jess AST grammar facts', () => {
       ]
     });
     expect(serialize(parse(source))).toEqual({ css: `${source}\n` });
-    for (const invalid of ['@-compose $[path];', '@-use "./x.ts" as **;', '@-from "./x.ts" import *;', '@-from "./x.ts" import foo, bar;']) {
+    for (const invalid of [
+      '@-compose $[path];',
+      '@-use "./x.ts" as **;',
+      '@-from "./x.ts" import *;',
+      '@-from "./x.ts" import foo, bar;',
+      '@-COMPOSE "./theme.jess";',
+      '@-USE "./module.ts";',
+      '@-from "./module.ts" IMPORT foo;',
+      '@-use "./module.ts" AS mod;'
+    ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
   });

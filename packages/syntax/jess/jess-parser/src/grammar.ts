@@ -2060,24 +2060,37 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       moduleBindingName
     )
   );
+  const styleImportDirective = keywords(['@-compose', '@-export', '@-import'], {
+    boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
+  });
   const StyleImport = node<StyleImport>(
     'StyleImport',
-    choice(
-      sequence(
-        syntaxWord('@-compose'),
-        g.Quoted,
-        optional(styleImportAsClause),
-        optional(literal(';'))
+    dispatch(
+      styleImportDirective,
+      when(
+        '@-compose',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(styleImportAsClause),
+          optional(literal(';'))
+        )
       ),
-      sequence(
-        syntaxWord('@-export'),
-        g.Quoted,
-        optional(literal(';'))
+      when(
+        '@-export',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(literal(';'))
+        )
       ),
-      sequence(
-        syntaxWord('@-import'),
-        g.Quoted,
-        optional(literal(';'))
+      when(
+        '@-import',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(literal(';'))
+        )
       )
     ),
     (children) => {
@@ -2121,47 +2134,57 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       alias: children.length === 3 ? requireToken(children[2]).value : null
     })
   );
+  const moduleImportDirective = keywords(['@-use', '@-from'], {
+    boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
+  });
   const ModuleImport = node<ModuleImport>(
     'ModuleImport',
-    choice(
-      sequence(
-        syntaxWord('@-use'),
-        g.Quoted,
-        optional(styleImportAsClause),
-        optional(literal(';'))
+    dispatch(
+      moduleImportDirective,
+      when(
+        '@-use',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(styleImportAsClause),
+          optional(literal(';'))
+        )
       ),
-      sequence(
-        syntaxWord('@-from'),
-        g.Quoted,
-        syntaxWord('import'),
-        choice(
-          sequence(
-            literal('*'),
-            moduleAsClause
-          ),
-          sequence(
-            g.ModuleSpecifier,
-            literal(','),
-            literal('('),
-            g.ModuleSpecifier,
-            many(sequence(
+      when(
+        '@-from',
+        sequence(
+          routed(),
+          g.Quoted,
+          syntaxWord('import'),
+          choice(
+            sequence(
+              literal('*'),
+              moduleAsClause
+            ),
+            sequence(
+              g.ModuleSpecifier,
               literal(','),
-              g.ModuleSpecifier
-            )),
-            literal(')')
-          ),
-          g.ModuleSpecifier,
-          sequence(
-            literal('('),
+              literal('('),
+              g.ModuleSpecifier,
+              many(sequence(
+                literal(','),
+                g.ModuleSpecifier
+              )),
+              literal(')')
+            ),
             g.ModuleSpecifier,
-            many(sequence(
-              literal(','),
-              g.ModuleSpecifier
-            )),
-            literal(')')
-          )
-        ),
-        optional(literal(';'))
+            sequence(
+              literal('('),
+              g.ModuleSpecifier,
+              many(sequence(
+                literal(','),
+                g.ModuleSpecifier
+              )),
+              literal(')')
+            )
+          ),
+          optional(literal(';'))
+        )
       )
     ),
     (children) => {
