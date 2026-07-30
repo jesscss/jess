@@ -2045,6 +2045,58 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-07-30 ValueLayout provenance compression. `withValueLayout`
+  now declines a non-empty layout whose every separator is the renderer's implied
+  single space. It retains explicit empty function-layout facts and a top-level
+  spaced `/` array, because Less uses that exact fact for deferred-division
+  semantics.
+- Architecture surface: parser-authored ValueLayout provenance side-table only;
+  no grammar, AST public field, serializer API, or output contract changes.
+- Separation/duplication: removes the duplicate storage of the renderer's
+  already-implied single-space separator while preserving the two non-inferable
+  ownership facts (empty function boundary and spaced slash).
+- Cumulative node weight: unchanged. No AST node, wrapper, or public collection
+  is created; the existing `WeakMap` receives fewer entries.
+- New traversal: two bounded loops only: scan the supplied separator array once;
+  when it is all single spaces, scan the already-built top-level value array for
+  `/`. Neither reads source, walks descendants, allocates an intermediate array,
+  nor runs during evaluation/render.
+- New node/materialization: none. The pass deletes `WeakMap` entries; it adds no
+  nodes, wrappers, copied values, layouts, or source metadata.
+- Render path: unchanged. Absent layout already renders raw `ValueSlot[]` with
+  `join(' ')`; the retained slash layout keeps the existing Less semantic branch.
+- Helper/API surface: one private `hasTopLevelSlash` predicate; no public AST or
+  serializer API changes. It prevents the public `valueLayoutOf` side table from
+  carrying a fact output can infer.
+- Metadata mutations: fewer only—the existing layout `WeakMap` is no longer set
+  for implied spaces. Empty layout and semantic slash rows remain explicit.
+- Review-flagged diff tokens: [loop/traversal] the separator and existing
+  top-level value arrays are scanned once at parse-time side-table admission;
+  no source walk, descendant traversal, allocation, or render-time loop is added.
+- Evidence: core provenance test covers implied-space elision, explicit empty
+  layout retention, and spaced slash retention; focused Less public parse and
+  value-comment suites passed 88/88 after fresh dependency-order builds; the
+  full core suite passed 3264 tests. No performance claim is made here.
+- Verdict: accepted as a semantic-runtime side-table reduction; performance
+  evidence remains separate from this behavior proof.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "This pass narrows parser-authored ValueLayout provenance without changing the canonical ValueSlot or List shape. The only retained defaults are the established explicit-empty function-boundary and spaced-slash Less semantic facts, so this remains semantic runtime work rather than a claimed neutral refactor.",
+    "dangerTokensJustification": "The two parse-time loops inspect only arrays already created by the parser before deciding whether to mutate the existing provenance WeakMap. They do not traverse AST descendants, read source, materialize values, introduce a new side map, or add work to evaluation or serialization.",
+    "behaviorEvidence": "Core provenance tests passed 12/12; fresh Less public parse and value-comment tests passed 88/88, including comment/newline layout and generic function delimiter facts.",
+    "buildEvidence": "pnpm --filter @jesscss/core build and dependency-order parser builds passed on the current worktree.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  }
+]
+```
+
 - Latest pass: 2026-07-30 compiler source-fact ownership, function-dispatch,
   and warning-event cost cut. The first slice removes eager
   suppressed-function diagnostics, deletes the routine preserved-function

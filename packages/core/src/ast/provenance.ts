@@ -291,8 +291,40 @@ export function bodySpanOf(node: object): AstSourceSpan | undefined {
  * keeping the semantic payload (`value` + `sep`) minimal.
  */
 export function withValueLayout<T extends object>(value: T, separators: ValueLayout): T {
+  /* The normal raw ValueSlot renderer already joins absent layout with one space,
+   * so recording `[' ', …]` duplicates an implied fact. The one exception is a
+   * Less top-level slash: its authored spacedness carries deferred-division
+   * semantics (see `variableValueSlot`), so keep that boundary explicit. */
+  let hasOnlyDefaultSpaces = true;
+  for (const separator of separators) {
+    if (separator !== ' ') {
+      hasOnlyDefaultSpaces = false;
+      break;
+    }
+  }
+  if (separators.length > 0 && hasOnlyDefaultSpaces && !hasTopLevelSlash(value)) {
+    return value;
+  }
   layouts.set(value, separators);
   return value;
+}
+
+function hasTopLevelSlash(value: object): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  for (const part of value) {
+    if (
+      typeof part === 'object'
+      && part !== null
+      && 'src' in part
+      && typeof part.src === 'string'
+      && part.src.trim() === '/'
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Read parser-authored separators for a raw ValueSlot array. */
