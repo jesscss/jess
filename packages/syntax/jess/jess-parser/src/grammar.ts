@@ -760,7 +760,7 @@ function dollarBraceInterpolation(
   children: readonly unknown[],
   span?: { readonly start: number; readonly end: number }
 ): Interpolation {
-  if (requireToken(children[0]).value !== '${[') {
+  if (requireToken(children[1]).value !== '[') {
     const ref = variableReference(
       requireToken(children[1]).value,
       'live'
@@ -773,10 +773,10 @@ function dollarBraceInterpolation(
     }
     return interpolation([{ ref, unquote: true }]);
   }
-  const head = requireToken(children[1]).value;
+  const head = requireToken(children[2]).value;
   if (head === '$') {
     const named = variableReference(
-      requireToken(children[2]).value,
+      requireToken(children[3]).value,
       'live'
     );
     if (span) {
@@ -790,7 +790,7 @@ function dollarBraceInterpolation(
       'live'
     ), unquote: true }]);
   }
-  const name = head === '"' || head === '\'' ? requireToken(children[2]).value : head;
+  const name = head === '"' || head === '\'' ? requireToken(children[3]).value : head;
   return interpolation([{ ref: propertyReference(
     name,
     tokenSource(children)
@@ -1302,42 +1302,51 @@ const typeNamespace = regex(/\$type\./);
  * Bare interpolation (no braces) is impossible because `-` is an identifier byte,
  * so `--$name-color` has no unambiguous name boundary.
  *
- * The `${[` / `]}` openers are ONE literal each so that the bracketed arms carry
- * the same child layout as `dollarInterpolationStructure` and share its reducer —
- * two reducers for one body grammar would drift.
+ * Consume `${` once, then branch on `[` versus a bare name; the bracket body
+ * branches again on `$`, a name, or a quote. Those are disjoint continuation
+ * sets, so this is structural factoring rather than five competing `${...}`
+ * alternatives.
  */
-const dollarBraceStructure = noTrivia(choice(
-  sequence(
-    literal('${['),
-    literal('$'),
-    dollarName,
-    literal(']}')
-  ),
-  sequence(
-    literal('${['),
-    dollarName,
-    literal(']}')
-  ),
-  sequence(
-    literal('${['),
-    literal('\''),
-    regex(/(?:[^'\\]|\\[\s\S])*/),
-    literal('\''),
-    literal(']}')
-  ),
-  sequence(
-    literal('${['),
-    literal('"'),
-    regex(/(?:[^"\\]|\\[\s\S])*/),
-    literal('"'),
-    literal(']}')
-  ),
-  sequence(
-    literal('${'),
-    dollarName,
-    literal('}')
+const dollarBraceStructure = noTrivia(sequence(
+  literal('${'),
+  choice(
+    sequence(
+      literal('['),
+      choice(
+        sequence(
+          literal('$'),
+          dollarName,
+          literal(']}')
+        ),
+        sequence(
+          dollarName,
+          literal(']}')
+        ),
+        sequence(
+          literal('\''),
+          regex(/(?:[^'\\]|\\[\s\S])*/),
+          literal('\''),
+          literal(']}')
+        ),
+        sequence(
+          literal('"'),
+          regex(/(?:[^"\\]|\\[\s\S])*/),
+          literal('"'),
+          literal(']}')
+        )
+      )
+    ),
+    sequence(
+      dollarName,
+      literal('}')
+    )
   )
 ));
+
+/*
+ * Direct `$[...]` lookup is value/expression-only. Unlike `${...}`, it never
+ * appears in a selector/name interpolation position.
+ */
 const dollarInterpolationStructure = noTrivia(choice(
   sequence(
     literal('$['),

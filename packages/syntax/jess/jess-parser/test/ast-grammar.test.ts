@@ -2904,6 +2904,9 @@ describe('Jess AST grammar facts', () => {
     expect(parts('.w-${["a b"]} { a: b; }')).toMatchObject({
       ref: { type: 'PropertyReference', name: 'a b' }
     });
+    expect(parts('.w-${[\'a b\']} { a: b; }')).toMatchObject({
+      ref: { type: 'PropertyReference', name: 'a b' }
+    });
 
     // A computed key stays the two-step indirection.
     expect(parts('.w-${[$k]} { a: b; }')).toMatchObject({

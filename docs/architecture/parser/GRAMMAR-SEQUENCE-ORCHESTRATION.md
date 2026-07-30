@@ -5079,3 +5079,25 @@ files / 259 tests). `check:macro` passed with zero interpreter fallbacks and
 `verify:compose-integrity` passed. A fresh macro-compiled snapshot was taken
 with `test/parse-bench.mjs` (warmup 8, timed 25); its sub-millisecond corpus is
 too small and noisy for a speed claim.
+
+Jess `${...}` interpolation factoring, 2026-07-30: `dollarBraceStructure`
+previously made five alternatives reconsume the same `${` prefix. It now
+consumes `${` once, uses a `choice(...)` on the next disjoint `[` versus name
+continuation, and uses another disjoint choice for the bracket body (`$`, name,
+single quote, or double quote). `DollarBrace` remains the CST/AST node; the
+reducer reads the factored token layout directly, preserving source spans and
+the bare-variable, property-lookup, quoted-key, and computed-key reductions.
+This is left factoring, not `dispatch(...)`: no meaningful routed token exists
+until the common opener has been consumed, and the subsequent terminals have
+disjoint first sets. Direct `$[...]` remains value/expression-only, while
+`${[...]}` remains the bracketed body available to a selector/name interpolation.
+
+Evidence: the generated Parseman diagnostic no longer reports
+`dollarBraceStructure`; the independent direct-value
+`dollarInterpolationStructure` diagnostic remains for later work. The Jess
+AST/CST focus and full parser suite passed, including a single-quoted bracketed
+`${...}` lookup assertion. `check:macro` reported zero interpreter fallbacks and
+`verify:compose-integrity` passed. The same built-artifact snapshot moved from
+0.4831ms to 0.4568ms AST median and from 0.4720ms to 0.4652ms CST median for
+the 1.9KB Jess-data corpus (warmup 12, timed 45); the sample is too small and
+noisy to claim a speedup.
