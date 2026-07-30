@@ -38,6 +38,7 @@ export const LINT_CODES = {
   unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
   unknownTypeSelectors: 'lint/selector-type-no-unknown',
+  unmatchableAnbSelectors: 'lint/selector-anb-no-unmatchable',
   duplicateSelectors: 'lint/no-duplicate-selectors',
   incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
   unsupportedSassForm: 'unsupported/sass-form'
@@ -202,6 +203,15 @@ const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'StaticImp
 const FUNCTION_TYPES = new Set(['Call', 'StaticCall', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
+const ANB_PSEUDO_CLASSES = new Set([
+  'nth-child',
+  'nth-column',
+  'nth-last-child',
+  'nth-last-column',
+  'nth-last-of-type',
+  'nth-of-type'
+]);
+const NTH_ARGUMENT_TYPES = new Set(['PseudoArgument', 'OfTypePseudoArgument']);
 const BASIC_SELECTOR_TYPES = new Set(['BasicSelector']);
 const SELECTOR_LIST_TYPES = new Set(['SelectorList', 'TopLevelSelectorList']);
 const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector', 'RelativeSelector']);
@@ -613,6 +623,38 @@ function ignoresTypeSelectorsInPseudo(source: string, start: number, end: number
   return pseudo.colonCount === 2
     ? IGNORED_TYPE_SELECTOR_PSEUDO_ELEMENTS.has(bare)
     : IGNORED_TYPE_SELECTOR_PSEUDO_CLASSES.has(bare);
+}
+
+function nthArgumentSpan(source: string, node: CssCstNode): DiagnosticSpan | null {
+  const argument = firstChildNodeMatching(node, NTH_ARGUMENT_TYPES);
+  if (argument === undefined) {
+    return null;
+  }
+  const start = absoluteStart(argument);
+  let end = absoluteEnd(argument);
+  const selector = firstDescendantNodeOf(argument, 'SelectorList');
+  if (selector !== undefined) {
+    let cursor = absoluteStart(selector);
+    while (cursor > start) {
+      const code = source.charCodeAt(cursor - 1);
+      if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+        break;
+      }
+      cursor--;
+    }
+    if (
+      cursor >= start + 2
+      && source.slice(cursor - 2, cursor).toLowerCase() === 'of'
+    ) {
+      end = cursor - 2;
+    }
+  }
+  const trimmed = trimOffsets(source.slice(start, end), start);
+  return trimmed.start < trimmed.end ? spanFromOffsets(trimmed.start, trimmed.end) : null;
+}
+
+function isUnmatchableAnbArgument(text: string): boolean {
+  return /^[-+]?0(?:n(?:[-+]0)?)?$/i.test(text.replace(/\s+/g, ''));
 }
 
 function mediaFeatureNameSpan(source: string, node: CssCstNode): { name: string; start: number; end: number } | null {
@@ -1168,6 +1210,22 @@ function firstChildNodeMatching(node: CssCstNode, grammarTypes: ReadonlySet<stri
   for (const child of cstChildrenOf(node)) {
     if (isCstNode(child) && grammarTypes.has(child.grammarType)) {
       return child;
+    }
+  }
+  return undefined;
+}
+
+function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNode | undefined {
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (child.grammarType === grammarType) {
+      return child;
+    }
+    const nested = firstDescendantNodeOf(child, grammarType);
+    if (nested !== undefined) {
+      return nested;
     }
   }
   return undefined;
@@ -2156,6 +2214,17 @@ export function cstLintDiagnostics(
       const pseudo = pseudoNameSpan(source, start, end);
       if (pseudo !== null) {
         const bareLower = pseudo.bare.toLowerCase();
+        if (language === 'css' && ANB_PSEUDO_CLASSES.has(bareLower)) {
+          const argument = nthArgumentSpan(source, node);
+          if (argument !== null && isUnmatchableAnbArgument(source.slice(argument.start, argument.end))) {
+            push(
+              LINT_CODES.unmatchableAnbSelectors,
+              'warning',
+              `Unmatchable An+B selector "${source.slice(start, end)}"`,
+              node.span
+            );
+          }
+        }
         if (
           !bareLower.startsWith('--')
           && !isVendorPseudoName(bareLower)

@@ -46,6 +46,7 @@ const STYLELINT_RULES = {
   'media-feature-name-value-no-unknown': true,
   'selector-pseudo-class-no-unknown': true,
   'selector-pseudo-element-no-unknown': true,
+  'selector-anb-no-unmatchable': true,
   'selector-type-no-unknown': true
 };
 

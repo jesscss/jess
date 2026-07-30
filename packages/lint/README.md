@@ -136,6 +136,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `media-feature-name-value-no-unknown` | `lint/media-feature-name-value-no-unknown` | near `media-feature-name-value-no-unknown` |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | near `selector-pseudo-class-no-unknown` |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | near `selector-pseudo-element-no-unknown` |
+| `selector-anb-no-unmatchable` | `lint/selector-anb-no-unmatchable` | `selector-anb-no-unmatchable` |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | near `selector-type-no-unknown` |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |

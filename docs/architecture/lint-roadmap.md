@@ -76,6 +76,7 @@ a `jess/` prefix.
 | `media-feature-name-value-no-unknown` | `lint/media-feature-name-value-no-unknown` | Stylelint-near |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | Stylelint-near |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | Stylelint-near |
+| `selector-anb-no-unmatchable` | `lint/selector-anb-no-unmatchable` | Stylelint-equivalent |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | Stylelint-near |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess-only value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
@@ -140,8 +141,8 @@ comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint comparison config | `20.97 ms/op` |
-| Stylelint comparable rules | `28.03 ms/op` |
+| Jess lint comparison config | `22.77 ms/op` |
+| Stylelint comparable rules | `27.14 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -171,7 +172,7 @@ can detect over authored source.
 | Landed | Named grid areas | `named-grid-areas-no-invalid` | Flags empty, ragged, or non-rectangular named grid area strings in CSS `grid`, `grid-template`, and `grid-template-areas` declarations. |
 | Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Checks definite `font-family` values; dynamic values stay unknown. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
-| Landed | Selector validity | `selector-type-no-unknown` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
+| Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
 | Landed | Units | `unit-no-unknown` | Flags unknown Dimension units; URL values and resolution `x` contexts are suppressed. |
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
 | Landed | Media feature names and values | `media-feature-name-no-unknown`, `media-feature-name-value-no-unknown` | Flags unknown CSS `@media` feature names and definite invalid static values; dialect media facts remain future work. |

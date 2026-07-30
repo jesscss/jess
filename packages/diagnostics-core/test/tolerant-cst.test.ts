@@ -420,6 +420,36 @@ describe('collectTolerantDiagnostics', () => {
     )).toBe(false);
   });
 
+  it('reports unmatchable An+B selector pseudos', () => {
+    const source = 'a:nth-child(0), b:nth-child(+0), c:nth-child(-0n+0 of .item), d:nth-of-type(0n-0), e:nth-last-child(n), f:nth-child(00), g:nth-child(0n+00) { color: red; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unmatchable = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unmatchableAnbSelectors);
+
+    expect(unmatchable.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unmatchable An+B selector ":nth-child(0)"', source.indexOf(':nth-child(0)'), source.indexOf(':nth-child(0)') + ':nth-child(0)'.length],
+      ['Unmatchable An+B selector ":nth-child(+0)"', source.indexOf(':nth-child(+0)'), source.indexOf(':nth-child(+0)') + ':nth-child(+0)'.length],
+      ['Unmatchable An+B selector ":nth-child(-0n+0 of .item)"', source.indexOf(':nth-child(-0n+0 of .item)'), source.indexOf(':nth-child(-0n+0 of .item)') + ':nth-child(-0n+0 of .item)'.length],
+      ['Unmatchable An+B selector ":nth-of-type(0n-0)"', source.indexOf(':nth-of-type(0n-0)'), source.indexOf(':nth-of-type(0n-0)') + ':nth-of-type(0n-0)'.length]
+    ]);
+  });
+
+  it('does not report unmatchable An+B selector pseudos in dialect files before selector facts exist', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '.a:nth-child(0) { color: red; }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '.a:nth-child(0) { color: red; }',
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unmatchableAnbSelectors)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unmatchableAnbSelectors)).toBe(false);
+  });
+
   it('reports unknown CSS type selectors', () => {
     const source = 'main, foo, x-thing, svg|circle, *|unknown, :not(bar), ::highlight(baz), foreignObject { color: red; }';
     const result = collectTolerantDiagnostics({
