@@ -83,6 +83,16 @@ describe('public Less parse()', () => {
     });
   });
 
+  it('keeps trivia through a silent ruleset optional-semicolon tail', () => {
+    const source = '.a{}/*between-close-and-semicolon*/;.b{color:blue;}';
+
+    expect(
+      serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe(
+      '.b {\n  color: blue;\n}\n'
+    );
+  });
+
   it('constructs boundary-complete CSS named colors as Color values', () => {
     const document = parse(
       '@tone: ReD; .card { color: lighten(@tone, 10%); enabled: iscolor(blue); plain: redder; current: currentColor; }'

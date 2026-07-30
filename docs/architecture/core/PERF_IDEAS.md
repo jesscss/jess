@@ -187,6 +187,42 @@ with SHA-256 `3ea6c1bdae41511923deece75676d453ff470cb447f531aae935b44eae6f5083`.
   range on Jess; adopt it through the Less parser only once `parseman@0.44.0`
   exists in the registry, then re-run all-Less and this exact eval+emit harness.
 
+- **Selector-atom re-derivation:** do not land a partial direct-traversal
+  rewrite. A 2026-07-30 prototype replaced
+  `selectorTermCanonical(term)` + one regex pass with a DFS over
+  `CompoundSelector`/`ComplexSelector`/`RelativeSelector`/structured pseudo
+  nodes, but still regex-scanned every raw simple leaf. That turns one cached
+  canonical-string regex into multiple `match()` arrays plus four new helper
+  calls and a fresh selector walk at every namespaced mixin lookup. Its exact
+  PostCSS eval+emit pairs were inconclusive (candidate 36.72/36.91 ms versus
+  baseline 39.79/36.29 ms), so it is rejected rather than called a speedup.
+
+  The replacement must be one compact, parser/factory-owned ordered lookup-atom
+  fact for static selectors, not a lookup-time cache or a leaf-by-leaf scan. Its
+  contract must preserve the current atom stream until a deliberate semantic
+  decision changes it: the legacy matcher includes pseudo names and structured
+  pseudo arguments as well as words from opaque pseudo and attribute text; it is
+  not just CSS element identity. Pin compound, complex, relative, `&`, opaque
+  pseudo, structured pseudo, and interpolated namespace cases, then require an
+  allocation/CPU profile plus reverse-order exact PostCSS measurements before
+  landing.
+
+- **Ruleset whole-span elision:** rejected on 2026-07-30. A prototype removed
+  one `WeakMap` source-span association per Less ruleset (3,056 on the exact
+  288,434-byte PostCSS input), retaining only the selector and brace-body spans.
+  Its direct whole-workload medians were inconclusive: candidate 38.67/39.10 ms
+  versus baseline 39.02/36.45 ms in reverse order. More importantly, a Less
+  ruleset's optional trailing `;` and intervening comment trivia lie outside the
+  brace-body span: `.a{}/*between-close-and-semicolon*/;.b{color:blue;}` must
+  suppress that comment with the silent first ruleset. Reconstructing the
+  statement end as `body.end + 1` emitted it incorrectly. Removing the rule
+  span also lost the source location for async namespace-descent guard errors.
+
+  The parser public test and async-evaluation test now pin both contracts. Do
+  not retry this as a generic span deletion. A future design must retain an
+  exact parser-owned statement-tail boundary (including optional terminator
+  trivia) and preserve every diagnostic call-site before any allocation claim.
+
 ### P2 — allocation profile after sparse root capture
 
 GC remains a leading sampled frame but CPU samples do not identify object
