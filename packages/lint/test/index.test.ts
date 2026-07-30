@@ -33,6 +33,7 @@ describe('stable rule set', () => {
       LINT_CODES.fontFamilyDuplicateNames,
       LINT_CODES.fontFamilyMissingGeneric,
       LINT_CODES.duplicateAtImportRules,
+      LINT_CODES.unknownUnits,
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
@@ -48,9 +49,10 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.fontFamilyDuplicateNames,
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
       LINT_RULE_NAMES.duplicateAtImportRules,
+      LINT_RULE_NAMES.unknownUnits,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(3);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(4);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -66,6 +68,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.fontFamilyDuplicateNames,
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
       LINT_RULE_NAMES.duplicateAtImportRules,
+      LINT_RULE_NAMES.unknownUnits,
       LINT_RULE_NAMES.keyframeDeclarationNoImportant,
       LINT_RULE_NAMES.keyframeDuplicateSelectors,
       LINT_RULE_NAMES.unknownAtRules,
@@ -235,6 +238,29 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.duplicateAtImportRules, 'error']
+    ]);
+  });
+
+  it('applies policy to unknown unit diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { width: 1pixels; height: 1bad; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.unknownUnits]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.unknownUnits, 'error'],
+      [LINT_CODES.unknownUnits, 'error']
     ]);
   });
 });

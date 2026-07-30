@@ -158,4 +158,40 @@ describe('collectTolerantDiagnostics', () => {
       message: 'Duplicate @import rule //cdn.example/theme.css'
     });
   });
+
+  it('reports unknown units while accepting modern CSS units', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { width: 1pixels; height: 1e3px; min-width: 1e3foo; gap: 1cqi; flex: 1fr; rotate: 1turn; transition-duration: 1ms; }',
+      language: 'css'
+    });
+    const unknownUnits = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownUnits);
+
+    expect(unknownUnits.map(diagnostic => diagnostic.message)).toEqual([
+      'Unknown unit "pixels"',
+      'Unknown unit "foo"'
+    ]);
+    expect(unknownUnits.map(diagnostic => [diagnostic.start, diagnostic.end])).toEqual([
+      ['.a { width: 1'.length, '.a { width: 1pixels'.length],
+      ['.a { width: 1pixels; height: 1e3px; min-width: 1e3'.length, '.a { width: 1pixels; height: 1e3px; min-width: 1e3foo'.length]
+    ]);
+  });
+
+  it('does not report unknown units in url values or valid resolution x contexts', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { background: url(1quux); image: image-set(url(a.png) 1x, url(b.png) 2foo); image-resolution: 1x; width: 1x; }\n@media (min-resolution: 2x) and (min-width: 1x) { .a { color: red; } }',
+      language: 'css'
+    });
+    const unknownUnits = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownUnits);
+
+    expect(unknownUnits.map(diagnostic => diagnostic.message)).toEqual([
+      'Unknown unit "foo"',
+      'Unknown unit "x"',
+      'Unknown unit "x"'
+    ]);
+    expect(unknownUnits.map(diagnostic => diagnostic.start)).toEqual([
+      '.a { background: url(1quux); image: image-set(url(a.png) 1x, url(b.png) 2'.length,
+      '.a { background: url(1quux); image: image-set(url(a.png) 1x, url(b.png) 2foo); image-resolution: 1x; width: 1'.length,
+      '.a { background: url(1quux); image: image-set(url(a.png) 1x, url(b.png) 2foo); image-resolution: 1x; width: 1x; }\n@media (min-resolution: 2x) and (min-width: 1'.length
+    ]);
+  });
 });
