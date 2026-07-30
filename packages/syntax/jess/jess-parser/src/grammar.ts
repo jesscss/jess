@@ -1417,9 +1417,9 @@ const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
 const generalTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 
 /*
- * An unquoted Jess URL keeps literal URL-token bytes and `$[…]` segments as
- * separate grammar facts. Whitespace, quotes, parentheses, and any other `$`
- * form remain outside this closed URL slice rather than becoming raw payload.
+ * An unquoted Jess URL keeps literal URL-token bytes plus `${...}` and `$(...)`
+ * segments as separate grammar facts. `$[...]`, whitespace, quotes, and invalid
+ * parentheses remain outside this closed URL slice rather than becoming raw payload.
  */
 const urlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
@@ -1649,7 +1649,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
 
     /*
      * `$name` references dominate expression atoms; try VarReference before the
-     * `$[` interpolation form (disjoint on the char after `$`) so a plain
+     * `$[` lookup form (disjoint on the char after `$`) so a plain
      * reference does not first enter and roll back the DollarInterp node frame.
      * The reference keeps its accessor AND call tails here so a member read and
      * a call are the SAME grammar facts in arithmetic position that they already
@@ -2440,7 +2440,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * simple selector and a sibling selector's interpolation never falsely admits
    * a plain one.
    */
-  const interpolatedSimpleAhead = peek(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
+  const interpolatedSimpleAhead = peek(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$\{/));
   const InterpolatedSimple = node<SimpleSelector>(
     'InterpolatedSimple',
     noTrivia(sequence(
@@ -2468,7 +2468,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
           child.parts.forEach(append);
         } else {
           /*
-           * The superset lookahead emits a throwaway match token (`…$[`). Real
+           * The superset lookahead emits a throwaway match token (`…${`). Real
            * selector-text chunks never contain `$`, so this content check drops
            * only that throwaway, independent of its position.
            */
@@ -2980,7 +2980,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * components retain the existing Jess value-term contract, including
    * variable-led expressions (documented function arguments); the new slash
    * separator does not make `/` available as bare Jess arithmetic. Dynamic
-   * `$[...]` interpolation and named arguments remain outside this slice until
+   * `$[...]` lookup and named arguments remain outside this slice until
    * they have typed reductions. `var()` is the one CSS-defined exception that
    * permits the comma without a following value, so it routes before the
    * generic continuation instead of relaxing every function call.
@@ -3281,7 +3281,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * The three `$`-headed arms (DollarValue `$name`, the `$(`/`$[` interpolation
+   * The three `$`-headed arms (DollarValue `$name`, the `$(` expression / `$[` lookup
    * family, and the `$[` accessor inside it) are mutually exclusive on the
    * character after `$`, so their relative order is behaviour-neutral. Plain
    * `$name` references dominate real values, so DollarValue leads the `$` group:
@@ -4517,16 +4517,16 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   /*
    * A property interpolation is an existing Declaration.name Interpolation, never a
    * raw name string. Static identifier segments come from shared CSS syntax;
-   * Jess owns only its `$[…]` segment grammar and AST reduction.
+   * Jess owns only its `${...}` segment grammar and AST reduction.
    * Cheap superset lookahead so an ordinary `color: …` declaration does not
    * enter the interpolated-property arm, consume the whole property name via
    * the optional literal start, fail the required interpolation, and backtrack a
    * property re-parse through Identifier. Skip this arm unless a
-   * `$[` or `${` actually precedes the next `:`/`;`/brace. A property name never
+   * `${` actually precedes the next `:`/`;`/brace. A property name never
    * contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
    * real interpolated property is never skipped.
    */
-  const interpolatedPropertyAhead = peek(regex(/[^{};:]*\$[[{]/));
+  const interpolatedPropertyAhead = peek(regex(/[^{};:]*\$\{/));
   const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     noTrivia(sequence(
@@ -4545,7 +4545,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
           parts.push(...child.parts);
         } else {
           /*
-           * The superset lookahead emits a throwaway match token (`…$[`). Real
+           * The superset lookahead emits a throwaway match token (`…${`). Real
            * property-name chunks never contain `$`, so this content check drops
            * only that throwaway, independent of its position.
            */
@@ -4564,7 +4564,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * A custom property is plain CSS in every dialect, so Jess composes the same
    * recognition the CSS base does rather than routing `--x` through the ordinary
    * property terminal (a CSS ident, which cannot start with `--`). The name is
-   * the custom-property leaf, or that leaf's `--` prefix followed by `$[…]`
+   * the custom-property leaf, or that leaf's `--` prefix followed by `${...}`
    * segments.
    */
   const InterpolatedCustomPropertyName = node<string | Interpolation>(
