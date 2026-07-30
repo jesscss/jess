@@ -471,13 +471,13 @@ export const cssSyntax = rules(_g => ({
   FontFeatureValueAtKeyword: fontFeatureValueAtKeyword,
   NumberToken: number,
   DimensionUnit: dimensionUnit,
-  CssSyntaxInterpolatedPropertyStart: interpolatedPropertyStart,
-  CssSyntaxInterpolatedPropertyTail: interpolatedPropertyTail,
-  CssSyntaxCustomProperty: customPropertyName,
-  CssSyntaxCustomOuterContent: customOuterContent,
-  CssSyntaxCustomInnerContent: customInnerContent,
-  CssSyntaxCustomSingleQuoted: customSingleQuoted,
-  CssSyntaxCustomDoubleQuoted: customDoubleQuoted
+  InterpolatedPropertyStart: interpolatedPropertyStart,
+  InterpolatedPropertyTail: interpolatedPropertyTail,
+  CustomPropertyName: customPropertyName,
+  CustomOuterContent: customOuterContent,
+  CustomInnerContent: customInnerContent,
+  CustomSingleQuoted: customSingleQuoted,
+  CustomDoubleQuoted: customDoubleQuoted
 }));
 
 export const lessSyntax = rules(_g => ({

@@ -1295,7 +1295,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const CustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
-    g.CssSyntaxCustomProperty,
+    g.CustomPropertyName,
     children => keyword(requireToken(children[0]).value)
   );
   const Color = node<Color>(
@@ -1875,7 +1875,7 @@ export const scssFactory = (g: ScssInputRules) => {
           g.SassInterpolation
         ))
       )),
-      g.CssSyntaxCustomProperty
+      g.CustomPropertyName
     ),
     (children) => {
       if (!children.some(isInterpolation)) {
@@ -1928,20 +1928,20 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const CustomInnerPart: Combinator<unknown> = choice(
     g.SassInterpolation,
-    g.CssSyntaxCustomInnerContent,
+    g.CustomInnerContent,
     blockComment,
-    g.CssSyntaxCustomSingleQuoted,
-    g.CssSyntaxCustomDoubleQuoted,
+    g.CustomSingleQuoted,
+    g.CustomDoubleQuoted,
     g.CustomParen,
     g.CustomSquare,
     g.CustomCurly
   );
   const CustomPart: Combinator<unknown> = choice(
     g.SassInterpolation,
-    g.CssSyntaxCustomOuterContent,
+    g.CustomOuterContent,
     blockComment,
-    g.CssSyntaxCustomSingleQuoted,
-    g.CssSyntaxCustomDoubleQuoted,
+    g.CustomSingleQuoted,
+    g.CustomDoubleQuoted,
     g.CustomParen,
     g.CustomSquare,
     g.CustomCurly

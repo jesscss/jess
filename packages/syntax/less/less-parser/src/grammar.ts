@@ -285,8 +285,8 @@ type SharedCssSyntax = {
   NthOfKeyword: Combinator<string>;
   NumberToken: Combinator<string>;
   DimensionUnit: Combinator<string>;
-  CssSyntaxInterpolatedPropertyStart: Combinator<unknown>;
-  CssSyntaxInterpolatedPropertyTail: Combinator<unknown>;
+  InterpolatedPropertyStart: Combinator<unknown>;
+  InterpolatedPropertyTail: Combinator<unknown>;
   Identifier: Combinator<string>;
   SupportsAtKeyword: Combinator<unknown>;
   KeyframesAtKeyword: Combinator<unknown>;
@@ -3305,7 +3305,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     choice(
-      noTrivia(sequence(optional(literal('*')), optional(literal('-')), optional(g.CssSyntaxInterpolatedPropertyStart), g.Interpolation, many(choice(g.CssSyntaxInterpolatedPropertyTail, g.Interpolation)))),
+      noTrivia(sequence(optional(literal('*')), optional(literal('-')), optional(g.InterpolatedPropertyStart), g.Interpolation, many(choice(g.InterpolatedPropertyTail, g.Interpolation)))),
       noTrivia(sequence(literal('--'), optional(choice(g.LessSyntaxInterpolatedCustomPropertyStart, g.LessSyntaxInterpolatedCustomPropertyDash)), g.Interpolation, many(choice(g.LessSyntaxInterpolatedCustomPropertyTail, g.Interpolation))))
     ),
     children => interpolation(interpolationPartsFrom(children, false))

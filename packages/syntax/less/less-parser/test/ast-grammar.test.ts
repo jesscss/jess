@@ -8863,7 +8863,7 @@ describe('Less AST grammar facts', () => {
     /*
      * `of S` is valid only for `:nth-child`/`:nth-last-child` (Selectors-4 §6.6.2);
      * the type-index families take a bare `<An+B>` (§7.1). The shared
-     * `CssSyntaxNthChildName`/`CssSyntaxNthTypeName`/`CssSyntaxOfKeyword`
+     * `NthChildPseudoSelectorName`/`NthTypePseudoSelectorName`/`NthOfKeyword`
      * recognitions from `@jesscss/parser-shared/pseudo-consts` are what
      * enforce this split — a stray `of S` on an of-type index must reject rather
      * than fall through to an opaque descendant-selector parse.

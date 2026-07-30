@@ -103,7 +103,7 @@ type CssGrammarRuleName =
   | 'CssSyntax'
   | 'ConditionalAtKeyword'
   | 'ContainerAtKeyword'
-  | 'CssSyntaxCustomProperty'
+  | 'CustomPropertyName'
   | 'DescriptorAtKeyword'
   | 'DocumentAtKeyword'
   | 'DoubleQuotedText'
@@ -1523,7 +1523,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const CustomProperty = node(
     'CustomProperty',
-    g.CssSyntaxCustomProperty,
+    g.CustomPropertyName,
     children => tokenText(children[0])
   );
   const CustomValue = node(
@@ -1545,7 +1545,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    */
   const CustomPropertyValue = node(
     'CustomPropertyValue',
-    g.CssSyntaxCustomProperty,
+    g.CustomPropertyName,
     children => keyword(tokenText(children[0]))
   );
   const Color = node<AstColor>(

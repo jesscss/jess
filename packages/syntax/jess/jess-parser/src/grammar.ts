@@ -221,13 +221,13 @@ type SharedCssSyntax = {
   NthOfKeyword: Combinator<string>;
   PseudoSelectorCloseAhead: Combinator<string>;
   NumberToken: Combinator<string>;
-  CssSyntaxInterpolatedPropertyStart: Combinator<string>;
-  CssSyntaxInterpolatedPropertyTail: Combinator<string>;
-  CssSyntaxCustomProperty: Combinator<string>;
-  CssSyntaxCustomOuterContent: Combinator<string>;
-  CssSyntaxCustomInnerContent: Combinator<string>;
-  CssSyntaxCustomSingleQuoted: Combinator<string>;
-  CssSyntaxCustomDoubleQuoted: Combinator<string>;
+  InterpolatedPropertyStart: Combinator<string>;
+  InterpolatedPropertyTail: Combinator<string>;
+  CustomPropertyName: Combinator<string>;
+  CustomOuterContent: Combinator<string>;
+  CustomInnerContent: Combinator<string>;
+  CustomSingleQuoted: Combinator<string>;
+  CustomDoubleQuoted: Combinator<string>;
   QueryAndOr: Combinator<string>;
   QueryNot: Combinator<string>;
   QueryOnly: Combinator<string>;
@@ -3215,11 +3215,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    */
   const CustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
-    g.CssSyntaxCustomProperty,
+    g.CustomPropertyName,
     children => keyword(requireToken(children[0]).value)
   );
   const keywordToken = choice(
-    token(g.CssSyntaxCustomProperty),
+    token(g.CustomPropertyName),
     token(g.Identifier)
   );
   const RoutedCustomPropertyValue = node<Keyword>(
@@ -3679,7 +3679,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    */
   const StaticAtDashedIdent = node<Keyword>(
     'StaticAtDashedIdent',
-    g.CssSyntaxCustomProperty,
+    g.CustomPropertyName,
     children => keyword(requireToken(children[0]).value)
   );
   const StaticAtNonOnlyAtom = node<ValueNode>(
@@ -4624,10 +4624,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'InterpolatedProperty',
     noTrivia(sequence(
       interpolatedPropertyAhead,
-      optional(g.CssSyntaxInterpolatedPropertyStart),
+      optional(g.InterpolatedPropertyStart),
       g.DollarBrace,
       many(choice(
-        g.CssSyntaxInterpolatedPropertyTail,
+        g.InterpolatedPropertyTail,
         g.DollarBrace
       ))
     )),
@@ -4672,7 +4672,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           g.DollarBrace
         ))
       )),
-      g.CssSyntaxCustomProperty
+      g.CustomPropertyName
     ),
     (children) => {
       if (!children.some(isInterpolation)) {
@@ -4725,20 +4725,20 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const CustomInnerPart: Combinator<unknown> = choice(
     g.DollarBrace,
-    g.CssSyntaxCustomInnerContent,
+    g.CustomInnerContent,
     blockComment,
-    g.CssSyntaxCustomSingleQuoted,
-    g.CssSyntaxCustomDoubleQuoted,
+    g.CustomSingleQuoted,
+    g.CustomDoubleQuoted,
     g.CustomParen,
     g.CustomSquare,
     g.CustomCurly
   );
   const CustomPart: Combinator<unknown> = choice(
     g.DollarBrace,
-    g.CssSyntaxCustomOuterContent,
+    g.CustomOuterContent,
     blockComment,
-    g.CssSyntaxCustomSingleQuoted,
-    g.CssSyntaxCustomDoubleQuoted,
+    g.CustomSingleQuoted,
+    g.CustomDoubleQuoted,
     g.CustomParen,
     g.CustomSquare,
     g.CustomCurly
