@@ -144,6 +144,7 @@ export default {
       'jess/no-unused-variable': 'off',
       'jess/no-unused-mixin': 'off',
       'jess/no-unused-function': 'off',
+      'jess/no-leaky-scope-dependence': 'warn',
       'jess/no-impossible-guard': 'warn',
       'jess/no-duplicate-module-load': 'warn',
       'jess/no-unbounded-extend': 'warn',

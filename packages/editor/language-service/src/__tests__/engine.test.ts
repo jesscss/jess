@@ -1378,6 +1378,20 @@ describe('JessLanguageServiceEngine', () => {
         disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
         expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-impossible-guard');
       });
+
+      it('surfaces leaky Less scope diagnostics by default and allows disable', () => {
+        const source = '.theme() { @accent: red; }\n.a { .theme(); color: @accent; }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('less', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-leaky-scope-dependence');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-leaky-scope-dependence', 'ignore'));
+        const disabledDoc = createDocument('less', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-leaky-scope-dependence');
+      });
     });
 
     describe('duplicateProperties (lint/duplicate-property)', () => {

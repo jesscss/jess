@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 55;
+export const STABLE_LINT_RULE_SET_VERSION = 56;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -69,6 +69,7 @@ export const LINT_RULE_NAMES = {
   unusedVariables: 'jess/no-unused-variable',
   unusedMixins: 'jess/no-unused-mixin',
   unusedFunctions: 'jess/no-unused-function',
+  leakyScopeDependence: 'jess/no-leaky-scope-dependence',
   impossibleGuards: 'jess/no-impossible-guard',
   duplicateModuleLoads: 'jess/no-duplicate-module-load',
   unboundedExtends: 'jess/no-unbounded-extend',
@@ -152,6 +153,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unusedVariables]: LINT_CODES.unusedVariables,
   [LINT_RULE_NAMES.unusedMixins]: LINT_CODES.unusedMixins,
   [LINT_RULE_NAMES.unusedFunctions]: LINT_CODES.unusedFunctions,
+  [LINT_RULE_NAMES.leakyScopeDependence]: LINT_CODES.leakyScopeDependence,
   [LINT_RULE_NAMES.impossibleGuards]: LINT_CODES.impossibleGuards,
   [LINT_RULE_NAMES.duplicateModuleLoads]: LINT_CODES.duplicateModuleLoads,
   [LINT_RULE_NAMES.unboundedExtends]: LINT_CODES.unboundedExtends,
@@ -222,6 +224,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.unusedVariables]: LINT_RULE_NAMES.unusedVariables,
   [LINT_CODES.unusedMixins]: LINT_RULE_NAMES.unusedMixins,
   [LINT_CODES.unusedFunctions]: LINT_RULE_NAMES.unusedFunctions,
+  [LINT_CODES.leakyScopeDependence]: LINT_RULE_NAMES.leakyScopeDependence,
   [LINT_CODES.impossibleGuards]: LINT_RULE_NAMES.impossibleGuards,
   [LINT_CODES.duplicateModuleLoads]: LINT_RULE_NAMES.duplicateModuleLoads,
   [LINT_CODES.unboundedExtends]: LINT_RULE_NAMES.unboundedExtends,
@@ -292,6 +295,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unusedVariables]: 'off',
   [LINT_RULE_NAMES.unusedMixins]: 'off',
   [LINT_RULE_NAMES.unusedFunctions]: 'off',
+  [LINT_RULE_NAMES.leakyScopeDependence]: 'warn',
   [LINT_RULE_NAMES.impossibleGuards]: 'warn',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'warn',
   [LINT_RULE_NAMES.unboundedExtends]: 'warn',
@@ -365,6 +369,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.unusedVariables]: 'off',
   [LINT_RULE_NAMES.unusedMixins]: 'off',
   [LINT_RULE_NAMES.unusedFunctions]: 'off',
+  [LINT_RULE_NAMES.leakyScopeDependence]: 'off',
   [LINT_RULE_NAMES.impossibleGuards]: 'off',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'off',
   [LINT_RULE_NAMES.unboundedExtends]: 'off',
@@ -968,6 +973,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'off',
     comparison: 'jess-only',
     notes: 'Opt-in same-file dialect diagnostic for SCSS @function rules and Jess yielding function values that are declared but never referenced in a file with no imports, modules, or plugins; project callable facts remain future work.'
+  },
+  {
+    diagnosticCode: LINT_CODES.leakyScopeDependence,
+    ruleName: LINT_RULE_NAMES.leakyScopeDependence,
+    title: 'Less scope leakage',
+    tier: 'dialect-support',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags conservative same-file Less rulesets that read a variable declared inside a called mixin, which depends on Less scope leakage; files with imports, modules, or ordinary declarations stay unknown until semantic facts land.'
   },
   {
     diagnosticCode: LINT_CODES.impossibleGuards,

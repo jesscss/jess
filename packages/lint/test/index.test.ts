@@ -82,6 +82,7 @@ describe('stable rule set', () => {
       LINT_CODES.unusedVariables,
       LINT_CODES.unusedMixins,
       LINT_CODES.unusedFunctions,
+      LINT_CODES.leakyScopeDependence,
       LINT_CODES.impossibleGuards,
       LINT_CODES.duplicateModuleLoads,
       LINT_CODES.unboundedExtends,
@@ -151,6 +152,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unusedVariables,
       LINT_RULE_NAMES.unusedMixins,
       LINT_RULE_NAMES.unusedFunctions,
+      LINT_RULE_NAMES.leakyScopeDependence,
       LINT_RULE_NAMES.impossibleGuards,
       LINT_RULE_NAMES.duplicateModuleLoads,
       LINT_RULE_NAMES.unboundedExtends,
@@ -158,7 +160,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(55);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(56);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -185,6 +187,7 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedMixins]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedFunctions]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.leakyScopeDependence]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.impossibleGuards]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
@@ -259,6 +262,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedMixins]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedFunctions]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.leakyScopeDependence]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unboundedExtends]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.deadExtends]).toBe('off');
@@ -1664,6 +1668,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_RULE_NAMES.impossibleGuards, LINT_CODES.impossibleGuards, 'error']
+    ]);
+  });
+
+  it('applies policy to leaky-scope diagnostics by lint rule name', async () => {
+    const result = await lintText(
+      {
+        source: '.theme() { @accent: red; }\n.a { .theme(); color: @accent; }',
+        filePath: '/tmp/input.less'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.leakyScopeDependence]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.leakyScopeDependence, LINT_CODES.leakyScopeDependence, 'error']
     ]);
   });
 

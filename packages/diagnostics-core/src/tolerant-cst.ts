@@ -78,6 +78,7 @@ export const LINT_CODES = {
   unusedVariables: 'lint/no-unused-variable',
   unusedMixins: 'lint/no-unused-mixin',
   unusedFunctions: 'lint/no-unused-function',
+  leakyScopeDependence: 'lint/no-leaky-scope-dependence',
   impossibleGuards: 'lint/no-impossible-guard',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
@@ -563,6 +564,17 @@ type VariableDeclarationFact = {
 };
 
 type MixinDefinitionFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+type MixinLeakedVariableFact = {
+  readonly variableName: string;
+  readonly mixinDisplay: string;
+};
+
+type VariableReferenceFact = {
   readonly name: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
@@ -3296,6 +3308,30 @@ function variableReferenceNameOf(source: string, node: CssCstNode, language: Jes
   return normalizedVariableName(authored.name, language);
 }
 
+function variableReferenceFactOf(source: string, node: CssCstNode, language: JessLanguage): VariableReferenceFact | null {
+  if (language === 'css') {
+    return null;
+  }
+  if (node.grammarType !== 'VariableReference' && node.grammarType !== 'Reference') {
+    return null;
+  }
+  const authored = authoredVariableNameOf(source, absoluteStart(node), absoluteEnd(node));
+  if (authored === null) {
+    return null;
+  }
+  if (language === 'less' && authored.name.charCodeAt(0) !== 64) {
+    return null;
+  }
+  if ((language === 'scss' || language === 'jess') && authored.name.charCodeAt(0) !== 36) {
+    return null;
+  }
+  return {
+    name: normalizedVariableName(authored.name, language),
+    display: authored.name,
+    span: spanFromNodeStart(node, authored.start, authored.end)
+  };
+}
+
 function numericBracketAccessSpan(source: string, node: CssCstNode): DiagnosticSpan | null {
   const bracketTail = firstChildNodeOf(node, 'ReferenceBracketTail');
   if (bracketTail === undefined) {
@@ -3390,6 +3426,147 @@ function suspiciousMapKeyAccessOf(
     return null;
   }
   return span === null ? null : { variable, span };
+}
+
+function collectLessMixinBodyVariables(
+  source: string,
+  node: CssCstNode,
+  variables: Map<string, MixinLeakedVariableFact>,
+  mixin: MixinDefinitionFact
+): void {
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (RULESET_TYPES.has(child.grammarType) || ATRULE_TYPES.has(child.grammarType) || MIXIN_DEFINITION_TYPES.has(child.grammarType)) {
+      continue;
+    }
+    const declaration = variableDeclarationOf(source, child, 'less');
+    if (declaration !== null && !variables.has(declaration.name)) {
+      variables.set(declaration.name, {
+        variableName: declaration.name,
+        mixinDisplay: mixin.display
+      });
+      continue;
+    }
+    collectLessMixinBodyVariables(source, child, variables, mixin);
+  }
+}
+
+function collectLessVariableReferences(source: string, node: CssCstNode, references: VariableReferenceFact[]): void {
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (MIXIN_DEFINITION_TYPES.has(child.grammarType)) {
+      continue;
+    }
+    const reference = variableReferenceFactOf(source, child, 'less');
+    if (reference !== null) {
+      references.push(reference);
+      continue;
+    }
+    collectLessVariableReferences(source, child, references);
+  }
+}
+
+function collectLessLeakyScopeFacts(
+  source: string,
+  node: CssCstNode,
+  mixinVariables: Map<string, Map<string, MixinLeakedVariableFact>>,
+  ordinaryVariables: Set<string>
+): void {
+  const mixin = mixinDefinitionOf(source, node, 'less');
+  if (mixin !== null) {
+    const body = firstChildNodeOf(node, 'MixinDefinition');
+    if (body !== undefined) {
+      const variables = new Map<string, MixinLeakedVariableFact>();
+      collectLessMixinBodyVariables(source, body, variables, mixin);
+      if (variables.size > 0) {
+        mixinVariables.set(mixin.name, variables);
+      }
+    }
+    return;
+  }
+
+  const declaration = variableDeclarationOf(source, node, 'less');
+  if (declaration !== null) {
+    ordinaryVariables.add(declaration.name);
+  }
+
+  for (const child of cstChildrenOf(node)) {
+    if (isCstNode(child)) {
+      collectLessLeakyScopeFacts(source, child, mixinVariables, ordinaryVariables);
+    }
+  }
+}
+
+function lessLeakyScopeDiagnostics(
+  source: string,
+  root: CssCstNode,
+  hasExternalSources: boolean,
+  push: (code: string, severity: DiagnosticSeverityName, message: string, span: DiagnosticSpan, qualifiers?: readonly string[]) => void
+): void {
+  if (hasExternalSources) {
+    return;
+  }
+  const mixinVariables = new Map<string, Map<string, MixinLeakedVariableFact>>();
+  const ordinaryVariables = new Set<string>();
+  collectLessLeakyScopeFacts(source, root, mixinVariables, ordinaryVariables);
+  if (mixinVariables.size === 0) {
+    return;
+  }
+
+  const analyzeRuleset = (node: CssCstNode): void => {
+    if (RULESET_TYPES.has(node.grammarType)) {
+      const activeLeakedVariables = new Map<string, MixinLeakedVariableFact>();
+      const emittedVariables = new Set<string>();
+      for (const child of cstChildrenOf(node)) {
+        if (!isCstNode(child)) {
+          continue;
+        }
+        const calledNames = mixinCallNamesOf(source, child, 'less');
+        if (calledNames.length > 0) {
+          for (const calledName of calledNames) {
+            const variables = mixinVariables.get(calledName);
+            if (variables === undefined) {
+              continue;
+            }
+            for (const variable of variables.values()) {
+              if (!ordinaryVariables.has(variable.variableName)) {
+                activeLeakedVariables.set(variable.variableName, variable);
+              }
+            }
+          }
+          continue;
+        }
+
+        const references: VariableReferenceFact[] = [];
+        collectLessVariableReferences(source, child, references);
+        for (const reference of references) {
+          const leaked = activeLeakedVariables.get(reference.name);
+          if (leaked === undefined || emittedVariables.has(reference.name)) {
+            continue;
+          }
+          emittedVariables.add(reference.name);
+          push(
+            LINT_CODES.leakyScopeDependence,
+            'warning',
+            `Variable "${reference.display}" depends on Less mixin scope leakage from "${leaked.mixinDisplay}"`,
+            reference.span
+          );
+        }
+      }
+    }
+
+    for (const child of cstChildrenOf(node)) {
+      if (isCstNode(child)) {
+        analyzeRuleset(child);
+      }
+    }
+  };
+
+  analyzeRuleset(root);
 }
 
 function normalizedVariableName(name: string, language: JessLanguage): string {
@@ -5566,6 +5743,10 @@ export function cstLintDiagnostics(
       parent: null
     }
   });
+
+  if (language === 'less') {
+    lessLeakyScopeDiagnostics(source, root, hasExternalSources, push);
+  }
 
   for (const group of keyframesVendorGroups.values()) {
     if (group.vendorSpans.length === 0) {

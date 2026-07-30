@@ -129,6 +129,7 @@ enough.
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Jess-only symbol diagnostic, opt-in |
 | `jess/no-unused-mixin` | `lint/no-unused-mixin` | Jess-only callable diagnostic, opt-in |
 | `jess/no-unused-function` | `lint/no-unused-function` | Jess-only callable diagnostic, opt-in |
+| `jess/no-leaky-scope-dependence` | `lint/no-leaky-scope-dependence` | Jess-only Less migration diagnostic |
 | `jess/no-impossible-guard` | `lint/no-impossible-guard` | Jess-only static guard diagnostic |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess-only module diagnostic |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess-only selector diagnostic |
@@ -318,7 +319,7 @@ Stylelint.
 | `jess/no-unused-mixin` | off, then warn when project facts land | Callable refs | Initial opt-in same-file Less/SCSS/Jess mixin check landed; suppresses files with imports/modules/plugins and still needs project export/reference/import facts. |
 | `jess/no-unused-function` | off, then warn when project facts land | Callable refs | Initial opt-in same-file SCSS `@function` and Jess yielding function-value check landed; suppresses files with imports/modules/plugins and still needs project export/reference/import facts. |
 | `jess/no-shadowed-token` | off | Scope facts | Initial opt-in same-file nested variable shadowing diagnostic landed; imported/exported token shadowing still needs module graph facts. |
-| `jess/no-leaky-scope-dependence` | warn when allowed | Scope/effect facts, compile options | Less patterns that depend on mixin/detached-ruleset variable leakage. |
+| `jess/no-leaky-scope-dependence` | warn when allowed | Same-file Less mixin variables now; effect facts later | Initial conservative Less diagnostic flags rulesets that call a same-file mixin and then read a variable declared inside that mixin; files with imports/modules/plugins, ordinary declarations, detached rulesets, and richer flow stay unknown until semantic facts land. |
 | `jess/no-ambiguous-mixin-call` | warn | Callable facts | A call matches multiple overloads with incompatible bodies or signatures. |
 | `jess/no-mixin-output-mismatch` | off | Call signatures | A mixin used as declarations emits nested rules, or a value callable emits declarations. |
 | `jess/no-unsafe-reference-compose` | warn | Module facts | Extending or reading through a protected boundary that cannot surface output. |
