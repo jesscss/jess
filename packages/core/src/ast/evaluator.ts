@@ -11,7 +11,7 @@
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitValue, isValueGroupArray, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type ValueObj } from './value-eval.js';
+import { emitValue, isValueGroupArray, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value } from './value-eval.js';
 import type { FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
@@ -29,7 +29,7 @@ function verbatimArgs(args: ValueGroup): string {
 }
 
 /** Preserve an optional CSS call after name resolution or invocation failed. */
-function fallbackCall(name: string, args: ValueGroup): ValueObj {
+function fallbackCall(name: string, args: ValueGroup): Value {
   return makeKeyword(`${name}(${verbatimArgs(args)})`);
 }
 
@@ -44,7 +44,7 @@ function recoverCallFailure(
   args: ValueGroup,
   modes: EvalModes,
   onUnresolved: ((error: unknown) => void) | undefined
-): ValueObj {
+): Value {
   if (modes.functionMode === 'error') {
     throw error;
   }
@@ -83,7 +83,7 @@ const stringify = (v: ValueGroup): string =>
  * Core imports no fn bodies here.
  */
 export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
-  const materialize = (bytes: string): ValueObj => sniffLiteral(bytes);
+  const materialize = (bytes: string): Value => sniffLiteral(bytes);
 
   const call = (
     name: string,
@@ -136,7 +136,7 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     compareValues(op, left, right, modes.equalityMode ?? 'less');
 
   const typeCheck = (name: string, args: ValueGroup, _modes: EvalModes): boolean => {
-    const values: ValueObj[] = [];
+    const values: Value[] = [];
     for (const value of groupItems(args)) {
       if (isValueGroupArray(value)) {
         return false;

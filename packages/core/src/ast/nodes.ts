@@ -44,7 +44,7 @@ import type { CallArg } from './mixin-dispatch.js'; // [guards]
  * value-domain `Bool` via the materialize sniff (VALUE-NODE-MODEL-DESIGN §CORR-4).
  *
  * The literal `type` strings REUSE the value-domain names (`Keyword`/`Color`/
- * `Dimension`/`Quoted`); the collision with `ValueObj` is neutralized by the lane
+ * `Dimension`/`Quoted`); the collision with `Value` is neutralized by the lane
  * invariant (a value object never enters the AST-build lane) plus the `src` vs
  * `bytes` structural split (`node.ts` `AST_NODE_TYPES` doc).
  */

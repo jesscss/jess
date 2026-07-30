@@ -235,9 +235,6 @@ export interface Collection {
 
 export type Value = Dimension | Color | Quoted | Keyword | Any | List | Block | Bool | Nil | Collection;
 
-/** @deprecated Internal compatibility alias. Public APIs should spell this `Value`. */
-export type ValueObj = Value;
-
 /**
  * The canonical structural value carrier. A raw array is a default
  * space-separated sequence; explicit comma/slash boundaries use {@link List}.
@@ -362,7 +359,7 @@ export interface PluginDetachedDeclaration {
 }
 
 /** A raw recursive value-sequence is the legacy `tree.Expression` source. */
-export type PluginRawArgument = ValueObj | PluginDetachedRuleset | readonly ValueGroup[];
+export type PluginRawArgument = Value | PluginDetachedRuleset | readonly ValueGroup[];
 
 /**
  * One `!important`-flagged binding fact, alongside the value itself. Less's
@@ -438,10 +435,10 @@ export interface ValueEvaluator {
    * fields (`evalTyped`). Only OPERATED literals are materialized at all; the inert
    * majority emit their verbatim bytes and never touch this seam.
    */
-  materialize(bytes: string): ValueObj;
+  materialize(bytes: string): Value;
 
   /** Binary operation on two materialized operands (direct / delegated math). */
-  operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj;
+  operate(op: string, left: Value, right: Value, modes: EvalModes): Value;
 
   /** Named-function call on a materialized arg list. Sync unless a genuinely
    * async built-in forces a thenable (scoped to the forcing leaf). `scope`, when

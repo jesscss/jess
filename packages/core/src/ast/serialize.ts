@@ -118,7 +118,7 @@ import {
   type EvalValue,
   type ValueEvaluator,
   type ValueGroup,
-  type ValueObj
+  type Value
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -2303,7 +2303,7 @@ function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
 }
 
 /**
- * [R2/guards] A TYPED resolver: materializes a value node to a typed `ValueObj`
+ * [R2/guards] A TYPED resolver: materializes a value node to a typed `Value`
  * (guard leaves compare typed values / call type-fns).
  *
  * This is a {@link MaybePromise} lane: a guard operand may name a value that
@@ -2427,7 +2427,7 @@ function force(e: EvalCtx, v: EvalValue): ValueGroup {
   return e.ev.materialize(v);
 }
 
-function requireValueObject(value: ValueGroup, reason: string): ValueObj {
+function requireScalarValue(value: ValueGroup, reason: string): Value {
   if (isValueGroupArray(value)) {
     throw new TypeError(`${reason} requires a scalar value`);
   }
@@ -2441,7 +2441,7 @@ function requireValueObject(value: ValueGroup, reason: string): ValueObj {
  * (alone) sniffs its bytes. When no evaluator is injected every leaf degrades to a
  * bare keyword of its `src` (the former `forceLiteral` no-`ev` behavior).
  */
-function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comment, e: EvalCtx): ValueObj {
+function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comment, e: EvalCtx): Value {
   const src = node.type === 'Comment' ? node.text : node.src;
   if (!e.ev) {
     return { type: 'Keyword', text: src, bytes: src };
@@ -2661,9 +2661,9 @@ function evalTypedSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
   return combineAll(values, resolved => resolved);
 }
 
-const strictUnitOwners = new WeakMap<ValueObj, Operation>();
+const strictUnitOwners = new WeakMap<Value, Operation>();
 
-function hasInvalidFinalUnits(value: ValueObj): boolean {
+function hasInvalidFinalUnits(value: Value): boolean {
   if (value.type !== 'Dimension') {
     return false;
   }
@@ -2672,7 +2672,7 @@ function hasInvalidFinalUnits(value: ValueObj): boolean {
   return numerator.length > 1 || denominator.length > 0;
 }
 
-function rememberStrictUnitOwner(value: ValueObj, node: Operation, modes: EvalModes): ValueObj {
+function rememberStrictUnitOwner(value: Value, node: Operation, modes: EvalModes): Value {
   if (modes.unitMode === 'strict' && hasInvalidFinalUnits(value)) {
     strictUnitOwners.set(value, node);
   }
@@ -3180,8 +3180,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         try {
           return rememberStrictUnitOwner(ev.operate(
             node.operator,
-            requireValueObject(values[0]!, `operator ${node.operator}`),
-            requireValueObject(values[1]!, `operator ${node.operator}`),
+            requireScalarValue(values[0]!, `operator ${node.operator}`),
+            requireScalarValue(values[1]!, `operator ${node.operator}`),
             m
           ), node, m);
         } catch (error) {
@@ -3260,7 +3260,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
  * here when the structural flatten did not run for it, and keeping it makes the
  * authored value visible instead of silently dropping it.
  */
-function evalCollection(node: Collection, frame: Frame | null, e: EvalCtx): MaybePromise<ValueObj> {
+function evalCollection(node: Collection, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const keys: Array<MaybePromise<ValueGroup>> = [];
   const values: Array<MaybePromise<ValueGroup>> = [];
   for (const entry of node.entries) {
@@ -4220,7 +4220,7 @@ function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: E
 
 /**
  * Project one detached ruleset only for an opted-in legacy plugin call.  The
- * normal value evaluator deliberately keeps detached rulesets out of ValueObj;
+ * normal value evaluator deliberately keeps detached rulesets out of Value;
  * this is the one cold compatibility boundary that needs their declaration map.
  */
 function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<PluginRawArgument> {

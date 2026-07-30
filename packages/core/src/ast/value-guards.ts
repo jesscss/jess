@@ -1,11 +1,11 @@
 /**
  * Guard-leaf evaluation for the value domain: the typed comparison (`@a > 0`) and
  * type-predicate (`iscolor(@a)`) that a guard condition reduces to. Operates on
- * already-materialized `ValueObj`s; arithmetic lives in `value-operate.ts`.
+ * already-materialized `Value`s; arithmetic lives in `value-operate.ts`.
  *
  * HARD MODULE BOUNDARY: imports only the value domain + the shared units table.
  */
-import { isValueGroupArray, type Dimension, type ValueGroup, type ValueObj } from './value-eval.js';
+import { isValueGroupArray, type Dimension, type ValueGroup, type Value } from './value-eval.js';
 import { unify } from './value-units.js';
 import type { EqualityMode } from '../types/modes.js';
 
@@ -49,7 +49,7 @@ const primCompare = (a: string | number, b: string | number): -1 | 0 | 1 | undef
 /** `toCSS`-equivalent of a value operand (the byte form less.js compares by).
  *  An ESCAPED quoted string emits its raw contents (`~"x"` → `x`); a plain quoted
  *  string keeps its quotes; every other operand serializes to its own `bytes`. */
-function toCssStr(v: ValueObj): string {
+function toCssStr(v: Value): string {
   if (v.type === 'Quoted') {
     return v.escaped ? v.value : `${v.quote}${v.value}${v.quote}`;
   }
@@ -57,12 +57,12 @@ function toCssStr(v: ValueObj): string {
 }
 
 /** Whether an operand carries a dedicated `.compare` (less.js: Dimension/Color/Quoted). */
-function hasCompare(v: ValueObj): boolean {
+function hasCompare(v: Value): boolean {
   return v.type === 'Dimension' || v.type === 'Color' || v.type === 'Quoted';
 }
 
 /** A single operand's OWN `.compare(other)` (less.js per-type methods). */
-function selfCompare(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
+function selfCompare(a: Value, b: Value, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
   switch (a.type) {
     case 'Dimension':
       return b.type === 'Dimension' ? dimensionCompare(a, b, equalityMode) : undefined;
@@ -101,7 +101,7 @@ const negate = (c: -1 | 0 | 1 | undefined): -1 | 0 | 1 | undefined => {
  *  - same-type scalars are equal iff their values match; lists compare
  *    element-wise (same separator, length, and recursively-equal items).
  */
-function compareNodes(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
+function compareNodes(a: Value, b: Value, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
   /*
    * Less compares escaped/raw bytes (`~"…"` as Keyword, `e("…")` as
    * Any) against a typed comparable by emitted CSS bytes. Thus `3 = ~"3"`
@@ -202,7 +202,7 @@ export function compare(op: string, left: ValueGroup, right: ValueGroup, equalit
  * kind. Covers the foundation's predicate set; predicates that key off legacy
  * machinery are out of foundation scope (return `false`).
  */
-export function typeCheck(name: string, args: readonly ValueObj[]): boolean {
+export function typeCheck(name: string, args: readonly Value[]): boolean {
   const a = args[0];
   if (a === undefined) {
     return false;

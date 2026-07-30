@@ -1662,6 +1662,48 @@ involved.
       "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
       "outputBytes": 122534
     }
+  },
+  {
+    "id": "ast-value-guard-negate-result",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": [
+      "incomparable-remains-undefined",
+      "negative-and-positive-reverse",
+      "equality-remains-zero"
+    ],
+    "why": "This slice removes the old internal value-object alias spelling in favor of `Value`. The guard negation logic is unchanged; the touched file still owns the same closed comparison-result inversion contract.",
+    "dangerTokensJustification": "The diff changes type annotations and comments only in this area. It adds no comparison branch, traversal, allocation, parser replay, or materialization path.",
+    "behaviorEvidence": "Focused value tests passed: `pnpm --filter @jesscss/core test -- value-define-function.test.ts value-operate-compare.test.ts value-operate-units.test.ts --run` (25/25).",
+    "buildEvidence": "`pnpm --filter @jesscss/core build`, `pnpm --filter @jesscss/fns build`, and `pnpm run verify:types` passed after the alias removal.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "ast-value-operate-preserve-calc",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": [
+      "preserve-percentage-product",
+      "loose-percentage-product",
+      "explicit-calc-composition"
+    ],
+    "why": "This slice removes the old internal value-object alias spelling in favor of `Value`. The preserve-mode calc arithmetic policy is unchanged; the touched file still owns the same semantic result-construction boundary.",
+    "dangerTokensJustification": "The diff changes type annotations and comments only in this area. It adds no arithmetic branch, traversal, allocation, parser replay, or materialization path.",
+    "behaviorEvidence": "Focused value tests passed: `pnpm --filter @jesscss/core test -- value-define-function.test.ts value-operate-compare.test.ts value-operate-units.test.ts --run` (25/25).",
+    "buildEvidence": "`pnpm --filter @jesscss/core build`, `pnpm --filter @jesscss/fns build`, and `pnpm run verify:types` passed after the alias removal.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
   }
 ]
 ```

@@ -15,7 +15,7 @@
  * touches the sniff. The former `LiteralTag` enum / `LitFields` / packed-tag
  * contract are gone — the node type IS the classification.
  */
-import type { ValueObj } from './value-eval.js';
+import type { Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { makeColorRgb, makeKeyword } from './value-factory.js';
 import { namedColor } from './color-names.js';
@@ -56,7 +56,7 @@ export function parseHex(hex: string): { rgb: [number, number, number]; alpha: n
 }
 
 /** Synthetic-only numeric split (no pre-parsed fields): a computed numeric string. */
-function dimensionFromString(str: string): ValueObj {
+function dimensionFromString(str: string): Value {
   const m = NUM_RE.exec(str);
   const unit = m?.[1] ?? '';
   return { type: 'Dimension', number: Number(str.slice(0, str.length - unit.length)), unit, bytes: str };
@@ -69,7 +69,7 @@ function isQuotedBytes(s: string): boolean {
 }
 
 /** A quoted value node from its verbatim bytes (quote char known from the bytes). */
-function quotedFromBytes(str: string): ValueObj {
+function quotedFromBytes(str: string): Value {
   return { type: 'Quoted', value: str.slice(1, -1), quote: str[0]!, escaped: false, bytes: str };
 }
 
@@ -82,7 +82,7 @@ function quotedFromBytes(str: string): ValueObj {
  * the table falls through to a plain keyword. The grammar is authoritative that the
  * leaf IS a color, so this reads one byte (`#`) rather than re-classifying.
  */
-export function colorFromSrc(src: string): ValueObj {
+export function colorFromSrc(src: string): Value {
   if (src.charCodeAt(0) === 35 /* # */) {
     const { rgb, alpha } = parseHex(src);
     return makeColorRgb(rgb, alpha, HEX, { src });
@@ -112,7 +112,7 @@ export function colorFromSrc(src: string): ValueObj {
  * floor that no longer exists, and it contradicted verbatim preservation outright, so
  * it is gone: an un-operated literal now keeps its exact value.
  */
-export function dimensionFromFields(number: number, unit: string, src: string): ValueObj {
+export function dimensionFromFields(number: number, unit: string, src: string): Value {
   const numericStart = src.charCodeAt(0) === 0x2d /* - */ ? 1 : 0;
   if (Number.isFinite(number) && src.charCodeAt(numericStart) === 0x2e /* . */) {
     const bytes = numericStart === 0 ? `0${src}` : `-0${src.slice(1)}`;
@@ -122,7 +122,7 @@ export function dimensionFromFields(number: number, unit: string, src: string): 
 }
 
 /** A parsed `Quoted` leaf → value `Quoted`, reading its pre-split fields. */
-export function quotedFromFields(value: string, quote: string, escaped: boolean, src: string): ValueObj {
+export function quotedFromFields(value: string, quote: string, escaped: boolean, src: string): Value {
   return { type: 'Quoted', value, quote, escaped, bytes: src };
 }
 
@@ -135,7 +135,7 @@ export function quotedFromFields(value: string, quote: string, escaped: boolean,
  * `Bool` (guard booleanness — no AST `Bool` node exists); a numeric / hex / named-
  * color shape as its typed value; else a keyword. This is the ONLY byte sniff.
  */
-function sniffBuild(text: string): ValueObj {
+function sniffBuild(text: string): Value {
   const c0 = text.charCodeAt(0);
   if (c0 === 35 /* # */ && HEX_RE.test(text)) {
     const { rgb, alpha } = parseHex(text);
@@ -166,7 +166,7 @@ function sniffBuild(text: string): ValueObj {
  * Materialize an opaque `Any` leaf: sniff its verbatim `src` with NO trim (byte-
  * identical to the former untagged-literal typed path).
  */
-export function materializeAny(src: string): ValueObj {
+export function materializeAny(src: string): Value {
   return sniffBuild(src);
 }
 
@@ -175,6 +175,6 @@ export function materializeAny(src: string): ValueObj {
  * `Sequence`/`Interpolation` result forced in a typed position): trim, then sniff. This is
  * the `ValueEvaluator.materialize` seam body.
  */
-export function sniffLiteral(str: string): ValueObj {
+export function sniffLiteral(str: string): Value {
   return sniffBuild(str.trim());
 }

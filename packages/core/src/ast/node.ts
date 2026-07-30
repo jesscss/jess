@@ -96,16 +96,16 @@ export type Node =
 /**
  * The frozen set of the structural `type` strings — the membership basis for
  * {@link isNode}. A bare `'type' in x` is NOT a sound node test: the value domain
- * (`ValueObj`) also carries a PascalCase `type`, and after the #44 literal reshape
+ * (`Value`) also carries a PascalCase `type`, and after the #44 literal reshape
  * the AST literal leaves REUSE the value-domain names — `'Dimension'`, `'Color'`,
- * `'Quoted'`, `'Keyword'` are ALL shared between an AST leaf node and a `ValueObj`
+ * `'Quoted'`, `'Keyword'` are ALL shared between an AST leaf node and a `Value`
  * (`'Bool'` is value-domain ONLY — no AST `Bool` node exists, §CORR-4). `'List'` is
  * likewise shared — an AST separator-aware list node vs the materialized value-domain `List`.
  * Membership in this AST set neutralizes every non-shared collision; the shared
- * strings are neutralized by the lane invariant (a value-domain `ValueObj` never enters the
- * AST-build lane; never form a `Node | ValueObj` union). The cheap structural
+ * strings are neutralized by the lane invariant (a value-domain `Value` never enters the
+ * AST-build lane; never form a `Node | Value` union). The cheap structural
  * disambiguator, if ever needed, is the verbatim-field split: an AST literal names
- * it `src`, a `ValueObj` names it `bytes` — so `'bytes' in v` uniquely identifies a
+ * it `src`, a `Value` names it `bytes` — so `'bytes' in v` uniquely identifies a
  * value object and `'src' in v` an AST literal.
  */
 export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([

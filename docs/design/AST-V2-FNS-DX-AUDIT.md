@@ -147,7 +147,8 @@ Public naming:
 - `Value` is the typed scalar value union (`Color | Dimension | ...`).
 - `ValueGroup` is the structural value carrier (`Value` or nested groups).
 - `EvalValue` is the internal lane that may still hold inert literal bytes.
-- `ValueObj` is not public API and should disappear from author docs.
+- The old object-name alias is not public API and should disappear from author
+  docs.
 
 ## Unnecessary or harmful deviations
 
