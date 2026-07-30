@@ -141,8 +141,8 @@ comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint comparison config | `22.77 ms/op` |
-| Stylelint comparable rules | `27.14 ms/op` |
+| Jess lint comparison config | `22.30 ms/op` |
+| Stylelint comparable rules | `25.16 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
