@@ -108,6 +108,7 @@ export default {
       'box-model': 'off',
       'color-function-no-invalid-arguments': 'error',
       'jess/no-invalid-typed-custom-property-value': 'warn',
+      'jess/no-unused-variable': 'off',
       'jess/unsupported-sass-form': 'warn'
     }
   }
@@ -168,6 +169,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess value diagnostic |
 | `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode `argumentsInColorFunction` parity |
 | `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess value diagnostic |
+| `jess/no-unused-variable` | `lint/no-unused-variable` | Jess same-file symbol diagnostic, opt-in |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
 
 Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or

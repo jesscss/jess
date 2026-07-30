@@ -381,6 +381,32 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports same-file unused variables in dialect stylesheets', () => {
+    const less = '@used: red; @unused: blue; .a { color: @used; }';
+    const scss = '$used_name: red; $used-name: green; $unused: blue; .a { color: $used-name; }';
+    const jess = '$used: red; $unused: blue; .a { color: $used; }';
+
+    const lessResult = collectTolerantDiagnostics({ source: less, language: 'less' });
+    const scssResult = collectTolerantDiagnostics({ source: scss, language: 'scss' });
+    const jessResult = collectTolerantDiagnostics({ source: jess, language: 'jess' });
+
+    expect(lessResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedVariables)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused variable "@unused"', less.indexOf('@unused'), less.indexOf('@unused') + '@unused'.length]
+    ]);
+    expect(scssResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedVariables)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused variable "$unused"', scss.indexOf('$unused'), scss.indexOf('$unused') + '$unused'.length]
+    ]);
+    expect(jessResult.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedVariables)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused variable "$unused"', jess.indexOf('$unused'), jess.indexOf('$unused') + '$unused'.length]
+    ]);
+  });
+
   it('reports unknown at-rule descriptors without also reporting unknown properties', () => {
     const source = '@font-face { font-family: Inter; src: url(inter.woff2); made-up: nope; }\n'
       + '@property --x { syntax: "<length>"; inherits: false; initial-value: 0px; unknown: yes; }\n'

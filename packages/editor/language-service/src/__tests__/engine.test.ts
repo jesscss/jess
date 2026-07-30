@@ -754,6 +754,27 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('unusedVariables (lint/no-unused-variable)', () => {
+      it('stays quiet by default until project symbol facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '$used: red; $unused: blue; .a { color: $used; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/no-unused-variable');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/no-unused-variable', 'warning'));
+        const doc = createDocument('scss', '$used: red; $unused: blue; .a { color: $used; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/no-unused-variable');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('$unused');
+      });
+    });
+
     describe('recommended shared diagnostics', () => {
       it('surfaces stable diagnostics in the editor by default', () => {
         const engine = createEngine();

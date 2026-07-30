@@ -59,6 +59,7 @@ describe('stable rule set', () => {
       LINT_CODES.incompatibleMathFunctionUnits,
       LINT_CODES.invalidColorFunctionChannels,
       LINT_CODES.invalidTypedCustomPropertyValue,
+      LINT_CODES.unusedVariables,
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
@@ -100,13 +101,15 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.invalidColorFunctionChannels,
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
+      LINT_RULE_NAMES.unusedVariables,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(33);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(34);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.boxModel]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
   });
 
   it('keeps the Stylelint comparison policy limited to comparable rules', () => {
@@ -153,6 +156,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyValue]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unsupportedSassForm]).toBe('off');
   });
 });
@@ -938,6 +942,31 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.invalidTypedCustomPropertyValue, 'error']
+    ]);
+  });
+
+  it('keeps unused variables opt-in until project symbol facts exist', async () => {
+    const input = {
+      source: '$used: red; $unused: blue; .a { color: $used; }',
+      filePath: '/tmp/input.scss'
+    };
+
+    const defaults = await lintText(input, {
+      stylesConfig: {}
+    });
+    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unusedVariables)).toBe(false);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.unusedVariables]: 'warn'
+          }
+        }
+      }
+    });
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.unusedVariables, 'warning']
     ]);
   });
 });
