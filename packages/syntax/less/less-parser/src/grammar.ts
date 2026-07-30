@@ -3474,6 +3474,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const mixinParamSeparator = parser({ trivia: mixinSignatureTrivia }, commaOrSemicolon);
   const mixinParamTrailingSeparator = parser({ trivia: mixinSignatureTrivia }, literal(';'));
   const mixinParamClose = parser({ trivia: mixinSignatureTrivia }, literal(')'));
+  /*
+   * The parenthesized parameter interior is a signature fragment, not an
+   * opener-specific rule. Keeping it separate lets a future routed `.name(`
+   * definition header retain its already-consumed opener without copying the
+   * parameter grammar or relaxing call syntax.
+   */
+  const mixinParameterContents = optional(sequence(
+    oneOrMoreSep(
+      field('param', mixinParamWithSignatureTrivia),
+      field('separator', mixinParamSeparator)
+    ),
+    optional(field('trailingSeparator', mixinParamTrailingSeparator))
+  ));
   // The signature owns trivia at every delimiter boundary: mixin name → `(`,
   // after `(`, between params/separators, after the final param, after `)`, and
   // before `when`/`{`. Delimiters remain explicit private field facts so the
@@ -3483,13 +3496,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'MixinParameterList',
     parser({ trivia: mixinSignatureTrivia }, sequence(
       field('open', literal('(')),
-      optional(sequence(
-        oneOrMoreSep(
-          field('param', mixinParamWithSignatureTrivia),
-          field('separator', mixinParamSeparator)
-        ),
-        optional(field('trailingSeparator', mixinParamTrailingSeparator))
-      )),
+      mixinParameterContents,
       field('close', mixinParamClose)
     )),
     (_children, fields) => ({
