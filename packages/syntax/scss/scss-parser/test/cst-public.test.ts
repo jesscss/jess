@@ -75,15 +75,18 @@ describe('@jesscss/scss-parser/cst', () => {
   });
 
   it('uses contextual CST labels for plain quoted and pseudo-selector syntax', () => {
-    const result = parseScssCst('@use "theme"; .a:not(.b) { color: red; } .c:nth-child(2n) { color: blue; }');
+    const result = parseScssCst('@use "theme"; .a[data-label="open"]:not(:where([data-kind="open"])) { color: red; } .c:nth-child(2n) { color: blue; }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     const { grammarTypes } = stats(result.tree);
     expect(grammarTypes.get('PlainQuoted')).toBe(1);
+    expect(grammarTypes.get('PlainQuotedValue')).toBeGreaterThan(0);
     expect(grammarTypes.get('PseudoArgument')).toBeGreaterThan(0);
-    expect(grammarTypes.get('PseudoSelectorArgumentText')).toBe(1);
-    expect(grammarTypes.get('PseudoSelectorArgumentTextItem')).toBe(1);
+    expect(grammarTypes.get('PseudoArgumentGroup')).toBeGreaterThan(0);
+    expect(grammarTypes.get('PseudoArgumentSquare')).toBeGreaterThan(0);
+    expect(grammarTypes.get('PseudoSelectorArgumentText')).toBeGreaterThan(0);
+    expect(grammarTypes.get('PseudoSelectorArgumentTextItem')).toBeGreaterThan(0);
     expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
   });
 

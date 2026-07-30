@@ -181,8 +181,8 @@ type ScssRules = {
   PseudoSelectorArgumentTextItem: Combinator<string>;
   PseudoSelectorArgumentTextTail: Combinator<string>;
   PseudoArgument: Combinator<string>;
-  StaticPseudoGroup: Combinator<string>;
-  StaticPseudoSquare: Combinator<string>;
+  PseudoArgumentGroup: Combinator<string>;
+  PseudoArgumentSquare: Combinator<string>;
   PseudoSelector: Combinator<SimpleToken>;
   NestingSelector: Combinator<SimpleSelector>;
   Compound: Combinator<SelectorTerm>;
@@ -1258,8 +1258,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * condition's string is literal bytes, not a place the `//` trivia arm may
    * reach. Closed regex/literal arms, so nothing shared is affected.
    */
-  const staticValueQuoted = node<Quoted>(
-    'Quoted',
+  const plainQuotedValue = node<Quoted>(
+    'PlainQuotedValue',
     choice(
       noTrivia(sequence(
         literal('"'),
@@ -3467,7 +3467,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const SupportsAtom = node<ValueNode>(
     'SupportsAtom',
     choice(
-      staticValueQuoted,
+      plainQuotedValue,
       g.Color,
       g.Dimension,
       g.CustomPropertyValue,
@@ -4379,7 +4379,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.KeyframesAtKeyword,
       choice(
         g.Keyword,
-        staticValueQuoted
+        plainQuotedValue
       ),
       literal('{'),
       many(choice(
@@ -4464,22 +4464,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.AttributeOperator,
         choice(
 
-          /*
-           * `noTrivia` on the quoted arms only: the attribute itself re-enters
-           * the ambient trivia (see the selector production) so `[a = "b"]`
-           * keeps its spacing, but the string body must stay literal bytes so
-           * `[href="//host"]` is not swallowed by the `//` trivia arm.
-           */
-          noTrivia(sequence(
-            literal('"'),
-            doubleQuotedText,
-            literal('"')
-          )),
-          noTrivia(sequence(
-            literal('\''),
-            singleQuotedText,
-            literal('\'')
-          )),
+          plainQuotedValue,
           g.Identifier
         ),
         optional(g.AttributeModifier)
@@ -4498,14 +4483,14 @@ export const scssFactory = (g: ScssInputRules) => {
    * canonical spelling inside the containing SimpleSelector.
    */
   const staticPseudoChunk = regex(/(?:[^()\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
-  const StaticPseudoGroup = node<string>(
-    'StaticPseudoGroup',
+  const PseudoArgumentGroup = node<string>(
+    'PseudoArgumentGroup',
     sequence(
       literal('('),
       many(choice(
-        g.StaticPseudoGroup,
-        g.StaticPseudoSquare,
-        staticValueQuoted,
+        g.PseudoArgumentGroup,
+        g.PseudoArgumentSquare,
+        plainQuotedValue,
         g.BlockCommentToken,
         staticPseudoChunk
       )),
@@ -4513,14 +4498,14 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     joinSourceText
   );
-  const StaticPseudoSquare = node<string>(
-    'StaticPseudoSquare',
+  const PseudoArgumentSquare = node<string>(
+    'PseudoArgumentSquare',
     sequence(
       literal('['),
       many(choice(
-        g.StaticPseudoGroup,
-        g.StaticPseudoSquare,
-        staticValueQuoted,
+        g.PseudoArgumentGroup,
+        g.PseudoArgumentSquare,
+        plainQuotedValue,
         g.BlockCommentToken,
         staticPseudoChunk
       )),
@@ -4531,9 +4516,9 @@ export const scssFactory = (g: ScssInputRules) => {
   const PseudoArgument = node<string>(
     'PseudoArgument',
     oneOrMore(choice(
-      g.StaticPseudoGroup,
-      g.StaticPseudoSquare,
-      staticValueQuoted,
+      g.PseudoArgumentGroup,
+      g.PseudoArgumentSquare,
+      plainQuotedValue,
       g.BlockCommentToken,
       staticPseudoChunk
     )),
@@ -4550,9 +4535,9 @@ export const scssFactory = (g: ScssInputRules) => {
   const PseudoSelectorArgumentTextItem = node<string>(
     'PseudoSelectorArgumentTextItem',
     oneOrMore(choice(
-      g.StaticPseudoGroup,
-      g.StaticPseudoSquare,
-      staticValueQuoted,
+      g.PseudoArgumentGroup,
+      g.PseudoArgumentSquare,
+      plainQuotedValue,
       g.BlockCommentToken,
       staticSelectorPseudoChunk
     )),
@@ -5213,8 +5198,8 @@ export const scssFactory = (g: ScssInputRules) => {
     PseudoSelectorArgumentTextItem,
     PseudoSelectorArgumentTextTail,
     PseudoArgument,
-    StaticPseudoGroup,
-    StaticPseudoSquare,
+    PseudoArgumentGroup,
+    PseudoArgumentSquare,
     PseudoSelector,
     NestingSelector,
     Compound,
