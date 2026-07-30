@@ -5410,3 +5410,15 @@ applicable, literal chunks, and further parenthesis/bracket groups. The
 delimiters do not alter the resulting string fact, so both grammars now expose
 one `PseudoArgumentGroup` node with a first-set-disjoint `choice(...)` rather
 than a separate `PseudoArgumentSquare` production.
+
+Generic functional pseudo ownership, 2026-07-30: CSS and Jess route only the
+explicit selector-pseudo names (`:is`, `:where`, `:not`, `:has`, and
+`:matches`) to their selector grammar. Every other glued pseudo function owns
+one `GenericPseudoArgument` structural `<any-value>` capture instead: it is not
+a speculative selector, and it is not an undifferentiated byte capture. Its bounded content
+recognizer keeps nested parenthesis/bracket groups from terminating the outer
+argument, while CSS's ambient scan policy owns strings/comments. Jess adds the
+single real dialect rule at that slot: a top-level `$` ends the capture so a
+Jess interpolation cannot become generic pseudo content. The generic node owns
+the final `)` as part of its complete production, which eliminates the former
+partial-selector continuation and keeps the CSS/Jess AST/CST family aligned.

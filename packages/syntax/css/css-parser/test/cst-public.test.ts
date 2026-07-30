@@ -138,6 +138,16 @@ describe('@jesscss/css-parser/cst', () => {
     ])).toEqual([[17, 23]]);
   });
 
+  it('gives unknown functional pseudos one structural generic argument', () => {
+    const result = parseCssCst('.a:future-thing(foo(bar[qux])) { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = collect(result.tree);
+    expect(grammarTypes.get('GenericPseudoArgument')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorArgument')).toBeUndefined();
+  });
+
   it('does not recognize comment-delimited url identifiers as url or function tokens', () => {
     const ordinary = parseCssCst('.asset { background: url(icon.svg); }');
     const commentDelimited = parseCssCst('.asset { background: url/* name-open */(icon.svg); }');

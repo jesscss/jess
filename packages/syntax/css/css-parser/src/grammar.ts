@@ -1029,7 +1029,7 @@ export const cssFactory = (g: GrammarSelf) => {
     g.Identifier,
     optional(literal('('))
   )));
-  const pseudoRawArgument = scanTo(
+  const pseudoArgumentContent = scanTo(
     literal(')'),
     {
       skip: [
@@ -1127,12 +1127,12 @@ export const cssFactory = (g: GrammarSelf) => {
         not(g.MalformedPseudoSelectorNumericArgument),
         literal('-'),
         regex(/[ \t\n\r\f]+/),
-        pseudoRawArgument
+        pseudoArgumentContent
       )),
       noTrivia(sequence(
         literal('-'),
         literal('-'),
-        pseudoRawArgument
+        pseudoArgumentContent
       ))
     ),
     children => children.map(sourceText).join('')
@@ -1215,7 +1215,7 @@ export const cssFactory = (g: GrammarSelf) => {
       ),
       sequence(
         not(g.MalformedPseudoSelectorNumericArgument),
-        pseudoRawArgument
+        pseudoArgumentContent
       )
     ),
     children => selectorArgumentText(children[0])
@@ -1253,7 +1253,7 @@ export const cssFactory = (g: GrammarSelf) => {
           ),
           sequence(
             not(g.MalformedPseudoSelectorNumericArgument),
-            pseudoRawArgument
+            pseudoArgumentContent
           )
         )
       )
@@ -1262,22 +1262,19 @@ export const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * Retain the parsed `SelectorList` rather than collapsing it to text: a
-   * whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
-   * `args`. The raw arm still yields its scanned text. `PseudoSelector` derives the
-   * authored `text` from whichever it gets via `selectorArgumentText`, so the
-   * SimpleSelector text is byte-identical to the pre-P0.2 collapse.
+   * An unknown functional pseudo has one structural `<any-value>` argument.
+   * Selector-only pseudos route above to `SelectorOnlyPseudoArgument`; generic
+   * pseudos do not speculate on a selector prefix because that is not their
+   * grammar. The bounded capture owns its final delimiter so nested groups are
+   * part of this complete production rather than a partial outer continuation.
    */
   const GenericPseudoArgument = node(
     'GenericPseudoArgument',
-    choice(
-      parser(
-        { trivia: interstitialTrivia },
-        g.SelectorList
-      ),
-      pseudoRawArgument
+    sequence(
+      pseudoArgumentContent,
+      literal(')')
     ),
-    children => isSelectorList(children[0]) ? children[0] : selectorArgumentText(children[0])
+    children => selectorArgumentText(children[0])
   );
 
   /*
@@ -1368,8 +1365,7 @@ export const cssFactory = (g: GrammarSelf) => {
           endsWith('('),
           sequence(
             routed(),
-            GenericPseudoArgument,
-            literal(')')
+            GenericPseudoArgument
           )
         ),
         otherwise(sequence(

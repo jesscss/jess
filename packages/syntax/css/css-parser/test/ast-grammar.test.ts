@@ -180,6 +180,7 @@ describe('CSS canonical-AST grammar', () => {
       ':lang(en-US) { color: red; }',
       ':lang(")") { color: red; }',
       ':unknown([data-state=")"]) { color: red; }',
+      ':unknown(foo(bar[qux])) { color: red; }',
       '50% { color: red; }'
     ]) {
       const cst = parseCssCst(source);

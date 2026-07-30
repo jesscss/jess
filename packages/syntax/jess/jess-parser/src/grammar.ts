@@ -112,8 +112,8 @@ type JessRules = {
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoSelector: Combinator<SimpleToken>;
-  PseudoSelectorArgument: Combinator<SelectorList | string>;
-  GenericPseudoArgument: Combinator<SelectorList | string>;
+  PseudoSelectorArgument: Combinator<SelectorList>;
+  GenericPseudoArgument: Combinator<string>;
   Compound: Combinator<SelectorTerm>;
   PseudoSelectorCompound: Combinator<SelectorTerm>;
   PseudoSelectorComplexTail: Combinator<JessComplexTail>;
@@ -2682,8 +2682,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
           endsWith('('),
           sequence(
             routed(),
-            g.GenericPseudoArgument,
-            literal(')')
+            g.GenericPseudoArgument
           )
         ),
         otherwise(routed())
@@ -2808,15 +2807,14 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * A functional pseudo this grammar has no typed argument for is still
    * well-formed CSS: Selectors-4 §3.5 gives an unknown functional pseudo-class an
    * `<any-value>` argument, and WHETHER a pseudo exists is a language-service
-   * fact, not a parse decision — `a:totally-made-up(1)` and `:lang("en-US")` lost
-   * the whole stylesheet. The selector arm is tried first so every argument that
-   * already parsed keeps its structured `SelectorList` byte-for-byte; only what
-   * previously rejected reaches the delimiter-aware verbatim scan the other
-   * dialects already run for this class. A top-level `$` ends the scan, so the
-   * required `)` then fails: a Jess interpolation in a pseudo
-   * argument still rejects rather than being flattened into opaque text.
+   * fact, not a parse decision — `a:totally-made-up(1)` and `:lang("en-US")` keep
+   * the whole stylesheet parseable. This is its own structural `<any-value>`
+   * production, not a speculative selector parse: only the explicitly routed
+   * selector pseudo names accept `PseudoSelectorArgument`. A top-level `$` ends
+   * this bounded capture, so the required `)` then fails and a Jess interpolation
+   * cannot become a generic pseudo-argument byte sequence.
    */
-  const pseudoRawArgument = scanTo(
+  const genericPseudoContent = scanTo(
     choice(
       literal('$'),
       literal(')')
@@ -2828,23 +2826,13 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       ]
     }
   );
-  const GenericPseudoArgument = node<SelectorList | string>(
+  const GenericPseudoArgument = node<string>(
     'GenericPseudoArgument',
-    choice(
-      sequence(
-        optional(rawWhitespace),
-        g.PseudoSelectorArgument,
-        optional(rawWhitespace)
-      ),
-      pseudoRawArgument
+    sequence(
+      genericPseudoContent,
+      literal(')')
     ),
-    (children) => {
-      const selector = children.find(isSelectorList);
-      if (selector !== undefined) {
-        return selector;
-      }
-      return children.length === 0 ? '' : requireToken(children[0]).value;
-    }
+    children => requireToken(children[0]).value
   );
   const SelectorCapture = node<SelectorCapture>(
     'SelectorCapture',

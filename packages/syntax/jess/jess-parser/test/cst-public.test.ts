@@ -110,6 +110,16 @@ describe('@jesscss/jess-parser/cst', () => {
     expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
   });
 
+  it('gives unknown functional pseudos one structural generic argument', () => {
+    const result = parseJessCst('.a:future-thing(foo(bar[qux])) { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('GenericPseudoArgument')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorArgument')).toBeUndefined();
+  });
+
   it('reuses the semantic Quoted slot for static attribute values', () => {
     const result = parseJessCst('[data-kind="primary" i] { color: red; }');
 
