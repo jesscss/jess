@@ -7,9 +7,9 @@ the remaining quality cleanup after the Less grammar collapsed to one host-mode
 source.
 
 Current parity note: Less now ships from the direct host-mode grammar. The old
-CST bridge body has been deleted from `src/grammar.ts`, `lessCstGrammar` points
-at the host-mode CST artifact, and `lessAstGrammar` remains an alias of the same
-grammar. The public CST oracle movement is intentional fold movement; a later
+CST bridge body has been deleted from `src/grammar.ts`, `lessGrammar` is the
+default artifact, and `lessCstGrammar` is the explicit host-mode CST artifact.
+The public CST oracle movement is intentional fold movement; a later
 strict CSS calc follow-up also moved the two invalid CSS calc error fixtures so
 `calc()` / `calc(+)` reject at recognition rather than falling back to a generic
 function. The committed oracle baseline now pins both named movements:

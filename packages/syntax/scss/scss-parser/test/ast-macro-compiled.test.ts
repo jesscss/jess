@@ -2,7 +2,7 @@ import { createServer } from 'vite';
 import { run } from 'parseman';
 
 function isGrammarModule(value: unknown): value is typeof import('../src/grammar.js') {
-  return typeof value === 'object' && value !== null && 'scssAstGrammar' in value;
+  return typeof value === 'object' && value !== null && 'scssGrammar' in value;
 }
 
 test('canonical SCSS grammar macro-fuses recognition leaves with no runtime import', async () => {
@@ -18,13 +18,13 @@ test('canonical SCSS grammar macro-fuses recognition leaves with no runtime impo
 
     const loaded = await server.ssrLoadModule('/src/grammar.ts');
     if (!isGrammarModule(loaded)) {
-      throw new Error('Expected coverage module to expose the SCSS AST grammar.');
+      throw new Error('Expected coverage module to expose the canonical SCSS grammar.');
     }
     const grammarModule = loaded;
     const property = run(
-      grammarModule.scssAstGrammar.Stylesheet,
+      grammarModule.scssGrammar.Stylesheet,
       '@property --accent { syntax: "<color>"; inherits: false; }',
-      { trivia: grammarModule.scssAstGrammar.whitespace }
+      { trivia: grammarModule.scssGrammar.whitespace }
     );
     expect(property.ok).toBe(true);
     expect(property.unconsumedFrom).toBeNull();
