@@ -7,6 +7,7 @@ import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
 import { cssAstGrammar } from '../src/grammar.js';
 import { parseCssCst } from '../src/cst-css.js';
 import { parse } from '../src/index.js';
+import { wptAnbParsing } from './wpt-syntax-vectors.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object'
@@ -296,6 +297,23 @@ describe('CSS canonical-AST grammar', () => {
       ':nth-child(2n+1 of .item) { color: red; }'
     ]) {
       expect(() => parseAst(source), source).not.toThrow();
+    }
+  });
+
+  it(`matches adapted WPT An+B selector acceptance at ${wptAnbParsing.source}`, () => {
+    for (const argument of wptAnbParsing.accepts) {
+      const source = `:nth-child(${argument}) { color: red; }`;
+      const cst = parseCssCst(source);
+      expect(cst.errors, source).toHaveLength(0);
+      expect(cst.unconsumedFrom, source).toBeNull();
+      expect(() => parseAst(source), source).not.toThrow();
+    }
+
+    for (const argument of wptAnbParsing.rejects) {
+      const source = `:nth-child(${argument}) { color: red; }`;
+      const cst = parseCssCst(source);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
+      expect(() => parseAst(source), source).toThrow();
     }
   });
 
