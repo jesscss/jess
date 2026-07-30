@@ -65,6 +65,41 @@ const TIME_UNITS = new Set(['s', 'ms']);
 const FREQUENCY_UNITS = new Set(['hz', 'khz']);
 const RESOLUTION_UNITS = new Set(['dpi', 'dpcm', 'dppx', 'x']);
 const MATH_FUNCTION_NAMES = new Set(['min', 'max', 'clamp']);
+const PAGE_DESCRIPTOR_PROPERTIES = new Set([
+  'bleed', 'marks', 'page-orientation', 'size',
+  'direction', 'background-color', 'background-image', 'background-repeat',
+  'background-attachment', 'background-position', 'background',
+  'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
+  'border-width', 'border-top-color', 'border-right-color', 'border-bottom-color',
+  'border-left-color', 'border-color', 'border-top-style', 'border-right-style',
+  'border-bottom-style', 'border-left-style', 'border-style', 'border-top',
+  'border-right', 'border-bottom', 'border-left', 'border', 'counter-reset',
+  'counter-increment', 'color', 'font-family', 'font-size', 'font-style',
+  'font-variant', 'font-weight', 'font', 'height', 'min-height', 'max-height',
+  'line-height', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+  'margin', 'outline-width', 'outline-style', 'outline-color', 'outline',
+  'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'padding',
+  'quotes', 'letter-spacing', 'text-align', 'text-decoration', 'text-indent',
+  'text-transform', 'white-space', 'word-spacing', 'visibility', 'width',
+  'min-width', 'max-width'
+]);
+const PAGE_MARGIN_DESCRIPTOR_PROPERTIES = new Set([
+  'direction', 'unicode-bidi', 'background-color', 'background-image',
+  'background-repeat', 'background-attachment', 'background-position', 'background',
+  'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
+  'border-width', 'border-top-color', 'border-right-color', 'border-bottom-color',
+  'border-left-color', 'border-color', 'border-top-style', 'border-right-style',
+  'border-bottom-style', 'border-left-style', 'border-style', 'border-top',
+  'border-right', 'border-bottom', 'border-left', 'border', 'counter-reset',
+  'counter-increment', 'content', 'color', 'font-family', 'font-size', 'font-style',
+  'font-variant', 'font-weight', 'font', 'height', 'min-height', 'max-height',
+  'line-height', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+  'margin', 'outline-width', 'outline-style', 'outline-color', 'outline',
+  'overflow', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+  'padding', 'quotes', 'letter-spacing', 'text-align', 'text-decoration',
+  'text-indent', 'text-transform', 'white-space', 'word-spacing', 'vertical-align',
+  'visibility', 'width', 'min-width', 'max-width', 'z-index'
+]);
 
 const SHORTHAND_OVERRIDE_PROPERTIES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ['animation', new Set([
@@ -252,6 +287,7 @@ type VisitContext = {
   readonly inCustomDeclaration: boolean;
   readonly inFontFaceAtRule: boolean;
   readonly descriptorAtRuleName: string | null;
+  readonly pageDescriptorContext: 'page' | 'page-margin' | null;
   readonly inKeyframeBlock: boolean;
   readonly inUrlFunction: boolean;
   readonly inIgnoredTypeSelectorPseudo: boolean;
@@ -308,6 +344,7 @@ const ROOT_VISIT_CONTEXT_BASE = {
   inCustomDeclaration: false,
   inFontFaceAtRule: false,
   descriptorAtRuleName: null,
+  pageDescriptorContext: null,
   inKeyframeBlock: false,
   inUrlFunction: false,
   inIgnoredTypeSelectorPseudo: false,
@@ -472,6 +509,27 @@ function vendorPrefixOfName(name: string): string {
     return '-o-';
   }
   return '';
+}
+
+function descriptorStatusForContext(
+  context: VisitContext,
+  metadata: CssDiagnosticMetadata,
+  descriptorName: string
+): { readonly atRuleName: string; readonly status: boolean | undefined } | null {
+  const lower = descriptorName.toLowerCase();
+  if (context.pageDescriptorContext === 'page') {
+    return { atRuleName: 'page', status: PAGE_DESCRIPTOR_PROPERTIES.has(lower) };
+  }
+  if (context.pageDescriptorContext === 'page-margin') {
+    return { atRuleName: 'page', status: PAGE_MARGIN_DESCRIPTOR_PROPERTIES.has(lower) };
+  }
+  if (context.descriptorAtRuleName !== null) {
+    return {
+      atRuleName: context.descriptorAtRuleName,
+      status: metadata.isKnownAtRuleDescriptor(context.descriptorAtRuleName, descriptorName)
+    };
+  }
+  return null;
 }
 
 function pseudoNameSpan(source: string, start: number, end: number): { name: string; bare: string; colonCount: 1 | 2; start: number; end: number } | null {
@@ -1966,6 +2024,11 @@ export function cstLintDiagnostics(
     const isUrlFunction = gt === 'Url' || functionName === 'url';
     const isImageSetFunction = functionName !== null && unprefixedName(functionName) === 'image-set';
     const descriptorAtRuleName = gt === 'DescriptorBlock' ? atRuleNameOf(source, start, end) : null;
+    const pageDescriptorContext = gt === 'MarginAtRule' && context.pageDescriptorContext === 'page'
+      ? 'page-margin'
+      : gt === 'PageBlock'
+        ? 'page'
+        : context.pageDescriptorContext;
     const isMediaAtRule = gt === 'QueryAtRuleBlock'
       && source.charCodeAt(start) === 64
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'media';
@@ -1979,6 +2042,7 @@ export function cstLintDiagnostics(
       inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
       inFontFaceAtRule: context.inFontFaceAtRule || isFontFaceAtRule,
       descriptorAtRuleName: descriptorAtRuleName ?? context.descriptorAtRuleName,
+      pageDescriptorContext,
       inKeyframeBlock: context.inKeyframeBlock || KEYFRAME_BLOCK_TYPES.has(gt),
       inUrlFunction: context.inUrlFunction || isUrlFunction,
       inIgnoredTypeSelectorPseudo: context.inIgnoredTypeSelectorPseudo || (gt === 'PseudoSelector' && ignoresTypeSelectorsInPseudo(source, start, end)),
@@ -2231,9 +2295,7 @@ export function cstLintDiagnostics(
       const slice = source.slice(start, end);
       const colon = slice.indexOf(':');
       const name = propNameOf(slice);
-      const descriptorStatus = name.length > 0 && nodeContext.descriptorAtRuleName !== null
-        ? cssData.isKnownAtRuleDescriptor(nodeContext.descriptorAtRuleName, name)
-        : undefined;
+      const descriptor = name.length > 0 ? descriptorStatusForContext(nodeContext, cssData, name) : null;
 
       if (name.length > 0) {
         const lower = name.toLowerCase();
@@ -2245,14 +2307,14 @@ export function cstLintDiagnostics(
           || lower.includes('@{')
           || lower.includes('${');
         const nameStart = start + slice.indexOf(name);
-        if (descriptorStatus === false) {
+        if (descriptor !== null && descriptor.status === false) {
           push(
             LINT_CODES.unknownAtRuleDescriptors,
             'warning',
-            `Unknown descriptor "${name}" for at-rule "@${nodeContext.descriptorAtRuleName}"`,
+            `Unknown descriptor "${name}" for at-rule "@${descriptor.atRuleName}"`,
             spanAtOrContaining(node, nameStart, nameStart + name.length)
           );
-        } else if (descriptorStatus === undefined && !skip && !cssData.isKnownProperty(lower)) {
+        } else if (descriptor?.status === undefined && !skip && !cssData.isKnownProperty(lower)) {
           push(LINT_CODES.unknownProperties, 'warning', `Unknown property: '${name}'`, spanAtOrContaining(node, nameStart, nameStart + name.length));
         }
       }

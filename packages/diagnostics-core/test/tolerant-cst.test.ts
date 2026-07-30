@@ -179,7 +179,8 @@ describe('collectTolerantDiagnostics', () => {
   it('reports unknown at-rule descriptors without also reporting unknown properties', () => {
     const source = '@font-face { font-family: Inter; src: url(inter.woff2); made-up: nope; }\n'
       + '@property --x { syntax: "<length>"; inherits: false; initial-value: 0px; unknown: yes; }\n'
-      + '@counter-style thumbs { system: cyclic; symbols: "x"; frob: nope; }';
+      + '@counter-style thumbs { system: cyclic; symbols: "x"; frob: nope; }\n'
+      + '@page :first { size: A4; margin: 1cm; content: "bad"; @top-left { content: "ok"; unicode-bidi: normal; bad-margin: x; } }';
     const result = collectTolerantDiagnostics({
       source,
       language: 'css'
@@ -189,7 +190,9 @@ describe('collectTolerantDiagnostics', () => {
     expect(unknownDescriptors.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
       ['Unknown descriptor "made-up" for at-rule "@font-face"', source.indexOf('made-up'), source.indexOf('made-up') + 'made-up'.length],
       ['Unknown descriptor "unknown" for at-rule "@property"', source.indexOf('unknown'), source.indexOf('unknown') + 'unknown'.length],
-      ['Unknown descriptor "frob" for at-rule "@counter-style"', source.indexOf('frob'), source.indexOf('frob') + 'frob'.length]
+      ['Unknown descriptor "frob" for at-rule "@counter-style"', source.indexOf('frob'), source.indexOf('frob') + 'frob'.length],
+      ['Unknown descriptor "content" for at-rule "@page"', source.indexOf('content: "bad"'), source.indexOf('content: "bad"') + 'content'.length],
+      ['Unknown descriptor "bad-margin" for at-rule "@page"', source.indexOf('bad-margin'), source.indexOf('bad-margin') + 'bad-margin'.length]
     ]);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toBe(false);
   });
