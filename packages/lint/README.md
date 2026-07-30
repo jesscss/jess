@@ -36,7 +36,7 @@ const text = await lintText({
   filePath: 'card.css'
 })
 
-console.log(text.diagnostics.map(diagnostic => diagnostic.code))
+console.log(text.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code]))
 
 const run = await lintFiles(['src/**/*.{css,less,scss,jess}'], {
   maxWarnings: 0
@@ -76,8 +76,9 @@ await lintFiles([], {
 ### Formatting
 
 `formatStyledLintResult(result)` prints compact per-file diagnostic rows with
-codes and line/column positions. Pass `{ colors: false }` for stable plain text
-in tests.
+lint rule names and line/column positions. Structured diagnostics also keep the
+shared Jess diagnostic `code`. Pass `{ colors: false }` for stable plain text in
+tests.
 
 `formatLintResult(result)` is the plain-text formatter kept for simple output
 callers.
@@ -168,10 +169,12 @@ Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
 diagnostic-code helpers remain available for tools that already consume Jess
 diagnostic codes.
 
-The rule name is the user-facing configuration key. The diagnostic code is the
-shared problem identity used by diagnostics-core, the language service, JSON
-output, and compatibility aliases. Comparison labels such as "near Stylelint" or
-"VSCode parity" are metadata only.
+The rule name is the user-facing configuration key and the compact lint output
+label. The diagnostic code is the shared problem identity used by
+diagnostics-core, the language service, JSON output, and compatibility aliases.
+JSON diagnostics include both `ruleName` and `code` for stable tool migration.
+Comparison labels such as "near Stylelint" or "VSCode parity" are metadata only:
+they do not rename a rule or diagnostic.
 
 Parser syntax failures are not lint rules. `jess lint` can surface them as
 diagnostics when `reportSyntax` is enabled, but they are controlled separately

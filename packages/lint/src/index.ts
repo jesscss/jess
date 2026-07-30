@@ -66,6 +66,7 @@ export interface LintTextInput {
 }
 
 export interface LintDiagnostic extends SourceDiagnostic {
+  readonly ruleName?: string;
   readonly severity: DiagnosticSeverityName;
 }
 
@@ -90,6 +91,7 @@ export interface LintFormatOptions {
 
 interface DisplayDiagnostic {
   readonly code: string;
+  readonly ruleName?: string;
   readonly severity: DiagnosticSeverityName;
   readonly message: string;
   readonly filePath?: string;
@@ -206,8 +208,10 @@ function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfi
     if (shouldSuppressByRuleOptions(diagnostic, rulePolicy)) {
       continue;
     }
+    const ruleName = ruleNameForDiagnostic(diagnostic.code);
     out.push({
       ...diagnostic,
+      ruleName: ruleName === diagnostic.code ? undefined : ruleName,
       severity: severityPolicy === 'error'
         ? 'error'
         : severityPolicy === 'warn'
@@ -392,11 +396,11 @@ function formatLintRows(result: LintRunResult, options: Required<LintFormatOptio
 
     const locWidth = Math.max(...diagnostics.map(diagnostic => locOf(diagnostic).length));
     const severityWidth = Math.max(...diagnostics.map(diagnostic => diagnostic.severity.length));
-    const codeWidth = Math.max(...diagnostics.map(diagnostic => diagnostic.code.length));
+    const codeWidth = Math.max(...diagnostics.map(diagnostic => displayCode(diagnostic).length));
     for (const diagnostic of diagnostics) {
       const loc = locOf(diagnostic).padStart(locWidth);
       const severity = diagnostic.severity.padEnd(severityWidth);
-      const code = diagnostic.code.padEnd(codeWidth);
+      const code = displayCode(diagnostic).padEnd(codeWidth);
       rows.push({
         text: `  ${linkIfEnabled(options.colors, diagnostic.filePath, loc, diagnostic.line, diagnostic.column)}  ${severity}  ${code}  ${diagnostic.message}`,
         style: severityStyle(diagnostic.severity)
@@ -415,6 +419,18 @@ function formatLintRows(result: LintRunResult, options: Required<LintFormatOptio
 }
 
 function displayDiagnostics(file: LintResult): DisplayDiagnostic[] {
+  if (file.diagnostics.length > 0) {
+    return file.diagnostics.map(diagnostic => ({
+      code: diagnostic.code,
+      ruleName: diagnostic.ruleName,
+      severity: diagnostic.severity,
+      message: diagnostic.message,
+      filePath: diagnostic.filePath,
+      line: diagnostic.line ?? 0,
+      column: diagnostic.column ?? diagnostic.start
+    }));
+  }
+
   const diagnostics: DisplayDiagnostic[] = [
     ...file.errors.map(diagnostic => ({
       code: diagnostic.code,
@@ -436,14 +452,11 @@ function displayDiagnostics(file: LintResult): DisplayDiagnostic[] {
   if (diagnostics.length > 0) {
     return diagnostics;
   }
-  return file.diagnostics.map(diagnostic => ({
-    code: diagnostic.code,
-    severity: diagnostic.severity,
-    message: diagnostic.message,
-    filePath: diagnostic.filePath,
-    line: diagnostic.line ?? 0,
-    column: diagnostic.column ?? diagnostic.start
-  }));
+  return [];
+}
+
+function displayCode(diagnostic: DisplayDiagnostic): string {
+  return diagnostic.ruleName ?? diagnostic.code;
 }
 
 function locOf(diagnostic: DisplayDiagnostic): string {

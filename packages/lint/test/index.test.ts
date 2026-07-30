@@ -198,6 +198,9 @@ describe('lintText', () => {
       }
     );
 
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code])).toEqual([
+      [LINT_RULE_NAMES.unknownPropertyValues, LINT_CODES.unknownPropertyValues]
+    ]);
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownPropertyValues, 'error']
     ]);
@@ -255,6 +258,7 @@ describe('lintText', () => {
     );
 
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([PARSE_SYNTAX_ERROR_CODE]);
+    expect(result.diagnostics[0]?.ruleName).toBeUndefined();
     expect(result.diagnostics[0]?.severity).toBe('error');
   });
 
@@ -948,8 +952,10 @@ describe('formatStyledLintResult', () => {
     expect(output).toContain('2:3');
     expect(output).toContain('3:10');
     expect(output).toContain('warning');
-    expect(output).toContain(LINT_CODES.unknownProperties);
-    expect(output).toContain(LINT_CODES.zeroUnits);
+    expect(output).toContain(LINT_RULE_NAMES.unknownProperties);
+    expect(output).toContain(LINT_RULE_NAMES.zeroUnits);
+    expect(output).not.toContain(LINT_CODES.unknownProperties);
+    expect(output).not.toContain(LINT_CODES.zeroUnits);
     expect(output).not.toContain('colr: red;');
     expect(output).not.toContain('width: 0px;');
   });

@@ -58,8 +58,8 @@ summary.
 
 ```text
 src/app.css
-  2:3   warning  lint/unknown-property  Unknown property: 'colr'
-  3:10  warning  lint/zero-units        The unit "px" is unnecessary for a zero value
+  2:3   warning  property-no-unknown   Unknown property: 'colr'
+  3:10  warning  length-zero-no-unit   The unit "px" is unnecessary for a zero value
 Linted 1 file(s): 0 error(s), 2 warning(s)
 ```
 
@@ -68,7 +68,7 @@ Linted 1 file(s): 0 error(s), 2 warning(s)
 | Option | What it does |
 | --- | --- |
 | `--format text` | Print compact human-readable output. This is the default. |
-| `--format json` | Print the full structured lint result as JSON. |
+| `--format json` | Print the full structured lint result as JSON, including lint `ruleName` and shared diagnostic `code`. |
 | `--max-warnings <n>` | Exit non-zero when warnings exceed `n`. Use `--max-warnings 0` in CI. |
 | `--syntax-only` | Report parser diagnostics only. |
 | `--quiet` | Suppress warnings in text output. |
@@ -115,6 +115,9 @@ Jess's stable lint set is deliberately small:
 
 The lint package owns policy and reporting. Detection lives in the shared Jess
 diagnostics layer so CLI linting and editor diagnostics improve together.
+Rule names are the user-facing lint configuration and compact-output labels.
+Diagnostic codes are the shared identities used by diagnostics-core, the
+language service, JSON output, and compatibility aliases.
 
 Parser syntax failures are diagnostics, not lint rules. `jess lint` reports
 them when `reportSyntax` is enabled and keeps them out of rule configuration.

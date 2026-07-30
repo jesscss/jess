@@ -59,7 +59,11 @@ Stylelint when the behavior is close enough to be familiar; Jess-only checks use
 a `jess/` prefix. Each stable rule also maps to a shared Jess diagnostic code:
 the rule name is the user-facing `lint.rules` key, while the diagnostic code is
 the shared identity used by diagnostics-core, the language service, JSON output,
-and compatibility aliases.
+and compatibility aliases. Lint JSON carries both names when a diagnostic maps
+to a stable lint rule. Comparison labels describe parity only: `Stylelint-near`
+still uses the familiar lint rule name, but the implementation may be a
+VSCode-data-backed or Jess-native subset and can stay out of matched benchmark
+mode until its behavior is comparable enough.
 
 | Rule | Diagnostic code | Kind |
 | --- | --- | --- |
