@@ -2282,7 +2282,7 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
-  it('fuses a parent selector with a glued $[…] template into one selector atom', () => {
+  it('fuses a parent selector with a glued `${...}` template into one selector atom', () => {
     /*
      * A split representation would resolve the bare `&` to `:is(parents)` first
      * and append to that; only the fused atom distributes per parent.
@@ -2317,7 +2317,7 @@ describe('Jess AST grammar facts', () => {
      * `@at-root`), which has no AST v2 carrier, and `nil` is not a Jess keyword,
      * so neither may degrade into an append of nothing.
      */
-    for (const source of ['.a { &-1 { color: blue; } }', '.a { &1 { color: blue; } }', '.a { &() { color: blue; } }', '.a { &(\'\') { color: blue; } }', '.a { &(nil) { color: blue; } }']) {
+    for (const source of ['.a { &-1 { color: blue; } }', '.a { &1 { color: blue; } }', '.a { &() { color: blue; } }', '.a { &(\'\') { color: blue; } }', '.a { &(nil) { color: blue; } }', '.a { &-$[tone] { color: blue; } }']) {
       const cst = parseJessCst(source);
       const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
       expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
@@ -2348,7 +2348,7 @@ describe('Jess AST grammar facts', () => {
     expect(() => parse('.a { .b { $apply &(-1); } }')).toThrow(SyntaxError);
   });
 
-  it('constructs public $[…] selector templates as Interp-backed SimpleSelector atoms', () => {
+  it('constructs public `${...}` selector templates as Interp-backed SimpleSelector atoms', () => {
     const source = '$side: left; .widget-${side}-${[tone]} { tone: dark; color: blue; }';
     const legacy = parseJessCst(source);
     const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
@@ -2382,7 +2382,7 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
-  it('evaluates parsed bare and quoted selector templates in their nesting scope', () => {
+  it('evaluates parsed bare and bracketed `${...}` selector templates in their nesting scope', () => {
     const document = parse('$side: left; .shell { tone: dark; .widget-${side}-${[tone]} { color: blue; } }');
 
     expect(serialize(document).css).toBe(
@@ -2395,7 +2395,7 @@ describe('Jess AST grammar facts', () => {
     );
   });
 
-  it('feeds parsed bare and quoted selector templates through the extend planner', () => {
+  it('feeds parsed bare and bracketed `${...}` selector templates through the extend planner', () => {
     const parsed = parse('$side: bare; .scope { tone: quoted; .target { color: blue; } .bare-${side} {} .quoted-${[tone]} {} }');
     const scope = parsed.rules[1];
     if (scope?.type !== 'Ruleset') {

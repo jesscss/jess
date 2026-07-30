@@ -2476,22 +2476,20 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * `&` glued to a `$[…]` template is ONE parent-suffix selector atom, not a
+   * `&` glued to a `${...}` template is ONE parent-suffix selector atom, not a
    * parent reference followed by a second compound member. Only the fused shape
    * distributes the concatenation per parent; a split one would resolve the bare
    * `&` to `:is(parents)` first and then append to that.
    *
-   * The literal run between `&` and the template is a template FRAGMENT, not a
+   * The literal run between `&` and the template is a template fragment, not a
    * completed identifier, so the fused terminal's identifier rule does not apply
-   * to it: `&-$[tone]` is the authored spelling of `&-primary`. The lookahead is
-   * the same fast reject `InterpolatedSimple` uses, so an ordinary `&`
-   * compound member never pays a failed template scan.
+   * to it: `&-${tone}` is the authored spelling of `&-primary`. The required
+   * `DollarBrace` is the decisive continuation, so this production owns that
+   * decision directly rather than pre-scanning it with `peek(...)`.
    */
-  const interpolatedParentSuffixAhead = peek(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
   const InterpolatedParentSuffix = node<SimpleSelector>(
     'InterpolatedParentSuffix',
     noTrivia(sequence(
-      interpolatedParentSuffixAhead,
       literal('&'),
       many(selectorTextRun),
       g.DollarBrace,
@@ -2500,7 +2498,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
         selectorTextRun
       ))
     )),
-    children => interpolatedSimpleSelector(templateInterpolationFromChildren(children.filter(child => !isToken(child) || !child.value.includes('$'))))
+    children => interpolatedSimpleSelector(templateInterpolationFromChildren(children))
   );
   const attributeDoubleQuoted = noTrivia(sequence(
     literal('"'),

@@ -5054,3 +5054,28 @@ check:macro` with 0 interpreter fallbacks; `pnpm run verify:compose-integrity`;
 and `git diff --check`. The broader SCSS AST file has three pre-existing
 custom-property recursion failures on the restored `origin/dev` baseline, so it
 is not used as evidence for this slice.
+
+Jess interpolated-parent selector cleanup, 2026-07-30:
+`InterpolatedParentSuffix` now consumes its actual continuation directly:
+`&`, an optional selector-text fragment, and the required `${...}`
+interpolation. Direct Jess `$[...]` lookup is value-position syntax and is not
+part of this selector production; `${[...]}` remains the deliberate lookup body
+of the selector/name interpolation form. The removed
+`interpolatedParentSuffixAhead` was a broad zero-width scan that emitted a
+throwaway token which its reducer had to discard.
+This is an exact later-continuation decision inside one selector atom, so it is
+owned by the production itself rather than a `dispatch(...)` route: no one
+consumed token can distinguish the static `Parent` sibling until the required
+interpolation starts. `InterpolatedSimple` and `InterpolatedProperty` retain
+their separate preflight classifications because their broad first sets cover
+the common non-interpolated selector/declaration paths; do not treat this local
+removal as permission to delete them without a routed or left-factored shape and
+an A/B result.
+
+Evidence: parser-shared then Jess builds passed; Jess AST/CST focused tests
+passed (2 files / 121 tests), including parent-template, ordinary-parent, and
+the direct `$[...]` rejection boundary; the full Jess parser suite passed (6
+files / 259 tests). `check:macro` passed with zero interpreter fallbacks and
+`verify:compose-integrity` passed. A fresh macro-compiled snapshot was taken
+with `test/parse-bench.mjs` (warmup 8, timed 25); its sub-millisecond corpus is
+too small and noisy for a speed claim.
