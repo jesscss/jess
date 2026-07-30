@@ -11,9 +11,9 @@
 import { describe, expect, it } from 'vitest';
 import { compare } from '../value-guards.js';
 import { makeDimension, makeKeyword, makeQuoted } from '../value-factory.js';
-import type { ValueObj } from '../value-eval.js';
+import type { Value } from '../value-eval.js';
 
-const dim = (n: number, u = ''): ValueObj => makeDimension(n, u);
+const dim = (n: number, u = ''): Value => makeDimension(n, u);
 
 describe('compare — dimension unit reconciliation (vs less@4.6.3)', () => {
   it('converts compatible length units', () => {

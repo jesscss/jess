@@ -15,8 +15,8 @@
  * this file pins the NON-ALIAS relationships specifically.
  */
 import { describe, expect, it } from 'vitest';
-import { makeColorRgb, makeDimension, makeList, isValueGroupArray, HEX, RGB } from '@jesscss/core/value';
-import type { Color, Fn, FnCtx, ValueGroup, ValueObj } from '@jesscss/core/value';
+import { makeColorRgb, makeDimension, makeList, isValueGroupArray, HEX, RGB } from '@jesscss/core';
+import type { Color, Fn, FnCtx, ValueGroup, Value } from '@jesscss/core';
 import { fadeIn } from '../color/fade-in.js';
 import { fadeOut } from '../color/fade-out.js';
 import { opacify } from '../color/opacify.js';
@@ -36,7 +36,7 @@ const ctx: FnCtx = {
   stringify: v => (isValueGroupArray(v) ? '' : v.bytes)
 };
 
-function call(fn: Fn, ...args: ValueObj[]): ValueObj {
+function call(fn: Fn, ...args: Value[]): Value {
   const result = fn(makeList(args as readonly ValueGroup[], ','), ctx);
   if (result instanceof Promise || isValueGroupArray(result)) {
     throw new TypeError('Expected a single value result.');
@@ -44,7 +44,7 @@ function call(fn: Fn, ...args: ValueObj[]): ValueObj {
   return result;
 }
 
-function color(value: ValueObj): Color {
+function color(value: Value): Color {
   if (value.type !== 'Color') {
     throw new TypeError('Expected a Color result.');
   }
@@ -52,8 +52,8 @@ function color(value: ValueObj): Color {
 }
 
 const half = makeColorRgb([255, 0, 0], 0.5, RGB);
-const pct = (n: number): ValueObj => makeDimension(n, '%');
-const num = (n: number): ValueObj => makeDimension(n);
+const pct = (n: number): Value => makeDimension(n, '%');
+const num = (n: number): Value => makeDimension(n);
 
 describe('Sass alpha functions are NOT Less’s fadein/fadeout', () => {
   it('take a 0-1 fraction where Less takes a percentage', () => {

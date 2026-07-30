@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { lessFns } from '../registry.js';
-import { makeDimension } from '@jesscss/core/value';
+import { makeDimension } from '@jesscss/core';
 import { sqrt } from '../sqrt.js';
 
 type LegacyDimensionOracle = {

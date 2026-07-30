@@ -1,5 +1,5 @@
-import { groupItems, makeKeyword, defineFunction } from '@jesscss/core/value';
-import type { Fn } from '@jesscss/core/value';
+import { groupItems, makeKeyword, defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core';
 
 /**
  * `escape(value)` — URL-encode the string form of `value` (`ctx.stringify` = legacy
@@ -8,7 +8,7 @@ import type { Fn } from '@jesscss/core/value';
  * adapter mishandles the reconstructed Quoted and encodes its quotes).
  */
 export const escape: Fn = defineFunction('escape', {
-  params: [{ kinds: 'any' }],
+  params: [{ type: 'any' }],
   variadic: true,
   body: (list, ctx) => {
     const raw = ctx.stringify(groupItems(list)[0]!);

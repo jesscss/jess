@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Context } from '@jesscss/core';
-import { defineFunction, emitValue, makeDimension, type FnCtx, type ValueObj } from '@jesscss/core/value';
+import { defineFunction, emitValue, makeDimension, type FnCtx, type ValueObj } from '@jesscss/core';
 import { LessApiBridge } from '../src/less-api-bridge.js';
 import { LessCompatPlugin } from '../src/plugin.js';
 

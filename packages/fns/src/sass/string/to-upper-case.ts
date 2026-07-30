@@ -1,5 +1,5 @@
-import { defineFunction } from '@jesscss/core/value';
-import { STRING_KINDS, asciiCase, reString, stringText } from './util.js';
+import { defineFunction } from '@jesscss/core';
+import { STRING_KINDS, asciiCase, reString, stringText, type SassString } from './util.js';
 
 /**
  * Sass `string.to-upper-case()` / the `to-upper-case()` global.
@@ -9,8 +9,8 @@ import { STRING_KINDS, asciiCase, reString, stringText } from './util.js';
  * `to-upper-case("straße")` → `"STRAßE"`, `to-upper-case("ä")` → `"ä"`.
  */
 const toUpperCase = defineFunction('to-upper-case', {
-  params: [{ name: 'string', kinds: STRING_KINDS }] as const,
-  body: string => reString(string, asciiCase(stringText(string), true))
+  params: [{ name: 'string', type: STRING_KINDS }] as const,
+  body: (string: SassString) => reString(string, asciiCase(stringText(string), true))
 });
 
 export default toUpperCase;

@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { makeColorRgb, defineFunction, HEX } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { makeColorRgb, defineFunction, HEX } from '@jesscss/core';
 import { hsvToRgb, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { requireDimension } from './math-helper.js';
 
@@ -8,7 +8,7 @@ import { requireDimension } from './math-helper.js';
  * `less/hsv`, which sets `format = HEX` on the `hsva` result).
  */
 export const hsv: Fn = defineFunction('hsv', {
-  params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'] }, { kinds: ['Dimension'] }],
+  params: [{ type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }],
   body: (hD, sD, vD) => {
     const h = normalizeHue(requireDimension(hD));
     const s = percentOf(requireDimension(sD), 1);

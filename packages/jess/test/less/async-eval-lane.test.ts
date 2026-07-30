@@ -13,7 +13,7 @@ import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
-import { defineFunction, makeDimension, makeKeyword } from '@jesscss/core/value';
+import { defineFunction, makeDimension, makeKeyword } from '@jesscss/core';
 
 /** Resolves after a real tick, so the value genuinely arrives as a promise. */
 const slowKeyword = defineFunction('aslow', {

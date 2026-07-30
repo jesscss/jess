@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emitValue, makeDimension, makeKeyword, makeList, makeQuoted, serializeValue, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { emitValue, makeDimension, makeKeyword, makeList, makeQuoted, serializeValue, type Fn, type ValueGroup } from '@jesscss/core';
 import * as sassGlobals from '../index.js';
 import { sassFns } from '../registry.js';
 import * as stringModule from '../string/index.js';

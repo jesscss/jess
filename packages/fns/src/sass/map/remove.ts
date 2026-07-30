@@ -6,15 +6,15 @@
  * @example
  * map.remove((a: 1, b: 2), a) // (b: 2)
  */
-import { defineFunction, makeCollection } from '@jesscss/core/value';
+import { defineFunction, makeCollection } from '@jesscss/core';
 import { entryIndex } from './util.js';
 
 const remove = defineFunction(
   'remove',
   {
     params: [
-      { name: 'map', kinds: ['Collection'] },
-      { name: 'keys', kinds: 'any', rest: true }
+      { name: 'map', type: 'Collection' },
+      { name: 'keys', type: 'any', rest: true }
     ] as const,
     body: (map, keys) => {
       if (keys.length === 0) {

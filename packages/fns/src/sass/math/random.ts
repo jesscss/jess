@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { defineFunction, makeDimension, type Dimension, type Nil } from '@jesscss/core';
 
 /**
  * Sass's fuzzy integer test. Sass compares numbers at 10 digits of precision, so
@@ -42,8 +42,8 @@ const fuzzyInt = (value: number): number | undefined => {
  * (a) so the port is faithful to the spec; the ruling is the owner's.
  */
 const random = defineFunction('random', {
-  params: [{ name: 'limit', kinds: ['Dimension', 'Nil'], optional: true }] as const,
-  body: (limit) => {
+  params: [{ name: 'limit', type: ['Dimension', 'Nil'], optional: true }] as const,
+  body: (limit: Dimension | Nil | undefined) => {
     if (limit === undefined || limit.type === 'Nil') {
       return makeDimension(Math.random());
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeColorRgb, RGB } from '@jesscss/core/value';
+import { makeColorRgb, RGB } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { overlay, overlayBase } from '../overlay.js';
 import { softlight, softlightBase } from '../softlight.js';

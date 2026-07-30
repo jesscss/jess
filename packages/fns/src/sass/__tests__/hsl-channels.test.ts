@@ -7,9 +7,9 @@
  * relation is the classification this port acts on. That is what this file pins.
  */
 import { describe, expect, it } from 'vitest';
-import { makeColorHsl, makeList, HSL } from '@jesscss/core/value';
-import type { Dimension, Fn, FnCtx, ValueGroup, ValueObj } from '@jesscss/core/value';
-import { isValueGroupArray } from '@jesscss/core/value';
+import { makeColorHsl, makeList, HSL } from '@jesscss/core';
+import type { Dimension, Fn, FnCtx, ValueGroup, Value } from '@jesscss/core';
+import { isValueGroupArray } from '@jesscss/core';
 import { hue } from '../color/hue.js';
 import { saturation } from '../color/saturation.js';
 import { lightness } from '../color/lightness.js';
@@ -23,7 +23,7 @@ const ctx: FnCtx = {
   stringify: v => (isValueGroupArray(v) ? '' : v.bytes)
 };
 
-function call(fn: Fn, ...args: ValueObj[]): Dimension {
+function call(fn: Fn, ...args: Value[]): Dimension {
   const result = fn(makeList(args as readonly ValueGroup[], ','), ctx);
   if (result instanceof Promise || isValueGroupArray(result) || result.type !== 'Dimension') {
     throw new TypeError('Expected a Dimension result.');

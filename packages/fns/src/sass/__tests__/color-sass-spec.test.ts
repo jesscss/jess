@@ -28,8 +28,8 @@ import {
   TOLERANCE
 } from './sass-spec-corpus.js';
 import type { SpecCase } from './sass-spec-corpus.js';
-import type { Color, Fn, ValueGroup, ValueObj } from '@jesscss/core/value';
-import { isValueGroupArray, makeList } from '@jesscss/core/value';
+import type { Color, Fn, ValueGroup, Value } from '@jesscss/core';
+import { isValueGroupArray, makeList } from '@jesscss/core';
 import { adjustHue } from '../color/adjust-hue.js';
 import { complement } from '../color/complement.js';
 import { darken } from '../color/darken.js';
@@ -132,7 +132,7 @@ if (root) {
 }
 
 /** Invoke `fn` the way the evaluator does: one structural group + the fn context. */
-function invoke(fn: Fn, args: string): ValueObj {
+function invoke(fn: Fn, args: string): Value {
   const read = readValue(args);
   const group: ValueGroup = !isValueGroupArray(read) && read.type === 'List'
     ? read

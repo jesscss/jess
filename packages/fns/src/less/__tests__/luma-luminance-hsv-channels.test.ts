@@ -8,7 +8,7 @@ import {
   HSL,
   RGB,
   type Color
-} from '@jesscss/core/value';
+} from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { hue } from '../hue.js';
 import { saturation } from '../saturation.js';

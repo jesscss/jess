@@ -115,7 +115,7 @@ import {
   type PluginRawArgument,
   type PluginVariableHit,
   type CollectionEntry as ValueCollectionEntry,
-  type Value,
+  type EvalValue,
   type ValueEvaluator,
   type ValueGroup,
   type ValueObj
@@ -2235,7 +2235,7 @@ function withExcluded<T>(e: EvalCtx, node: Binding, run: () => T): T {
  * binding is not byte-serializable there — it is only accessible/callable (`@p[k]`,
  * `@p()`), so like a detached ruleset reaching a value position it folds to empty
  * bytes; every other binding is an ordinary value node. */
-function evalBinding(b: Binding, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+function evalBinding(b: Binding, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   return 'type' in b && b.type === 'MixinCall' ? literal('') : evalValueSlot(b, frame, e);
 }
 
@@ -2273,7 +2273,7 @@ function recursiveReference(node: object, symbol: string, kind: 'Variable' | 'Pr
   });
 }
 
-function unresolvedRef(node: VariableReference | VarIndirect, name: string, e: EvalCtx): Value {
+function unresolvedRef(node: VariableReference | VarIndirect, name: string, e: EvalCtx): EvalValue {
   if (!e.optional) {
     unresolvedSymbol(node, `@${name}`, e);
   }
@@ -2415,9 +2415,9 @@ interface EvalCtx {
   mixinCallHomes?: WeakMap<MixinCall, Frame>;
 }
 
-/** Force a computed `Value` to a typed object. A computed STRING carries no parse
- * tag → the evaluator sniffs (untagged fallback); a materialized object passes through. */
-function force(e: EvalCtx, v: Value): ValueGroup {
+/** Force an internal eval value to a typed value node/group. A computed STRING carries no parse
+ * tag → the evaluator sniffs (untagged fallback); an already-typed value passes through. */
+function force(e: EvalCtx, v: EvalValue): ValueGroup {
   if (!isLiteral(v)) {
     return v;
   }
@@ -2435,7 +2435,7 @@ function requireValueObject(value: ValueGroup, reason: string): ValueObj {
 }
 
 /**
- * Materialize a value-literal LEAF node to a typed `ValueObj`, driven by the node
+ * Materialize a value-literal LEAF node to a typed value node, driven by the node
  * `type` (task #44 — no side-car tag). Each typed leaf builds from its own fields
  * (`Color`/`Dimension`/`Quoted`), never re-classifying `src`; the opaque `Any` leaf
  * (alone) sniffs its bytes. When no evaluator is injected every leaf degrades to a
@@ -2457,13 +2457,13 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
 }
 
 /**
- * TYPED fold: materialize a value node to a typed `ValueObj` for an OPERATED
+ * TYPED fold: materialize a value node to a typed value node/group for an OPERATED
  * / compared / typed-param position — sourcing the literal's TYPE from the parse
  * (the node's own `type`), NOT by re-classifying bytes. A typed leaf
  * (`Keyword`/`Color`/`Dimension`/`Quoted`) builds directly from its fields; the
  * opaque `Any` leaf sniffs. Variable refs / parens are transparent.
  */
-function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   if (!isValueSlotArray(slot)) {
     return evalValue(slot, frame, e);
   }
@@ -2944,18 +2944,18 @@ function slashGroupToOperation(node: SpacedValue): Operation | null {
 }
 
 /**
- * Fold a value AST node bottom-up to a typed `Value` (a bare-string literal
- * for the static ~98% case, or a materialized `ValueObj` for a computed
+ * Fold a value AST node bottom-up to an internal eval value (a bare-string literal
+ * for the static path, or a typed value node/group for a computed
  * operation/function). Lifts to `MaybePromise` only when a function call returns
  * a genuine thenable.
  */
-function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   switch (node.type) {
     /*
      * Every value LITERAL is inert here: emit its verbatim `src` as a bare string,
      * except an escaped Less quote, whose value semantics intentionally unquote it.
      * CORRECTION 5 — return `literal(node.src)` (a BARE STRING), never the node
-     * object: an AST literal node must not leak into the `Value = ValueObj | string`
+     * object: an AST literal node must not leak into the `EvalValue = ValueGroup | string`
      * lane (a downstream `v.type==='Color'` would misread it as a value object).
      */
     case 'Keyword':
@@ -3289,7 +3289,7 @@ function evalCollection(node: Collection, frame: Frame | null, e: EvalCtx): Mayb
 }
 
 /** Resolve an interpolation template to bytes (literals + spliced refs). */
-function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const pieces: Array<MaybePromise<string>> = [];
   for (const part of node.parts) {
     if ('lit' in part) {
@@ -4003,7 +4003,7 @@ function resolveReferenceResult(
   return { value, frame: valueFrame, sourceOwner };
 }
 
-function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const resolved = resolveReferenceResult(node, frame, e);
   if (resolved === null) {
     return literal(node.raw);
@@ -4039,7 +4039,7 @@ function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undef
  * than throw `@x is undefined`). Returns the `true`/`false` literal, or `undefined`
  * when `node` is not one of these calls (fall through to normal dispatch).
  */
-function evalIntrospection(node: FunctionCall, frame: Frame | null): Value | undefined {
+function evalIntrospection(node: FunctionCall, frame: Frame | null): EvalValue | undefined {
   if (node.args.length !== 1) {
     return undefined;
   }
@@ -4085,7 +4085,7 @@ function isIntegerString(s: string): boolean {
  * computed value (`10px * 2` → `20px`) drops the wrapper (less.js `calc()`
  * collapse to a bare Dimension).
  */
-function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
   return mapMaybe(evalTypedSlot(node.args[0]!, frame, ce), (v) => {
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
@@ -4130,7 +4130,7 @@ function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean
 }
 
 /** Re-emit a call after resolving variable/interpolation bytes, without invoking its callable. */
-function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   if (node.args.length === 0) {
     return literal(`${node.name}()`);
   }
@@ -4185,7 +4185,7 @@ const LOGICAL_FNS = new Set(['if', 'boolean', 'not', 'and', 'or']);
 
 /** Evaluate a logical / conditional fn (`if`/`boolean`/`not`/`and`/`or`). `if` is
  *  LAZY — only the taken branch folds; an absent else is empty bytes. */
-function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const deps = guardDeps(frame, e);
   const truthOf = (a: ValueSlot | undefined): MaybePromise<boolean> =>
     a === undefined ? false : evalGuard(condGuard(a), deps);
@@ -4395,7 +4395,7 @@ function evalCall(
   frame: Frame | null,
   e: EvalCtx,
   demanded = false
-): MaybePromise<Value> {
+): MaybePromise<EvalValue> {
   /*
    * [default-fn] `default()` inside a guard operand (`when (@x = default())`) folds to
    * the dispatch decision. Only when a `defaultFn` is in scope (a guard-operand typed
@@ -4531,7 +4531,7 @@ function pluginCallFailure(
   error: unknown,
   frame: Frame | null,
   e: EvalCtx
-): MaybePromise<Value> {
+): MaybePromise<EvalValue> {
   if (error instanceof JessError) {
     throw error;
   }
@@ -4592,13 +4592,13 @@ function joinBytes(
   sep: string,
   frame: Frame | null,
   e: EvalCtx
-): MaybePromise<Value> {
+): MaybePromise<EvalValue> {
   const items = parts.map(p => evalValue(p, frame, e));
   return combineAll(items, vals => literal(vals.map(emitValue).join(sep)));
 }
 
 /** Emit a parser-owned spaced value without rediscovering its authored layout. */
-function joinSpacedBytes(node: SpacedValue, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+function joinSpacedBytes(node: SpacedValue, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const items = node.parts.map(part => evalValue(part, frame, e));
   return combineAll(items, (values) => {
     let out = emitValue(values[0]!);
@@ -10774,7 +10774,7 @@ function normalizeMediaFeatures(prelude: string): string {
   return prelude.replace(/\(\s*([-\w]+)\s*:\s*/gu, '($1: ');
 }
 
-function canEmitRootCallValue(value: Value): boolean {
+function canEmitRootCallValue(value: EvalValue): boolean {
   return isLiteral(value) || (!isValueGroupArray(value) && value.type === 'Any');
 }
 
@@ -10815,7 +10815,7 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
       e.positions.push({ node, type: node.type, start, end: e.off });
     }
   };
-  const emitValueResult = (value: Value): void => {
+  const emitValueResult = (value: EvalValue): void => {
     if (e.depth === 0 && !canEmitRootCallValue(value)) {
       throw ERR.rootCallWithoutRoot({
         node,

@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { defineFunction, makeDimension } from '@jesscss/core';
 import { isUnitlessDimension } from './units.js';
 
 /**
@@ -15,7 +15,7 @@ import { isUnitlessDimension } from './units.js';
  *   percentage(50%)   → Error: $number: Expected 50% to have no units.
  */
 const percentage = defineFunction('percentage', {
-  params: [{ name: 'number', kinds: ['Dimension'] }] as const,
+  params: [{ name: 'number', type: 'Dimension' }] as const,
   body: (number) => {
     if (!isUnitlessDimension(number)) {
       throw new TypeError(`$number: Expected ${number.bytes} to have no units.`);

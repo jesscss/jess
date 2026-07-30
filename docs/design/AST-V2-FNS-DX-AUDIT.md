@@ -33,9 +33,21 @@ Implemented in `codex/ast-v2-dx-fns`:
   selectors only in valid contexts.
 - Sass global `str-length` is exported from the Sass dialect index and therefore
   participates in the derived Sass registry.
+- `defineFunction` authoring now uses `type: 'Color'` /
+  `type: ['Keyword', 'Quoted']` style parameter declarations. `kinds` remains
+  accepted only as a deprecated compatibility spelling.
+- `@jesscss/core` root exports the value-domain function authoring API
+  (`Value`, `Color`, `Dimension`, `defineFunction`, `createFnRegistry`, and
+  related types) so fns and plugin authors do not need a `/value` escape hatch.
+- Function bodies receive typed semantic value nodes at the author boundary,
+  not parser literals, raw source strings, or old tree classes.
 
 Still recommended, not implemented here: continue deleting old tree internals
-rather than treating them as protected API.
+rather than treating them as protected API. The exception is evidence-based
+Less/plugin compatibility: if published Less visitors or plugin functions
+actually use `instanceof`, constructors, or prototype methods, a lazy
+compatibility facade may be justified for that observed shape. Jess v2 should
+not resurrect tree classes speculatively.
 
 Context: this audit compares the current canonical AST v2 and `packages/fns`
 usage against Less 4.x tree naming, the public CSS/Less CST surface, and the
@@ -45,7 +57,7 @@ fixes poor Less semantics.
 ## Executive summary
 
 The value-domain direction is mostly right. Modern `packages/fns` code imports
-from `@jesscss/core/value`, reads typed value objects, and avoids legacy tree
+from `@jesscss/core`, reads typed value objects, and avoids legacy tree
 materialization. Those fields mostly have good DX:
 
 - `Dimension.number`/`unit` is better than Less 4.x `Dimension.value` plus a
@@ -58,7 +70,8 @@ materialization. Those fields mostly have good DX:
 
 The remaining problematic parts are the straddling/runtime surfaces: old tree
 internals and future visitor/facade needs. Accidental labels are not protected
-API during the AST v2 cutover.
+API during the AST v2 cutover. Compatibility facades are a demand-driven bridge,
+not the canonical model.
 
 ## What should intentionally deviate from Less 4.x
 
@@ -90,6 +103,51 @@ AST literal nodes reuse value-domain type strings (`Dimension`, `Color`,
 `Quoted`, `Keyword`) but carry authored spelling in `src`; value-domain objects
 carry canonical `bytes`. That split is worth keeping. It lets diagnostics and
 the language service read authored facts without forcing value materialization.
+
+### Function authors receive semantic value nodes
+
+Jess functions should feel like old Jess tree functions and useful Less 4.x
+functions in the place that matters: a declared color parameter arrives as a
+`Color`, a declared dimension parameter arrives as a `Dimension`, and so on.
+They should not receive parser leaves with only `src`, nor raw strings that make
+each function re-parse the same value.
+
+Implemented recommendation: public function specs use `type`, not `kinds`.
+
+Examples:
+
+```ts
+defineFunction('lightness', {
+  params: [{ name: 'color', type: 'Color' }] as const,
+  body: color => makeDimension(colorHsl(color).l, '%')
+});
+
+defineFunction('str-index', {
+  params: [
+    { name: 'string', type: ['Keyword', 'Quoted'] },
+    { name: 'substring', type: ['Keyword', 'Quoted'] }
+  ] as const,
+  body: (string, substring) => ...
+});
+```
+
+`kinds` is accepted only as a deprecated spelling for compatibility with the
+first value-domain fn API. It should not appear in new fns.
+
+This is the materialization boundary: parsed literals may stay cheap internally,
+but once a function, visitor, plugin bridge, diagnostic typed-value rule, or
+language-service semantic fact asks for a typed value, Jess materializes the
+semantic value node before user code observes it. This slice does not decide a
+cache location for materialized values. A future reviewed design can choose
+between node-local caching, a side table, or no cache based on eval/render
+pressure; do not add an ad-hoc cache in a function or visitor helper.
+
+Public naming:
+
+- `Value` is the typed scalar value union (`Color | Dimension | ...`).
+- `ValueGroup` is the structural value carrier (`Value` or nested groups).
+- `EvalValue` is the internal lane that may still hold inert literal bytes.
+- `ValueObj` is not public API and should disappear from author docs.
 
 ## Unnecessary or harmful deviations
 
@@ -134,8 +192,8 @@ Files:
 
 Problems:
 
-- They import legacy tree classes from `@jesscss/core`, not
-  `@jesscss/core/value`.
+- They import legacy tree classes from `@jesscss/core`, not the value-domain
+  API.
 - They inspect `map.rules` and filter `Declaration` nodes.
 - They compare keys with `String(key.valueOf())`, not Sass/Jess value equality.
 - They allocate tree nodes (`new Declaration`, `new Collection`, `new List`,
@@ -306,7 +364,7 @@ shape fixes are pending.
 
 ### Implemented P0: Fix map semantics before expanding visitor consumers
 
-1. Port `packages/fns/src/sass/map/*` to `@jesscss/core/value`.
+1. Port `packages/fns/src/sass/map/*` to the `@jesscss/core` value-domain API.
 2. Use `Collection.entries` and `collectionKeyIndex()` for value-equality keys.
 3. Replace legacy tree results with value-domain constructors.
 4. Add tests for typed keys: quoted vs unquoted string equality, numeric keys,
@@ -354,12 +412,20 @@ shape fixes are pending.
    until that test surface is deleted.
 3. Delete old tree classes/helpers in coherent follow-up batches instead of
    preserving bridges.
+4. Before reintroducing any class/prototype facade for Less visitor or plugin
+   compatibility, record corpus evidence in a table: package, version, visitor
+   or plugin entrypoint, observed shape (`instanceof`, constructor equality,
+   prototype method call, plain property read), and the minimal lazy facade
+   needed. Plain property-read compatibility is not evidence that canonical
+   Jess nodes should become classes.
 
 ### P2: Public function-author ergonomics
 
 1. Document the AST-vs-value lane split: AST leaves have `src`, value objects
    have `bytes`.
-2. Keep legacy Less field names in the compatibility facade, not the canonical
+2. Prefer `type: 'Color'` / `type: ['Keyword', 'Quoted']` parameter metadata;
+   keep `kinds` as deprecated compatibility only.
+3. Keep legacy Less field names in the compatibility facade, not the canonical
    AST, when Less semantics are worse.
 
 ## Non-recommendations

@@ -1,12 +1,12 @@
-import { defineFunction } from '@jesscss/core/value';
+import { defineFunction } from '@jesscss/core';
 import { createSassListResult, getSassListInfo, resolveSassBracketed, resolveSassSeparator } from './util.js';
 
 const join = defineFunction('join', {
   params: [
-    { name: 'list1', kinds: 'any' },
-    { name: 'list2', kinds: 'any' },
-    { name: 'separator', kinds: ['Quoted', 'Keyword'], optional: true },
-    { name: 'bracketed', kinds: ['Bool', 'Quoted', 'Keyword'], optional: true }
+    { name: 'list1', type: 'any' },
+    { name: 'list2', type: 'any' },
+    { name: 'separator', type: ['Quoted', 'Keyword'], optional: true },
+    { name: 'bracketed', type: ['Bool', 'Quoted', 'Keyword'], optional: true }
   ] as const,
   body: (list1, list2, separator, bracketed) => {
     const left = getSassListInfo(list1);

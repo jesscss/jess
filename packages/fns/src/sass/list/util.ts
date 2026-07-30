@@ -1,4 +1,4 @@
-import type { ValueGroup } from '@jesscss/core/value';
+import type { ValueGroup } from '@jesscss/core';
 import {
   groupItems,
   groupSeparator,
@@ -6,7 +6,7 @@ import {
   isValueGroupArray,
   makeBlock,
   makeList
-} from '@jesscss/core/value';
+} from '@jesscss/core';
 
 /** Sass's public separator names mapped onto the core value facts. */
 export type SassListSep = ',' | ' ' | '/';

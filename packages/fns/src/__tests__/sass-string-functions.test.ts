@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeKeyword, makeQuoted, type Keyword, type Quoted } from '@jesscss/core/value';
+import { makeKeyword, makeQuoted, type Keyword, type Quoted } from '@jesscss/core';
 import unquote from '../sass/unquote.js';
 import quote from '../sass/quote.js';
 import toUpperCase from '../sass/to-upper-case.js';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeDimension } from '@jesscss/core/value';
+import { makeDimension } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { pow } from '../pow.js';
 

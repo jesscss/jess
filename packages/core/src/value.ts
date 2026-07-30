@@ -9,7 +9,6 @@
 
 // --- value-domain types (erased) ---
 export type {
-  ValueObj,
   ValueGroup,
   Value,
   Dimension,

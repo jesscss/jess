@@ -8,8 +8,8 @@
  *      (hue & saturation collapse to `0`, lightness stays authored).
  */
 import { describe, it, expect } from 'vitest';
-import { makeColorRgb, makeDimension, makeList, HEX } from '@jesscss/core/value';
-import type { Color, Dimension } from '@jesscss/core/value';
+import { makeColorRgb, makeDimension, makeList, HEX } from '@jesscss/core';
+import type { Color, Dimension } from '@jesscss/core';
 import { fade as fadeFn } from '../fade.js';
 import { fadeout as fadeoutFn } from '../fadeout.js';
 import { hsl } from '../hsl.js';

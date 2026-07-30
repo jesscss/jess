@@ -28,8 +28,8 @@
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { colorRawRgb, emitValue, isValueGroupArray, namedColor, sniffLiteral, makeList } from '@jesscss/core/value';
-import type { Color, FnCtx, ValueGroup, ValueObj } from '@jesscss/core/value';
+import { colorRawRgb, emitValue, isValueGroupArray, namedColor, sniffLiteral, makeList } from '@jesscss/core';
+import type { Color, FnCtx, ValueGroup, Value } from '@jesscss/core';
 import { hsl } from '../color/hsl.js';
 import { hsla } from '../color/hsla.js';
 import { rgb } from '../color/rgb.js';
@@ -288,7 +288,7 @@ export function readValue(expr: string): ValueGroup {
   return readSingle(text);
 }
 
-function readSingle(text: string): ValueObj {
+function readSingle(text: string): Value {
   const call = /^(?:color\.)?([a-z-]+)\s*\(([\s\S]*)\)$/i.exec(text);
   if (call) {
     const name = call[1]!.toLowerCase();

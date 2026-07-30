@@ -1,5 +1,5 @@
 /**
- * LITERAL MATERIALIZATION — build a typed value-domain `ValueObj` from an AST
+ * LITERAL MATERIALIZATION — build a typed value-domain `Value` from an AST
  * value-literal leaf (VALUE-NODE-MODEL-DESIGN, task #44).
  *
  * Post-reshape, every parsed leaf carries its value TYPE in the node `type`
@@ -68,7 +68,7 @@ function isQuotedBytes(s: string): boolean {
   return s.length >= 2 && (c === 34 /* " */ || c === 39 /* ' */) && s.charCodeAt(s.length - 1) === c;
 }
 
-/** A quoted `ValueObj` from its verbatim bytes (quote char known from the bytes). */
+/** A quoted value node from its verbatim bytes (quote char known from the bytes). */
 function quotedFromBytes(str: string): ValueObj {
   return { type: 'Quoted', value: str.slice(1, -1), quote: str[0]!, escaped: false, bytes: str };
 }
@@ -78,7 +78,7 @@ function quotedFromBytes(str: string): ValueObj {
 /**
  * A parsed `Color` leaf → value `Color`. Hex (`#…`) parses its channels; a named
  * color resolves through the shared table (`lighten(red,…)` / `iscolor(blue)`), and
- * the verbatim spelling rides in `node` for byte-faithful emit; a name absent from
+ * the verbatim spelling rides in `src` for byte-faithful emit; a name absent from
  * the table falls through to a plain keyword. The grammar is authoritative that the
  * leaf IS a color, so this reads one byte (`#`) rather than re-classifying.
  */

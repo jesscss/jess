@@ -1,5 +1,5 @@
-import { groupItems, makeKeyword, defineFunction } from '@jesscss/core/value';
-import type { Fn, ValueObj } from '@jesscss/core/value';
+import { groupItems, makeKeyword, defineFunction } from '@jesscss/core';
+import type { Fn, Value } from '@jesscss/core';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { lookupMime } from '../util/mime.js';
 
@@ -10,9 +10,9 @@ import { lookupMime } from '../util/mime.js';
  * the authored `url()` call as a value-domain keyword.
  */
 const dataUri: Fn = defineFunction('data-uri', {
-  params: [{ kinds: 'any' }, { kinds: 'any', optional: true }],
+  params: [{ type: 'any' }, { type: 'any', optional: true }],
   variadic: true,
-  body: (value, ctx): MaybePromise<ValueObj> => {
+  body: (value, ctx): MaybePromise<Value> => {
     const items = groupItems(value);
     if (items.length === 0) {
       throw new TypeError('data-uri() requires a path');
@@ -42,7 +42,7 @@ const dataUri: Fn = defineFunction('data-uri', {
       useBase64 = /;base64$/i.test(mimetype);
     }
 
-    const finish = (bytes: Uint8Array | null): ValueObj => {
+    const finish = (bytes: Uint8Array | null): Value => {
       if (!bytes) {
         return makeKeyword(`url("${rawPath}")`);
       }

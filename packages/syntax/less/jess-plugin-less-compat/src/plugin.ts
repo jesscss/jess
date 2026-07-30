@@ -1,5 +1,5 @@
 import { AbstractPlugin, type Context } from '@jesscss/core';
-import type { Fn } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
 import { LessApiBridge, type NativeLessPlugin } from './less-api-bridge.js';
 
 /**

@@ -1,5 +1,5 @@
-import { groupItems } from '@jesscss/core/value';
-import type { FnCtx, ValueGroup } from '@jesscss/core/value';
+import { groupItems } from '@jesscss/core';
+import type { FnCtx, ValueGroup } from '@jesscss/core';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { getImageDimensions } from '../util/image-dimensions.js';
 

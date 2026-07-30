@@ -1,5 +1,6 @@
-import { defineFunction } from '@jesscss/core/value';
-import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString, stringText } from './util.js';
+import { defineFunction } from '@jesscss/core';
+import type { Dimension } from '@jesscss/core';
+import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString, stringText, type SassString } from './util.js';
 
 /**
  * Sass `string.slice()` — the `str-slice()` global.
@@ -19,11 +20,11 @@ import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString,
  */
 const slice = defineFunction('slice', {
   params: [
-    { name: 'string', kinds: STRING_KINDS },
-    { name: 'start-at', kinds: ['Dimension'] },
-    { name: 'end-at', kinds: ['Dimension'], optional: true }
+    { name: 'string', type: STRING_KINDS },
+    { name: 'start-at', type: 'Dimension' },
+    { name: 'end-at', type: 'Dimension', optional: true }
   ] as const,
-  body: (string, startAt, endAt) => {
+  body: (string: SassString, startAt: Dimension, endAt: Dimension | undefined) => {
     const chars = codePoints(stringText(string));
     const start = requireIntIndex('start-at', startAt.number, startAt.unit);
     const end = endAt === undefined ? -1 : requireIntIndex('end-at', endAt.number, endAt.unit);

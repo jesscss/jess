@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core';
 import { mixColors, noExcess, requireColor, weightAmount } from './kernels.js';
 
 /**
@@ -20,10 +20,10 @@ import { mixColors, noExcess, requireColor, weightAmount } from './kernels.js';
  */
 export const mix: Fn = defineFunction('mix', {
   params: [
-    { name: 'color1', kinds: ['Color'] },
-    { name: 'color2', kinds: ['Color'] },
-    { name: 'weight', kinds: ['Dimension'], optional: true },
-    { name: 'excess', kinds: 'any', optional: true }
+    { name: 'color1', type: 'Color' },
+    { name: 'color2', type: 'Color' },
+    { name: 'weight', type: 'Dimension', optional: true },
+    { name: 'excess', type: 'any', optional: true }
   ],
   body: (c1, c2, weight, excess) => {
     noExcess(excess, 3);

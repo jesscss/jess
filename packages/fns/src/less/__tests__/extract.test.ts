@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emitValue, makeDimension, makeKeyword, makeList, type FnCtx, type ValueGroup } from '@jesscss/core/value';
+import { emitValue, makeDimension, makeKeyword, makeList, type FnCtx, type ValueGroup } from '@jesscss/core';
 import extract from '../extract.js';
 
 const ctx: FnCtx = { modes: { unitMode: 'preserve' }, stringify: emitValue };

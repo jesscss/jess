@@ -7,16 +7,16 @@
  * map.get((a: 1, b: 2), a) // 1
  * map.get((a: (b: 2)), a, b) // 2
  */
-import { defineFunction, NIL } from '@jesscss/core/value';
+import { defineFunction, NIL } from '@jesscss/core';
 import { collectionValueAt, nestedCollection } from './util.js';
 
 const get = defineFunction(
   'get',
   {
     params: [
-      { name: 'map', kinds: ['Collection'] },
-      { name: 'key', kinds: 'any' },
-      { name: 'keys', kinds: 'any', rest: true }
+      { name: 'map', type: 'Collection' },
+      { name: 'key', type: 'any' },
+      { name: 'keys', type: 'any', rest: true }
     ] as const,
     body: (map, key, keys) => {
       const path = [key, ...keys];

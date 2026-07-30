@@ -10,14 +10,14 @@
 import { describe, expect, it } from 'vitest';
 import { operate, validateFinalUnits } from '../value-operate.js';
 import { makeBlock, makeDimension, makeList } from '../value-factory.js';
-import type { EvalModes, ValueObj } from '../value-eval.js';
+import type { EvalModes, Value } from '../value-eval.js';
 
 const PRESERVE: EvalModes = { unitMode: 'preserve' };
 const LOOSE: EvalModes = { unitMode: 'loose' };
 const STRICT: EvalModes = { unitMode: 'strict' };
 
-const dim = (n: number, u = ''): ValueObj => makeDimension(n, u);
-const bytesOf = (op: string, a: ValueObj, b: ValueObj, m = PRESERVE) => operate(op, a, b, m).bytes;
+const dim = (n: number, u = ''): Value => makeDimension(n, u);
+const bytesOf = (op: string, a: Value, b: Value, m = PRESERVE) => operate(op, a, b, m).bytes;
 
 describe('cross-unit arithmetic — parens-division (unit algebra vs less@4.6.7; digits per DD F6)', () => {
   it('division keeps the LHS unit for incompatible units', () => {

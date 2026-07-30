@@ -1,11 +1,11 @@
-import type { Fn } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
 import {
   defineFunction,
   groupItems,
   isValueGroupArray,
   makeKeyword,
   makeQuoted
-} from '@jesscss/core/value';
+} from '@jesscss/core';
 
 /**
  * Less `replace()` — replace text in a string using a JavaScript `RegExp`. The
@@ -19,10 +19,10 @@ import {
  */
 export const replace: Fn = defineFunction('replace', {
   params: [
-    { kinds: 'any' },
-    { kinds: 'any' },
-    { kinds: 'any' },
-    { kinds: 'any', optional: true }
+    { type: 'any' },
+    { type: 'any' },
+    { type: 'any' },
+    { type: 'any', optional: true }
   ],
   variadic: true,
   body: (list, ctx) => {

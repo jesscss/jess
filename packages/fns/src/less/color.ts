@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { colorRgbRounded, makeColorRgb, defineFunction, HEX, parseHex, namedColor } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { colorRgbRounded, makeColorRgb, defineFunction, HEX, parseHex, namedColor } from '@jesscss/core';
 
 const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
 
@@ -17,7 +17,7 @@ const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
  * = Less 4.x for the quoted cases).
  */
 export const color: Fn = defineFunction('color', {
-  params: [{ kinds: ['Color', 'Quoted'] }],
+  params: [{ type: ['Color', 'Quoted'] }],
   body: (arg) => {
     if (arg.type === 'Color') {
       const c = arg;

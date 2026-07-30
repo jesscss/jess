@@ -10,7 +10,7 @@ import {
   type List,
   type Nil,
   type ValueGroup
-} from '@jesscss/core/value';
+} from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
 import get from '../map/get.js';
 import set from '../map/set.js';

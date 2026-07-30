@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeDimension } from '@jesscss/core/value';
+import { makeDimension } from '@jesscss/core';
 import { asin } from '../asin.js';
 import { atan } from '../atan.js';
 import { sqrt } from '../sqrt.js';
@@ -29,7 +29,7 @@ describe('canonical Less trigonometric callables', () => {
   });
 
   it('exposes callable metadata and rejects legacy/plain inputs', () => {
-    expect(asin.params).toEqual([{ name: 'value', kinds: ['Dimension'] }]);
-    expect(() => invoke(asin, 0.5)).toThrow('typed ValueObj');
+    expect(asin.params).toEqual([{ name: 'value', type: 'Dimension' }]);
+    expect(() => invoke(asin, 0.5)).toThrow('typed value node');
   });
 });

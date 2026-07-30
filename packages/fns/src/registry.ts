@@ -11,7 +11,7 @@
  * ever grows one, but the dialect callable surfaces themselves are value-domain
  * `Fn`s. There is no legacy tree-node fallback here.
  */
-import { createFnRegistry, type Fn, type FnRegistry } from '@jesscss/core/value';
+import { createFnRegistry, type Fn, type FnRegistry } from '@jesscss/core';
 
 /**
  * Whether a dialect-index export is a value-domain {@link Fn}. The value-domain

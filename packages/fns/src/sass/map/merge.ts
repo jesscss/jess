@@ -6,15 +6,15 @@
  * @example
  * map.merge((a: 1), (b: 2)) // (a: 1, b: 2)
  */
-import { defineFunction, makeCollection } from '@jesscss/core/value';
+import { defineFunction, makeCollection } from '@jesscss/core';
 import { entryIndex } from './util.js';
 
 const merge = defineFunction(
   'merge',
   {
     params: [
-      { name: 'map1', kinds: ['Collection'] },
-      { name: 'map2', kinds: ['Collection'] }
+      { name: 'map1', type: 'Collection' },
+      { name: 'map2', type: 'Collection' }
     ] as const,
     body: (map1, map2) => {
       const entries = [...map1.entries];

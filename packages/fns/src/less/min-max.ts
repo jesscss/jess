@@ -1,5 +1,5 @@
-import type { Dimension, ValueGroup, ValueObj } from '@jesscss/core/value';
-import { groupItems, isValueGroupArray, unify } from '@jesscss/core/value';
+import type { Dimension, ValueGroup, Value } from '@jesscss/core';
+import { groupItems, isValueGroupArray, unify } from '@jesscss/core';
 import { compatibleUnits, isUnitlessDimension } from '../shared/math/units.js';
 
 const isDimension = (value: ValueGroup): value is Dimension =>
@@ -37,7 +37,7 @@ const isDimension = (value: ValueGroup): value is Dimension =>
  * accident, not a semantic, and jess preserves the whole call instead. One Less
  * fixture recorded the old bytes and was graduated with this change.
  */
-export function minMax(isMin: boolean, list: ValueGroup): ValueObj {
+export function minMax(isMin: boolean, list: ValueGroup): Value {
   const name = isMin ? 'min' : 'max';
   const args = groupItems(list).flatMap(groupItems);
   if (args.length === 0) {

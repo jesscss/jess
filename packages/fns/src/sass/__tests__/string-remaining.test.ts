@@ -6,7 +6,7 @@ import {
   type Dimension,
   type Keyword,
   type Quoted
-} from '@jesscss/core/value';
+} from '@jesscss/core';
 import uniqueId from '../unique-id.js';
 import strInsert from '../str-insert.js';
 import strIndex from '../str-index.js';

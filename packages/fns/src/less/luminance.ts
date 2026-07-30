@@ -1,10 +1,10 @@
-import type { Fn } from '@jesscss/core/value';
-import { colorRgbRounded, makeDimension, defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { colorRgbRounded, makeDimension, defineFunction } from '@jesscss/core';
 import { requireColor } from './color-helper.js';
 
 /** `luminance(color)` — perceptual luminance × alpha as a percentage. Byte-faithful to `less/luminance`. */
 export const luminance: Fn = defineFunction('luminance', {
-  params: [{ kinds: ['Color'] }],
+  params: [{ type: 'Color' }],
   body: (c) => {
     const color = requireColor(c);
     const [r, g, b] = colorRgbRounded(color);

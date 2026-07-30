@@ -1,4 +1,4 @@
-import type { Dimension } from '@jesscss/core/value';
+import type { Dimension } from '@jesscss/core';
 import { unitsOf } from '../../shared/math/units.js';
 
 /**

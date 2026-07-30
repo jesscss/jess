@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { makeKeyword, defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { makeKeyword, defineFunction } from '@jesscss/core';
 import { requireDimension } from './math-helper.js';
 
 /**
@@ -8,6 +8,6 @@ import { requireDimension } from './math-helper.js';
  * `get-unit` (`new Anonymous(n.unit.toString())`).
  */
 export const getUnit: Fn = defineFunction('get-unit', {
-  params: [{ kinds: ['Dimension'] }],
+  params: [{ type: 'Dimension' }],
   body: d => makeKeyword(requireDimension(d).unit ?? '')
 });

@@ -1,5 +1,5 @@
-import type { Dimension } from '@jesscss/core/value';
-import { unify } from '@jesscss/core/value';
+import type { Dimension } from '@jesscss/core';
+import { unify } from '@jesscss/core';
 import { compatibleUnits, isUnitlessDimension } from '../../shared/math/units.js';
 
 /**

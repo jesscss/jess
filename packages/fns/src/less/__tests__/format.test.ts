@@ -6,8 +6,8 @@ import {
   makeKeyword,
   makeList,
   makeQuoted
-} from '@jesscss/core/value';
-import type { Fn, FnCtx, List, ValueGroup } from '@jesscss/core/value';
+} from '@jesscss/core';
+import type { Fn, FnCtx, List, ValueGroup } from '@jesscss/core';
 import format, { format as stringFormat, formatPercent } from '../format.js';
 import { lessFns } from '../registry.js';
 

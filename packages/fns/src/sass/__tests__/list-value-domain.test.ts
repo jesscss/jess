@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emitValue, makeBlock, makeDimension, makeKeyword, makeList, makeQuoted, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { emitValue, makeBlock, makeDimension, makeKeyword, makeList, makeQuoted, type Fn, type ValueGroup } from '@jesscss/core';
 import append from '../list/append.js';
 import isBracketed from '../list/is-bracketed.js';
 import listIndex from '../list/list-index.js';

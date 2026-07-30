@@ -1,4 +1,4 @@
-import { defineFunction, groupItems, isValueGroupArray, listValueAt } from '@jesscss/core/value';
+import { defineFunction, groupItems, isValueGroupArray, listValueAt } from '@jesscss/core';
 
 /**
  * Less `extract()` — the item at a 1-based `index` in a list. AST-v2 values
@@ -10,7 +10,7 @@ import { defineFunction, groupItems, isValueGroupArray, listValueAt } from '@jes
  * @throws `RangeError` if `index` is out of range
  */
 const extract = defineFunction('extract', {
-  params: [{ kinds: 'any' }, { kinds: ['Dimension'] }],
+  params: [{ type: 'any' }, { type: 'Dimension' }],
   variadic: true,
   body: (list) => {
     const args = groupItems(list);
