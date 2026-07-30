@@ -36,23 +36,31 @@ const WEB_PROPERTY_SET = new Set(
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
 );
 const CSS_WIDE_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
-const PROPERTY_KEYWORD_VALUES = new Map<string, Set<string>>();
+interface PropertyValueData {
+  readonly restrictions: ReadonlySet<string>;
+  readonly keywords: ReadonlySet<string>;
+}
+
+const PROPERTY_VALUE_DATA = new Map<string, PropertyValueData>();
 for (const property of arrayField(webCssData, 'properties')) {
   const name = stringField(property, 'name')?.toLowerCase();
   if (name === undefined || name.length === 0) {
     continue;
   }
   const restrictions = arrayField(property, 'restrictions');
-  if (restrictions.length !== 1 || restrictions[0] !== 'enum') {
-    continue;
-  }
+  const restrictionSet = new Set(
+    restrictions.filter((value): value is string => typeof value === 'string' && value.length > 0)
+  );
   const values = arrayField(property, 'values')
     .map(value => stringField(value, 'name')?.toLowerCase())
     .filter((value): value is string => typeof value === 'string' && value.length > 0);
-  if (values.length === 0) {
+  if (restrictionSet.size === 0 && values.length === 0) {
     continue;
   }
-  PROPERTY_KEYWORD_VALUES.set(name, new Set(values));
+  PROPERTY_VALUE_DATA.set(name, {
+    restrictions: restrictionSet,
+    keywords: new Set(values)
+  });
 }
 const AT_RULE_SET = new Set(
   arrayField(webCssData, 'atDirectives')
@@ -89,7 +97,37 @@ const LENGTH_UNITS = new Set([
   'fr',
   'cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax'
 ]);
+const ANGLE_UNITS = new Set(['deg', 'grad', 'turn', 'rad']);
+const TIME_UNITS = new Set(['s', 'ms']);
+const FREQUENCY_UNITS = new Set(['hz', 'khz']);
 const RESOLUTION_UNITS = new Set(['dpi', 'dpcm', 'dppx', 'x']);
+const COLOR_VALUE_FUNCTIONS = new Set([
+  'color',
+  'color-mix',
+  'hsl',
+  'hsla',
+  'hwb',
+  'lab',
+  'lch',
+  'light-dark',
+  'oklab',
+  'oklch',
+  'rgb',
+  'rgba'
+]);
+const IMAGE_VALUE_FUNCTIONS = new Set([
+  'cross-fade',
+  'element',
+  'image',
+  'image-set',
+  'linear-gradient',
+  'paint',
+  'radial-gradient',
+  'repeating-conic-gradient',
+  'repeating-linear-gradient',
+  'repeating-radial-gradient',
+  'url'
+]);
 const CSS_MATH_FUNCTIONS = new Set([
   'abs',
   'acos',
@@ -278,21 +316,124 @@ function hasAllowedNumericResultType(types: ReadonlySet<string> | undefined): bo
     );
 }
 
+function acceptsZeroLength(value: number | undefined, restrictions: ReadonlySet<string>): boolean {
+  return value === 0
+    && (
+      restrictions.has('length')
+      || restrictions.has('line-width')
+    );
+}
+
+function acceptsDimension(unit: string | undefined, restrictions: ReadonlySet<string>): boolean {
+  if (unit === undefined) {
+    return false;
+  }
+  const lower = unit.toLowerCase();
+  return (restrictions.has('length') && LENGTH_UNITS.has(lower))
+    || (restrictions.has('line-width') && LENGTH_UNITS.has(lower))
+    || (restrictions.has('angle') && ANGLE_UNITS.has(lower))
+    || (restrictions.has('time') && TIME_UNITS.has(lower))
+    || (restrictions.has('frequency') && FREQUENCY_UNITS.has(lower))
+    || (restrictions.has('resolution') && RESOLUTION_UNITS.has(lower));
+}
+
+function isKnownDimensionUnit(unit: string | undefined): boolean {
+  if (unit === undefined) {
+    return false;
+  }
+  const lower = unit.toLowerCase();
+  return LENGTH_UNITS.has(lower)
+    || ANGLE_UNITS.has(lower)
+    || TIME_UNITS.has(lower)
+    || FREQUENCY_UNITS.has(lower)
+    || RESOLUTION_UNITS.has(lower);
+}
+
+function acceptsNumericFunction(functionName: string | undefined, restrictions: ReadonlySet<string>): boolean {
+  return functionName !== undefined
+    && CSS_MATH_FUNCTIONS.has(functionName)
+    && hasNumericRestriction(restrictions);
+}
+
+function hasNumericRestriction(restrictions: ReadonlySet<string>): boolean {
+  return restrictions.has('length')
+    || restrictions.has('line-width')
+    || restrictions.has('percentage')
+    || restrictions.has('number')
+    || restrictions.has('integer')
+    || restrictions.has('number(0-1)')
+    || restrictions.has('angle')
+    || restrictions.has('time')
+    || restrictions.has('resolution');
+}
+
 export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
   isKnownProperty(name) {
     const lower = name.toLowerCase();
     return CSS_PROPERTY_SET.has(lower) || WEB_PROPERTY_SET.has(lower);
   },
   isKnownPropertyValue(name, value) {
-    if (value.kind !== 'keyword') {
+    const data = PROPERTY_VALUE_DATA.get(name.toLowerCase());
+    if (data === undefined) {
       return undefined;
     }
     const lowerValue = unprefixedIdentifier(value.normalized);
     if (CSS_WIDE_KEYWORDS.has(lowerValue)) {
       return true;
     }
-    const values = PROPERTY_KEYWORD_VALUES.get(name.toLowerCase());
-    return values?.has(lowerValue);
+    if (data.keywords.has(lowerValue)) {
+      return true;
+    }
+    const restrictions = data.restrictions;
+    if (value.kind === 'unknown') {
+      return undefined;
+    }
+    if (value.kind === 'keyword') {
+      return restrictions.has('identifier') ? true : false;
+    }
+    if (value.kind === 'color') {
+      return restrictions.has('color');
+    }
+    if (value.kind === 'integer') {
+      const numberValue = value.numericValue;
+      return restrictions.has('integer')
+        || restrictions.has('number')
+        || (restrictions.has('number(0-1)') && numberValue !== undefined && numberValue >= 0 && numberValue <= 1)
+        || acceptsZeroLength(numberValue, restrictions);
+    }
+    if (value.kind === 'number') {
+      const numberValue = value.numericValue;
+      return restrictions.has('number')
+        || (restrictions.has('number(0-1)') && numberValue !== undefined && numberValue >= 0 && numberValue <= 1)
+        || acceptsZeroLength(numberValue, restrictions);
+    }
+    if (value.kind === 'percentage') {
+      return restrictions.has('percentage');
+    }
+    if (value.kind === 'dimension') {
+      if (!isKnownDimensionUnit(value.unit)) {
+        return undefined;
+      }
+      return acceptsDimension(value.unit, restrictions);
+    }
+    if (value.kind === 'function') {
+      const functionName = value.functionName;
+      if (functionName === undefined) {
+        return undefined;
+      }
+      if ((restrictions.has('color') && COLOR_VALUE_FUNCTIONS.has(functionName))
+        || (restrictions.has('image') && IMAGE_VALUE_FUNCTIONS.has(functionName))
+        || acceptsNumericFunction(functionName, restrictions)) {
+        return true;
+      }
+      if (!CSS_FUNCTION_SET.has(functionName)) {
+        return undefined;
+      }
+      return restrictions.has('color') || restrictions.has('image') || hasNumericRestriction(restrictions)
+        ? false
+        : undefined;
+    }
+    return undefined;
   },
   isKnownAtRule(name) {
     const lower = name.startsWith('@') ? name.toLowerCase() : `@${name.toLowerCase()}`;

@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 29;
+export const STABLE_LINT_RULE_SET_VERSION = 30;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -262,7 +262,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'warn',
     comparison: 'stylelint-near',
     stylelintRule: 'declaration-property-value-no-unknown',
-    notes: 'Flags definite unknown CSS enum keyword values from VSCode web custom data; dynamic values, non-enum value grammars, colors, and dialect values stay unknown until richer value facts exist.'
+    notes: 'Flags definite unknown simple CSS property values from VSCode web custom data values and restrictions; compound, dynamic, and dialect values stay unknown until richer value facts exist.'
   },
   {
     code: LINT_CODES.unknownAtRules,

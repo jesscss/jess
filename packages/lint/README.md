@@ -190,7 +190,7 @@ source:
 - Diagnostics that can be shared with the language service instead of
   reimplemented as CLI-only checks.
 - CSS metadata checks from VSCode web custom data that know about properties,
-  enum keyword values, dialect variables, interpolation, custom properties,
+  simple static values, dialect variables, interpolation, custom properties,
   vendor prefixes, and Jess support boundaries.
 - Source diagnostics that run before rendering, so they point at the authored
   stylesheet rather than a PostCSS approximation or emitted CSS.

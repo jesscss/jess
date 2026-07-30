@@ -191,7 +191,7 @@ can detect over authored source.
 | Priority | Stylelint rule family | Jess rule name | Notes |
 | --- | --- | --- | --- |
 | P0 | Unknown CSS | existing `property-no-unknown`, `at-rule-no-unknown` | Keep metadata current and dialect-aware. |
-| Landed | Property values | `declaration-property-value-no-unknown` | Flags definite unknown CSS enum keyword values from VSCode web custom data; non-enum value grammars, colors, dynamic values, and dialect values stay unknown until richer value facts exist. |
+| Landed | Property values | `declaration-property-value-no-unknown` | Flags definite unknown simple CSS property values from VSCode web custom data values and restrictions; compound, dynamic, and dialect values stay unknown until richer value facts exist. |
 | P0 | Duplicates | existing `declaration-block-no-duplicate-properties` | Add ignore-consecutive and expand shorthand/longhand property-table coverage. |
 | P0 | Empty blocks | existing `block-no-empty` | Extend to empty mixin bodies only when configured. Empty mixins can be API placeholders. |
 | Landed | Custom properties | `custom-property-no-missing-var-function`, `no-unknown-custom-properties` | Flags `color: --x` and same-file unknown `var(--x)` references; reference files and import graph facts remain future work. |

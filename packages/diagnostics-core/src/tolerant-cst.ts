@@ -871,9 +871,56 @@ function declarationPropertyValue(source: string, node: CssCstNode): { fact: Css
   }
   const raw = value.text;
   const normalized = raw.toLowerCase();
-  if (hasDynamicSyntax(raw) || namedColor(normalized) !== undefined) {
+  if (hasDynamicSyntax(raw)) {
     return {
       fact: { raw, normalized, kind: 'unknown' },
+      span: value.span
+    };
+  }
+  if (isStaticCustomPropertyName(raw)) {
+    return {
+      fact: { raw, normalized, kind: 'unknown' },
+      span: value.span
+    };
+  }
+  const valueStart = value.span.start;
+  const valueEnd = value.span.end;
+  const functionName = functionNameOf(source, valueStart, valueEnd);
+  if (functionName !== null) {
+    return {
+      fact: { raw, normalized, kind: 'function', functionName },
+      span: value.span
+    };
+  }
+  if (isValidHexColor(raw) || normalized === 'currentcolor' || namedColor(normalized) !== undefined) {
+    return {
+      fact: { raw, normalized, kind: 'color' },
+      span: value.span
+    };
+  }
+  const numberValue = cssNumberValue(raw);
+  if (numberValue !== null) {
+    return {
+      fact: {
+        raw,
+        normalized,
+        kind: isIntegerNumber(raw) ? 'integer' : 'number',
+        numericValue: numberValue
+      },
+      span: value.span
+    };
+  }
+  const percentageValue = cssPercentageValue(raw);
+  if (percentageValue !== null) {
+    return {
+      fact: { raw, normalized, kind: 'percentage', numericValue: percentageValue },
+      span: value.span
+    };
+  }
+  const unit = cssDimensionUnit(raw);
+  if (unit !== null) {
+    return {
+      fact: { raw, normalized, kind: 'dimension', unit },
       span: value.span
     };
   }
@@ -881,6 +928,26 @@ function declarationPropertyValue(source: string, node: CssCstNode): { fact: Css
     fact: { raw, normalized, kind: isCssIdentifier(raw) ? 'keyword' : 'unknown' },
     span: value.span
   };
+}
+
+function isValidHexColor(value: string): boolean {
+  if (value.length !== 4 && value.length !== 5 && value.length !== 7 && value.length !== 9) {
+    return false;
+  }
+  if (value.charCodeAt(0) !== 35 /* # */) {
+    return false;
+  }
+  for (let i = 1; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (!(
+      (code >= 48 && code <= 57)
+      || (code >= 65 && code <= 70)
+      || (code >= 97 && code <= 102)
+    )) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isCssWhitespace(code: number): boolean {

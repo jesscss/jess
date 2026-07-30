@@ -32,7 +32,7 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
 | **Property names** | Full, relevance-scored, in declaration context | ✓ names from `known-css-properties`, gated on `depth>0` brace count (naive) | Ranking + context precision | P1 |
-| **Property VALUES (per-property)** | Extensive: enum values, units, functions, color fns, timing fns, shapes, box keywords, image fns — driven by each property's `restrictions` | Enum value *names* only, from web-custom-data `values[]`, when a property is found before the `:` | No units, no functions, no restriction-driven value kinds, no CSS-wide keywords (`inherit`/`initial`/`unset`/`revert`) | **P0** |
+| **Property VALUES (per-property)** | Extensive: enum values, units, functions, color fns, timing fns, shapes, box keywords, image fns — driven by each property's `restrictions` | Completions use `values[]` plus restrictions; diagnostics validate simple static values against values/restrictions | Compound value grammar validation, richer function/value facts, ranking + context precision | P1 |
 | **`var()` / CSS-wide fns** | ✓ (`var()`, `calc()`, `env()` …) | ✗ | Missing | P1 |
 | **At-rule keywords** | ✓ context-aware (top-level vs nested) | ✓ every `@name` from web-custom-data, triggered only on leading `@` or empty suggest — no nesting context | No context; unfiltered list | P1 |
 | **At-rule bodies** (`@media` features/values, `@supports` conditions, `@font-face` descriptors, `@keyframes` `from/to`, `@page`) | ✓ media descriptors + discrete values, `@supports` conditions | ✗ | Missing entirely | P1 |
@@ -141,10 +141,11 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
 
 **P0 — completions & the data behind them**
 
-1. ✅ **DONE (dev f00b51fb2).** **Load `restrictions` + pseudo data from `@vscode/web-custom-data`.** The
-   property value-completion depth is entirely gated on data: currently only
-   `values[]` names are read. Also load pseudo-classes/elements (web-custom-data
-   ships `pseudoClasses`/`pseudoElements`) — Jess ignores them today.
+1. ✅ **DONE (dev f00b51fb2).** **Load `restrictions` + pseudo data from `@vscode/web-custom-data`.** Property
+   value completions and simple static value diagnostics now read the same
+   restriction/value data; deeper compound value grammar validation remains
+   future work. Pseudo-classes/elements also come from web-custom-data
+   `pseudoClasses`/`pseudoElements`.
 2. ✅ **DONE.** **Restriction-driven value completions.** Given the property before the `:`,
    read its `restrictions` (e.g. `color`, `length`, `enum`, `timing-function`)
    and emit the matching value kinds: enum names *plus* units (`px/em/rem/%/…`),
