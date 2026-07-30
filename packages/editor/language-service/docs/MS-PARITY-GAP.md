@@ -130,8 +130,8 @@ MS lint rules with default levels (`src/services/lintRules.ts`):
 |---|---|---|---|---|
 | Property data | MDN-sourced `languageFacts` + `@vscode/web-custom-data`: descriptions, **`restrictions`**, `values`, `status`, **`browsers`/compat** | `known-css-properties` (names) + web-custom-data (descriptions, values, restrictions, status) | Browser-compat data remains missing | P2 |
 | At-rule data | ✓ rich | ✓ web-custom-data | Comparable | P2 |
-| Pseudo-class / pseudo-element data | ✓ (names + descriptions + compat) | ✗ (not loaded at all) | Missing dataset | **P0** |
-| Custom-data provider API (`setDataProviders`) | ✓ extensible | ✗ | Missing extensibility | P2 |
+| Pseudo-class / pseudo-element data | ✓ (names + descriptions + compat) | ✓ web-custom-data names/descriptions | Browser-compat data remains missing | P2 |
+| Custom-data provider API (`setDataProviders`) | ✓ extensible | ✓ custom properties, at-rules, pseudos, completions, hover, and shared CSS diagnostics | Per-language settings shape remains future polish | P2 |
 | Built-in Sass/Less function catalog | ✓ (baked into scss/less completion) | ✗ | Missing dataset | P1 |
 
 ---
@@ -201,7 +201,8 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
 16. ✅ **DONE.** `var()` custom-property completions mined across the document + imports.
 17. ✅ **DONE.** Region-comment folding (`/* #region */`), range formatting (formats
     the top-level rules the selection intersects), and `setDataProviders`-style
-    custom-data extensibility (custom properties + at-rules → completion & hover).
+    custom-data extensibility (custom properties, at-rules, and pseudos →
+    completion, hover, and shared CSS diagnostics).
     *Remaining niche:* richer format options (indent size, etc.).
 
 ---

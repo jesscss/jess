@@ -316,6 +316,26 @@ describe('lintText', () => {
     ]);
   });
 
+  it('passes caller CSS metadata into shared diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '@project base; .a { project-tone: brand; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        metadata: {
+          isKnownAtRule: name => name === 'project',
+          isKnownProperty: name => name === 'project-tone',
+          isKnownPropertyValue: (name, value) => name === 'project-tone' && value.normalized === 'brand'
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownAtRules);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownProperties);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownPropertyValues);
+  });
+
   it('applies policy to deprecated property diagnostics by lint rule name', async () => {
     const result = await lintText(
       {

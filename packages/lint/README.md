@@ -60,6 +60,27 @@ const result = await lintText({
 The language is inferred from `filePath`; pass `language: 'css' | 'less' |
 'scss' | 'jess'` when the filename is synthetic.
 
+Pass `metadata` when a tool has project CSS data that should participate in
+shared diagnostics, such as design-system properties, custom at-rules, or known
+project values:
+
+```ts
+await lintText(
+  {
+    source: '@tokens base; .card { project-tone: brand; }',
+    filePath: 'card.css'
+  },
+  {
+    metadata: {
+      isKnownAtRule: name => name === 'tokens',
+      isKnownProperty: name => name === 'project-tone',
+      isKnownPropertyValue: (name, value) =>
+        name === 'project-tone' && value.normalized === 'brand'
+    }
+  }
+)
+```
+
 ### `lintFiles(patterns, options?)`
 
 Lint files from glob patterns. If `patterns` is empty, Jess uses `lint.files`

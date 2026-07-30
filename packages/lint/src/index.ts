@@ -4,6 +4,7 @@ import { glob } from 'glob';
 import { Region, type LineContent, type TextStyle } from 'linecraft';
 import {
   collectTolerantDiagnostics,
+  type CssDiagnosticMetadata,
   type DiagnosticSeverityName,
   type JessLanguage,
   LINT_CODES,
@@ -27,6 +28,7 @@ import {
 } from './rules.js';
 
 export type { LintConfig, LintRuleOptions, LintRuleSetting, LintSeverity };
+export type { CssDiagnosticMetadata } from '@jesscss/diagnostics-core';
 export {
   LINT_RULE_NAMES,
   PARSE_SYNTAX_ERROR_CODE,
@@ -57,6 +59,7 @@ export interface LintOptions {
   readonly maxWarnings?: number;
   readonly syntaxOnly?: boolean;
   readonly includeLegacyDiagnostics?: boolean;
+  readonly metadata?: Partial<CssDiagnosticMetadata>;
 }
 
 export interface LintTextInput {
@@ -400,7 +403,8 @@ export async function lintText(input: LintTextInput, options: LintOptions = {}):
   const collected = collectTolerantDiagnostics({
     source: input.source,
     filePath: input.filePath,
-    language
+    language,
+    metadata: options.metadata
   });
   return toLintResult(
     input.filePath,
@@ -438,7 +442,7 @@ export async function lintFiles(patterns: string | readonly string[], options: L
   for (const filePath of files) {
     const source = await readFile(filePath, 'utf8');
     const language = languageFromPath(filePath, options.language);
-    const collected = collectTolerantDiagnostics({ source, filePath, language });
+    const collected = collectTolerantDiagnostics({ source, filePath, language, metadata: options.metadata });
     results.push(toLintResult(
       filePath,
       applyPolicy(collected.diagnostics, source, lintConfig, options),

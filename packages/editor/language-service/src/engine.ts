@@ -14,6 +14,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import {
   cstLintDiagnostics,
+  type CssDiagnosticMetadata,
+  type CssPropertyValueFact,
   LINT_CODES,
   type SourceDiagnostic
 } from '@jesscss/diagnostics-core';
@@ -527,6 +529,7 @@ function hoverExtras(entry: Enrich): string {
  */
 const CSS_WIDE_KEYWORDS = ['inherit', 'initial', 'unset', 'revert', 'revert-layer'];
 const COLOR_FUNCTIONS = ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'hwb()', 'lab()', 'lch()', 'oklab()', 'oklch()', 'color()'];
+const COLOR_FUNCTION_NAMES = new Set(COLOR_FUNCTIONS.map(name => name.slice(0, -2)));
 
 // @media prelude vocabulary (feature names + types + logical operators).
 const MEDIA_FEATURES = ['width', 'min-width', 'max-width', 'height', 'min-height', 'max-height', 'aspect-ratio', 'orientation', 'resolution', 'min-resolution', 'max-resolution', 'prefers-color-scheme', 'prefers-reduced-motion', 'prefers-contrast', 'hover', 'any-hover', 'pointer', 'any-pointer', 'display-mode', 'color', 'color-gamut', 'forced-colors', 'scripting'];
@@ -624,6 +627,69 @@ function buildValueCompletions(propName: string, prefix: string, replaceRange: R
   add('var()', CompletionItemKind.Function);
   add('calc()', CompletionItemKind.Function);
   return items;
+}
+
+function lowerName(name: string): string {
+  return name.toLowerCase();
+}
+
+function lowerAtRuleName(name: string): string {
+  const lower = name.toLowerCase();
+  return lower.startsWith('@') ? lower : `@${lower}`;
+}
+
+function customPropertyValueStatus(entry: PropertyEntry, value: CssPropertyValueFact): boolean | undefined {
+  if (value.kind === 'unknown') {
+    return undefined;
+  }
+  if (CSS_WIDE_KEYWORDS.includes(value.normalized)) {
+    return true;
+  }
+
+  const values = new Set((entry.values ?? []).map(item => item.name.toLowerCase()));
+  if (value.kind === 'keyword' && values.has(value.normalized)) {
+    return true;
+  }
+
+  const restrictions = new Set(entry.restrictions ?? []);
+  if (restrictions.has('color') && (value.kind === 'color' || (value.kind === 'function' && value.functionName !== undefined && COLOR_FUNCTION_NAMES.has(value.functionName)))) {
+    return true;
+  }
+  if (restrictions.has('integer') && value.kind === 'integer') {
+    return true;
+  }
+  if (restrictions.has('number') && (value.kind === 'number' || value.kind === 'integer')) {
+    return true;
+  }
+  if (restrictions.has('percentage') && value.kind === 'percentage') {
+    return true;
+  }
+  if (restrictions.has('length') && value.kind === 'dimension' && UNITS_BY_RESTRICTION.length.includes(value.unit ?? '')) {
+    return true;
+  }
+  if (restrictions.has('length-percentage') && (value.kind === 'percentage' || (value.kind === 'dimension' && UNITS_BY_RESTRICTION.length.includes(value.unit ?? '')))) {
+    return true;
+  }
+  if (restrictions.has('time') && value.kind === 'dimension' && UNITS_BY_RESTRICTION.time.includes(value.unit ?? '')) {
+    return true;
+  }
+  if (restrictions.has('angle') && value.kind === 'dimension' && UNITS_BY_RESTRICTION.angle.includes(value.unit ?? '')) {
+    return true;
+  }
+  if (restrictions.has('resolution') && value.kind === 'dimension' && UNITS_BY_RESTRICTION.resolution.includes(value.unit ?? '')) {
+    return true;
+  }
+  if (
+    restrictions.has('timing-function')
+    && (
+      (value.kind === 'keyword' && TIMING_FUNCTIONS.includes(value.normalized))
+      || (value.kind === 'function' && value.functionName !== undefined && TIMING_FUNCTIONS.includes(`${value.functionName}()`))
+    )
+  ) {
+    return true;
+  }
+
+  return values.size > 0 || restrictions.size > 0 ? false : undefined;
 }
 
 export type JessLanguageServiceEngine = {
@@ -752,8 +818,78 @@ export function createEngine(): JessLanguageServiceEngine {
 
   // Host-injected custom CSS data (setDataProviders), merged into completion/hover.
   let customData: CustomCssData[] = [];
+  let customPropertyMap = new Map<string, PropertyEntry>();
+  let customAtRuleMap = new Map<string, AtDirectiveEntry>();
+  let customPseudoClassMap = new Map<string, PseudoEntry>();
+  let customPseudoElementMap = new Map<string, PseudoEntry>();
   const customProperties = () => customData.flatMap(d => d.properties ?? []);
   const customAtRules = () => customData.flatMap(d => d.atDirectives ?? []);
+
+  const diagnosticsMetadata = (): Partial<CssDiagnosticMetadata> => ({
+    isKnownProperty(name) {
+      const lower = lowerName(name);
+      return CSS_PROPERTY_SET.has(lower) || PROPERTIES_MAP.has(lower) || customPropertyMap.has(lower);
+    },
+    cssPropertyStatus(name) {
+      const status = customPropertyMap.get(lowerName(name))?.status ?? PROPERTIES_MAP.get(lowerName(name))?.status;
+      return status === 'standard'
+        || status === 'experimental'
+        || status === 'nonstandard'
+        || status === 'obsolete'
+        || status === 'deprecated'
+        ? status
+        : undefined;
+    },
+    isKnownPropertyValue(name, value) {
+      const custom = customPropertyMap.get(lowerName(name));
+      return custom === undefined ? undefined : customPropertyValueStatus(custom, value);
+    },
+    isKnownAtRule(name) {
+      const lower = lowerAtRuleName(name);
+      return AT_RULES_MAP.has(lower) || customAtRuleMap.has(lower);
+    },
+    isKnownPseudoClass(name) {
+      const lower = name.toLowerCase();
+      return PSEUDO_CLASSES_MAP.has(lower) || customPseudoClassMap.has(lower);
+    },
+    isKnownPseudoElement(name) {
+      const lower = name.toLowerCase();
+      return PSEUDO_ELEMENTS_MAP.has(lower) || customPseudoElementMap.has(lower);
+    }
+  });
+
+  const rebuildCustomDataMaps = () => {
+    const properties = new Map<string, PropertyEntry>();
+    const atRules = new Map<string, AtDirectiveEntry>();
+    const pseudoClasses = new Map<string, PseudoEntry>();
+    const pseudoElements = new Map<string, PseudoEntry>();
+    for (const data of customData) {
+      for (const property of data.properties ?? []) {
+        if (property.name) {
+          properties.set(lowerName(property.name), property);
+        }
+      }
+      for (const atRule of data.atDirectives ?? []) {
+        if (atRule.name) {
+          atRules.set(lowerAtRuleName(atRule.name), atRule);
+        }
+      }
+      for (const pseudo of data.pseudoClasses ?? []) {
+        if (pseudo.name) {
+          pseudoClasses.set(pseudo.name.toLowerCase(), pseudo);
+        }
+      }
+      for (const pseudo of data.pseudoElements ?? []) {
+        if (pseudo.name) {
+          pseudoElements.set(pseudo.name.toLowerCase(), pseudo);
+        }
+      }
+    }
+    customPropertyMap = properties;
+    customAtRuleMap = atRules;
+    customPseudoClassMap = pseudoClasses;
+    customPseudoElementMap = pseudoElements;
+  };
 
   // Import graph: maps URI -> Set of imported URIs
   const importGraph = new Map<string, Set<string>>();
@@ -1952,20 +2088,14 @@ export function createEngine(): JessLanguageServiceEngine {
 
       const tree = cstDoc.tree;
       if (tree) {
-        const cstDiagnostics = cstLintDiagnostics(tree, text, tracked.lang, {
-          isKnownProperty: name => CSS_PROPERTY_SET.has(name) || PROPERTIES_MAP.has(name),
-          cssPropertyStatus: (name) => {
-            const status = PROPERTIES_MAP.get(name)?.status;
-            return status === 'standard'
-              || status === 'experimental'
-              || status === 'nonstandard'
-              || status === 'obsolete'
-              || status === 'deprecated'
-              ? status
-              : undefined;
-          },
-          isKnownAtRule: name => AT_RULES_MAP.has(`@${name}`)
-        }, undefined, cstDoc.errors.length > 0 || cstDoc.unconsumedFrom !== null);
+        const cstDiagnostics = cstLintDiagnostics(
+          tree,
+          text,
+          tracked.lang,
+          diagnosticsMetadata(),
+          undefined,
+          cstDoc.errors.length > 0 || cstDoc.unconsumedFrom !== null
+        );
         for (const diagnostic of cstDiagnostics) {
           if (diagnostic.code === LINT_CODES.emptyRules && hasDiagnosticQualifier(diagnostic, 'mixin-body')) {
             continue;
@@ -2252,6 +2382,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
     setDataProviders(data) {
       customData = Array.isArray(data) ? data : [];
+      rebuildCustomDataMaps();
     },
 
     getDocumentLinks(uri) {
