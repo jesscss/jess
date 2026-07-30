@@ -147,8 +147,8 @@ unknown-at-rule helper before adding more scanner policy there. Less
 the root ambient `scanSkip`; the remaining Less scanner debt is the
 function-condition branch probe, statement-position mixin/ruleset/property
 ambiguity, and the larger opaque-helper design, not local string/comment skip
-duplication. The function-condition probe must not settle as "peek instead of
-not-not"; it needs a structural condition-argument boundary or value-sensitive
+duplication. The function-condition probe must not settle as a cosmetic
+`peek(...)` rewrite; it needs a structural condition-argument boundary or value-sensitive
 combinator shape. SCSS `QueryFunction` and Jess generic pseudo raw arguments are
 separate follow-ups: SCSS has ambient scan skips but also routes through
 composed quoted syntax, while Jess currently lacks a root `scanSkip` policy and
@@ -165,8 +165,8 @@ The next attempt should compose the CSS conditional/container structure
 directly, or introduce one committed known-at-rule dispatcher whose routed arms
 reuse the CSS-owned prelude and prove public CST and AST rejection unchanged.
 Less lookahead inventory, 2026-07-29 current-dev recheck: grammar sources are
-clean for `Direct*` / `CssAst*` prefixes, but Less still has the last explicit
-`not(not(...))` code sites. The declaration-head interpolated-property gate was
+clean for `Direct*` / `CssAst*` prefixes and explicit `not(not(...))` probes.
+The declaration-head interpolated-property gate was
 reduced to an honest `peek(...)` because it is already a bounded positive
 lookahead inside a declaration context. Do not apply that as a blanket pattern:
 the remaining function-condition argument probe needs a structural condition
