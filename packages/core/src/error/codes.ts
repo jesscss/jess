@@ -50,8 +50,7 @@ export type JessErrorCode =
   | 'resolve/unused-variable'
   | 'selector/duplicate'
   | 'selector/parentless-ampersand'
-  | 'selector/comma-list-interpolation'
-  | 'function/unresolved';
+  | 'selector/comma-list-interpolation';
 
 /**
  * Template record for codes. Keep these short and actionable.
@@ -368,15 +367,6 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         'The value interpolated into selector "${selector}" is a comma-separated list; a list can\'t be spliced into a selector position.',
       fix: 'Use each() to distribute a rule over a list instead of interpolating the list into the selector.'
-    }
-  ],
-  [
-    'function/unresolved',
-    {
-      summary: 'Function "${name}" left as-is',
-      reason:
-        '"${name}" matched a registered function but could not be evaluated: ${reason}',
-      fix: 'Fix the arguments, or set functionMode: \'error\' to make this fail.'
     }
   ],
   [

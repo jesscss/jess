@@ -455,10 +455,6 @@ export interface ValueEvaluator {
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
-
-    /** Called only when a registered function is preserved after it rejects. */
-    onUnresolved?: (error: unknown) => void,
-
     /** A caller-resolved scoped function; takes precedence over `scope`. */
     scopedFn?: Fn,
   ): MaybePromise<ValueGroup>;

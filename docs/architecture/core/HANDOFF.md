@@ -2045,10 +2045,11 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-07-29 compiler source-fact ownership and function-dispatch
-  cost cut. This pass removes eager suppressed-function diagnostics, gates
-  scoped function lookup by registered name, makes warning admission precede
-  diagnostic normalization, and makes surviving code frames file-indexed.
+- Latest pass: 2026-07-30 compiler source-fact ownership and function-dispatch
+  cost cut. This pass removes eager suppressed-function diagnostics, deletes
+  the routine preserved-function warning lane, gates scoped function lookup by
+  registered name, makes warning admission precede diagnostic normalization,
+  and makes surviving code frames file-indexed.
 - Architecture surface: core evaluator/serializer/context/error diagnostic
   paths, plus benchmark evidence and a PR gate. No parser, AST shape, output
   CSS, import, or plugin ABI is changed.
@@ -2063,12 +2064,14 @@ involved.
 - New node/materialization: none. The line index is an off-node, lazy per-file
   `WeakMap` fact; it replaces repeated full-source scans and line arrays.
 - Render path: ordinary function calls now dispatch directly to the flat
-  registry unless their name is registered lexically. Suppressed/capped/line
-  display warnings do no frame extraction; frame display slices indexed lines.
-- Helper/API surface: `Context.isWarningSilenced()` is the deliberately narrow
-  policy query used by the render fallback. `ValueEvaluator.call()` accepts an
-  optional already-resolved scoped `Fn`, preserving the legacy `FnScope` input
-  for direct consumers without forcing the serializer to allocate it.
+  registry unless their name is registered lexically. A registered function
+  declining CSS-compatible arguments preserves authored bytes silently;
+  suppressed/capped/line display warnings still do no frame extraction, and
+  frame display slices indexed lines.
+- Helper/API surface: `ValueEvaluator.call()` accepts an optional
+  already-resolved scoped `Fn`, preserving the legacy `FnScope` input for direct
+  consumers without forcing the serializer to allocate it. The transitional
+  unresolved-function warning callback and code were deleted.
 - Metadata mutations: only render-local `scopedFunctionNames` and existing
   frame nearest-function cache invalidation are updated during plugin loading;
   no AST/provenance mutation is introduced.
@@ -2077,15 +2080,17 @@ involved.
   `WeakMap` caches immutable file facts and one name `Set` prevents scope walks;
   [routine error control] none on the successful path; [array helper] indexed
   frame output allocates only the returned one-to-three-line diagnostic record;
-  [array spread/materialization] the `callSiteLocation` argument spread remains
-  exclusively on the admitted unresolved-warning path; [node construction] the
+  [array spread/materialization] call-site attribution remains exclusively on
+  genuine admitted diagnostic paths; [node construction] the
   name `Set` is built when functions are registered, not per call; [parent/source
   mutation] the detector matches location/source *reads*, while this pass mutates
   neither AST parents nor source provenance; [materialized array/object] a
   file-owned line-start array replaces every rejected-call whole-source line array.
-- Behavior evidence: focused core tests passed 42/42: code-frame CRLF/index
-  invalidation, warning policy before normalization, suppressed registered-call
-  behavior, direct scoped-call dispatch, and plugin body scope.
+- Behavior evidence: focused core tests passed 30/30 after the preserve-policy
+  deletion: code-frame/index and warning policy coverage, a declined registered
+  call with no warning, strict `functionMode: 'error'`, and direct scoped-call
+  dispatch. Jess Less `function-mode.test.ts` also passes with the maintained
+  Less error fixtures preserving silently by default.
 - Build evidence: `pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit`
   and `pnpm --filter @jesscss/core build` pass on this worktree.
 - Boundary evidence: `JessError` remains a plain diagnostic value (not an
@@ -2102,9 +2107,9 @@ involved.
     "performanceClaim": "none",
     "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
-    "why": "The serializer and value-evaluator changes preserve the established optional-CSS-call and scoped-function semantics while changing how the existing AST-v2 runtime avoids rejected-call diagnostic work. The separately recorded CPU profile is evidence for the active performance investigation, not a claim that this semantic-runtime record proves an A/B speed result.",
-    "dangerTokensJustification": "The added source index and lexical name set are render-local facts with explicit ownership. They replace repeated rejected-call scans and scope probing; neither introduces AST materialization, parser replay, an alternate evaluator, or successful-path diagnostic allocation.",
-    "behaviorEvidence": "Focused core tests passed 42/42, including function-warning suppression and direct scoped-function dispatch; the diagnostic integration test mismatch is documented separately as pre-existing.",
+    "why": "The serializer and value-evaluator changes preserve the established optional-CSS-call and scoped-function semantics while deleting the rejected-call warning lane. The separately recorded CPU profile is evidence for the active performance investigation, not a claim that this semantic-runtime record proves an A/B speed result.",
+    "dangerTokensJustification": "The source index and lexical name set are render-local facts with explicit ownership. They replace repeated rejected-call scans and scope probing; neither introduces AST materialization, parser replay, an alternate evaluator, or successful-path diagnostic allocation.",
+    "behaviorEvidence": "Focused core tests passed 30/30, including silent declined-call preservation, strict functionMode behavior, and direct scoped-function dispatch; the diagnostic integration test mismatch is documented separately as pre-existing.",
     "buildEvidence": "pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit and pnpm --filter @jesscss/core build passed.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
   },
@@ -2114,9 +2119,9 @@ involved.
     "performanceClaim": "none",
     "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
     "cases": ["Context-plugin-source-parser-dispatch", "emit-walk-context-output-option", "Ruleset-interpolated-selector-boundary", "selector-match-string-and-node-combinators", "extend-index-tagged-graft-atoms", "Sequence-subclass-preserving-evaluation", "callable-output-root-property-guard", "serializer-at-rule-and-selector-surface"],
-    "why": "Context exposes the existing warning-silencing policy to serializer dispatch without changing plugin/source/import behavior, selector behavior, or output policy. The query prevents diagnostic construction after an already-established policy decision; this semantic-runtime record does not assert a benchmark A/B result.",
-    "dangerTokensJustification": "The Context change is one policy read. It adds no resolver, parser host, AST materialization route, output array path, traversal, or runtime validation and keeps ordinary emitted CSS untouched.",
-    "behaviorEvidence": "Focused warning-policy tests passed 42/42 and preserve emitted unresolved call bytes when warnings are suppressed.",
+    "why": "Context warning admission now precedes diagnostic normalization without changing plugin/source/import behavior, selector behavior, or output policy. Declined registered calls no longer enter the warning collector at all; this semantic-runtime record does not assert a benchmark A/B result.",
+    "dangerTokensJustification": "The Context change keeps policy accounting ahead of normalization and removes one former producer. It adds no resolver, parser host, AST materialization route, output array path, traversal, or runtime validation and keeps ordinary emitted CSS untouched.",
+    "behaviorEvidence": "Focused warning-policy tests passed 30/30 and declined registered calls preserve bytes without warnings.",
     "buildEvidence": "pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit and pnpm --filter @jesscss/core build passed.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
   },
@@ -2127,6 +2132,18 @@ involved.
     "cases": ["unresolved-optional-function-call", "registered-sync-call-failure", "registered-async-call-failure"],
     "why": "The evaluator accepts an already-resolved scoped callable from the serializer so one lexical lookup is authoritative. Optional CSS calls still preserve authored bytes, and selected callable failures continue through the established synchronous/asynchronous recovery policy rather than becoming lookup misses.",
     "dangerTokensJustification": "The added optional parameter removes a duplicate scope lookup from the selected-call path. It neither allocates an Error nor changes async recovery, registry lookup semantics, output serialization, or the normal optional-call miss result.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  },
+  {
+    "id": "legacy-tree-strict-contract-drain",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the sixteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, call, and extend owners listed by legacy-tree-strict-contract-drain",
+    "cases": ["declaration-sync-and-async-render-result", "declaration-merge-source-span-exclusion", "default-guard-owned-value", "bitset-inversion-and-disjointness", "string-and-node-combinator-recognition", "selector-list-singleton-collapse", "selector-list-array-or-node-inheritance", "parser-delivered-selector-array-ampersand", "selector-array-ruleset-callable-registration", "selector-array-key-set-analysis", "function-call-silent-preserve", "selector-compose-cache-node-boundary", "ordered-registration-context-restoration", "property-merge-container-scope", "mixin-invisible-sync-render-and-registration-result", "extend-record-selector-surface", "extend-root-composition-selector-surface", "extend-walk-composed-match-selector-surface"],
+    "why": "The retained legacy Call path now agrees with canonical AST-v2 function policy: a registered function that declines CSS-compatible arguments preserves the authored call silently, while explicit error mode still throws. It is a semantic compatibility correction during the tree drain, not a performance or neutrality claim.",
+    "dangerTokensJustification": "The change deletes a warning construction helper and its three calls. It adds no traversal, allocation, parser replay, alternate evaluator, output policy, or runtime validation; successful preserve output remains the existing fallback call syntax.",
+    "behaviorEvidence": "Focused core function-boundary and warning-policy tests passed 30/30; Jess Less function-mode fixtures passed with silent default preservation and strict error-mode failures.",
+    "buildEvidence": "pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit and pnpm --filter @jesscss/core build passed.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
   }
 ]

@@ -797,16 +797,6 @@ export const WARN = {
       ...args
     });
   },
-  unresolvedFunction(
-    args: Common & { meta: { name: string; reason: string } }
-  ) {
-    return makeJessError({
-      severity: 'warn',
-      code: 'function/unresolved',
-      phase: 'eval',
-      ...args
-    });
-  },
   unitConversion(args: Common & { meta: { value: string } }) {
     return makeJessError({
       severity: 'warn',

@@ -2331,11 +2331,8 @@ interface EvalCtx {
   ev: ValueEvaluator | null;
   modes: EvalModes;
 
-  /** Context supplies document source only on cold diagnostic paths. */
+  /** Context supplies document source only on genuine cold diagnostic paths. */
   context?: Context;
-
-  /** True only when a registered-function preserve fallback must report. */
-  reportUnresolvedFunctionFailures: boolean;
 
   /** Parser-owned source trivia for comment/spacing emission. */
   trivia?: TriviaMap;
@@ -4504,22 +4501,7 @@ function evalCall(
   return combineAll(typed, (vals) => {
     const args: ValueGroup = sep === ',' ? makeList(vals, ',') : vals;
     try {
-      const context = e.context;
-      const onUnresolved = !e.reportUnresolvedFunctionFailures || context === undefined
-        ? undefined
-        : (error: unknown) => {
-            const reason = error instanceof JessError
-              ? error.message
-              : error instanceof Error
-                ? error.message
-                : String(error);
-            context.warn(WARN.unresolvedFunction({
-              node,
-              ...callSiteLocation(node, e),
-              meta: { name: node.name, reason }
-            }));
-          };
-      const result = ev.call(node.name, args, e.modes, null, e.io, onUnresolved, selected);
+      const result = ev.call(node.name, args, e.modes, null, e.io, selected);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
@@ -5366,7 +5348,6 @@ function scratchEmit(e: EvalCtx): Emit {
     propNames: e.propNames,
     optional: e.optional,
     calcDepth: e.calcDepth,
-    reportUnresolvedFunctionFailures: false, // scratch captures have never emitted function diagnostics
     scopedFunctionNames: e.scopedFunctionNames, // [plugin/P1] preserve the registered-name gate
     fnScopeVersion: e.fnScopeVersion,
     pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
@@ -6927,8 +6908,6 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new Set(),
-    reportUnresolvedFunctionFailures: options?.context !== undefined
-      && !options.context.isWarningSilenced('function/unresolved'),
     scopedFunctionNames: scopedFunctionNames(rootFns),
     fnScopeVersion: 0,
     pluginHost,
@@ -6984,8 +6963,6 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
-    reportUnresolvedFunctionFailures: options?.context !== undefined
-      && !options.context.isWarningSilenced('function/unresolved'),
     excluded: new Set(), // [resolver] per-declaration cycle guard
     propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss

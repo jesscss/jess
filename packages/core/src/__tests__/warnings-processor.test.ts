@@ -140,12 +140,6 @@ describe('context.warn de-duplication', () => {
 });
 
 describe('context.warn silencing', () => {
-  it('exposes whether a warning code is silenced before a diagnostic is built', () => {
-    const context = makeContext({ warnings: { silence: ['function/*'] } });
-    expect(context.isWarningSilenced('function/unresolved')).toBe(true);
-    expect(context.isWarningSilenced('extend/not-found')).toBe(false);
-  });
-
   it('drops warnings matching an exact silenced code', () => {
     const context = makeContext({ warnings: { silence: ['selector/duplicate'] } });
     context.warn(diag('selector/duplicate'));

@@ -42,13 +42,11 @@ function recoverCallFailure(
   error: unknown,
   name: string,
   args: ValueGroup,
-  modes: EvalModes,
-  onUnresolved: ((error: unknown) => void) | undefined
+  modes: EvalModes
 ): Value {
   if (modes.functionMode === 'error') {
     throw error;
   }
-  onUnresolved?.(error);
   return fallbackCall(name, args);
 }
 
@@ -57,13 +55,12 @@ function recoverAsyncCall(
   result: MaybePromise<ValueGroup>,
   name: string,
   args: ValueGroup,
-  modes: EvalModes,
-  onUnresolved: ((error: unknown) => void) | undefined
+  modes: EvalModes
 ): MaybePromise<ValueGroup> {
   if (!isThenable(result)) {
     return result;
   }
-  return result.catch(error => recoverCallFailure(error, name, args, modes, onUnresolved));
+  return result.catch(error => recoverCallFailure(error, name, args, modes));
 }
 
 /**
@@ -91,7 +88,6 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
-    onUnresolved?: (error: unknown) => void,
     scopedFn?: Fn
   ): MaybePromise<ValueGroup> => {
     /*
@@ -103,14 +99,14 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     const scoped = scopedFn ?? scope?.lookup(name);
     if (scoped) {
       try {
-        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes, onUnresolved);
+        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes);
       } catch (err) {
-        return recoverCallFailure(err, name, args, modes, onUnresolved);
+        return recoverCallFailure(err, name, args, modes);
       }
     }
     if (registry.has(name)) {
       try {
-        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes, onUnresolved);
+        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes);
       } catch (err) {
         /*
          * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
@@ -122,7 +118,7 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
          * caught here; variable-resolution / mixin-recursion errors are thrown
          * outside `dispatch` and still propagate.)
          */
-        return recoverCallFailure(err, name, args, modes, onUnresolved);
+        return recoverCallFailure(err, name, args, modes);
       }
     }
 

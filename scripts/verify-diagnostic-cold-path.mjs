@@ -29,10 +29,8 @@ const serialize = read('packages/core/src/ast/serialize.ts');
 const evalCallStart = serialize.indexOf('function evalCall(');
 const evalCallEnd = serialize.indexOf('function pluginCallFailure(', evalCallStart);
 const evalCall = evalCallStart === -1 || evalCallEnd === -1 ? '' : serialize.slice(evalCallStart, evalCallEnd);
-const functionGate = evalCall.indexOf('!e.reportUnresolvedFunctionFailures');
-const unresolvedWarning = evalCall.indexOf('WARN.unresolvedFunction');
-if (functionGate === -1 || unresolvedWarning === -1 || functionGate > unresolvedWarning) {
-  fail('function preserve warnings must be policy-gated before WARN construction');
+if (evalCall.includes('WARN.unresolvedFunction') || serialize.includes('reportUnresolvedFunctionFailures')) {
+  fail('preserved registered CSS calls must not have a warning construction path');
 }
 if (serialize.includes('.lastIndexOf(')
   || !serialize.includes('function firstIndexInSourceRange(')
@@ -49,8 +47,8 @@ if (codeFrame.includes('.split(')) {
 }
 
 const warningTest = read('packages/core/src/ast/__tests__/function-warning-silence.test.ts');
-if (!warningTest.includes('not.toHaveBeenCalled')) {
-  fail('missing test that a silenced function fallback does not route a warning');
+if (!warningTest.includes('preserves a declined registered call without producing a warning')) {
+  fail('missing test that a preserved registered call does not route a warning');
 }
 const frameTest = read('packages/core/src/__tests__/code-frame.test.ts');
 if (!frameTest.includes('CRLF source without splitting it')) {

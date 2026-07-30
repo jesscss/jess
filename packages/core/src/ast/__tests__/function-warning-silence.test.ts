@@ -22,9 +22,9 @@ function document() {
   ]);
 }
 
-describe('registered function preserve warnings', () => {
-  it('does not construct or route a silenced fallback warning', () => {
-    const context = new Context({ suppressWarnings: true });
+describe('registered function preserve policy', () => {
+  it('preserves a declined registered call without producing a warning', () => {
+    const context = new Context();
     context.registerValueEvaluator(failingEvaluator());
     const warn = vi.spyOn(context, 'warn');
 
@@ -33,11 +33,11 @@ describe('registered function preserve warnings', () => {
     expect(context.warnings).toEqual([]);
   });
 
-  it('keeps the fallback warning when it is enabled', () => {
-    const context = new Context();
+  it('keeps silent preservation when unrelated warnings are disabled', () => {
+    const context = new Context({ suppressWarnings: true });
     context.registerValueEvaluator(failingEvaluator());
 
     expect(serialize(document(), { context }).css).toBe('.example {\n  value: fails();\n}\n');
-    expect(context.warnings.map(warning => warning.code)).toEqual(['function/unresolved']);
+    expect(context.warnings).toEqual([]);
   });
 });

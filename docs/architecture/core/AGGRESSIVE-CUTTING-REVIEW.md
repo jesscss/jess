@@ -304,6 +304,7 @@ a blanket optimization exemption or a new active architecture queue.
     "surface": "retained legacy tree strict runtime contracts",
     "files": [
       "packages/core/src/tree/ampersand.ts",
+      "packages/core/src/tree/call.ts",
       "packages/core/src/tree/declaration.ts",
       "packages/core/src/tree/default-guard.ts",
       "packages/core/src/tree/extend.ts",
@@ -334,8 +335,8 @@ a blanket optimization exemption or a new active architecture queue.
     ],
     "coverage": "owner-plus-named-carry-forward-support",
     "semanticRuntime": {
-      "owner": "the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
-      "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. A mixin's invisible render is synchronously empty when it has no effect to await, and interpolated-name registration truthfully returns Mixin rather than promising the receiver subtype because preparation may return a distinct withParts result. Extend registration, root composition, and composed-match walking now admit the same selector surface and materialize it only at APIs that require Selector node behavior. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
+      "owner": "the sixteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, call, and extend owners listed by legacy-tree-strict-contract-drain",
+      "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. A Call whose registered function declines CSS-compatible arguments preserves its authored call silently; an explicit error mode still propagates the failure. A mixin's invisible render is synchronously empty when it has no effect to await, and interpolated-name registration truthfully returns Mixin rather than promising the receiver subtype because preparation may return a distinct withParts result. Extend registration, root composition, and composed-match walking now admit the same selector surface and materialize it only at APIs that require Selector node behavior. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
       "cases": [
         "declaration-sync-and-async-render-result",
         "declaration-merge-source-span-exclusion",
@@ -347,6 +348,7 @@ a blanket optimization exemption or a new active architecture queue.
         "parser-delivered-selector-array-ampersand",
         "selector-array-ruleset-callable-registration",
         "selector-array-key-set-analysis",
+        "function-call-silent-preserve",
         "selector-compose-cache-node-boundary",
         "ordered-registration-context-restoration",
         "property-merge-container-scope",

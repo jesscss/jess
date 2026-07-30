@@ -75,9 +75,11 @@ Status: implemented and reprofiled 2026-07-30.
 - `Context.warn()` now decides silence, fatal promotion, and repetition/cap
   admission before `toDiagnostic()`. Repeated or capped warnings therefore do
   not allocate frame lines.
-- The registered-function preserve lane asks the warning policy before it makes
-  the callback, source location, or `WARN.unresolvedFunction` object. A
-  silenced `function/unresolved` warning produces no diagnostic work at all.
+- A registered function that declines CSS-compatible arguments now preserves the
+  authored call silently. There is no `function/unresolved` code, callback,
+  source lookup, or warning object on that expected path; `functionMode:
+  'error'` remains the explicit strict policy, and genuine plugin execution
+  failures remain diagnostics.
 - Surviving diagnostics now share a file-owned lazy line-start index—the same
   newline-offset / binary-search algorithm Parseman uses—and slice only the
   requested frame lines. They no longer scan from byte zero or split the entire
@@ -99,13 +101,14 @@ Reprofile result: the exact PostCSS workload above, after ten warmups and 80
 Jess-Less samples, produced 3,982 CPU samples. The former warning location /
 frame bucket has **zero** samples: no `callSiteLocation`, `lineColAt`,
 `extractRelevantLines`, `toDiagnostic`, or source-line split frame appears.
-`unresolvedFunction` has one isolated sample, consistent with the remaining
-admitted warning work rather than a preserved-call hot path. The single-engine
+`unresolvedFunction` had one isolated sample in this pre-policy-removal profile;
+the code path has since been deleted rather than made cheaper. The single-engine
 warm run (10 warmups / 30 samples) reports a 48.38 ms median; the comparable
 multi-engine run (5 warmups / 15 samples) reports Jess Less 52.71 ms versus
 Less 4.8.1 at 31.61 ms and PostCSS at 17.33 ms. That is a successful deletion
 of the profiled architecture failure, not benchmark victory; the next profile
-targets remain Parseman trivia/root maps, AST provenance, and GC.
+targets remain Parseman trivia/root maps, AST provenance, GC, and a columnar
+collector for the comparatively rare warnings that still need to be retained.
 
 ### P1 — remove cross-workload metadata overhead
 

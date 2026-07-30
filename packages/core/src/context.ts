@@ -601,18 +601,6 @@ export class Context {
     return this._warnConfig;
   }
 
-  /**
-   * Whether a warning code is configured to have no observable effect.
-   *
-   * Render-time fallbacks can ask this before constructing a diagnostic with a
-   * source location or code frame. Fatal and capped warnings deliberately
-   * return false: their existing diagnostic and accounting behavior remains
-   * observable.
-   */
-  isWarningSilenced(code: string): boolean {
-    return warnCodeMatchesAny(code, this.warnConfig.silence);
-  }
-
   /** The resolved error-display config, computed once from the compile options. */
   get errorsConfig(): ResolvedErrorsConfig {
     if (!this._errorsConfig) {

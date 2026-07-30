@@ -6,13 +6,11 @@ import { makeKeyword, makeList } from '../value-factory.js';
 const args = makeList([makeKeyword('one'), makeKeyword('two')], ',');
 
 describe('ValueEvaluator function-call boundary', () => {
-  it('preserves an unresolved optional FunctionCall without treating it as a callable failure', () => {
+  it('preserves an unresolved optional FunctionCall without callable dispatch', () => {
     const evaluator = buildEvaluator(createFnRegistry());
-    const onUnresolved = vi.fn();
 
-    expect(evaluator.call('css-fn', args, { unitMode: 'preserve' }, null, undefined, onUnresolved))
+    expect(evaluator.call('css-fn', args, { unitMode: 'preserve' }))
       .toMatchObject({ bytes: 'css-fn(one, two)' });
-    expect(onUnresolved).not.toHaveBeenCalled();
   });
 
   it('applies functionMode only after a registered callable rejects synchronously', () => {
@@ -24,11 +22,8 @@ describe('ValueEvaluator function-call boundary', () => {
       }
     }));
     const evaluator = buildEvaluator(registry);
-    const onUnresolved = vi.fn();
-
-    expect(evaluator.call('fails', args, { unitMode: 'preserve' }, null, undefined, onUnresolved))
+    expect(evaluator.call('fails', args, { unitMode: 'preserve' }))
       .toMatchObject({ bytes: 'fails(one, two)' });
-    expect(onUnresolved).toHaveBeenCalledWith(expect.objectContaining({ message: 'registered failure' }));
     expect(() => evaluator.call('fails', args, { unitMode: 'preserve', functionMode: 'error' }))
       .toThrow('registered failure');
   });
@@ -59,7 +54,7 @@ describe('ValueEvaluator function-call boundary', () => {
       throw new Error('the direct function should bypass scope.lookup');
     }) };
 
-    expect(evaluator.call('scoped', args, { unitMode: 'preserve' }, scope, undefined, undefined, scoped))
+    expect(evaluator.call('scoped', args, { unitMode: 'preserve' }, scope, undefined, scoped))
       .toMatchObject({ bytes: 'selected' });
     expect(scope.lookup).not.toHaveBeenCalled();
   });
