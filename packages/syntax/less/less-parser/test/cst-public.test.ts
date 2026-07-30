@@ -264,6 +264,25 @@ describe('Less custom-property interpolation CST facts', () => {
 });
 
 describe('Less quoted and URL interpolation CST facts', () => {
+  it('uses the semantic attribute and quoted owners for a CSS-compatible attribute selector', () => {
+    const result = parseLessCst('.card[svg|title="Save" i] { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    const attribute = findNode(result.tree, 'AttributeSelector');
+    expect(attribute).toBeDefined();
+    expect(findNode(attribute!, 'AttributeName')).toBeDefined();
+    expect(findNode(attribute!, 'AttributeMatch')).toBeDefined();
+    expect(findNode(attribute!, 'Quoted')).toBeDefined();
+    for (const legacyLabel of [
+      'StaticAttribute',
+      'StaticAttributeName',
+      'StaticAttributeMatch',
+      'StaticAttributeQuoted'
+    ]) {
+      expect(findNode(result.tree, legacyLabel)).toBeUndefined();
+    }
+  });
+
   it('keeps quoted-string literal chunks and the typed interpolation body in source order', () => {
     const result = parseLessCst('.a { content: "pre-@{theme[variant]}-post"; }');
     expect(result.errors).toHaveLength(0);

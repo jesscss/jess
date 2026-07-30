@@ -196,12 +196,14 @@ Preferred local vocabulary by region:
 - At-rules/queries: `SupportsValue`, `SupportsFeature`, `SupportsCondition`,
   `QueryValue`, `QueryFeature*`, `MediaQuery*`, `Container*`, `AtRuleBlock`,
   `AtRuleStatement`.
-- Selectors/extents: `StaticPseudo*`, `InterpolatedPseudo`,
-  `StaticAttribute*`, `InterpolatedAttribute*`, `CompoundSelector`,
-  `ComplexSelector`, `SelectorList`, `ExtendTarget`, `InlineExtendTail`,
-  `SelectorBranch`, `Ruleset`. If the inline-extend subject and extend target
-  really differ, name the context (`InlineExtendSubject`, `ExtendTarget`), not
-  the migration path.
+- Selectors/extents: `PseudoSelector`, `AttributeSelector`, `AttributeName`,
+  `AttributeMatch`, `NamespaceTypeSelector`, `InterpolatedAttributeSelector`,
+  `CompoundSelector`, `ComplexSelector`, `SelectorList`, `ExtendTarget`,
+  `InlineExtendTail`, `SelectorBranch`, `Ruleset`. A static spelling belongs in
+  the ordinary semantic owner; keep an interpolation-specific rule only when
+  it must construct a different interpolation-backed selector atom. If the
+  inline-extend subject and extend target really differ, name the context
+  (`InlineExtendSubject`, `ExtendTarget`), not the migration path.
 
 ## Parseman 0.41 routing targets
 

@@ -51,8 +51,8 @@ type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string }
  * MixinDefinition receives only the semantic Param array. */
 type MixinParameterListFact = { readonly params: readonly Param[] };
 type MixinSignatureFact = { readonly name: string; readonly params: readonly Param[]; readonly guard?: MixinGuard };
-type StaticAttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
-type StaticAttributeNameFact = { readonly namespace: string; readonly name: string };
+type AttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
+type AttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
 type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
 type SelectorListWithExtendsFact = { readonly selector: SelectorList; readonly extensions: readonly ExtendInstruction[] };
@@ -217,22 +217,20 @@ type LessRules = {
   StaticNonSelectorPseudoArgument: Combinator<string>;
   StaticPseudoGroup: Combinator<string>;
   StaticPseudoSquare: Combinator<string>;
-  StaticPseudoQuoted: Combinator<string>;
   StaticPseudoCompound: Combinator<SelectorTerm>;
   StaticPseudoComplexTail: Combinator<ComplexTailFact>;
   StaticPseudoComplex: Combinator<SelectorBranch>;
   StaticPseudoSelectorTail: Combinator<SelectorBranch>;
   StaticPseudoSelector: Combinator<SelectorList>;
-  StaticAttributeNamespace: Combinator<string>;
-  StaticNamespaceType: Combinator<SimpleSelector>;
-  StaticAttributeName: Combinator<StaticAttributeNameFact>;
-  StaticAttributeQuoted: Combinator<string>;
-  StaticAttributeMatch: Combinator<StaticAttributeMatchFact>;
-  StaticAttribute: Combinator<SimpleSelector>;
+  AttributeNamespace: Combinator<string>;
+  NamespaceTypeSelector: Combinator<SimpleSelector>;
+  AttributeName: Combinator<AttributeNameFact>;
+  AttributeMatch: Combinator<AttributeMatchFact>;
+  AttributeSelector: Combinator<SimpleSelector>;
   InterpolatedAttributeToken: Combinator<Interpolation>;
   InterpolatedAttributeValueToken: Combinator<Interpolation>;
   InterpolatedAttributeQuoted: Combinator<Interpolation>;
-  InterpolatedAttribute: Combinator<SimpleSelector>;
+  InterpolatedAttributeSelector: Combinator<SimpleSelector>;
   InterpolatedSimpleSelector: Combinator<SimpleSelector>;
   BareInterpolatedSelector: Combinator<SimpleSelector>;
   AdjacentInterpolatedSelector: Combinator<SimpleSelector>;
@@ -1583,7 +1581,7 @@ function isMixinSignatureFact(value: unknown): value is MixinSignatureFact {
     && (!('guard' in value) || value.guard === undefined || isMixinGuard(value.guard));
 }
 
-function isStaticAttributeNameFact(value: unknown): value is StaticAttributeNameFact {
+function isAttributeNameFact(value: unknown): value is AttributeNameFact {
   return typeof value === 'object' && value !== null
     && 'namespace' in value && typeof value.namespace === 'string'
     && 'name' in value && typeof value.name === 'string';
@@ -5260,12 +5258,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       return interpolatedSimpleSelector(interpolation(parts));
     }
   );
-  const StaticPseudoQuoted = node<string>(
-    'StaticPseudoQuoted',
-    staticQuotedBody,
-    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
-  );
-  const staticPseudoInner = choice(g.StaticPseudoGroup, g.StaticPseudoSquare, g.StaticPseudoQuoted, staticPseudoChunk);
+  const staticPseudoInner = choice(g.StaticPseudoGroup, g.StaticPseudoSquare, plainQuoted, staticPseudoChunk);
   const StaticPseudoGroup = node<string>(
     'StaticPseudoGroup',
     parser({ trivia: staticSelectorTrivia }, sequence(literal('('), many(staticPseudoInner), literal(')'))),
@@ -5305,7 +5298,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'StaticPseudoCompound',
     parser(
       { trivia: compoundSelectorTrivia },
-      oneOrMore(choice(g.StaticNamespaceType, staticSimpleSelector, staticAmpersand, g.StaticPseudo, g.StaticNthPseudo, g.StaticAttribute))
+      oneOrMore(choice(g.NamespaceTypeSelector, staticSimpleSelector, staticAmpersand, g.StaticPseudo, g.StaticNthPseudo, g.AttributeSelector))
     ),
     children => selectorTermFromTokens(children.map((child) => {
       return isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
@@ -5454,8 +5447,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       ]));
     }
   );
-  const StaticAttributeNamespace = node<string>(
-    'StaticAttributeNamespace',
+  const AttributeNamespace = node<string>(
+    'AttributeNamespace',
     choice(
       // `|=` is the CSS attribute operator, not a namespace separator. Guard
       // the namespace arm before consuming `|` so a quoted interpolation after
@@ -5466,23 +5459,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     children => children.map(requireToken).map(token => token.value).join('')
   );
-  const StaticNamespaceType = node<SimpleSelector>(
-    'StaticNamespaceType',
-    sequence(g.StaticAttributeNamespace, choice(staticIdentifier, literal('*'))),
+  const NamespaceTypeSelector = node<SimpleSelector>(
+    'NamespaceTypeSelector',
+    sequence(g.AttributeNamespace, choice(staticIdentifier, literal('*'))),
     children => simpleSelector(children.map(requireTerminalText).join(''))
   );
-  const StaticAttributeName = node<StaticAttributeNameFact>(
-    'StaticAttributeName',
-    sequence(optional(g.StaticAttributeNamespace), staticIdentifier),
+  const AttributeName = node<AttributeNameFact>(
+    'AttributeName',
+    sequence(optional(g.AttributeNamespace), staticIdentifier),
     children => ({
       namespace: children.find((child): child is string => typeof child === 'string') ?? '',
       name: requireToken(children.at(-1)).value
     })
-  );
-  const StaticAttributeQuoted = node<string>(
-    'StaticAttributeQuoted',
-    staticQuotedBody,
-    children => children.map(requireToken).map(token => token.value).join('')
   );
   // Less's attribute name/value interpolation is one complete selector token.
   // Keep every literal delimiter and every interpolation reference (`@{…}` and
@@ -5514,27 +5502,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     children => interpolation(interpolationPartsFrom(children, true))
   );
-  const StaticAttributeMatch = node<StaticAttributeMatchFact>(
-    'StaticAttributeMatch',
+  const AttributeMatch = node<AttributeMatchFact>(
+    'AttributeMatch',
     sequence(
       g.AttributeOperator,
-      choice(staticIdentifier, g.StaticAttributeQuoted),
+      choice(staticIdentifier, plainQuoted),
       optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
     ),
     children => ({
       operator: requireToken(children[0]).value,
-      value: typeof children[1] === 'string' ? children[1] : requireToken(children[1]).value,
+      value: staticText(children[1]),
       modifier: children.length === 2 ? null : requireToken(children[3]).value
     })
   );
-  const StaticAttribute = node<SimpleSelector>(
-    'StaticAttribute',
-    sequence(literal('['), g.StaticAttributeName, optional(g.StaticAttributeMatch), literal(']')),
+  const AttributeSelector = node<SimpleSelector>(
+    'AttributeSelector',
+    sequence(literal('['), g.AttributeName, optional(g.AttributeMatch), literal(']')),
     (children) => {
-      const match = children.find((child): child is StaticAttributeMatchFact =>
+      const match = children.find((child): child is AttributeMatchFact =>
         typeof child === 'object' && child !== null && 'operator' in child && 'value' in child && 'modifier' in child
       );
-      const name = children.find((child): child is StaticAttributeNameFact =>
+      const name = children.find((child): child is AttributeNameFact =>
         typeof child === 'object' && child !== null && 'namespace' in child && 'name' in child
       );
       if (name === undefined) {
@@ -5543,22 +5531,22 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       return simpleSelector(`[${name.namespace}${name.name}${match === undefined ? '' : `${match.operator}${match.value}${match.modifier === null ? '' : ` ${match.modifier}`}`}]`);
     }
   );
-  const InterpolatedAttribute = node<SimpleSelector>(
-    'InterpolatedAttribute',
+  const InterpolatedAttributeSelector = node<SimpleSelector>(
+    'InterpolatedAttributeSelector',
     sequence(
       literal('['),
       choice(
         sequence(
-          optional(g.StaticAttributeNamespace),
+          optional(g.AttributeNamespace),
           g.InterpolatedAttributeToken,
           optional(sequence(
             g.AttributeOperator,
-            choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessSyntaxIdentifier, g.StaticAttributeQuoted),
+            choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessSyntaxIdentifier, plainQuoted),
             optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
           ))
         ),
         sequence(
-          g.StaticAttributeName,
+          g.AttributeName,
           g.AttributeOperator,
           choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted),
           optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
@@ -5577,7 +5565,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
               parts.push(part);
             }
           }
-        } else if (isStaticAttributeNameFact(child)) {
+        } else if (isAttributeNameFact(child)) {
           const name = child;
           appendInterpolationLiteral(parts, `${name.namespace}${name.name}`);
         } else if (typeof child === 'string') {
@@ -5641,7 +5629,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.AdjacentInterpolatedSelector,
     g.BareInterpolatedSelectorWithSuffix,
     g.BareInterpolatedSelector,
-    g.StaticNamespaceType,
+    g.NamespaceTypeSelector,
     staticSimpleSelector,
     staticAmpersand,
     // Generic and selector pseudos (`:hover`, `::before`, `:not(...)`) dominate
@@ -5659,8 +5647,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.StaticNthPseudo,
     g.InterpolatedArgumentPseudo,
     g.InterpolatedPseudo,
-    g.StaticAttribute,
-    g.InterpolatedAttribute
+    g.AttributeSelector,
+    g.InterpolatedAttributeSelector
   );
   const Compound: Combinator<SelectorTerm> = node<SelectorTerm>(
     'Compound',
@@ -5731,7 +5719,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'StaticExtendCompound',
     parser(
       { trivia: compoundSelectorTrivia },
-      oneOrMore(choice(g.StaticNamespaceType, staticSimpleSelector, staticAmpersand, pseudo, g.StaticNthPseudo, g.StaticAttribute))
+      oneOrMore(choice(g.NamespaceTypeSelector, staticSimpleSelector, staticAmpersand, pseudo, g.StaticNthPseudo, g.AttributeSelector))
     ),
     children => selectorTermFromTokens(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
@@ -6050,22 +6038,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     StaticNonSelectorPseudoArgument,
     StaticPseudoGroup,
     StaticPseudoSquare,
-    StaticPseudoQuoted,
     StaticPseudoCompound,
     StaticPseudoComplexTail,
     StaticPseudoComplex,
     StaticPseudoSelectorTail,
     StaticPseudoSelector,
-    StaticAttributeNamespace,
-    StaticNamespaceType,
-    StaticAttributeName,
-    StaticAttributeQuoted,
-    StaticAttributeMatch,
-    StaticAttribute,
+    AttributeNamespace,
+    NamespaceTypeSelector,
+    AttributeName,
+    AttributeMatch,
+    AttributeSelector,
     InterpolatedAttributeToken,
     InterpolatedAttributeValueToken,
     InterpolatedAttributeQuoted,
-    InterpolatedAttribute,
+    InterpolatedAttributeSelector,
     InterpolatedSimpleSelector,
     BareInterpolatedSelector,
     AdjacentInterpolatedSelector,
