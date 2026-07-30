@@ -26,6 +26,7 @@ export const LINT_CODES = {
   customPropertyMissingVarFunction: 'lint/custom-property-no-missing-var-function',
   keyframeDuplicateSelectors: 'lint/keyframe-block-no-duplicate-selectors',
   keyframeDeclarationNoImportant: 'lint/keyframe-declaration-no-important',
+  declarationNoImportant: 'lint/declaration-no-important',
   invalidNamedGridAreas: 'lint/named-grid-areas-no-invalid',
   fontFamilyDuplicateNames: 'lint/font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
@@ -2334,6 +2335,15 @@ export function cstLintDiagnostics(
         LINT_CODES.keyframeDeclarationNoImportant,
         'warning',
         'Do not use !important inside keyframes',
+        node.span
+      );
+    }
+
+    if (language === 'css' && nodeContext.inDeclaration && !nodeContext.inKeyframeBlock && IMPORTANT_TYPES.has(gt)) {
+      push(
+        LINT_CODES.declarationNoImportant,
+        'warning',
+        'Disallowed !important',
         node.span
       );
     }

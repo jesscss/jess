@@ -124,6 +124,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | `custom-property-no-missing-var-function` |
 | `keyframe-block-no-duplicate-selectors` | `lint/keyframe-block-no-duplicate-selectors` | `keyframe-block-no-duplicate-selectors` |
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | `keyframe-declaration-no-important` |
+| `declaration-no-important` | `lint/declaration-no-important` | near `declaration-no-important` |
 | `named-grid-areas-no-invalid` | `lint/named-grid-areas-no-invalid` | `named-grid-areas-no-invalid` |
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | near `font-family-no-duplicate-names` |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | near `font-family-no-missing-generic-family-keyword` |

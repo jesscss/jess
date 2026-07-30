@@ -64,6 +64,7 @@ a `jess/` prefix.
 | `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | Stylelint-equivalent |
 | `keyframe-block-no-duplicate-selectors` | `lint/keyframe-block-no-duplicate-selectors` | Stylelint-equivalent |
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | Stylelint-equivalent |
+| `declaration-no-important` | `lint/declaration-no-important` | Stylelint-near |
 | `named-grid-areas-no-invalid` | `lint/named-grid-areas-no-invalid` | Stylelint-equivalent |
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | Stylelint-near |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
@@ -136,13 +137,13 @@ pnpm --filter @jesscss/lint bench:stylelint
 ```
 
 Current CSS benchmark evidence on `packages/jess/benchmark/benchmark.css`
-using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 242-finding
+using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 251-finding
 comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint comparison config | `22.30 ms/op` |
-| Stylelint comparable rules | `25.16 ms/op` |
+| Jess lint comparison config | `22.00 ms/op` |
+| Stylelint comparable rules | `25.34 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -169,6 +170,7 @@ can detect over authored source.
 | Landed | Shorthand overrides | `declaration-block-no-shorthand-property-overrides` | Flags common CSS shorthands that override earlier longhands in the same parsed block; starts with a curated high-value shorthand map. |
 | Landed | Duplicate selectors | `no-duplicate-selectors` | CSS selector-list duplicates are CST-owned: duplicate entries inside one list and duplicate whole lists among sibling rules. Dialect nested resolution still needs selector facts. |
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
+| Landed | Important declarations | `declaration-no-important` | Flags CSS `!important` declarations outside keyframes; keyframes use the dedicated keyframe rule to avoid duplicate default diagnostics. |
 | Landed | Named grid areas | `named-grid-areas-no-invalid` | Flags empty, ragged, or non-rectangular named grid area strings in CSS `grid`, `grid-template`, and `grid-template-areas` declarations. |
 | Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Checks definite `font-family` values; dynamic values stay unknown. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |

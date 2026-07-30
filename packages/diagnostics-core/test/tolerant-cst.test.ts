@@ -205,9 +205,23 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.keyframeDeclarationNoImportant);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.keyframeDuplicateSelectors);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.declarationNoImportant);
     expect(result.diagnostics.find(diagnostic => diagnostic.code === LINT_CODES.keyframeDuplicateSelectors)).toMatchObject({
       message: 'Duplicate keyframe selector \'0%\''
     });
+  });
+
+  it('reports important declarations outside keyframes', () => {
+    const source = '.a { color: red !important; }\n@keyframes spin { from { opacity: 1 !important; } }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const important = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.declarationNoImportant);
+
+    expect(important.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Disallowed !important', source.indexOf('!important'), source.indexOf('!important') + '!important'.length]
+    ]);
   });
 
   it('reports invalid named grid areas', () => {

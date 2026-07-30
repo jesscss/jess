@@ -35,6 +35,7 @@ const STYLELINT_RULES = {
   'custom-property-no-missing-var-function': true,
   'keyframe-block-no-duplicate-selectors': true,
   'keyframe-declaration-no-important': true,
+  'declaration-no-important': true,
   'named-grid-areas-no-invalid': true,
   'font-family-no-duplicate-names': true,
   'font-family-no-missing-generic-family-keyword': true,
