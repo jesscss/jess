@@ -610,7 +610,6 @@ describe('collectTolerantDiagnostics', () => {
     const defaults = '.theme(@x: red) { color: @x; }\n.a { .theme(); }';
     const rest = '.theme(@x...) { color: red; }\n.a { .theme(red, blue); }';
     const imported = '@import "mixins.less";\n.theme(@x) { color: @x; }\n.a { .theme(red, blue); }';
-    const scss = '@mixin theme($x) { color: $x; }\n.a { @include theme(red, blue); }';
     const jess = 'theme($x) { color: $x; }\n.a { $ > theme(red, blue); }';
 
     for (const result of [
@@ -620,10 +619,45 @@ describe('collectTolerantDiagnostics', () => {
       collectTolerantDiagnostics({ source: defaults, language: 'less' }),
       collectTolerantDiagnostics({ source: rest, language: 'less' }),
       collectTolerantDiagnostics({ source: imported, language: 'less' }),
-      collectTolerantDiagnostics({ source: scss, language: 'scss' }),
       collectTolerantDiagnostics({ source: jess, language: 'jess' })
     ]) {
       expect(result.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.noMatchingOverload)).toBe(false);
+    }
+  });
+
+  it('reports SCSS mixin and function calls with no matching same-file positional overload', () => {
+    const source = '@mixin theme($color, $bg: blue) { color: $color; }\n@function tone($color, $scale) { @return $color; }\n.a { @include theme(red, blue, green); color: tone(red, 2, 3); }';
+    const result = collectTolerantDiagnostics({ source, language: 'scss' });
+
+    expect(result.diagnostics
+      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.noMatchingOverload)
+      .map(diagnostic => [diagnostic.message, diagnostic.phase, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'No matching overload for mixin "theme": expected 1-2 arguments, got 3 arguments',
+        'eval',
+        source.indexOf('theme', source.indexOf('@include')),
+        source.indexOf('theme', source.indexOf('@include')) + 'theme'.length
+      ],
+      [
+        'No matching overload for function "tone": expected 2 arguments, got 3 arguments',
+        'eval',
+        source.lastIndexOf('tone'),
+        source.lastIndexOf('tone') + 'tone'.length
+      ]
+    ]);
+  });
+
+  it('keeps SCSS no-matching-overload diagnostics conservative around matching, dynamic, external, and unknown callables', () => {
+    const matchesDefault = '@mixin theme($color, $bg: blue) { color: $color; }\n.a { @include theme(red); }';
+    const matchesFunction = '@function tone($color, $scale: 1) { @return $color; }\n.a { color: tone(red); }';
+    const restMixin = '@mixin theme($color, $rest...) { color: $color; }\n.a { @include theme(red, blue, green); }';
+    const restFunction = '@function tone($color, $rest...) { @return $color; }\n.a { color: tone(red, 2, 3); }';
+    const imported = '@use "theme";\n@mixin theme($color) { color: $color; }\n.a { @include theme(red, blue); }';
+    const unknownFunction = '.a { color: project-tone(red, 2, 3); }';
+
+    for (const source of [matchesDefault, matchesFunction, restMixin, restFunction, imported, unknownFunction]) {
+      expect(collectTolerantDiagnostics({ source, language: 'scss' }).diagnostics
+        .some(diagnostic => diagnostic.code === SEMANTIC_CODES.noMatchingOverload)).toBe(false);
     }
   });
 

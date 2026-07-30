@@ -223,8 +223,9 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
   `call/no-matching-overload`, and `call/unknown-named-argument` currently come
   from same-file Jess diagnostic facts shared with lint, including
   Less/SCSS/Jess undefined mixin calls, conservative Less fixed-arity overload
-  misses, and severity escalation when modern features (`@use`/`@from`/
-  `@compose`) are present. Cross-file import resolution through
+  misses, conservative SCSS positional mixin/function overload misses, and
+  severity escalation when modern features (`@use`/`@from`/`@compose`) are
+  present. Cross-file import resolution through
   `@jesscss/style-resolver` is the next semantic-analysis step. MS does not do
   this depth of semantic validation.
 - **Semantic tokens** (`getSemanticTokens`) — not offered by
