@@ -192,6 +192,9 @@ export default defineConfig({
      * parser rather than aliasing its macro source into Vite at runtime.
      */
     alias: [
+      /* Parseman is macro/runtime-coupled to the built parser artifacts. In a
+       * linked worktree, never inherit an older parent checkout's dependency. */
+      { find: /^parseman$/, replacement: path.join(repoRoot, 'node_modules', 'parseman', 'dist', 'index.js') },
       { find: '@jesscss/less-parser/grammar', replacement: builtPackageEntry('@jesscss/less-parser', 'grammar.js') },
       { find: '@jesscss/less-parser', replacement: builtPackageEntry('@jesscss/less-parser') },
       builtPackageAlias('@jesscss/awaitable-pipe'),

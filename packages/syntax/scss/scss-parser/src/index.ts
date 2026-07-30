@@ -1,11 +1,6 @@
 import { run } from 'parseman';
 import type { Span } from 'parseman';
-import {
-  createTriviaMapFromParseman,
-  withSourceSpan,
-  withTriviaMap,
-  type Stylesheet
-} from '@jesscss/core/ast';
+import { createTriviaMapFromParseman, withSourceSpan, withTriviaMap, type Stylesheet } from '@jesscss/core/ast';
 import { grammarFor } from './grammar.js';
 import { lowerUserFunctionCalls } from './ast/lower-user-function-calls.js';
 
@@ -79,7 +74,7 @@ export function parse(input: string, options: ScssParseOptions = {}): Stylesheet
   const result = run(
     entry,
     input,
-    { trivia }
+    { trivia, rootTrivia: { select: ['lineComment'] } }
   );
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     const failureSpan = result.ok ? undefined : result.span;
@@ -98,9 +93,8 @@ export function parse(input: string, options: ScssParseOptions = {}): Stylesheet
    * no-ops when the parsed document defines no user function; recognition stays
    * in the grammar rather than checking source text here.
    */
-  const document = lowerUserFunctionCalls(result.value);
-  return withTriviaMap(
-    withSourceSpan(document, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
-  );
+  const document = withSourceSpan(lowerUserFunctionCalls(result.value), result.span);
+  return result.rootTrivia === undefined
+    ? document
+    : withTriviaMap(document, createTriviaMapFromParseman(input, result.rootTrivia.index));
 }

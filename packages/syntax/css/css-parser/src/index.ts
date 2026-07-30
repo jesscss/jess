@@ -83,7 +83,7 @@ export function parse(input: string, options: CssParseOptions = {}): Stylesheet 
   const result = run(
     entry,
     input,
-    { trivia }
+    { trivia, rootTrivia: { select: ['blockComment'] } }
   );
   const recoveryError = result.errors[0];
   if (!result.ok || result.unconsumedFrom !== null || recoveryError !== undefined || !isStylesheet(result.value)) {
@@ -97,8 +97,8 @@ export function parse(input: string, options: CssParseOptions = {}): Stylesheet 
       failureSpan === undefined ? {} : lineOptions(failureSpan)
     );
   }
-  return withTriviaMap(
-    withSourceSpan(result.value, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
-  );
+  const document = withSourceSpan(result.value, result.span);
+  return result.rootTrivia === undefined
+    ? document
+    : withTriviaMap(document, createTriviaMapFromParseman(input, result.rootTrivia.index));
 }

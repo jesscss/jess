@@ -18,7 +18,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, trivia, when, word } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, classifiedTrivia, composeLeaf, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, trivia, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -1212,12 +1212,9 @@ function reduceSelectorList(children: readonly unknown[]): SelectorList {
 
 const rawWhitespace = regex(/[ \t\n\r\f]+/);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
-
 /* Keep custom-value comments visible as `blockComment` ranges in source trivia
  * without making them semantic custom-value parts. */
-const customValueBlockComment = label('blockComment', regex(/\/\*(?:[^*]|\*(?!\/))*\*\//));
-const customValueCommentTrivia = trivia(oneOrMore(customValueBlockComment));
+const customValueCommentTrivia = classifiedTrivia({ blockComment });
 
 /*
  * Comments are Jess trivia. Block comments can still survive through the AST
@@ -1225,10 +1222,8 @@ const customValueCommentTrivia = trivia(oneOrMore(customValueBlockComment));
  * never reach CSS output. URL bodies disable trivia below, so
  * `url(//host/path)` stays URL content.
  */
-const whitespace = trivia(oneOrMore(choice(
-  label('whitespace', rawWhitespace),
-  label('comment', commentTrivia)
-)));
+const lineComment = regex(/\/\/[^\n\r]*/);
+const whitespace = classifiedTrivia({ whitespace: rawWhitespace, lineComment, blockComment });
 const plainDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))*/);
 const plainSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))*/);
 const interpolatedDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))+/);

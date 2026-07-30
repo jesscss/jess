@@ -873,7 +873,9 @@ describe('public Less parse()', () => {
   });
 
   it('treats Less line comments as trivia', () => {
-    expect(parse('// setup\n.card { color: red; }')).toMatchObject({
+    const source = '// setup\n.card { color: red; }';
+    const document = parse(source);
+    expect(document).toMatchObject({
       type: 'Stylesheet',
       rules: [
         {
@@ -888,6 +890,9 @@ describe('public Less parse()', () => {
         }
       ]
     });
+    expect(triviaMapOf(document)?.commentRuns().map(run => source.slice(run.start, run.end)))
+      .toEqual(['// setup\n']);
+    expect(serialize(document).css).toBe('.card {\n  color: red;\n}\n');
     expect(
       parse('.card { background: url(//cdn.example/icon.svg); }')
     ).toMatchObject({

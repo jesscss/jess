@@ -12,7 +12,6 @@ export {
   bodySpanOf,
   createTriviaMapFromRanges,
   createTriviaMapFromParseman,
-  createTriviaMapFromRootIndex,
   sourceSpanOf,
   triviaMapOf,
   valueLayoutOf,
@@ -21,6 +20,6 @@ export {
   withTriviaMap,
   withValueLayout
 } from './ast/provenance.js';
-export type { AstSourceSpan, AstTriviaRange, ParserRootTriviaGap, ParserRootTriviaIndex, ParserTriviaEntriesView, ValueLayout } from './ast/provenance.js';
+export type { AstSourceSpan, AstTriviaRange, ParserRootTriviaGap, ParserRootTriviaIndex, ValueLayout } from './ast/provenance.js';
 export type { GuardNode } from './ast/guard.js';
 export type { CallArg } from './ast/mixin-dispatch.js';

@@ -18,14 +18,17 @@ function isStylesheet(value: unknown): value is Stylesheet {
 }
 
 function parseAst(input: string): Stylesheet {
-  const result = run(cssGrammar.Stylesheet, input, { trivia: cssGrammar.whitespace });
+  const result = run(cssGrammar.Stylesheet, input, {
+    trivia: cssGrammar.whitespace,
+    rootTrivia: { select: ['blockComment'] }
+  });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     throw new Error(`CSS AST grammar did not consume the document: ${JSON.stringify(result)}`);
   }
-  return withTriviaMap(
-    withSourceSpan(result.value, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
-  );
+  const document = withSourceSpan(result.value, result.span);
+  return result.rootTrivia === undefined
+    ? document
+    : withTriviaMap(document, createTriviaMapFromParseman(input, result.rootTrivia.index));
 }
 
 function cstIssueCount(input: string): number {

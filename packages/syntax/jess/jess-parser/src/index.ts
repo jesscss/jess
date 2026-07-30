@@ -191,7 +191,7 @@ export function parse(input: string, options: JessParseOptions = {}): Stylesheet
   const result = run(
     entry,
     input,
-    { trivia }
+    { trivia, rootTrivia: { select: ['blockComment'] } }
   );
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     const failureSpan = result.ok ? undefined : result.span;
@@ -205,10 +205,10 @@ export function parse(input: string, options: JessParseOptions = {}): Stylesheet
       failureSpan === undefined ? {} : lineOptions(failureSpan)
     );
   }
-  const document = withTriviaMap(
-    withSourceSpan(result.value, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
-  );
+  const sourceDocument = withSourceSpan(result.value, result.span);
+  const document = result.rootTrivia === undefined
+    ? sourceDocument
+    : withTriviaMap(sourceDocument, createTriviaMapFromParseman(input, result.rootTrivia.index));
   validateJessOptions(document, options);
   return document;
 }

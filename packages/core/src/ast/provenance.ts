@@ -9,30 +9,19 @@ import type { Trivia, TriviaMap } from '../types/index.js';
  */
 export type AstSourceSpan = Readonly<{ start: number; end: number }>;
 export type AstTriviaRange = AstSourceSpan;
-export interface ParserTriviaEntriesView {
-  readonly length: number;
-  start(index: number): number;
-  end(index: number): number;
-  kind?(index: number): string | undefined;
-}
 export interface ParserRootTriviaGap {
   readonly start: number;
   readonly end: number;
-  hasKind?(kind: string): boolean;
+
+  /** Parseman's canonical classification query for this sparse selected gap. */
+  hasKind(kind: string): boolean;
 }
 export interface ParserRootTriviaIndex {
-  readonly labels?: readonly string[];
-
-  /**
-   * `selectedKinds` entries name markers inside an owned trivia range, so their
-   * entry spans are not themselves renderable gap ranges.
-   */
-  readonly rootCaptureMode?: 'allEntries' | 'selectedKinds';
-  readonly entries: ParserTriviaEntriesView;
+  /** The selected-root label table; Parseman row kinds index this array. */
+  readonly labels: readonly string[];
   gapBefore(offset: number): ParserRootTriviaGap | undefined;
   gapAfter(offset: number): ParserRootTriviaGap | undefined;
-  gaps(): readonly ParserRootTriviaGap[];
-  gapsWithKind?(kind: string | readonly string[]): readonly ParserRootTriviaGap[];
+  gapsWithKind(kind: string | readonly string[]): readonly ParserRootTriviaGap[];
 }
 
 const COMMENT_TRIVIA_KINDS = ['comment', 'blockComment', 'lineComment'] as const;
@@ -43,62 +32,7 @@ function isCommentTriviaKind(label: string): label is CommentTriviaKind {
 }
 
 function gapHasCommentKind(gap: ParserRootTriviaGap): boolean {
-  if (typeof gap.hasKind !== 'function') {
-    return true;
-  }
-  return COMMENT_TRIVIA_KINDS.some(kind => gap.hasKind?.(kind) === true);
-}
-
-type TriviaRange = Readonly<{ start: number; end: number }>;
-
-/**
- * Legacy Parseman root capture stores every labeled trivia chunk. When the
- * renderer only needs comments, derive just their complete contiguous gaps
- * directly from that packed log. Calling `gapsWithKind()` on the legacy index
- * first materializes a map, gap object, and entry-index array for every
- * whitespace run in the document.
- *
- * Selected-root capture deliberately stores marker spans instead; its sparse
- * index owns the complete ranges and is queried through `gapsWithKind()`.
- */
-function labeledCommentRangesFromEntries(
-  index: ParserRootTriviaIndex,
-  hasCommentKind: boolean
-): readonly TriviaRange[] | undefined {
-  if (!hasCommentKind || index.rootCaptureMode === 'selectedKinds') {
-    return undefined;
-  }
-  const { entries } = index;
-  if (typeof entries.kind !== 'function') {
-    return undefined;
-  }
-  if (entries.length === 0) {
-    return [];
-  }
-
-  const ranges: TriviaRange[] = [];
-  let start = entries.start(0);
-  let end = entries.end(0);
-  let containsComment = isCommentTriviaKind(entries.kind(0) ?? '');
-  for (let entry = 1; entry < entries.length; entry++) {
-    const nextStart = entries.start(entry);
-    const nextEnd = entries.end(entry);
-    if (nextStart === end) {
-      end = nextEnd;
-      containsComment ||= isCommentTriviaKind(entries.kind(entry) ?? '');
-      continue;
-    }
-    if (containsComment) {
-      ranges.push({ start, end });
-    }
-    start = nextStart;
-    end = nextEnd;
-    containsComment = isCommentTriviaKind(entries.kind(entry) ?? '');
-  }
-  if (containsComment) {
-    ranges.push({ start, end });
-  }
-  return ranges;
+  return COMMENT_TRIVIA_KINDS.some(kind => gap.hasKind(kind));
 }
 
 /** Authored separator/trivia facts for a raw ValueSlot array.
@@ -216,7 +150,7 @@ export function createTriviaMapFromParseman(
   index: ParserRootTriviaIndex
 ): TriviaMap {
   const canonicalByStart = new Map<number, Map<number, Trivia>>();
-  const hasCommentKind = index.labels?.some(isCommentTriviaKind) === true;
+  const hasCommentKind = index.labels.some(isCommentTriviaKind);
   let sortedComments: readonly Trivia[] | undefined;
 
   const triviaForRange = (
@@ -246,10 +180,8 @@ export function createTriviaMapFromParseman(
     }
     const start = gap.start;
     const end = gap.end;
-    const labeledHasComment = hasCommentKind && typeof gap.hasKind === 'function'
-      ? gapHasCommentKind(gap)
-      : undefined;
-    return triviaForRange(start, end, labeledHasComment === true ? true : undefined);
+    const labeledHasComment = hasCommentKind && gapHasCommentKind(gap);
+    return triviaForRange(start, end, labeledHasComment);
   };
 
   return {
@@ -262,7 +194,10 @@ export function createTriviaMapFromParseman(
         : index.gapAfter(offset));
     },
     * entries(direction) {
-      for (const gap of index.gaps()) {
+      if (!hasCommentKind) {
+        return;
+      }
+      for (const gap of index.gapsWithKind(COMMENT_TRIVIA_KINDS)) {
         const run = triviaForGap(gap);
         if (run === undefined) {
           continue;
@@ -284,39 +219,20 @@ export function createTriviaMapFromParseman(
     commentRuns() {
       if (sortedComments === undefined) {
         const runs: Trivia[] = [];
-        const labeledRanges = labeledCommentRangesFromEntries(index, hasCommentKind);
-        const labeledGaps = labeledRanges === undefined && hasCommentKind && index.gapsWithKind !== undefined
-          ? index.gapsWithKind(COMMENT_TRIVIA_KINDS)
-          : undefined;
-        if (labeledRanges !== undefined && labeledRanges.length > 0) {
-          for (const range of labeledRanges) {
-            const run = triviaForRange(range.start, range.end, true);
+        if (hasCommentKind) {
+          for (const gap of index.gapsWithKind(COMMENT_TRIVIA_KINDS)) {
+            const run = triviaForRange(gap.start, gap.end, true);
             if (run !== undefined) {
               runs.push(run);
             }
           }
-        } else {
-          const candidates = labeledGaps ?? index.gaps();
-          for (const gap of candidates) {
-            if (labeledGaps === undefined && !rangeHasComment(src, gap.start, gap.end)) {
-              continue;
-            }
-            const run = triviaForGap(gap);
-            if (run?.hasComment === true) {
-              runs.push(run);
-            }
-          }
         }
-        runs.sort((a, b) => a.start - b.start);
         sortedComments = runs;
       }
       return sortedComments;
     }
   };
 }
-
-/** @deprecated Use `createTriviaMapFromParseman`. */
-export const createTriviaMapFromRootIndex = createTriviaMapFromParseman;
 
 /** Retain the exact Parseman reduction span for an AST factory result. */
 export function withSourceSpan<T extends object>(node: T, span: AstSourceSpan): T {

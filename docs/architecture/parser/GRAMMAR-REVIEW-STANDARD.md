@@ -346,7 +346,7 @@ that shape intentionally and fail with the richer diagnostic.
     needed source ranges.
 
     Public parser entry points should attach trivia with
-    `createTriviaMapFromParseman(input, result.triviaMap)`. That adapter consumes
+    `createTriviaMapFromParseman(input, result.rootTrivia.index)`. That adapter consumes
     Parseman's sparse root trivia index directly, so parser packages should not
     rebuild intermediate AST trivia ranges or decode raw `_triviaLog` arrays.
     Labeled trivia is useful when a grammar can keep one coherent label policy

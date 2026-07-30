@@ -67,13 +67,15 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(parseScssDoc(source).tree).not.toBeNull();
   });
 
-  it('retains root span and public Stylesheet trivia after SCSS lowering', () => {
-    const source = '/* before */ @function double($n) { @return $n * 2; } .card { width: double(2); } /* after */';
+  it('retains root span and conversion-relevant line trivia after SCSS lowering', () => {
+    const source = '// conversion note\n/* before */ @function double($n) { @return $n * 2; } .card { width: double(2); } /* after */';
     const root = parse(source);
     const trivia = triviaMapOf(root);
 
     expect(sourceSpanOf(root)).toEqual({ start: 0, end: source.length });
-    expect(trivia?.lookup(12, 'after')).toMatchObject({ start: 12, end: 13 });
+    expect(trivia?.commentRuns().map(run => source.slice(run.start, run.end))).toEqual([
+      '// conversion note\n'
+    ]);
     expect(root.rules.find(child => child.type === 'Ruleset')).toMatchObject({
       type: 'Ruleset',
       rules: [{ type: 'Declaration', value: { type: 'Reference' } }]

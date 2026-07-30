@@ -59,7 +59,11 @@ export function parse(input: string, options: LessParseOptions = {}): Stylesheet
       'Less AST grammar is missing its public document entry.'
     );
   }
-  const result = run(entry, input, { trivia, state: { source: input } });
+  const result = run(entry, input, {
+    trivia,
+    state: { source: input },
+    rootTrivia: { select: ['blockComment', 'lineComment'] }
+  });
   if (!result.ok) {
     throw new LessParseError(result.span.start, result.expected, lineOptions(result.span));
   }
@@ -87,10 +91,10 @@ export function parse(input: string, options: LessParseOptions = {}): Stylesheet
       fix: 'Report this as a parser bug with the source that triggered it.'
     });
   }
-  return withTriviaMap(
-    withSourceSpan(result.value, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
-  );
+  const document = withSourceSpan(result.value, result.span);
+  return result.rootTrivia === undefined
+    ? document
+    : withTriviaMap(document, createTriviaMapFromParseman(input, result.rootTrivia.index));
 }
 
 /**

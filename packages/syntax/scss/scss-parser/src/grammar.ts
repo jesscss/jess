@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, choice, composeLeaf, dispatch, endsWith, expect, label, literal, makeWhen, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { balanced, choice, classifiedTrivia, composeLeaf, dispatch, endsWith, expect, label, literal, makeWhen, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -974,10 +974,9 @@ function scssPseudoName(opener: string): string {
  * URL bodies and quoted strings run under `noTrivia`, so `url(//host/path)`
  * stays URL content and `"//u"` stays string content.
  */
-const whitespace = trivia(oneOrMore(choice(
-  label('whitespace', regex(/[ \t\n\r\f]+/)),
-  label('lineComment', regex(/\/\/[^\n\r]*/))
-)));
+const scssWhitespace = regex(/[ \t\n\r\f]+/);
+const lineComment = regex(/\/\/[^\n\r]*/);
+const whitespace = classifiedTrivia({ whitespace: scssWhitespace, lineComment });
 
 /*
  * These productions run under `noTrivia`: each operator owns the precise
@@ -1035,12 +1034,10 @@ const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)
  * node frame speculatively at every rule/at-statement position.
  */
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const lineComment = regex(/\/\/[^\n\r]*/);
 
 /* Keep custom-value comments visible as `blockComment` ranges in source trivia
  * without making them semantic custom-value parts. */
-const customValueBlockComment = label('blockComment', regex(/\/\*(?:[^*]|\*(?!\/))*\*\//));
-const customValueCommentTrivia = trivia(oneOrMore(customValueBlockComment));
+const customValueCommentTrivia = classifiedTrivia({ blockComment });
 
 /*
  * Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: every

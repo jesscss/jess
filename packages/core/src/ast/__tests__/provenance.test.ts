@@ -67,32 +67,19 @@ describe('canonical AST source provenance', () => {
   it('adapts Parseman root trivia indexes without parser-local raw log decoding', () => {
     const src = '/* keep */\n.a { color: red; }\n';
     const gaps = [
-      { start: 0, end: 11 },
-      { start: 27, end: 28 }
-    ];
-    const rawEntries = [
-      { start: 0, end: 2 },
-      { start: 2, end: 11 },
-      { start: 27, end: 28 }
+      { start: 0, end: 11, hasKind: (kind: string) => kind === 'blockComment' },
+      { start: 27, end: 28, hasKind: () => false }
     ];
     const trivia = createTriviaMapFromParseman(src, {
-      entries: {
-        length: rawEntries.length,
-        start(index) {
-          return rawEntries[index]?.start ?? 0;
-        },
-        end(index) {
-          return rawEntries[index]?.end ?? 0;
-        }
-      },
+      labels: ['blockComment'],
       gapBefore(offset) {
         return gaps.find(gap => gap.end === offset);
       },
       gapAfter(offset) {
         return gaps.find(gap => gap.start === offset);
       },
-      gaps() {
-        return gaps;
+      gapsWithKind(kinds) {
+        return kinds.includes('blockComment') ? [gaps[0]!] : [];
       }
     });
 
@@ -107,8 +94,7 @@ describe('canonical AST source provenance', () => {
     const commentRuns = trivia.commentRuns();
     expect(trivia.has(28, 'before')).toBe(true);
     expect([...trivia.entries('after')].map(([offset, run]) => [offset, run.start, run.end])).toEqual([
-      [0, 0, 11],
-      [27, 27, 28]
+      [0, 0, 11]
     ]);
     expect(commentRuns).toEqual([leading]);
     expect(trivia.lookup(0, 'after')).toBe(commentRuns[0]);
@@ -116,27 +102,19 @@ describe('canonical AST source provenance', () => {
 
   it('keeps direct boundary lookups on Parseman\'s sparse index', () => {
     const src = '/* keep */\n.a{}';
-    const leading = { start: 0, end: 11 };
+    const leading = { start: 0, end: 11, hasKind: (kind: string) => kind === 'blockComment' };
     let gapsCalls = 0;
     const trivia = createTriviaMapFromParseman(src, {
-      entries: {
-        length: 1,
-        start() {
-          return leading.start;
-        },
-        end() {
-          return leading.end;
-        }
-      },
+      labels: ['blockComment'],
       gapBefore(offset) {
         return offset === leading.end ? leading : undefined;
       },
       gapAfter(offset) {
         return offset === leading.start ? leading : undefined;
       },
-      gaps() {
+      gapsWithKind(kinds) {
         gapsCalls++;
-        return [leading];
+        return kinds.includes('blockComment') ? [leading] : [];
       }
     });
 
@@ -156,33 +134,25 @@ describe('canonical AST source provenance', () => {
 
   it('dedupes equivalent Parseman gaps by source range', () => {
     const src = '/* keep */\n.a{}';
-    const beforeGap = { start: 0, end: 11 };
-    const afterGap = { start: 0, end: 11 };
+    const beforeGap = { start: 0, end: 11, hasKind: () => false };
+    const afterGap = { start: 0, end: 11, hasKind: () => false };
     const trivia = createTriviaMapFromParseman(src, {
-      entries: {
-        length: 1,
-        start() {
-          return beforeGap.start;
-        },
-        end() {
-          return beforeGap.end;
-        }
-      },
+      labels: ['blockComment'],
       gapBefore(offset) {
         return offset === beforeGap.end ? beforeGap : undefined;
       },
       gapAfter(offset) {
         return offset === afterGap.start ? afterGap : undefined;
       },
-      gaps() {
-        return [beforeGap];
+      gapsWithKind(kinds) {
+        return kinds.includes('blockComment') ? [beforeGap] : [];
       }
     });
 
     expect(trivia.lookup(11, 'before')).toBe(trivia.lookup(0, 'after'));
   });
 
-  it('uses Parseman trivia labels while preserving source fallback', () => {
+  it('uses Parseman trivia labels without scanning source ranges', () => {
     const src = '  /* keep */\n  .a{}';
     const leadingWhitespace = {
       start: 0,
@@ -211,9 +181,6 @@ describe('canonical AST source provenance', () => {
       },
       gapAfter(offset) {
         return [leadingWhitespace, commentGap].find(gap => gap.start === offset);
-      },
-      gaps() {
-        return [leadingWhitespace, commentGap];
       },
       gapsWithKind(kind) {
         gapsWithKindCalls++;
@@ -302,7 +269,7 @@ describe('canonical AST source provenance', () => {
     ]);
   });
 
-  it('falls back to source detection when a labeled gap is not comment-labeled', () => {
+  it('does not scan an unselected range for comment-like source text', () => {
     const src = 'a/* keep */b';
     const gap = {
       start: 1,
@@ -311,54 +278,19 @@ describe('canonical AST source provenance', () => {
     };
     const trivia = createTriviaMapFromParseman(src, {
       labels: ['whitespace', 'blockComment'],
-      entries: {
-        length: 1,
-        start() {
-          return gap.start;
-        },
-        end() {
-          return gap.end;
-        }
-      },
       gapBefore(offset) {
         return offset === gap.end ? gap : undefined;
       },
       gapAfter(offset) {
         return offset === gap.start ? gap : undefined;
       },
-      gaps() {
-        return [gap];
-      },
       gapsWithKind() {
-        return [gap];
+        return [];
       }
     });
 
-    expect(trivia.lookup(gap.end, 'before')?.hasComment).toBe(true);
-    expect(trivia.commentRuns().map(run => src.slice(run.start, run.end))).toEqual(['/* keep */']);
-  });
-
-  it('falls back to source when legacy trivia entries omit their advertised comment kind', () => {
-    const src = 'a/* keep */b';
-    const gap = {
-      start: 1,
-      end: 11,
-      hasKind: () => false
-    };
-    const trivia = createTriviaMapFromParseman(src, {
-      labels: ['whitespace', 'blockComment'],
-      entries: {
-        length: 1,
-        start: () => gap.start,
-        end: () => gap.end,
-        kind: () => 'whitespace'
-      },
-      gapBefore: () => undefined,
-      gapAfter: () => undefined,
-      gaps: () => [gap]
-    });
-
-    expect(trivia.commentRuns().map(run => src.slice(run.start, run.end))).toEqual(['/* keep */']);
+    expect(trivia.lookup(gap.end, 'before')?.hasComment).toBe(false);
+    expect(trivia.commentRuns()).toEqual([]);
   });
 
   it('recognizes Parseman block and line comment trivia labels as comment-bearing', () => {

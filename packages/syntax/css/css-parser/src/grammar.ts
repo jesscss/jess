@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { balanced, choice, classifiedTrivia, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -726,10 +726,8 @@ function keyframeSelectorList(children: readonly unknown[]): SelectorList {
 }
 
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const whitespace = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
-  blockComment
-)));
+const cssWhitespace = regex(/[ \t\n\r\f]+/);
+const whitespace = classifiedTrivia({ whitespace: cssWhitespace, blockComment });
 
 /*
  * Value-slot boundaries are authored trivia, not semantic leaves. Capture the
@@ -742,12 +740,9 @@ const cssValueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
  * Block comments are grammar trivia. noTrivia lexical leaves still cannot glue
  * `10/*x*\/px` into one Dimension.
  */
-const interstitialTrivia = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
-  blockComment
-)));
-const compoundTrivia = trivia(oneOrMore(blockComment));
-const commentTrivia = trivia(oneOrMore(blockComment));
+const interstitialTrivia = classifiedTrivia({ whitespace: cssWhitespace, blockComment });
+const compoundTrivia = classifiedTrivia({ blockComment });
+const commentTrivia = classifiedTrivia({ blockComment });
 const calcWhitespace = regex(/[ \t\n\r\f]+/);
 const calcProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
 const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
@@ -1503,7 +1498,10 @@ export const cssFactory = (g: GrammarSelf) => {
   const CustomValue = node(
     'CustomValue',
     customValue,
-    children => any(children.length === 0 ? '' : tokenText(children[0]))
+    (children, _fields, span) => withSourceSpan(
+      any(children.length === 0 ? '' : tokenText(children[0])),
+      span
+    )
   );
   const Keyword = node(
     'Keyword',

@@ -5468,7 +5468,17 @@ function put(e: Emit, s: string): void {
   }
 }
 
-function blockCommentsIn(run: Trivia): string[] {
+const EMPTY_BLOCK_COMMENT_TEXTS: readonly string[] = [];
+const blockCommentTextCache = new WeakMap<Trivia, readonly string[]>();
+
+function blockCommentsIn(run: Trivia): readonly string[] {
+  if (!run.hasComment) {
+    return EMPTY_BLOCK_COMMENT_TEXTS;
+  }
+  const cached = blockCommentTextCache.get(run);
+  if (cached !== undefined) {
+    return cached;
+  }
   const comments: string[] = [];
   let pos = run.start;
   while (pos < run.end) {
@@ -5483,7 +5493,9 @@ function blockCommentsIn(run: Trivia): string[] {
     comments.push(run.src.slice(start, end + 2));
     pos = end + 2;
   }
-  return comments;
+  const result = comments.length === 0 ? EMPTY_BLOCK_COMMENT_TEXTS : comments;
+  blockCommentTextCache.set(run, result);
+  return result;
 }
 
 function inlineBlockCommentText(run: Trivia, trimLeadingWhitespace = false): string {
@@ -6051,6 +6063,32 @@ function markTriviaRunForRange(e: Emit, start: number, end: number): void {
     if (run.start > start) {
       return;
     }
+  }
+}
+
+/**
+ * An opaque value owns every byte in its parser-authored source span. Selected
+ * root comments inside that span are retained for diagnostics/conversion, but
+ * must not be replayed as separate body trivia after the value already emitted
+ * them verbatim.
+ */
+function markOpaqueValueTrivia(node: object, e: Emit): void {
+  const trivia = e.trivia;
+  const span = sourceSpanOf(node);
+  if (trivia === undefined || span === undefined) {
+    return;
+  }
+  for (const run of trivia.commentRuns()) {
+    if (run.start < span.start) {
+      continue;
+    }
+    if (run.end > span.end) {
+      if (run.start >= span.end) {
+        return;
+      }
+      continue;
+    }
+    e.emittedBlockTrivia.add(run);
   }
 }
 
@@ -10352,6 +10390,9 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     if (customValue === null) {
       putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
     } else if (isThenable(customValue)) {
+      if (!isValueSlotArray(node.value)) {
+        markOpaqueValueTrivia(node.value, e);
+      }
       const i = e.chunks.length;
       e.chunks.push('');
       e.pending.push({
@@ -10359,6 +10400,9 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
         p: Promise.resolve(mapMaybe(customValue, value => important ? normalizeImportant(value) : value))
       });
     } else {
+      if (!isValueSlotArray(node.value)) {
+        markOpaqueValueTrivia(node.value, e);
+      }
       const valStart = e.off;
       put(e, important ? normalizeImportant(customValue) : customValue);
       if (e.positions && !isValueSlotArray(node.value)) {

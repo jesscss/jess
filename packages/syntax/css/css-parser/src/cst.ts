@@ -36,7 +36,6 @@ export type CssCstParseResult = {
   readonly span: Span;
   readonly expected: string[];
   readonly errors: ParseError[];
-  readonly triviaLog: number[];
   readonly unconsumedFrom: number | null;
 };
 
@@ -364,7 +363,6 @@ export function parseCst(
     span: result.span,
     expected: result.expected,
     errors: result.errors,
-    triviaLog: result.triviaLog,
     unconsumedFrom: result.unconsumedFrom
   };
 }
