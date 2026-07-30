@@ -718,6 +718,41 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports opt-in vendor-prefix policy facts for authored CSS prefixes', () => {
+    const source = [
+      '.a { -webkit-transform: rotate(0); transform: rotate(0); }',
+      '@keyframes spin { from { opacity: 0; } }',
+      '@-webkit-keyframes spin { from { opacity: 0; } }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const propertyNoVendorPrefix = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.propertyNoVendorPrefix
+    );
+    const atRuleNoVendorPrefix = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.atRuleNoVendorPrefix
+    );
+    const propertyStart = source.indexOf('-webkit-transform');
+    const atRuleStart = source.indexOf('@-webkit-keyframes');
+
+    expect(propertyNoVendorPrefix.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Unexpected vendor-prefixed property "-webkit-transform"',
+        propertyStart,
+        propertyStart + '-webkit-transform'.length
+      ]
+    ]);
+    expect(atRuleNoVendorPrefix.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Unexpected vendor-prefixed at-rule "@-webkit-keyframes"',
+        atRuleStart,
+        atRuleStart + '@-webkit-keyframes'.length
+      ]
+    ]);
+  });
+
   it('reports unknown CSS vendor-specific properties', () => {
     const source = [
       '.unknown { -webkit-made-up: x; -foo-thing: y; -webkit-transform: rotate(0); }',
@@ -787,6 +822,10 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.vendorPrefix)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.vendorPrefix)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.propertyNoVendorPrefix)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.propertyNoVendorPrefix)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.atRuleNoVendorPrefix)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.atRuleNoVendorPrefix)).toBe(false);
   });
 
   it('does not report unknown vendor-specific properties in dialect files before property facts exist', () => {

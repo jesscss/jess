@@ -45,6 +45,8 @@ describe('stable rule set', () => {
       LINT_CODES.propertyIgnoredDueToDisplay,
       LINT_CODES.boxModel,
       LINT_CODES.float,
+      LINT_CODES.propertyNoVendorPrefix,
+      LINT_CODES.atRuleNoVendorPrefix,
       LINT_CODES.vendorPrefix,
       LINT_CODES.compatibleVendorPrefixes,
       LINT_CODES.unknownVendorSpecificProperties,
@@ -99,6 +101,8 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.propertyIgnoredDueToDisplay,
       LINT_RULE_NAMES.boxModel,
       LINT_RULE_NAMES.float,
+      LINT_RULE_NAMES.propertyNoVendorPrefix,
+      LINT_RULE_NAMES.atRuleNoVendorPrefix,
       LINT_RULE_NAMES.vendorPrefix,
       LINT_RULE_NAMES.compatibleVendorPrefixes,
       LINT_RULE_NAMES.unknownVendorSpecificProperties,
@@ -128,13 +132,15 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(46);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(47);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.vendorPrefix]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.boxModel]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.float]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.propertyNoVendorPrefix]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.atRuleNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.compatibleVendorPrefixes]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unknownVendorSpecificProperties]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.importStatement]).toBe('off');
@@ -188,6 +194,8 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.propertyIgnoredDueToDisplay]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.boxModel]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.float]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.propertyNoVendorPrefix]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.atRuleNoVendorPrefix]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.vendorPrefix]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.compatibleVendorPrefixes]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownVendorSpecificProperties]).toBe('off');
@@ -633,6 +641,42 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
       [LINT_CODES.vendorPrefix, LINT_RULE_NAMES.vendorPrefix, 'warning']
+    ]);
+  });
+
+  it('keeps vendor-prefix style policy opt-in by lint rule name', async () => {
+    const input = {
+      source: [
+        '.a { -webkit-transform: rotate(0); transform: rotate(0); }',
+        '@keyframes spin { from { opacity: 0; } }',
+        '@-webkit-keyframes spin { from { opacity: 0; } }'
+      ].join('\n'),
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.propertyNoVendorPrefix
+    );
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.atRuleNoVendorPrefix
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.propertyNoVendorPrefix]: 'error',
+            [LINT_RULE_NAMES.atRuleNoVendorPrefix]: 'warn',
+            [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off'
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
+      [LINT_CODES.propertyNoVendorPrefix, LINT_RULE_NAMES.propertyNoVendorPrefix, 'error'],
+      [LINT_CODES.atRuleNoVendorPrefix, LINT_RULE_NAMES.atRuleNoVendorPrefix, 'warning']
     ]);
   });
 

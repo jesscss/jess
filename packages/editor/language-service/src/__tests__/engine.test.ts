@@ -796,6 +796,38 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('vendor-prefix Stylelint policy', () => {
+      it('stays quiet by default and fires when configured', () => {
+        const source = [
+          '.a { -webkit-transform: rotate(0); transform: rotate(0); }',
+          '@keyframes spin { from { opacity: 0; } }',
+          '@-webkit-keyframes spin { from { opacity: 0; } }'
+        ].join('\n');
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/property-no-vendor-prefix');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/at-rule-no-vendor-prefix');
+
+        const configured = createEngine();
+        configured.configure({
+          diagnostics: {
+            severity: {
+              ['lint/property-no-vendor-prefix']: 'warning',
+              ['lint/at-rule-no-vendor-prefix']: 'warning'
+            }
+          }
+        });
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const codes = codesOf(configured, configuredDoc.uri);
+
+        expect(codes).toContain('lint/property-no-vendor-prefix');
+        expect(codes).toContain('lint/at-rule-no-vendor-prefix');
+      });
+    });
+
     describe('unknownVendorSpecificProperties (lint/unknown-vendor-specific-property)', () => {
       it('stays quiet by default because VSCode marks unknownVendorSpecificProperties opt-in', () => {
         const engine = createEngine();

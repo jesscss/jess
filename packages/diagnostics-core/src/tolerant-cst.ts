@@ -40,6 +40,8 @@ export const LINT_CODES = {
   propertyIgnoredDueToDisplay: 'lint/property-ignored-due-to-display',
   boxModel: 'lint/box-model',
   float: 'lint/float',
+  propertyNoVendorPrefix: 'lint/property-no-vendor-prefix',
+  atRuleNoVendorPrefix: 'lint/at-rule-no-vendor-prefix',
   vendorPrefix: 'lint/vendor-prefix',
   compatibleVendorPrefixes: 'lint/compatible-vendor-prefixes',
   unknownVendorSpecificProperties: 'lint/unknown-vendor-specific-property',
@@ -4452,6 +4454,12 @@ export function cstLintDiagnostics(
           group.actual.add(keyframesFact.atRuleName);
           if (keyframesFact.atRuleName !== '@keyframes') {
             group.vendorSpans.push(keyframesFact.keywordSpan);
+            push(
+              LINT_CODES.atRuleNoVendorPrefix,
+              'warning',
+              `Unexpected vendor-prefixed at-rule "${keyframesFact.atRuleName}"`,
+              keyframesFact.keywordSpan
+            );
           }
         }
       }
@@ -4539,6 +4547,13 @@ export function cstLintDiagnostics(
                   }
                 }
               }
+              const nameStart = childStart + childSource.indexOf(name);
+              push(
+                LINT_CODES.propertyNoVendorPrefix,
+                'warning',
+                `Unexpected vendor-prefixed property "${name}"`,
+                spanAtOrContaining(child, nameStart, nameStart + name.length)
+              );
             }
             const keywordValue = staticDeclarationKeywordValue(source, child);
             if (key === 'display') {
