@@ -3135,8 +3135,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // distinction rather than normalizing both spellings to negation.
   const MathUnary = node<ValueNode>(
     'MathUnary',
-    choice(
-      noTrivia(sequence(regex(/-(?=[(@])/), g.Value)),
+    sequence(
+      optional(noTrivia(regex(/-(?=[(@])/))),
       g.Value
     ),
     children => children.length === 1

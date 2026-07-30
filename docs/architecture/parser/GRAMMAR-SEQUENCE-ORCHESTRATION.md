@@ -5271,6 +5271,13 @@ calls. These are single profiling passes, not benchmark deltas; their stable
 counts identify the recognizer-side value/condition and opaque-scan routes as
 the next queue, rather than a generic CST-allocation cleanup.
 
+Less unary-value left-factor, 2026-07-30: `MathUnary` now consumes its optional
+glued `-` once and then parses `Value` once. This is a left-factor, not a
+dispatch: the sign is a local optional prefix and has no known/generic routed
+family. The AST child layout stays `[value]` for an ordinary value and
+`['-', value]` for glued `-@x` / `-(...)`; spaced `- @x` remains outside the
+unary branch. The focused AST/public-rendering math tests cover both boundaries.
+
 Less function-argument condition routing, 2026-07-30: `FunctionArgument` first
 accepts scalar and adjacent-value forms only when they reach their real `,`,
 `;`, or `)` boundary. Its local value continuation stops before a top-level Less
