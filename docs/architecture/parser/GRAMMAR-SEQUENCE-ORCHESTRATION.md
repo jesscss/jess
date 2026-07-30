@@ -5403,3 +5403,10 @@ but its parenthesis/square and quote delimiter wrappers are unchanged CSS
 structure. They now use the CSS-aligned `AtRulePreludeGroup` and
 `AtRulePreludeQuoted` CST labels, each with a first-set-disjoint `choice(...)`,
 instead of four delimiter-provenance productions.
+
+Pseudo-argument group consolidation, 2026-07-30: Less and SCSS generic
+functional-pseudo arguments both recurse through quoted text, comments where
+applicable, literal chunks, and further parenthesis/bracket groups. The
+delimiters do not alter the resulting string fact, so both grammars now expose
+one `PseudoArgumentGroup` node with a first-set-disjoint `choice(...)` rather
+than a separate `PseudoArgumentSquare` production.

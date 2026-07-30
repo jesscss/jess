@@ -99,6 +99,16 @@ describe('@jesscss/scss-parser/cst', () => {
     expect([...grammarTypes.keys()].some(type => /^AtRulePrelude(?:Paren|Square|DoubleQuoted|SingleQuoted)$/.test(type))).toBe(false);
   });
 
+  it('uses one semantic group label for nested generic pseudo arguments', () => {
+    const result = parseScssCst('.a:lang(([wide])) { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('PseudoArgumentGroup')).toBe(2);
+    expect(grammarTypes.has('PseudoArgumentSquare')).toBe(false);
+  });
+
   it('accepts an ASCII-case-insensitive declaration priority through the public parser', () => {
     const result = parseScssCst('.card { color: blue !IMPORTANT; }');
 

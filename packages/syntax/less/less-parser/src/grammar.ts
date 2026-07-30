@@ -228,7 +228,6 @@ type LessRules = {
   NthPseudoArgument: Combinator<string>;
   PseudoArgumentText: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
-  PseudoArgumentSquare: Combinator<string>;
   PseudoArgumentCompound: Combinator<SelectorTerm>;
   PseudoArgumentComplexTail: Combinator<ComplexTailFact>;
   PseudoArgumentComplex: Combinator<SelectorBranch>;
@@ -5295,15 +5294,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return interpolatedSimpleSelector(interpolation(parts));
     }
   );
-  const pseudoArgumentInner = choice(g.PseudoArgumentGroup, g.PseudoArgumentSquare, g.LiteralQuoted, staticPseudoChunk);
+  const pseudoArgumentInner = choice(g.PseudoArgumentGroup, g.LiteralQuoted, staticPseudoChunk);
   const PseudoArgumentGroup = node<string>(
     'PseudoArgumentGroup',
-    parser({ trivia: staticSelectorTrivia }, sequence(literal('('), many(pseudoArgumentInner), literal(')'))),
-    (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
-  );
-  const PseudoArgumentSquare = node<string>(
-    'PseudoArgumentSquare',
-    parser({ trivia: staticSelectorTrivia }, sequence(literal('['), many(pseudoArgumentInner), literal(']'))),
+    parser({ trivia: staticSelectorTrivia }, choice(
+      sequence(literal('('), many(pseudoArgumentInner), literal(')')),
+      sequence(literal('['), many(pseudoArgumentInner), literal(']'))
+    )),
     (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   const PseudoArgumentText = node<string>(
@@ -6266,7 +6263,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     NthPseudoArgument,
     PseudoArgumentText,
     PseudoArgumentGroup,
-    PseudoArgumentSquare,
     PseudoArgumentCompound,
     PseudoArgumentComplexTail,
     PseudoArgumentComplex,

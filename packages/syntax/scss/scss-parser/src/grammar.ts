@@ -169,7 +169,6 @@ type ScssRules = {
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
-  PseudoArgumentSquare: Combinator<string>;
   PseudoSelector: Combinator<SimpleToken>;
   NestingSelector: Combinator<SimpleSelector>;
   Compound: Combinator<SelectorTerm>;
@@ -4358,35 +4357,15 @@ export const scssFactory = (g: ScssInputRules) => {
    * excludes a real SCSS `#{` opener, so interpolation cannot be flattened into
    * this static spelling while selector-valued arguments retain their existing
    * canonical spelling inside the containing SimpleSelector.
-   */
+  */
   const staticPseudoChunk = regex(/(?:[^()\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
+
+  /* Parenthesis and bracket nesting are the same opaque pseudo-argument fact. */
   const PseudoArgumentGroup = node<string>(
     'PseudoArgumentGroup',
-    sequence(
-      literal('('),
-      many(choice(
-        g.PseudoArgumentGroup,
-        g.PseudoArgumentSquare,
-        g.LiteralQuoted,
-        g.BlockCommentToken,
-        staticPseudoChunk
-      )),
-      literal(')')
-    ),
-    joinSourceText
-  );
-  const PseudoArgumentSquare = node<string>(
-    'PseudoArgumentSquare',
-    sequence(
-      literal('['),
-      many(choice(
-        g.PseudoArgumentGroup,
-        g.PseudoArgumentSquare,
-        g.LiteralQuoted,
-        g.BlockCommentToken,
-        staticPseudoChunk
-      )),
-      literal(']')
+    choice(
+      sequence(literal('('), many(choice(g.PseudoArgumentGroup, g.LiteralQuoted, g.BlockCommentToken, staticPseudoChunk)), literal(')')),
+      sequence(literal('['), many(choice(g.PseudoArgumentGroup, g.LiteralQuoted, g.BlockCommentToken, staticPseudoChunk)), literal(']'))
     ),
     joinSourceText
   );
@@ -4394,7 +4373,6 @@ export const scssFactory = (g: ScssInputRules) => {
     'PseudoArgument',
     oneOrMore(choice(
       g.PseudoArgumentGroup,
-      g.PseudoArgumentSquare,
       g.LiteralQuoted,
       g.BlockCommentToken,
       staticPseudoChunk
@@ -5010,7 +4988,6 @@ export const scssFactory = (g: ScssInputRules) => {
     AttributeSelector,
     PseudoArgument,
     PseudoArgumentGroup,
-    PseudoArgumentSquare,
     PseudoSelector,
     NestingSelector,
     Compound,
