@@ -100,7 +100,6 @@ type CssGrammarRuleName =
   | 'ContainerPrelude'
   | 'ContainerQueryClause'
   | 'ContainerQueryPrelude'
-  | 'CssSyntax'
   | 'ConditionalAtKeyword'
   | 'ContainerAtKeyword'
   | 'CustomPropertyName'
