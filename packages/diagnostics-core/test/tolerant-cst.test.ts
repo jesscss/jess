@@ -779,6 +779,17 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('does not report SCSS callable parameters as undefined variables inside their definitions', () => {
+    const source = '@mixin theme($color) { color: $color; }\n@function tone($input) { @return $input; }\n.a { color: $color; background: $input; }';
+
+    expect(collectTolerantDiagnostics({ source, language: 'scss' }).diagnostics
+      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Undefined variable $color', source.lastIndexOf('$color'), source.lastIndexOf('$color') + '$color'.length],
+      ['Undefined variable $input', source.lastIndexOf('$input'), source.lastIndexOf('$input') + '$input'.length]
+    ]);
+  });
+
   it('reports unknown Less and SCSS named mixin arguments as shared semantic diagnostics', () => {
     const less = '.theme(@color, @gap: 1px) { color: @color; }\n.a { .theme(@tone: red, @gap: 2px); }';
     const scss = '@mixin theme($color, $gap: 1px) { color: $color; }\n.a { @include theme($tone: red, $gap: 2px); }';

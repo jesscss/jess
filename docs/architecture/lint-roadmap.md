@@ -311,7 +311,7 @@ the language service because they are often the most useful author feedback.
 
 | Diagnostic | Owner | Notes |
 | --- | --- | --- |
-| Definite unresolved variable | Compiler/evaluator | Initial shared same-file CST diagnostic landed as `var/undefined` for Less/SCSS/Jess variable references; strict SCSS `@use` and Less/Jess `@from`/`@compose` syntax defaults to error. Resolver/import-aware certainty remains future work. |
+| Definite unresolved variable | Compiler/evaluator | Initial shared same-file CST diagnostic landed as `var/undefined` for Less/SCSS/Jess variable references and suppresses Less/SCSS callable parameters in their definition scope; strict SCSS `@use` and Less/Jess `@from`/`@compose` syntax defaults to error. Resolver/import-aware certainty remains future work. |
 | Missing import or module cycle | Resolver/compiler | Report the path and config context. |
 | No matching mixin/function overload | Compiler/evaluator | Initial shared same-file mixin diagnostics landed as `mixin/undefined` for Less/SCSS/Jess calls and `call/no-matching-overload` for Less fixed-arity mixin calls whose same-file simple definitions have no arity match. `CallSignature` and `OverloadSet` facts can later handle functions, namespaces, named arguments, guards, imports, defaults/rest params, and richer overload messages. |
 | Unknown named argument | Compiler/evaluator | Initial shared same-file Less/SCSS mixin diagnostic landed as `call/unknown-named-argument` for simple named calls whose static candidate signatures do not contain the authored parameter; rest/pattern overloads, imports, functions, namespaces, guards, and richer overload resolution remain future work. |

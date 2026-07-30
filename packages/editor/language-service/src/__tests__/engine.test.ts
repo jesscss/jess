@@ -437,6 +437,15 @@ describe('JessLanguageServiceEngine', () => {
       expect(varDiag?.severity).toBe(2); // DiagnosticSeverity.Warning
     });
 
+    it('does not report SCSS callable parameters as undefined variables', () => {
+      const engine = createEngine();
+      const doc = createDocument('scss', '@mixin theme($color) { color: $color; }\n@function tone($input) { @return $input; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diagnostics = engine.getDiagnostics(doc.uri);
+
+      expect(diagnostics.some(diagnostic => diagnostic.code === 'var/undefined')).toBe(false);
+    });
+
     it('reports undefined SCSS variable as error when @use is present', () => {
       const engine = createEngine();
       const doc = createDocument('scss', '@use "sass:math";\na { color: $missing; }');

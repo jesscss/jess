@@ -532,6 +532,23 @@ describe('lintText', () => {
       [undefined, SEMANTIC_CODES.noMatchingOverload, 'eval', 'error', 'No matching overload for mixin ".theme": expected 1 argument, got 2 arguments']
     ]);
 
+    const scssParameters = await lintText(
+      {
+        source: '@mixin theme($color) { color: $color; }\n@function tone($input) { @return $input; }',
+        filePath: '/tmp/input.scss'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            diagnostics: {
+              [SEMANTIC_CODES.undefinedVariable]: 'error'
+            }
+          }
+        }
+      }
+    );
+    expect(scssParameters.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)).toBe(false);
+
     for (const dialectInput of [
       {
         source: '.a { @include missing(); }',

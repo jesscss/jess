@@ -3392,6 +3392,30 @@ function scssMixinNamedArgumentCallOf(source: string, node: CssCstNode): MixinNa
       };
 }
 
+function scssCallableParameterScopeOf(source: string, node: CssCstNode): VariableParameterScopeFact | null {
+  if (node.grammarType !== 'MixinDefinition' && node.grammarType !== 'FunctionRule') {
+    return null;
+  }
+  const params = firstChildNodeOf(node, 'MixinParameters');
+  if (params === undefined) {
+    return null;
+  }
+  const names = new Set<string>();
+  for (const parameter of childNodesOfType(params, 'MixinParameter')) {
+    const authored = authoredVariableNameOf(source, absoluteStart(parameter), absoluteEnd(parameter));
+    if (authored !== null && authored.name.charCodeAt(0) === 36 /* $ */) {
+      names.add(normalizedVariableName(authored.name, 'scss'));
+    }
+  }
+  return names.size === 0
+    ? null
+    : {
+        names,
+        start: absoluteStart(node),
+        end: absoluteEnd(node)
+      };
+}
+
 function normalizedScssCallableName(name: string): string {
   return name.replace(/_/g, '-');
 }
@@ -5862,6 +5886,10 @@ export function cstLintDiagnostics(
     const scssMixinSignature = language === 'scss' ? scssMixinSignatureOf(source, node) : null;
     if (scssMixinSignature !== null) {
       scssMixinSignatureFacts.push(scssMixinSignature);
+    }
+    const scssParameterScope = language === 'scss' ? scssCallableParameterScopeOf(source, node) : null;
+    if (scssParameterScope !== null) {
+      variableParameterScopes.push(scssParameterScope);
     }
     const scssMixinNamedArgumentCall = language === 'scss' ? scssMixinNamedArgumentCallOf(source, node) : null;
     if (scssMixinNamedArgumentCall !== null) {
