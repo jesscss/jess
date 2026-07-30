@@ -1054,9 +1054,9 @@ function urlFromChildren(children: readonly unknown[]): Url {
   return isValueNode(body) ? url(body) : url(any(requireToken(body).value));
 }
 
-function requirePlainQuoted(value: unknown): Quoted {
+function requireLiteralQuoted(value: unknown): Quoted {
   if (!isQuoted(value)) {
-    throw new TypeError('Jess module syntax requires a plain quoted path.');
+    throw new TypeError('Jess module syntax requires a literal quoted path.');
   }
   return value;
 }
@@ -1957,7 +1957,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     { trivia: whitespace },
     g.ExpressionInterpolation
   );
-  const escapedPlainQuoted = choice(
+  const escapedLiteralQuoted = choice(
     noTrivia(sequence(
       literal('~'),
       literal('"'),
@@ -1973,7 +1973,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * Shared static plain-quoted arms. The escaped, double-, and single-quoted
+   * Shared literal-quoted arms. The escaped, double-, and single-quoted
    * static prefix is identical across the value, static, and expression quoted
    * families; only the interp-bearing arms and the reducer differ.
    */
@@ -1990,7 +1990,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   const Quoted = node<Quoted | Interpolation>(
     'Quoted',
     choice(
-      escapedPlainQuoted,
+      escapedLiteralQuoted,
       plainDoubleQuoted,
       plainSingleQuoted,
 
@@ -2066,7 +2066,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   const LiteralQuoted = node<Quoted>(
     'Quoted',
     choice(
-      escapedPlainQuoted,
+      escapedLiteralQuoted,
       plainDoubleQuoted,
       plainSingleQuoted
     ),
@@ -2144,7 +2144,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     (children) => {
       const source = requireToken(children[0]).value;
-      const path = requirePlainQuoted(children[1]);
+      const path = requireLiteralQuoted(children[1]);
       const names = children.slice(2).filter(isToken)
         .map(requireToken).map(token => token.value);
       if (source === '@-compose') {
@@ -2234,7 +2234,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     (children) => {
       const source = requireToken(children[0]).value;
-      const path = requirePlainQuoted(children[1]);
+      const path = requireLiteralQuoted(children[1]);
       if (source === '@-use') {
         const names = children.slice(2).filter(isToken)
           .map(requireToken).map(token => token.value);
@@ -2292,7 +2292,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   const ExpressionQuoted = node<ExpressionFact>(
     'ExpressionQuoted',
     choice(
-      escapedPlainQuoted,
+      escapedLiteralQuoted,
       plainDoubleQuoted,
       plainSingleQuoted,
       noTrivia(sequence(
@@ -4152,7 +4152,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     children => atRuleStatement(
       requireToken(children[0]).value,
-      requirePlainQuoted(children[1])
+      requireLiteralQuoted(children[1])
     )
   );
   /*
