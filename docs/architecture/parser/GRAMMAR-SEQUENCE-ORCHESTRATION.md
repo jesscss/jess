@@ -170,10 +170,11 @@ clean for `Direct*` / `CssAst*` prefixes, but Less still has the last explicit
 reduced to an honest `peek(...)` because it is already a bounded positive
 lookahead inside a declaration context. Do not apply that as a blanket pattern:
 the remaining function-condition argument probe needs a structural condition
-argument boundary, and the `.foo`/`#foo` mixin-vs-ruleset gate needs the planned
-class/id statement router that owns both the mixin continuation and the
-qualified-rule continuation. A cosmetic `peek(...)` swap at those two sites would
-preserve the wrong architecture.
+argument boundary. The former `.foo`/`#foo` mixin-vs-ruleset scan gate is gone:
+the class/id statement route now retains one typed selector prefix, then uses
+the actual `(`/`;`/ruleset continuation to construct the selected statement.
+A cosmetic `peek(...)` swap at the function-condition site would still preserve
+the wrong architecture.
 Less mixin-reference routing, 2026-07-29: the value-position
 `mixinReferenceAhead` probe was replaced by a typed shared mixin-reference base
 plus `dispatch(...)` on the first accessor delimiter (`[]`, `[`, `.`, or `(`).
@@ -3384,16 +3385,13 @@ shared-opener work this way:
    parses the branch once, collects inline extends, and removes the static /
    dynamic selector-branch fallback competition. Its semantic public owner is
    `SelectorBranch`; historical `DirectLess*` labels are not a contract.
-4. Less mixin statement family: mixin definitions, mixin calls, and bare mixin
-   calls still restart from the same name/path surface. A class/id character or
-   even a single `.name` is not enough to route: `.a.b`, `.a .b`, and
-   `.a > .b` can be a namespaced call when they end in `(` or a selector when
-   they end in `{`, and only the simple `.name(...)` form can define a mixin.
-   The eventual one-pass shape must retain that parsed prefix, including its
-   adjacency/trivia/combinator facts, and feed it into a selector continuation
-   with `routed()` when the tail selects a ruleset. Do not replace the current
-   broad gate with a narrower `peek(...)`, a scan, or a route that reparses the
-   prefix.
+4. Less mixin statement family: the class/id router now parses the prefix once.
+   `.a.b`, `.a .b`, and `.a > .b` retain their compound/complex selector facts
+   until `(`/`;` selects a namespace call or the ruleset continuation selects
+   `:extend`, `,`, `when`, or `{`. A definition is permitted only for one
+   class/id name, so `.a.b() {}` remains rejected. The remaining review is
+   performance evidence and error-path parity, not another prefix scanner or
+   a route that reparses the selector.
 5. Less query feature parentheses: several `(`-led query arms decide only after
    entering the parentheses. This may become a dispatch/left-factor target, but
    public `QueryAtRuleBlock` CST children and media/container query AST shapes

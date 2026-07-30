@@ -2697,6 +2697,37 @@ describe('public Less parse()', () => {
     );
   });
 
+  it('routes one parsed class/id prefix to its mixin or ruleset continuation', () => {
+    const document = parse([
+      '.simple() { color: red; }',
+      '#library { .tone() { color: blue; } }',
+      '.host { .simple(); #library > .tone(); #library .tone(); #library.tone(); }',
+      '.compound.selector { color: black; }',
+      '.descendant .selector { color: green; }',
+      '.child > .selector { color: white; }'
+    ].join('\n'));
+
+    expect(document).toMatchObject({
+      rules: [
+        { type: 'MixinDefinition', name: '.simple' },
+        { type: 'Ruleset', rules: [{ type: 'MixinDefinition', name: '.tone' }] },
+        {
+          type: 'Ruleset',
+          rules: [
+            { type: 'MixinCall', name: '.simple', path: [] },
+            { type: 'MixinCall', name: '.tone', path: [{ selector: '#library' }] },
+            { type: 'MixinCall', name: '.tone', path: [{ selector: '#library' }] },
+            { type: 'MixinCall', name: '.tone', path: [{ selector: '#library' }] }
+          ]
+        },
+        { type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector' }] } },
+        { type: 'Ruleset', selector: { selectors: [{ type: 'ComplexSelector' }] } },
+        { type: 'Ruleset', selector: { selectors: [{ type: 'ComplexSelector' }] } }
+      ]
+    });
+    expect(() => parse('.a.b() { color: red; }')).toThrow(SyntaxError);
+  });
+
   it('returns static ruleset guards from the public Stylesheet route', () => {
     expect(
       parse(

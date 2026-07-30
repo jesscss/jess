@@ -52,12 +52,28 @@ type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string }
 /** Private grammar reduction: delimiters remain parser facts, while the public
  * MixinDefinition receives only the semantic Param array. */
 type MixinParameterListFact = { readonly params: readonly Param[] };
-type MixinSignatureFact = { readonly name: string; readonly params: readonly Param[]; readonly guard?: MixinGuard };
 type AttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
 type AttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
 type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
 type SelectorListWithExtendsFact = { readonly selector: SelectorList; readonly extensions: readonly ExtendInstruction[] };
+type MixinDefinitionTailFact = {
+  readonly params: readonly Param[];
+  readonly guard?: MixinGuard;
+  readonly rules: readonly Statement[];
+  readonly bodySpan?: SourceSpan;
+};
+type MixinCallTailFact = { readonly args: readonly MixinCallArgument[]; readonly important: boolean };
+type BareMixinCallTailFact = { readonly important: boolean };
+type RulesetTailFact = {
+  readonly firstExtensions: readonly ExtendTargetFact[];
+  readonly branches: readonly SelectorBranchFact[];
+  readonly selectorEnd: number;
+  readonly guard?: MixinGuard;
+  readonly rules: readonly Statement[];
+  readonly extensions: readonly ExtendInstruction[];
+  readonly bodySpan?: SourceSpan;
+};
 type CustomValuePart = string | InterpolationFact | VariableReference | readonly CustomValuePart[];
 type GeneralEnclosedNameFact = { readonly name: string };
 type FunctionConditionFact = {
@@ -143,12 +159,17 @@ type LessRules = {
   Declaration: Combinator<Declaration>;
   MixinParam: Combinator<Param>;
   MixinParameterList: Combinator<MixinParameterListFact>;
-  MixinDefinition: Combinator<MixinDefinition>;
+  ClassIdStatement: Combinator<Statement>;
   PositionalMixinCallArgument: Combinator<MixinCallArgument>;
   MixinArgumentGroup: Combinator<MixinCallArgument>;
   MixinArguments: Combinator<readonly MixinCallArgument[]>;
-  MixinCall: Combinator<MixinCall>;
-  BareMixinCall: Combinator<MixinCall>;
+  ClassIdSelectorPrefix: Combinator<SelectorBranchFact>;
+  MixinDefinitionTail: Combinator<MixinDefinitionTailFact>;
+  MixinCallTail: Combinator<MixinCallTailFact>;
+  BareMixinCallTail: Combinator<BareMixinCallTailFact>;
+  RulesetTail: Combinator<RulesetTailFact>;
+  SelectorBranch: Combinator<SelectorBranchFact>;
+  SelectorBranchTail: Combinator<SelectorBranchFact>;
   FlatMixinCall: Combinator<MixinCall>;
   NamespacedMixinCall: Combinator<MixinCall>;
   NamespacedMixinValue: Combinator<MixinCall>;
@@ -1427,6 +1448,58 @@ function branchSegments(branch: SelectorBranch): [{ combinator?: SelectorCombina
   return [segments[0]!, ...segments.slice(1)];
 }
 
+type MixinPrefixSegment = { readonly combinator: ' ' | '>'; readonly selector: string };
+
+function mixinPrefixFromSelectorBranch(branch: SelectorBranch): readonly MixinPrefixSegment[] | null {
+  const prefix: MixinPrefixSegment[] = [];
+  for (const segment of branchSegments(branch)) {
+    if (segment.combinator !== undefined && segment.combinator !== ' ' && segment.combinator !== '>') {
+      return null;
+    }
+    const tokens = segment.term.type === 'CompoundSelector'
+      ? segment.term.value
+      : [segment.term];
+    for (const token of tokens) {
+      const isMixinName = token.text?.startsWith('.') === true || token.text?.startsWith('#') === true;
+      if (!isSimpleSelector(token) || token.interp !== null || token.text === null || !isMixinName) {
+        return null;
+      }
+      prefix.push({
+        combinator: prefix.length === 0 ? ' ' : segment.combinator ?? ' ',
+        selector: token.text
+      });
+    }
+  }
+  return prefix.length === 0 ? null : prefix;
+}
+
+function mixinCallFromSelectorBranch(
+  branch: SelectorBranch,
+  args: readonly MixinCallArgument[],
+  important: boolean,
+  span: SourceSpan
+): MixinCall {
+  const prefix = mixinPrefixFromSelectorBranch(branch);
+  const final = prefix?.at(-1);
+  if (final === undefined) {
+    throw new SyntaxError('Less mixin calls require a class or id selector path.');
+  }
+  const call = mixinCall(final.selector, args);
+  return withSourceSpan({
+    ...call,
+    ...(prefix.length > 1 ? { path: prefix.slice(0, -1) } : {}),
+    ...(important ? { important: true } : {})
+  }, span);
+}
+
+function mixinDefinitionNameFromSelectorBranch(branch: SelectorBranch): string {
+  const prefix = mixinPrefixFromSelectorBranch(branch);
+  if (prefix?.length !== 1) {
+    throw new SyntaxError('Less mixin definitions require one class or id name.');
+  }
+  return prefix[0]!.selector;
+}
+
 type SourceSpan = { readonly start: number; readonly end: number };
 type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
 
@@ -1457,6 +1530,16 @@ function bodySpanFromRaw(rawChildren: readonly unknown[]): SourceSpan | undefine
     }
   }
   return start === undefined || end === undefined || end < start ? undefined : { start, end };
+}
+
+function requiredTokenStart(rawChildren: readonly unknown[], value: string): number {
+  const token = rawChildren.find((child): child is SpannedToken =>
+    isSpannedToken(child) && child.value === value
+  );
+  if (token === undefined) {
+    throw new TypeError(`Less grammar lost required ${JSON.stringify(value)} token provenance.`);
+  }
+  return token.span.start;
 }
 
 function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[]): T {
@@ -1576,13 +1659,6 @@ function isMixinParameterListFact(value: unknown): value is MixinParameterListFa
     && Array.isArray(value.params) && value.params.every(isParam);
 }
 
-function isMixinSignatureFact(value: unknown): value is MixinSignatureFact {
-  return typeof value === 'object' && value !== null && 'name' in value
-    && typeof value.name === 'string' && 'params' in value
-    && Array.isArray(value.params) && value.params.every(isParam)
-    && (!('guard' in value) || value.guard === undefined || isMixinGuard(value.guard));
-}
-
 function isAttributeNameFact(value: unknown): value is AttributeNameFact {
   return typeof value === 'object' && value !== null
     && 'namespace' in value && typeof value.namespace === 'string'
@@ -1613,6 +1689,31 @@ function isSelectorListWithExtendsFact(value: unknown): value is SelectorListWit
     && 'selector' in value && isSelectorList(value.selector)
     && 'extensions' in value && Array.isArray(value.extensions)
     && value.extensions.every(isExtendInstruction);
+}
+
+function isMixinDefinitionTailFact(value: unknown): value is MixinDefinitionTailFact {
+  return typeof value === 'object' && value !== null
+    && 'params' in value && Array.isArray(value.params) && value.params.every(isParam)
+    && 'rules' in value && Array.isArray(value.rules) && value.rules.every(isStatement);
+}
+
+function isMixinCallTailFact(value: unknown): value is MixinCallTailFact {
+  return typeof value === 'object' && value !== null
+    && 'args' in value && Array.isArray(value.args) && value.args.every(isMixinCallArgument)
+    && 'important' in value && typeof value.important === 'boolean';
+}
+
+function isBareMixinCallTailFact(value: unknown): value is BareMixinCallTailFact {
+  return typeof value === 'object' && value !== null
+    && 'important' in value && typeof value.important === 'boolean';
+}
+
+function isRulesetTailFact(value: unknown): value is RulesetTailFact {
+  return typeof value === 'object' && value !== null
+    && 'firstExtensions' in value && Array.isArray(value.firstExtensions) && value.firstExtensions.every(isExtendTargetFact)
+    && 'branches' in value && Array.isArray(value.branches) && value.branches.every(isSelectorBranchFact)
+    && 'rules' in value && Array.isArray(value.rules) && value.rules.every(isStatement)
+    && 'extensions' in value && Array.isArray(value.extensions) && value.extensions.every(isExtendInstruction);
 }
 
 function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExtendsFact {
@@ -3705,66 +3806,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     when('.', ReferenceDotTailFromRouted),
     when('(', ReferenceCallTailFromRouted)
   );
-  const MixinCall = node<MixinCall>(
-    'MixinCall',
-    sequence(
-      mixinName,
-      many(MixinPathTail),
-      literal('('),
-      optional(g.MixinArguments),
-      literal(')'),
-      // A malformed guarded definition must not split into a bare mixin call
-      // followed by a selector rule (`.m() when default { … }`). Definitions get
-      // first choice above; this lookahead only blocks that invalid fallback.
-      not(whenGuardAhead),
-      optional(literal('!important')),
-      optional(literal(';'))
-    ),
-    (children, _fields, span) => {
-      const head = requireToken(children[0]).value;
-      const tails = children.filter(isMixinPathTail);
-      const last = tails.at(-1);
-      const call = mixinCall(last?.selector ?? head, mixinArgumentsFromChildren(children));
-      return withSourceSpan({
-        ...call,
-        ...(tails.length > 0
-          ? {
-              path: [
-                { combinator: ' ', selector: head },
-                ...tails.slice(0, -1)
-              ]
-            }
-          : {}),
-        ...(children.some(child => isTerminalText(child, '!important')) ? { important: true } : {})
-      }, span);
-    }
-  );
-  // Less permits a zero-argument mixin call without parentheses only when the
-  // semicolon fixes the statement boundary. Keep the no-semicolon spelling out
-  // of this route: it is ambiguous with a selector/ruleset prefix.
-  const BareMixinCall = node<MixinCall>(
-    'BareMixinCall',
-    sequence(mixinName, many(MixinPathTail), optional(literal('!important')), literal(';')),
-    (children) => {
-      const head = requireToken(children[0]).value;
-      const tails = children.filter(isMixinPathTail);
-      const last = tails.at(-1);
-      const call = mixinCall(last?.selector ?? head, []);
-      const path: MixinCall['path'] = [
-        { combinator: ' ', selector: head },
-        ...tails.slice(0, -1)
-      ];
-      const withPath = tails.length === 0
-        ? call
-        : {
-            ...call,
-            path
-          };
-      return children.some(child => isTerminalText(child, '!important'))
-        ? { ...withPath, important: true }
-        : withPath;
-    }
-  );
   // This is the existing callable-value fact shared by `each(.mixin(), …)` and
   // `@name: .mixin()`. Keep it narrower than an ordinary MixinCall: namespace
   // paths, dynamic names, and call-level modifiers have no approved binding
@@ -4028,35 +4069,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return guard;
     }
   );
-  // Scope the signature-only trivia through the opening `{`, then leave the
-  // body to its ordinary statement grammar where block comments are CSS output.
-  const mixinSignature = node<MixinSignatureFact>(
-    'MixinSignature',
-    parser({ trivia: mixinSignatureTrivia }, sequence(
-      field('name', mixinName),
-      field('parameters', g.MixinParameterList),
-      optional(mixinSignatureGap),
-      optional(field('guard', MixinGuard)),
-      optional(mixinSignatureGap),
-      field('open', literal('{'))
-    )),
-    (_children, fields) => {
-      const name = requireField(fields, 'name').value;
-      const parameters = requireField(fields, 'parameters').value;
-      if (!isMixinParameterListFact(parameters)) {
-        throw new TypeError('Less mixin signature produced invalid header facts.');
-      }
-      const guardField = fields?.guard === undefined ? undefined : requireField(fields, 'guard').value;
-      if (guardField !== undefined && !isMixinGuard(guardField)) {
-        throw new TypeError('Less mixin signature produced an invalid guard fact.');
-      }
-      return {
-        name: requireTerminalText(name),
-        params: parameters.params,
-        ...(guardField === undefined ? {} : { guard: guardField })
-      };
-    }
-  );
   // Shared block-body statement choice. Every braced Less body (mixin
   // definitions, `@supports`/media/container/generic at-rule blocks, and the
   // ruleset body via the extend-augmented reuse below) accepts this exact
@@ -4077,20 +4089,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `@name` to distinguish variable declarations, reference calls, known
   // at-rules, generic blocks, and generic statements.
   const atStatement = choice(g.ImportStatement, g.PluginDirective, g.ValueBlockDeclaration, g.VarDeclaration, g.SupportsBlock, g.MediaContainerBlock, g.ReferenceCall, g.Keyframes, g.AtRuleBlock, g.OpaqueAtRuleBlock, g.AtRuleStatement);
-  // Chevrotain funneled every `.foo`/`#foo` block through ONE mixin-or-ruleset
-  // dispatch: a cheap token-only test (`mixinStart` then `(` or `;`) chose the
-  // mixin arm, otherwise the qualified-rule arm ran, so the shared class/id
-  // prefix was never re-scanned by three separate mixin productions. Parseman
-  // already first-set-gates the whole `.`/`#` group behind one codepoint check,
-  // but WITHIN that group the three mixin productions each restart from the name
-  // before the ruleset finally matches. This positive lookahead reproduces
-  // Chevrotain's `testMixin`: a mixin header always reaches a `(` or `;` before
-  // any `{`/`}`, so a plain ruleset — whose selector has no such delimiter before
-  // its block — skips all three mixin productions with one bounded scan instead
-  // of three failed name re-scans. The gate only ever over-accepts (a
-  // parenthesized-pseudo ruleset such as `.a:not(.b){}` still falls through to
-  // the ruleset arm), so PEG priority and output stay identical.
-  const mixinStatementAhead = peek(regex(/[.#][^{};]*[(;]/));
+  // Class/id statement starts are resolved by `ClassIdStatement` below. It
+  // parses the selector prefix once, then the literal-led continuation decides
+  // whether the retained structure is a mixin definition/call or a ruleset.
+  // Keep the unsupported dash-only spelling separate because it has a dedicated
+  // public diagnostic and cannot form the shared selector prefix.
   const UnsupportedDashOnlyMixin = node<never>(
     'UnsupportedMixinName',
     noTrivia(choice(
@@ -4101,23 +4104,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       throw new LessUnsupportedMixinNameError(span.start, span.end);
     }
   );
-  // A `node()` reduction boundary keeps the gated group's single mixin fact from
-  // splicing the zero-width lookahead marker into the parent statement list; the
-  // reducer returns the inner MixinDefinition/MixinCall/MixinCall (bare) node unchanged,
-  // so the emitted AST and its `type`-keyed shape are identical to the ungrouped
-  // arms. `collapse` lets parseman drop the transparent wrapper allocation.
-  const mixinStatement = node<Statement>(
-    'MixinStatement',
-    sequence(mixinStatementAhead, choice(UnsupportedDashOnlyMixin, g.MixinDefinition, g.MixinCall, g.BareMixinCall)),
-    (children) => {
-      const statement = children.find(isStatement);
-      if (statement === undefined) {
-        throw new TypeError('Less mixin-or-ruleset gate lost its mixin statement.');
-      }
-      return statement;
-    },
-    { collapse: true }
-  );
+  const mixinStatement = choice(UnsupportedDashOnlyMixin, g.ClassIdStatement);
   // Chevrotain disambiguated a nested rule from a declaration on the colon's
   // trailing trivia, not a full selector speculation: `foo: bar` (colon then
   // whitespace) is always a declaration, never a selector, because a selector
@@ -4219,26 +4206,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // former flat `choice(<shared arms>, ExtendStatement, ';')` because
   // an extend head never matches `;` or any shared arm the flat list did not.
   const rulesetBody = many(choice(blockItem, g.ExtendStatement));
-  const MixinDefinition = node<MixinDefinition>(
-    'MixinDefinition',
-    sequence(
-      mixinSignature,
-      blockBody,
-      optional(g.Call),
-      literal('}'),
-      optional(literal(';'))
-    ),
-    (children, _fields, span, rawChildren) => {
-      const signature = children.find(isMixinSignatureFact);
-      if (signature === undefined) {
-        throw new TypeError('Less mixin definition lost its signature fact.');
-      }
-      return withSourceSpan(withBlockBody(
-        mixinDef(signature.name, [...signature.params], children.filter(isStatement), signature.guard),
-        rawChildren
-      ), span);
-    }
-  );
   const EachName = node<string>(
     'EachName',
     sequence(literal('@'), lessVariableName),
@@ -5652,6 +5619,34 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.AttributeSelector,
     g.InterpolatedAttributeSelector
   );
+  /*
+   * Statement-position class/id starts share their parsed selector prefix with
+   * mixin paths. `(` and `;` later select the mixin tails; selector punctuation
+   * continues from this same branch. The first simple is deliberately the
+   * class/id-only mixin name, while the rest of the compound and complex path
+   * retain the ordinary selector productions and their exact AST structure.
+   */
+  const ClassIdCompound = node<SelectorTerm>(
+    'Compound',
+    parser({ trivia: compoundSelectorTrivia }, sequence(mixinName, many(compoundSimple))),
+    children => selectorTermFromTokens(children.map((child) => {
+      return isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
+    }))
+  );
+  const ClassIdSelectorPrefix = node<SelectorBranchFact>(
+    'SelectorBranch',
+    sequence(
+      ClassIdCompound,
+      many(sequence(not(whenGuardAhead), g.ComplexTail))
+    ),
+    (children, _fields, span) => ({
+      selector: withSourceSpan(selectorBranchOf([
+        { term: children.find(isSelectorTerm)! },
+        ...children.filter(isComplexTailFact)
+      ]), span),
+      extensions: []
+    })
+  );
   const Compound: Combinator<SelectorTerm> = node<SelectorTerm>(
     'Compound',
     // Production's CompoundSelector is a run of adjacent simple selectors.
@@ -5811,12 +5806,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.Complex,
     children => ({ selector: children.find(isSelectorBranch)!, extensions: [] })
   );
+  const selectorBranch = choice(SelectorBranch, DynamicSelectorBranch);
+  const SelectorBranchTail = node<SelectorBranchFact>(
+    'SelectorBranch',
+    sequence(literal(','), selectorBranch),
+    (children) => {
+      const branch = children.find(isSelectorBranchFact);
+      if (branch === undefined) {
+        throw new TypeError('Less selector list tail lost its selector branch.');
+      }
+      return branch;
+    }
+  );
   const selectorListWithExtends = node<SelectorListWithExtendsFact>(
     'SelectorListWithExtends',
     parser(
       { trivia: outerSelectorTrivia },
       oneOrMoreSep(
-        choice(SelectorBranch, DynamicSelectorBranch),
+        selectorBranch,
         literal(',')
       )
     ),
@@ -5884,6 +5891,168 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         rawChildren
       ), span);
     }
+  );
+  const mixinDefinitionHeaderTail = node<Pick<MixinDefinitionTailFact, 'params' | 'guard'>>(
+    'MixinSignature',
+    parser({ trivia: mixinSignatureTrivia }, sequence(
+      literal('('),
+      mixinParameterContents,
+      mixinParamClose,
+      optional(mixinSignatureGap),
+      optional(g.MixinGuard),
+      optional(mixinSignatureGap),
+      literal('{')
+    )),
+    (children, fields) => ({
+      params: fields?.param === undefined
+        ? []
+        : requireFields(fields, 'param').map((param) => {
+            if (!isParam(param.value)) {
+              throw new TypeError('Less mixin definition tail produced a non-Param field.');
+            }
+            return param.value;
+          }),
+      ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) })
+    })
+  );
+  const MixinDefinitionTail = node<MixinDefinitionTailFact>(
+    'MixinDefinition',
+    sequence(mixinDefinitionHeaderTail, blockBody, optional(g.Call), literal('}'), optional(literal(';'))),
+    (children, _fields, _span, rawChildren) => {
+      const header = children.find((value): value is Pick<MixinDefinitionTailFact, 'params' | 'guard'> =>
+        typeof value === 'object' && value !== null && 'params' in value && Array.isArray(value.params)
+      );
+      if (header === undefined) {
+        throw new TypeError('Less mixin definition tail lost its signature facts.');
+      }
+      const bodySpan = bodySpanFromRaw(rawChildren);
+      return {
+        params: header.params,
+        ...(header.guard === undefined ? {} : { guard: header.guard }),
+        rules: children.filter(isStatement),
+        ...(bodySpan === undefined ? {} : { bodySpan })
+      };
+    }
+  );
+  const MixinCallTail = node<MixinCallTailFact>(
+    'MixinCall',
+    sequence(
+      literal('('),
+      optional(g.MixinArguments),
+      literal(')'),
+      not(whenGuardAhead),
+      optional(literal('!important')),
+      optional(literal(';'))
+    ),
+    children => ({
+      args: mixinArgumentsFromChildren(children),
+      important: children.some(child => isTerminalText(child, '!important'))
+    })
+  );
+  const BareMixinCallTail = node<BareMixinCallTailFact>(
+    'MixinCall',
+    sequence(optional(literal('!important')), literal(';')),
+    children => ({ important: children.some(child => isTerminalText(child, '!important')) })
+  );
+  const RulesetTail = node<RulesetTailFact>(
+    'Ruleset',
+    sequence(
+      selectorBranchContinuation,
+      many(g.SelectorBranchTail),
+      optional(g.MixinGuard),
+      literal('{'),
+      rulesetBody,
+      optional(g.Call),
+      literal('}'),
+      optional(literal(';'))
+    ),
+    (children, _fields, _span, rawChildren) => {
+      const bodySpan = bodySpanFromRaw(rawChildren);
+      return {
+        firstExtensions: children
+          .filter(Array.isArray)
+          .flatMap(values => values.filter(isExtendTargetFact)),
+        branches: children.filter(isSelectorBranchFact),
+        selectorEnd: requiredTokenStart(rawChildren, '{'),
+        ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
+        rules: children.filter(isStatement),
+        extensions: children
+          .filter(Array.isArray)
+          .flatMap(values => values.filter(value => isExtendInstruction(value) && !isExtendTargetFact(value))),
+        ...(bodySpan === undefined ? {} : { bodySpan })
+      };
+    }
+  );
+  const ClassIdStatement = node<Statement>(
+    'Statement',
+    sequence(
+      g.ClassIdSelectorPrefix,
+      choice(
+        attempt(g.MixinDefinitionTail),
+        g.MixinCallTail,
+        g.BareMixinCallTail,
+        g.RulesetTail
+      )
+    ),
+    (children, _fields, span) => {
+      const prefix = children.find(isSelectorBranchFact);
+      if (prefix === undefined) {
+        throw new TypeError('Less class/id statement lost its selector prefix.');
+      }
+      const definition = children.find(isMixinDefinitionTailFact);
+      if (definition !== undefined) {
+        const node = mixinDef(
+          mixinDefinitionNameFromSelectorBranch(prefix.selector),
+          [...definition.params],
+          [...definition.rules],
+          definition.guard
+        );
+        return withSourceSpan(
+          definition.bodySpan === undefined ? node : withBodySpan(node, definition.bodySpan),
+          span
+        );
+      }
+      const call = children.find(isMixinCallTailFact);
+      if (call !== undefined) {
+        return mixinCallFromSelectorBranch(prefix.selector, call.args, call.important, span);
+      }
+      const bare = children.find(isBareMixinCallTailFact);
+      if (bare !== undefined) {
+        return mixinCallFromSelectorBranch(prefix.selector, [], bare.important, span);
+      }
+      const ruleset = children.find(isRulesetTailFact);
+      if (ruleset === undefined) {
+        throw new TypeError('Less class/id statement lost its continuation.');
+      }
+      const prefixSpan = sourceSpanOf(prefix.selector);
+      const guardSpan = ruleset.guard === undefined ? undefined : sourceSpanOf(ruleset.guard);
+      const selector = prefixSpan === undefined
+        ? selist(prefix.selector, ...ruleset.branches.map(branch => branch.selector))
+        : withSourceSpan(
+            selist(prefix.selector, ...ruleset.branches.map(branch => branch.selector)),
+            { start: prefixSpan.start, end: guardSpan?.start ?? ruleset.selectorEnd }
+          );
+      const extensions = [
+        ...ruleset.firstExtensions.map(target => ({
+          target: target.target,
+          partial: target.partial,
+          subject: selist(prefix.selector)
+        })),
+        ...ruleset.branches.flatMap(branch => branch.extensions),
+        ...ruleset.extensions
+      ];
+      const node = rule(
+        selector,
+        [...ruleset.rules],
+        extensions.length === 0 ? undefined : extensions,
+        ruleset.guard
+      );
+      return withSourceSpan(
+        ruleset.bodySpan === undefined ? node : withBodySpan(node, ruleset.bodySpan),
+        span
+      );
+    },
+    { collapse: true }
   );
   const Stylesheet = node<Stylesheet>(
     'Stylesheet',
@@ -5965,12 +6134,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Declaration,
     MixinParam,
     MixinParameterList,
-    MixinDefinition,
+    ClassIdStatement,
     PositionalMixinCallArgument,
     MixinArgumentGroup,
     MixinArguments,
-    MixinCall,
-    BareMixinCall,
+    ClassIdSelectorPrefix,
+    MixinDefinitionTail,
+    MixinCallTail,
+    BareMixinCallTail,
+    RulesetTail,
+    SelectorBranch,
+    SelectorBranchTail,
     FlatMixinCall,
     NamespacedMixinCall,
     NamespacedMixinValue,
