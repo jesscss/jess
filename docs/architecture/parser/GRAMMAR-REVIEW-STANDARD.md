@@ -56,6 +56,12 @@ routed bare identifier can reduce to a `Keyword` value, while the glued
 separate is what lets Less, SCSS, and Jess override interpolation in selector,
 property, or header positions without corrupting ordinary value keywords.
 
+Math and comparison are also context-owned. Less may lower value-position math
+or comparison into expression structure, but only through the Less expression
+rules and their `mathMode` policy. Jess expression math, comparison, and
+leading-dot declaration lookup stay behind the explicit `$()` expression
+boundary; ordinary Jess value slots must keep rejecting those forms.
+
 Apply this pressure horizontally, with one exception: making CSS itself spotless
 can proceed directly because CSS is the base the others should compose from.
 Most historical duplication was created by repairing one derived dialect or one

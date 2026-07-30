@@ -1555,10 +1555,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     (children, _fields, span) => {
       const rooted = isValueNode(children[0]) && children[0].type === 'DeclarationReference';
       const name = requireToken(children[rooted ? 2 : 1]).value;
-      const baseRaw = rooted ? '$' : '';
-      const base = withSourceSpan(declarationReference(baseRaw), span);
+      const sourceRoot = rooted ? '$' : '';
+      const base = withSourceSpan(declarationReference('$'), span);
       const tails = children.slice(rooted ? 3 : 2).map(requireJessReferenceTail);
-      const raw = `${baseRaw}.${name}${tails.map(tail => tail.src).join('')}`;
+      const raw = `${sourceRoot}.${name}${tails.map(tail => tail.src).join('')}`;
       return { value: reference(
         base,
         [

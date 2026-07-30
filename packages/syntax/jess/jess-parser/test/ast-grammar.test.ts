@@ -434,7 +434,7 @@ describe('Jess AST grammar facts', () => {
                 boundary: true,
                 value: {
                   type: 'Reference',
-                  base: { type: 'DeclarationReference', raw: '' },
+                  base: { type: 'DeclarationReference', raw: '$' },
                   steps: [
                     { type: 'DotLookup', name: 'type' },
                     { type: 'DotLookup', name: 'isnumber' },
@@ -443,7 +443,7 @@ describe('Jess AST grammar facts', () => {
                       args: [{
                         value: {
                           type: 'Reference',
-                          base: { type: 'DeclarationReference', raw: '' },
+                          base: { type: 'DeclarationReference', raw: '$' },
                           steps: [{ type: 'DotLookup', name: 'math' }, { type: 'DotLookup', name: 'e' }],
                           raw: '.math.e'
                         }
@@ -498,12 +498,76 @@ describe('Jess AST grammar facts', () => {
     for (const invalid of [
       '.card { value: .type; }',
       '.card { value: .type.isnumber(.math.e); }',
+      '.card { $w: 1; value: $w + 1; }',
       '.card { $w: 1px; value: $w + 1px; }',
       '.card { $w: 1px; base: 2px; value: $w + .base; }',
       '.card { value: $.1; }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
+    expect(parse('.card { $w: 2; value: $(.w + 1); }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'VariableDeclaration', name: 'w' },
+        {
+          type: 'Declaration',
+          name: 'value',
+          value: {
+            type: 'Interpolation',
+            parts: [{
+              ref: {
+                type: 'Block',
+                boundary: true,
+                value: {
+                  type: 'Operation',
+                  operator: '+',
+                  left: {
+                    type: 'Reference',
+                    base: { type: 'DeclarationReference', raw: '$' },
+                    steps: [{ type: 'DotLookup', name: 'w' }],
+                    raw: '.w'
+                  },
+                  right: { type: 'Dimension', number: 1, unit: '', src: '1' }
+                }
+              },
+              unquote: true
+            }]
+          }
+        }
+      ] }]
+    });
+    expect(parse('.card { $w: 2; value: $(.w > 0); }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'VariableDeclaration', name: 'w' },
+        {
+          type: 'Declaration',
+          name: 'value',
+          value: {
+            type: 'Interpolation',
+            parts: [{
+              ref: {
+                type: 'Block',
+                boundary: true,
+                value: {
+                  type: 'Condition',
+                  guard: {
+                    g: 'cmp',
+                    op: '>',
+                    left: {
+                      type: 'Reference',
+                      base: { type: 'DeclarationReference', raw: '$' },
+                      steps: [{ type: 'DotLookup', name: 'w' }],
+                      raw: '.w'
+                    },
+                    right: { type: 'Dimension', number: 0, unit: '', src: '0' }
+                  }
+                }
+              },
+              unquote: true
+            }]
+          }
+        }
+      ] }]
+    });
     expect(parse('.card { value: .1; }')).toMatchObject({
       rules: [{ type: 'Ruleset', rules: [{ value: { type: 'Dimension', number: 0.1, src: '.1' } }] }]
     });

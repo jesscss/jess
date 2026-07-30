@@ -94,6 +94,12 @@ glued `name(` opener can dispatch to known/generic function bodies. Do not use
 the value `Keyword` slot merely because the raw CSS recognizer happens to share
 the same spelling as an identifier.
 
+Expression-shaped values are still policy-bound. Less value math/comparison
+lowers through its expression grammar according to `mathMode`; Jess math,
+comparison, and leading-dot lookup are expression-only and require the explicit
+`$()` boundary. Do not use a local parser retry or broad value arm to smuggle
+one dialect's expression policy into another dialect's ordinary value position.
+
 Before changing a CSS-family `choice(...)` into `dispatch(...)`, write down the
 routed value the first combinator returns. If that value is only `@`, `(`, `:`,
 or a bare identifier whose following delimiter decides the language branch, the
