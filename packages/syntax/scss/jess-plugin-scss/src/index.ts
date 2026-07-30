@@ -3,6 +3,7 @@ import {
   AbstractPlugin,
   type ISafeParseResult,
   parserDiagnostic,
+  type SafeParseOptions,
   type EqualityMode,
   type UnitMode,
   type Context,
@@ -70,9 +71,9 @@ export class ScssPlugin extends AbstractPlugin {
     context.registerValueEvaluator(sassValueEvaluator);
   }
 
-  safeParse(filePath: string, source: string): ISafeParseResult {
+  safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     try {
-      return { document: parse(source), errors: [], warnings: [] };
+      return { document: parse(source, { trackLines: parseOptions?.trackLines }), errors: [], warnings: [] };
     } catch (error) {
       return {
         errors: [parserDiagnostic({ dialect: 'SCSS', error, filePath, source })],

@@ -43,18 +43,34 @@ export class LessParseError extends SyntaxError {
   readonly code = 'parse/syntax-error' as const;
   readonly offset: number;
   readonly expected: readonly string[];
+  readonly line?: number;
+  readonly column?: number;
+  readonly endLine?: number;
+  readonly endColumn?: number;
   readonly reason?: string;
   readonly fix?: string;
 
   constructor(
     offset: number,
     expected: readonly string[],
-    options: { message?: string; reason?: string; fix?: string } = {}
+    options: {
+      message?: string;
+      reason?: string;
+      fix?: string;
+      line?: number;
+      column?: number;
+      endLine?: number;
+      endColumn?: number;
+    } = {}
   ) {
     super(options.message ?? expectedMessage(expected));
     this.name = 'LessParseError';
     this.offset = offset;
     this.expected = expected;
+    this.line = options.line;
+    this.column = options.column;
+    this.endLine = options.endLine;
+    this.endColumn = options.endColumn;
     this.reason = options.reason;
     this.fix = options.fix;
   }

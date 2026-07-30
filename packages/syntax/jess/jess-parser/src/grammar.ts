@@ -13,7 +13,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, field, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, composeLeaf, dispatch, field, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, skip, startsWith, token, trivia, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -2384,7 +2384,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * simple selector and a sibling selector's interpolation never falsely admits
    * a plain one.
    */
-  const interpolatedSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
+  const interpolatedSimpleAhead = peek(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
   const InterpolatedSimple = node<SimpleSelector>(
     'InterpolatedSimple',
     noTrivia(sequence(
@@ -2439,7 +2439,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * the same fast reject `InterpolatedSimple` uses, so an ordinary `&`
    * compound member never pays a failed template scan.
    */
-  const interpolatedParentSuffixAhead = not(not(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
+  const interpolatedParentSuffixAhead = peek(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
   const InterpolatedParentSuffix = node<SimpleSelector>(
     'InterpolatedParentSuffix',
     noTrivia(sequence(
@@ -4077,10 +4077,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Kept local to the import tail: the general at-rule value grammar is not
    * widened, so no other header gains a function-call spelling here.
    */
-  const importTailFunctionName = token(noTrivia(sequence(
-    g.CssSyntaxKeyword,
-    not(not(literal('(')))
-  )));
+  const importTailFunctionName = skip(
+    token(noTrivia(g.CssSyntaxKeyword)),
+    noTrivia(peek(literal('(')))
+  );
   const ImportTailFunction = node<FunctionCall>(
     'ImportTailFunction',
     dispatch(
@@ -4451,7 +4451,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
    * real interpolated property is never skipped.
    */
-  const interpolatedPropertyAhead = not(not(regex(/[^{};:]*\$[[{]/)));
+  const interpolatedPropertyAhead = peek(regex(/[^{};:]*\$[[{]/));
   const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     noTrivia(sequence(
@@ -5668,7 +5668,31 @@ export const jessGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssP
 
 export const jessAstGrammar = jessGrammar;
 
+export const jessLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+  { trivia: whitespace, trackLines: true },
+  jessFactory
+)]);
+
+export const jessAstLineGrammar = jessLineGrammar;
+
 export const jessCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, hostMode: 'cst' },
   jessFactory
 )]);
+
+export const jessCstLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+  { trivia: whitespace, hostMode: 'cst', trackLines: true },
+  jessFactory
+)]);
+
+export type JessGrammarOptions = {
+  readonly cst?: boolean;
+  readonly trackLines?: boolean;
+};
+
+export function jessGrammarFor(options: JessGrammarOptions = {}) {
+  if (options.cst) {
+    return options.trackLines ? jessCstLineGrammar : jessCstGrammar;
+  }
+  return options.trackLines ? jessAstLineGrammar : jessAstGrammar;
+}

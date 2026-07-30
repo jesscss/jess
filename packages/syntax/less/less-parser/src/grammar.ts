@@ -2051,8 +2051,8 @@ const functionConditionNot = word(
   { caseInsensitive: true }
 );
 // Built on `mixinGuardOperator` rather than re-spelling the guard comparison
-// alternation: this is only ever consumed inside `not(not(…))`, so the extra frames
-// roll back and contribute no child. The keyword arm keeps its own regex — it is a
+// alternation: this is only ever consumed inside zero-width lookahead, so the
+// extra frames roll back and contribute no child. The keyword arm keeps its own regex — it is a
 // `scanTo` sentinel, so it lands at arbitrary offsets and needs the LEADING
 // `(?<![-\w])` boundary a token-position terminal does not carry.
 const functionConditionAhead = choice(mixinGuardOperator, regex(/(?<![-\w])(?:and|or|not)(?![-\w])/i));
@@ -2710,7 +2710,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const FunctionArgument = node<ValueSlot>(
     'FunctionArgument',
     choice(
-      sequence(not(not(sequence(scanTo(choice(functionConditionAhead, regex(/[,;)]/))), functionConditionAhead))), g.FunctionCondition),
+      sequence(peek(sequence(scanTo(choice(functionConditionAhead, regex(/[,;)]/))), functionConditionAhead)), g.FunctionCondition),
       g.FunctionScalarArgument,
       g.ArgumentValueSequence
     ),
@@ -3307,7 +3307,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // actually present before the delimiter, so plain properties fall straight to
   // the literal DeclarationProperty arm. The `node()` boundary keeps the marker
   // off the declaration reducer's `children[0]` property slot.
-  const interpolatedPropertyAhead = not(not(regex(/[^:;{}]*[@$]\{/)));
+  const interpolatedPropertyAhead = peek(regex(/[^:;{}]*[@$]\{/));
   const gatedInterpolatedProperty = node<Interpolation>(
     'GatedInterpolatedProperty',
     sequence(interpolatedPropertyAhead, g.InterpolatedProperty),
@@ -4072,7 +4072,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // of three failed name re-scans. The gate only ever over-accepts (a
   // parenthesized-pseudo ruleset such as `.a:not(.b){}` still falls through to
   // the ruleset arm), so PEG priority and output stay identical.
-  const mixinStatementAhead = not(not(regex(/[.#][^{};]*[(;]/)));
+  const mixinStatementAhead = peek(regex(/[.#][^{};]*[(;]/));
   const UnsupportedDashOnlyMixin = node<never>(
     'UnsupportedMixinName',
     noTrivia(choice(
@@ -6024,5 +6024,22 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
 export const lessGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, lessGrammarFactory)]);
 export const lessAstGrammar = lessGrammar;
 
+export const lessLineGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], trackLines: true }, lessGrammarFactory)]);
+export const lessAstLineGrammar = lessLineGrammar;
+
 /** Public Less CST artifact: the same grammar factory compiled in CST mode. */
 export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst' }, lessGrammarFactory)]);
+
+export const lessCstLineGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst', trackLines: true }, lessGrammarFactory)]);
+
+export type LessGrammarOptions = {
+  readonly cst?: boolean;
+  readonly trackLines?: boolean;
+};
+
+export function lessGrammarFor(options: LessGrammarOptions = {}) {
+  if (options.cst) {
+    return options.trackLines ? lessCstLineGrammar : lessCstGrammar;
+  }
+  return options.trackLines ? lessAstLineGrammar : lessAstGrammar;
+}

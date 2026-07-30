@@ -4023,10 +4023,34 @@ export const cssGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPs
 
 export const cssAstGrammar = cssGrammar;
 
+export const cssLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+  { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], trackLines: true },
+  cssFactory
+)]);
+
+export const cssAstLineGrammar = cssLineGrammar;
+
 export const cssCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], hostMode: 'cst' },
   cssFactory
 )]);
+
+export const cssCstLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+  { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], hostMode: 'cst', trackLines: true },
+  cssFactory
+)]);
+
+export type CssGrammarOptions = {
+  readonly cst?: boolean;
+  readonly trackLines?: boolean;
+};
+
+export function cssGrammarFor(options: CssGrammarOptions = {}) {
+  if (options.cst) {
+    return options.trackLines ? cssCstLineGrammar : cssCstGrammar;
+  }
+  return options.trackLines ? cssAstLineGrammar : cssAstGrammar;
+}
 
 export const {
   Stylesheet,

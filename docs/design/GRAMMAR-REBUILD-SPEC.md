@@ -7,7 +7,7 @@ first, the method, and the criteria that decide whether they succeeded.
 > **Status: `design/`, not `architecture/`.** The problem statement (§2), the
 > verification machinery in §8.2–§8.6, the traps (§7), and the structural causes
 > (§13) are present-tense and measured. The old hostMode release blocker is paid
-> as of `parseman@0.41.0`; the physical eight-to-four collapse is complete, and
+> as of `parseman@0.43.0`; the physical eight-to-four collapse is complete, and
 > the active work is rebuilding/polishing the surviving grammar families until
 > they meet the naming, documentation, lint, and Parseman-shape bar. Sections that preserve
 > older 0.32/0.37/0.38 planning evidence are historical unless §0.2 or
@@ -71,9 +71,9 @@ Four consequences, none of them optional:
 
 ### 0.2 Current status
 
-**The parseman floor is paid.** parseman is now resolved to **0.41.0** from the
+**The parseman floor is paid.** parseman is now resolved to **0.43.0** from the
 registry; the root, `@jesscss/parser-shared`, and all four parser packages
-depend on `^0.41.0`. `hostMode` reaches the macro, 0.38 adds
+depend on `^0.43.0`. `hostMode` reaches the macro, 0.38 adds
 the keyword ergonomics this cleanup now uses:
 `word(str, { caseInsensitive: true })`,
 `word(str, boundary, { caseInsensitive: true })`, and
@@ -82,7 +82,7 @@ macro-compiled `dispatch(combinator, when(...), otherwise(...))` routing shape,
 case-insensitive `when(...)`, `makeWhen(...)`, matcher cases, and `routed()`,
 and 0.40.0 adds `node(..., { project: index })` for simple semantic projection
 without hiding CST ownership. Current package-local resolution checks report
-`0.41.0` from `/Users/matthew/git/oss/jess/node_modules/.pnpm/parseman@0.41.0/node_modules/parseman`.
+`0.43.0` from `/Users/matthew/git/oss/jess/node_modules/.pnpm/parseman@0.43.0/node_modules/parseman`.
 Macro
 probing has one important authoring boundary:
 `makeWord(...)` aliases declared inside a `rules(...)` factory lower cleanly, but
@@ -93,7 +93,7 @@ direct `word(...)` / `keywords(...)` until that Parseman surface improves.
 now ship AST and CST from one host-mode grammar source per dialect:
 `src/grammar.ts`. The old `src/ast/grammar.ts` files have been deleted. The
 remaining rebuild work is quality work on those surviving sources: simplify rule
-and node names, replace duplicated broad choices with Parseman 0.41 routing
+and node names, replace duplicated broad choices with Parseman 0.43 routing
 where it applies, tighten spec conformance, and keep the grammar documentation
 current.
 Verify:
@@ -161,9 +161,9 @@ named-set split is
 
 | fact                                            | value at time of writing                                                                                          | how to re-check                                                                                                                                                                                                                                     |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| parseman version jess resolves                  | **0.41.0** from the registry; root + parser-shared + all four parser package dependency/peer ranges are `^0.41.0` | `node -p "require('./node_modules/parseman/package.json').version + ' ' + require('fs').realpathSync('./node_modules/parseman')"` and `rg -n '"parseman"' package.json packages/parser-shared/package.json packages/syntax/*/*-parser/package.json` |
-| parseman published `latest`                     | **0.41.0**                                                                                                        | `npm view parseman version`                                                                                                                                                                                                                         |
-| parseman `main`                                 | **0.41.0** at publication time                                                                                    | `git -C <parseman checkout> show origin/main:package.json \| grep version`                                                                                                                                                                          |
+| parseman version jess resolves                  | **0.43.0** from the registry; root + parser-shared + all four parser package dependency/peer ranges are `^0.43.0` | `node -p "require('./node_modules/parseman/package.json').version + ' ' + require('fs').realpathSync('./node_modules/parseman')"` and `rg -n '"parseman"' package.json packages/parser-shared/package.json packages/syntax/*/*-parser/package.json` |
+| parseman published `latest`                     | **0.43.0**                                                                                                        | `npm view parseman version`                                                                                                                                                                                                                         |
+| parseman `main`                                 | **0.43.0** at publication time                                                                                    | `git -C <parseman checkout> show origin/main:package.json \| grep version`                                                                                                                                                                          |
 | `hostMode` first ships in                       | **0.37.0**                                                                                                        | parseman `CHANGELOG.md`, the 0.37.0 section                                                                                                                                                                                                         |
 | PRs #75, #76, #77, #80, #81, #82, #83, #84, #85 | **merged**                                                                                                        | `gh pr list --repo matthew-dean/parseman --state all`                                                                                                                                                                                               |
 | **PR #85 — `hostMode` reaching the macro**      | **merged**, on `dev` in jess via `6908e7b4f`                                                                      | `gh pr view 85 --repo matthew-dean/parseman`                                                                                                                                                                                                        |
@@ -176,7 +176,7 @@ named-set split is
 > further physical collapse.
 
 > **Publishing parseman is owner-only.** Agents never merge or release parseman
-> PRs (`docs/architecture/core/HANDOFF.md`, COLD START item 7). 0.41.0 is now
+> PRs (`docs/architecture/core/HANDOFF.md`, COLD START item 7). 0.43.0 is now
 > published and jess consumes it; any future parseman bump goes through the same
 > owner gate.
 
@@ -198,7 +198,7 @@ when(...), otherwise(...))`: consume one broad token, route by the returned
 | `packages/parser-shared` (renamed from `internal-css-recognition`) | `packages/parser-shared/`, rename commit `a74131e8f`                                                                   |
 | `packages/syntax/` packages-by-syntax regroup                      | `packages/syntax/<lang>/<pkg>/`, move commit `e96d1035d`                                                               |
 | `packages/editor/` and `packages/docs/` sibling groups             | `packages/editor/<pkg>/`, `packages/docs/<pkg>/` — same commit `e96d1035d`                                             |
-| parseman 0.41.0 floor                                              | root, parser-shared, and all four parser package manifests use `^0.41.0`; parser package peer ranges require `^0.41.0` |
+| parseman 0.43.0 floor                                              | root, parser-shared, and all four parser package manifests use `^0.43.0`; parser package peer ranges require `^0.43.0` |
 | parseman/oracle byte-identity gate (Stage 2 of the rewrite)        | `packages/syntax/less/less-parser/test/oracle-byte-identity.mjs` + committed baseline at commit `a2911a491`            |
 | The un-awaited-assertion helper                                    | `test/expect-sync.ts` — repo root, **not** under `packages/` (§0.6.1)                                                  |
 | The `as any` detector                                              | `pnpm lint:absolute` (§0.6)                                                                                            |
@@ -215,7 +215,7 @@ document order; it is stated here.
 
 | step  | what                                                                                                                                                                     | gated on                                                                                             | who                                |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| **1** | **Parseman grammar floor**                                                                                                                                               | paid by `parseman@0.41.0`; future parseman releases remain owner-only                                | **owner only for future releases** |
+| **1** | **Parseman grammar floor**                                                                                                                                               | paid by `parseman@0.43.0`; future parseman releases remain owner-only                                | **owner only for future releases** |
 | **2** | **Physical eight-to-four fold** — one host-mode `src/grammar.ts` per dialect                                                                                             | **complete**; deleted `src/ast/grammar.ts` files are historical evidence only                        | agent                              |
 | **3** | **CSS polish** — spec names, small rules, documented deviations, `word(...)`, separated-list helpers, and `dispatch(...)`/`routed()` for known-or-generic token families | step 2 complete; CSS remains the base for dialect cleanup                                            | agent                              |
 | **4** | **Less polish** — compose on CSS, keep Less deviations explicit, delete SCSS-only inheritance, parse selectors/extends/values once                                       | step 3 shape decisions; CSS/Less are the alpha bar                                                   | agent                              |
@@ -700,7 +700,7 @@ The order is deliberately inverted from the obvious one. Reaching for the docs
 when stuck is how you end up with a regex.
 
 1. **Survey the pinned parseman export surface from source and package
-   resolution** — not from recollection. The active floor is `parseman@0.41.0`.
+   resolution** — not from recollection. The active floor is `parseman@0.43.0`.
    Use `word()` / `makeWord()`, `keywords()`, `oneOrMoreSep(...)`, `peek(...)`,
    `dispatch(...)` / `when(...)` / `otherwise(...)`, matcher cases,
    `routed()`, and `node(..., { project })` where they are the best grammar
@@ -733,7 +733,7 @@ changed the sequencing.** What remains blocking is narrower than it was:
 
 | §                                     | status                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 5.0 the version question              | **RESOLVED.** parseman 0.41.0 is published and consumed by the active checkout (2026-07-27). `hostMode` reached the macro in 0.37.0 (PR #85 merged), 0.38.0 added keyword ergonomics, 0.39.0/0.39.1 added `dispatch(...)` and its routing refinements, and 0.40.0 adds declarative node projection (`node(..., { project: index })`). The architecture floor is paid; the active grammar-polish sequence can proceed |
+| 5.0 the version question              | **RESOLVED.** parseman 0.43.0 is published and consumed by the active checkout. `hostMode` reached the macro in 0.37.0 (PR #85 merged), 0.38.0 added keyword ergonomics, 0.39.0/0.39.1 added `dispatch(...)` and its routing refinements, and 0.40.0 adds declarative node projection (`node(..., { project: index })`). The architecture floor is paid; the active grammar-polish sequence can proceed |
 | 5.1 the 0.36.0 adoption               | **RESOLVED** — measured and declined. Authoring is not blocked on a bump                                                                                                                                                                                                                                                                                                                                             |
 | 5.2 the 0.32.0 hazards                | **standing constraints**, not blockers — check per unit. Three now, including the cross-mode fusion hazard                                                                                                                                                                                                                                                                                                           |
 | 5.3 `hostMode`                        | **RESOLVED** — shipped at 0.37.0 as a compile-time flag. Delivery taken; it is now a version-floor question, not a missing mechanism                                                                                                                                                                                                                                                                                 |
@@ -743,13 +743,13 @@ changed the sequencing.** What remains blocking is narrower than it was:
 ### 5.0 The version question, stated plainly
 
 **The collapse's hard floor is paid.** The active checkout consumes
-`parseman@0.41.0`, and §0.2 records the current floor plus the gates that any
+`parseman@0.43.0`, and §0.2 records the current floor plus the gates that any
 later grammar change must preserve. Future parseman publishing remains owner-only.
 
 | what                                              | version    | why                                                                                                                                                             |
 | ------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Writing and polishing the surviving grammar rules | **0.41.0** | Use case-insensitive `word(...)` / `makeWord(...)`, `dispatch(...)`, `makeWhen(...)`, matcher cases, `routed()`, and `node(..., { project })` wherever they fit |
-| One grammar per dialect                           | **0.41.0** | `hostMode` lets one grammar serve both the eval-AST and positioned-CST modes (§5.3)                                                                             |
+| Writing and polishing the surviving grammar rules | **0.43.0** | Use case-insensitive `word(...)` / `makeWord(...)`, `dispatch(...)`, `makeWhen(...)`, matcher cases, `routed()`, and `node(..., { project })` wherever they fit |
+| One grammar per dialect                           | **0.43.0** | `hostMode` lets one grammar serve both the eval-AST and positioned-CST modes (§5.3)                                                                             |
 
 > **This is not a deferrable perf matter any more.** The version floor is paid
 > and the physical fold is complete. The remaining work is grammar quality:
@@ -869,7 +869,7 @@ Less-grammar refactors done against 0.32.0). The 0.34 bump at `a49ca59da` is
 
 ### 5.2 Writing against the current parseman floor
 
-Grammar cleanup targets `parseman@0.41.0`. Verify the installed version before a
+Grammar cleanup targets `parseman@0.43.0`. Verify the installed version before a
 grammar slice, then use the current combinator surface directly. Do not carry
 workaround shapes for older pins into new grammar code.
 
@@ -1115,7 +1115,7 @@ the grammars will use. The sheet must explain when to use `choice(...)`,
 shapes. Version-stamp the result.
 
 Current sheet: `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md`,
-stamped for `parseman@0.41.0`. Keep it authoritative and current whenever the
+stamped for `parseman@0.43.0`. Keep it authoritative and current whenever the
 Parseman floor moves.
 
 **Pass criteria.**

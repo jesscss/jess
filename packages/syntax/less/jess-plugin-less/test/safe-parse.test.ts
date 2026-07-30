@@ -44,6 +44,22 @@ describe("@jesscss/plugin-less", () => {
     expect(result.errors[0]?.message).not.toContain("complete stylesheet");
   });
 
+  it('accepts line-aware parser selection through safeParse options', () => {
+    const source = '.entry {}\n@media';
+    const result = lessPlugin().safeParse!('entry.less', source, { trackLines: true });
+
+    expect(result.document).toBeUndefined();
+    expect(result.errors).toMatchObject([
+      {
+        phase: 'parse',
+        filePath: 'entry.less',
+        line: 2,
+        column: 7,
+        file: { source }
+      }
+    ]);
+  });
+
   it("reports the dynamic-charset policy at the authored statement", () => {
     const source = '@Eight: 8;\n@charset "UTF-@{Eight}";';
     const result = lessPlugin().safeParse!("entry.less", source);

@@ -1,13 +1,18 @@
 import { run } from 'parseman';
-import { parserDiagnostic, type ISafeParseResult } from '@jesscss/core';
+import type { Span } from 'parseman';
+import { parserDiagnostic, type ISafeParseResult, type SafeParseOptions } from '@jesscss/core';
 import {
   createTriviaMapFromParseman,
   withSourceSpan,
   withTriviaMap,
   type Stylesheet
 } from '@jesscss/core/ast';
-import { lessAstGrammar } from './grammar.js';
+import { lessGrammarFor } from './grammar.js';
 import { LessParseError } from './parse-error.js';
+
+export type LessParseOptions = {
+  readonly trackLines?: boolean;
+};
 
 export {
   LessBareVariableInterpolationError,
@@ -30,10 +35,25 @@ function isStylesheet(value: unknown): value is Stylesheet {
   );
 }
 
+function lineOptions(span: Span): {
+  line?: number;
+  column?: number;
+  endLine?: number;
+  endColumn?: number;
+} {
+  return {
+    line: span.startLine,
+    column: span.startColumn,
+    endLine: span.endLine,
+    endColumn: span.endColumn
+  };
+}
+
 /** Parse Less directly into the canonical AST v2 document. */
-export function parse(input: string): Stylesheet {
-  const entry = lessAstGrammar.Stylesheet;
-  const trivia = lessAstGrammar.whitespace;
+export function parse(input: string, options: LessParseOptions = {}): Stylesheet {
+  const grammar = lessGrammarFor({ trackLines: options.trackLines });
+  const entry = grammar.Stylesheet;
+  const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {
     throw new TypeError(
       'Less AST grammar is missing its public document entry.'
@@ -41,7 +61,7 @@ export function parse(input: string): Stylesheet {
   }
   const result = run(entry, input, { trivia, state: { source: input } });
   if (!result.ok) {
-    throw new LessParseError(result.span.start, result.expected);
+    throw new LessParseError(result.span.start, result.expected, lineOptions(result.span));
   }
   if (result.unconsumedFrom !== null) {
     if (result.unconsumedFrom > result.span.start) {
@@ -78,9 +98,9 @@ export function parse(input: string): Stylesheet {
  * this boundary attaches file/source context once and returns normalized
  * diagnostics for compiler and CLI consumers to render.
  */
-export function safeParse(filePath: string, input: string): ISafeParseResult {
+export function safeParse(filePath: string, input: string, options: SafeParseOptions = {}): ISafeParseResult {
   try {
-    return { document: parse(input), errors: [], warnings: [] };
+    return { document: parse(input, { trackLines: options.trackLines }), errors: [], warnings: [] };
   } catch (error) {
     return {
       errors: [

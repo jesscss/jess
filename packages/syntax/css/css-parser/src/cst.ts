@@ -40,6 +40,7 @@ export type CssCstParseResult = {
 
 export type CssCstParseOptions = {
   readonly collapse?: boolean;
+  readonly trackLines?: boolean;
 };
 
 type BuildHostArgs = Parameters<BuildHost>;

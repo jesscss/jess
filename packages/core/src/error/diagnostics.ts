@@ -67,6 +67,10 @@ export interface ParserFailure {
     | 'parse/unparenthesized-mixin-guard';
   readonly offset: number;
   readonly endOffset?: number;
+  readonly line?: number;
+  readonly column?: number;
+  readonly endLine?: number;
+  readonly endColumn?: number;
   readonly expected?: readonly string[];
   readonly reason?: string;
   readonly fix?: string;
@@ -93,6 +97,22 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
     && Number.isFinite(error.endOffset)
       ? error.endOffset
       : undefined;
+  const line =
+    'line' in error && typeof error.line === 'number' && Number.isFinite(error.line)
+      ? error.line
+      : undefined;
+  const column =
+    'column' in error && typeof error.column === 'number' && Number.isFinite(error.column)
+      ? error.column
+      : undefined;
+  const endLine =
+    'endLine' in error && typeof error.endLine === 'number' && Number.isFinite(error.endLine)
+      ? error.endLine
+      : undefined;
+  const endColumn =
+    'endColumn' in error && typeof error.endColumn === 'number' && Number.isFinite(error.endColumn)
+      ? error.endColumn
+      : undefined;
   const expected =
     'expected' in error && Array.isArray(error.expected)
       ? Array.from(new Set(error.expected.filter(
@@ -117,7 +137,7 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
       : undefined;
   const fix =
     'fix' in error && typeof error.fix === 'string' ? error.fix : undefined;
-  return { code, offset, endOffset, expected, reason, fix };
+  return { code, offset, endOffset, line, column, endLine, endColumn, expected, reason, fix };
 }
 
 type ParserExpectedSummary = {
@@ -393,9 +413,13 @@ export function parserDiagnostic({
     failure?.endOffset === undefined
       ? undefined
       : Math.max(offset, Math.min(source.length, failure.endOffset));
-  const { line, column } = lineColAt(source, offset);
+  const startLoc = failure?.line === undefined || failure.column === undefined
+    ? lineColAt(source, offset)
+    : { line: failure.line, column: failure.column };
   const endLoc =
-    endOffset === undefined ? undefined : lineColAt(source, endOffset);
+    failure?.endLine !== undefined && failure.endColumn !== undefined
+      ? { line: failure.endLine, column: failure.endColumn }
+      : endOffset === undefined ? undefined : lineColAt(source, endOffset);
   const message = error instanceof JessError
     ? error.message
     : error instanceof Error
@@ -425,11 +449,11 @@ export function parserDiagnostic({
       ?? `Check the ${dialect} source against the supported grammar.`,
     file: { name: filePath, path: filePath, fullPath: filePath, source },
     filePath,
-    line,
-    column,
+    line: startLoc.line,
+    column: startLoc.column,
     endLine: endLoc?.line,
     endColumn: endLoc?.column,
-    lines: extractRelevantLines(source, line)
+    lines: extractRelevantLines(source, startLoc.line)
   };
 }
 

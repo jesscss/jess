@@ -1,9 +1,9 @@
 # Parseman combinator cheat sheet
 
-Jess grammar cleanup targets `parseman@0.41.0`.
+Jess grammar cleanup targets `parseman@0.43.0`.
 
 Source checked: `/Users/matthew/git/oss/parser-thing` at `b24c542`.
-Installed package checked: `/Users/matthew/git/oss/jess/node_modules/.pnpm/parseman@0.41.0/node_modules/parseman`.
+Installed package checked: `/Users/matthew/git/oss/jess/node_modules/.pnpm/parseman@0.43.0/node_modules/parseman`.
 
 This is the working grammar-authoring guide for the four host-mode grammar
 files. Use the language production name first, keep rules small, and prefer the

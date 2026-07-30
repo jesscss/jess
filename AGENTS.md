@@ -19,7 +19,7 @@ required to read them.
 shipping compile path). **The physical eight-to-four fold has landed:** each
 dialect now ships AST and CST from one host-mode grammar source. The active work
 is polishing the surviving grammars so they are small, readable, spec-shaped,
-well documented, and idiomatic Parseman 0.41.
+well documented, and idiomatic Parseman 0.43.
 
 **The spec is [`docs/design/GRAMMAR-REBUILD-SPEC.md`](docs/design/GRAMMAR-REBUILD-SPEC.md).
 Read its §0 first** — it states the goal in the owner's own words, the current
@@ -31,7 +31,7 @@ Two things to know before you plan anything:
 
 - **The parseman hostMode floor is paid.** The mechanism that lets one grammar
   file serve both the AST and the CST is parseman's `hostMode`, and the repo now
-  resolves registry `parseman@0.41.0` through `^0.41.0` ranges. Publishing
+  resolves registry `parseman@0.43.0` through `^0.43.0` ranges. Publishing
   future parseman releases is still owner-only. Spec §0.2 says exactly what to
   check and how.
 - **Order is `css` → `less` → `scss` → `jess`.** CSS is the base; the dialects
