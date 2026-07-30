@@ -2140,11 +2140,10 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('admits $(…) expression interpolation in url bodies as a value position', () => {
+  it('admits $(…) expressions but not $[…] lookups in url bodies', () => {
     /*
-     * A url body is a value position (like a quote interior), so the $(…)
-     * arithmetic/expression form is admitted there alongside the $[…] accessor —
-     * unlike identifier-like slots (selectors, property names) which stay accessor-only.
+     * A url body follows the quoted-string `$` policy: `${…}` and `$(…)` are
+     * admitted, while `$[…]` is rejected even though it is a value lookup elsewhere.
      */
     for (const source of ['.asset { image: url($(path)); }']) {
       const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });

@@ -1417,9 +1417,9 @@ const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
 const generalTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 
 /*
- * An unquoted Jess URL keeps literal URL-token bytes and `$[…]` segments as
- * separate grammar facts. Whitespace, quotes, parentheses, and any other `$`
- * form remain outside this closed URL slice rather than becoming raw payload.
+ * An unquoted Jess URL keeps literal URL-token bytes plus `${...}` and `$(...)`
+ * segments as separate grammar facts. `$[...]`, whitespace, quotes, and invalid
+ * parentheses remain outside this closed URL slice rather than becoming raw payload.
  */
 const urlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
