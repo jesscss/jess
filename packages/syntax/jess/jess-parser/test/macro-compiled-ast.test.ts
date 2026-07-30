@@ -13,7 +13,7 @@ test('canonical Jess AST grammar macro-fuses recognition with no runtime import'
     const transformed = await server.transformRequest('/src/grammar.ts');
     expect(transformed?.code).not.toContain('@jesscss/parser-shared');
     expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
-    expect(transformed?.code).toContain('StaticPseudoArgument');
+    expect(transformed?.code).toContain('PseudoSelectorArgument');
     expect(transformed?.code).toContain('GuardCall');
     expect(transformed?.code).toContain('DollarValue');
     expect(transformed?.code).toContain('ExpressionProduct');

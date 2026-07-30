@@ -945,7 +945,7 @@ describe('Jess AST grammar facts', () => {
       'main > .card:not(.muted, .disabled):nth-child(2n+1 of .item)',
       '.tail:nth-child(-n+2), [lang|=en]'
     ]) {
-      const captured = run(jessAstGrammar.StaticSelector, source, { trivia: jessAstGrammar.whitespace });
+      const captured = run(jessAstGrammar.PseudoSelectorList, source, { trivia: jessAstGrammar.whitespace });
       const ordinary = run(jessAstGrammar.Selector, source, { trivia: jessAstGrammar.whitespace });
       expect(captured.ok && captured.unconsumedFrom === null, source).toBe(true);
       expect(ordinary.ok && ordinary.unconsumedFrom === null, source).toBe(true);

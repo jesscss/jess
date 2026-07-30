@@ -8386,7 +8386,7 @@ describe('Less AST grammar facts', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(
-      findCstNodes(cst.tree, 'StaticSelectorPseudo').map(
+      findCstNodes(cst.tree, 'PseudoSelector').map(
         cstLeafValues
       )
     ).toContainEqual([':not(', '.disabled', ')']);

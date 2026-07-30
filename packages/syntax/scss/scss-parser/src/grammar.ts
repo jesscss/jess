@@ -45,7 +45,7 @@ type ScssRules = {
   VariableReference: Combinator<VariableReference>;
   SassInterpolation: Combinator<Interpolation>;
   Quoted: Combinator<Quoted | Interpolation>;
-  StaticQuoted: Combinator<Quoted>;
+  PlainQuoted: Combinator<Quoted>;
   Keyword: Combinator<Keyword>;
   CustomPropertyValue: Combinator<Keyword>;
   Color: Combinator<Color>;
@@ -177,11 +177,10 @@ type ScssRules = {
   InterpolatedSimple: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
   Attribute: Combinator<SimpleSelector>;
+  PseudoSelectorArgumentText: Combinator<string>;
+  PseudoSelectorArgumentTextItem: Combinator<string>;
+  PseudoSelectorArgumentTextTail: Combinator<string>;
   PseudoArgument: Combinator<string>;
-  StaticSelectorPseudoArgument: Combinator<string>;
-  StaticSelectorPseudoItem: Combinator<string>;
-  StaticSelectorPseudoTail: Combinator<string>;
-  StaticPseudoArgument: Combinator<string>;
   StaticPseudoGroup: Combinator<string>;
   StaticPseudoSquare: Combinator<string>;
   PseudoSelector: Combinator<SimpleToken>;
@@ -1233,8 +1232,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * comment. Both arms are closed regex/literal, so disabling trivia here
    * cannot propagate into a shared rule.
    */
-  const StaticQuoted = node<Quoted>(
-    'StaticQuoted',
+  const PlainQuoted = node<Quoted>(
+    'PlainQuoted',
     choice(
       noTrivia(sequence(
         literal('"'),
@@ -2457,7 +2456,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'UseRule',
     sequence(
       regex(/@use(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.StaticQuoted,
+      g.PlainQuoted,
       optional(g.UseNamespace),
       literal(';')
     ),
@@ -2498,7 +2497,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'ForwardRule',
     sequence(
       regex(/@forward(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.StaticQuoted,
+      g.PlainQuoted,
       g.ForwardTail,
       literal(';')
     ),
@@ -2521,7 +2520,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'ForwardTail',
     optional(scanTo(
       literal(';'),
-      { skip: [balanced('(', ')'), g.StaticQuoted] }
+      { skip: [balanced('(', ')'), g.PlainQuoted] }
     )),
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
@@ -3766,7 +3765,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'AtRootPrelude',
     optional(scanTo(
       literal('{'),
-      { skip: [balanced('(', ')'), g.StaticQuoted] }
+      { skip: [balanced('(', ')'), g.PlainQuoted] }
     )),
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
@@ -3779,7 +3778,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('('),
       scanTo(
         literal('{'),
-        { skip: [balanced('(', ')'), g.StaticQuoted] }
+        { skip: [balanced('(', ')'), g.PlainQuoted] }
       )
     ),
     children => any(children.map(requireToken).map(token => token.value).join('').trim())
@@ -4369,7 +4368,7 @@ export const scssFactory = (g: ScssInputRules) => {
 
   /*
    * Keyframe names do not participate in the module-path classification that
-   * deliberately keeps `StaticQuoted` escape-free. They are ordinary
+   * deliberately keeps `PlainQuoted` escape-free. They are ordinary
    * static quoted values, so they reuse the escape-preserving static-value
    * string helper while still leaving a real `#{` opener for the rejected
    * dynamic path.
@@ -4491,29 +4490,6 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * Selector-valued pseudo arguments have the same canonical selector shape as
-   * an ordinary rule header. Parse them through that grammar, then preserve the
-   * canonical text inside the existing SimpleSelector selector representation. Raw
-   * pseudo arguments are deliberately not accepted here: an SCSS interpolation
-   * in one must stay typed rather than being swallowed as a string.
-   */
-  const PseudoArgument = node<string>(
-    'PseudoArgument',
-
-    /*
-     * A pseudo's selector-valued argument is carried by its containing
-     * SimpleSelector text in AST v2, not as a second selector field. Recognize
-     * its static grammar here so it remains accepted without giving a nested
-     * Selector an interpolation escape hatch.
-     */
-    sequence(
-      not(g.MalformedPseudoSelectorNumericArgument),
-      g.StaticPseudoArgument
-    ),
-    joinSourceText
-  );
-
-  /*
    * A static functional pseudo is still a canonical SimpleSelector leaf. Its
    * argument is grammar-recognized (including balanced groups, brackets,
    * strings, and comments) rather than post-parse text recovery. Every chunk
@@ -4552,8 +4528,8 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     joinSourceText
   );
-  const StaticPseudoArgument = node<string>(
-    'StaticPseudoArgument',
+  const PseudoArgument = node<string>(
+    'PseudoArgument',
     oneOrMore(choice(
       g.StaticPseudoGroup,
       g.StaticPseudoSquare,
@@ -4571,8 +4547,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * normalization separate from generic functional pseudo arguments.
    */
   const staticSelectorPseudoChunk = regex(/(?:[^(),\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
-  const StaticSelectorPseudoItem = node<string>(
-    'StaticSelectorPseudoItem',
+  const PseudoSelectorArgumentTextItem = node<string>(
+    'PseudoSelectorArgumentTextItem',
     oneOrMore(choice(
       g.StaticPseudoGroup,
       g.StaticPseudoSquare,
@@ -4582,20 +4558,20 @@ export const scssFactory = (g: ScssInputRules) => {
     )),
     joinSourceText
   );
-  const StaticSelectorPseudoTail = node<string>(
-    'StaticSelectorPseudoTail',
+  const PseudoSelectorArgumentTextTail = node<string>(
+    'PseudoSelectorArgumentTextTail',
     sequence(
       literal(','),
       optional(space),
-      g.StaticSelectorPseudoItem
+      g.PseudoSelectorArgumentTextItem
     ),
     children => `,${requireString(children.at(-1))}`
   );
-  const StaticSelectorPseudoArgument = node<string>(
-    'StaticSelectorPseudoArgument',
+  const PseudoSelectorArgumentText = node<string>(
+    'PseudoSelectorArgumentText',
     sequence(
-      g.StaticSelectorPseudoItem,
-      many(g.StaticSelectorPseudoTail)
+      g.PseudoSelectorArgumentTextItem,
+      many(g.PseudoSelectorArgumentTextTail)
     ),
     joinSourceText
   );
@@ -4679,7 +4655,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       routed(),
       not(g.MalformedPseudoSelectorNumericArgument),
-      g.StaticPseudoArgument,
+      g.PseudoArgument,
       literal(')')
     ),
 
@@ -4713,7 +4689,7 @@ export const scssFactory = (g: ScssInputRules) => {
           g.NthOfKeyword
         )
       )),
-      g.StaticPseudoArgument,
+      g.PseudoArgument,
       literal(')')
     ),
     children => simpleSelector(`${requireToken(children[0]).value}${requireString(children.find(child => typeof child === 'string')).trim()})`)
@@ -4738,10 +4714,10 @@ export const scssFactory = (g: ScssInputRules) => {
       optional(space),
       expect(
         peek(sequence(
-          g.StaticSelectorPseudoArgument,
+          g.PseudoSelectorArgumentText,
           literal(')')
         )),
-        'static selector pseudo argument'
+        'pseudo selector argument'
       ),
       SelectorOnlyPseudoArgument,
       optional(space),
@@ -5101,7 +5077,7 @@ export const scssFactory = (g: ScssInputRules) => {
     VariableReference,
     SassInterpolation,
     Quoted,
-    StaticQuoted,
+    PlainQuoted,
     Keyword,
     CustomPropertyValue,
     Color,
@@ -5233,11 +5209,10 @@ export const scssFactory = (g: ScssInputRules) => {
     InterpolatedSimple,
     Placeholder,
     Attribute,
+    PseudoSelectorArgumentText,
+    PseudoSelectorArgumentTextItem,
+    PseudoSelectorArgumentTextTail,
     PseudoArgument,
-    StaticSelectorPseudoArgument,
-    StaticSelectorPseudoItem,
-    StaticSelectorPseudoTail,
-    StaticPseudoArgument,
     StaticPseudoGroup,
     StaticPseudoSquare,
     PseudoSelector,

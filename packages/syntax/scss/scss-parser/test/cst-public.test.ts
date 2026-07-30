@@ -74,6 +74,19 @@ describe('@jesscss/scss-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('uses contextual CST labels for plain quoted and pseudo-selector syntax', () => {
+    const result = parseScssCst('@use "theme"; .a:not(.b) { color: red; } .c:nth-child(2n) { color: blue; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('PlainQuoted')).toBe(1);
+    expect(grammarTypes.get('PseudoArgument')).toBeGreaterThan(0);
+    expect(grammarTypes.get('PseudoSelectorArgumentText')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorArgumentTextItem')).toBe(1);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+  });
+
   it('preserves direct import CST facts without a split CST-only route', () => {
     const source = '@import "theme.css" layer(tokens) supports((display: grid)) screen;';
     const result = parseScssCst(source);

@@ -251,7 +251,6 @@ type LessRules = {
   RulesetWithExtends: Combinator<Ruleset>;
   NestedRulesetWithExtends: Combinator<Ruleset>;
   Quoted: Combinator<Quoted | Interpolation>;
-  StaticQuoted: Combinator<Quoted>;
   EscapedQuoted: Combinator<Quoted | Interpolation>;
   StaticUrl: Combinator<Url>;
   UrlInterpolation: Combinator<Interpolation>;
@@ -2289,13 +2288,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       return interpolation(parts);
     }
   );
-  // Static (interpolation-free) single/double-quoted body shared by the quoted
+  // Plain (interpolation-free) single/double-quoted body shared by the quoted
   // value, functional-pseudo, and attribute-selector static grammars.
   const staticQuotedBody = choice(
     noTrivia(sequence(literal('"'), many(choice(g.LessSyntaxQuotedDoubleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
     noTrivia(sequence(literal('\''), many(choice(g.LessSyntaxQuotedSingleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
   );
-  const StaticQuoted = node<Quoted>(
+  const plainQuoted = node<Quoted>(
     'Quoted',
     staticQuotedBody,
     (children) => {
@@ -4499,7 +4498,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     otherwise(QueryKeyword)
   );
-  const queryLeaf = choice(g.VariableReferenceChain, g.Dimension, g.Color, g.NamedColor, g.StaticQuoted, QueryIdentOrFunction);
+  const queryLeaf = choice(g.VariableReferenceChain, g.Dimension, g.Color, g.NamedColor, plainQuoted, QueryIdentOrFunction);
   // Media/container query syntax shares CSS's grammar-owned comparison terminal
   // and canonical `Block(paren, Operation)` shape. Less only supplies the additional
   // variable-bearing value leaves; it does not capture a query prelude as raw
@@ -4865,7 +4864,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'Keyframes',
     sequence(
       g.KeyframesAtKeyword,
-      field('prelude', choice(g.AtRuleInterpolation, BareVariableInterpolation, g.EscapedQuoted, g.StaticQuoted, g.Keyword)),
+      field('prelude', choice(g.AtRuleInterpolation, BareVariableInterpolation, g.EscapedQuoted, plainQuoted, g.Keyword)),
       literal('{'),
       // Less permits a detached-ruleset call as a keyframes-body entry. Keep
       // that as the existing typed Reference fact so a parameterized keyframe
@@ -4928,7 +4927,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'StaticAtRuleAtom',
     choice(
       g.EscapedQuoted,
-      g.StaticQuoted,
+      plainQuoted,
       g.Color,
       g.NamedColor,
       g.Dimension,
@@ -5290,11 +5289,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // component of the public pseudo production, not a second parser API.
   // Retain the parsed `SelectorList` rather than collapsing it to text. A
   // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
-  // `args`; `StaticSelectorPseudo` joins the opaque `:global`/`:local`
+  // `args`; `PseudoSelector` joins the opaque `:global`/`:local`
   // fallback via `selectorBranchCanonical`. The parser never bakes the inline
   // `:is(a, b)` spelling — core serialization owns that.
   const staticPseudoArgument = node<SelectorList>(
-    'StaticPseudoArgument',
+    'PseudoSelectorArgument',
     parser({ trivia: staticSelectorTrivia }, g.StaticPseudoSelector),
     children => requireSelectorList(children[0])
   );
@@ -5369,8 +5368,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.LessSyntaxIdentifier,
     optional(literal('('))
   )));
-  const staticSelectorPseudoRouted = node<SimpleToken>(
-    'StaticSelectorPseudo',
+  const pseudoSelectorRouted = node<SimpleToken>(
+    'PseudoSelector',
     sequence(routed(), staticPseudoArgument, literal(')')),
     children => staticSelectorPseudoFrom(
       requireToken(children[0]).value.slice(0, -1),
@@ -5410,7 +5409,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     pseudoOpen,
     caseOf(
       [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':global(', '::global(', ':local(', '::local('],
-      choice(staticSelectorPseudoRouted, interpolatedArgumentPseudoRouted)
+      choice(pseudoSelectorRouted, interpolatedArgumentPseudoRouted)
     ),
     when(
       endsWith('('),
@@ -5426,7 +5425,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     pseudoOpen,
     caseOf(
       [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':global(', '::global(', ':local(', '::local('],
-      staticSelectorPseudoRouted
+      pseudoSelectorRouted
     ),
     when(
       endsWith('('),
@@ -6085,7 +6084,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     RelativeSelector,
     NestedRulesetWithExtends,
     Quoted,
-    StaticQuoted,
     EscapedQuoted,
     StaticUrl,
     UrlInterpolation,
