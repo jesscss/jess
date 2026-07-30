@@ -771,8 +771,10 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.unknownAtRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.duplicateProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.hexColorLength]: DiagnosticSeverity.Error,
+    [LINT_CODES.invalidColorFunctionChannels]: DiagnosticSeverity.Error,
     [LINT_CODES.zeroUnits]: DiagnosticSeverity.Hint,
     [LINT_CODES.fontFaceMissingRequiredProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.propertyIgnoredDueToDisplay]: DiagnosticSeverity.Warning,
 
     /*
      * Parsed-but-never-evaluated SCSS forms. The "Unsupported Sass Features"

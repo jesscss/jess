@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 26;
+export const STABLE_LINT_RULE_SET_VERSION = 28;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -28,6 +28,7 @@ export const LINT_RULE_NAMES = {
   fontFamilyDuplicateNames: 'font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'font-family-no-missing-generic-family-keyword',
   fontFaceMissingRequiredProperties: 'font-face-no-missing-required-properties',
+  propertyIgnoredDueToDisplay: 'property-ignored-due-to-display',
   invalidImportPosition: 'no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'no-duplicate-at-import-rules',
   unknownAnimations: 'no-unknown-animations',
@@ -42,7 +43,7 @@ export const LINT_RULE_NAMES = {
   unmatchableAnbSelectors: 'selector-anb-no-unmatchable',
   unknownTypeSelectors: 'selector-type-no-unknown',
   incompatibleMathFunctionUnits: 'jess/no-incompatible-math-function-units',
-  invalidColorFunctionChannels: 'jess/no-invalid-color-function-channels',
+  invalidColorFunctionChannels: 'color-function-no-invalid-arguments',
   invalidTypedCustomPropertyValue: 'jess/no-invalid-typed-custom-property-value',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
@@ -81,6 +82,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.fontFamilyDuplicateNames]: LINT_CODES.fontFamilyDuplicateNames,
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: LINT_CODES.fontFamilyMissingGeneric,
   [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: LINT_CODES.fontFaceMissingRequiredProperties,
+  [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: LINT_CODES.propertyIgnoredDueToDisplay,
   [LINT_RULE_NAMES.invalidImportPosition]: LINT_CODES.invalidImportPosition,
   [LINT_RULE_NAMES.duplicateAtImportRules]: LINT_CODES.duplicateAtImportRules,
   [LINT_RULE_NAMES.unknownAnimations]: LINT_CODES.unknownAnimations,
@@ -121,6 +123,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.fontFamilyDuplicateNames]: LINT_RULE_NAMES.fontFamilyDuplicateNames,
   [LINT_CODES.fontFamilyMissingGeneric]: LINT_RULE_NAMES.fontFamilyMissingGeneric,
   [LINT_CODES.fontFaceMissingRequiredProperties]: LINT_RULE_NAMES.fontFaceMissingRequiredProperties,
+  [LINT_CODES.propertyIgnoredDueToDisplay]: LINT_RULE_NAMES.propertyIgnoredDueToDisplay,
   [LINT_CODES.invalidImportPosition]: LINT_RULE_NAMES.invalidImportPosition,
   [LINT_CODES.duplicateAtImportRules]: LINT_RULE_NAMES.duplicateAtImportRules,
   [LINT_CODES.unknownAnimations]: LINT_RULE_NAMES.unknownAnimations,
@@ -161,6 +164,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.fontFamilyDuplicateNames]: 'warn',
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
   [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: 'warn',
+  [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: 'warn',
   [LINT_RULE_NAMES.invalidImportPosition]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
   [LINT_RULE_NAMES.unknownAnimations]: 'warn',
@@ -175,7 +179,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unmatchableAnbSelectors]: 'warn',
   [LINT_RULE_NAMES.unknownTypeSelectors]: 'warn',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'warn',
-  [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'warn',
+  [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'error',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
 };
@@ -215,6 +219,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateSelectors]: 'off',
   [LINT_RULE_NAMES.unknownPropertyValues]: 'off',
   [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: 'off',
+  [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: 'off',
   [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'off',
   [LINT_RULE_NAMES.unknownCustomProperties]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
@@ -424,6 +429,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Matches VSCode stylesheet-service fontFaceProperties: CSS @font-face blocks must define both font-family and src; dialect semantic facts remain future work.'
   },
   {
+    code: LINT_CODES.propertyIgnoredDueToDisplay,
+    ruleName: LINT_RULE_NAMES.propertyIgnoredDueToDisplay,
+    title: 'Properties ignored by display',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'vscode-equivalent',
+    notes: 'Matches VSCode stylesheet-service propertyIgnoredDueToDisplay for CSS display:inline-block with non-none float and display:block with vertical-align; dialect semantic facts remain future work.'
+  },
+  {
     code: LINT_CODES.invalidImportPosition,
     ruleName: LINT_RULE_NAMES.invalidImportPosition,
     title: 'Invalid @import positions',
@@ -567,9 +581,9 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     ruleName: LINT_RULE_NAMES.invalidColorFunctionChannels,
     title: 'Invalid color function channels',
     tier: 'css-validity',
-    defaultPolicy: 'warn',
-    comparison: 'jess-only',
-    notes: 'Flags definite invalid rgb()/rgba()/hsl()/hsla() channel arity and channel types while leaving dynamic and nested values unknown.'
+    defaultPolicy: 'error',
+    comparison: 'vscode-equivalent',
+    notes: 'Matches VSCode stylesheet-service argumentsInColorFunction for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors while leaving dynamic and nested values unknown.'
   },
   {
     code: LINT_CODES.invalidTypedCustomPropertyValue,

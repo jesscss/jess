@@ -671,6 +671,35 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('propertyIgnoredDueToDisplay (lint/property-ignored-due-to-display)', () => {
+      it('fires on CSS properties that display mode ignores', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { display: block; vertical-align: middle; }\n.b { display: inline-block; float: left; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/property-ignored-due-to-display');
+
+        expect(diags).toHaveLength(2);
+        expect(diags.map(d => d.severity)).toEqual([2, 2]); // Warning
+        const slices = diags.map(d => doc.getText().slice(doc.offsetAt(d.range.start), doc.offsetAt(d.range.end)));
+        expect(slices).toEqual(['vertical-align: middle', 'float: left']);
+      });
+
+      it('does not fire in dialect files before value facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('less', '.a { display: block; vertical-align: middle; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/property-ignored-due-to-display');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/property-ignored-due-to-display', 'ignore'));
+        const doc = createDocument('css', '.a { display: block; vertical-align: middle; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/property-ignored-due-to-display');
+      });
+    });
+
     describe('duplicateProperties (lint/duplicate-property)', () => {
       it('fires when a property is declared twice in one block', () => {
         const engine = createEngine();
@@ -762,6 +791,33 @@ describe('JessLanguageServiceEngine', () => {
         const doc = createDocument('css', '.a { margin: 0px; }');
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         expect(codesOf(engine, doc.uri)).not.toContain('lint/zero-units');
+      });
+    });
+
+    describe('invalidColorFunctionChannels (lint/invalid-color-function-channels)', () => {
+      it('fires on invalid CSS color function arguments as an error', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: hsl(120 50 50%); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/invalid-color-function-channels');
+
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(1); // Error
+      });
+
+      it('does not fire in dialect files before value facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('less', '.a { color: hsl(120 50 50%); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/invalid-color-function-channels');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/invalid-color-function-channels', 'ignore'));
+        const doc = createDocument('css', '.a { color: hsl(120 50 50%); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/invalid-color-function-channels');
       });
     });
 

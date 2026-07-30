@@ -101,6 +101,8 @@ export default {
       'length-zero-no-unit': 'warn',
       'function-linear-gradient-no-nonstandard-direction': 'warn',
       'font-face-no-missing-required-properties': 'warn',
+      'property-ignored-due-to-display': 'warn',
+      'color-function-no-invalid-arguments': 'error',
       'jess/no-invalid-typed-custom-property-value': 'warn',
       'jess/unsupported-sass-form': 'warn'
     }
@@ -116,7 +118,7 @@ Jess-native names for Jess-only diagnostics.
 
 The current stable rule set is intentionally small and migration-friendly:
 
-| Rule name | Jess diagnostic code | Stylelint comparison |
+| Rule name | Jess diagnostic code | Comparison |
 | --- | --- | --- |
 | `block-no-empty` | `lint/empty-rules` | `block-no-empty` |
 | `property-no-unknown` | `lint/unknown-property` | near `property-no-unknown` |
@@ -138,6 +140,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | near `font-family-no-duplicate-names` |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | near `font-family-no-missing-generic-family-keyword` |
 | `font-face-no-missing-required-properties` | `lint/font-face-missing-required-properties` | VSCode `fontFaceProperties` parity |
+| `property-ignored-due-to-display` | `lint/property-ignored-due-to-display` | VSCode `propertyIgnoredDueToDisplay` parity |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | `no-invalid-position-at-import-rule` |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | `no-duplicate-at-import-rules` |
 | `no-unknown-animations` | `lint/no-unknown-animations` | near `no-unknown-animations` |
@@ -152,7 +155,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `selector-anb-no-unmatchable` | `lint/selector-anb-no-unmatchable` | `selector-anb-no-unmatchable` |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | near `selector-type-no-unknown` |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess value diagnostic |
-| `jess/no-invalid-color-function-channels` | `lint/invalid-color-function-channels` | Jess value diagnostic |
+| `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode `argumentsInColorFunction` parity |
 | `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
 
@@ -160,6 +163,11 @@ Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
 `stylelintComparisonRules()` when building migration reports. The older
 diagnostic-code helpers remain available for tools that already consume Jess
 diagnostic codes.
+
+The rule name is the user-facing configuration key. The diagnostic code is the
+shared problem identity used by diagnostics-core, the language service, JSON
+output, and compatibility aliases. Comparison labels such as "near Stylelint" or
+"VSCode parity" are metadata only.
 
 Parser syntax failures are not lint rules. `jess lint` can surface them as
 diagnostics when `reportSyntax` is enabled, but they are controlled separately
