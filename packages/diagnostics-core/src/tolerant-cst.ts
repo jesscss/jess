@@ -315,6 +315,10 @@ const ANB_PSEUDO_CLASSES = new Set([
   'nth-last-of-type',
   'nth-of-type'
 ]);
+const SELECTOR_ARGUMENT_PSEUDO_CLASSES = new Set(['is', 'not', 'has']);
+const ZERO_SPECIFICITY_PSEUDO_CLASSES = new Set(['where']);
+const ADDITIVE_SELECTOR_ARGUMENT_PSEUDO_CLASSES = new Set(['host', 'host-context']);
+const ADDITIVE_SELECTOR_ARGUMENT_PSEUDO_ELEMENTS = new Set(['slotted']);
 const NTH_ARGUMENT_TYPES = new Set(['PseudoArgument', 'OfTypePseudoArgument']);
 const BASIC_SELECTOR_TYPES = new Set(['BasicSelector']);
 const ATTRIBUTE_SELECTOR_TYPES = new Set(['AttributeSelector']);
@@ -3834,6 +3838,86 @@ function specificityLabel(specificity: SelectorSpecificity): string {
   return `${specificity.a},${specificity.b},${specificity.c}`;
 }
 
+function addSpecificity(left: SelectorSpecificity, right: SelectorSpecificity): SelectorSpecificity {
+  return {
+    a: left.a + right.a,
+    b: left.b + right.b,
+    c: left.c + right.c
+  };
+}
+
+function maxSpecificity(left: SelectorSpecificity | null, right: SelectorSpecificity): SelectorSpecificity {
+  if (left === null) {
+    return right;
+  }
+  if (right.a !== left.a) {
+    return right.a > left.a ? right : left;
+  }
+  if (right.b !== left.b) {
+    return right.b > left.b ? right : left;
+  }
+  return right.c > left.c ? right : left;
+}
+
+function selectorArgumentMaxSpecificity(source: string, node: CssCstNode): SelectorSpecificity | null {
+  let best: SelectorSpecificity | null = null;
+  let supported = true;
+  const visit = (current: CssCstNode) => {
+    if (!supported) {
+      return;
+    }
+    if (SELECTOR_BRANCH_TYPES.has(current.grammarType)) {
+      const specificity = staticSelectorSpecificity(source, current);
+      if (specificity === null) {
+        supported = false;
+        return;
+      }
+      best = maxSpecificity(best, specificity);
+      return;
+    }
+    for (const child of cstChildrenOf(current)) {
+      if (isCstNode(child)) {
+        visit(child);
+      }
+    }
+  };
+  for (const child of cstChildrenOf(node)) {
+    if (isCstNode(child)) {
+      visit(child);
+    }
+  }
+  return supported ? best : null;
+}
+
+function pseudoSelectorSpecificity(source: string, node: CssCstNode, start: number, end: number): SelectorSpecificity | null {
+  const pseudo = pseudoNameSpan(source, start, end);
+  if (pseudo === null) {
+    return null;
+  }
+  const bare = pseudo.bare.toLowerCase();
+  const isPseudoElement = pseudo.colonCount === 2 || LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS.has(bare);
+  if (isPseudoElement) {
+    const base = { a: 0, b: 0, c: 1 };
+    if (!ADDITIVE_SELECTOR_ARGUMENT_PSEUDO_ELEMENTS.has(bare)) {
+      return base;
+    }
+    const argument = selectorArgumentMaxSpecificity(source, node);
+    return argument === null ? base : addSpecificity(base, argument);
+  }
+  if (ZERO_SPECIFICITY_PSEUDO_CLASSES.has(bare)) {
+    return { a: 0, b: 0, c: 0 };
+  }
+  if (SELECTOR_ARGUMENT_PSEUDO_CLASSES.has(bare)) {
+    return selectorArgumentMaxSpecificity(source, node);
+  }
+  const base = { a: 0, b: 1, c: 0 };
+  if (ANB_PSEUDO_CLASSES.has(bare) || ADDITIVE_SELECTOR_ARGUMENT_PSEUDO_CLASSES.has(bare)) {
+    const argument = selectorArgumentMaxSpecificity(source, node);
+    return argument === null ? base : addSpecificity(base, argument);
+  }
+  return base;
+}
+
 function staticSelectorSpecificity(source: string, branch: CssCstNode): SelectorSpecificity | null {
   const start = absoluteStart(branch);
   const end = absoluteEnd(branch);
@@ -3860,21 +3944,14 @@ function staticSelectorSpecificity(source: string, branch: CssCstNode): Selector
       return;
     }
     if (PSEUDO_SELECTOR_TYPES.has(node.grammarType)) {
-      const pseudoText = source.slice(nodeStart, nodeEnd);
-      const pseudo = pseudoNameSpan(source, nodeStart, nodeEnd);
-      if (pseudo === null) {
+      const specificity = pseudoSelectorSpecificity(source, node, nodeStart, nodeEnd);
+      if (specificity === null) {
         supported = false;
         return;
       }
-      if (pseudoText.includes('(')) {
-        supported = false;
-        return;
-      }
-      if (pseudo.colonCount === 2 || LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS.has(pseudo.bare.toLowerCase())) {
-        c++;
-      } else {
-        b++;
-      }
+      a += specificity.a;
+      b += specificity.b;
+      c += specificity.c;
       return;
     }
     if (ATTRIBUTE_SELECTOR_TYPES.has(node.grammarType)) {

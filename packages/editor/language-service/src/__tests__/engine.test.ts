@@ -1016,6 +1016,7 @@ describe('JessLanguageServiceEngine', () => {
       it('keeps selector specificity diagnostics opt-in and filters by configured max', () => {
         const source = [
           '#app .card[data-x]:hover > button { color: red; }',
+          ':is(.card, #hero) .item { color: green; }',
           '.card { color: blue; }'
         ].join('\n');
         const defaults = createEngine();
@@ -1050,7 +1051,8 @@ describe('JessLanguageServiceEngine', () => {
           diagnostic.severity,
           configuredDoc.getText().slice(configuredDoc.offsetAt(diagnostic.range.start), configuredDoc.offsetAt(diagnostic.range.end))
         ])).toEqual([
-          [2, '#app .card[data-x]:hover > button']
+          [2, '#app .card[data-x]:hover > button'],
+          [2, ':is(.card, #hero) .item']
         ]);
       });
 

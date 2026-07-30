@@ -1658,7 +1658,9 @@ describe('collectTolerantDiagnostics', () => {
   it('reports static selector specificity facts for opt-in policy surfaces', () => {
     const source = [
       '#app .card[data-x]:hover > button::before { color: red; }',
-      ':not(#skipped) { color: blue; }'
+      ':not(#skipped) { color: blue; }',
+      ':is(.a, #b) > :where(#c) :not(button.primary) { color: green; }',
+      ':nth-child(2n of .item, #featured) { color: purple; }'
     ].join('\n');
     const result = collectTolerantDiagnostics({
       source,
@@ -1673,7 +1675,10 @@ describe('collectTolerantDiagnostics', () => {
       diagnostic.qualifiers ?? [],
       source.slice(diagnostic.start, diagnostic.end)
     ])).toEqual([
-      ['Selector specificity is "1,3,2"', ['specificity:1,3,2'], '#app .card[data-x]:hover > button::before']
+      ['Selector specificity is "1,3,2"', ['specificity:1,3,2'], '#app .card[data-x]:hover > button::before'],
+      ['Selector specificity is "1,0,0"', ['specificity:1,0,0'], ':not(#skipped)'],
+      ['Selector specificity is "1,1,1"', ['specificity:1,1,1'], ':is(.a, #b) > :where(#c) :not(button.primary)'],
+      ['Selector specificity is "1,1,0"', ['specificity:1,1,0'], ':nth-child(2n of .item, #featured)']
     ]);
   });
 

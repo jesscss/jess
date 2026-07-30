@@ -1571,6 +1571,7 @@ describe('lintText', () => {
     const input = {
       source: [
         '#app .card[data-x]:hover > button { color: red; }',
+        ':is(.card, #hero) .item { color: green; }',
         '.card { color: blue; }'
       ].join('\n'),
       filePath: '/tmp/input.css'
@@ -1616,6 +1617,12 @@ describe('lintText', () => {
         LINT_RULE_NAMES.selectorMaxSpecificity,
         'error',
         '#app .card[data-x]:hover > button'
+      ],
+      [
+        LINT_CODES.selectorMaxSpecificity,
+        LINT_RULE_NAMES.selectorMaxSpecificity,
+        'error',
+        ':is(.card, #hero) .item'
       ]
     ]);
   });
