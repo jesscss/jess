@@ -125,12 +125,14 @@ The current stable rule set is intentionally small and migration-friendly:
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | near `font-family-no-missing-generic-family-keyword` |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | `no-invalid-position-at-import-rule` |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | `no-duplicate-at-import-rules` |
+| `no-duplicate-selectors` | `lint/no-duplicate-selectors` | near `no-duplicate-selectors` |
 | `unit-no-unknown` | `lint/unit-no-unknown` | near `unit-no-unknown` |
 | `function-no-unknown` | `lint/function-no-unknown` | near `function-no-unknown` |
 | `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | near `media-feature-name-no-unknown` |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | near `selector-pseudo-class-no-unknown` |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | near `selector-pseudo-element-no-unknown` |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | near `selector-type-no-unknown` |
+| `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
 
 Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
@@ -174,7 +176,8 @@ Use this split as the migration rule:
 
 Jess provides `STYLELINT_COMPARISON_LINT_CONFIG` only for apples-to-apples
 checks against rules that have a close native diagnostic. It intentionally
-excludes syntax diagnostics and Jess-only support diagnostics.
+excludes syntax diagnostics, Jess-only support diagnostics, and stable rules
+whose useful Jess behavior intentionally differs from Stylelint edge cases.
 
 The local comparison harness is opt-in:
 

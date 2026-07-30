@@ -32,6 +32,8 @@ export const LINT_CODES = {
   unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
   unknownTypeSelectors: 'lint/selector-type-no-unknown',
+  duplicateSelectors: 'lint/no-duplicate-selectors',
+  incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -52,6 +54,11 @@ const KNOWN_CSS_UNITS = new Set([
   'hz', 'khz',
   'dpi', 'dpcm', 'dppx'
 ]);
+const ANGLE_UNITS = new Set(['deg', 'grad', 'turn', 'rad']);
+const TIME_UNITS = new Set(['s', 'ms']);
+const FREQUENCY_UNITS = new Set(['hz', 'khz']);
+const RESOLUTION_UNITS = new Set(['dpi', 'dpcm', 'dppx', 'x']);
+const MATH_FUNCTION_NAMES = new Set(['min', 'max', 'clamp']);
 
 const DIALECT_AT_RULES: Record<JessLanguage, Set<string>> = {
   css: new Set(),
@@ -86,6 +93,7 @@ const ATRULE_TYPES = new Set([
 const DECLARATION_TYPES = new Set(['Declaration', 'DirectScssDeclaration', 'DirectJessDeclaration']);
 const CUSTOM_DECLARATION_TYPES = new Set(['CustomDeclaration']);
 const DIMENSION_TYPES = new Set(['Dimension', 'DirectScssDimension', 'DirectJessDimension']);
+const PERCENTAGE_TYPES = new Set(['Percentage']);
 const CUSTOM_PROPERTY_VALUE_TYPES = new Set(['CustomPropertyValue']);
 const KEYFRAMES_TYPES = new Set(['Keyframes']);
 const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
@@ -95,6 +103,8 @@ const FUNCTION_TYPES = new Set(['Call', 'StaticCall', 'VarCall', 'FunctionCall',
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
 const BASIC_SELECTOR_TYPES = new Set(['BasicSelector']);
+const SELECTOR_LIST_TYPES = new Set(['SelectorList', 'TopLevelSelectorList']);
+const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector', 'RelativeSelector']);
 const LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS = new Set(['before', 'after', 'first-line', 'first-letter']);
 const IGNORED_TYPE_SELECTOR_PSEUDO_CLASSES = new Set([
   'active-view-transition-type',
@@ -180,6 +190,7 @@ type VisitContext = {
   readonly inUrlFunction: boolean;
   readonly inIgnoredTypeSelectorPseudo: boolean;
   readonly allowResolutionXUnit: boolean;
+  readonly selectorLists: Map<string, SelectorSeen>;
 };
 
 type FontFamilyPart = {
@@ -195,7 +206,31 @@ type ImportKey = {
   readonly target: string;
 };
 
-const ROOT_VISIT_CONTEXT: VisitContext = {
+type NumericKind = 'number' | 'length' | 'angle' | 'time' | 'frequency' | 'resolution' | 'percentage' | 'flex';
+
+type MathArgumentFact = {
+  readonly kind: NumericKind;
+  readonly text: string;
+  readonly span: DiagnosticSpan;
+};
+
+type MathUnitMismatch = {
+  readonly functionName: string;
+  readonly expected: MathArgumentFact;
+  readonly actual: MathArgumentFact;
+};
+
+type SelectorSeen = {
+  readonly line: number;
+};
+
+type SelectorBranchFact = {
+  readonly key: string;
+  readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+const ROOT_VISIT_CONTEXT_BASE = {
   inVarCall: false,
   inDeclaration: false,
   inMediaAtRule: false,
@@ -548,6 +583,136 @@ function dimensionUnitSpan(source: string, start: number, end: number): { unit: 
   return i === end ? { unit: source.slice(unitStart, end), start: unitStart, end } : null;
 }
 
+function numericKindOfUnit(unit: string): NumericKind | null {
+  const lower = unit.toLowerCase();
+  if (lower === '%') {
+    return 'percentage';
+  }
+  if (lower === 'fr') {
+    return 'flex';
+  }
+  if (ANGLE_UNITS.has(lower)) {
+    return 'angle';
+  }
+  if (TIME_UNITS.has(lower)) {
+    return 'time';
+  }
+  if (FREQUENCY_UNITS.has(lower)) {
+    return 'frequency';
+  }
+  if (RESOLUTION_UNITS.has(lower)) {
+    return 'resolution';
+  }
+  if (LENGTH_UNITS.has(lower)) {
+    return 'length';
+  }
+  return null;
+}
+
+function numberLiteralSpan(source: string, start: number, end: number): { text: string; start: number; end: number } | null {
+  const trimmed = trimOffsets(source.slice(start, end), start);
+  if (trimmed.start >= trimmed.end) {
+    return null;
+  }
+  const text = source.slice(trimmed.start, trimmed.end);
+  if (!/^[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?)$/.test(text)) {
+    return null;
+  }
+  return { text, start: trimmed.start, end: trimmed.end };
+}
+
+function bareDimensionOrPercentageFact(source: string, arg: CssCstNode): MathArgumentFact | null {
+  const argStart = absoluteStart(arg);
+  const argEnd = absoluteEnd(arg);
+  const trimmed = trimOffsets(source.slice(argStart, argEnd), argStart);
+  let found: CssCstNode | null = null;
+  const visit = (node: CssCstNode) => {
+    if (found === null && (DIMENSION_TYPES.has(node.grammarType) || PERCENTAGE_TYPES.has(node.grammarType))) {
+      found = node;
+      return;
+    }
+    for (const child of cstChildrenOf(node)) {
+      if (isCstNode(child)) {
+        visit(child);
+      }
+    }
+  };
+  visit(arg);
+  if (found === null) {
+    return null;
+  }
+  const valueStart = absoluteStart(found);
+  const valueEnd = absoluteEnd(found);
+  if (valueStart !== trimmed.start || valueEnd !== trimmed.end) {
+    return null;
+  }
+  if (PERCENTAGE_TYPES.has(found.grammarType)) {
+    return {
+      kind: 'percentage',
+      text: source.slice(valueStart, valueEnd),
+      span: found.span
+    };
+  }
+  const unitSpan = dimensionUnitSpan(source, valueStart, valueEnd);
+  if (unitSpan === null) {
+    return null;
+  }
+  const kind = numericKindOfUnit(unitSpan.unit);
+  if (kind === null) {
+    return null;
+  }
+  return {
+    kind,
+    text: source.slice(valueStart, valueEnd),
+    span: found.span
+  };
+}
+
+function mathArgumentFact(source: string, arg: CssCstNode): MathArgumentFact | null {
+  const start = absoluteStart(arg);
+  const end = absoluteEnd(arg);
+  const number = numberLiteralSpan(source, start, end);
+  if (number !== null) {
+    return {
+      kind: 'number',
+      text: number.text,
+      span: spanAtOrContaining(arg, number.start, number.end)
+    };
+  }
+  return bareDimensionOrPercentageFact(source, arg);
+}
+
+function areMathKindsDefinitelyIncompatible(a: NumericKind, b: NumericKind): boolean {
+  if (a === b) {
+    return false;
+  }
+  return a !== 'percentage' && b !== 'percentage';
+}
+
+function incompatibleMathFunctionUnits(source: string, node: CssCstNode, functionName: string): MathUnitMismatch | null {
+  const args: MathArgumentFact[] = [];
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child) || child.grammarType !== 'ValueSequence') {
+      continue;
+    }
+    const fact = mathArgumentFact(source, child);
+    if (fact !== null) {
+      args.push(fact);
+    }
+  }
+  if (args.length < 2) {
+    return null;
+  }
+  const expected = args[0]!;
+  for (let i = 1; i < args.length; i++) {
+    const actual = args[i]!;
+    if (areMathKindsDefinitelyIncompatible(expected.kind, actual.kind)) {
+      return { functionName, expected, actual };
+    }
+  }
+  return null;
+}
+
 function isResolutionMediaFeatureDimension(source: string, dimensionStart: number): boolean {
   const open = source.lastIndexOf('(', dimensionStart);
   if (open < 0) {
@@ -564,6 +729,15 @@ function isResolutionMediaFeatureDimension(source: string, dimensionStart: numbe
 function firstChildNodeOf(node: CssCstNode, grammarType: string): CssCstNode | undefined {
   for (const child of cstChildrenOf(node)) {
     if (isCstNode(child) && child.grammarType === grammarType) {
+      return child;
+    }
+  }
+  return undefined;
+}
+
+function firstChildNodeMatching(node: CssCstNode, grammarTypes: ReadonlySet<string>): CssCstNode | undefined {
+  for (const child of cstChildrenOf(node)) {
+    if (isCstNode(child) && grammarTypes.has(child.grammarType)) {
       return child;
     }
   }
@@ -588,6 +762,115 @@ function trimOffsets(value: string, absoluteOffset: number): { start: number; en
     end--;
   }
   return { start: absoluteOffset + start, end: absoluteOffset + end };
+}
+
+function selectorDisplay(source: string, start: number, end: number): string {
+  const trimmed = trimOffsets(source.slice(start, end), start);
+  return source.slice(trimmed.start, trimmed.end);
+}
+
+function normalizedSelectorText(source: string, start: number, end: number): string {
+  let out = '';
+  let quote = 0;
+  let pendingSpace = false;
+  for (let i = start; i < end; i++) {
+    const code = source.charCodeAt(i);
+    if (quote !== 0) {
+      out += source[i];
+      if (code === 92 /* \ */ && i + 1 < end) {
+        i++;
+        out += source[i];
+        continue;
+      }
+      if (code === quote) {
+        quote = 0;
+      }
+      continue;
+    }
+    if (code === 34 /* " */ || code === 39 /* ' */) {
+      if (pendingSpace && out.length > 0 && !isSelectorTightAfter(out.charCodeAt(out.length - 1))) {
+        out += ' ';
+      }
+      pendingSpace = false;
+      quote = code;
+      out += source[i];
+      continue;
+    }
+    if (code === 47 /* / */ && i + 1 < end && source.charCodeAt(i + 1) === 42 /* * */) {
+      pendingSpace = true;
+      i += 2;
+      while (i < end && !(source.charCodeAt(i) === 42 /* * */ && i + 1 < end && source.charCodeAt(i + 1) === 47 /* / */)) {
+        i++;
+      }
+      if (i < end) {
+        i++;
+      }
+      continue;
+    }
+    if (code === 9 || code === 10 || code === 12 || code === 13 || code === 32) {
+      pendingSpace = true;
+      continue;
+    }
+    if (isSelectorTightBefore(code)) {
+      out = out.trimEnd();
+      pendingSpace = false;
+      out += source[i];
+      continue;
+    }
+    if (pendingSpace && out.length > 0 && !isSelectorTightAfter(out.charCodeAt(out.length - 1))) {
+      out += ' ';
+    }
+    pendingSpace = false;
+    out += source[i];
+  }
+  return out.trim();
+}
+
+function isSelectorTightBefore(code: number): boolean {
+  return code === 41 /* ) */
+    || code === 44 /* , */
+    || code === 61 /* = */
+    || code === 62 /* > */
+    || code === 93 /* ] */
+    || code === 124 /* | */
+    || code === 126 /* ~ */
+    || code === 43;
+}
+
+function isSelectorTightAfter(code: number): boolean {
+  return code === 40 /* ( */
+    || code === 44 /* , */
+    || code === 61 /* = */
+    || code === 62 /* > */
+    || code === 91 /* [ */
+    || code === 124 /* | */
+    || code === 126 /* ~ */
+    || code === 43;
+}
+
+function selectorBranches(source: string, selectorList: CssCstNode): readonly SelectorBranchFact[] {
+  const branches: SelectorBranchFact[] = [];
+  for (const child of cstChildrenOf(selectorList)) {
+    if (!isCstNode(child) || !SELECTOR_BRANCH_TYPES.has(child.grammarType)) {
+      continue;
+    }
+    const start = absoluteStart(child);
+    const end = absoluteEnd(child);
+    const key = normalizedSelectorText(source, start, end);
+    if (key.length === 0) {
+      continue;
+    }
+    branches.push({
+      key,
+      display: selectorDisplay(source, start, end),
+      span: child.span
+    });
+  }
+  return branches;
+}
+
+function selectorListKey(branches: readonly SelectorBranchFact[]): string {
+  return branches.map(branch => branch.key).sort().join('\n');
 }
 
 function unquoteFontFamily(raw: string): { value: string; quoted: boolean } {
@@ -1291,7 +1574,7 @@ export function cstLintDiagnostics(
     out.push(diagnostic(code, severity, message, span, filePath));
   };
 
-  const visit = (node: CssCstNode, context: VisitContext = ROOT_VISIT_CONTEXT) => {
+  const visit = (node: CssCstNode, context: VisitContext) => {
     const start = absoluteStart(node);
     const end = absoluteEnd(node);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
@@ -1319,8 +1602,46 @@ export function cstLintDiagnostics(
       inKeyframeBlock: context.inKeyframeBlock || KEYFRAME_BLOCK_TYPES.has(gt),
       inUrlFunction: context.inUrlFunction || isUrlFunction,
       inIgnoredTypeSelectorPseudo: context.inIgnoredTypeSelectorPseudo || (gt === 'PseudoSelector' && ignoresTypeSelectorsInPseudo(source, start, end)),
-      allowResolutionXUnit: context.allowResolutionXUnit || isImageSetFunction || declarationName === 'image-resolution'
+      allowResolutionXUnit: context.allowResolutionXUnit || isImageSetFunction || declarationName === 'image-resolution',
+      selectorLists: context.selectorLists
     };
+
+    if (language === 'css' && RULESET_TYPES.has(gt) && !nodeContext.inKeyframeBlock) {
+      const selectorList = firstChildNodeMatching(node, SELECTOR_LIST_TYPES);
+      if (selectorList !== undefined) {
+        const branches = selectorBranches(source, selectorList);
+        const seenBranches = new Map<string, SelectorSeen>();
+        for (const branch of branches) {
+          const previous = seenBranches.get(branch.key);
+          if (previous !== undefined) {
+            push(
+              LINT_CODES.duplicateSelectors,
+              'warning',
+              `Duplicate selector "${branch.display}", first used at line ${previous.line}`,
+              branch.span
+            );
+          } else {
+            seenBranches.set(branch.key, { line: branch.span.startLine ?? 1 });
+          }
+        }
+        if (branches.length > 0) {
+          const key = selectorListKey(branches);
+          const previous = nodeContext.selectorLists.get(key);
+          if (previous !== undefined) {
+            const selectorStart = absoluteStart(selectorList);
+            const selectorEnd = absoluteEnd(selectorList);
+            push(
+              LINT_CODES.duplicateSelectors,
+              'warning',
+              `Duplicate selector "${selectorDisplay(source, selectorStart, selectorEnd)}", first used at line ${previous.line}`,
+              selectorList.span
+            );
+          } else {
+            nodeContext.selectorLists.set(key, { line: selectorList.span.startLine ?? 1 });
+          }
+        }
+      }
+    }
 
     if (RULESET_TYPES.has(gt)) {
       const open = source.indexOf('{', start);
@@ -1459,6 +1780,17 @@ export function cstLintDiagnostics(
           `Unknown function "${functionName}"`,
           spanAtOrContaining(node, start, start + functionName.length)
         );
+      }
+      if (MATH_FUNCTION_NAMES.has(functionName)) {
+        const mismatch = incompatibleMathFunctionUnits(source, node, functionName);
+        if (mismatch !== null) {
+          push(
+            LINT_CODES.incompatibleMathFunctionUnits,
+            'warning',
+            `Incompatible units in ${mismatch.functionName}(): ${mismatch.expected.text} is ${mismatch.expected.kind} but ${mismatch.actual.text} is ${mismatch.actual.kind}`,
+            mismatch.actual.span
+          );
+        }
       }
     }
 
@@ -1606,6 +1938,12 @@ export function cstLintDiagnostics(
       }
     }
 
+    const childContext: VisitContext = RULESET_TYPES.has(gt) || ATRULE_TYPES.has(gt)
+      ? {
+          ...nodeContext,
+          selectorLists: new Map()
+        }
+      : nodeContext;
     let seenProps: Map<string, boolean> | undefined;
     for (const child of cstChildrenOf(node)) {
       if (!isCstNode(child)) {
@@ -1625,11 +1963,14 @@ export function cstLintDiagnostics(
           }
         }
       }
-      visit(child, nodeContext);
+      visit(child, childContext);
     }
   };
 
-  visit(root);
+  visit(root, {
+    ...ROOT_VISIT_CONTEXT_BASE,
+    selectorLists: new Map()
+  });
 
   if (tolerantSourceScan) {
     if (language === 'css') {

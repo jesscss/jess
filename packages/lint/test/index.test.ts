@@ -34,12 +34,14 @@ describe('stable rule set', () => {
       LINT_CODES.fontFamilyMissingGeneric,
       LINT_CODES.invalidImportPosition,
       LINT_CODES.duplicateAtImportRules,
+      LINT_CODES.duplicateSelectors,
       LINT_CODES.unknownUnits,
       LINT_CODES.unknownFunctions,
       LINT_CODES.unknownMediaFeatureNames,
       LINT_CODES.unknownPseudoClasses,
       LINT_CODES.unknownPseudoElements,
       LINT_CODES.unknownTypeSelectors,
+      LINT_CODES.incompatibleMathFunctionUnits,
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
@@ -56,15 +58,17 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
       LINT_RULE_NAMES.invalidImportPosition,
       LINT_RULE_NAMES.duplicateAtImportRules,
+      LINT_RULE_NAMES.duplicateSelectors,
       LINT_RULE_NAMES.unknownUnits,
       LINT_RULE_NAMES.unknownFunctions,
       LINT_RULE_NAMES.unknownMediaFeatureNames,
       LINT_RULE_NAMES.unknownPseudoClasses,
       LINT_RULE_NAMES.unknownPseudoElements,
       LINT_RULE_NAMES.unknownTypeSelectors,
+      LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(9);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(11);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -94,6 +98,9 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.zeroUnits
     ].sort());
     expect(STYLELINT_COMPARISON_LINT_CONFIG.reportSyntax).toBe(false);
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateSelectors]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unsupportedSassForm]).toBe('off');
   });
 });
 
@@ -282,6 +289,28 @@ describe('lintText', () => {
     ]);
   });
 
+  it('applies policy to duplicate selector diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { color: red; }\n.a { color: blue; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.duplicateSelectors]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.duplicateSelectors, 'error']
+    ]);
+  });
+
   it('applies policy to unknown unit diagnostics', async () => {
     const result = await lintText(
       {
@@ -391,6 +420,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownTypeSelectors, 'error']
+    ]);
+  });
+
+  it('applies policy to incompatible math function unit diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { width: min(1px, 2s); }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.incompatibleMathFunctionUnits, 'error']
     ]);
   });
 });

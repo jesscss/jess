@@ -254,7 +254,7 @@ async function runBenchmark(source, filePath, language) {
   }
 
   const cases = [
-    { label: 'Jess lint stable rules', run: () => runJessLint(source, filePath, language), samples: [] },
+    { label: 'Jess lint comparison config', run: () => runJessLint(source, filePath, language), samples: [] },
     { label: 'Stylelint comparable rules', run: () => runStylelint(source, filePath, language), samples: [] }
   ];
 

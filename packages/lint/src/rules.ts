@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 9;
+export const STABLE_LINT_RULE_SET_VERSION = 11;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -21,12 +21,14 @@ export const LINT_RULE_NAMES = {
   fontFamilyMissingGeneric: 'font-family-no-missing-generic-family-keyword',
   invalidImportPosition: 'no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'no-duplicate-at-import-rules',
+  duplicateSelectors: 'no-duplicate-selectors',
   unknownUnits: 'unit-no-unknown',
   unknownFunctions: 'function-no-unknown',
   unknownMediaFeatureNames: 'media-feature-name-no-unknown',
   unknownPseudoClasses: 'selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'selector-pseudo-element-no-unknown',
   unknownTypeSelectors: 'selector-type-no-unknown',
+  incompatibleMathFunctionUnits: 'jess/no-incompatible-math-function-units',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
 
@@ -57,12 +59,14 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: LINT_CODES.fontFamilyMissingGeneric,
   [LINT_RULE_NAMES.invalidImportPosition]: LINT_CODES.invalidImportPosition,
   [LINT_RULE_NAMES.duplicateAtImportRules]: LINT_CODES.duplicateAtImportRules,
+  [LINT_RULE_NAMES.duplicateSelectors]: LINT_CODES.duplicateSelectors,
   [LINT_RULE_NAMES.unknownUnits]: LINT_CODES.unknownUnits,
   [LINT_RULE_NAMES.unknownFunctions]: LINT_CODES.unknownFunctions,
   [LINT_RULE_NAMES.unknownMediaFeatureNames]: LINT_CODES.unknownMediaFeatureNames,
   [LINT_RULE_NAMES.unknownPseudoClasses]: LINT_CODES.unknownPseudoClasses,
   [LINT_RULE_NAMES.unknownPseudoElements]: LINT_CODES.unknownPseudoElements,
   [LINT_RULE_NAMES.unknownTypeSelectors]: LINT_CODES.unknownTypeSelectors,
+  [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: LINT_CODES.incompatibleMathFunctionUnits,
   [LINT_RULE_NAMES.unsupportedSassForm]: LINT_CODES.unsupportedSassForm
 };
 
@@ -80,12 +84,14 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.fontFamilyMissingGeneric]: LINT_RULE_NAMES.fontFamilyMissingGeneric,
   [LINT_CODES.invalidImportPosition]: LINT_RULE_NAMES.invalidImportPosition,
   [LINT_CODES.duplicateAtImportRules]: LINT_RULE_NAMES.duplicateAtImportRules,
+  [LINT_CODES.duplicateSelectors]: LINT_RULE_NAMES.duplicateSelectors,
   [LINT_CODES.unknownUnits]: LINT_RULE_NAMES.unknownUnits,
   [LINT_CODES.unknownFunctions]: LINT_RULE_NAMES.unknownFunctions,
   [LINT_CODES.unknownMediaFeatureNames]: LINT_RULE_NAMES.unknownMediaFeatureNames,
   [LINT_CODES.unknownPseudoClasses]: LINT_RULE_NAMES.unknownPseudoClasses,
   [LINT_CODES.unknownPseudoElements]: LINT_RULE_NAMES.unknownPseudoElements,
   [LINT_CODES.unknownTypeSelectors]: LINT_RULE_NAMES.unknownTypeSelectors,
+  [LINT_CODES.incompatibleMathFunctionUnits]: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
   [LINT_CODES.unsupportedSassForm]: LINT_RULE_NAMES.unsupportedSassForm
 };
 
@@ -103,12 +109,14 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
   [LINT_RULE_NAMES.invalidImportPosition]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
+  [LINT_RULE_NAMES.duplicateSelectors]: 'warn',
   [LINT_RULE_NAMES.unknownUnits]: 'warn',
   [LINT_RULE_NAMES.unknownFunctions]: 'warn',
   [LINT_RULE_NAMES.unknownMediaFeatureNames]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoClasses]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoElements]: 'warn',
   [LINT_RULE_NAMES.unknownTypeSelectors]: 'warn',
+  [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
 };
 
@@ -132,6 +140,12 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownPseudoClasses]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoElements]: 'warn',
   [LINT_RULE_NAMES.unknownTypeSelectors]: 'warn'
+};
+
+const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
+  [LINT_RULE_NAMES.duplicateSelectors]: 'off',
+  [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
+  [LINT_RULE_NAMES.unsupportedSassForm]: 'off'
 };
 
 export const STABLE_LINT_RULES: readonly StableLintRule[] = [
@@ -266,6 +280,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags repeated @import targets with the same authored options and conditions in one file.'
   },
   {
+    code: LINT_CODES.duplicateSelectors,
+    ruleName: LINT_RULE_NAMES.duplicateSelectors,
+    title: 'Duplicate selectors',
+    tier: 'maintainability',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'no-duplicate-selectors',
+    notes: 'Flags duplicate CSS selector-list entries and duplicate selector lists among sibling rules; dialect nested selector resolution waits for selector facts.'
+  },
+  {
     code: LINT_CODES.unknownUnits,
     ruleName: LINT_RULE_NAMES.unknownUnits,
     title: 'Unknown units',
@@ -326,6 +350,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags unknown CSS type selectors using HTML, SVG, and MathML metadata; custom elements and dialect selectors are intentionally skipped.'
   },
   {
+    code: LINT_CODES.incompatibleMathFunctionUnits,
+    ruleName: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
+    title: 'Incompatible math function units',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags definite CSS min()/max()/clamp() numeric-kind mismatches while leaving dynamic, percentage, and compound arguments unknown.'
+  },
+  {
     code: LINT_CODES.unsupportedSassForm,
     ruleName: LINT_RULE_NAMES.unsupportedSassForm,
     title: 'Unsupported Sass forms',
@@ -343,7 +376,10 @@ export const RECOMMENDED_LINT_CONFIG: LintConfig = {
 
 export const STYLELINT_COMPARISON_LINT_CONFIG: LintConfig = {
   reportSyntax: false,
-  rules: COMPARISON_RULES
+  rules: {
+    ...COMPARISON_DISABLED_RULES,
+    ...COMPARISON_RULES
+  }
 };
 
 function isLintRuleName(ruleName: string): ruleName is LintRuleName {

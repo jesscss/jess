@@ -65,12 +65,14 @@ a `jess/` prefix.
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | Stylelint-equivalent |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
+| `no-duplicate-selectors` | `lint/no-duplicate-selectors` | Stylelint-near |
 | `unit-no-unknown` | `lint/unit-no-unknown` | Stylelint-near |
 | `function-no-unknown` | `lint/function-no-unknown` | Stylelint-near |
 | `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | Stylelint-near |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | Stylelint-near |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | Stylelint-near |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | Stylelint-near |
+| `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess-only value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -128,15 +130,21 @@ pnpm --filter @jesscss/lint bench:stylelint
 ```
 
 Current CSS benchmark evidence on `packages/jess/benchmark/benchmark.css`
-using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 236-finding rule set:
+using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 236-finding
+comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint stable rules | `23.38 ms/op` |
-| Stylelint comparable rules | `28.00 ms/op` |
+| Jess lint comparison config | `20.84 ms/op` |
+| Stylelint comparable rules | `27.42 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
+
+`no-duplicate-selectors` is stable and recommended, but it is not part of the
+matched comparison config yet: Stylelint skips selectors containing `//` as
+non-standard syntax, while Jess treats valid CSS attribute selectors such as
+`a[href^="http://"]` as duplicate-selector candidates.
 
 ## Stylelint parity backlog
 
@@ -151,7 +159,7 @@ can detect over authored source.
 | Landed | Custom properties | `custom-property-no-missing-var-function` | Flags `color: --x`; suppresses inside custom-property declarations and `var()`. |
 | Landed | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement after style rules or blocking at-rules. Jess `@-import` is separate. |
 | Landed | Duplicate imports | `no-duplicate-at-import-rules` | Flags repeated same-file imports with the same target/options/conditions; import-graph duplicate modules remain Jess-only semantic work. |
-| P1 | Duplicate selectors | `no-duplicate-selectors` | Needs selector normalization over the canonical selector AST. |
+| Landed | Duplicate selectors | `no-duplicate-selectors` | CSS selector-list duplicates are CST-owned: duplicate entries inside one list and duplicate whole lists among sibling rules. Dialect nested resolution still needs selector facts. |
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
 | Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Checks definite `font-family` values; dynamic values stay unknown. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
@@ -230,6 +238,11 @@ The first value diagnostic should be math-function argument compatibility for
 - determine whether all args can resolve to a common type;
 - preserve unresolved variables/interpolation as unknown instead of guessing;
 - report only definite mismatches such as `min(1px, 2s)`.
+
+Status: landed as `jess/no-incompatible-math-function-units` for CSS-authored
+bare numeric arguments. It reports definite non-percentage kind mismatches and
+leaves dynamic, percentage, nested, or compound math expressions for future
+value facts.
 
 Follow-on value/type diagnostics:
 
