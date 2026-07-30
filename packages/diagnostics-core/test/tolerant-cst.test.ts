@@ -612,6 +612,42 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidColorFunctionChannels)).toBe(false);
   });
 
+  it('reports definite invalid typed custom property initial values', () => {
+    const source = [
+      '@property --gap { syntax: "<length>"; initial-value: red; inherits: false; }',
+      '@property --count { syntax: "<integer>"; initial-value: 1.5; inherits: false; }',
+      '@property --free { syntax: "*"; initial-value: red; inherits: false; }',
+      '@property --dynamic { syntax: "<length>"; initial-value: var(--gap); inherits: false; }',
+      '@property --ok-length { syntax: "<length>"; initial-value: 0; inherits: false; }',
+      '@property --ok-named-color { syntax: "<color>"; initial-value: red; inherits: false; }',
+      '@property --ok-color { syntax: "<color>"; initial-value: rgb(0 0 0); inherits: false; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const typedValues = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.invalidTypedCustomPropertyValue);
+
+    expect(typedValues.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Initial value "red" does not match @property syntax "<length>"', source.indexOf('red'), source.indexOf('red') + 'red'.length],
+      ['Initial value "1.5" does not match @property syntax "<integer>"', source.indexOf('1.5'), source.indexOf('1.5') + '1.5'.length]
+    ]);
+  });
+
+  it('does not report invalid typed custom property values in dialect files before value facts exist', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '@property --gap { syntax: "<length>"; initial-value: red; inherits: false; }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '@property --gap { syntax: "<length>"; initial-value: red; inherits: false; }',
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidTypedCustomPropertyValue)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidTypedCustomPropertyValue)).toBe(false);
+  });
+
   it('reports unknown CSS media feature names', () => {
     const source = '@media (min-width: 1px) and (future-feature: 3) and (600px < project-range < 900px) and (-webkit-device-pixel-ratio: 2) { .a { color: red; } }\n@container (future-feature: 3) { .a { color: red; } }';
     const result = collectTolerantDiagnostics({

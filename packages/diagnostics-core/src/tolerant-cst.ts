@@ -1,4 +1,5 @@
 import { parseCssDiagnosticCst, parseCssDiagnosticDoc, type CssCstChild, type CssCstNode, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser';
+import { namedColor } from '@jesscss/core';
 import { parseJessDiagnosticCst, parseJessDiagnosticDoc } from '@jesscss/jess-parser/cst';
 import { parseLessDiagnosticCst, parseLessDiagnosticDoc } from '@jesscss/less-parser/cst';
 import { parseScssDiagnosticCst, parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst';
@@ -44,6 +45,7 @@ export const LINT_CODES = {
   duplicateSelectors: 'lint/no-duplicate-selectors',
   incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
   invalidColorFunctionChannels: 'lint/invalid-color-function-channels',
+  invalidTypedCustomPropertyValue: 'lint/invalid-typed-custom-property-value',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -375,6 +377,47 @@ type ColorChannelFact = {
 type ColorFunctionChannelProblem = {
   readonly message: string;
   readonly span: DiagnosticSpan;
+};
+
+type TypedCustomPropertySyntaxKind =
+  | 'any'
+  | 'number'
+  | 'integer'
+  | 'length'
+  | 'percentage'
+  | 'length-percentage'
+  | 'angle'
+  | 'time'
+  | 'resolution'
+  | 'color';
+
+type TypedCustomPropertySyntax = {
+  readonly raw: string;
+  readonly kind: TypedCustomPropertySyntaxKind;
+};
+
+type TypedCustomPropertyInitialKind =
+  | 'number'
+  | 'integer'
+  | 'length'
+  | 'percentage'
+  | 'angle'
+  | 'time'
+  | 'resolution'
+  | 'color'
+  | 'keyword'
+  | 'unknown';
+
+type TypedCustomPropertyInitialValue = {
+  readonly text: string;
+  readonly kind: TypedCustomPropertyInitialKind;
+  readonly numberValue: number | null;
+  readonly span: DiagnosticSpan;
+};
+
+type TypedCustomPropertyValueProblem = {
+  readonly syntax: TypedCustomPropertySyntax;
+  readonly value: TypedCustomPropertyInitialValue;
 };
 
 type SelectorSeen = {
@@ -1567,6 +1610,171 @@ function invalidColorFunctionChannels(source: string, node: CssCstNode, function
   return null;
 }
 
+function declarationValueNode(node: CssCstNode): CssCstNode | null {
+  return firstChildNodeOf(node, 'ValueList') ?? null;
+}
+
+function typedCustomPropertySyntax(source: string, node: CssCstNode): TypedCustomPropertySyntax | null {
+  const value = declarationValueNode(node);
+  if (value === null) {
+    return null;
+  }
+  const start = absoluteStart(value);
+  const end = absoluteEnd(value);
+  const trimmed = trimOffsets(source.slice(start, end), start);
+  if (trimmed.end - trimmed.start < 2) {
+    return null;
+  }
+  const quote = source.charCodeAt(trimmed.start);
+  if ((quote !== 34 /* " */ && quote !== 39 /* ' */) || source.charCodeAt(trimmed.end - 1) !== quote) {
+    return null;
+  }
+  const raw = source.slice(trimmed.start + 1, trimmed.end - 1).trim();
+  if (raw.length === 0 || hasDynamicSyntax(raw) || raw.includes('\\')) {
+    return null;
+  }
+  switch (raw.toLowerCase()) {
+    case '*':
+      return { raw, kind: 'any' };
+    case '<number>':
+      return { raw, kind: 'number' };
+    case '<integer>':
+      return { raw, kind: 'integer' };
+    case '<length>':
+      return { raw, kind: 'length' };
+    case '<percentage>':
+      return { raw, kind: 'percentage' };
+    case '<length-percentage>':
+      return { raw, kind: 'length-percentage' };
+    case '<angle>':
+      return { raw, kind: 'angle' };
+    case '<time>':
+      return { raw, kind: 'time' };
+    case '<resolution>':
+      return { raw, kind: 'resolution' };
+    case '<color>':
+      return { raw, kind: 'color' };
+    default:
+      return null;
+  }
+}
+
+function typedCustomPropertyInitialValue(source: string, node: CssCstNode): TypedCustomPropertyInitialValue | null {
+  const value = declarationValueNode(node);
+  if (value === null) {
+    return null;
+  }
+  const start = absoluteStart(value);
+  const end = absoluteEnd(value);
+  const trimmed = trimOffsets(source.slice(start, end), start);
+  if (trimmed.start >= trimmed.end) {
+    return null;
+  }
+  const text = source.slice(trimmed.start, trimmed.end);
+  const span = spanAtOrContaining(node, trimmed.start, trimmed.end);
+  if (hasDynamicSyntax(text)) {
+    return { text, kind: 'unknown', numberValue: null, span };
+  }
+  const nestedFunction = firstDescendantNodeMatching(value, FUNCTION_TYPES);
+  if (nestedFunction !== undefined) {
+    const functionName = functionNameOf(source, absoluteStart(nestedFunction), absoluteEnd(nestedFunction));
+    if (
+      functionName !== null
+      && COLOR_FUNCTION_NAMES.has(functionName)
+      && invalidColorFunctionChannels(source, nestedFunction, functionName) === null
+    ) {
+      return { text, kind: 'color', numberValue: null, span };
+    }
+    return { text, kind: 'unknown', numberValue: null, span };
+  }
+  const lower = text.toLowerCase();
+  if (lower === 'currentcolor' || namedColor(lower) !== undefined) {
+    return { text, kind: 'color', numberValue: null, span };
+  }
+  if (text.charCodeAt(0) === 35 /* # */) {
+    const digits = text.slice(1);
+    if (
+      (digits.length === 3 || digits.length === 4 || digits.length === 6 || digits.length === 8)
+      && /^[0-9a-f]+$/i.test(digits)
+    ) {
+      return { text, kind: 'color', numberValue: null, span };
+    }
+    return { text, kind: 'unknown', numberValue: null, span };
+  }
+  const percentage = cssPercentageValue(text);
+  if (percentage !== null) {
+    return { text, kind: 'percentage', numberValue: percentage, span };
+  }
+  const unit = cssDimensionUnit(text);
+  if (unit !== null) {
+    const kind = numericKindOfUnit(unit);
+    if (kind === 'length' || kind === 'angle' || kind === 'time' || kind === 'resolution') {
+      return { text, kind, numberValue: null, span };
+    }
+    return { text, kind: 'unknown', numberValue: null, span };
+  }
+  const number = cssNumberValue(text);
+  if (number !== null) {
+    return {
+      text,
+      kind: isIntegerNumber(text) ? 'integer' : 'number',
+      numberValue: number,
+      span
+    };
+  }
+  if (isCssIdentifier(text)) {
+    return { text, kind: 'keyword', numberValue: null, span };
+  }
+  return { text, kind: 'unknown', numberValue: null, span };
+}
+
+function isTypedCustomPropertyInitialValueCompatible(
+  syntax: TypedCustomPropertySyntax,
+  value: TypedCustomPropertyInitialValue
+): boolean | null {
+  if (syntax.kind === 'any' || value.kind === 'unknown') {
+    return null;
+  }
+  if (syntax.kind === 'number') {
+    return value.kind === 'number' || value.kind === 'integer';
+  }
+  if (syntax.kind === 'integer') {
+    return value.kind === 'integer';
+  }
+  if (syntax.kind === 'length') {
+    return value.kind === 'length' || ((value.kind === 'number' || value.kind === 'integer') && value.numberValue === 0);
+  }
+  if (syntax.kind === 'length-percentage') {
+    return value.kind === 'length'
+      || value.kind === 'percentage'
+      || ((value.kind === 'number' || value.kind === 'integer') && value.numberValue === 0);
+  }
+  return value.kind === syntax.kind;
+}
+
+function typedCustomPropertyValueProblem(source: string, node: CssCstNode): TypedCustomPropertyValueProblem | null {
+  let syntax: TypedCustomPropertySyntax | null = null;
+  let value: TypedCustomPropertyInitialValue | null = null;
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child) || !DECLARATION_TYPES.has(child.grammarType)) {
+      continue;
+    }
+    const start = absoluteStart(child);
+    const end = absoluteEnd(child);
+    const name = propNameOf(source.slice(start, end)).toLowerCase();
+    if (name === 'syntax') {
+      syntax = typedCustomPropertySyntax(source, child);
+    } else if (name === 'initial-value') {
+      value = typedCustomPropertyInitialValue(source, child);
+    }
+  }
+  if (syntax === null || value === null) {
+    return null;
+  }
+  const compatible = isTypedCustomPropertyInitialValueCompatible(syntax, value);
+  return compatible === false ? { syntax, value } : null;
+}
+
 function isResolutionMediaFeatureDimension(source: string, dimensionStart: number): boolean {
   const open = source.lastIndexOf('(', dimensionStart);
   if (open < 0) {
@@ -2551,6 +2759,18 @@ export function cstLintDiagnostics(
       const close = source.lastIndexOf('}', end - 1);
       if (open >= start && close > open && isWhitespaceOnly(source, open + 1, close)) {
         push(LINT_CODES.emptyRules, 'warning', 'Do not use empty rulesets', node.span);
+      }
+    }
+
+    if (language === 'css' && gt === 'DescriptorBlock' && descriptorAtRuleName === 'property') {
+      const problem = typedCustomPropertyValueProblem(source, node);
+      if (problem !== null) {
+        push(
+          LINT_CODES.invalidTypedCustomPropertyValue,
+          'warning',
+          `Initial value "${problem.value.text}" does not match @property syntax "${problem.syntax.raw}"`,
+          problem.value.span
+        );
       }
     }
 
