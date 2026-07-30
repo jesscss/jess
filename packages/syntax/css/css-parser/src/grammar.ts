@@ -226,7 +226,17 @@ type GrammarRuleName =
   | 'VarFallbackTerm'
   | 'keyframeSelector';
 
-type GrammarSelf = { readonly [K in GrammarRuleName]: Combinator<unknown> };
+/*
+ * Rules that the shared recognition library defines keep its concrete
+ * combinator type; the rest stay opaque. Flattening every rule to
+ * `Combinator<unknown>` lost the value type of `token(...)`-backed rules such
+ * as `AtRuleKeyword`, which `dispatch(...)` requires to be `Combinator<string>`.
+ */
+type GrammarSelf = {
+  readonly [K in GrammarRuleName]: K extends keyof typeof cssSyntax
+    ? (typeof cssSyntax)[K]
+    : Combinator<unknown>
+};
 
 function tokenText(child: unknown): string {
   if (typeof child === 'string') {
@@ -1541,7 +1551,7 @@ export const cssFactory = (g: GrammarSelf) => {
     g.CustomPropertyName,
     children => keyword(tokenText(children[0]))
   );
-  const Color = node<Color>(
+  const Color = node(
     'Color',
     hexColor,
     children => color(tokenText(children[0]))
@@ -1557,7 +1567,7 @@ export const cssFactory = (g: GrammarSelf) => {
     g.UnicodeRangeToken,
     children => any(tokenText(children[0]))
   );
-  const Percentage = node<Dimension>(
+  const Percentage = node(
     'Percentage',
     noTrivia(sequence(
       numberValue,
@@ -1572,7 +1582,7 @@ export const cssFactory = (g: GrammarSelf) => {
       );
     }
   );
-  const Dimension = node<Dimension>(
+  const Dimension = node(
     'Dimension',
     noTrivia(sequence(
       numberNoPercentage,
@@ -1588,7 +1598,7 @@ export const cssFactory = (g: GrammarSelf) => {
       );
     }
   );
-  const Quoted = node<Quoted>(
+  const Quoted = node(
     'Quoted',
     choice(
       noTrivia(sequence(
@@ -1635,7 +1645,7 @@ export const cssFactory = (g: GrammarSelf) => {
     g.UrlInner,
     children => any(tokenText(children[0]!))
   );
-  const Url = node<Url>(
+  const Url = node(
     'Url',
     sequence(
       urlOpen,
@@ -2149,7 +2159,7 @@ export const cssFactory = (g: GrammarSelf) => {
       );
     }
   );
-  const UrlFunction = node<Url>(
+  const UrlFunction = node(
     'Url',
     sequence(
       routed(),
@@ -4062,19 +4072,40 @@ export function grammarFor(options: GrammarOptions = {}) {
 }
 export const {
   Stylesheet,
-  Ruleset,
-  SelectorList,
   ComplexSelector,
-  CompoundSelector,
   BasicSelector,
   AttributeSelector,
   PseudoSelector,
-  Declaration,
   CustomDeclaration,
-  Dimension,
-  Color,
-  Url,
   Call,
-  Quoted,
   AtRuleStatement
 } = cssCstGrammar;
+
+/*
+ * These eight names are also imported as core AST types above. Binding them
+ * locally and re-exporting under the public name avoids a declaration merge
+ * between the type import and the exported const -- TypeScript requires every
+ * declaration of a merged name to be uniformly exported or uniformly local.
+ * The public export names are unchanged.
+ */
+const {
+  Ruleset: RulesetRule,
+  SelectorList: SelectorListRule,
+  CompoundSelector: CompoundSelectorRule,
+  Declaration: DeclarationRule,
+  Dimension: DimensionRule,
+  Color: ColorRule,
+  Url: UrlRule,
+  Quoted: QuotedRule
+} = cssCstGrammar;
+
+export {
+  RulesetRule as Ruleset,
+  SelectorListRule as SelectorList,
+  CompoundSelectorRule as CompoundSelector,
+  DeclarationRule as Declaration,
+  DimensionRule as Dimension,
+  ColorRule as Color,
+  UrlRule as Url,
+  QuotedRule as Quoted
+};
