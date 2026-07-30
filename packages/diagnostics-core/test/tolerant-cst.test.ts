@@ -1040,6 +1040,25 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports underscore IE hack properties without treating the stripped property as unknown', () => {
+    const source = '.a { _color: red; _made-up: x; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const ieHack = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.ieHack);
+    const unknownProperties = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownProperties);
+    const colorStart = source.indexOf('_color');
+    const madeUpStart = source.indexOf('_made-up');
+
+    expect(ieHack.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['IE hack property: \'_color\'', colorStart, colorStart + '_color'.length]
+    ]);
+    expect(unknownProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown property: \'_made-up\'', madeUpStart, madeUpStart + '_made-up'.length]
+    ]);
+  });
+
   it('reports missing compatible vendor-prefixed CSS declarations', () => {
     const source = [
       '.partial { -webkit-user-select: none; user-select: none; }',

@@ -1089,6 +1089,24 @@ describe('JessLanguageServiceEngine', () => {
         expect(codes).toContain('lint/value-no-vendor-prefix');
       });
 
+      it('keeps IE hack diagnostics opt-in and accepts the lint rule name alias', () => {
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', '.a { _color: red; }');
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/ie-hack');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/unknown-property');
+
+        const configured = createEngine();
+        configured.configure(sevCfg(LINT_RULE_NAMES.ieHack, 'warning'));
+        const configuredDoc = createDocument('css', '.a { _color: red; }');
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const diagnostic = configured.getDiagnostics(configuredDoc.uri).find(d => d.code === 'lint/ie-hack');
+
+        expect(diagnostic?.severity).toBe(2);
+        expect(diagnostic?.message).toBe('IE hack property: \'_color\'');
+      });
+
       it('keeps naming pattern diagnostics opt-in and filters by configured pattern', () => {
         const source = [
           '@property --BadToken { syntax: "<color>"; inherits: false; initial-value: red; }',

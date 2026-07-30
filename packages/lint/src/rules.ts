@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 58;
+export const STABLE_LINT_RULE_SET_VERSION = 59;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -38,6 +38,7 @@ export const LINT_RULE_NAMES = {
   vendorPrefix: 'vendor-prefix',
   compatibleVendorPrefixes: 'compatible-vendor-prefixes',
   unknownVendorSpecificProperties: 'unknown-vendor-specific-properties',
+  ieHack: 'ie-hack',
   importStatement: 'import-statement',
   invalidImportPosition: 'no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'no-duplicate-at-import-rules',
@@ -129,6 +130,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.vendorPrefix]: LINT_CODES.vendorPrefix,
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: LINT_CODES.compatibleVendorPrefixes,
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: LINT_CODES.unknownVendorSpecificProperties,
+  [LINT_RULE_NAMES.ieHack]: LINT_CODES.ieHack,
   [LINT_RULE_NAMES.importStatement]: LINT_CODES.importStatement,
   [LINT_RULE_NAMES.invalidImportPosition]: LINT_CODES.invalidImportPosition,
   [LINT_RULE_NAMES.duplicateAtImportRules]: LINT_CODES.duplicateAtImportRules,
@@ -202,6 +204,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.vendorPrefix]: LINT_RULE_NAMES.vendorPrefix,
   [LINT_CODES.compatibleVendorPrefixes]: LINT_RULE_NAMES.compatibleVendorPrefixes,
   [LINT_CODES.unknownVendorSpecificProperties]: LINT_RULE_NAMES.unknownVendorSpecificProperties,
+  [LINT_CODES.ieHack]: LINT_RULE_NAMES.ieHack,
   [LINT_CODES.importStatement]: LINT_RULE_NAMES.importStatement,
   [LINT_CODES.invalidImportPosition]: LINT_RULE_NAMES.invalidImportPosition,
   [LINT_CODES.duplicateAtImportRules]: LINT_RULE_NAMES.duplicateAtImportRules,
@@ -275,6 +278,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.vendorPrefix]: 'warn',
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off',
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: 'off',
+  [LINT_RULE_NAMES.ieHack]: 'off',
   [LINT_RULE_NAMES.importStatement]: 'off',
   [LINT_RULE_NAMES.invalidImportPosition]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
@@ -362,6 +366,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.vendorPrefix]: 'off',
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off',
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: 'off',
+  [LINT_RULE_NAMES.ieHack]: 'off',
   [LINT_RULE_NAMES.importStatement]: 'off',
   [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'off',
   [LINT_RULE_NAMES.unknownCustomProperties]: 'off',
@@ -706,6 +711,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'off',
     comparison: 'vscode-equivalent',
     notes: 'Matches VSCode stylesheet-service unknownVendorSpecificProperties for CSS declarations whose single-hyphen prefixed property name is not known; opt-in to match VSCode defaults.'
+  },
+  {
+    diagnosticCode: LINT_CODES.ieHack,
+    ruleName: LINT_RULE_NAMES.ieHack,
+    title: 'IE hack properties',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'vscode-equivalent',
+    notes: 'Opt-in VSCode stylesheet-service ieHack parity for CSS underscore-prefixed declarations whose stripped property name is known; star-prefixed declarations stay parser syntax errors until diagnostic recovery exposes them structurally.'
   },
   {
     diagnosticCode: LINT_CODES.importStatement,

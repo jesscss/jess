@@ -123,6 +123,7 @@ of matched benchmark mode until its behavior is comparable enough.
 | `vendor-prefix` | `lint/vendor-prefix` | VSCode-equivalent |
 | `compatible-vendor-prefixes` | `lint/compatible-vendor-prefixes` | VSCode-equivalent, opt-in |
 | `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | VSCode-equivalent, opt-in |
+| `ie-hack` | `lint/ie-hack` | VSCode-equivalent, opt-in |
 | `import-statement` | `lint/import-statement` | VSCode-equivalent, opt-in |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | Stylelint-equivalent |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
@@ -299,7 +300,7 @@ can detect over authored source.
 | Landed | At-rule descriptor values | `at-rule-descriptor-value-no-unknown` | Flags definite invalid descriptor values in parsed CSS descriptor blocks; covers special `@property` `syntax` checks plus simple static descriptor values from VSCode web custom data such as `@font-face font-style` and `@counter-style system`. |
 | Landed | Color function arguments | `color-function-no-invalid-arguments` | Matches VSCode `argumentsInColorFunction` for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |
 | Landed | Typed custom properties | `jess/no-invalid-typed-custom-property-registration`, `jess/no-invalid-typed-custom-property-value` | Flags CSS `@property` rules missing required `syntax`/`inherits` descriptors, missing `initial-value` for non-universal syntax, and definite `initial-value` mismatches for simple syntax descriptors; full CSS value-definition syntax and dialect value facts remain future work. |
-| P3 | Browser legacy hacks | `ie-hack` | VSCode has opt-in `ieHack`, but current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule. |
+| Landed | Browser legacy hacks | `ie-hack` | Opt-in VSCode `ieHack` parity for CSS underscore-prefixed declarations whose stripped property is known. Current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for that form. |
 | Landed | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Opt-in Stylelint-named convention rules for static color function notation, alpha values, and HSL hue units. CLI and language-service configuration require a secondary `notation` option; comparison remains Stylelint-near until the option surface is broader. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |
 

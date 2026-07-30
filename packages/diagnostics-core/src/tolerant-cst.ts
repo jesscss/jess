@@ -46,6 +46,7 @@ export const LINT_CODES = {
   vendorPrefix: 'lint/vendor-prefix',
   compatibleVendorPrefixes: 'lint/compatible-vendor-prefixes',
   unknownVendorSpecificProperties: 'lint/unknown-vendor-specific-property',
+  ieHack: 'lint/ie-hack',
   importStatement: 'lint/import-statement',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
@@ -5791,8 +5792,15 @@ export function cstLintDiagnostics(
           || lower.includes('@{')
           || lower.includes('${');
         const nameStart = start + slice.indexOf(name);
+        const strippedIeHackName = language === 'css'
+          && descriptor?.status === undefined
+          && lower.startsWith('_')
+          && cssData.isKnownProperty(lower.slice(1))
+          ? lower.slice(1)
+          : null;
+        const propertyMetadataName = strippedIeHackName ?? lower;
         const propertyStatus = language === 'css' && descriptor?.status === undefined && !skip
-          ? cssData.cssPropertyStatus?.(lower)
+          ? cssData.cssPropertyStatus?.(propertyMetadataName)
           : undefined;
         if (descriptor !== null && descriptor.status === false) {
           push(
@@ -5808,6 +5816,13 @@ export function cstLintDiagnostics(
             LINT_CODES.deprecatedProperties,
             'warning',
             `Deprecated property: '${name}'`,
+            spanAtOrContaining(node, nameStart, nameStart + name.length)
+          );
+        } else if (strippedIeHackName !== null) {
+          push(
+            LINT_CODES.ieHack,
+            'warning',
+            `IE hack property: '${name}'`,
             spanAtOrContaining(node, nameStart, nameStart + name.length)
           );
         } else if (
@@ -5826,7 +5841,7 @@ export function cstLintDiagnostics(
             `Unknown vendor-specific property: '${name}'`,
             spanAtOrContaining(node, nameStart, nameStart + name.length)
           );
-        } else if (descriptor?.status === undefined && !skip && !cssData.isKnownProperty(lower)) {
+        } else if (descriptor?.status === undefined && !skip && !cssData.isKnownProperty(propertyMetadataName)) {
           push(LINT_CODES.unknownProperties, 'warning', `Unknown property: '${name}'`, spanAtOrContaining(node, nameStart, nameStart + name.length));
         }
       }
@@ -5860,8 +5875,11 @@ export function cstLintDiagnostics(
           }
         }
         if (language === 'css' && descriptor?.status === undefined && name.length > 0 && !lowerName.startsWith('--')) {
+          const propertyMetadataName = lowerName.startsWith('_') && cssData.isKnownProperty(lowerName.slice(1))
+            ? lowerName.slice(1)
+            : lowerName;
           for (const propertyValue of declarationPropertyValueCandidates(source, node)) {
-            if (cssData.isKnownPropertyValue(lowerName, propertyValue.fact) === false) {
+            if (cssData.isKnownPropertyValue(propertyMetadataName, propertyValue.fact) === false) {
               push(
                 LINT_CODES.unknownPropertyValues,
                 'warning',

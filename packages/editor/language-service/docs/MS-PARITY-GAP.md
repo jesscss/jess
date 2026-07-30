@@ -89,7 +89,7 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | `propertyIgnoredDueToDisplay`, `fontFaceProperties` | ✓ (Warning) | ✓ shared diagnostics default to Warning | At parity for CSS @font-face required descriptors and display/property interactions | — |
 | `boxModel` | ✓ (Ignore by default) | ✓ shared diagnostic, opt-in | At parity for definite CSS width/height plus padding/border size risks | — |
 | `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `importStatement` | ✓ (mostly default-Ignore, opt-in) | ✓ shared diagnostics; opinionated rules remain opt-in | At parity for CSS source facts | — |
-| `ieHack` | ✓ (Ignore by default) | ✗ | Missing: current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule | P3 |
+| `ieHack` | ✓ (Ignore by default) | ✓ shared diagnostic, opt-in for underscore-prefixed CSS declarations whose stripped property is known | `*property` remains parser-blocked until diagnostic recovery exposes it structurally; no source scan | P3 |
 | Configurable severities | ✓ per-rule | ✓ for shared diagnostic codes and lint rule-name aliases | Per-language settings shape remains future polish | P2 |
 | **Semantic: undefined variable / mixin** | ✗ (MS does not resolve semantics this deeply) | Future evaluator-backed work | Do not report from CST-only facts; needs project/module/evaluation context | Future |
 

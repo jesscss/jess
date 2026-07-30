@@ -230,6 +230,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `vendor-prefix` | `lint/vendor-prefix` | VSCode `vendorPrefix` parity |
 | `compatible-vendor-prefixes` | `lint/compatible-vendor-prefixes` | VSCode `compatibleVendorPrefixes` parity, opt-in |
 | `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | VSCode `unknownVendorSpecificProperties` parity, opt-in |
+| `ie-hack` | `lint/ie-hack` | VSCode `ieHack` parity for `_property`, opt-in |
 | `import-statement` | `lint/import-statement` | VSCode `importStatement` parity, opt-in |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | `no-invalid-position-at-import-rule` |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | `no-duplicate-at-import-rules` |
