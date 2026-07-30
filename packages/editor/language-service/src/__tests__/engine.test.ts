@@ -700,6 +700,36 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('boxModel (lint/box-model)', () => {
+      it('stays quiet by default because VSCode marks boxModel opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { width: 100px; padding-left: 1px; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/box-model');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/box-model', 'warning'));
+        const doc = createDocument('css', '.a { width: 100px; padding-left: 1px; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/box-model');
+
+        expect(diags).toHaveLength(2);
+        expect(diags.map(d => d.severity)).toEqual([2, 2]); // Warning
+        const slices = diags.map(d => doc.getText().slice(doc.offsetAt(d.range.start), doc.offsetAt(d.range.end)));
+        expect(slices).toEqual(['width: 100px', 'padding-left: 1px']);
+      });
+
+      it('does not fire in dialect files before value facts exist', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/box-model', 'warning'));
+        const doc = createDocument('scss', '.a { width: 100px; padding-left: 1px; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/box-model');
+      });
+    });
+
     describe('duplicateProperties (lint/duplicate-property)', () => {
       it('fires when a property is declared twice in one block', () => {
         const engine = createEngine();

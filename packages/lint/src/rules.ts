@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 28;
+export const STABLE_LINT_RULE_SET_VERSION = 29;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -29,6 +29,7 @@ export const LINT_RULE_NAMES = {
   fontFamilyMissingGeneric: 'font-family-no-missing-generic-family-keyword',
   fontFaceMissingRequiredProperties: 'font-face-no-missing-required-properties',
   propertyIgnoredDueToDisplay: 'property-ignored-due-to-display',
+  boxModel: 'box-model',
   invalidImportPosition: 'no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'no-duplicate-at-import-rules',
   unknownAnimations: 'no-unknown-animations',
@@ -83,6 +84,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: LINT_CODES.fontFamilyMissingGeneric,
   [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: LINT_CODES.fontFaceMissingRequiredProperties,
   [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: LINT_CODES.propertyIgnoredDueToDisplay,
+  [LINT_RULE_NAMES.boxModel]: LINT_CODES.boxModel,
   [LINT_RULE_NAMES.invalidImportPosition]: LINT_CODES.invalidImportPosition,
   [LINT_RULE_NAMES.duplicateAtImportRules]: LINT_CODES.duplicateAtImportRules,
   [LINT_RULE_NAMES.unknownAnimations]: LINT_CODES.unknownAnimations,
@@ -124,6 +126,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.fontFamilyMissingGeneric]: LINT_RULE_NAMES.fontFamilyMissingGeneric,
   [LINT_CODES.fontFaceMissingRequiredProperties]: LINT_RULE_NAMES.fontFaceMissingRequiredProperties,
   [LINT_CODES.propertyIgnoredDueToDisplay]: LINT_RULE_NAMES.propertyIgnoredDueToDisplay,
+  [LINT_CODES.boxModel]: LINT_RULE_NAMES.boxModel,
   [LINT_CODES.invalidImportPosition]: LINT_RULE_NAMES.invalidImportPosition,
   [LINT_CODES.duplicateAtImportRules]: LINT_RULE_NAMES.duplicateAtImportRules,
   [LINT_CODES.unknownAnimations]: LINT_RULE_NAMES.unknownAnimations,
@@ -165,6 +168,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
   [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: 'warn',
   [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: 'warn',
+  [LINT_RULE_NAMES.boxModel]: 'off',
   [LINT_RULE_NAMES.invalidImportPosition]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
   [LINT_RULE_NAMES.unknownAnimations]: 'warn',
@@ -220,6 +224,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownPropertyValues]: 'off',
   [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: 'off',
   [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: 'off',
+  [LINT_RULE_NAMES.boxModel]: 'off',
   [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'off',
   [LINT_RULE_NAMES.unknownCustomProperties]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
@@ -436,6 +441,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'warn',
     comparison: 'vscode-equivalent',
     notes: 'Matches VSCode stylesheet-service propertyIgnoredDueToDisplay for CSS display:inline-block with non-none float and display:block with vertical-align; dialect semantic facts remain future work.'
+  },
+  {
+    code: LINT_CODES.boxModel,
+    ruleName: LINT_RULE_NAMES.boxModel,
+    title: 'Box model size risks',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'vscode-equivalent',
+    notes: 'Matches VSCode stylesheet-service boxModel for definite CSS width/height with non-zero padding or border, suppressing blocks that declare box-sizing and leaving dynamic or dialect values unknown.'
   },
   {
     code: LINT_CODES.invalidImportPosition,

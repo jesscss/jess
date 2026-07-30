@@ -387,6 +387,63 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.propertyIgnoredDueToDisplay)).toBe(false);
   });
 
+  it('reports definite CSS box-model size risks', () => {
+    const source = [
+      '.wide { width: 100px; padding-left: 1px; padding-right: 0; }',
+      '.tall { height: 10rem; border-top: solid; border-bottom-width: 0; }',
+      '.sized { box-sizing: border-box; width: 100px; padding: 1px; }',
+      '.zero { width: 100px; padding: 0; border-left: none; }',
+      '.dynamic { width: 100px; padding: calc(1px); }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const boxModel = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.boxModel);
+    const widthStart = source.indexOf('width: 100px');
+    const paddingStart = source.indexOf('padding-left');
+    const heightStart = source.indexOf('height');
+    const borderStart = source.indexOf('border-top');
+
+    expect(boxModel.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Width with horizontal padding or border can make the box wider than expected',
+        widthStart,
+        source.indexOf(';', widthStart)
+      ],
+      [
+        'Width with horizontal padding or border can make the box wider than expected',
+        paddingStart,
+        source.indexOf(';', paddingStart)
+      ],
+      [
+        'Height with vertical padding or border can make the box taller than expected',
+        heightStart,
+        source.indexOf(';', heightStart)
+      ],
+      [
+        'Height with vertical padding or border can make the box taller than expected',
+        borderStart,
+        source.indexOf(';', borderStart)
+      ]
+    ]);
+  });
+
+  it('does not report box-model risks in dialect files before value facts exist', () => {
+    const source = '.a { width: 100px; padding-left: 1px; }';
+    const scss = collectTolerantDiagnostics({
+      source,
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source,
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.boxModel)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.boxModel)).toBe(false);
+  });
+
   it('reports duplicate keyframe selectors and important keyframe declarations', () => {
     const result = collectTolerantDiagnostics({
       source: '@keyframes spin { from { opacity: 1 !important; } 0% { opacity: .5; } 50% { color: red; } 50% { color: blue; } }',
