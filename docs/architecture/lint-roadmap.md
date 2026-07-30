@@ -313,8 +313,9 @@ the language service because they are often the most useful author feedback.
 | --- | --- | --- |
 | Definite unresolved variable | Compiler/evaluator | Initial shared same-file CST diagnostic landed as `var/undefined` for Less/SCSS/Jess variable references and suppresses Less/SCSS callable parameters in their definition scope; strict SCSS `@use` and Less/Jess `@from`/`@compose` syntax defaults to error. Resolver/import-aware certainty remains future work. |
 | Missing import or module cycle | Resolver/compiler | Report the path and config context. |
-| No matching mixin/function overload | Compiler/evaluator | Initial shared same-file mixin diagnostic landed as `mixin/undefined` for Less/SCSS/Jess calls; `CallSignature` and `OverloadSet` facts can later handle functions, namespaces, arguments, guards, imports, and richer overload messages. |
-| Unknown named argument | Compiler/evaluator | Initial shared same-file Less mixin diagnostic landed as `call/unknown-named-argument` for simple named calls whose static candidate signatures do not contain the authored parameter; rest/pattern overloads, imports, functions, namespaces, guards, and richer overload resolution remain future work. |
+| No matching mixin/function overload | Future evaluator | Requires evaluated ambient/project callable facts before reporting. Static same-file CST facts are not enough because Less, Sass, and Jess can add callables through imports, modules, guards, plugins, and evaluation. |
+| Unknown named argument | Future evaluator | Same ownership as call resolution; needs the evaluated candidate set and signature model before reporting. |
+| Less scope leakage | Future evaluator | Needs actual Less/Jess evaluation and scope facts. CST can identify suspicious shapes, but it cannot prove whether a read depends on leakage. |
 | Private member access | Compiler later | Language rule, not style preference. |
 | Readonly assignment | Compiler later | Language rule, not style preference. |
 | Unsupported SCSS runtime form | Compatibility/compiler | Current lint can report it; long-term owner is dialect support policy. |

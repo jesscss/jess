@@ -921,7 +921,6 @@ export function createEngine(): JessLanguageServiceEngine {
     /* eslint-disable @typescript-eslint/naming-convention */
     [SEMANTIC_CODES.undefinedVariable]: DiagnosticSeverity.Warning,
     [SEMANTIC_CODES.undefinedMixin]: DiagnosticSeverity.Warning,
-    [SEMANTIC_CODES.unknownNamedArgument]: DiagnosticSeverity.Error,
 
     /*
      * Shared diagnostics. Keys match diagnostics-core `LINT_CODES`, not the

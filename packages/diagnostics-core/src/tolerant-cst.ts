@@ -91,8 +91,7 @@ export const LINT_CODES = {
 
 export const SEMANTIC_CODES = {
   undefinedVariable: 'var/undefined',
-  undefinedMixin: 'mixin/undefined',
-  unknownNamedArgument: 'call/unknown-named-argument'
+  undefinedMixin: 'mixin/undefined'
 } as const;
 
 const LENGTH_UNITS = new Set([
@@ -595,12 +594,6 @@ type LessFixedMixinDefinitionFact = {
   readonly arity: number;
 };
 
-type LessMixinSignatureFact = {
-  readonly name: string;
-  readonly display: string;
-  readonly parameters: ReadonlySet<string> | null;
-};
-
 type LessFixedMixinCallFact = {
   readonly name: string;
   readonly display: string;
@@ -608,22 +601,16 @@ type LessFixedMixinCallFact = {
   readonly span: DiagnosticSpan;
 };
 
-type NamedArgumentFact = {
+type MixinSignatureFact = {
   readonly name: string;
   readonly display: string;
-  readonly span: DiagnosticSpan;
+  readonly parameters: ReadonlySet<string> | null;
 };
 
 type MixinReferenceFact = {
   readonly name: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
-};
-
-type MixinNamedArgumentCallFact = {
-  readonly name: string;
-  readonly display: string;
-  readonly namedArguments: readonly NamedArgumentFact[];
 };
 
 type VariableReferenceFact = {
@@ -3472,7 +3459,7 @@ function descendantNodesOfType(node: CssCstNode, grammarType: string, out: CssCs
   }
 }
 
-function lessMixinSignatureOf(source: string, node: CssCstNode): LessMixinSignatureFact | null {
+function lessMixinSignatureOf(source: string, node: CssCstNode): MixinSignatureFact | null {
   if (node.grammarType !== 'Statement') {
     return null;
   }
@@ -3561,56 +3548,11 @@ function lessFixedMixinCallOf(source: string, node: CssCstNode): LessFixedMixinC
       };
 }
 
-function lessNamedArgumentOf(source: string, node: CssCstNode): NamedArgumentFact | null {
-  const authored = authoredVariableNameOf(source, absoluteStart(node), absoluteEnd(node));
-  if (authored === null || authored.name.charCodeAt(0) !== 64 /* @ */) {
-    return null;
-  }
-  return {
-    name: normalizedVariableName(authored.name, 'less'),
-    display: authored.name,
-    span: spanFromNodeStart(node, authored.start, authored.end)
-  };
-}
-
 function lessMixinBindingNameSpan(source: string, node: CssCstNode): IgnoredReferenceSpan | null {
   const authored = authoredVariableNameOf(source, absoluteStart(node), absoluteEnd(node));
   return authored === null || authored.name.charCodeAt(0) !== 64 /* @ */
     ? null
     : { start: authored.start, end: authored.end };
-}
-
-function lessMixinNamedArgumentCallOf(source: string, node: CssCstNode): MixinNamedArgumentCallFact | null {
-  if (node.grammarType !== 'Statement') {
-    return null;
-  }
-  const call = lessMixinCallChild(node);
-  if (call === undefined) {
-    return null;
-  }
-  const selector = firstChildNodeOf(node, 'SelectorBranch');
-  const name = selector === undefined ? null : lessSimpleMixinNameFromSelector(source, selector);
-  if (name === null) {
-    return null;
-  }
-  const namedArgumentNodes: CssCstNode[] = lessMixinBindingNodes(node).filter(lessMixinBindingHasValue);
-  descendantNodesOfType(call, 'NamedMixinArgument', namedArgumentNodes);
-  if (namedArgumentNodes.length === 0) {
-    return null;
-  }
-  const namedArguments: NamedArgumentFact[] = [];
-  for (const argument of namedArgumentNodes) {
-    const fact = lessNamedArgumentOf(source, argument);
-    if (fact === null) {
-      return null;
-    }
-    namedArguments.push(fact);
-  }
-  return {
-    name: name.name,
-    display: name.display,
-    namedArguments
-  };
 }
 
 function lessSimpleMixinCallFactOf(source: string, node: CssCstNode): MixinReferenceFact | null {
@@ -5485,8 +5427,6 @@ export function cstLintDiagnostics(
   const mixinDefinitions: MixinDefinitionFact[] = [];
   const mixinReferences = new Set<string>();
   const mixinReferenceFacts: MixinReferenceFact[] = [];
-  const lessMixinSignatureFacts: LessMixinSignatureFact[] = [];
-  const lessMixinNamedArgumentCallFacts: MixinNamedArgumentCallFact[] = [];
   const functionDefinitions: FunctionDefinitionFact[] = [];
   const functionReferences = new Set<string>();
   const functionDefinitionNames = new Set<string>();
@@ -5715,17 +5655,9 @@ export function cstLintDiagnostics(
     for (const mixinReference of mixinCallFactsOf(source, node, language)) {
       mixinReferenceFacts.push(mixinReference);
     }
-    const lessMixinSignature = language === 'less' ? lessMixinSignatureOf(source, node) : null;
-    if (lessMixinSignature !== null) {
-      lessMixinSignatureFacts.push(lessMixinSignature);
-    }
     const lessMixinParameterScope = language === 'less' ? lessMixinParameterScopeOf(source, node) : null;
     if (lessMixinParameterScope !== null) {
       variableParameterScopes.push(lessMixinParameterScope);
-    }
-    const lessMixinNamedArgumentCall = language === 'less' ? lessMixinNamedArgumentCallOf(source, node) : null;
-    if (lessMixinNamedArgumentCall !== null) {
-      lessMixinNamedArgumentCallFacts.push(lessMixinNamedArgumentCall);
     }
     const scssParameterScope = language === 'scss' ? scssCallableParameterScopeOf(source, node) : null;
     if (scssParameterScope !== null) {
@@ -6735,36 +6667,6 @@ export function cstLintDiagnostics(
             undefined,
             'eval'
           );
-        }
-      }
-
-      if (language === 'less') {
-        const signaturesByName = new Map<string, LessMixinSignatureFact[]>();
-        for (const signature of lessMixinSignatureFacts) {
-          const signatures = signaturesByName.get(signature.name);
-          if (signatures === undefined) {
-            signaturesByName.set(signature.name, [signature]);
-          } else {
-            signatures.push(signature);
-          }
-        }
-        for (const call of lessMixinNamedArgumentCallFacts) {
-          const signatures = signaturesByName.get(call.name);
-          if (signatures === undefined || signatures.some(signature => signature.parameters === null)) {
-            continue;
-          }
-          for (const argument of call.namedArguments) {
-            if (!signatures.some(signature => signature.parameters?.has(argument.name) === true)) {
-              pushDiagnostic(
-                SEMANTIC_CODES.unknownNamedArgument,
-                'error',
-                `Unknown named argument ${argument.display} for mixin ${call.display}`,
-                argument.span,
-                undefined,
-                'eval'
-              );
-            }
-          }
         }
       }
     }

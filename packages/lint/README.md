@@ -157,8 +157,7 @@ export default {
     },
     diagnostics: {
       'var/undefined': 'warn',
-      'mixin/undefined': 'warn',
-      'call/unknown-named-argument': 'error'
+      'mixin/undefined': 'warn'
     }
   }
 }
@@ -288,9 +287,8 @@ The rule name is the user-facing configuration key and the compact lint output
 label. The diagnostic code is the shared problem identity used by
 diagnostics-core, the language service, JSON output, and compatibility aliases.
 JSON diagnostics include both `ruleName` and `code` for stable tool migration.
-Comparison labels such as "near Stylelint" or "VSCode parity" are status
-metadata only: they do not rename a rule or diagnostic, and they only decide
-which checks belong in matched Stylelint comparison runs.
+Comparison labels such as "near Stylelint" or "VSCode parity" are metadata only:
+they do not rename a rule or diagnostic.
 
 Parser syntax failures are not lint rules. `jess lint` can surface them as
 diagnostics when `reportSyntax` is enabled, but they are controlled separately
