@@ -270,16 +270,16 @@ const UrlFunction = node('UrlFunction',
   children => urlFunction(children[0].value.slice(0, -1), children[1])
 );
 
-const Identifier = node('Identifier',
+const RoutedKeyword = node('Keyword',
   routed(),
-  children => identifier(children[0].value)
+  children => keyword(children[0].value)
 );
 
 const Value = dispatch(
   identOrFunctionOpen(cssIdent),
   caseOf('url(', UrlFunction),
   when(endsWith('('), GenericFunction),
-  otherwise(Identifier)
+  otherwise(RoutedKeyword)
 );
 ```
 
@@ -1144,8 +1144,8 @@ byte-identity oracle passed against the 708-entry baseline.
 Latest query-function follow-up: the CSS CST and direct CSS AST grammars now
 represent query/general-enclosed function openers as glued
 `noTrivia(sequence(ident, literal('(')))` structures. Parser-shared exports the
-new `CssSyntaxQueryFunctionOpen` for CSS direct-AST use but keeps the old
-`CssSyntaxQueryFunctionName` export for dialect AST grammars until their own
+new `QueryFunctionOpen` for CSS direct-AST use but keeps the old
+`QueryFunctionName` export for dialect AST grammars until their own
 cleanup passes. This is intentionally staged: changing the shared name in-place
 would force Less/SCSS/Jess consumer rewrites before the CSS batch has finished.
 Focused CSS tests now cover `selector (.grid)` as invalid. The slice passed the
@@ -3195,9 +3195,9 @@ statement/selector arms (`VarCall`, `ExtendStatement`, `EachFor`, `MixinCall`,
 `LessAmpersand`, `interpOrBasic`). The current SCSS grammar is a single
 host-mode grammar and is macro-buildable. A follow-up query-clause cleanup
 left-factored the inner
-`choice(sequence(CssSyntaxQueryAndOr, DirectScssQueryInParens),
+`choice(sequence(QueryAndOr, DirectScssQueryInParens),
 DirectScssQueryInParens)` into
-`sequence(optional(CssSyntaxQueryAndOr), DirectScssQueryInParens)`. Focused SCSS
+`sequence(optional(QueryAndOr), DirectScssQueryInParens)`. Focused SCSS
 conditional/macro/compose/CST tests passed, and the package build passed.
 
 Latest Less dispatch pressure-test, 2026-07-27: do not route generic Less
@@ -3897,10 +3897,10 @@ with 0 throws; this slice did not expand the current oracle delta.
 
 Less `@media`/`@container` dispatch pressure-test, 2026-07-27: do not rewrite
 `MediaContainerBlock` to route through the broad
-`CssSyntaxMediaContainerAtKeyword` helper in the current fold. Conceptually the
+`MediaContainerAtKeyword` helper in the current fold. Conceptually the
 two arms are a shared at-keyword family, but the broad helper changes public CST
-terminal ownership from the specific `CssSyntaxMediaAtKeyword` /
-`CssSyntaxContainerAtKeyword` facts to the grouped token. That is not a neutral
+terminal ownership from the specific `MediaAtKeyword` /
+`ContainerAtKeyword` facts to the grouped token. That is not a neutral
 grammar cleanup while language-service consumers still see those keys.
 
 The attempted broad dispatch passed focused parser tests and `check:macro`, but
@@ -3909,7 +3909,7 @@ The attempted broad dispatch passed focused parser tests and `check:macro`, but
 with 116 throws and
 `cst=01cc6d52784b53c45a414684b90a8cba1c5847e647676d2a2bb4a3383f6b2db3`
 with 0 throws. A variant that dispatched over
-`choice(CssSyntaxMediaAtKeyword, CssSyntaxContainerAtKeyword)` preserved the
+`choice(MediaAtKeyword, ContainerAtKeyword)` preserved the
 specific recognizers but left the original `@`/`@` opener overlap inside the
 dispatcher, so it had no meaningful recognition benefit. The accepted path is
 to keep the current `choice(...)` until Parseman or the CST migration provides a

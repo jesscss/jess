@@ -101,41 +101,40 @@ type CssGrammarRuleName =
   | 'ContainerQueryClause'
   | 'ContainerQueryPrelude'
   | 'CssSyntax'
-  | 'CssSyntaxConditionalAtKeyword'
-  | 'CssSyntaxContainerAtKeyword'
+  | 'ConditionalAtKeyword'
+  | 'ContainerAtKeyword'
   | 'CssSyntaxCustomProperty'
-  | 'CssSyntaxDescriptorAtKeyword'
-  | 'CssSyntaxDocumentAtKeyword'
+  | 'DescriptorAtKeyword'
+  | 'DocumentAtKeyword'
   | 'DoubleQuotedText'
-  | 'CssSyntaxFontFeatureValueAtKeyword'
-  | 'CssSyntaxFontFeatureValuesAtKeyword'
-  | 'CssSyntaxGenericAtRuleName'
+  | 'FontFeatureValueAtKeyword'
+  | 'FontFeatureValuesAtKeyword'
+  | 'GenericAtRuleName'
   | 'CssSyntaxImportant'
-  | 'CssSyntaxKeyframesAtKeyword'
-  | 'CssSyntaxLayerAtKeyword'
+  | 'KeyframesAtKeyword'
+  | 'LayerAtKeyword'
   | 'MalformedPseudoSelectorNumericArgument'
-  | 'CssSyntaxMarginAtKeyword'
-  | 'CssSyntaxMediaAtKeyword'
+  | 'MarginAtKeyword'
+  | 'MediaAtKeyword'
   | 'NthExpression'
   | 'NthChildPseudoSelectorName'
   | 'NthPseudoSelectorName'
   | 'NthTypePseudoSelectorName'
   | 'NthOfKeyword'
-  | 'CssSyntaxPageAtKeyword'
-  | 'CssSyntaxProperty'
+  | 'PageAtKeyword'
   | 'PseudoSelectorCloseAhead'
-  | 'CssSyntaxQueryAndOr'
-  | 'CssSyntaxQueryComparisonOperator'
-  | 'CssSyntaxQueryFunctionOpen'
-  | 'CssSyntaxQueryNot'
-  | 'CssSyntaxQueryOnly'
-  | 'CssSyntaxRoutedAtRuleKeyword'
-  | 'CssSyntaxScopeAtKeyword'
+  | 'QueryAndOr'
+  | 'QueryComparisonOperator'
+  | 'QueryFunctionOpen'
+  | 'QueryNot'
+  | 'QueryOnly'
+  | 'RoutedAtRuleKeyword'
+  | 'ScopeAtKeyword'
   | 'SelectorArgumentPseudoSelectorName'
   | 'SingleQuotedText'
-  | 'CssSyntaxStartingStyleAtKeyword'
-  | 'CssSyntaxStatementAtRuleName'
-  | 'CssSyntaxSupportsAtKeyword'
+  | 'StartingStyleAtKeyword'
+  | 'StatementAtRuleName'
+  | 'SupportsAtKeyword'
   | 'CssSyntaxUnicodeRange'
   | 'CssSyntaxUrlInner'
   | 'CssSyntaxUrlOpen'
@@ -1519,7 +1518,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const Property = node(
     'Property',
-    g.CssSyntaxProperty,
+    g.Identifier,
     children => tokenText(children[0])
   );
   const CustomProperty = node(
@@ -1958,7 +1957,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       genericFunctionOpen,
       optional(sequence(
-        not(peek(literal(')'))),
+        not(literal(')')),
         oneOrMoreSep(
           g.VarFallbackItem,
           varFallbackComma
@@ -2092,7 +2091,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     regex(/[0-9]/),
     regex(/[ \t\n\r\f]/)
   ));
-  const atRuleKeyword = token(noTrivia(g.CssSyntaxRoutedAtRuleKeyword));
+  const atRuleKeyword = token(noTrivia(g.RoutedAtRuleKeyword));
   const identOrFunction = token(noTrivia(
     sequence(
       genericIdentifier,
@@ -2294,7 +2293,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const NonIdentifierPunctuationValue = node(
     'NonIdentifierPunctuationValue',
     sequence(
-      not(peek(identOrFunction)),
+      not(identOrFunction),
       g.PunctuationValue
     ),
     children => firstValue(children)
@@ -2596,7 +2595,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const AtRuleStatement = node(
     'AtRuleStatement',
     sequence(
-      g.CssSyntaxStatementAtRuleName,
+      g.StatementAtRuleName,
       g.StatementPrelude,
       literal(';')
     ),
@@ -2672,7 +2671,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const LayerStatement = node(
     'LayerStatement',
     sequence(
-      g.CssSyntaxLayerAtKeyword,
+      g.LayerAtKeyword,
       g.StatementPrelude,
       literal(';')
     ),
@@ -2714,7 +2713,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const OpaqueAtRuleBlock = node(
     'OpaqueAtRuleBlock',
     sequence(
-      g.CssSyntaxGenericAtRuleName,
+      g.GenericAtRuleName,
       noTrivia(sequence(
         g.OpaqueAtPrelude,
         literal('{'),
@@ -2832,10 +2831,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       literal('('),
       g.Property,
-      g.CssSyntaxQueryComparisonOperator,
+      g.QueryComparisonOperator,
       QueryValue,
       optional(sequence(
-        g.CssSyntaxQueryComparisonOperator,
+        g.QueryComparisonOperator,
         QueryValue
       )),
       literal(')')
@@ -2857,10 +2856,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       literal('('),
       QueryValue,
-      g.CssSyntaxQueryComparisonOperator,
+      g.QueryComparisonOperator,
       g.Property,
       optional(sequence(
-        g.CssSyntaxQueryComparisonOperator,
+        g.QueryComparisonOperator,
         QueryValue
       )),
       literal(')')
@@ -2980,10 +2979,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const QueryOnlyClause = node(
     'QueryOnlyClause',
     sequence(
-      g.CssSyntaxQueryOnly,
+      g.QueryOnly,
       QueryNonOnlyKeyword,
       many(sequence(
-        g.CssSyntaxQueryAndOr,
+        g.QueryAndOr,
         QueryTerm
       ))
     ),
@@ -3028,7 +3027,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     }
   );
   const containerName = sequence(
-    not(g.CssSyntaxQueryFunctionOpen),
+    not(g.QueryFunctionOpen),
     not(containerNameReserved),
     g.Keyword
   );
@@ -3145,7 +3144,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'GeneralEnclosed',
     choice(
       noTrivia(sequence(
-        g.CssSyntaxQueryFunctionOpen,
+        g.QueryFunctionOpen,
         g.GeneralEnclosedContent,
         literal(')')
       )),
@@ -3215,13 +3214,13 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'SupportsCondition',
     choice(
       sequence(
-        g.CssSyntaxQueryNot,
+        g.QueryNot,
         g.SupportsInParens
       ),
       sequence(
         g.SupportsInParens,
         many(sequence(
-          g.CssSyntaxQueryAndOr,
+          g.QueryAndOr,
           g.SupportsInParens
         ))
       )
@@ -3609,7 +3608,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const LayerBlock = node(
     'LayerBlock',
     sequence(
-      g.CssSyntaxLayerAtKeyword,
+      g.LayerAtKeyword,
       g.AtPrelude,
       stylesheetBodyBlock
     ),
@@ -3622,7 +3621,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const NestedLayerBlock = node(
     'NestedLayerBlock',
     sequence(
-      g.CssSyntaxLayerAtKeyword,
+      g.LayerAtKeyword,
       g.AtPrelude,
       declarationListBlock
     ),
@@ -3642,7 +3641,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const MarginAtRule = node(
     'MarginAtRule',
     sequence(
-      g.CssSyntaxMarginAtKeyword,
+      g.MarginAtKeyword,
       descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3654,7 +3653,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const PageBlock = node(
     'PageBlock',
     sequence(
-      g.CssSyntaxPageAtKeyword,
+      g.PageAtKeyword,
       g.AtPrelude,
       pageBodyBlock
     ),
@@ -3694,7 +3693,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const Keyframes = node(
     'Keyframes',
     sequence(
-      g.CssSyntaxKeyframesAtKeyword,
+      g.KeyframesAtKeyword,
       g.AtPrelude,
       keyframesBodyBlock
     ),
@@ -3755,7 +3754,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'ConditionalBlock',
     choice(
       sequence(
-        g.CssSyntaxSupportsAtKeyword,
+        g.SupportsAtKeyword,
         parser(
           { trivia: interstitialTrivia },
           g.SupportsPrelude
@@ -3763,12 +3762,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
         conditionalGroupBodyBlock
       ),
       sequence(
-        g.CssSyntaxMediaAtKeyword,
+        g.MediaAtKeyword,
         g.QueryPrelude,
         conditionalGroupBodyBlock
       ),
       sequence(
-        g.CssSyntaxContainerAtKeyword,
+        g.ContainerAtKeyword,
         g.ContainerPrelude,
         conditionalGroupBodyBlock
       )
@@ -3785,7 +3784,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'NestedConditionalBlock',
     choice(
       sequence(
-        g.CssSyntaxSupportsAtKeyword,
+        g.SupportsAtKeyword,
         parser(
           { trivia: interstitialTrivia },
           g.SupportsPrelude
@@ -3793,12 +3792,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
         declarationListBlock
       ),
       sequence(
-        g.CssSyntaxMediaAtKeyword,
+        g.MediaAtKeyword,
         g.QueryPrelude,
         declarationListBlock
       ),
       sequence(
-        g.CssSyntaxContainerAtKeyword,
+        g.ContainerAtKeyword,
         g.ContainerPrelude,
         declarationListBlock
       )
@@ -3814,7 +3813,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const DescriptorBlock = node(
     'DescriptorBlock',
     sequence(
-      g.CssSyntaxDescriptorAtKeyword,
+      g.DescriptorAtKeyword,
       g.AtPrelude,
       descriptorBodyBlock
     ),
@@ -3833,7 +3832,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const FeatureValueBlock = node(
     'FeatureValueBlock',
     sequence(
-      g.CssSyntaxFontFeatureValueAtKeyword,
+      g.FontFeatureValueAtKeyword,
       descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3845,7 +3844,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const FontFeatureValuesBlock = node(
     'FontFeatureValuesBlock',
     sequence(
-      g.CssSyntaxFontFeatureValuesAtKeyword,
+      g.FontFeatureValuesAtKeyword,
       g.AtPrelude,
       fontFeatureValuesBodyBlock
     ),
@@ -3858,7 +3857,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const ScopeBlock = node(
     'ScopeBlock',
     sequence(
-      g.CssSyntaxScopeAtKeyword,
+      g.ScopeAtKeyword,
       g.AtPrelude,
 
       /*
@@ -3877,7 +3876,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const StartingStyleBlock = node(
     'StartingStyleBlock',
     sequence(
-      g.CssSyntaxStartingStyleAtKeyword,
+      g.StartingStyleAtKeyword,
       g.AtPrelude,
       stylesheetBodyBlock
     ),
@@ -3890,7 +3889,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const NestedStartingStyleBlock = node(
     'NestedStartingStyleBlock',
     sequence(
-      g.CssSyntaxStartingStyleAtKeyword,
+      g.StartingStyleAtKeyword,
       g.AtPrelude,
       declarationListBlock
     ),
@@ -3903,7 +3902,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const DocumentBlock = node(
     'DocumentBlock',
     sequence(
-      g.CssSyntaxDocumentAtKeyword,
+      g.DocumentAtKeyword,
       g.AtPrelude,
       stylesheetBodyBlock
     ),

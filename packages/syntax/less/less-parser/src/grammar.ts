@@ -287,17 +287,17 @@ type SharedCssSyntax = {
   CssSyntaxDimensionUnit: Combinator<string>;
   CssSyntaxInterpolatedPropertyStart: Combinator<unknown>;
   CssSyntaxInterpolatedPropertyTail: Combinator<unknown>;
-  CssSyntaxProperty: Combinator<unknown>;
-  CssSyntaxSupportsAtKeyword: Combinator<unknown>;
-  CssSyntaxKeyframesAtKeyword: Combinator<unknown>;
-  CssSyntaxMediaContainerAtKeyword: Combinator<unknown>;
-  CssSyntaxMediaAtKeyword: Combinator<unknown>;
-  CssSyntaxContainerAtKeyword: Combinator<unknown>;
-  CssSyntaxQueryNot: Combinator<unknown>;
-  CssSyntaxQueryOnly: Combinator<unknown>;
-  CssSyntaxQueryAndOr: Combinator<unknown>;
-  CssSyntaxQueryComparisonOperator: Combinator<unknown>;
-  CssSyntaxQueryFunctionName: Combinator<unknown>;
+  Identifier: Combinator<string>;
+  SupportsAtKeyword: Combinator<unknown>;
+  KeyframesAtKeyword: Combinator<unknown>;
+  MediaContainerAtKeyword: Combinator<unknown>;
+  MediaAtKeyword: Combinator<unknown>;
+  ContainerAtKeyword: Combinator<unknown>;
+  QueryNot: Combinator<unknown>;
+  QueryOnly: Combinator<unknown>;
+  QueryAndOr: Combinator<unknown>;
+  QueryComparisonOperator: Combinator<unknown>;
+  QueryFunctionName: Combinator<unknown>;
   CssSyntaxImportant: Combinator<unknown>;
   CssSyntaxBlockComment: Combinator<unknown>;
 };
@@ -1682,7 +1682,7 @@ function guardOperatorText(value: unknown): string | null {
   // The guard comparison vocabulary, spelled here in TS because a reducer cannot
   // read a combinator's alternation. It must stay in step with
   // `mixinGuardOperator` / `functionConditionOperator` — and it must NOT
-  // be unified with the CSS media-range operator (`g.CssSyntaxQueryComparisonOperator`,
+  // be unified with the CSS media-range operator (`g.QueryComparisonOperator`,
   // mediaqueries-4 §4 = `< <= = >= >`): `=~`, `=>` and `=<` are Less guard spellings
   // with no meaning in a media query, and merging the two would widen
   // `@media (width => 600px)` into acceptance.
@@ -2439,7 +2439,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // may poison the document's direct start rule.
   const ImportQueryTail = node<ValueNode>(
     'ImportQueryTail',
-    sequence(literal('('), g.CssSyntaxProperty, regex(/:[ \t\n\r\f]*/), g.VariableReference, literal(')')),
+    sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.VariableReference, literal(')')),
     children => block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3])))
   );
   const quotedOrUrlTarget = choice(g.EscapedQuoted, g.Quoted, UrlTarget);
@@ -2899,7 +2899,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // value and query grammars share it without a recursive query-value cycle.
   const QueryColonFeature = node<ValueNode>(
     'QueryColonFeature',
-    sequence(literal('('), g.CssSyntaxProperty, regex(/:[ \t\n\r\f]*/), g.MathSum, literal(')')),
+    sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.MathSum, literal(')')),
     (children, _fields, span) => withSourceSpan(
       block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))),
       span
@@ -4382,7 +4382,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const GeneralEnclosedFunctionName = node<GeneralEnclosedNameFact>(
     'GeneralEnclosedFunctionName',
-    token(noTrivia(sequence(g.CssSyntaxQueryFunctionName, literal('(')))),
+    token(noTrivia(sequence(g.QueryFunctionName, literal('(')))),
     children => ({ name: functionNameFromOpener(children[0]) })
   );
   const GeneralEnclosed = node<GeneralEnclosed>(
@@ -4419,7 +4419,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'SupportsFeature',
     sequence(
       literal('('),
-      g.CssSyntaxProperty,
+      g.Identifier,
       optional(sequence(literal(':'), g.SupportsValue)),
       literal(')')
     ),
@@ -4445,8 +4445,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const SupportsCondition = node<ValueNode>(
     'SupportsCondition',
     choice(
-      sequence(g.CssSyntaxQueryNot, g.SupportsInParens),
-      sequence(g.SupportsInParens, many(sequence(g.CssSyntaxQueryAndOr, g.SupportsInParens)))
+      sequence(g.QueryNot, g.SupportsInParens),
+      sequence(g.SupportsInParens, many(sequence(g.QueryAndOr, g.SupportsInParens)))
     ),
     (children) => {
       const values = children.map(child => isValueNode(child)
@@ -4458,7 +4458,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const SupportsBlock = node<AtRuleBlock>(
     'SupportsBlock',
     sequence(
-      g.CssSyntaxSupportsAtKeyword,
+      g.SupportsAtKeyword,
       choice(g.AtRuleInterpolation, BareVariableInterpolation, g.SupportsCondition),
       literal('{'),
       blockBody,
@@ -4517,14 +4517,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const QueryBareFeature = node<ValueNode>(
     'QueryBareFeature',
-    sequence(literal('('), g.CssSyntaxProperty, literal(')')),
+    sequence(literal('('), g.Identifier, literal(')')),
     children => block(keyword(requireToken(children[1]).value))
   );
   const QueryComparisonFeature = node<ValueNode>(
     'QueryComparisonFeature',
     sequence(
-      literal('('), g.CssSyntaxProperty, g.CssSyntaxQueryComparisonOperator, QueryFeatureValue,
-      optional(sequence(g.CssSyntaxQueryComparisonOperator, QueryFeatureValue)), literal(')')
+      literal('('), g.Identifier, g.QueryComparisonOperator, QueryFeatureValue,
+      optional(sequence(g.QueryComparisonOperator, QueryFeatureValue)), literal(')')
     ),
     (children) => {
       const values = children.filter(isValueNode);
@@ -4545,8 +4545,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const QueryRangeFeature = node<ValueNode>(
     'QueryRangeFeature',
     sequence(
-      literal('('), QueryFeatureValue, g.CssSyntaxQueryComparisonOperator, g.CssSyntaxProperty,
-      optional(sequence(g.CssSyntaxQueryComparisonOperator, QueryFeatureValue)), literal(')')
+      literal('('), QueryFeatureValue, g.QueryComparisonOperator, g.Identifier,
+      optional(sequence(g.QueryComparisonOperator, QueryFeatureValue)), literal(')')
     ),
     (children) => {
       const values = children.filter(isValueNode);
@@ -4569,7 +4569,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // their existing typed Block(paren, Operation) representation inside the group.
   const QueryLogicalGroup = node<ValueNode>(
     'QueryLogicalGroup',
-    sequence(literal('('), g.QueryFeature, oneOrMore(sequence(g.CssSyntaxQueryAndOr, g.QueryFeature)), literal(')')),
+    sequence(literal('('), g.QueryFeature, oneOrMore(sequence(g.QueryAndOr, g.QueryFeature)), literal(')')),
     children => block(spaced(children.filter(child => isValueNode(child) ? true : isTerminalText(child, 'and') || isTerminalText(child, 'or')).map(keywordOrValue)))
   );
   // Container queries permit a nested negated condition, for example
@@ -4577,7 +4577,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // not an opaque at-rule header.
   const QueryNegatedFeature = node<ValueNode>(
     'QueryNegatedFeature',
-    sequence(literal('('), g.CssSyntaxQueryNot, g.QueryFeature, literal(')')),
+    sequence(literal('('), g.QueryNot, g.QueryFeature, literal(')')),
     children => block(spaced([keyword(requireToken(children[1]).value), requireValueNode(children[2])]))
   );
   const QueryFeature = node<ValueNode>(
@@ -4588,7 +4588,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // `only` is a media/query modifier, not an ordinary media-type keyword.
   const QueryNonOnlyKeyword = node<Keyword>(
     'QueryNonOnlyKeyword',
-    sequence(not(g.CssSyntaxQueryOnly), g.Keyword),
+    sequence(not(g.QueryOnly), g.Keyword),
     children => requireKeyword(children.at(-1))
   );
   const QueryTerm = node<ValueNode>(
@@ -4607,9 +4607,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const QueryOnlyClause = node<ValueNode>(
     'QueryOnlyClause',
     sequence(
-      g.CssSyntaxQueryOnly,
+      g.QueryOnly,
       QueryNonOnlyKeyword,
-      many(sequence(g.CssSyntaxQueryAndOr, QueryTerm))
+      many(sequence(g.QueryAndOr, QueryTerm))
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
   );
@@ -4623,7 +4623,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       QueryOnlyClause,
       sequence(
         QueryTerm,
-        many(sequence(g.CssSyntaxQueryAndOr, QueryTerm))
+        many(sequence(g.QueryAndOr, QueryTerm))
       )
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
@@ -4649,18 +4649,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const MediaQueryOnlyClause = node<ValueNode>(
     'MediaQueryOnlyClause',
     sequence(
-      g.CssSyntaxQueryOnly,
+      g.QueryOnly,
       QueryNonOnlyKeyword,
-      many(sequence(g.CssSyntaxQueryAndOr, MediaQueryTerm))
+      many(sequence(g.QueryAndOr, MediaQueryTerm))
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
   );
   const MediaQueryNotClause = node<ValueNode>(
     'MediaQueryNotClause',
     sequence(
-      g.CssSyntaxQueryNot,
+      g.QueryNot,
       MediaQueryTerm,
-      many(sequence(g.CssSyntaxQueryAndOr, MediaQueryTerm))
+      many(sequence(g.QueryAndOr, MediaQueryTerm))
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
   );
@@ -4671,7 +4671,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       MediaQueryNotClause,
       sequence(
         MediaQueryTerm,
-        many(sequence(g.CssSyntaxQueryAndOr, MediaQueryTerm))
+        many(sequence(g.QueryAndOr, MediaQueryTerm))
       )
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
@@ -4704,7 +4704,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const ContainerScrollStateQuery = node<FunctionCall>(
     'ContainerScrollStateQuery',
-    sequence(scrollStateFunctionOpener, g.CssSyntaxProperty, literal(':'), g.QueryValue, literal(')')),
+    sequence(scrollStateFunctionOpener, g.Identifier, literal(':'), g.QueryValue, literal(')')),
     children => funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))])
   );
   const ContainerName = node<Keyword>(
@@ -4715,8 +4715,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
         '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
         { caseInsensitive: true }
       )),
-      not(g.CssSyntaxQueryNot),
-      not(g.CssSyntaxQueryAndOr),
+      not(g.QueryNot),
+      not(g.QueryAndOr),
       g.Keyword
     ),
     children => requireKeyword(children.at(-1))
@@ -4734,13 +4734,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'ContainerCondition',
     choice(
       sequence(
-        g.CssSyntaxQueryNot,
+        g.QueryNot,
         g.ContainerQueryAtom
       ),
       sequence(
         g.ContainerQueryAtom,
         many(sequence(
-          g.CssSyntaxQueryAndOr,
+          g.QueryAndOr,
           g.ContainerQueryAtom
         ))
       )
@@ -4796,7 +4796,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const MediaContainerBlock = node<AtRuleBlock>(
     'QueryAtRuleBlock',
     dispatch(
-      token(noTrivia(g.CssSyntaxMediaContainerAtKeyword)),
+      token(noTrivia(g.MediaContainerAtKeyword)),
       caseOf(
         '@media',
         sequence(routed(), choice(MediaQueryPrelude, g.AtRuleInterpolation), g.MediaContainerBody)
@@ -4857,7 +4857,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const Keyframes = node<AtRuleBlock>(
     'Keyframes',
     sequence(
-      g.CssSyntaxKeyframesAtKeyword,
+      g.KeyframesAtKeyword,
       field('prelude', choice(g.AtRuleInterpolation, BareVariableInterpolation, g.EscapedQuoted, g.StaticQuoted, g.Keyword)),
       literal('{'),
       // Less permits a detached-ruleset call as a keyframes-body entry. Keep
@@ -5047,7 +5047,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       atRuleBlockBody
     )),
     sequence(
-      not(peek(regex(/[ \t\n\r\f]*:/))),
+      not(regex(/[ \t\n\r\f]*:/)),
       g.AtRulePrelude,
       atRuleBlockBody
     )
@@ -5095,7 +5095,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'OpaqueAtRuleBlock',
     sequence(
       atRuleName,
-      not(peek(regex(/[ \t\n\r\f]*:/))),
+      not(regex(/[ \t\n\r\f]*:/)),
       noTrivia(sequence(
         g.OpaqueAtPrelude,
         literal('{'),
@@ -5155,7 +5155,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
               literal(';')
             )),
             sequence(
-              not(peek(regex(/[ \t\n\r\f]*:/))),
+              not(regex(/[ \t\n\r\f]*:/)),
               g.AtRulePrelude,
               literal(';')
             )

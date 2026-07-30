@@ -211,7 +211,7 @@ type SharedCssSyntax = {
   DoubleQuotedText: Combinator<string>;
   CssSyntaxHexColor: Combinator<string>;
   CssSyntaxImportant: Combinator<string>;
-  CssSyntaxKeyframesAtKeyword: Combinator<string>;
+  KeyframesAtKeyword: Combinator<string>;
   Identifier: Combinator<string>;
   NthExpression: Combinator<string>;
   NthChildPseudoSelectorName: Combinator<string>;
@@ -221,7 +221,6 @@ type SharedCssSyntax = {
   NthOfKeyword: Combinator<string>;
   PseudoSelectorCloseAhead: Combinator<string>;
   CssSyntaxNumber: Combinator<string>;
-  CssSyntaxProperty: Combinator<string>;
   CssSyntaxInterpolatedPropertyStart: Combinator<string>;
   CssSyntaxInterpolatedPropertyTail: Combinator<string>;
   CssSyntaxCustomProperty: Combinator<string>;
@@ -229,21 +228,21 @@ type SharedCssSyntax = {
   CssSyntaxCustomInnerContent: Combinator<string>;
   CssSyntaxCustomSingleQuoted: Combinator<string>;
   CssSyntaxCustomDoubleQuoted: Combinator<string>;
-  CssSyntaxQueryAndOr: Combinator<string>;
-  CssSyntaxQueryNot: Combinator<string>;
-  CssSyntaxQueryOnly: Combinator<string>;
-  CssSyntaxQueryComparisonOperator: Combinator<string>;
-  CssSyntaxContainerAtKeyword: Combinator<string>;
-  CssSyntaxSupportsAtKeyword: Combinator<string>;
+  QueryAndOr: Combinator<string>;
+  QueryNot: Combinator<string>;
+  QueryOnly: Combinator<string>;
+  QueryComparisonOperator: Combinator<string>;
+  ContainerAtKeyword: Combinator<string>;
+  SupportsAtKeyword: Combinator<string>;
   SingleQuotedText: Combinator<string>;
   CssSyntaxDimensionUnit: Combinator<string>;
   CssSyntaxUrlOpen: Combinator<string>;
   CssSyntaxUrlInner: Combinator<string>;
   CssSyntaxStaticUrlInner: Combinator<string>;
-  CssSyntaxGenericAtRuleName: Combinator<string>;
+  GenericAtRuleName: Combinator<string>;
   CssSyntaxSimple: Combinator<string>;
   PseudoSelectorColon: Combinator<string>;
-  CssSyntaxMediaAtKeyword: Combinator<string>;
+  MediaAtKeyword: Combinator<string>;
   PreprocessorOpaqueAtRulePreludeCapture: Combinator<string | null>;
   PreprocessorOpaqueAtRuleBodyCapture: Combinator<string>;
 };
@@ -3003,7 +3002,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const CollectionEntry = node<CollectionEntry>(
     'CollectionEntry',
     sequence(
-      g.CssSyntaxProperty,
+      g.Identifier,
       literal(':'),
       parser(
         { trivia: whitespace },
@@ -3541,7 +3540,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         optional(rawWhitespace),
         field(
           'comparison',
-          g.CssSyntaxQueryComparisonOperator
+          g.QueryComparisonOperator
         ),
         optional(rawWhitespace),
         StaticAtQueryValue,
@@ -3555,7 +3554,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         optional(rawWhitespace),
         field(
           'comparison',
-          g.CssSyntaxQueryComparisonOperator
+          g.QueryComparisonOperator
         ),
         optional(rawWhitespace),
         StaticAtQueryProperty,
@@ -3563,7 +3562,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           optional(rawWhitespace),
           field(
             'comparison',
-            g.CssSyntaxQueryComparisonOperator
+            g.QueryComparisonOperator
           ),
           optional(rawWhitespace),
           StaticAtQueryValue
@@ -3664,7 +3663,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const StaticAtNonOnlyKeyword = node<Keyword>(
     'StaticAtNonOnlyKeyword',
     sequence(
-      not(g.CssSyntaxQueryOnly),
+      not(g.QueryOnly),
       g.Keyword
     ),
     children => requireKeyword(children.at(-1))
@@ -3689,7 +3688,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.StaticAtQuery,
       g.StaticAtDashedIdent,
       sequence(
-        not(g.CssSyntaxQueryOnly),
+        not(g.QueryOnly),
         g.StaticValueAtom
       )
     ),
@@ -3699,7 +3698,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'StaticAtPreludeTerm',
     noTrivia(sequence(choice(
       sequence(
-        g.CssSyntaxQueryOnly,
+        g.QueryOnly,
         regex(/[ \t\n\r\f]+/),
         StaticAtNonOnlyKeyword,
         many(sequence(
@@ -3760,7 +3759,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       g.StaticAtQuery,
       many(sequence(
-        g.CssSyntaxQueryAndOr,
+        g.QueryAndOr,
         g.StaticAtQuery
       ))
     ),
@@ -3837,7 +3836,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'StaticAtRuleHeader',
     choice(
       sequence(
-        g.CssSyntaxMediaAtKeyword,
+        g.MediaAtKeyword,
         not(choice(
           literal('{'),
           literal(';')
@@ -3865,12 +3864,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'AtRuleHeader',
     choice(
       sequence(
-        g.CssSyntaxMediaAtKeyword,
+        g.MediaAtKeyword,
         not(literal('{')),
         g.MediaPrelude
       ),
       sequence(
-        g.CssSyntaxContainerAtKeyword,
+        g.ContainerAtKeyword,
         g.StaticContainerPrelude
       ),
       g.StaticAtRuleHeader
@@ -4083,12 +4082,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const SupportsNot = node<Keyword>(
     'SupportsNot',
-    g.CssSyntaxQueryNot,
+    g.QueryNot,
     children => keyword(requireToken(children[0]).value)
   );
   const SupportsLogical = node<Keyword>(
     'SupportsLogical',
-    g.CssSyntaxQueryAndOr,
+    g.QueryAndOr,
     children => keyword(requireToken(children[0]).value)
   );
   const SupportsFeature = node<ValueNode>(
@@ -4370,7 +4369,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const SupportsAtRuleBlock = node<AtRuleBlock>(
     'SupportsAtRuleBlock',
     sequence(
-      g.CssSyntaxSupportsAtKeyword,
+      g.SupportsAtKeyword,
       g.SupportsCondition,
       literal('{'),
       many(atBlockStatement),
@@ -4409,7 +4408,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const StaticPropertyDescriptor = node<Declaration>(
     'StaticPropertyDescriptor',
     sequence(
-      g.CssSyntaxProperty,
+      g.Identifier,
       literal(':'),
       g.StaticValue,
       literal(';')
@@ -4488,7 +4487,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const Keyframes = node<AtRuleBlock>(
     'Keyframes',
     sequence(
-      g.CssSyntaxKeyframesAtKeyword,
+      g.KeyframesAtKeyword,
       choice(
         g.Keyword,
         g.StaticQuoted
@@ -4615,7 +4614,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Cheap superset lookahead so an ordinary `color: …` declaration does not
    * enter the interpolated-property arm, consume the whole property name via
    * the optional literal start, fail the required interpolation, and backtrack a
-   * property re-parse through CssSyntaxProperty. Skip this arm unless a
+   * property re-parse through Identifier. Skip this arm unless a
    * `$[` or `${` actually precedes the next `:`/`;`/brace. A property name never
    * contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
    * real interpolated property is never skipped.
@@ -4795,7 +4794,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         choice(
           InterpolatedProperty,
-          g.CssSyntaxProperty
+          g.Identifier
         ),
         literal(':'),
         g.Value,
@@ -4920,7 +4919,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'OpaqueAtRuleBlock',
     sequence(
       not(compilerAtRuleName),
-      g.CssSyntaxGenericAtRuleName,
+      g.GenericAtRuleName,
       noTrivia(sequence(
         g.OpaqueAtPrelude,
         literal('{'),
