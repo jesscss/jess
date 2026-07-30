@@ -209,8 +209,8 @@ type SharedCssSyntax = {
   AttributeModifier: Combinator<string>;
   AttributeOperator: Combinator<string>;
   DoubleQuotedText: Combinator<string>;
-  CssSyntaxHexColor: Combinator<string>;
-  CssSyntaxImportant: Combinator<string>;
+  HexColor: Combinator<string>;
+  ImportantToken: Combinator<string>;
   KeyframesAtKeyword: Combinator<string>;
   Identifier: Combinator<string>;
   NthExpression: Combinator<string>;
@@ -220,7 +220,7 @@ type SharedCssSyntax = {
   SelectorArgumentPseudoSelectorName: Combinator<string>;
   NthOfKeyword: Combinator<string>;
   PseudoSelectorCloseAhead: Combinator<string>;
-  CssSyntaxNumber: Combinator<string>;
+  NumberToken: Combinator<string>;
   CssSyntaxInterpolatedPropertyStart: Combinator<string>;
   CssSyntaxInterpolatedPropertyTail: Combinator<string>;
   CssSyntaxCustomProperty: Combinator<string>;
@@ -235,12 +235,12 @@ type SharedCssSyntax = {
   ContainerAtKeyword: Combinator<string>;
   SupportsAtKeyword: Combinator<string>;
   SingleQuotedText: Combinator<string>;
-  CssSyntaxDimensionUnit: Combinator<string>;
-  CssSyntaxUrlOpen: Combinator<string>;
-  CssSyntaxUrlInner: Combinator<string>;
-  CssSyntaxStaticUrlInner: Combinator<string>;
+  DimensionUnit: Combinator<string>;
+  UrlOpen: Combinator<string>;
+  UrlInner: Combinator<string>;
+  StaticUrlInner: Combinator<string>;
   GenericAtRuleName: Combinator<string>;
-  CssSyntaxSimple: Combinator<string>;
+  SimpleSelectorToken: Combinator<string>;
   PseudoSelectorColon: Combinator<string>;
   MediaAtKeyword: Combinator<string>;
   PreprocessorOpaqueAtRulePreludeCapture: Combinator<string | null>;
@@ -2312,8 +2312,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const Dimension = node<Dimension>(
     'Dimension',
     noTrivia(sequence(
-      g.CssSyntaxNumber,
-      optional(g.CssSyntaxDimensionUnit)
+      g.NumberToken,
+      optional(g.DimensionUnit)
     )),
     (children) => {
       const numberText = requireToken(children[0]).value;
@@ -2327,7 +2327,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const Color = node<Color>(
     'Color',
-    g.CssSyntaxHexColor,
+    g.HexColor,
     children => color(requireToken(children[0]).value)
   );
   const UrlInterpolatedValue = node<Interpolation>(
@@ -2364,10 +2364,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const Url = node<Url>(
     'Url',
     sequence(
-      g.CssSyntaxUrlOpen,
+      g.UrlOpen,
       optional(choice(
         g.StaticQuoted,
-        g.CssSyntaxStaticUrlInner
+        g.StaticUrlInner
       )),
       literal(')')
     ),
@@ -2387,7 +2387,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const InterpolatedUrl = node<Url>(
     'InterpolatedUrl',
     sequence(
-      g.CssSyntaxUrlOpen,
+      g.UrlOpen,
       choice(
         g.Quoted,
         g.UrlInterpolatedValue
@@ -2405,7 +2405,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    */
   const Simple = node<SimpleSelector>(
     'Simple',
-    g.CssSyntaxSimple,
+    g.SimpleSelectorToken,
     children => simpleSelector(requireToken(children[0]).value)
   );
 
@@ -4176,15 +4176,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       g.StaticQuoted,
       sequence(
-        g.CssSyntaxUrlOpen,
+        g.UrlOpen,
         literal(')')
       ),
       sequence(
-        g.CssSyntaxUrlOpen,
+        g.UrlOpen,
         choice(
           g.Quoted,
           g.UrlInterpolatedValue,
-          g.CssSyntaxStaticUrlInner
+          g.StaticUrlInner
         ),
         literal(')')
       )
@@ -4592,7 +4592,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'Important',
     sequence(
       literal('!'),
-      g.CssSyntaxImportant
+      g.ImportantToken
     ),
     (children) => {
       const marker = children.find((child): child is Token => isToken(child) && child.value === '!');

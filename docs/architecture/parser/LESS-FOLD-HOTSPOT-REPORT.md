@@ -101,7 +101,7 @@ Priority Less cleanup queue:
    Unknown at-rules can opportunistically parse structure, but comments should
    not be assembled into semantic prelude text.
 3. **General-enclosed raw comments are likely semantic debt.**
-   `GeneralEnclosedRaw` includes `g.CssSyntaxBlockComment` as raw text; preserve
+   `GeneralEnclosedRaw` includes `g.BlockCommentToken` as raw text; preserve
    balanced recognition, but do not make comments part of interpolation or
    general-enclosed payloads.
 

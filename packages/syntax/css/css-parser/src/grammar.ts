@@ -110,7 +110,7 @@ type CssGrammarRuleName =
   | 'FontFeatureValueAtKeyword'
   | 'FontFeatureValuesAtKeyword'
   | 'GenericAtRuleName'
-  | 'CssSyntaxImportant'
+  | 'ImportantToken'
   | 'KeyframesAtKeyword'
   | 'LayerAtKeyword'
   | 'MalformedPseudoSelectorNumericArgument'
@@ -135,9 +135,9 @@ type CssGrammarRuleName =
   | 'StartingStyleAtKeyword'
   | 'StatementAtRuleName'
   | 'SupportsAtKeyword'
-  | 'CssSyntaxUnicodeRange'
-  | 'CssSyntaxUrlInner'
-  | 'CssSyntaxUrlOpen'
+  | 'UnicodeRangeToken'
+  | 'UrlInner'
+  | 'UrlOpen'
   | 'CustomProperty'
   | 'CustomValue'
   | 'Declaration'
@@ -870,7 +870,7 @@ const relativeSelectorCombinator = keywords(['>', '+', '~']);
 const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
 
 /*
- * Grammar-local copy of CssSyntaxSimple. As the fallback arm of the compound
+ * Grammar-local copy of SimpleSelectorToken. As the fallback arm of the compound
  * selector choice it must resolve a concrete first-set (`.`/`#`/`-`/letter/digit/
  * `*`) so the compiler first-char-gates the whole compound choice; a cross-
  * composition reference reads as `any`, entering the simple-selector node frame
@@ -880,7 +880,7 @@ const simpleSelectorToken = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9
 
 /*
  * Grammar-local copies of the leading hex-color and number recognizers (identical
- * to CssSyntaxHexColor / CssSyntaxNumber). Leading a component-value choice
+ * to HexColor / NumberToken). Leading a component-value choice
  * arm with a cross-composition `g.CssSyntax*` reference leaves that arm's
  * first-set unresolved (`any`), so the compiler enters the Color / Dimension node
  * frame speculatively at every value atom. A local leading recognizer resolves the
@@ -1561,7 +1561,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    */
   const UnicodeRange = node(
     'UnicodeRange',
-    g.CssSyntaxUnicodeRange,
+    g.UnicodeRangeToken,
     children => any(tokenText(children[0]))
   );
   const Percentage = node<AstDimension>(
@@ -1639,7 +1639,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const UrlUnquoted = node(
     'UrlUnquoted',
-    g.CssSyntaxUrlInner,
+    g.UrlInner,
     children => any(tokenText(children[0]!))
   );
   const Url = node<AstUrl>(
@@ -2444,7 +2444,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
      * concrete first-set and optional(Important) is first-char-gated instead of
      * entering the node frame at every declaration's value boundary.
      */
-    sequence(literal('!'), g.CssSyntaxImportant),
+    sequence(literal('!'), g.ImportantToken),
     () => true
   );
   const Declaration = node(
@@ -2511,7 +2511,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    */
   const ImportUrlUnquoted = node(
     'ImportUrlUnquoted',
-    g.CssSyntaxUrlInner,
+    g.UrlInner,
     children => any(tokenText(children[0]!))
   );
   const ImportUrl = node(

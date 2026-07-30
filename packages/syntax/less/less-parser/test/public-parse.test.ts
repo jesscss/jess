@@ -261,11 +261,11 @@ describe('public Less parse()', () => {
     expect(thrown.message).toBe(
       'Unexpected Less syntax. Expected a Less value.'
     );
-    expect(thrown.message).not.toContain('CssSyntaxNumber');
-    expect(thrown.message).not.toContain('not(peek)');
+    expect(thrown.message).not.toContain('NumberToken');
+    expect(thrown.message).not.toContain('not(regex)');
     expect(thrown.message).not.toContain('/(?!');
-    expect(thrown.expected).toContain('CssSyntaxNumber');
-    expect(thrown.expected).toContain('not(peek)');
+    expect(thrown.expected).toContain('NumberToken');
+    expect(thrown.expected).toContain('not(regex)');
   });
 
   it('summarizes direct structural parse errors without hiding raw expected facts', () => {
