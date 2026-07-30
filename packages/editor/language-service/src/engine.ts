@@ -11,6 +11,8 @@ import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import selectorParser from 'postcss-selector-parser';
+import { selectorSpecificity, type Specificity } from '@csstools/selector-specificity';
 import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import {
   cstLintDiagnostics,
@@ -411,6 +413,7 @@ type Enrich = { syntax?: string; references?: MdnRef[]; baseline?: Baseline; bro
 type AtDirectiveEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
 type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; status?: string; values?: Array<{ name: string; description?: string | { value: string; kind?: string } } & Enrich>; restrictions?: string[] } & Enrich;
 type PseudoEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
+type HoverEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
 type WebCssData = {
   atDirectives?: AtDirectiveEntry[];
   properties?: PropertyEntry[];
@@ -441,6 +444,11 @@ const ROOT_ONLY_AT_RULES = new Set(['charset', 'import', 'namespace']);
 const STYLE_RULE_INVALID_AT_RULES = new Set([
   'font-face', 'keyframes', 'page', 'property', 'counter-style',
   'font-feature-values', 'viewport', 'document'
+]);
+const SPECIFICITY_SELECTOR_TYPES = new Set([
+  'ComplexSelector',
+  'TopLevelComplexSelector',
+  'SelectorBranch'
 ]);
 const AT_RULES_MAP = new Map<string, AtDirectiveEntry>();
 for (const d of webCssData.atDirectives ?? []) {
@@ -526,8 +534,15 @@ function browserSupportText(browsers: readonly string[] | undefined): string | n
   return browsers.map(browserSupportLabel).join(', ');
 }
 
-/** Append MDN link + Baseline status + formal syntax to a hover, from the
- * enrichment fields web-custom-data ships. Empty string when nothing to add. */
+function descriptionText(entry: HoverEntry): string {
+  if (entry.description === undefined) {
+    return '';
+  }
+  return typeof entry.description === 'string' ? entry.description : entry.description.value;
+}
+
+/** MDN link + Baseline status + formal syntax from web-custom-data, rendered
+ * after the main hover docs. */
 function hoverExtras(entry: Enrich): string {
   const parts: string[] = [];
   if (entry.syntax) {
@@ -550,6 +565,35 @@ function hoverExtras(entry: Enrich): string {
     parts.push(`[MDN Reference](${mdn.url})`);
   }
   return parts.length ? `\n\n${parts.join('  \n')}` : '';
+}
+
+function cssHover(entry: HoverEntry, kind: 'property' | 'value' | 'at-rule' | 'pseudo'): string {
+  const desc = descriptionText(entry);
+  const signature = `\`\`\`css\n${entry.name}\n\`\`\``;
+  const label =
+    kind === 'property'
+      ? `**CSS property** ${entry.name}`
+      : kind === 'value'
+        ? `**CSS value** ${entry.name}`
+        : kind === 'at-rule'
+          ? `**CSS at-rule** ${entry.name}`
+          : `**CSS selector** ${entry.name}`;
+  return `${signature}\n${label}${desc ? `\n\n${desc}` : ''}${hoverExtras(entry)}`;
+}
+
+function scssDeclaredMixinNames(source: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const re = /@mixin\s+([-_a-zA-Z0-9]+)/g;
+  for (let m: RegExpExecArray | null; (m = re.exec(source));) {
+    const name = m[1]!;
+    const key = name.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(name);
+    }
+  }
+  return out;
 }
 
 /*
@@ -665,6 +709,51 @@ function lowerName(name: string): string {
 function lowerAtRuleName(name: string): string {
   const lower = name.toLowerCase();
   return lower.startsWith('@') ? lower : `@${lower}`;
+}
+
+function specificityText(specificity: Specificity): string {
+  return `(${specificity.a}, ${specificity.b}, ${specificity.c})`;
+}
+
+function selectorSpecificityHover(root: CssCstNode, source: string, offset: number): string | null {
+  const index = buildCstIndex(root);
+  let best: { readonly start: number; readonly end: number } | null = null;
+  for (const entry of index.nodes) {
+    if (
+      !SPECIFICITY_SELECTOR_TYPES.has(entry.node.grammarType)
+      || entry.start > offset
+      || entry.end < offset
+    ) {
+      continue;
+    }
+    if (best === null || (entry.end - entry.start) < (best.end - best.start)) {
+      best = entry;
+    }
+  }
+  if (best === null) {
+    return null;
+  }
+
+  const selector = source.slice(best.start, best.end).trim();
+  if (
+    selector.length === 0
+    || selector.includes('@{')
+    || selector.includes('#{')
+    || selector.includes('${')
+  ) {
+    return null;
+  }
+
+  try {
+    const ast = selectorParser().astSync(selector, { lossless: false, maxNestingDepth: 64 });
+    if (ast.nodes.length !== 1) {
+      return null;
+    }
+    const specificity = selectorSpecificity(ast.nodes[0]!);
+    return `\`\`\`css\n${selector}\n\`\`\`\n**Selector specificity** \`${specificityText(specificity)}\``;
+  } catch {
+    return null;
+  }
 }
 
 function customPropertyValueStatus(entry: PropertyEntry, value: CssPropertyValueFact): boolean | undefined {
@@ -1502,6 +1591,8 @@ export function createEngine(): JessLanguageServiceEngine {
       const replaceRange = toRange(document, wordStart, offset);
       const prefix = currentWord.toLowerCase();
       const cstTree = tracked.cstDoc?.tree;
+      const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+      const lineBeforeCursor = text.slice(lineStart, offset);
 
       const suggestions = suggestWithJess(text, tracked.lang, offset).map(s => String(s.nextTokenType).toLowerCase());
       const wantsAt = currentWord.startsWith('@') || suggestions.some(t => t.includes('at'));
@@ -1559,9 +1650,7 @@ export function createEngine(): JessLanguageServiceEngine {
        * transitive imports (custom props are a flat global namespace).
        */
       {
-        const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
-        const lineBefore = text.slice(lineStart, offset);
-        if (/var\(\s*(?:--[-\w]*)?$/i.test(lineBefore)) {
+        if (/var\(\s*(?:--[-\w]*)?$/i.test(lineBeforeCursor)) {
           for (const name of collectCustomProps(uri)) {
             if (prefix && !name.toLowerCase().startsWith(prefix)) {
               continue;
@@ -1583,11 +1672,9 @@ export function createEngine(): JessLanguageServiceEngine {
        * both openers are completion contexts.
        */
       {
-        const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
-        const lineBefore = text.slice(lineStart, offset);
         const inInterp =
-          (tracked.lang === 'less' && /@\{[-\w]*$/.test(lineBefore))
-          || (tracked.lang === 'jess' && /\$[[{][-\w]*$/.test(lineBefore));
+          (tracked.lang === 'less' && /@\{[-\w]*$/.test(lineBeforeCursor))
+          || (tracked.lang === 'jess' && /\$[[{][-\w]*$/.test(lineBeforeCursor));
         if (inInterp && cstTree) {
           for (const name of cstVariableNames(cstTree, document)) {
             if (prefix && !name.toLowerCase().startsWith(prefix)) {
@@ -1631,8 +1718,11 @@ export function createEngine(): JessLanguageServiceEngine {
        * 2) SCSS mixin completions after `@include ` — reuses the CST declared-mixin
        * inventory (same one the did-you-mean quick fix uses).
        */
-      if (tracked.lang === 'scss' && cstTree && /@include\s+$/.test(before)) {
-        for (const name of cstDeclaredSymbols(cstTree, document).mixins) {
+      if (tracked.lang === 'scss' && /@include\s+[-_a-zA-Z0-9]*$/.test(lineBeforeCursor)) {
+        const mixins = cstTree == null
+          ? scssDeclaredMixinNames(text)
+          : [...cstDeclaredSymbols(cstTree, document).mixins];
+        for (const name of mixins) {
           if (prefix && !name.toLowerCase().startsWith(prefix)) {
             continue;
           }
@@ -1814,11 +1904,10 @@ export function createEngine(): JessLanguageServiceEngine {
         const entry = AT_RULES_MAP.get(word.toLowerCase())
           ?? customAtRules().find(a => a.name.toLowerCase() === word.toLowerCase());
         if (entry?.description) {
-          const desc = typeof entry.description === 'string' ? entry.description : entry.description.value;
           return {
             contents: {
               kind: MarkupKind.Markdown,
-              value: `**${entry.name}**\n\n${desc}${hoverExtras(entry)}`
+              value: cssHover(entry, 'at-rule')
             }
           };
         }
@@ -1841,28 +1930,27 @@ export function createEngine(): JessLanguageServiceEngine {
             ? PSEUDO_ELEMENTS_MAP.get(`::${word}`.toLowerCase())
             : (PSEUDO_CLASSES_MAP.get(`:${word}`.toLowerCase()) ?? PSEUDO_ELEMENTS_MAP.get(`::${word}`.toLowerCase()));
           if (entry?.description) {
-            const desc = typeof entry.description === 'string' ? entry.description : entry.description.value;
             return {
               contents: {
                 kind: MarkupKind.Markdown,
-                value: `**${entry.name}**\n\n${desc}${hoverExtras(entry)}`
+                value: cssHover(entry, 'pseudo')
               }
             };
           }
         }
       }
 
-      // Check for property name hover.
-      const propEntry = PROPERTIES_MAP.get(word.toLowerCase())
-        ?? customProperties().find(p => p.name.toLowerCase() === word.toLowerCase());
-      if (propEntry?.description) {
-        const desc = typeof propEntry.description === 'string' ? propEntry.description : propEntry.description.value;
-        return {
-          contents: {
-            kind: MarkupKind.Markdown,
-            value: `**${propEntry.name}**\n\n${desc}${hoverExtras(propEntry)}`
-          }
-        };
+      if (tracked.lang === 'css') {
+        const tree = tracked.cstDoc?.tree;
+        const specificity = tree == null ? null : selectorSpecificityHover(tree, text, offset);
+        if (specificity !== null) {
+          return {
+            contents: {
+              kind: MarkupKind.Markdown,
+              value: specificity
+            }
+          };
+        }
       }
 
       // Check for property value hover (need to find the property name first).
@@ -1872,18 +1960,30 @@ export function createEngine(): JessLanguageServiceEngine {
         if (prop?.values) {
           for (const val of prop.values) {
             if (val.name.toLowerCase() === word.toLowerCase()) {
-              const desc = val.description
-                ? (typeof val.description === 'string' ? val.description : val.description.value)
-                : `Value for \`${propName}\``;
+              const entry = val.description === undefined
+                ? { ...val, description: `Value for \`${propName}\`` }
+                : val;
               return {
                 contents: {
                   kind: MarkupKind.Markdown,
-                  value: `**${val.name}**\n\n${desc}${hoverExtras(val)}`
+                  value: cssHover(entry, 'value')
                 }
               };
             }
           }
         }
+      }
+
+      // Check for property name hover.
+      const propEntry = PROPERTIES_MAP.get(word.toLowerCase())
+        ?? customProperties().find(p => p.name.toLowerCase() === word.toLowerCase());
+      if (propEntry?.description) {
+        return {
+          contents: {
+            kind: MarkupKind.Markdown,
+            value: cssHover(propEntry, 'property')
+          }
+        };
       }
 
       return null;

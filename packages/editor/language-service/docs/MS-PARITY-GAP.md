@@ -2,6 +2,9 @@
 
 Goal: reach and exceed parity with Microsoft's built-in VS Code CSS/SCSS/Less
 support (the `vscode-css-languageservice` library) across css / scss / less.
+Microsoft's service is the coverage baseline; TypeScript-style hovers and
+completions are the presentation target for Jess: code/signature first, concise
+symbol category, docs next, metadata last.
 
 - **Side A (MS):** `microsoft/vscode-css-languageservice` — `src/cssLanguageService.ts`,
   `src/services/{cssCompletion,scssCompletion,lessCompletion,cssHover,cssNavigation,scssNavigation,cssValidation,lintRules,cssCodeActions,cssFolding,cssSelectionRange,cssDocumentSymbol}.ts`,
@@ -56,11 +59,11 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
-| Property hover | ✓ MDN description + **browser-compat table + MDN "syntax" + spec/MDN links** | ✓ description, formal syntax, Baseline, browser support summary, and MDN link from web-custom-data | Comparable, though MS has a richer rendered compat table | P2 |
-| Property-value hover | ✓ | ✓ value description, Baseline, and browser support summary when web-custom-data includes it | Comparable, though MS has richer presentation | P2 |
-| At-rule hover | ✓ | ✓ description from web-custom-data | Comparable | P2 |
-| Pseudo-class/element hover | ✓ | ✗ | Missing | P1 |
-| Selector-specificity hover | ✓ (shows computed specificity for a selector) | ✗ | Missing | P2 |
+| Property hover | ✓ MDN description + **browser-compat table + MDN "syntax" + spec/MDN links** | ✓ TypeScript-style code block + category, description, formal syntax, Baseline, browser support summary, and MDN link from web-custom-data | Comparable coverage; keep improving richness/ranking beyond MS formatting | P2 |
+| Property-value hover | ✓ | ✓ TypeScript-style value hover with description, Baseline, and browser support summary when web-custom-data includes it | Comparable coverage; richer compound values remain future work | P2 |
+| At-rule hover | ✓ | ✓ TypeScript-style at-rule hover from web-custom-data | Comparable | P2 |
+| Pseudo-class/element hover | ✓ | ✓ TypeScript-style selector hover from web-custom-data | Comparable | P1 |
+| Selector-specificity hover | ✓ (shows computed specificity for a selector) | ✓ static CSS selector branches | Dialect nested/interpolated selector specificity remains future work | P2 |
 | Variable / mixin hover (show value/definition) | partial (SCSS) | ✗ | Missing | P1 |
 
 ### Navigation
@@ -180,9 +183,14 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    Detection lives in diagnostics-core; lint and the language service only
    configure and surface the shared records.
 10. ✅ **DONE.** **Hover enrichment** — pseudo-class/element hover added; property,
-    value, pseudo, and at-rule hover append formal `syntax`, Baseline status,
-    browser support summaries, and the MDN reference link when web-custom-data
-    provides those fields.
+    value, pseudo, and at-rule hover use a TypeScript-style shape (code block /
+    category first, docs second, metadata last) and include formal `syntax`,
+    Baseline status, browser support summaries, and the MDN reference link when
+    web-custom-data provides those fields.
+10a. ✅ **DONE.** **Selector specificity hover** — static CSS selector branches
+    show specificity from `postcss-selector-parser` + CSSTools specificity
+    calculation. Dialect nested/interpolated selector specificity remains future
+    work.
 11. ✅ **DONE (highlights all occurrences of the symbol under the cursor).** **`findDocumentHighlights`** — add to the engine interface; reuse
     `collectReferenceSet` but scope to the current document only.
 12. ✅ **DONE (named colors w/ swatch + color functions; units on numeric prefix).** **Named-color + color-function value completions** in color contexts, with

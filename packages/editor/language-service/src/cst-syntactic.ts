@@ -298,18 +298,25 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
   };
 
   /*
-   * Absolute span of a `Reference`'s leading `$` sigil leaf, when the grammar
-   * captured the sigil separately from the name. `null` when the reference is a
-   * single leaf (css/less/scss), so those keep one variable token.
+   * Absolute span of a `Reference`'s leading `$` sigil. Prefer the CST child when
+   * the grammar captured the sigil separately; fall back to the node source span
+   * for current Jess value references, whose CST has one `$foo` leaf.
    */
   const sigilLeafSpan = (node: CssCstNode): { start: number; end: number } | null => {
     const first = cstChildrenOf(node)[0];
-    if (!first || isCstNode(first)) {
+    if (first && !isCstNode(first)) {
+      const s = Number(first.span.start);
+      const e = Number(first.span.end);
+      if (e === s + 1 && text.charAt(s) === '$') {
+        return { start: s, end: e };
+      }
+    }
+    const start = Number(node.span.start);
+    const end = Number(node.span.end);
+    if (!Number.isFinite(start) || end <= start + 1 || text.charAt(start) !== '$') {
       return null;
     }
-    const s = Number(first.span.start);
-    const e = Number(first.span.end);
-    return e === s + 1 && text.charAt(s) === '$' ? { start: s, end: e } : null;
+    return { start, end: start + 1 };
   };
 
   for (const { node, start, end } of index.nodes) {
@@ -318,10 +325,10 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
       /*
        * .jess treats `$` as a distinct sigil/operator (it also heads control-flow
        * `$…{}`, scope `${}`, mutation `:=`), so the `$` and the variable name are
-       * coloured as SEPARATE tokens rather than one blob. The jess grammar already
-       * captures them as two leaves (`$` then the bare name), so the split is read
-       * off the CST — never re-derived from source bytes. css/less/scss keep the
-       * conventional single-token variable.
+       * coloured as SEPARATE tokens rather than one blob. Prefer a separate `$`
+       * leaf when present; current value references expose one `$foo` leaf, so the
+       * editor fallback splits at the CST node's source start. css/less/scss keep
+       * the conventional single-token variable.
        */
       const sigil = lang === 'jess' ? sigilLeafSpan(node) : null;
       if (sigil) {
