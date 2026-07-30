@@ -383,6 +383,34 @@ describe('Less direct-AST closure CST contract', () => {
     expect(findNodes(result.tree, 'ExtendPseudo').map(leafValues)).toEqual([
       [':', 'extend', '(', '.target', 'all', ')']
     ]);
+    expect(findNodes(result.tree, 'InlineExtendSubjectCompound').map(leafValues)).toEqual([
+      ['.first'],
+      ['.inline'],
+      ['.sibling']
+    ]);
+    expect(findNodes(result.tree, 'ExtendTargetComplex').map(leafValues)).toEqual([
+      ['.target']
+    ]);
+    expect(findNodes(result.tree, 'StaticExtendCompound')).toHaveLength(0);
+  });
+
+  it('names typed generic at-rule headers by their prelude value role', () => {
+    const result = parseLessCstResult('@custom screen, print;');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(findNodes(result.tree, 'AtRulePreludeValue').map(leafValues)).toEqual([
+      ['screen', ', ', 'print']
+    ]);
+    expect(findNodes(result.tree, 'AtRulePreludeValueTerm').map(leafValues)).toEqual([
+      ['screen'],
+      ['print']
+    ]);
+    expect(findNodes(result.tree, 'AtRulePreludeValueAtom').map(leafValues)).toEqual([
+      ['screen'],
+      ['print']
+    ]);
+    expect(findNodes(result.tree, 'StaticAtRulePrelude')).toHaveLength(0);
   });
 
   it('routes static query identifiers and functions without widening url() into a query function', () => {

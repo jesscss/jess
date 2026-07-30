@@ -567,7 +567,7 @@ shape that both tsdown and Vite macro transforms lower identically.
 
 Rejected Less separator-helper probe, 2026-07-27: the four comma-prelude rules
 `QueryPrelude`, `MediaQueryPrelude`,
-`ContainerQueryPrelude`, and `DirectLessStaticAtRulePrelude` are real
+`ContainerQueryPrelude`, and `AtRulePreludeValue` are real
 comma-separated lists, but direct `oneOrMoreSep(item, field('separator',
 regex(/,[ \t\n\r\f]*/)))` rewrites are not currently byte-safe. Focused Less
 parser tests still passed (5 files / 436 tests), but
@@ -3542,11 +3542,10 @@ Fresh verification for that checkpoint:
   `tests-unit/charsets/charsets.less`, `tests-unit/tailwind/tailwind.less`, CSS
   `atrule-empty.css`, `atrule-inside.css`, and
   `packages/jess/test/files/include.css`. Sample CST probes show generic at-rule
-  preludes now owned by
-  `DirectLessStaticAtRulePrelude > DirectLessStaticAtRuleTerm >
-  DirectLessStaticAtRuleAtom`, while pseudo probes still use the intended
-  `DirectLessStaticSelectorPseudo`, `DirectLessStaticNonSelectorPseudo`,
-  `DirectLessInterpolatedArgumentPseudo`, and `ExtendPseudo` owners. Treat this
+  preludes now owned by `AtRulePreludeValue > AtRulePreludeValueTerm >
+  AtRulePreludeValueAtom`, while pseudo probes use their semantic
+  `PseudoSelector`, `GenericPseudo`, `PseudoArgument...`, and `ExtendPseudo`
+  owners. Treat this
   as unresolved folded at-rule/prelude CST classification, not as a pseudo
   dispatch regression or as a clean byte-identity baseline.
 
