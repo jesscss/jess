@@ -211,10 +211,6 @@ type SharedSyntax = {
   KeyframesAtKeyword: Combinator<string>;
   Identifier: Combinator<string>;
   NthExpression: Combinator<string>;
-  NthChildPseudoSelectorName: Combinator<string>;
-  NthTypePseudoSelectorName: Combinator<string>;
-  NthPseudoSelectorName: Combinator<string>;
-  SelectorArgumentPseudoSelectorName: Combinator<string>;
   NthOfKeyword: Combinator<string>;
   PseudoSelectorCloseAhead: Combinator<string>;
   NumberToken: Combinator<string>;
@@ -1450,6 +1446,16 @@ const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 export const jessFactory = (g: JessRules & SharedSyntax) => {
   const caseInsensitiveWhen = makeWhen({ caseInsensitive: true });
   const syntaxWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF');
+
+  /*
+   * CSS identifier-or-function positions consume the adjacent `(` as one
+   * routed opener. Jess reuses the same opener for values and pseudo selectors;
+   * only their selected tails differ.
+   */
+  const identifierOrFunction = token(noTrivia(sequence(
+    g.Identifier,
+    optional(literal('('))
+  )));
   const typedAtRuleHeaderNames = [
     '@keyframes', '@charset', '@import', '@supports', '@property',
     '@-use', '@-compose', '@-export', '@-import', '@-from'
@@ -2618,65 +2624,66 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
      * its parens (`:not( .b )`, `:nth-child( 2n+1 )`). Consume it here so valid
      * CSS is accepted in the .jess dialect exactly as the canonical CSS grammar
      * accepts it; it is trivia, so the serialized argument stays normalized.
-     * The nth families dispatch by NAME (shared `g.NthChildPseudoSelectorName`/
-     * `g.NthTypePseudoSelectorName`) so `of S` is accepted only on the child index
-     * and rejected on the type index. The selector-argument pseudos
-     * (`:is`/`:where`/`:not`/`:has`/`:matches`) dispatch by their own shared name
-     * class and take a selector-ONLY argument with no any-value fallback, so
-     * `:not(2n+1)` fails the selector and rejects the whole pseudo. Everything
-     * else is the general-any class. Both guards are restated as negative
-     * lookaheads on that last arm so a failed selector or malformed nth argument
-     * cannot fall through to the any-value scan; a bare, paren-less nth name
-     * (`:nth-child`) still rejects rather than becoming a keyword pseudo.
+     * The one glued name/function opener routes nth and selector-only names to
+     * their own argument grammars, so `of S` stays child-index-only and
+     * `:not(2n+1)` cannot fall through to general-any text. A bare nth or
+     * selector-only name rejects rather than becoming a keyword pseudo.
      */
     sequence(
       g.PseudoSelectorColon,
-      choice(
-        sequence(
-          g.NthChildPseudoSelectorName,
-          literal('('),
-          optional(rawWhitespace),
-          NthChildArgument,
-          optional(rawWhitespace),
-          literal(')')
+      dispatch(
+        identifierOrFunction,
+        caseInsensitiveWhen(
+          ['nth-child(', 'nth-last-child('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            NthChildArgument,
+            optional(rawWhitespace),
+            literal(')')
+          )
         ),
-        sequence(
-          g.NthTypePseudoSelectorName,
-          literal('('),
-          optional(rawWhitespace),
-          NthTypeArgument,
-          optional(rawWhitespace),
-          literal(')')
+        caseInsensitiveWhen(
+          ['nth-of-type(', 'nth-last-of-type('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            NthTypeArgument,
+            optional(rawWhitespace),
+            literal(')')
+          )
         ),
-        sequence(
-          g.SelectorArgumentPseudoSelectorName,
-          literal('('),
-          optional(rawWhitespace),
-          g.PseudoSelectorArgument,
-          optional(rawWhitespace),
-          literal(')')
+        caseInsensitiveWhen(
+          ['is(', 'where(', 'not(', 'has(', 'matches('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            g.PseudoSelectorArgument,
+            optional(rawWhitespace),
+            literal(')')
+          )
         ),
-        sequence(
-          not(g.SelectorArgumentPseudoSelectorName),
-          not(g.NthPseudoSelectorName),
-          g.Identifier,
-          optional(sequence(
-            literal('('),
+        caseInsensitiveWhen(
+          [
+            'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type',
+            'is', 'where', 'not', 'has', 'matches'
+          ],
+          not(routed())
+        ),
+        when(
+          endsWith('('),
+          sequence(
+            routed(),
             g.GenericPseudoArgument,
             literal(')')
-          ))
-        )
+          )
+        ),
+        otherwise(routed())
       )
     ),
     (children) => {
-      const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
-
-      /*
-       * The argument reduces to a `SelectorList` or a plain An+B string; the
-       * colon, name, parens, and surrounding-whitespace children are all tokens,
-       * so a find on those two shapes locates the argument regardless of whether
-       * optional whitespace is present.
-       */
+      const pseudoName = functionOpenName(children[1]);
+      const head = `${requireToken(children[0]).value}${pseudoName}`;
       const arg = children.find((child): child is SelectorList | string => isSelectorList(child) || typeof child === 'string');
       if (arg === undefined) {
         return simpleSelector(head);
@@ -2688,7 +2695,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
        * owns the inline `:is(a, b)` rule (`pseudoCanonical`). The nth/opaque path
        * still collapses to canonical SimpleSelector text via `staticSelectorText`.
        */
-      if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(requireToken(children[1]).value.toLowerCase())) {
+      if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoName.toLowerCase())) {
         return pseudoSelector(
           head,
           arg
@@ -2934,10 +2941,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     g.CustomPropertyName,
     children => keyword(requireToken(children[0]).value)
   );
-  const identifierOrFunction = token(noTrivia(sequence(
-    g.Identifier,
-    optional(literal('('))
-  )));
   const KeywordValue = node<Keyword>(
     'Keyword',
     routed(),
