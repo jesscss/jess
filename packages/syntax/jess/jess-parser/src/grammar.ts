@@ -3147,48 +3147,80 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * Left-factored `$`/`$^`+name so the ubiquitous dollar value is parsed ONCE.
-   * The leading `VariableReference` is shared across plain references,
-   * accessor-tail chains, and unwrapped `/` slash lists. Arithmetic and
-   * comparison stay in the explicit `$(...)` expression grammar so normal value
-   * position cannot admit expression-only forms like leading-dot declaration
-   * lookup.
+   * The first dollar-family characters determine the base unambiguously:
+   * `$.` starts declaration access, `$^name` starts a scoped variable, and
+   * `$name` starts a live variable. Consume that complete normal-value opener
+   * once and route the selected semantic tail; a speculative declaration arm
+   * would otherwise consume `$` and reparse every ordinary variable value.
+   * `$(` and `$[` deliberately do not match this opener, so Expression and
+   * DollarInterp retain their distinct value-position syntax.
+   *
+   * Arithmetic and comparison stay in the explicit `$(...)` expression grammar
+   * so normal value position cannot admit expression-only forms like leading-dot
+   * declaration lookup.
    */
+  const dollarValueHead = token(noTrivia(choice(
+    literal('$.'),
+    sequence(literal('$^'), dollarName),
+    sequence(literal('$'), dollarName)
+  )));
+  const RoutedDeclarationReference = node<DeclarationReference>(
+    'DeclarationReference',
+    routed(),
+    (_children, _fields, span) => withSourceSpan(declarationReference('$'), span)
+  );
+  const RoutedVariableReference = node<VariableReference>(
+    'VariableReference',
+    routed(),
+    (children, _fields, span) => {
+      /* The discriminator carries the full `$name` or `$^name` opener. */
+      const raw = requireToken(children[0]).value;
+      const scoped = raw.startsWith('$^');
+      return withSourceSpan(
+        variableReference(raw.slice(scoped ? 2 : 1), scoped ? 'scoped' : 'live'),
+        span
+      );
+    }
+  );
+  const variableDollarValueTail = sequence(
+    RoutedVariableReference,
+    optional(choice(
+
+      /*
+       * Slash list: `/` is intentionally not an unwrapped Operation. Preserve
+       * the authored value boundary as an explicit slash List; `$( $w / 2 )`
+       * is the arithmetic spelling.
+       */
+      sequence(
+        optional(rawWhitespace),
+        literal('/'),
+        optional(rawWhitespace),
+        g.ValueAtom
+      ),
+
+      /* Accessor-tail chain (`.name`, `[key]`). */
+      oneOrMore(choice(
+        g.ReferenceCallTail,
+        g.ReferenceTail
+      ))
+    ))
+  );
   const DollarValue = node<ValueNode>(
     'DollarValue',
-    noTrivia(choice(
-      attempt(sequence(
-        g.DeclarationReference,
-        literal('.'),
-        dollarName,
-        many(choice(
-          g.ReferenceCallTail,
-          g.ReferenceTail
-        ))
-      )),
-      sequence(
-        g.VariableReference,
-        optional(choice(
-
-          /*
-           * Slash list: `/` is intentionally not an unwrapped Operation. Preserve
-           * the authored value boundary as an explicit slash List; `$( $w / 2 )`
-           * is the arithmetic spelling.
-           */
-          sequence(
-            optional(rawWhitespace),
-            literal('/'),
-            optional(rawWhitespace),
-            g.ValueAtom
-          ),
-
-          /* Accessor-tail chain (`.name`, `[key]`). */
-          oneOrMore(choice(
+    noTrivia(dispatch(
+      dollarValueHead,
+      when(
+        '$.',
+        sequence(
+          RoutedDeclarationReference,
+          dollarName,
+          many(choice(
             g.ReferenceCallTail,
             g.ReferenceTail
           ))
-        ))
-      )
+        )
+      ),
+      otherwise(variableDollarValueTail)
     )),
     (children) => {
       const base = requireValueNode(children[0]);
@@ -3200,8 +3232,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       }
       const rest = children.slice(1);
       if (base.type === 'DeclarationReference') {
-        const name = requireToken(rest[1]).value;
-        const tails = rest.slice(2).map(requireJessReferenceTail);
+        const name = requireToken(rest[0]).value;
+        const tails = rest.slice(1).map(requireJessReferenceTail);
         return reference(
           base,
           [
@@ -3276,10 +3308,10 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * The three `$`-headed arms (DollarValue `$name`, the `$(` expression / `$[` lookup
    * family, and the `$[` accessor inside it) are mutually exclusive on the
    * character after `$`, so their relative order is behaviour-neutral. Plain
-   * `$name` references dominate real values, so DollarValue leads the `$` group:
-   * parseman tries it first on any `$`, matching references without first
-   * entering (and rolling back) the `$(` / `$[` node frames. `$(`/`$[` cost one
-   * fast VarReference reject instead.
+   * `$name` references dominate real values, so DollarValue leads the `$` group.
+   * Its complete `$name` / `$^name` head rejects `$(`/`$[` before dispatch, so
+   * those forms enter only their own node families rather than a failed variable
+   * route.
    * Every value atom EXCEPT a brace-delimited block. A block is self-terminating,
    * which is exactly why it may only ever be a value's FIRST atom: once a value
    * has started, a following `{ … }` would have no unambiguous end for the value
