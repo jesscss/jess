@@ -331,14 +331,21 @@ describe('lintText', () => {
   it('passes caller CSS metadata into shared diagnostics', async () => {
     const result = await lintText(
       {
-        source: '@project base; .a { project-tone: brand; }',
+        source: '@project base; @font-face { project-mode: compact; project-tone: loud; } .a { project-tone: brand; }',
         filePath: '/tmp/input.css'
       },
       {
         metadata: {
           isKnownAtRule: name => name === 'project',
           isKnownProperty: name => name === 'project-tone',
-          isKnownPropertyValue: (name, value) => name === 'project-tone' && value.normalized === 'brand'
+          isKnownPropertyValue: (name, value) => name === 'project-tone' && value.normalized === 'brand',
+          isKnownAtRuleDescriptor: (atRuleName, descriptorName) => atRuleName === 'font-face'
+            && (descriptorName === 'project-mode' || descriptorName === 'project-tone'),
+          isKnownAtRuleDescriptorValue: (atRuleName, descriptorName, value) => atRuleName === 'font-face'
+            && (
+              (descriptorName === 'project-mode' && value.normalized === 'compact')
+              || (descriptorName === 'project-tone' && value.normalized === 'quiet')
+            )
         }
       }
     );
@@ -346,6 +353,12 @@ describe('lintText', () => {
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownAtRules);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownProperties);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownPropertyValues);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.unknownAtRuleDescriptors);
+    expect(result.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unknownAtRuleDescriptorValues)
+      .map(diagnostic => diagnostic.message)).toEqual([
+      'Unknown value "loud" for descriptor "project-tone" in @font-face'
+    ]);
   });
 
   it('applies policy to deprecated property diagnostics by lint rule name', async () => {

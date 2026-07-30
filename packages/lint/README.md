@@ -61,8 +61,8 @@ The language is inferred from `filePath`; pass `language: 'css' | 'less' |
 'scss' | 'jess'` when the filename is synthetic.
 
 Pass `metadata` when a tool has project CSS data that should participate in
-shared diagnostics, such as design-system properties, custom at-rules, or known
-project values:
+shared diagnostics, such as design-system properties, custom at-rules,
+at-rule descriptors, or known project values:
 
 ```ts
 await lintText(

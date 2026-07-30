@@ -193,10 +193,11 @@ The diagnostics package is consumed by `@jesscss/lint` and
 `@jesscss/language-service`; it is not imported by core parse/eval/render
 packages. Keep that dependency boundary intact when adding diagnostics.
 Tooling hosts may pass `CssDiagnosticMetadata` into `@jesscss/lint` when
-project CSS data should suppress or refine unknown-property, unknown-value, and
-unknown-at-rule diagnostics. The language service's `setDataProviders` bridge
-uses the same metadata route so custom CSS data improves completions, hovers,
-lint diagnostics, and IDE diagnostics together.
+project CSS data should suppress or refine unknown-property, unknown-value,
+unknown-at-rule, descriptor, and descriptor-value diagnostics. The language
+service's `setDataProviders` bridge uses the same metadata route so custom CSS
+data improves completions, hovers, lint diagnostics, and IDE diagnostics
+together.
 
 The hot diagnostic record is neutral and LSP-free: code, severity, message,
 source offsets, and parser-captured line/column coordinates. The lint CLI turns

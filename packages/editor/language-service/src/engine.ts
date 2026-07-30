@@ -1119,6 +1119,30 @@ export function createEngine(): JessLanguageServiceEngine {
       const lower = lowerAtRuleName(name);
       return AT_RULES_MAP.has(lower) || customAtRuleMap.has(lower);
     },
+    isKnownAtRuleDescriptor(atRuleName, descriptorName) {
+      const lowerAtRule = lowerAtRuleName(atRuleName);
+      const lowerDescriptor = lowerName(descriptorName);
+      for (const property of customProperties()) {
+        if (property.atRule !== undefined
+          && lowerAtRuleName(property.atRule) === lowerAtRule
+          && lowerName(property.name) === lowerDescriptor) {
+          return true;
+        }
+      }
+      return undefined;
+    },
+    isKnownAtRuleDescriptorValue(atRuleName, descriptorName, value) {
+      const lowerAtRule = lowerAtRuleName(atRuleName);
+      const lowerDescriptor = lowerName(descriptorName);
+      for (const property of customProperties()) {
+        if (property.atRule !== undefined
+          && lowerAtRuleName(property.atRule) === lowerAtRule
+          && lowerName(property.name) === lowerDescriptor) {
+          return customPropertyValueStatus(property, value);
+        }
+      }
+      return undefined;
+    },
     isKnownPseudoClass(name) {
       const lower = name.toLowerCase();
       return PSEUDO_CLASSES_MAP.has(lower) || customPseudoClassMap.has(lower);

@@ -100,6 +100,35 @@ describe('setDataProviders (custom CSS data)', () => {
     expect(diagnostic?.message).toContain('wrong');
   });
 
+  it('custom descriptor data participates in diagnostics for CSS descriptor blocks', () => {
+    const { engine, doc } = engineWith('css', '@font-face { project-mode: compact; project-tone: loud; }');
+    engine.setDataProviders([{
+      properties: [
+        {
+          name: 'project-mode',
+          atRule: '@font-face',
+          description: 'Project mode.',
+          values: [{ name: 'compact' }]
+        },
+        {
+          name: 'project-tone',
+          atRule: '@font-face',
+          description: 'Project tone.',
+          values: [{ name: 'quiet' }]
+        }
+      ]
+    }]);
+
+    const diagnostics = engine.getDiagnostics(doc.uri);
+    const codes = diagnostics.map(diagnostic => diagnostic.code);
+    expect(codes).not.toContain('lint/at-rule-descriptor-no-unknown');
+    expect(diagnostics
+      .filter(diagnostic => diagnostic.code === 'lint/at-rule-descriptor-value-no-unknown')
+      .map(diagnostic => diagnostic.message)).toEqual([
+      'Unknown value "loud" for descriptor "project-tone" in @font-face'
+    ]);
+  });
+
   it('.jess: custom data applies too', () => {
     const { engine, doc } = engineWith('jess', '.a { -my- }');
     engine.setDataProviders([{ properties: [{ name: '-my-custom-prop', description: 'x' }] }]);
