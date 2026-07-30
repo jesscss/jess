@@ -238,7 +238,7 @@ type SharedCssSyntax = {
   DimensionUnit: Combinator<string>;
   UrlOpen: Combinator<string>;
   UrlInner: Combinator<string>;
-  StaticUrlInner: Combinator<string>;
+  PlainUrlInner: Combinator<string>;
   GenericAtRuleName: Combinator<string>;
   SimpleSelectorToken: Combinator<string>;
   PseudoSelectorColon: Combinator<string>;
@@ -2367,7 +2367,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.UrlOpen,
       optional(choice(
         g.PlainQuoted,
-        g.StaticUrlInner
+        g.PlainUrlInner
       )),
       literal(')')
     ),
@@ -4180,7 +4180,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         choice(
           g.Quoted,
           g.UrlInterpolatedValue,
-          g.StaticUrlInner
+          g.PlainUrlInner
         ),
         literal(')')
       )

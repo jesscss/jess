@@ -19,7 +19,7 @@ test('canonical Jess AST grammar macro-fuses recognition with no runtime import'
     expect(transformed?.code).toContain('ExpressionProduct');
     expect(transformed?.code).toContain('CallComponent');
     expect(transformed?.code).toContain('ImportTarget');
-    expect(transformed?.code).toContain('StaticUrlInner');
+    expect(transformed?.code).toContain('PlainUrlInner');
   } finally {
     await server.close();
   }
