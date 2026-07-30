@@ -6430,12 +6430,12 @@ export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSynta
 /** Diagnostic Less CST artifact: CST mode with Parseman line tracking enabled. */
 export const lessDiagnosticCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst', trackLines: true }, lessGrammarFactory)]);
 
-export type LessGrammarOptions = {
+export type GrammarOptions = {
   readonly cst?: boolean;
   readonly trackLines?: boolean;
 };
 
-export function lessGrammarFor(options: LessGrammarOptions = {}) {
+export function grammarFor(options: GrammarOptions = {}) {
   if (options.cst) {
     return options.trackLines ? lessDiagnosticCstGrammar : lessCstGrammar;
   }

@@ -11,7 +11,7 @@ import {
   withTriviaMap,
   type Stylesheet
 } from '@jesscss/core/ast';
-import { cssGrammarFor } from './grammar.js';
+import { grammarFor } from './grammar.js';
 
 export type CssParseOptions = {
   readonly trackLines?: boolean;
@@ -74,7 +74,7 @@ function lineOptions(span: Span): {
 
 /** Parse CSS directly into the canonical AST v2 document. */
 export function parse(input: string, options: CssParseOptions = {}): Stylesheet {
-  const grammar = cssGrammarFor({ trackLines: options.trackLines });
+  const grammar = grammarFor({ trackLines: options.trackLines });
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {

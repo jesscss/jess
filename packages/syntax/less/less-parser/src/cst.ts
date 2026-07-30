@@ -1,5 +1,5 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
-import { lessDiagnosticCstGrammar, lessGrammarFor } from './grammar.js';
+import { grammarFor, lessDiagnosticCstGrammar } from './grammar.js';
 
 export function parseLessCst(
   input: string,
@@ -7,7 +7,7 @@ export function parseLessCst(
   options?: CssCstParseOptions
 ): CssCstParseResult {
   return parseCst(
-    lessGrammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
+    grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
     input,
     startRule,
     options
@@ -29,7 +29,7 @@ export function parseLessDoc(
   options?: Pick<CssCstParseOptions, 'trackLines'>
 ): ParseDoc<CssCstNode> {
   return parseDocCst(
-    lessGrammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
+    grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
     input,
     startRule
   );

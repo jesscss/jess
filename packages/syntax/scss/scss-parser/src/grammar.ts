@@ -5149,12 +5149,12 @@ export const scssDiagnosticCstGrammar: Record<keyof ScssRules, FusedRule> = comp
   scssFactory
 )]);
 
-export type ScssGrammarOptions = {
+export type GrammarOptions = {
   readonly cst?: boolean;
   readonly trackLines?: boolean;
 };
 
-export function scssGrammarFor(options: ScssGrammarOptions = {}) {
+export function grammarFor(options: GrammarOptions = {}) {
   if (options.cst) {
     return options.trackLines ? scssDiagnosticCstGrammar : scssCstGrammar;
   }
