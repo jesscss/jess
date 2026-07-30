@@ -163,6 +163,8 @@ The current stable rule set is intentionally small and migration-friendly:
 | `property-ignored-due-to-display` | `lint/property-ignored-due-to-display` | VSCode `propertyIgnoredDueToDisplay` parity |
 | `box-model` | `lint/box-model` | VSCode `boxModel` parity, opt-in |
 | `float` | `lint/float` | VSCode `float` parity, opt-in |
+| `property-no-vendor-prefix` | `lint/property-no-vendor-prefix` | near `property-no-vendor-prefix`, opt-in |
+| `at-rule-no-vendor-prefix` | `lint/at-rule-no-vendor-prefix` | near `at-rule-no-vendor-prefix`, opt-in |
 | `vendor-prefix` | `lint/vendor-prefix` | VSCode `vendorPrefix` parity |
 | `compatible-vendor-prefixes` | `lint/compatible-vendor-prefixes` | VSCode `compatibleVendorPrefixes` parity, opt-in |
 | `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | VSCode `unknownVendorSpecificProperties` parity, opt-in |

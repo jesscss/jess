@@ -128,7 +128,7 @@ MS lint rules with default levels (`src/services/lintRules.ts`):
 
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
-| Property data | MDN-sourced `languageFacts` + `@vscode/web-custom-data`: descriptions, **`restrictions`**, `values`, `status`, **`browsers`/compat** | `known-css-properties` (names) + web-custom-data (descriptions, values) | **No `restrictions` (kills value-completion depth), no browser-compat, no status** | **P0** |
+| Property data | MDN-sourced `languageFacts` + `@vscode/web-custom-data`: descriptions, **`restrictions`**, `values`, `status`, **`browsers`/compat** | `known-css-properties` (names) + web-custom-data (descriptions, values, restrictions, status) | Browser-compat data remains missing | P2 |
 | At-rule data | ✓ rich | ✓ web-custom-data | Comparable | P2 |
 | Pseudo-class / pseudo-element data | ✓ (names + descriptions + compat) | ✗ (not loaded at all) | Missing dataset | **P0** |
 | Custom-data provider API (`setDataProviders`) | ✓ extensible | ✗ | Missing extensibility | P2 |

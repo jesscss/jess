@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 46;
+export const STABLE_LINT_RULE_SET_VERSION = 47;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -32,6 +32,8 @@ export const LINT_RULE_NAMES = {
   propertyIgnoredDueToDisplay: 'property-ignored-due-to-display',
   boxModel: 'box-model',
   float: 'float',
+  propertyNoVendorPrefix: 'property-no-vendor-prefix',
+  atRuleNoVendorPrefix: 'at-rule-no-vendor-prefix',
   vendorPrefix: 'vendor-prefix',
   compatibleVendorPrefixes: 'compatible-vendor-prefixes',
   unknownVendorSpecificProperties: 'unknown-vendor-specific-properties',
@@ -100,6 +102,8 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: LINT_CODES.propertyIgnoredDueToDisplay,
   [LINT_RULE_NAMES.boxModel]: LINT_CODES.boxModel,
   [LINT_RULE_NAMES.float]: LINT_CODES.float,
+  [LINT_RULE_NAMES.propertyNoVendorPrefix]: LINT_CODES.propertyNoVendorPrefix,
+  [LINT_RULE_NAMES.atRuleNoVendorPrefix]: LINT_CODES.atRuleNoVendorPrefix,
   [LINT_RULE_NAMES.vendorPrefix]: LINT_CODES.vendorPrefix,
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: LINT_CODES.compatibleVendorPrefixes,
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: LINT_CODES.unknownVendorSpecificProperties,
@@ -155,6 +159,8 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.propertyIgnoredDueToDisplay]: LINT_RULE_NAMES.propertyIgnoredDueToDisplay,
   [LINT_CODES.boxModel]: LINT_RULE_NAMES.boxModel,
   [LINT_CODES.float]: LINT_RULE_NAMES.float,
+  [LINT_CODES.propertyNoVendorPrefix]: LINT_RULE_NAMES.propertyNoVendorPrefix,
+  [LINT_CODES.atRuleNoVendorPrefix]: LINT_RULE_NAMES.atRuleNoVendorPrefix,
   [LINT_CODES.vendorPrefix]: LINT_RULE_NAMES.vendorPrefix,
   [LINT_CODES.compatibleVendorPrefixes]: LINT_RULE_NAMES.compatibleVendorPrefixes,
   [LINT_CODES.unknownVendorSpecificProperties]: LINT_RULE_NAMES.unknownVendorSpecificProperties,
@@ -210,6 +216,8 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: 'warn',
   [LINT_RULE_NAMES.boxModel]: 'off',
   [LINT_RULE_NAMES.float]: 'off',
+  [LINT_RULE_NAMES.propertyNoVendorPrefix]: 'off',
+  [LINT_RULE_NAMES.atRuleNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.vendorPrefix]: 'warn',
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off',
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: 'off',
@@ -279,6 +287,8 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: 'off',
   [LINT_RULE_NAMES.boxModel]: 'off',
   [LINT_RULE_NAMES.float]: 'off',
+  [LINT_RULE_NAMES.propertyNoVendorPrefix]: 'off',
+  [LINT_RULE_NAMES.atRuleNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.vendorPrefix]: 'off',
   [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'off',
   [LINT_RULE_NAMES.unknownVendorSpecificProperties]: 'off',
@@ -534,6 +544,26 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'off',
     comparison: 'vscode-equivalent',
     notes: 'Matches VSCode stylesheet-service float for definite CSS float declarations whose value is not none; dynamic or dialect values stay unknown until semantic facts exist.'
+  },
+  {
+    diagnosticCode: LINT_CODES.propertyNoVendorPrefix,
+    ruleName: LINT_RULE_NAMES.propertyNoVendorPrefix,
+    title: 'Vendor-prefixed properties',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'property-no-vendor-prefix',
+    notes: 'Opt-in Stylelint migration rule that flags authored CSS vendor-prefixed property names; the recommended vendor-prefix rule remains focused on missing standard counterparts.'
+  },
+  {
+    diagnosticCode: LINT_CODES.atRuleNoVendorPrefix,
+    ruleName: LINT_RULE_NAMES.atRuleNoVendorPrefix,
+    title: 'Vendor-prefixed at-rules',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'at-rule-no-vendor-prefix',
+    notes: 'Opt-in Stylelint migration rule that flags authored CSS vendor-prefixed keyframe at-rules; broader vendor at-rule facts can be added as metadata grows.'
   },
   {
     diagnosticCode: LINT_CODES.vendorPrefix,
