@@ -54,6 +54,7 @@ export const LINT_CODES = {
   incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
   invalidColorFunctionChannels: 'lint/invalid-color-function-channels',
   invalidTypedCustomPropertyValue: 'lint/invalid-typed-custom-property-value',
+  unusedVariables: 'lint/no-unused-variable',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -498,6 +499,12 @@ type AnimationNameReference = {
 
 type CustomPropertyReference = {
   readonly name: string;
+  readonly span: DiagnosticSpan;
+};
+
+type VariableDeclarationFact = {
+  readonly name: string;
+  readonly display: string;
   readonly span: DiagnosticSpan;
 };
 
@@ -2409,6 +2416,92 @@ function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNod
   return undefined;
 }
 
+function authoredVariableNameOf(source: string, start: number, end: number): { name: string; start: number; end: number } | null {
+  let nameStart = start;
+  while (nameStart < end) {
+    const code = source.charCodeAt(nameStart);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      break;
+    }
+    nameStart++;
+  }
+  if (nameStart >= end) {
+    return null;
+  }
+  const sigil = source.charCodeAt(nameStart);
+  if (sigil !== 36 && sigil !== 64) {
+    return null;
+  }
+  let nameEnd = nameStart + 1;
+  while (nameEnd < end) {
+    const code = source.charCodeAt(nameEnd);
+    if (
+      code === 45
+      || code === 95
+      || code >= 128
+      || (code >= 48 && code <= 57)
+      || (code >= 65 && code <= 90)
+      || (code >= 97 && code <= 122)
+    ) {
+      nameEnd++;
+      continue;
+    }
+    break;
+  }
+  if (nameEnd <= nameStart + 1) {
+    return null;
+  }
+  return { name: source.slice(nameStart, nameEnd), start: nameStart, end: nameEnd };
+}
+
+function variableDeclarationOf(source: string, node: CssCstNode, language: JessLanguage): VariableDeclarationFact | null {
+  if (language === 'css') {
+    return null;
+  }
+  if (node.grammarType !== 'VarDeclaration' && node.grammarType !== 'VariableDeclaration') {
+    return null;
+  }
+  const nameNode = firstChildNodeOf(node, 'VariableName');
+  const start = nameNode !== undefined ? absoluteStart(nameNode) : absoluteStart(node);
+  const end = nameNode !== undefined ? absoluteEnd(nameNode) : absoluteEnd(node);
+  const authored = authoredVariableNameOf(source, start, end);
+  if (authored === null) {
+    return null;
+  }
+  return {
+    name: normalizedVariableName(authored.name, language),
+    display: authored.name,
+    span: nameNode !== undefined ? nameNode.span : spanFromNodeStart(node, authored.start, authored.end)
+  };
+}
+
+function variableReferenceNameOf(source: string, node: CssCstNode, language: JessLanguage): string | null {
+  if (language === 'css') {
+    return null;
+  }
+  if (node.grammarType !== 'VariableReference' && node.grammarType !== 'Reference') {
+    return null;
+  }
+  const authored = authoredVariableNameOf(source, absoluteStart(node), absoluteEnd(node));
+  if (authored === null) {
+    return null;
+  }
+  if (language === 'less' && authored.name.charCodeAt(0) !== 64) {
+    return null;
+  }
+  if ((language === 'scss' || language === 'jess') && authored.name.charCodeAt(0) !== 36) {
+    return null;
+  }
+  return normalizedVariableName(authored.name, language);
+}
+
+function normalizedVariableName(name: string, language: JessLanguage): string {
+  if (language === 'scss') {
+    return `${name.charAt(0)}${name.slice(1).replace(/_/g, '-')}`;
+  }
+  return name;
+}
+
 function firstDescendantNodeMatching(node: CssCstNode, grammarTypes: ReadonlySet<string>): CssCstNode | undefined {
   for (const child of cstChildrenOf(node)) {
     if (!isCstNode(child)) {
@@ -3115,6 +3208,23 @@ function spanFromOffsets(start: number, end: number): DiagnosticSpan {
   return { start, end: Math.max(start, end) };
 }
 
+function spanFromNodeStart(node: CssCstNode, start: number, end: number): DiagnosticSpan {
+  const nodeStart = absoluteStart(node);
+  const startDelta = Math.max(0, start - nodeStart);
+  const endDelta = Math.max(startDelta, end - nodeStart);
+  if (node.span.startLine === undefined || node.span.startColumn === undefined) {
+    return spanFromOffsets(start, end);
+  }
+  return {
+    start,
+    end: Math.max(start, end),
+    startLine: node.span.startLine,
+    startColumn: node.span.startColumn + startDelta,
+    endLine: node.span.startLine,
+    endColumn: node.span.startColumn + endDelta
+  };
+}
+
 function spanAtOrContaining(node: CssCstNode, start: number, end: number): DiagnosticSpan {
   let enclosing: DiagnosticSpan | undefined;
   const visit = (child: CssCstChild) => {
@@ -3253,6 +3363,8 @@ export function cstLintDiagnostics(
   const animationReferences: AnimationNameReference[] = [];
   const declaredCustomProperties = new Set<string>();
   const customPropertyReferences: CustomPropertyReference[] = [];
+  const variableDeclarations: VariableDeclarationFact[] = [];
+  const variableReferences = new Set<string>();
   const cssData = metadataWithDefaults(metadata);
   const dialectAtRules = DIALECT_AT_RULES[language];
   const push = (
@@ -3357,6 +3469,16 @@ export function cstLintDiagnostics(
 
     if (MIXIN_DEFINITION_TYPES.has(gt) && emptyBracedBody(source, start, end)) {
       push(LINT_CODES.emptyRules, 'warning', 'Do not use empty mixin bodies', node.span, ['mixin-body']);
+    }
+
+    const variableDeclaration = variableDeclarationOf(source, node, language);
+    if (variableDeclaration !== null) {
+      variableDeclarations.push(variableDeclaration);
+    }
+
+    const variableReference = variableReferenceNameOf(source, node, language);
+    if (variableReference !== null) {
+      variableReferences.add(variableReference);
     }
 
     if (language === 'css' && gt === 'DescriptorBlock' && descriptorAtRuleName === 'property') {
@@ -3980,6 +4102,19 @@ export function cstLintDiagnostics(
           'warning',
           `Unknown custom property "${reference.name}"`,
           reference.span
+        );
+      }
+    }
+  }
+
+  if (language !== 'css') {
+    for (const declaration of variableDeclarations) {
+      if (!variableReferences.has(declaration.name)) {
+        push(
+          LINT_CODES.unusedVariables,
+          'warning',
+          `Unused variable "${declaration.display}"`,
+          declaration.span
         );
       }
     }

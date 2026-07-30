@@ -105,6 +105,7 @@ mode until its behavior is comparable enough.
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess-only value diagnostic |
 | `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode-equivalent |
 | `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess-only value diagnostic |
+| `jess/no-unused-variable` | `lint/no-unused-variable` | Jess-only symbol diagnostic, opt-in |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -267,7 +268,7 @@ Stylelint.
 
 | Rule | Default | Required facts | What it catches |
 | --- | --- | --- | --- |
-| `jess/no-unused-variable` | warn | Symbol refs | Tokens defined but never read, with export/reference/import exceptions. |
+| `jess/no-unused-variable` | off, then warn when project facts land | Symbol refs | Initial opt-in same-file variable check landed; full token analysis still needs export/reference/import exceptions. |
 | `jess/no-shadowed-token` | off | Scope facts | Local token shadows an imported/exported token unexpectedly. |
 | `jess/no-leaky-scope-dependence` | warn when allowed | Scope/effect facts, compile options | Less patterns that depend on mixin/detached-ruleset variable leakage. |
 | `jess/no-ambiguous-mixin-call` | warn | Callable facts | A call matches multiple overloads with incompatible bodies or signatures. |
@@ -363,8 +364,9 @@ Custom type names should start with a capital letter:
    shared diagnostic.
 3. Add one CLI/API/IDE parity test with each new shared diagnostic.
 4. Expand Stylelint P1 rules where Jess has native source facts.
-5. Add symbol facts: variables, custom properties, mixins, functions, modules,
-   definitions, references, exports.
+5. Expand symbol facts beyond the initial same-file unused variable diagnostic:
+   variables, custom properties, mixins, functions, modules, definitions,
+   references, exports.
 6. Surface compiler diagnostics through lint and LSP without rebranding them as
    style rules.
 7. Add preference diagnostics: unused/shadowed symbols, broad/dead extends, and
