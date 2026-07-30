@@ -2078,7 +2078,7 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
     }
     const found = lookupScopedBinding(frame, node.name, e);
     if (!found) {
-      throw new ReferenceError(`scoped variable $$${node.name} is undefined`);
+      throw new ReferenceError(`scoped variable $^${node.name} is undefined`);
     }
     (found.frame.reassign ??= new Map()).set(node.name, node);
     return;

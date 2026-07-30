@@ -81,6 +81,8 @@ type CssGrammarRuleName =
   | 'AtPrelude'
   | 'AtRulePreludeSegments'
   | 'AtRuleStatement'
+  | 'AttributeModifier'
+  | 'AttributeOperator'
   | 'AttributeSelector'
   | 'BasicSelector'
   | 'CalcCall'
@@ -146,6 +148,7 @@ type CssGrammarRuleName =
   | 'DeclarationListAtRule'
   | 'PunctuationValue'
   | 'ParenValue'
+  | 'Identifier'
   | 'RawParenValue'
   | 'DescriptorBlock'
   | 'Dimension'
@@ -1084,14 +1087,14 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'AttributeSelector',
     sequence(
       literal('['),
-      g.CssSyntaxKeyword,
+      g.Identifier,
       optional(sequence(
-        g.CssSyntaxAttributeOperator,
+        g.AttributeOperator,
         choice(
           g.Quoted,
-          g.Keyword
+          g.Identifier
         ),
-        optional(g.CssSyntaxAttributeModifier)
+        optional(g.AttributeModifier)
       )),
       literal(']')
     ),

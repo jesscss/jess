@@ -66,8 +66,8 @@ import {
  *    - in `$|.foo()`, `.foo` is a mixin
  *    - in `$foo|.mixin()`, `.mixin` is a mixin in `$foo`
  *    - Resolution:
- *      - `$foo` reads the current scoped binding,
- *      - `$!foo` reads by source position
+ *      - `$foo` reads the live/current binding,
+ *      - `$^foo` reads the scoped/final binding
  *   in Less
  *   - `@foo` refers to a variable
  *   - `$foo` refers to a property
@@ -127,7 +127,7 @@ export type ReferenceOptions = {
    */
   resolution?: 'contextual' | 'live';
 
-  /** Explicit source-position read mode for Jess `$!x`. */
+  /** Historical explicit source-position read mode from the legacy `$!x` tree surface. */
   readMode?: 'snapshot';
 
   /**

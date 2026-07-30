@@ -417,6 +417,9 @@ const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\ufff
 const lessCustomSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
 const lessCustomDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
 export const cssSyntax = rules(_g => ({
+  Identifier: keywordValue,
+  AttributeOperator: attributeOperator,
+  AttributeModifier: attributeModifier,
   CssSyntaxProperty: propertyName,
   CssSyntaxKeyword: keywordValue,
   CssSyntaxDoubleQuotedText: doubleQuotedText,

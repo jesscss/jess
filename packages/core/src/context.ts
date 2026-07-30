@@ -714,9 +714,9 @@ export class Context {
   topImports?: Node[];
 
   /**
-   * This is set when entering rulesets so that child nodes
-   * can use this to look up values. Jess `$!variable` carries explicit
-   * source-position read mode for the live-binding model.
+   * This is set when entering rulesets so child nodes can look up values in
+   * their containing rule context. Current Jess source uses `$name` for live
+   * lookup and `$^name` for scoped lookup; the old `$!name` spelling is retired.
    */
   rulesContext?: Rules;
 

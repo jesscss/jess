@@ -11,16 +11,16 @@ Jess has two variable-reference forms:
 | Reference | Resolution model |
 | --- | --- |
 | `$foo` | Live: reads the current binding at evaluation time. |
-| `$$foo` | Scoped/final lookup. |
+| `$^foo` | Scoped/final lookup. |
 
 ## `$foo`: live
 
 Use `$foo` when the value should follow the current binding at the point where it
 is evaluated.
 
-## `$$foo`: scoped/final
+## `$^foo`: scoped/final
 
-Use `$$foo` when you want the scoped/final lookup explicitly.
+Use `$^foo` when you want the scoped/final lookup explicitly.
 
 ## Missing names
 
@@ -31,8 +31,8 @@ performing an explicit optional/existence operation.
 
 | Form | Behavior |
 | --- | --- |
-| `$foo: value` / `$$foo: value` | Create or update both bindings. |
+| `$foo: value` / `$^foo: value` | Create or update both bindings. |
 | `$foo?: value` | Check the live binding; create/update both if absent. |
-| `$$foo?: value` | Check the scoped/final binding; create/update both if absent. |
+| `$^foo?: value` | Check the scoped/final binding; create/update both if absent. |
 | `$foo := value` | Update the live/current binding. |
-| `$$foo := value` | Update the scoped/final binding. |
+| `$^foo := value` | Update the scoped/final binding. |

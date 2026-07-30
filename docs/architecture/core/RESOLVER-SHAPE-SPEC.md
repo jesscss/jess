@@ -7,16 +7,16 @@ Status: active owner direction. This replaces prior `$!`-based sigil language.
 | Source form | Meaning |
 | --- | --- |
 | `$foo` | Live/current reference: consult cells only. |
-| `$$foo` | Scoped/final reference: consult the declaration stack only. |
+| `$^foo` | Scoped/final reference: consult the declaration stack only. |
 | `@foo` | Less dialect spelling for scoped/final lookup. |
-| `$foo:` or `$$foo:` | Create or update **both** the live cell and scoped declaration binding. The spelling does not choose what is created. |
+| `$foo:` or `$^foo:` | Create or update **both** the live cell and scoped declaration binding. The spelling does not choose what is created. |
 | `$foo?:` | Test the live map, then create/update both bindings only on a miss. |
-| `$$foo?:` | Test the scoped/final map, then create/update both bindings only on a miss. |
+| `$^foo?:` | Test the scoped/final map, then create/update both bindings only on a miss. |
 | `$foo :=` | Update the live/current binding. |
-| `$$foo :=` | Update the scoped/final binding. |
+| `$^foo :=` | Update the scoped/final binding. |
 
-`$!` is retired. It has no compatibility recommendation or parser fallback.
-`$$name` remains a scoped/final lookup, not a third binding store.
+`$!` and `$$` are retired. They have no compatibility recommendation or parser
+fallback. `$^name` is a scoped/final lookup, not a third binding store.
 
 ## Frame shape
 
@@ -42,7 +42,7 @@ The two stores are deliberately separate. A live read never falls through to
 
 ## Scoped lookup
 
-A scoped/final read (`$$foo`, or Less `@foo`) walks `declIndex` from the
+A scoped/final read (`$^foo`, or Less `@foo`) walks `declIndex` from the
 current frame toward its parent. Each name bucket is walked backwards and skips
 declarations in the active exclusion set. This supplies lazy, last-wins,
 order-independent resolution without a depth cap. The index is built once per
@@ -66,8 +66,8 @@ Both declaration spellings create or update both stores. Assignment operators
 use the target lookup mode exactly:
 
 - `$foo?:` tests the live map and creates/updates both only when it misses;
-  `$$foo?:` performs the same conditional operation against the scoped/final map.
-- `$foo :=` updates the live/current binding; `$$foo :=` updates the scoped/final
+  `$^foo?:` performs the same conditional operation against the scoped/final map.
+- `$foo :=` updates the live/current binding; `$^foo :=` updates the scoped/final
   binding. The scoped path writes a per-activation `reassign` overlay.
 - `!global` lowers to the scoped `:=` behavior at the SCSS boundary; it is not a
   separate root-write operation.
@@ -87,7 +87,7 @@ The exact SCSS lowering is recorded in
 ## Invariants and review gates
 
 1. Shared `DeclIndex` is never mutated.
-2. A `$` read touches only `cells`; a `$$`/`@` read touches only `declIndex`.
+2. A `$` read touches only `cells`; a `$^`/`@` read touches only `declIndex`.
 3. `reassign` is per activation and is read before the owning shared stack.
 4. No parser or evaluator re-parses source to discover a variable, import, or
    interpolation boundary.

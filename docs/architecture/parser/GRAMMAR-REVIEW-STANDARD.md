@@ -18,6 +18,61 @@ asked for repeatedly and has not stuck, because _make it good_ is not checkable
 and a passing test ends the job. This document replaces that instruction with
 sixteen questions and a rule about how many things you ask them of.
 
+## 0. Design pressure — grammar must earn its existence
+
+The default review posture is adversarial toward new or duplicated grammar.
+Every production, helper, branch, and public node label must prove why it
+exists. A test passing is not that proof; a passing test can preserve
+unnecessary grammar just as easily as it preserves necessary grammar.
+
+For any dialect grammar (`less`, `scss`, `jess`), the proof has to answer one of
+these, in this order:
+
+1. **Inherited:** this is CSS structure reused directly.
+2. **Targeted override:** this replaces the smallest CSS slot whose accepted
+   language differs.
+3. **Addition:** this is syntax the downstream language adds and CSS does not
+   have.
+4. **Blocked:** this should be inherited or targeted, but a named Parseman,
+   macro, CST, AST, or diagnostic constraint prevents it today.
+5. **Deliberate exception:** this looks duplicated, but the accepted language
+   or emitted semantics differ for a recorded reason.
+
+Anything else is grammar sprawl. A downstream grammar is not allowed to carry a
+parallel copy of a CSS frame because one quoted string, identifier, guard, value
+leaf, interpolation point, or body item differs. The correct pressure is to make
+CSS call a semantic slot, then override that slot. If the slot is too broad,
+split it only after implementation pressure proves the contexts need distinct
+override policies, and write that proof down beside the split.
+
+`Identifier` and `Keyword` are different semantic slots even when CSS recognizes
+the same authored spelling for both today. Use `Identifier` for non-value
+syntax positions: selector pieces, attribute names and modifiers, property-ish
+names, at-rule names, and other grammar structure that is identifier-shaped.
+Use `Keyword` only when an identifier-shaped token is already a CSS value fact.
+In value position, an `IdentifierOrFunction` dispatcher is the right shape: the
+routed bare identifier can reduce to a `Keyword` value, while the glued
+`name(` opener routes to known or generic function bodies. Keeping these slots
+separate is what lets Less, SCSS, and Jess override interpolation in selector,
+property, or header positions without corrupting ordinary value keywords.
+
+Math and comparison are also context-owned. Less may lower value-position math
+or comparison into expression structure, but only through the Less expression
+rules and their `mathMode` policy. Jess expression math, comparison, and
+leading-dot declaration lookup stay behind the explicit `$()` expression
+boundary; ordinary Jess value slots must keep rejecting those forms.
+
+Apply this pressure horizontally, with one exception: making CSS itself spotless
+can proceed directly because CSS is the base the others should compose from.
+Most historical duplication was created by repairing one derived dialect or one
+syntax surface in isolation, then re-solving the same production family three
+more times. When touching a family such as imports, at-rules, quoted values,
+identifiers/functions, pseudo selectors, selector starts,
+query/supports/container forms, guards, or custom-property values in Less, SCSS,
+or Jess, audit that family across CSS, Less, SCSS, and Jess before landing the
+shape. The expected result is one CSS-owned structure with targeted dialect
+slots, not four local approximations that merely share a name.
+
 ---
 
 ## 1. The method — every `const`, no sampling
@@ -391,9 +446,27 @@ The rule:
   public CST labels, `Css*` is a provenance claim just like `Less*`, `Scss*`,
   or `Jess*`. It is acceptable only when the rule accepts CSS syntax in a place
   where the surrounding dialect deliberately accepts something else and that
-  split is documented. Parser-shared terminal leaves such as `CssSyntax*` are
-  the narrower exception because the prefix names the accepted syntax surface;
-  do not copy that prefix into higher-level grammar families.
+  split is documented. Do not treat parser-shared terminal leaves as an
+  architectural exception: a shared slot should be named for the semantic role
+  the grammar consumes (`Keyword`, `Quoted`, `AttributeOperator`, `Nth`,
+  `PseudoSelector`, `Value`, and so on), not for the package that first needed
+  it.
+- **CSS structure consumes semantic slots.** A CSS rule should call the reusable
+  production for the concept it needs, such as `g.Quoted` or `g.Keyword`. Less,
+  SCSS, and Jess then override that slot when their accepted language differs.
+  Do not clone the enclosing CSS structure because one child production changes.
+  Override the smallest child or value reference that actually differs.
+- **Split a shared slot only under pressure.** If every downstream language can
+  use the same override policy for `Quoted`, keep one `Quoted` production. If a
+  real implementation case proves that one CSS quoted context must be
+  interpolation-backed while another must remain static, split the CSS-level
+  slots by semantic context and record the proof near the split. The split is
+  evidence-driven architecture, not a naming precaution.
+- **Private stricter helpers stay private.** A dialect may need a local helper
+  for a truly narrower parse, but it should be lower-case/private and named by
+  the constraint. Public node labels and shared rule references like
+  `StaticValueQuoted` or `StaticNthChildArgument` are findings unless they prove
+  a distinct language concept.
 - **`Ast` / `Cst` in a name is the same error one axis over.** That is a compile
   _mode_, not an identity; one grammar serves both modes, so the mode does not
   belong in the rule's name.
@@ -416,22 +489,18 @@ Observations, each re-checkable from the current grammar files:
   migration prefixes; reintroducing one is a finding by default.
   _Interpretation:_ a shared base cannot supply `Declaration` to a dialect that
   still calls the same concept `DirectScssDeclaration`.
-- `packages/parser-shared/src/` exports four current shared-recognition
-  artifacts — `cssSyntax`, `lessSyntax` (`recognition.ts`), `cssPseudoSyntax`
-  (`pseudo-consts.ts`), and `opaqueAtRuleRecognition` (`opaque-at-rule.ts`). The
-  CSS and Less recognition artifacts were cleaned on 2026-07-26 from
-  `cssAstSyntax` / `cssAstPseudoSyntax` and `lessAstSyntax` to remove false
-  compile-mode words. `cssSyntax`, `lessSyntax`, and `cssPseudoSyntax` still
-  carry language prefixes because they define language-scoped terminal surfaces;
-  that prefix is acceptable only while it describes the accepted language rather
-  than the compile mode or current owner.
-- Compile mode does not belong in shared rule names. `cssSyntax`,
-  `cssPseudoSyntax`, and `lessSyntax` are the accepted shape: the prefix
-  describes the language surface, not AST/CST ownership.
-- Naming defect example: a CSS named-colour list triple-decorated with a dialect,
-  a mode, and a surface hides the shared construct. The remaining review
-  question for language-prefixed recognition leaves is whether the prefix still
-  describes a genuinely language-scoped surface.
+- `packages/parser-shared/src/` still contains transition-era recognition maps
+  such as `cssSyntax`, `lessSyntax`, `cssPseudoSyntax`, and
+  `opaqueAtRuleRecognition`. They removed false compile-mode words, but the
+  remaining language prefixes are not the target model. The target is reusable
+  semantic slots consumed by composed grammars, with dialect-specific behavior
+  supplied by override.
+- Compile mode and provenance do not belong in shared rule names. A CSS named
+  colour, identifier, quoted value, attribute operator, or pseudo selector
+  should be visible to the grammar by that concept name. If a language-scoped
+  recognizer remains because Parseman composition or macro visibility currently
+  requires it, document that as transition debt and keep the public grammar/CST
+  name semantic.
 - Grammar-local value extraction helpers are another place this happens. If two
   dialects carry the same helper with only the dialect name changed in the error
   string, either move the shared helper to the right home or rename the local

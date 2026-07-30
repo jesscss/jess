@@ -128,8 +128,8 @@ optional. There are no cyclic variables — `$a: 1; $a: $a + 1;` yields `2`. See
   `$(...)` is also allowed in strings. Inside `${…}`, `${tone}` is the variable
   and `${[tone]}` the lookup — see
   [Interpolation](../02-Language/08-interpolation.mdx).
-- **Variables:** `$name` is a live reference; `$$name` is the scoped/final
-  lookup. `$name := value` updates the live/current binding; `$$name := value`
+- **Variables:** `$name` is a live reference; `$^name` is the scoped/final
+  lookup. `$name := value` updates the live/current binding; `$^name := value`
   updates the scoped/final binding.
 - **Sass+ rejects invalid CSS**: where Sass tolerates invalid CSS (escaped at-rule
   keywords, bogus combinators), Jess's "Sass+" dialect rejects it — valid CSS is

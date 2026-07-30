@@ -9,7 +9,7 @@ origin: jess
 Jess can parse SCSS input and move supported Sass constructs into Jess's native
 model.
 
-Native Jess uses `$name` for live/current references and `$$name` for
+Native Jess uses `$name` for live/current references and `$^name` for
 scoped/final lookup.
 
 ## What SCSS adds beyond CSS
@@ -196,6 +196,6 @@ Sass’s module system allows extending placeholders across module boundaries, w
 
 Sass supports `!global` and `!default` on variable assignments ([variables](https://sass-lang.com/documentation/variables/)).
 
-Jess’s SCSS support intentionally does **not** implement Sass’s full `!global` shadowing model. It lowers `!global` to the scoped/final set-existing/no-shadow operation (`$$name := value`). SCSS `!default` corresponds to the scoped/final conditional operation (`$$name?: value`). Both `$name:` and `$$name:` create or update both bindings in native Jess.
+Jess’s SCSS support intentionally does **not** implement Sass’s full `!global` shadowing model. It lowers `!global` to the scoped/final set-existing/no-shadow operation (`$^name := value`). SCSS `!default` corresponds to the scoped/final conditional operation (`$^name?: value`). Both `$name:` and `$^name:` create or update both bindings in native Jess.
 
 `!default` exists in Sass primarily to support module configuration (`@use ... with (...)`). Jess will align with Sass’s `@use` configuration behavior by ensuring configurable variables are explicitly marked and handled accordingly.

@@ -10,17 +10,17 @@ Jess has two explicit variable-reference modes.
 | Reference | Meaning |
 | --- | --- |
 | `$foo` | Live reference: read the value currently bound for `foo` at evaluation time. |
-| `$$foo` | Scoped/final lookup. |
+| `$^foo` | Scoped/final lookup. |
 
 ## Choosing a reference
 
 Use `$foo` when the value should be live at the point the expression evaluates.
-Use `$$foo` when you need the scoped/final lookup behavior.
+Use `$^foo` when you need the scoped/final lookup behavior.
 
 ```scss
 .card {
   color: $theme;    // live reference
-  border: $$theme;  // scoped/final lookup
+  border: $^theme;  // scoped/final lookup
 }
 ```
 
@@ -42,22 +42,22 @@ $color: red;
 
 ## Declarations and assignments
 
-Both `$foo: value` and `$$foo: value` create or update **both** the live and
+Both `$foo: value` and `$^foo: value` create or update **both** the live and
 scoped bindings. The sigil changes lookup behavior, not the kind of binding
 created.
 
 | Form | Lookup used by the operation |
 | --- | --- |
 | `$foo?: value` | Test the live map; create/update both bindings if absent. |
-| `$$foo?: value` | Test the scoped/final map; create/update both bindings if absent. |
+| `$^foo?: value` | Test the scoped/final map; create/update both bindings if absent. |
 | `$foo := value` | Update the live/current binding. |
-| `$$foo := value` | Update the scoped/final binding. |
+| `$^foo := value` | Update the scoped/final binding. |
 
 ```scss
-$theme: blue;       // creates both bindings (`$$theme: blue` does too)
+$theme: blue;       // creates both bindings (`$^theme: blue` does too)
 .card {
   color: $theme;    // live reference
-  border: $$theme;  // scoped/final lookup
+  border: $^theme;  // scoped/final lookup
 }
 ```
 
