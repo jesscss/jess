@@ -207,21 +207,21 @@ with SHA-256 `3ea6c1bdae41511923deece75676d453ff470cb447f531aae935b44eae6f5083`.
   allocation/CPU profile plus reverse-order exact PostCSS measurements before
   landing.
 
-- **Ruleset whole-span elision:** rejected on 2026-07-30. A prototype removed
-  one `WeakMap` source-span association per Less ruleset (3,056 on the exact
-  288,434-byte PostCSS input), retaining only the selector and brace-body spans.
-  Its direct whole-workload medians were inconclusive: candidate 38.67/39.10 ms
-  versus baseline 39.02/36.45 ms in reverse order. More importantly, a Less
-  ruleset's optional trailing `;` and intervening comment trivia lie outside the
-  brace-body span: `.a{}/*between-close-and-semicolon*/;.b{color:blue;}` must
-  suppress that comment with the silent first ruleset. Reconstructing the
-  statement end as `body.end + 1` emitted it incorrectly. Removing the rule
-  span also lost the source location for async namespace-descent guard errors.
+- **Ruleset whole-span elision:** implemented conditionally on 2026-07-30. An
+  initial generic deletion was rejected because the Less optional trailing `;`
+  and its intervening comment trivia lie outside the brace-body span. The final
+  grammar retains a full source span only when that final terminator is present;
+  ordinary rulesets retain selector/body facts and no duplicate whole-rule span.
+  On the exact 288,434-byte PostCSS input this removes 3,050 of 3,056 ruleset
+  span writes, retaining six semicolon-tail spans. `statementEndOf` prefers the
+  retained tail span and otherwise uses the brace-body end; async namespace
+  guard diagnostics use the surviving selector span.
 
-  The parser public test and async-evaluation test now pin both contracts. Do
-  not retry this as a generic span deletion. A future design must retain an
-  exact parser-owned statement-tail boundary (including optional terminator
-  trivia) and preserve every diagnostic call-site before any allocation claim.
+  Parser tests pin top-level/nested no-tail elision, optional-tail provenance,
+  and silent-rule comment suppression; async evaluation pins source location.
+  The exact reverse benchmark pairs were candidate/base 35.93/35.58 ms and
+  base/candidate 38.29/38.77 ms, so this is an allocation/provenance deletion,
+  not a claimed time win.
 
 ### P2 — allocation profile after sparse root capture
 

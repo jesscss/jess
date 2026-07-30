@@ -1467,6 +1467,11 @@ function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[
   return span === undefined ? node : withBodySpan(node, span);
 }
 
+function hasRulesetTerminator(rawChildren: readonly unknown[]): boolean {
+  const tail = rawChildren[rawChildren.length - 1];
+  return isSpannedToken(tail) && tail.value === ';';
+}
+
 function isSelectorTerm(value: unknown): value is SelectorTerm {
   if (isSimpleToken(value)) {
     return true;
@@ -5865,7 +5870,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const bodyExtensions = children.filter(Array.isArray).flatMap(child => child.filter(isExtendInstruction));
       const extensions = [...selectorFact.extensions, ...bodyExtensions];
-      return withSourceSpan(withBlockBody(
+      const node = withBlockBody(
         rule(
           selectorFact.selector,
           // The fixed sequence places only direct declaration/comment facts between
@@ -5875,7 +5880,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
           children.find(isMixinGuard)
         ),
         rawChildren
-      ), span);
+      );
+      return hasRulesetTerminator(rawChildren) ? withSourceSpan(node, span) : node;
     }
   );
   const NestedRulesetWithExtends = node<Ruleset>(
@@ -5885,7 +5891,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const bodyExtensions = children.filter(Array.isArray).flatMap(child => child.filter(isExtendInstruction));
       const extensions = [...selectorFact.extensions, ...bodyExtensions];
-      return withSourceSpan(withBlockBody(
+      const node = withBlockBody(
         rule(
           selectorFact.selector,
           requireRulesetBody(children.filter(isStatement)),
@@ -5893,7 +5899,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
           children.find(isMixinGuard)
         ),
         rawChildren
-      ), span);
+      );
+      return hasRulesetTerminator(rawChildren) ? withSourceSpan(node, span) : node;
     }
   );
   const Stylesheet = node<Stylesheet>(

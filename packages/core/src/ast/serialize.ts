@@ -1712,7 +1712,7 @@ function findPathInScope(
            * Rulesets are namespace containers too, so a false Less `when` guard
            * prevents descent just as it prevents ordinary rule emission.
            */
-          if (!settledGuard(ruleGuardPasses(s, scope, e), 'namespace-path index build', s, e)) {
+          if (!settledGuard(ruleGuardPasses(s, scope, e), 'namespace-path index build', s.selector, e)) {
             continue;
           }
 
@@ -4875,9 +4875,9 @@ class AsyncSelectorInterp extends Error {
 
 /**
  * Span-carrying nodes to attribute a selector-interp failure to, most specific
- * first. Rules and selectors carry no source span (the parser records them only
- * for a few value nodes), but the `@{…}` REFERENCE inside the interpolation does
- * — and that reference is the thing the author would have to change.
+ * first. An interpolation reference carries the most precise source span, even
+ * when its containing selector or rule also carries broader provenance; that
+ * reference is the thing the author would have to change.
  */
 function interpSpanCandidates(token: SimpleToken): object[] {
   const out: object[] = [];
@@ -5532,12 +5532,23 @@ function statementStartOf(node: Statement): number | undefined {
   if (node.type === 'VariableDeclaration') {
     return undefined;
   }
+  if (node.type === 'Ruleset') {
+    return sourceSpanOf(node.selector)?.start;
+  }
   return sourceSpanOf(node)?.start;
 }
 
 function statementEndOf(node: Statement): number | undefined {
   if (node.type === 'VariableDeclaration') {
     return undefined;
+  }
+  if (node.type === 'Ruleset') {
+    const span = sourceSpanOf(node);
+    if (span !== undefined) {
+      return span.end;
+    }
+    const body = bodySpanOf(node);
+    return body === undefined ? undefined : body.end + 1;
   }
   return sourceSpanOf(node)?.end;
 }
@@ -7479,14 +7490,14 @@ function ruleGuardPasses(rule: Ruleset, frame: Frame, e: EvalCtx): MaybePromise<
   if (rule.selector.selectors.length > 1) {
     throw ERR.guardedSelectorList({
       node: rule,
-      ...callSiteLocation(rule, e),
+      ...callSiteLocation(rule.selector, e),
       meta: { count: rule.selector.selectors.length }
     });
   }
   if (guardUsesDefault(rule.guard)) {
     throw ERR.invalidFunction({
       node: rule,
-      ...callSiteLocation(rule, e),
+      ...callSiteLocation(rule.selector, e),
       meta: {
         name: 'default',
         reason: 'default() is only allowed in parametric mixin guards'

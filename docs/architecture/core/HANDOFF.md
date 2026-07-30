@@ -2045,6 +2045,76 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-07-30 conditional Less ruleset provenance elision. Ordinary
+  rulesets retain their parser-owned selector span and brace-body span but no
+  longer receive a duplicate whole-ruleset source span. The optional Less `;`
+  production keeps its whole span because comments between `}` and `;` belong to
+  that statement tail. `statementEndOf` reads the retained tail span when present
+  and otherwise reconstructs the ordinary boundary from the body closing brace;
+  namespace async-guard diagnostics use the surviving selector span.
+- Architecture surface: Less AST grammar reductions plus core serializer
+  provenance reads and diagnostic location selection. CST recognition, grammar
+  shape, CSS text emission policy, and public AST fields are unchanged.
+- Separation/duplication: deletes the duplicate full-rule source provenance
+  association for the normal production, while keeping the only exceptional tail
+  boundary that selector/body facts cannot represent. The parser remains the sole
+  provenance owner; the serializer performs only O(1) side-table reads.
+- Cumulative node weight: reduced by 3,050 whole-ruleset source-span associations
+  per parse on the exact 288,434-byte PostCSS workload; six optional-semicolon
+  rules keep their required tail span. No AST node fields or runtime object shapes change.
+- New traversal: none. One indexed read observes the final direct raw child of
+  this fixed grammar production; it is not a source scan or AST traversal.
+- New node/materialization: none. Existing `{ start, end }` source-span values
+  are retained only where Less optional-tail trivia requires them; normal rules
+  no longer allocate or register that association.
+- Render path: ordinary Ruleset statement boundaries use selector/body facts;
+  optional-semicolon tail comments use the existing full span. The output writer
+  and comment replay route remain singular.
+- Helper/API surface: one parser-private `hasRulesetTerminator` predicate; no
+  public API, factory contract, CST/AST field, or compatibility facade added.
+- Metadata mutations: deletes normal `withSourceSpan(rule, span)` writes; retains
+  the existing write only for raw `;` tails. The serializer adds no map, cache,
+  source scan, or metadata mutation.
+- Review-flagged diff tokens: [array spread/materialization] the two changed
+  guard-error object literals already existed and still materialize exactly one
+  diagnostic payload only on an exceptional error path—the change substitutes
+  `rule.selector` as the existing location owner. [materialized array/object] is
+  the TypeScript `readonly unknown[]` parameter syntax detected by the mechanical
+  scan; it allocates nothing and the helper reads its final item by index.
+- Evidence: exact built PostCSS eval+emit reverse pairs (181 samples, Node
+  v24.11.1) were candidate/base 35.93/35.58 ms and base/candidate 38.29/38.77 ms,
+  so this claims no time win. Direct provenance inspection counts 3,056 Rulesets,
+  six retained tail spans, and 3,050 deleted writes.
+- Behavior evidence: Less public parse tests cover top-level and nested no-tail
+  elision, retained optional-tail spans, silent close-to-semicolon trivia
+  suppression, and exact provenance; the Jess async guard test pins the namespace
+  diagnostic at selector line/column; all-Less is 110/110 green.
+- Build evidence: `pnpm --filter jess... build` rebuilt parser-shared, the Less
+  parser, core, and Jess in dependency order successfully.
+- Boundary evidence: `check:macro` reports zero interpreter fallbacks; focused
+  Less parser AST and public Jess async tests exercise the grammar factory's AST
+  route; `verify:compose-integrity` cleanly rebuilds composed grammar artifacts
+  for AST and CST host modes.
+- Verdict: accepted only as a deterministic allocation/metadata cut, never as a
+  benchmark speedup.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "Ordinary Less Rulesets duplicate a full source span already represented by selector and brace-body facts. The parser retains a full span only for the optional terminator whose intervening trivia cannot be reconstructed; the serializer reads already-owned facts without changing canonical AST semantics or output policy.",
+    "dangerTokensJustification": "The fixed production reads only its terminal raw token and does not scan source or walk AST descendants. Existing exceptional diagnostic object literals retain their one allocation, while their location node changes from the discarded Ruleset span to its surviving selector span; no successful render path adds materialization.",
+    "behaviorEvidence": "Less parser public tests cover ordinary/nested elision and optional-tail trivia; Jess async guard tests pin source location; full all-Less passed 110/110.",
+    "buildEvidence": "pnpm --filter jess... build, check:macro with zero interpreter fallbacks, and verify:compose-integrity passed.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  }
+]
+```
+
 - Latest pass: 2026-07-30 root-trivia map elimination. Renderer comment replay
   now consumes the source-ordered comment ranges it actually needs instead of
   materializing every root whitespace gap through Parseman 0.43's generic map.

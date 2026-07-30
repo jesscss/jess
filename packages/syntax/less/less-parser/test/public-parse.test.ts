@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import {
+  bodySpanOf,
   sourceSpanOf,
   triviaMapOf,
   valueLayoutOf
@@ -91,6 +92,35 @@ describe('public Less parse()', () => {
     ).toBe(
       '.b {\n  color: blue;\n}\n'
     );
+  });
+
+  it('keeps selector and body provenance without a duplicate ruleset span', () => {
+    const source = '.a{color:red;}';
+    const document = parse(source);
+    const rule = document.rules[0];
+    if (rule?.type !== 'Ruleset') {
+      throw new Error('expected a ruleset');
+    }
+
+    expect(sourceSpanOf(rule)).toBeUndefined();
+    expect(sourceSpanOf(rule.selector)).toEqual({ start: 0, end: 2 });
+    expect(bodySpanOf(rule)).toEqual({ start: 3, end: 13 });
+  });
+
+  it('keeps a ruleset span only when an optional semicolon owns tail trivia', () => {
+    const source = '.outer{.inner{}/*between-close-and-semicolon*/;}';
+    const document = parse(source);
+    const outer = document.rules[0];
+    const inner = outer?.type === 'Ruleset' ? outer.rules[0] : undefined;
+    if (outer?.type !== 'Ruleset' || inner?.type !== 'Ruleset') {
+      throw new Error('expected nested rulesets');
+    }
+
+    expect(sourceSpanOf(outer)).toBeUndefined();
+    expect(sourceSpanOf(inner)).toEqual({
+      start: source.indexOf('.inner'),
+      end: source.lastIndexOf(';') + 1
+    });
   });
 
   it('constructs boundary-complete CSS named colors as Color values', () => {
