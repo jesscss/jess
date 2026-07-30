@@ -4458,9 +4458,9 @@ export const scssFactory = (g: ScssInputRules) => {
     'Attribute',
     sequence(
       literal('['),
-      g.CssSyntaxKeyword,
+      g.Identifier,
       optional(sequence(
-        g.CssSyntaxAttributeOperator,
+        g.AttributeOperator,
         choice(
 
           /*
@@ -4479,9 +4479,9 @@ export const scssFactory = (g: ScssInputRules) => {
             singleQuotedText,
             literal('\'')
           )),
-          g.CssSyntaxKeyword
+          g.Identifier
         ),
-        optional(g.CssSyntaxAttributeModifier)
+        optional(g.AttributeModifier)
       )),
       literal(']')
     ),

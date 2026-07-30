@@ -274,6 +274,8 @@ function isToken(value: unknown): value is Token {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedCssSyntax = {
+  AttributeModifier: Combinator<unknown>;
+  AttributeOperator: Combinator<unknown>;
   CssSyntaxAttributeModifier: Combinator<unknown>;
   CssSyntaxAttributeOperator: Combinator<unknown>;
   CssSyntaxHexColor: Combinator<string>;
@@ -5511,9 +5513,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const StaticAttributeMatch = node<StaticAttributeMatchFact>(
     'StaticAttributeMatch',
     sequence(
-      g.CssSyntaxAttributeOperator,
+      g.AttributeOperator,
       choice(staticIdentifier, g.StaticAttributeQuoted),
-      optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
+      optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
     ),
     children => ({
       operator: requireToken(children[0]).value,
@@ -5546,16 +5548,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
           optional(g.StaticAttributeNamespace),
           g.InterpolatedAttributeToken,
           optional(sequence(
-            g.CssSyntaxAttributeOperator,
+            g.AttributeOperator,
             choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessSyntaxIdentifier, g.StaticAttributeQuoted),
-            optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
+            optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
           ))
         ),
         sequence(
           g.StaticAttributeName,
-          g.CssSyntaxAttributeOperator,
+          g.AttributeOperator,
           choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted),
-          optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
+          optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
         )
       ),
       literal(']')

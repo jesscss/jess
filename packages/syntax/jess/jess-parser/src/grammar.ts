@@ -205,12 +205,15 @@ type JessRules = {
 };
 
 type SharedCssSyntax = {
+  AttributeModifier: Combinator<string>;
+  AttributeOperator: Combinator<string>;
   CssSyntaxAttributeModifier: Combinator<string>;
   CssSyntaxAttributeOperator: Combinator<string>;
   CssSyntaxDoubleQuotedText: Combinator<string>;
   CssSyntaxHexColor: Combinator<string>;
   CssSyntaxImportant: Combinator<string>;
   CssSyntaxKeyframesAtKeyword: Combinator<string>;
+  Identifier: Combinator<string>;
   CssSyntaxKeyword: Combinator<string>;
   CssSyntaxNth: Combinator<string>;
   CssSyntaxNthChildName: Combinator<string>;
@@ -2503,15 +2506,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'Attribute',
     sequence(
       literal('['),
-      g.CssSyntaxKeyword,
+      g.Identifier,
       optional(sequence(
-        g.CssSyntaxAttributeOperator,
+        g.AttributeOperator,
         choice(
           attributeDoubleQuoted,
           attributeSingleQuoted,
-          g.CssSyntaxKeyword
+          g.Identifier
         ),
-        optional(g.CssSyntaxAttributeModifier)
+        optional(g.AttributeModifier)
       )),
       literal(']')
     ),

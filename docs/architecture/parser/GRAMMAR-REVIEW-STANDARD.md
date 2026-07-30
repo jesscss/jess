@@ -45,6 +45,17 @@ CSS call a semantic slot, then override that slot. If the slot is too broad,
 split it only after implementation pressure proves the contexts need distinct
 override policies, and write that proof down beside the split.
 
+`Identifier` and `Keyword` are different semantic slots even when CSS recognizes
+the same authored spelling for both today. Use `Identifier` for non-value
+syntax positions: selector pieces, attribute names and modifiers, property-ish
+names, at-rule names, and other grammar structure that is identifier-shaped.
+Use `Keyword` only when an identifier-shaped token is already a CSS value fact.
+In value position, an `IdentifierOrFunction` dispatcher is the right shape: the
+routed bare identifier can reduce to a `Keyword` value, while the glued
+`name(` opener routes to known or generic function bodies. Keeping these slots
+separate is what lets Less, SCSS, and Jess override interpolation in selector,
+property, or header positions without corrupting ordinary value keywords.
+
 Apply this pressure horizontally, with one exception: making CSS itself spotless
 can proceed directly because CSS is the base the others should compose from.
 Most historical duplication was created by repairing one derived dialect or one

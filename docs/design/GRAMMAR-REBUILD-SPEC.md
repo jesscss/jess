@@ -352,6 +352,13 @@ production because one child changes. Split a shared CSS slot only when
 implementation pressure proves two contexts with the same visible concept need
 different override behavior, and record that proof near the split.
 
+`Identifier` and `Keyword` stay separate even when their raw CSS recognizer is
+the same today. `Identifier` owns identifier-shaped structure outside value
+position; `Keyword` owns value-position identifier facts. In value position,
+route the identifier/function family once so a bare identifier becomes a
+`Keyword` value while glued `name(` openers dispatch to known or generic
+function bodies.
+
 **Cross-artifact `compose()` is not available, so the rebuild proceeds as
 terminal leaves.** The constraint a builder must satisfy to be statically
 resolvable is `direct-builder-static.ts` — **which is in parseman, not in this

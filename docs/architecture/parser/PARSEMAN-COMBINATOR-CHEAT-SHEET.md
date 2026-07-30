@@ -85,7 +85,16 @@ Less function names are glued to `(`, so `name(` belongs in the routed opener;
 `name (` is an identifier followed by later parenthesized syntax if that context
 allows it.
 
-Before changing a CSS/Less `choice(...)` into `dispatch(...)`, write down the
+Keep `Identifier` and `Keyword` as separate slots. `Identifier` is for
+identifier-shaped grammar structure outside value position, such as selector
+pieces, attribute names/modifiers, property-ish names, and at-rule names.
+`Keyword` is for value-position identifier facts. In value position, route
+`IdentifierOrFunction`: a bare identifier can become a `Keyword` value and a
+glued `name(` opener can dispatch to known/generic function bodies. Do not use
+the value `Keyword` slot merely because the raw CSS recognizer happens to share
+the same spelling as an identifier.
+
+Before changing a CSS-family `choice(...)` into `dispatch(...)`, write down the
 routed value the first combinator returns. If that value is only `@`, `(`, `:`,
 or a bare identifier whose following delimiter decides the language branch, the
 rewrite is premature. Either include the deciding syntax in the routed
