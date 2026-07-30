@@ -1026,7 +1026,7 @@ const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
 
 /*
  * Grammar-local copies of the leading pseudo-colon, hex-color and number
- * recognizers (byte-identical to the shared CssSyntaxPseudoColon /
+ * recognizers (byte-identical to the shared PseudoSelectorColon /
  * CssSyntaxHexColor / CssSyntaxNumber). Leading a choice arm with a
  * cross-composition `g.CssSyntax*` reference leaves that arm's first-set
  * unresolved (`any`) across the composeLeaf artifact boundary, so the compiler
@@ -4506,7 +4506,7 @@ export const scssFactory = (g: ScssInputRules) => {
      * Selector an interpolation escape hatch.
      */
     sequence(
-      not(g.CssSyntaxMalformedPseudoNumericArgument),
+      not(g.MalformedPseudoSelectorNumericArgument),
       g.StaticPseudoArgument
     ),
     joinSourceText
@@ -4668,7 +4668,7 @@ export const scssFactory = (g: ScssInputRules) => {
 
     /*
        * `:nth-child`/`:nth-last-child`: a bare `<An+B>` OR `<An+B> of <selector>`
-       * (Selectors-4 §6.6.2). Dispatched by the shared `g.CssSyntaxNthChildName`
+       * (Selectors-4 §6.6.2). Dispatched by the shared `g.NthChildPseudoSelectorName`
        * so `of S` is admitted only on the child index. An+B input cannot first try
        * the selector-valued arm: `-n+2` has a valid selector prefix (`-n`) but is
        * not a complete selector argument. Its complete static grammar owns the
@@ -4677,7 +4677,7 @@ export const scssFactory = (g: ScssInputRules) => {
        */
     sequence(
       routed(),
-      not(g.CssSyntaxMalformedPseudoNumericArgument),
+      not(g.MalformedPseudoSelectorNumericArgument),
       g.StaticPseudoArgument,
       literal(')')
     ),
@@ -4697,19 +4697,19 @@ export const scssFactory = (g: ScssInputRules) => {
     /*
        * `:nth-of-type`/`:nth-last-of-type`: a BARE `<An+B>` only — Selectors-4
        * §6.6.2 defines no `of S` tail for the type-index families. The
-       * `not(sequence(g.CssSyntaxNth, g.CssSyntaxOfKeyword))` guard rejects
+       * `not(sequence(g.NthExpression, g.NthOfKeyword))` guard rejects
        * an `<An+B> of …` argument so `:nth-of-type(2n of .a)` fails rather than
        * being captured as opaque text (the CSS-aligned owner decision), matching
        * the css/jess landings.
        */
     sequence(
       routed(),
-      not(g.CssSyntaxMalformedPseudoNumericArgument),
+      not(g.MalformedPseudoSelectorNumericArgument),
       not(parser(
         { trivia: whitespace },
         sequence(
-          g.CssSyntaxNth,
-          g.CssSyntaxOfKeyword
+          g.NthExpression,
+          g.NthOfKeyword
         )
       )),
       g.StaticPseudoArgument,

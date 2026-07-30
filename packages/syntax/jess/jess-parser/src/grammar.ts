@@ -214,13 +214,13 @@ type SharedCssSyntax = {
   CssSyntaxKeyframesAtKeyword: Combinator<string>;
   Identifier: Combinator<string>;
   CssSyntaxKeyword: Combinator<string>;
-  CssSyntaxNth: Combinator<string>;
-  CssSyntaxNthChildName: Combinator<string>;
-  CssSyntaxNthTypeName: Combinator<string>;
-  CssSyntaxNthName: Combinator<string>;
-  CssSyntaxSelectorArgPseudoName: Combinator<string>;
-  CssSyntaxOfKeyword: Combinator<string>;
-  CssSyntaxPseudoCloseAhead: Combinator<string>;
+  NthExpression: Combinator<string>;
+  NthChildPseudoSelectorName: Combinator<string>;
+  NthTypePseudoSelectorName: Combinator<string>;
+  NthPseudoSelectorName: Combinator<string>;
+  SelectorArgumentPseudoSelectorName: Combinator<string>;
+  NthOfKeyword: Combinator<string>;
+  PseudoSelectorCloseAhead: Combinator<string>;
   CssSyntaxNumber: Combinator<string>;
   CssSyntaxProperty: Combinator<string>;
   CssSyntaxInterpolatedPropertyStart: Combinator<string>;
@@ -243,7 +243,7 @@ type SharedCssSyntax = {
   CssSyntaxStaticUrlInner: Combinator<string>;
   CssSyntaxGenericAtRuleName: Combinator<string>;
   CssSyntaxSimple: Combinator<string>;
-  CssSyntaxPseudoColon: Combinator<string>;
+  PseudoSelectorColon: Combinator<string>;
   CssSyntaxMediaAtKeyword: Combinator<string>;
   PreprocessorOpaqueAtRulePreludeCapture: Combinator<string | null>;
   PreprocessorOpaqueAtRuleBodyCapture: Combinator<string>;
@@ -2544,7 +2544,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   /*
    * `:nth-child`/`:nth-last-child` argument: a bare `<An+B>` OR `<An+B> of S`
    * (Selectors-4 §6.6.2, https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo).
-   * The shared `g.CssSyntaxNth`/`g.CssSyntaxOfKeyword`/`g.CssSyntaxPseudoCloseAhead`
+   * The shared `g.NthExpression`/`g.NthOfKeyword`/`g.PseudoSelectorCloseAhead`
    * recognitions replace the inlined `<An+B> of` regex; `of` keeps its authored
    * surrounding whitespace (explicit `rawWhitespace`, not trivia) so `2n+1of .a`
    * cannot be silently normalized into the distinct `2n+1 of .a` syntax. The
@@ -2556,17 +2556,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'StaticNthChildArgument',
     choice(
       sequence(
-        g.CssSyntaxNth,
+        g.NthExpression,
         optional(sequence(
           rawWhitespace,
-          g.CssSyntaxOfKeyword,
+          g.NthOfKeyword,
           rawWhitespace,
           parser(
             { trivia: whitespace },
             g.StaticSelector
           )
         )),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       ),
       parser(
         { trivia: whitespace },
@@ -2599,15 +2599,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'StaticNthTypeArgument',
     choice(
       sequence(
-        g.CssSyntaxNth,
-        g.CssSyntaxPseudoCloseAhead
+        g.NthExpression,
+        g.PseudoSelectorCloseAhead
       ),
       sequence(
         not(parser(
           { trivia: whitespace },
           sequence(
-            g.CssSyntaxNth,
-            g.CssSyntaxOfKeyword
+            g.NthExpression,
+            g.NthOfKeyword
           )
         )),
         parser(
@@ -2636,8 +2636,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      * its parens (`:not( .b )`, `:nth-child( 2n+1 )`). Consume it here so valid
      * CSS is accepted in the .jess dialect exactly as the canonical CSS grammar
      * accepts it; it is trivia, so the serialized argument stays normalized.
-     * The nth families dispatch by NAME (shared `g.CssSyntaxNthChildName`/
-     * `g.CssSyntaxNthTypeName`) so `of S` is accepted only on the child index
+     * The nth families dispatch by NAME (shared `g.NthChildPseudoSelectorName`/
+     * `g.NthTypePseudoSelectorName`) so `of S` is accepted only on the child index
      * and rejected on the type index. The selector-argument pseudos
      * (`:is`/`:where`/`:not`/`:has`/`:matches`) dispatch by their own shared name
      * class and take a selector-ONLY argument with no any-value fallback, so
@@ -2648,10 +2648,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      * (`:nth-child`) still rejects rather than becoming a keyword pseudo.
      */
     sequence(
-      g.CssSyntaxPseudoColon,
+      g.PseudoSelectorColon,
       choice(
         sequence(
-          g.CssSyntaxNthChildName,
+          g.NthChildPseudoSelectorName,
           literal('('),
           optional(rawWhitespace),
           StaticNthChildArgument,
@@ -2659,7 +2659,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           literal(')')
         ),
         sequence(
-          g.CssSyntaxNthTypeName,
+          g.NthTypePseudoSelectorName,
           literal('('),
           optional(rawWhitespace),
           StaticNthTypeArgument,
@@ -2667,7 +2667,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           literal(')')
         ),
         sequence(
-          g.CssSyntaxSelectorArgPseudoName,
+          g.SelectorArgumentPseudoSelectorName,
           literal('('),
           optional(rawWhitespace),
           g.StaticPseudoArgument,
@@ -2675,8 +2675,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           literal(')')
         ),
         sequence(
-          not(g.CssSyntaxSelectorArgPseudoName),
-          not(g.CssSyntaxNthName),
+          not(g.SelectorArgumentPseudoSelectorName),
+          not(g.NthPseudoSelectorName),
           g.CssSyntaxKeyword,
           optional(sequence(
             literal('('),
