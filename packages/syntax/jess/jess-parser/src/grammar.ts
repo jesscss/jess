@@ -72,7 +72,7 @@ type JessRules = {
   MixinGuard: Combinator<GuardNode>;
   Keyword: Combinator<Keyword>;
   Quoted: Combinator<Quoted | Interpolation>;
-  PlainQuoted: Combinator<Quoted>;
+  LiteralQuoted: Combinator<Quoted>;
   Dimension: Combinator<Dimension>;
   Color: Combinator<Color>;
   Url: Combinator<Url>;
@@ -148,10 +148,10 @@ type JessRules = {
   StyleImport: Combinator<StyleImport>;
   ModuleSpecifier: Combinator<ModuleImportSpecifier>;
   ModuleImport: Combinator<ModuleImport>;
-  PlainValueAtom: Combinator<ValueNode>;
-  PlainValue: Combinator<ValueSlot>;
-  PlainCallArgument: Combinator<ValueSlot>;
-  PlainCall: Combinator<FunctionCall>;
+  HeaderValueAtom: Combinator<ValueNode>;
+  HeaderValue: Combinator<ValueSlot>;
+  HeaderCallArgument: Combinator<ValueSlot>;
+  HeaderCall: Combinator<FunctionCall>;
   QueryNonOnlyKeyword: Combinator<Keyword>;
   QueryTerm: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
@@ -2063,7 +2063,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * grammar recognition, rather than reaching a reducer that could throw a
    * non-SyntaxError from the public parse path.
    */
-  const PlainQuoted = node<Quoted>(
+  const LiteralQuoted = node<Quoted>(
     'Quoted',
     choice(
       escapedPlainQuoted,
@@ -2388,7 +2388,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.UrlOpen,
       optional(choice(
-        g.PlainQuoted,
+        g.LiteralQuoted,
         g.PlainUrlInner
       )),
       literal(')')
@@ -3408,12 +3408,12 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * is rejected rather than hidden in an Any/raw prelude. Extend this with
    * another typed form when Jess gives that form semantics.
    */
-  const PlainValueAtom = node<ValueNode>(
+  const HeaderValueAtom = node<ValueNode>(
     'ValueAtom',
     choice(
       g.Url,
-      g.PlainCall,
-      g.PlainQuoted,
+      g.HeaderCall,
+      g.LiteralQuoted,
       g.Color,
       g.Dimension,
       g.CustomPropertyValue,
@@ -3421,13 +3421,13 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     children => requireValueNode(children[0])
   );
-  const PlainValue = node<ValueSlot>(
+  const HeaderValue = node<ValueSlot>(
     'Value',
     noTrivia(sequence(
-      g.PlainValueAtom,
+      g.HeaderValueAtom,
       many(sequence(
         regex(/[ \t\n\r\f]+/),
-        g.PlainValueAtom
+        g.HeaderValueAtom
       ))
     )),
     (children) => {
@@ -3435,12 +3435,12 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       return values.length === 1 ? values[0]! : values;
     }
   );
-  const PlainCallArgument = node<ValueSlot>(
+  const HeaderCallArgument = node<ValueSlot>(
     'CallArgument',
     sequence(
       literal(','),
       optional(regex(/[ \t\n\r\f]+/)),
-      g.PlainValue
+      g.HeaderValue
     ),
     (children) => {
       const value = children.at(-1);
@@ -3458,9 +3458,9 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * feature or an `@property` descriptor is a language-service fact; a parser
    * that rejects `var()` here turns a diagnosable squiggle into a lost file.
    * `url(` needs no exclusion either: the dedicated Url leaf precedes this arm
-   * in PlainValueAtom and takes it first.
+   * in HeaderValueAtom and takes it first.
    */
-  const PlainCall = node<FunctionCall>(
+  const HeaderCall = node<FunctionCall>(
     'Call',
     sequence(
       noTrivia(sequence(
@@ -3468,8 +3468,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
         literal('(')
       )),
       optional(sequence(
-        g.PlainValue,
-        many(g.PlainCallArgument)
+        g.HeaderValue,
+        many(g.HeaderCallArgument)
       )),
       literal(')')
     ),
@@ -3498,12 +3498,12 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   const QueryValue = node<ValueNode>(
     'QueryValue',
     sequence(
-      g.PlainValueAtom,
+      g.HeaderValueAtom,
       optional(sequence(
         optional(rawWhitespace),
         literal('/'),
         optional(rawWhitespace),
-        g.PlainValueAtom
+        g.HeaderValueAtom
       ))
     ),
     (children) => {
@@ -3683,7 +3683,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       g.QueryDashedIdentifier,
       sequence(
         not(g.QueryOnly),
-        g.PlainValueAtom
+        g.HeaderValueAtom
       )
     ),
     children => requireValueNode(children.at(-1))
@@ -3887,7 +3887,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    */
   const SupportsAtom = node<ValueNode>(
     'SupportsAtom',
-    g.PlainValueAtom,
+    g.HeaderValueAtom,
     children => requireValueNode(children[0])
   );
 
@@ -4153,7 +4153,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     'Charset',
     sequence(
       charsetAtRuleName,
-      g.PlainQuoted,
+      g.LiteralQuoted,
       literal(';')
     ),
     children => atRuleStatement(
@@ -4172,7 +4172,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       importAtRuleName,
       choice(
-        g.PlainQuoted,
+        g.LiteralQuoted,
         g.Url
       ),
       g.OpaqueAtPrelude,
@@ -4297,7 +4297,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.Identifier,
       literal(':'),
-      g.PlainValue,
+      g.HeaderValue,
       literal(';')
     ),
     (children) => {
@@ -4377,7 +4377,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       g.KeyframesAtKeyword,
       choice(
         g.Keyword,
-        g.PlainQuoted
+        g.LiteralQuoted
       ),
       literal('{'),
       many(g.KeyframeBlock),
@@ -5578,14 +5578,14 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     MixinGuard,
     Keyword,
     Quoted,
-    PlainQuoted,
+    LiteralQuoted,
     StyleImport,
     ModuleSpecifier,
     ModuleImport,
-    PlainValueAtom,
-    PlainValue,
-    PlainCallArgument,
-    PlainCall,
+    HeaderValueAtom,
+    HeaderValue,
+    HeaderCallArgument,
+    HeaderCall,
     QueryNonOnlyKeyword,
     QueryTerm,
     QueryFeature,

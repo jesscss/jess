@@ -21,7 +21,7 @@ with 0 throws over 709 entries.
 The physical fold is done. In this report, "fold" now means deleting remaining
 duplicate private recognition families inside the single host-mode
 `src/grammar.ts`, not restoring a CST bridge or recreating a second grammar
-file. Use the active Parseman 0.41 surface (`dispatch(...)`, `makeWhen(...)`,
+file. Use the active Parseman 0.43 surface (`dispatch(...)`, `makeWhen(...)`,
 matcher cases, `routed()`, and `node(..., { project })`) where it removes
 repeated recognition.
 
@@ -205,7 +205,7 @@ Preferred local vocabulary by region:
   inline-extend subject and extend target really differ, name the context
   (`InlineExtendSubject`, `ExtendTarget`), not the migration path.
 
-## Parseman 0.41 routing targets
+## Parseman 0.43 routing targets
 
 Apply these while folding each family, not as polish on duplicate bodies:
 
@@ -499,7 +499,7 @@ small. The important shape is the contract:
 - `extendTargetFlags: true` adds the terminal `all` / `!all` flag only in the
   `:extend(...)` target list. Do not let ordinary selector lists know about that
   flag.
-- `PseudoSelector` should use Parseman 0.41 `dispatch(...)` only where it routes
+- `PseudoSelector` should use Parseman 0.43 `dispatch(...)` only where it routes
   one already-consumed pseudo/function opener. Branch nodes that need the opener
   use `routed()`. The selector-list branch itself should not be an outer
   `attempt(...)` fallback.

@@ -117,7 +117,7 @@ Current priority order:
 Side-lane grammar cleanup still matters: comments are trivia, not semantic AST
 nodes; short spec-aligned production names beat migration prefixes; `Value` is
 one atomic value piece while `ValueSequence` and `ValueList` compose values; and
-Parseman 0.41+ idioms such as `dispatch(...)`, `routed()`, `makeWhen(...)`,
+Parseman 0.43+ idioms such as `dispatch(...)`, `routed()`, `makeWhen(...)`,
 `word(...)`, separated-list helpers, and composition should be used where they
 remove real duplicated recognition or make the grammar clearer.
 
@@ -313,7 +313,7 @@ fix the surviving host-mode grammar and its tests.
 | jess | `src/grammar.ts` | deleted |
 
 This makes the remaining target concrete: four folded grammar factories must
-become small, readable, well-documented, and idiomatic Parseman 0.41 grammars.
+become small, readable, well-documented, and idiomatic Parseman 0.43 grammars.
 
 ## Current copy/paste goal
 
@@ -321,7 +321,7 @@ Act as the grammar-cleanup orchestrator in `/Users/matthew/git/oss/jess`.
 Assume the physical eight-to-four fold is complete: CSS, Less, SCSS, and Jess
 each ship AST and CST from one `src/grammar.ts`, and the deleted
 `src/ast/grammar.ts` files are historical evidence only. The active objective is
-to make the four surviving grammars exemplary Parseman 0.41 grammars.
+to make the four surviving grammars exemplary Parseman 0.43 grammars.
 Do not spend effort re-planning the fold or reviving old AST/CST grammar pairs;
 the fold is paid, and all remaining work happens inside the four surviving
 host-mode grammar bodies plus their direct tests/docs.
@@ -432,7 +432,7 @@ highest-priority non-Parseman grammar surfaces:
   larger follow-up is still to make that shared frame CSS-owned, with only real
   Jess holes parameterized (`$`-reserved URL handling and interpolation policy).
   Do not grow this back into a Jess-local CSS import parser.
-- Jess constrained CSS headers deliberately use private `PlainValue*` helpers
+- Jess constrained CSS headers deliberately use private `HeaderValue*` helpers
   because they exclude Jess execution forms while reusing the same value
   semantics. Their public CST labels are `ValueAtom`, `Value`, `CallArgument`,
   and `Call`, never the private helper names. This is the narrow-helper rule:
@@ -719,7 +719,7 @@ state.
    `lessCstGrammar` compile the same Less-owned factory in the appropriate host
    mode. The active Less work is now quality plus CST residue classification:
    delete `DirectLess*` migration names as each family is reviewed, replace broad
-   known/generic `choice(...)` arms with Parseman 0.41
+known/generic `choice(...)` arms with Parseman 0.43
    `dispatch(...)`/`routed()` routes, keep selector and value regions parsed
    once, replace statement-position class/id and identifier lookahead with
    parse-once routing, document Less-specific deviations from CSS placement
@@ -802,7 +802,7 @@ state.
    Sass fixture proves otherwise.
 4. **Jess folded; keep only Jess-specific syntax.** Jess now ships from one
    host-mode grammar source. Reuse CSS/preprocessor concepts, route shared
-   opener families with Parseman 0.41, and do not copy Less/SCSS shapes unless
+opener families with Parseman 0.43, and do not copy Less/SCSS shapes unless
    they are shared language with shared names.
 
 ## Batch rule
@@ -4194,7 +4194,7 @@ follow-up grammar-shape debt.
 
 Jess contextual CSS-only name cleanup, 2026-07-29: the folded Jess grammar no
 longer uses parser-mode terminology for constrained quoted and pseudo-selector
-contexts. The private `PlainQuoted` helper recognizes quoted syntax without a
+contexts. The private `LiteralQuoted` helper recognizes quoted syntax without a
 Jess interpolation but still emits the semantic `Quoted` CST label;
 `NthChildArgument`, `NthTypeArgument`, `PseudoSelectorArgument`,
 `PseudoSelectorCompound`, `PseudoSelectorComplex`, and `PseudoSelectorList`
@@ -5190,3 +5190,48 @@ syntax. `$[...]` remains legal only as a value/expression lookup; it is not a
 selector, declaration-name, custom-property-name, or quoted-string
 interpolation form. Parser-shared then Jess builds and the focused Jess AST/CST
 suite (2 files / 121 tests) passed. No performance claim was made.
+
+Less parser profiling ladder, 2026-07-30: a loaded-source CPU profile of the
+built AST parser on `tests-unit` puts the value/math family first:
+`Value`, `ValueSequence`, `ValueList`, `MathUnary`, `TopProduct`, and `TopSum`.
+The per-const review finds that product/sum continuation is already correctly
+operator-led (`many(sequence(operator, atom))`), so those are not dispatch
+candidates. `ValueList`'s accessor-bearing `MixinReference` route has already
+consumed and dispatched its first `[]` / `[` / `.` / `(` delimiter; its outer
+`attempt(...)` remains necessary because the same `.foo` / `#fff` lexical
+prefix can still be an ordinary value or color until a complete reference tail
+exists. Do not replace it with a broad prefix scan or a premature router.
+
+Parseman 0.43's three-pass profile adds the allocation boundary to that CPU
+evidence. On 129 accepted files from the 136-file Less unit corpus (117,354
+bytes), AST recognition took 102.641 ms, structural capture took 81.460 ms for
+64,481 grammar nodes / 94,183 child slots / 93,612 raw slots / 11,676 trivia
+slots, and direct AST construction took 104.640 ms with no generic build-host
+calls. The CST surface accepted 130 files (126,710 bytes): 106.908 ms
+recognition, 87.461 ms structural capture for 72,450 nodes, and 47,790 CST host
+calls. These are single profiling passes, not benchmark deltas; their stable
+counts identify the recognizer-side value/condition and opaque-scan routes as
+the next queue, rather than a generic CST-allocation cleanup.
+
+The current `FunctionArgument` condition detector is a specific audit target:
+it uses `peek(scanTo(...))` to discover a comparison/logical word before an
+argument delimiter. It correctly distinguishes a true top-level condition, but
+also sees an inner operator in `boolean(foo(1 = 1))`; removing it requires a
+one-pass, context-aware condition production that preserves nested function
+arguments and the original diagnostic span. It is not acceptable to delete or
+replace that scan with `peek(...)` alone. The scan inventory remains governed by
+the question "can this be structured or trivia-owned?"; `scanTo(...)` is kept
+only where an opaque language region is actually the accepted syntax.
+
+Quoted/header semantic-name alignment, 2026-07-30: SCSS and Jess now name the
+private non-interpolated quoted slot `LiteralQuoted`, not `PlainQuoted`. It is a
+real restricted recognition slot: module/import paths, static CSS import
+targets, scanner skips, and header-only leaves must reject the dialect's quoted
+interpolation forms, while the universal `Quoted` override remains the ordinary
+value/string production. Jess also calls its restricted CSS-header value spine
+`HeaderValueAtom`, `HeaderValue`, `HeaderCallArgument`, and `HeaderCall`: those
+rules serve typed at-rule/descriptors, never normal Jess values, and therefore
+exclude execution forms without inventing a second public vocabulary. Every
+affected node continues to emit `Quoted`, `ValueAtom`, `Value`, `CallArgument`,
+or `Call` in CST mode. This is a horizontal private-name cleanup across the two
+interpolating dialects; it does not change the grammar's accepted language.
