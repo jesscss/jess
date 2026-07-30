@@ -4750,6 +4750,24 @@ fallbacks; and `pnpm run verify:compose-integrity` passed. The previous
 `ScssMixinCallArg` gating warning now reports under semantic
 `MixinCallArgument`.
 
+SCSS mixin frame CST alignment, 2026-07-30: `MixinCallRule` and
+`MixinDefinitionRule` remain private grammar-context names because their body
+call sites make that distinction useful, but both produce the canonical core
+facts. Their public CST labels are therefore `MixinCall` and
+`MixinDefinition`, matching Less and Jess. This is a per-const naming-only
+conversion: the existing `@include`/`@mixin` word-boundary recognition and the
+body-family `choice(...)` ordering are unchanged; neither production is a
+shared-opener dispatch candidate.
+
+Verification for that alignment: parser-shared then SCSS builds; SCSS public
+CST, macro-compiled AST, compose-integrity, and mixin-focused AST tests; root
+`check:macro` (zero interpreter fallbacks); and root compose integrity passed.
+The full SCSS AST grammar suite has three separate existing stack overflows in
+custom-property/interpolation and `@supports` fixtures. The same three failures
+reproduced after temporarily restoring the prior CST labels, so they do not
+gate this naming-only change; repair the recursive SCSS grammar route as its
+own semantic slice.
+
 CSS at-rule prelude scanner-skip cleanup, 2026-07-29: CSS `AtRulePreludeGroup`
 now relies on the grammar-level ambient `scanSkip` / trivia policy for balanced
 paren and square groups instead of restating local

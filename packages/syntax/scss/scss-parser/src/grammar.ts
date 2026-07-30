@@ -2599,7 +2599,7 @@ export const scssFactory = (g: ScssInputRules) => {
     }
   );
   const MixinCallRule = node<MixinCall>(
-    'MixinCallRule',
+    'MixinCall',
     sequence(
       regex(/@include(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       mixinNameToken,
@@ -2782,7 +2782,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.NestedRuleset
   ));
   const MixinDefinitionRule = node<MixinDefinition>(
-    'MixinDefinitionRule',
+    'MixinDefinition',
     sequence(
       regex(/@mixin(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       mixinNameToken,

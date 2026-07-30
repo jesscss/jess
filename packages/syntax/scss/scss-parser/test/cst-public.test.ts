@@ -112,6 +112,19 @@ describe('@jesscss/scss-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('uses cross-dialect semantic CST labels for mixin definitions and calls', () => {
+    const result = parseScssCst('@mixin spacing($size) { padding: $size; } .card { @include spacing(1rem); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('MixinDefinition')).toBe(1);
+    expect(grammarTypes.get('MixinCall')).toBe(1);
+    expect(grammarTypes.has('MixinDefinitionRule')).toBe(false);
+    expect(grammarTypes.has('MixinCallRule')).toBe(false);
+    expectNoModeLabels(result.tree);
+  });
+
   it('collapses transparent CST wrappers without dropping leaves', () => {
     const expanded = parseScssCst('$color: red; .x { color: $color; }');
     const collapsed = parseScssCst('$color: red; .x { color: $color; }', 'Stylesheet', { collapse: true });
