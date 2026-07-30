@@ -3416,12 +3416,15 @@ shared-opener work this way:
    until `(`/`;` selects a namespace call or the ruleset continuation selects
    `:extend`, `,`, `when`, or `{`. A definition is permitted only for one
    class/id name, so `.a.b() {}` remains rejected. `MixinInterior` consumes
-   the opening `(`, each item, and separators once, but leaves `)` for the
-   selected continuation. A bare `@name` is a binding only at a comma,
+   the opening `(`, each item, and separators once; `MixinStatementTail` then
+   owns the single closing `)` before choosing the continuation. A bare `@name`
+   is a binding only at a comma,
    semicolon, or closing-parenthesis boundary; `@name - 1` therefore remains
    a positional call value. `MixinDefinitionContinuation` and
-   `MixinCallContinuation` each consume `)`, so the narrow definition attempt
-   can retry only its delimiter and tail, never the parenthesized interior.
+   `MixinCallContinuation` begin after that shared delimiter, so no arm retries
+   it or the parenthesized interior. The continuation remains a `choice(...)`:
+   `when` / `{` versus the optional call suffix is decided by later delimiter
+   context, not a routed same-family opener.
    The public parameter-list entry reuses that same interior and reduces it to
    `Param[]`. The generic positional-value fallback is intentionally local to
    an already-open interior; do not turn it into a class/id prefix scanner or

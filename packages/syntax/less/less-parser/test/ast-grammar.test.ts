@@ -5426,6 +5426,43 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('chooses a Less mixin continuation after one shared closing parenthesis', () => {
+    const source = [
+      '.empty() { color: red; }',
+      '.guarded(@value) when (@value > 0) { width: @value; }',
+      '.use { .empty(); .guarded(1) !important; }'
+    ].join(' ');
+    const cst = parseLessCst(source);
+    const direct = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(findCstNodes(cst.tree, 'MixinDefinition')).toHaveLength(2);
+    expect(findCstNodes(cst.tree, 'MixinCall')).toHaveLength(2);
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(direct.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        { type: 'MixinDefinition', name: '.empty', params: [] },
+        { type: 'MixinDefinition', name: '.guarded', params: [{ name: 'value' }] },
+        { type: 'Ruleset', rules: [
+          { type: 'MixinCall', name: '.empty', args: [], important: false },
+          { type: 'MixinCall', name: '.guarded', important: true }
+        ] }
+      ]
+    });
+
+    for (const invalid of [
+      '.broken() when;',
+      '.broken(@value) when (@value > 0);'
+    ]) {
+      expect(parsesCompleteStylesheet(invalid), invalid).toBe(false);
+    }
+  });
+
   it('parses multiline svg-gradient values inside a mixin definition directly', () => {
     const source =
       '.gradient-mixin(@color) {\n  background: svg-gradient(to bottom,\n    fade(@color, 0%) 0%,\n    fade(@color, 5%) 60%\n  );\n}';
