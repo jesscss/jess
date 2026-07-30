@@ -15,8 +15,8 @@ them; sampling profiles rank investigations, not release claims.
 
 ## Current profile: PostCSS preprocessor workload
 
-Profile date: 2026-07-29. Jess commit:
-`4f98df84d1d9f8064390e3f46d9a835cf0d476fa`; Node `v24.11.1`,
+Initial profile date: 2026-07-29. Latest reprofile: 2026-07-30, Jess commit
+`bda41a0bb`; Node `v24.11.1`,
 Darwin arm64; built `jess`, `@jesscss/core`, and
 `@jesscss/less-parser` `2.0.0-alpha.5`; resolved
 `parseman@0.43.0`. The upstream checkout was
@@ -116,6 +116,16 @@ interleaved samples) reports Jess Less 47.46 ms versus Less 4.8.1 at 29.02 ms
 is a successful deletion of the profiled architecture failure, not benchmark
 victory.
 
+Second reprofile result: `bda41a0bb` removes the remaining legacy root-trivia
+map trigger from comment-only AST emission. A 50-render CPU profile fell from
+about 5% direct samples in `appendGap` / `buildRootMaps` / `getMaps` to one
+incidental 0.05% `buildRootTriviaIndex` sample; it is a source bucket deletion,
+not a claim about total process GC (sampling proportions vary with collection
+timing). Two fresh 61-sample interleaved runs measure Jess Less at **38.32 ms**
+and **37.74 ms**, Less 4.8.1 at **26.85 ms** and **26.68 ms** (1.43× and 1.41×).
+The harness's evaluated-feature assertions pass and Jess emitted 289,779 bytes
+with SHA-256 `3ea6c1bdae41511923deece75676d453ff470cb447f531aae935b44eae6f5083`.
+
 ### P1 — remove cross-workload metadata overhead
 
 - **Warning event storage:** implemented as a Context-owned columnar collector.
@@ -134,25 +144,25 @@ victory.
   fixed-shape inline or parser-owned indexed representation that removes the
   per-node WeakMap set/get without introducing polymorphic node shapes. Do this
   after P0 so warning-only span reads do not inflate the result.
-- **Parseman trivia indexing:** root-trivia map construction and lookup account
-  for 4.5% and 3.8% respectively. Current Parseman `runOnce()` records every
-  skipped whitespace/comment chunk in a root trivia log and `buildRootMaps()`
-  indexes that complete stream; the existing capture mask only governs per-node
-  CST capture, not that root log. The likely design is explicit **skip** trivia
-  (advance with no retained record) versus sparse **capture** trivia (comments
-  and renderer-proven layout boundaries), with exact formatting semantics proved
-  before changing the default. This requires a Parseman-side capture-policy
-  design, not a Jess scanner or a loss of comment fidelity. Split raw
-  macro-compiled `run(...)` time from parser-package trivia attachment, then
-  remove only facts that AST-mode parse and emit demonstrably do not consume.
+- **Parseman trivia indexing:** the Jess-side generic-map trigger is deleted in
+  `bda41a0bb`: legacy labeled logs stream contiguous comment ranges directly,
+  and comment-only emission uses an exact binary search over those sparse runs.
+  The larger root-capture cost remains until Parseman 0.44.0 is published. Its
+  release branch `release/0.44.0-root-trivia` (currently `bedb66a`) adds
+  `run(..., { rootTrivia: { selectedKinds } })`: labeled `blockComment` and
+  `lineComment` markers retain their complete owning gap without storing every
+  whitespace entry. It is verified across composed grammar factories,
+  macro-fused artifacts, transactional rollback, and AST/CST host modes. Do not
+  put an unavailable dependency range on Jess; adopt it through the Less parser
+  only once `parseman@0.44.0` exists in the registry, then re-run all-Less and
+  this exact eval+emit harness.
 
-### P2 — allocation profile after P0
+### P2 — allocation profile after sparse root capture
 
-GC accounts for 7.3% of the CSS-heavy process and 14.1% of the authored-Less
-control, but CPU sampling does not identify the allocating sites. Capture an
-allocation profile after the eager-diagnostic lane is removed. Rank concrete
-object families from that profile; do not treat "reduce allocations" or the GC
-frame itself as an actionable target.
+GC remains a leading sampled frame but CPU samples do not identify object
+families. Capture an allocation profile after Parseman 0.44 selected-root
+capture lands in Jess. Rank concrete object families from that profile; do not
+treat "reduce allocations" or the GC frame itself as an actionable target.
 
 ### Not promoted by this profile
 
