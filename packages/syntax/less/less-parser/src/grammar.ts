@@ -1082,8 +1082,8 @@ function isComplexTailFact(value: unknown): value is ComplexTailFact {
  * and combinator sub-rules vary by selector family, but the fold to a
  * `{ combinator, term }` fact is identical. */
 function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
-  const token = children.find(child => !isCompound(child));
-  const term = children.find(isCompound)!;
+  const token = children.find(child => !isSelectorTerm(child));
+  const term = children.find(isSelectorTerm)!;
   return { combinator: token === undefined ? ' ' : requireCombinator(token), term };
 }
 
@@ -1387,7 +1387,7 @@ function isRelative(value: unknown): value is Extract<SelectorBranch, { readonly
 }
 
 function isSelectorBranch(value: unknown): value is SelectorBranch {
-  return isCompound(value) || isComplex(value) || isRelative(value);
+  return isSelectorTerm(value) || isComplex(value) || isRelative(value);
 }
 
 const selectorBranchesFrom = (children: readonly unknown[]): SelectorBranch[] =>
@@ -1449,7 +1449,7 @@ function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[
   return span === undefined ? node : withBodySpan(node, span);
 }
 
-function isCompound(value: unknown): value is SelectorTerm {
+function isSelectorTerm(value: unknown): value is SelectorTerm {
   if (isSimpleToken(value)) {
     return true;
   }
@@ -5205,7 +5205,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(whenGuardAhead), g.StaticPseudoComplexTail))
     ),
     (children) => {
-      const head = children.find(isCompound)!;
+      const head = children.find(isSelectorTerm)!;
       const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
       const branch = selectorBranchOf([
         { term: head },
@@ -5561,7 +5561,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(whenGuardAhead), g.ComplexTail))
     ),
     (children, _fields, span) => {
-      const head = children.find(isCompound)!;
+      const head = children.find(isSelectorTerm)!;
       const tails = children.filter(isComplexTailFact);
       const branch = selectorBranchOf([
         { term: head },
@@ -5623,7 +5623,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), StaticExtendComplexTail))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf([
-      { term: children.find(isCompound)! },
+      { term: children.find(isSelectorTerm)! },
       // The terminal-flag lookahead is a recognition-only child. Keep only
       // actual tail facts: otherwise the successful stop check is emitted as
       // a fake descendant tail with no compound.
@@ -5644,7 +5644,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), ExtendTargetComplexTail))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf([
-      { term: children.find(isCompound)! },
+      { term: children.find(isSelectorTerm)! },
       ...children.slice(1).filter(isComplexTailFact)
     ]), span)
   );

@@ -375,7 +375,7 @@ Recommendation: keep `List.sep` unless later public API feedback shows it is a
 real authoring problem. Do not spend rename budget here while higher-value AST
 shape fixes are pending.
 
-## Recommended change list
+## Change list
 
 ### Implemented P0: Fix map semantics before expanding visitor consumers
 
@@ -395,7 +395,7 @@ shape fixes are pending.
 4. Update traversal edge ownership so collection entries expose key and value
    edges, not a fake declaration node.
 
-### P1: Clean remaining node and field names that affect visitation
+### Implemented P1: Clean node and field names that affect visitation
 
 1. Canonical traversal is exported from `@jesscss/core/ast`.
 2. Model selector-list branches as `SelectorTerm | ComplexSelector |

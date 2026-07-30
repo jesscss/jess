@@ -291,7 +291,7 @@ function isAtRuleNameToken(value: unknown): value is Token {
     && value.value.startsWith('@');
 }
 
-function isCompound(value: unknown): value is SelectorTerm {
+function isSelectorTerm(value: unknown): value is SelectorTerm {
   return isSimpleToken(value)
     || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'CompoundSelector' && 'value' in value && Array.isArray(value.value));
 }
@@ -316,7 +316,7 @@ function isRelativeSelector(value: unknown): value is Extract<SelectorBranch, { 
 }
 
 function isSelectorBranch(value: unknown): value is SelectorBranch {
-  return isCompound(value) || isComplexSelector(value) || isRelativeSelector(value);
+  return isSelectorTerm(value) || isComplexSelector(value) || isRelativeSelector(value);
 }
 
 function isSelectorList(value: unknown): value is SelectorList {
@@ -329,7 +329,7 @@ function isSelectorList(value: unknown): value is SelectorList {
 function isJessComplexTail(value: unknown): value is JessComplexTail {
   return typeof value === 'object' && value !== null
     && 'combinator' in value && (value.combinator === ' ' || value.combinator === '>' || value.combinator === '+' || value.combinator === '~' || value.combinator === '||')
-    && 'term' in value && isCompound(value.term);
+    && 'term' in value && isSelectorTerm(value.term);
 }
 
 function isJessReferenceTail(value: unknown): value is JessReferenceTail {
@@ -2682,7 +2682,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     (children) => {
       const token = children.find(isToken);
-      const term = children.find(isCompound)!;
+      const term = children.find(isSelectorTerm)!;
       const combinator = token === undefined ? ' ' : jessCombinator(token);
       return { combinator, term };
     }
@@ -2694,7 +2694,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       many(g.StaticComplexTail)
     ),
     children => selectorBranchOf([
-      { term: children.find(isCompound)! },
+      { term: children.find(isSelectorTerm)! },
       ...children.filter(isJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
     ])
   );
@@ -5343,7 +5343,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     (children) => {
       const token = children.find(isToken);
-      const term = children.find(isCompound)!;
+      const term = children.find(isSelectorTerm)!;
       const combinator = token === undefined ? ' ' : jessCombinator(token);
       return { combinator, term };
     }
@@ -5355,7 +5355,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       many(g.ComplexTail)
     ),
     children => selectorBranchOf([
-      { term: children.find(isCompound)! },
+      { term: children.find(isSelectorTerm)! },
       ...children.filter(isJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
     ])
   );
@@ -5386,7 +5386,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       )),
       optional(literal(';'))
     ),
-    children => apply(children.filter(isCompound))
+    children => apply(children.filter(isSelectorTerm))
   );
   const Extend = node<ExtendInstruction[]>(
     'Extend',
