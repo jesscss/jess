@@ -85,6 +85,21 @@ necessary overrides. Do not fix `@supports`, an import tail, or a quoted-value
 rule in one dialect by creating a local structure that the next dialect will
 need to rediscover.
 
+Custom-property comment rule, 2026-07-30: `CustomValue`, its direct parts, and
+its nested delimiter groups own semantic value bytes only. Block comments in
+those positions are parser trivia in all three compiled overlays, never an
+`Any`/raw-text child or a dialect-specific comment node. The value retains its
+source span so the shared renderer replays the exact comment ranges from the
+document trivia map. Keep the one local labeled block-comment terminal only to
+classify the already-consumed trivia range; it is not a second scanner or a
+semantic leaf. Legacy composed Parseman trivia can advertise a comment label
+while recording the concrete chunk as generic whitespace. In that narrow
+compatibility case an empty labeled result must fall through to the existing
+source-gap detector; a nonempty labeled result remains the sparse fast path.
+Tests must cover outer, parenthesized, square, curly, and interpolation-adjacent
+positions, plus rendered replay. This does not settle the separate CSS-base
+general-enclosed and opaque-at-rule comment debt.
+
 Current integration warning: the physical fold blocker is paid: CSS, Less, SCSS,
 and Jess now each ship AST and CST from one host-mode grammar source. Older
 green Less byte-identity evidence below is historical evidence for the batches
@@ -5265,3 +5280,13 @@ exclude execution forms without inventing a second public vocabulary. Every
 affected node continues to emit `Quoted`, `ValueAtom`, `Value`, `CallArgument`,
 or `Call` in CST mode. This is a horizontal private-name cleanup across the two
 interpolating dialects; it does not change the grammar's accepted language.
+
+Jess query-list separator alignment, 2026-07-30: Jess's local `QueryPrelude`
+and `ContainerQueryPrelude` now use `oneOrMoreSep(..., ',')`, matching the CSS
+and Less list frame. Jess still owns their clauses only because it changes the
+contained header-value leaf; the comma-list structure itself is unchanged CSS.
+The AST reducers continue to discard separator tokens and emit the same single
+value or comma list. The CST test exercises two media and container clauses and
+asserts the shared semantic clause counts. Parser-shared then Jess builds and
+the focused AST/CST/public/macro/compose suite passed. No performance claim was
+made.

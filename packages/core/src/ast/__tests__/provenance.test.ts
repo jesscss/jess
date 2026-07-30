@@ -336,6 +336,29 @@ describe('canonical AST source provenance', () => {
     expect(trivia.commentRuns().map(run => src.slice(run.start, run.end))).toEqual(['/* keep */']);
   });
 
+  it('falls back to source when legacy trivia entries omit their advertised comment kind', () => {
+    const src = 'a/* keep */b';
+    const gap = {
+      start: 1,
+      end: 11,
+      hasKind: () => false
+    };
+    const trivia = createTriviaMapFromParseman(src, {
+      labels: ['whitespace', 'blockComment'],
+      entries: {
+        length: 1,
+        start: () => gap.start,
+        end: () => gap.end,
+        kind: () => 'whitespace'
+      },
+      gapBefore: () => undefined,
+      gapAfter: () => undefined,
+      gaps: () => [gap]
+    });
+
+    expect(trivia.commentRuns().map(run => src.slice(run.start, run.end))).toEqual(['/* keep */']);
+  });
+
   it('recognizes Parseman block and line comment trivia labels as comment-bearing', () => {
     const src = '/* block */\n// line\n.a{}';
     const block = {

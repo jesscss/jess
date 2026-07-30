@@ -18,7 +18,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, trivia, when, word } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, trivia, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -1221,6 +1221,11 @@ const rawWhitespace = regex(/[ \t\n\r\f]+/);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
 
+/* Keep custom-value comments visible as `blockComment` ranges in source trivia
+ * without making them semantic custom-value parts. */
+const customValueBlockComment = label('blockComment', regex(/\/\*(?:[^*]|\*(?!\/))*\*\//));
+const customValueCommentTrivia = trivia(oneOrMore(customValueBlockComment));
+
 /*
  * Comments are Jess trivia. Block comments can still survive through the AST
  * trivia map for rendering/source consumers; line comments are lexical-only and
@@ -1228,8 +1233,8 @@ const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
  * `url(//host/path)` stays URL content.
  */
 const whitespace = trivia(oneOrMore(choice(
-  rawWhitespace,
-  commentTrivia
+  label('whitespace', rawWhitespace),
+  label('comment', commentTrivia)
 )));
 const plainDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))*/);
 const plainSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))*/);
@@ -3396,19 +3401,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * is rejected rather than hidden in an Any/raw prelude. Extend this with
    * another typed form when Jess gives that form semantics.
    */
-  const HeaderValueAtom = node<ValueNode>(
-    'ValueAtom',
-    choice(
-      g.Url,
-      g.HeaderCall,
-      g.LiteralQuoted,
-      g.Color,
-      g.Dimension,
-      g.CustomPropertyValue,
-      g.Keyword
-    ),
-    children => requireValueNode(children[0])
-  );
   const HeaderValue = node<ValueSlot>(
     'Value',
     noTrivia(sequence(
@@ -3445,16 +3437,13 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * No function NAME is excluded. Which functions carry meaning in a media
    * feature or an `@property` descriptor is a language-service fact; a parser
    * that rejects `var()` here turns a diagnosable squiggle into a lost file.
-   * `url(` needs no exclusion either: the dedicated Url leaf precedes this arm
-   * in HeaderValueAtom and takes it first.
+   * The shared identifier/function opener is routed below, so the static URL
+   * leaf, generic call, and bare keyword never reread one another's prefix.
    */
   const HeaderCall = node<FunctionCall>(
     'Call',
     sequence(
-      noTrivia(sequence(
-        g.Identifier,
-        literal('(')
-      )),
+      routed(),
       optional(sequence(
         g.HeaderValue,
         many(g.HeaderCallArgument)
@@ -3462,17 +3451,51 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       literal(')')
     ),
     (children) => {
-      if (children.length < 3 || requireToken(children[1]).value !== '(' || requireToken(children.at(-1)).value !== ')') {
+      if (children.length < 2 || requireToken(children.at(-1)).value !== ')') {
         throw new TypeError('Jess plain function call lost its call boundaries.');
       }
       return funcCall(
-        requireToken(children[0]).value,
-        children.slice(
-          2,
-          -1
-        ).filter(isValueSlotValue)
+        functionOpenName(children[0]),
+        children.slice(1, -1).filter(isValueSlotValue)
       );
     }
+  );
+
+  /*
+   * Header URLs deliberately retain the CSS-only URL payload. The normal Jess
+   * value route replaces this child with its dynamic URL override, but media,
+   * supports, and descriptor headers are not value positions. Routing after the
+   * shared glued opener keeps that narrow override local without a competing
+   * `Url` / `Call` / `Keyword` choice.
+   */
+  const HeaderUrl = node<Url>(
+    'Url',
+    sequence(
+      routed(),
+      optional(choice(
+        g.LiteralQuoted,
+        g.PlainUrlInner
+      )),
+      literal(')')
+    ),
+    urlFromChildren
+  );
+  const HeaderIdentifierOrFunction = dispatch(
+    identifierOrFunction,
+    caseInsensitiveWhen('url(', HeaderUrl),
+    when(endsWith('('), HeaderCall),
+    otherwise(KeywordValue)
+  );
+  const HeaderValueAtom = node<ValueNode>(
+    'ValueAtom',
+    choice(
+      g.LiteralQuoted,
+      g.Color,
+      g.Dimension,
+      g.CustomPropertyValue,
+      HeaderIdentifierOrFunction
+    ),
+    children => requireValueNode(children[0])
   );
 
   /*
@@ -3710,16 +3733,9 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       return startsWithOnly ? spaced([keyword('only'), ...values]) : values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const queryPrelude = sequence(
-    g.QueryClause,
-    many(sequence(
-      literal(','),
-      g.QueryClause
-    ))
-  );
   const QueryPrelude = node<ValueNode>(
     'QueryPrelude',
-    queryPrelude,
+    oneOrMoreSep(g.QueryClause, literal(',')),
     (children) => {
       const values = children.filter(isValueNode);
       return values.length === 1 ? values[0]! : list(values, ',');
@@ -3784,13 +3800,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const ContainerQueryPrelude = node<ValueNode>(
     'ContainerQueryPrelude',
-    sequence(
-      g.ContainerQueryClause,
-      many(sequence(
-        literal(','),
-        g.ContainerQueryClause
-      ))
-    ),
+    oneOrMoreSep(g.ContainerQueryClause, literal(',')),
     (children) => {
       const values = children.filter(isValueNode);
       return values.length === 1
@@ -4654,7 +4664,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    */
   const CustomParen = node<readonly unknown[]>(
     'CustomParen',
-    noTrivia(sequence(
+    parser({ trivia: customValueCommentTrivia }, sequence(
       literal('('),
       many(g.CustomInnerPart),
       literal(')')
@@ -4663,7 +4673,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const CustomSquare = node<readonly unknown[]>(
     'CustomSquare',
-    noTrivia(sequence(
+    parser({ trivia: customValueCommentTrivia }, sequence(
       literal('['),
       many(g.CustomInnerPart),
       literal(']')
@@ -4672,7 +4682,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const CustomCurly = node<readonly unknown[]>(
     'CustomCurly',
-    noTrivia(sequence(
+    parser({ trivia: customValueCommentTrivia }, sequence(
       literal('{'),
       many(g.CustomInnerPart),
       literal('}')
@@ -4682,7 +4692,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   const CustomInnerPart: Combinator<unknown> = choice(
     g.DollarBrace,
     g.CustomInnerContent,
-    blockComment,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
     g.CustomParen,
@@ -4692,7 +4701,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   const CustomPart: Combinator<unknown> = choice(
     g.DollarBrace,
     g.CustomOuterContent,
-    blockComment,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
     g.CustomParen,
@@ -4701,8 +4709,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const CustomValue = node<ValueNode>(
     'CustomValue',
-    noTrivia(many(g.CustomPart)),
-    children => customValueFromChildren(children)
+    parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
+    (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span)
   );
   const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',

@@ -92,22 +92,25 @@ comments should not become semantic value text.
 
 Priority Less cleanup queue:
 
-1. **Custom-property comment parts are true semantic debt.**
-   `CustomInnerPart` / `CustomPart` admit `blockComment` as
-   `CustomValuePart` and reduce it into custom-value text. Custom properties may
-   need permissive token structure, but comments still belong to trivia.
-2. **Opaque at-rule prelude comment capture is likely semantic debt.**
-   `atPreludeComment` still participates in `lessOpaqueAtPreludeCapture`.
-   Unknown at-rules can opportunistically parse structure, but comments should
-   not be assembled into semantic prelude text.
-3. **General-enclosed raw comments are likely semantic debt.**
+1. **General-enclosed raw comments are semantic debt.**
    `GeneralEnclosedRaw` includes `g.BlockCommentToken` as raw text; preserve
    balanced recognition, but do not make comments part of interpolation or
-   general-enclosed payloads.
+   general-enclosed payloads. This is a CSS-base design slice, not a Less-only
+   deletion: the CSS grammar and its public AST fixtures currently preserve
+   comments inside `GeneralEnclosed` payload text. Any correction must give all
+   four dialects a trivia-backed rendering path for opaque general-enclosed
+   content before removing those semantic bytes.
 
 Completed in the current grammar: declaration-head gaps now flow through
 `DeclarationHead` parser trivia instead of semantic declaration-name bytes. Do
 not reintroduce a declaration-head comment fact.
+
+Completed comment slices: custom-property value groups in Less, SCSS, and Jess,
+plus opaque at-rule preludes, use Parseman block-comment trivia. Their semantic
+values omit comment bytes, and the source/document trivia map restores the
+authored comments during rendering. Tests pin outer, parenthesized, square,
+curly, and interpolation-adjacent custom values as well as opaque `a/* note */b`
+preludes.
 
 Mostly legitimate exceptions:
 
@@ -127,17 +130,13 @@ function-boundary comments flow through Parseman's trivia log and core's
 names are also CST-recoverable again because the unsupported-name diagnostic is
 owned by AST host-mode reduction, not CST recognition.
 
-Smallest next implementation slice: **custom-property comment carriers**. Remove
-custom-property `blockComment` semantic parts only with matching source-trivia
-replay, because custom values still need permissive token structure and
-byte-faithful serialization.
-
-Proof for that slice:
-
-- focused Less parser facts:
-  `pnpm --filter @jesscss/less-parser test -- ast-grammar.test.ts --run --testNamePattern "value comments|comment.*value|function.*comment|custom-property"`
-- public custom-property contract:
-  `pnpm --filter @jesscss/less-parser test -- custom-property.test.ts --run`
+Completed custom-property comment slice: `CustomValue`, `CustomPart`, and the
+nested custom-value groups consume block comments as Parseman trivia in Less,
+SCSS, and Jess, never as semantic value parts. Their AST text consequently omits
+comments, while the source/document trivia map restores the exact authored
+ranges during rendering. The public contract covers outer, parenthesized,
+square, curly, and interpolation-adjacent comments. Keep this architecture;
+do not reintroduce `BlockCommentToken` into the custom-value part families.
 - alpha render lane:
   `pnpm run verify:less-alpha`
 - oracle movement, named before any baseline update:
@@ -145,10 +144,10 @@ Proof for that slice:
 
 ## Recommended cleanup order
 
-1. **Comment trivia debt.** Remove semantic comment carriers from custom
-   property values, opaque at-rule preludes, and general-enclosed raw payloads.
-   Keep scanner-local comment skip sets only where balanced recognition needs
-   them.
+1. **Comment trivia debt.** Remove semantic comment carriers from opaque
+   at-rule preludes and general-enclosed raw payloads. Custom-property values
+   are already trivia-owned. Keep scanner-local comment skip sets only where
+   balanced recognition needs them.
 2. **Selector plus inline `:extend()` simplification.** Preserve the current
    one-pass selector route: each branch parses once, `ExtendPseudo` owns the
    authored pseudo, and reducers collect branch-local extend facts. Do not add
@@ -538,15 +537,15 @@ one branch parser with one AST reducer.
 
 ## Recommended next patch
 
-Remove the remaining comment-as-value carriers from Less grammar source:
+Remove the remaining comment-as-value carrier from Less grammar source:
 
-- custom-property `blockComment` parts in `CustomInnerPart` / `CustomPart`
-- opaque at-rule prelude comment text in `lessOpaqueAtPreludeCapture`
 - `GeneralEnclosedRaw` comment payloads
 
 Keep `blockComment` in scanner-local `scanSkip` / `balanced(...)` protection
 where needed so raw capture does not terminate inside comments. The semantic
-target is source/document trivia replay, not comment text children.
+target is source/document trivia replay, not comment text children. This patch
+must start in CSS and prove rendering/AST/CST behavior across all dialects; it
+is not an independent Less grammar cleanup.
 
 Focused proof:
 
