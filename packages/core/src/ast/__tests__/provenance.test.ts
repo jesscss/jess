@@ -238,6 +238,36 @@ describe('canonical AST source provenance', () => {
     expect(gapsWithKindCalls).toBe(1);
   });
 
+  it('enumerates labeled comment gaps without forcing Parseman\'s full root-gap walk', () => {
+    const src = '  /* keep */\n  .a{}';
+    const commentGap = {
+      start: 0,
+      end: 15,
+      hasKind: (kind: string) => kind === 'blockComment'
+    };
+    let gapsCalls = 0;
+    const trivia = createTriviaMapFromParseman(src, {
+      labels: ['whitespace', 'blockComment'],
+      entries: {
+        length: 1,
+        start: () => commentGap.start,
+        end: () => commentGap.end
+      },
+      gapBefore: () => undefined,
+      gapAfter: () => undefined,
+      gaps() {
+        gapsCalls++;
+        return [commentGap];
+      },
+      gapsWithKind(kinds) {
+        return kinds.includes('blockComment') ? [commentGap] : [];
+      }
+    });
+
+    expect(trivia.commentRuns()).toEqual([{ start: 0, end: 15, src, hasComment: true }]);
+    expect(gapsCalls).toBe(0);
+  });
+
   it('falls back to source detection when a labeled gap is not comment-labeled', () => {
     const src = 'a/* keep */b';
     const gap = {

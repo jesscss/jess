@@ -2057,10 +2057,11 @@ involved.
   ownership facts (empty function boundary and spaced slash).
 - Cumulative node weight: unchanged. No AST node, wrapper, or public collection
   is created; the existing `WeakMap` receives fewer entries.
-- New traversal: two bounded loops only: scan the supplied separator array once;
+- New traversal: three bounded loops only: scan the supplied separator array once;
   when it is all single spaces, scan the already-built top-level value array for
-  `/`. Neither reads source, walks descendants, allocates an intermediate array,
-  nor runs during evaluation/render.
+  `/`; comment collection iterates Parseman's already-filtered comment gaps instead
+  of walking its complete root-gap set after the filter. None reads source, walks
+  descendants, allocates an intermediate array, or runs during evaluation/render.
 - New node/materialization: none. The pass deletes `WeakMap` entries; it adds no
   nodes, wrappers, copied values, layouts, or source metadata.
 - Render path: unchanged. Absent layout already renders raw `ValueSlot[]` with
@@ -2071,8 +2072,10 @@ involved.
 - Metadata mutations: fewer only—the existing layout `WeakMap` is no longer set
   for implied spaces. Empty layout and semantic slash rows remain explicit.
 - Review-flagged diff tokens: [loop/traversal] the separator and existing
-  top-level value arrays are scanned once at parse-time side-table admission;
-  no source walk, descendant traversal, allocation, or render-time loop is added.
+  top-level value arrays are scanned once at parse-time side-table admission; the
+  existing comment collector now iterates selected comment gaps rather than every
+  root gap. No source walk, descendant traversal, allocation, or render-time loop
+  is added.
 - Evidence: core provenance test covers implied-space elision, explicit empty
   layout retention, and spaced slash retention; focused Less public parse and
   value-comment suites passed 88/88 after fresh dependency-order builds; the
