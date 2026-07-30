@@ -5040,3 +5040,17 @@ test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`;
 `pnpm --filter @jesscss/scss-parser build`; `pnpm run check:macro` with 0
 interpreter fallbacks across parser-shared/CSS/Less/SCSS/Jess; `pnpm run
 verify:compose-integrity`; and `git diff --check`. No speed claim.
+
+SCSS selector-pseudo single-parse cleanup, 2026-07-29: the selector-argument
+pseudo route no longer scans a raw `PseudoSelectorArgumentText*` preflight and
+then reparses the same source as `SelectorOnlyPseudoArgument`. `StructuredPseudo`
+now applies `expect(...)` directly to that one structural selector parse. The
+public CST accordingly exposes `SelectorOnlyPseudoArgument`, not the deleted
+raw preflight labels. This keeps structured selector arguments, interpolation
+rejection, relative `:has()` arguments, and diagnostic ownership on the same
+grammar production. Verification: parser-shared then SCSS build; SCSS public
+CST, macro, compose-integrity, and selector-pseudo AST tests; `pnpm run
+check:macro` with 0 interpreter fallbacks; `pnpm run verify:compose-integrity`;
+and `git diff --check`. The broader SCSS AST file has three pre-existing
+custom-property recursion failures on the restored `origin/dev` baseline, so it
+is not used as evidence for this slice.
