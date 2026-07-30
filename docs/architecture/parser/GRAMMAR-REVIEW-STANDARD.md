@@ -743,6 +743,47 @@ other three dialects. A `css-parser` change is partly covered by the Less oracle
 because Less composes on the CSS base; say plainly which surfaces you actually
 hashed rather than implying full coverage.
 
+### The drift gate
+
+Step 3 above is relative: it compares a commit to the commit before it. That is
+structurally blind to gradual decay. `+2%` is inside the noise band, gets
+labelled inconclusive, lands, and becomes the new reference; eight of those is
+`+17%` that nobody ever gated. Relative gating cannot catch this, because every
+individual step is honestly inconclusive.
+
+The fix is an **absolute committed baseline expressed as a ratio against an
+in-run comparator**. Absolute milliseconds are not portable — they encode the
+machine. A ratio measured in the same process against a fixed comparator
+cancels machine speed, so one committed number is meaningful on a laptop and on
+CI alike.
+
+The comparator is **PostCSS**, on the corpus from its own upstream stylesheet
+parsing benchmark, `postcss/benchmark`'s `parsers.js`.
+
+- harness: `packages/syntax/css/css-parser/test/postcss-parse-bar.mjs`
+  (`pnpm --filter @jesscss/css-parser bar:postcss`)
+- committed baseline: `postcss-parse-bar.baseline.json` beside it
+- gate: the same script with `--gate`; exit `1` = breach, `3` = the run's own
+  measured noise floor was too high for the result to mean anything
+
+**PostCSS parses much less structure than Jess does, and Jess should aim to beat
+it regardless.** Describe that structural difference so the number is
+interpretable — never adjust the score by it. There is no structure-adjusted
+figure, no handicap, no asterisk. The reported ratio is wall-clock on identical
+bytes. If Jess is slower, the ratio is above 1 and that is the target to close.
+
+Both Jess surfaces are named cases, per fixture, and are never collapsed into
+one. The recurring regression signature in this repo is "AST slower while CST is
+neutral or faster"; averaging the surfaces hides exactly the failure the gate
+exists to catch.
+
+**Rebaselining requires owner sign-off.** Raising a ceiling because the gate is
+red is not a fix, and it is not an agent's call — without that rule an agent
+rebaselines the drift away and the ratchet is theatre. The harness refuses to
+write a baseline without a verbatim sign-off recorded in the file, so an
+unauthorised loosening is visible in review. Lowering a ceiling after a real win
+needs no permission.
+
 ---
 
 ## 5. Definition of done
