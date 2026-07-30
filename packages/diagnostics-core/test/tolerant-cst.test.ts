@@ -308,6 +308,35 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports duplicate CSS selectors with Stylelint default scoping', () => {
+    const source = '.a, .b, .a { color: red; }\n'
+      + '.a, .b { color: red; }\n'
+      + '.b, .a { color: blue; }\n'
+      + '.a { color: green; }\n'
+      + '@media screen { .card { color: red; } .card { color: blue; } }\n'
+      + '@keyframes spin { from { opacity: 0; } from { opacity: 1; } }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const duplicates = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.duplicateSelectors);
+
+    expect(duplicates.map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Duplicate selector ".a", first used at line 1', 1, 9],
+      ['Duplicate selector ".b, .a", first used at line 2', 3, 1],
+      ['Duplicate selector ".card", first used at line 5', 5, 39]
+    ]);
+  });
+
+  it('does not report duplicate CSS selectors across different parent contexts', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { color: red; }\n@media screen { .a { color: blue; } }\n@supports (display: grid) { .a { display: grid; } }',
+      language: 'css'
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.duplicateSelectors)).toBe(false);
+  });
+
   it('does not report unknown type selectors in dialect files before selector facts exist', () => {
     const scss = collectTolerantDiagnostics({
       source: '$root foo { color: red; }',

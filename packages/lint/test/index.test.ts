@@ -34,6 +34,7 @@ describe('stable rule set', () => {
       LINT_CODES.fontFamilyMissingGeneric,
       LINT_CODES.invalidImportPosition,
       LINT_CODES.duplicateAtImportRules,
+      LINT_CODES.duplicateSelectors,
       LINT_CODES.unknownUnits,
       LINT_CODES.unknownFunctions,
       LINT_CODES.unknownMediaFeatureNames,
@@ -56,6 +57,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
       LINT_RULE_NAMES.invalidImportPosition,
       LINT_RULE_NAMES.duplicateAtImportRules,
+      LINT_RULE_NAMES.duplicateSelectors,
       LINT_RULE_NAMES.unknownUnits,
       LINT_RULE_NAMES.unknownFunctions,
       LINT_RULE_NAMES.unknownMediaFeatureNames,
@@ -64,7 +66,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownTypeSelectors,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(9);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(10);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -94,6 +96,8 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.zeroUnits
     ].sort());
     expect(STYLELINT_COMPARISON_LINT_CONFIG.reportSyntax).toBe(false);
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateSelectors]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unsupportedSassForm]).toBe('off');
   });
 });
 
@@ -279,6 +283,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity, diagnostic.line, diagnostic.column])).toEqual([
       [LINT_CODES.invalidImportPosition, 'error', 2, 1]
+    ]);
+  });
+
+  it('applies policy to duplicate selector diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { color: red; }\n.a { color: blue; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.duplicateSelectors]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.duplicateSelectors, 'error']
     ]);
   });
 
