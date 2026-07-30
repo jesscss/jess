@@ -131,12 +131,20 @@ CSS examples:
 - Keep `choice(...)` for declaration-list items, page/keyframes/font body items,
   punctuation/operator tables, closed keyword sets, and local statement-vs-block
   tails after an at-keyword route.
-- Do not route `Declaration` on the property name alone. Ordinary declarations
-  and nested selector rules compete in the enclosing body item (`b:c { ... }`
-  is a nested ruleset, not a declaration), so a property-name dispatch commits
-  before the body context has proved the branch. A future cleanup needs a
-  context-owned declaration/ruleset helper, not a cosmetic custom-property
-  dispatch.
+- Declaration names belong to the enclosing **statement-start router**, not to
+  a property-local preflight. The horizontal body shape is: keep the broad
+  construct-family `choice(...)`; route `@` through the at-keyword family;
+  send class/id starts through the mixin-or-qualified-rule gate where that
+  dialect has one; send identifier and interpolation starts through one
+  declaration-or-qualified-rule helper; send every remaining selector start
+  straight to a qualified rule. That helper parses the name/interpolation
+  prefix once and retains it for both continuations. Its final choice is a
+  later-delimiter/context decision (`b:c { ... }` is a nested rule), so
+  left-factor it or use a context helper; do not dispatch on a bare property
+  name before the grammar has consumed enough syntax to decide the branch.
+- CSS owns the static statement-start family. Less, SCSS, and Jess override
+  only the precise prefix atom or continuation they expand (for example an
+  interpolation-bearing name), never the whole body or qualified-rule shape.
 - Do not route `QueryFeature` on bare `(`. The feature family needs a
   left-factored helper that preserves public CST owners while sharing the opener.
   The branch is decided later by `)`, `:`, comparison operators, and whether the
