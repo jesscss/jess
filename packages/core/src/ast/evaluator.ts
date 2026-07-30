@@ -12,7 +12,7 @@
  */
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { emitValue, isValueGroupArray, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value } from './value-eval.js';
-import type { FnIo } from './functions/types.js';
+import type { Fn, FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { operate } from './value-operate.js';
@@ -91,23 +91,21 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
-    onUnresolved?: (error: unknown) => void
+    onUnresolved?: (error: unknown) => void,
+    scopedFn?: Fn
   ): MaybePromise<ValueGroup> => {
     /*
      * [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
-     * FIRST — but ONLY when `scope` is non-null, which the caller passes solely
-     * when the document registered a scoped fn somewhere (`e.anyScopedFns`). On the
-     * idle path `scope` is omitted/null and this whole branch is skipped, so the
-     * built-in dispatch below is reached on the identical path it took before.
+     * FIRST. The serializer normally passes an already-resolved `scopedFn`, so
+     * the hot call path never repeats a lexical lookup. `scope` remains only for
+     * direct consumers of the legacy lazy lookup seam.
      */
-    if (scope) {
-      const scoped = scope.lookup(name);
-      if (scoped) {
-        try {
-          return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes, onUnresolved);
-        } catch (err) {
-          return recoverCallFailure(err, name, args, modes, onUnresolved);
-        }
+    const scoped = scopedFn ?? scope?.lookup(name);
+    if (scoped) {
+      try {
+        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes, onUnresolved);
+      } catch (err) {
+        return recoverCallFailure(err, name, args, modes, onUnresolved);
       }
     }
     if (registry.has(name)) {

@@ -4,7 +4,7 @@ import { buildEvaluator } from '../evaluator.js';
 import { defineFunction } from '../value-dispatch.js';
 import { decl, anonymousMixin, funcCall, keyword, mixinCall, mixinDef, quoted, reference, rule, stylesheet, variableDeclaration, variableReference } from '../nodes.js';
 import { atRuleBlock, plugin } from '../at-rule.js';
-import { makeFnScope, serialize, type Frame } from '../serialize.js';
+import { lookupScopedFn, makeFnScope, serialize, type Frame } from '../serialize.js';
 import type { PluginHost } from '../value-eval.js';
 import { makeKeyword } from '../value-factory.js';
 
@@ -73,6 +73,7 @@ describe('typed Plugin lexical body preparation', () => {
 
     const scope = makeFnScope(leaf, state);
     expect(scope.lookup('probe')).toBe(rootFn);
+    expect(lookupScopedFn(leaf, 'probe', state)).toBe(rootFn);
     expect(scope.lookup('other')).toBe(unrelatedFn);
     expect(scope.lookup('missing')).toBeUndefined();
   });

@@ -956,10 +956,13 @@ export function getErrorFromParser(
  * extracting the source lines around the site for code-frame display.
  */
 export function toDiagnostic(
-  error: JessError
+  error: JessError,
+  options?: { includeLines?: boolean }
 ): ErrorDiagnostic | WarningDiagnostic {
   const source = error.source ?? error.fileObj?.source;
-  const lines = extractRelevantLines(source, error.line);
+  const lines = options?.includeLines === false
+    ? undefined
+    : extractRelevantLines(source, error.line, 1, error.fileObj);
 
   // Prefer explicit parser-provided end ranges, then derive from a node span.
   const endOffset = inlineSpanEnd(error.node);
@@ -968,7 +971,7 @@ export function toDiagnostic(
     && error.endColumn === undefined
     && endOffset !== undefined
     && source !== undefined
-      ? lineColAt(source, endOffset)
+      ? lineColAt(source, endOffset, error.fileObj)
       : undefined;
 
   // File object without source (we only use 'lines' for code frames).

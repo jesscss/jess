@@ -110,6 +110,7 @@
     "prototype:binding-frame-layout": "node scripts/prototype-binding-frame-layout.mjs",
     "prototype:binding-handle-reuse": "node scripts/prototype-binding-handle-reuse.mjs",
     "verify:binding-lookup-hot-paths": "node scripts/verify-binding-lookup-hot-paths.mjs",
+    "verify:diagnostic-cold-path": "node scripts/verify-diagnostic-cold-path.mjs",
     "verify:surface-parity": "node scripts/verify-surface-parity.mjs",
     "verify:baseline": "node scripts/verify-baseline.mjs",
     "verify:types": "node scripts/verify-types.mjs",

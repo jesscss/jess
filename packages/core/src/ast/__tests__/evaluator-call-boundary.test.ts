@@ -48,4 +48,19 @@ describe('ValueEvaluator function-call boundary', () => {
     await expect(Promise.resolve(evaluator.call('async-fails', args, { unitMode: 'preserve', functionMode: 'error' })))
       .rejects.toThrow('async registered failure');
   });
+
+  it('dispatches a caller-resolved scoped function without consulting the legacy scope view', () => {
+    const evaluator = buildEvaluator(createFnRegistry());
+    const scoped = defineFunction('scoped', {
+      params: [],
+      body: () => makeKeyword('selected')
+    });
+    const scope = { lookup: vi.fn(() => {
+      throw new Error('the direct function should bypass scope.lookup');
+    }) };
+
+    expect(evaluator.call('scoped', args, { unitMode: 'preserve' }, scope, undefined, undefined, scoped))
+      .toMatchObject({ bytes: 'selected' });
+    expect(scope.lookup).not.toHaveBeenCalled();
+  });
 });

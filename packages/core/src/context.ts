@@ -601,6 +601,18 @@ export class Context {
     return this._warnConfig;
   }
 
+  /**
+   * Whether a warning code is configured to have no observable effect.
+   *
+   * Render-time fallbacks can ask this before constructing a diagnostic with a
+   * source location or code frame. Fatal and capped warnings deliberately
+   * return false: their existing diagnostic and accounting behavior remains
+   * observable.
+   */
+  isWarningSilenced(code: string): boolean {
+    return warnCodeMatchesAny(code, this.warnConfig.silence);
+  }
+
   /** The resolved error-display config, computed once from the compile options. */
   get errorsConfig(): ResolvedErrorsConfig {
     if (!this._errorsConfig) {
@@ -613,62 +625,59 @@ export class Context {
    * The unified warnings entry point. Accepts a {@link JessError} (from
    * `WARN.x(...)`) or an already-normalized {@link WarningDiagnostic} and
    * applies, in order: silencing, fatal promotion, then de-duplication +
-   * per-code site capping before pushing onto {@link warnings}.
+   * per-code site capping. It normalizes to a display diagnostic only after the
+   * warning survives those policy decisions.
    *
    * Pass `options.code` to override the diagnostic code used for matching /
    * dedup / summary (e.g. deprecations routed as `deprecation/<id>`).
    */
   warn(warning: JessError | WarningDiagnostic, options?: { code?: string }): void {
-    const diag: WarningDiagnostic = warning instanceof JessError
-      ? toDiagnostic(warning) as WarningDiagnostic
-      : warning;
-    if (options?.code) {
-      diag.code = options.code;
-    }
-    const code = diag.code;
+    const code = options?.code ?? warning.code;
     const cfg = this.warnConfig;
-
     if (warnCodeMatchesAny(code, cfg.silence)) {
       return;
     }
 
     if (warnCodeMatchesAny(code, cfg.fatal)) {
-      const base = warning instanceof JessError ? warning.message : diag.message;
+      const base = warning.message;
       const error = new Error(`${base}\n\nThis is only an error because you've set ${code} to be fatal.\n`
         + 'Remove this setting if you need to keep using this feature.');
       error.name = 'FatalWarningError';
       throw error;
     }
 
-    const capping = cfg.limitRepetition && !cfg.verbose;
-    if (!capping) {
-      this.warnings.push(diag);
-      return;
+    if (cfg.limitRepetition && !cfg.verbose) {
+      const key = `${code}@${warning.filePath ?? ''}:${warning.line}:${warning.column}`;
+      let stats = this._warnStats.get(code);
+      if (!stats) {
+        stats = {
+          phase: warning.phase,
+          emittedSites: new Set<string>(),
+          suppressedSites: new Set<string>(),
+          suppressedCount: 0
+        };
+        this._warnStats.set(code, stats);
+      }
+
+      /*
+       * A previously-emitted site repeating, or a new site over the per-code cap:
+       * count it for the summary and stop before diagnostic normalization.
+       */
+      if (stats.emittedSites.has(key) || stats.emittedSites.size >= cfg.maxSitesPerCode) {
+        stats.suppressedCount++;
+        stats.suppressedSites.add(key);
+        return;
+      }
+
+      stats.emittedSites.add(key);
     }
 
-    const key = `${code}@${diag.filePath ?? ''}:${diag.line}:${diag.column}`;
-    let stats = this._warnStats.get(code);
-    if (!stats) {
-      stats = {
-        phase: diag.phase,
-        emittedSites: new Set<string>(),
-        suppressedSites: new Set<string>(),
-        suppressedCount: 0
-      };
-      this._warnStats.set(code, stats);
+    const diag: WarningDiagnostic = warning instanceof JessError
+      ? toDiagnostic(warning, { includeLines: cfg.display === 'frame' }) as WarningDiagnostic
+      : warning;
+    if (options?.code) {
+      diag.code = options.code;
     }
-
-    /*
-     * A previously-emitted site repeating, or a new site over the per-code cap:
-     * count it for the summary and drop it.
-     */
-    if (stats.emittedSites.has(key) || stats.emittedSites.size >= cfg.maxSitesPerCode) {
-      stats.suppressedCount++;
-      stats.suppressedSites.add(key);
-      return;
-    }
-
-    stats.emittedSites.add(key);
     this.warnings.push(diag);
   }
 

@@ -1495,7 +1495,7 @@ the selected member retains the call-level `!important` fact. No import
 resolver, parser replay, source reconstruction, or compatibility path is
 involved.
 
-## Aggressive Cutting Self-Prosecution
+## Archived Aggressive Cutting Self-Prosecution
 
 - Latest pass: scoped-caret parser syntax slice on 2026-07-29. Jess source now
   spells scoped/final variable lookup as `$^foo`, with expression-only `^foo`
@@ -2042,3 +2042,102 @@ involved.
 - Evidence: `pnpm --filter @jesscss/core build` — GREEN; `pnpm --filter @jesscss/core test -- --run` — GREEN, 203 files / 3219 tests / 9 skipped / 2 todo; `pnpm --filter jess test -- test/less/reference-public-semantics.test.ts --run --globals --reporter=dot` — GREEN, 15/15; `pnpm --filter jess test -- test/less/all-less-error.test.ts --run --globals --reporter=dot` — GREEN, 94/94. No performance claim is made or implied.
 - Verdict: accepted as semantic parser/error-quality integration evidence for the current dirty
   worktree; still requires slice commits and normal parser macro/compose/oracle gates before merge.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: 2026-07-29 compiler source-fact ownership and function-dispatch
+  cost cut. This pass removes eager suppressed-function diagnostics, gates
+  scoped function lookup by registered name, makes warning admission precede
+  diagnostic normalization, and makes surviving code frames file-indexed.
+- Architecture surface: core evaluator/serializer/context/error diagnostic
+  paths, plus benchmark evidence and a PR gate. No parser, AST shape, output
+  CSS, import, or plugin ABI is changed.
+- Separation/duplication: removed duplicate lexical function resolution and
+  duplicate source derivation. One `scopedFunctionNames` owner admits a lexical
+  lookup; one file-owned line-start index owns offset and frame reads.
+- Cumulative node weight: unchanged. No AST node fields or node factories were
+  added; scoped-function facts remain optional render-frame state.
+- New traversal: bounded only. A scoped name may walk parent frames that own
+  registered functions; all other calls bypass it. Source replay searches are
+  bounded to their existing AST spans rather than a file prefix/suffix.
+- New node/materialization: none. The line index is an off-node, lazy per-file
+  `WeakMap` fact; it replaces repeated full-source scans and line arrays.
+- Render path: ordinary function calls now dispatch directly to the flat
+  registry unless their name is registered lexically. Suppressed/capped/line
+  display warnings do no frame extraction; frame display slices indexed lines.
+- Helper/API surface: `Context.isWarningSilenced()` is the deliberately narrow
+  policy query used by the render fallback. `ValueEvaluator.call()` accepts an
+  optional already-resolved scoped `Fn`, preserving the legacy `FnScope` input
+  for direct consumers without forcing the serializer to allocate it.
+- Metadata mutations: only render-local `scopedFunctionNames` and existing
+  frame nearest-function cache invalidation are updated during plugin loading;
+  no AST/provenance mutation is introduced.
+- Review-flagged diff tokens: [loop/traversal] the source-index build and
+  span-bounded searches replace repeated whole-file work; [side map/set] one
+  `WeakMap` caches immutable file facts and one name `Set` prevents scope walks;
+  [routine error control] none on the successful path; [array helper] indexed
+  frame output allocates only the returned one-to-three-line diagnostic record;
+  [array spread/materialization] the `callSiteLocation` argument spread remains
+  exclusively on the admitted unresolved-warning path; [node construction] the
+  name `Set` is built when functions are registered, not per call; [parent/source
+  mutation] the detector matches location/source *reads*, while this pass mutates
+  neither AST parents nor source provenance; [materialized array/object] a
+  file-owned line-start array replaces every rejected-call whole-source line array.
+- Behavior evidence: focused core tests passed 42/42: code-frame CRLF/index
+  invalidation, warning policy before normalization, suppressed registered-call
+  behavior, direct scoped-call dispatch, and plugin body scope.
+- Build evidence: `pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit`
+  and `pnpm --filter @jesscss/core build` pass on this worktree.
+- Boundary evidence: `JessError` remains a plain diagnostic value (not an
+  `Error` subclass); parser/public output contracts are unchanged. The existing
+  `test/diagnostics.test.ts` `instanceof Error` assertion is inconsistent with
+  both HEAD and the unmodified `JessError` class, so it is recorded as a
+  pre-existing test-contract defect rather than fixed by adding stack capture.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "The serializer and value-evaluator changes preserve the established optional-CSS-call and scoped-function semantics while changing how the existing AST-v2 runtime avoids rejected-call diagnostic work. The separately recorded CPU profile is evidence for the active performance investigation, not a claim that this semantic-runtime record proves an A/B speed result.",
+    "dangerTokensJustification": "The added source index and lexical name set are render-local facts with explicit ownership. They replace repeated rejected-call scans and scope probing; neither introduces AST materialization, parser replay, an alternate evaluator, or successful-path diagnostic allocation.",
+    "behaviorEvidence": "Focused core tests passed 42/42, including function-warning suppression and direct scoped-function dispatch; the diagnostic integration test mismatch is documented separately as pre-existing.",
+    "buildEvidence": "pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit and pnpm --filter @jesscss/core build passed.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": ["Context-plugin-source-parser-dispatch", "emit-walk-context-output-option", "Ruleset-interpolated-selector-boundary", "selector-match-string-and-node-combinators", "extend-index-tagged-graft-atoms", "Sequence-subclass-preserving-evaluation", "callable-output-root-property-guard", "serializer-at-rule-and-selector-surface"],
+    "why": "Context exposes the existing warning-silencing policy to serializer dispatch without changing plugin/source/import behavior, selector behavior, or output policy. The query prevents diagnostic construction after an already-established policy decision; this semantic-runtime record does not assert a benchmark A/B result.",
+    "dangerTokensJustification": "The Context change is one policy read. It adds no resolver, parser host, AST materialization route, output array path, traversal, or runtime validation and keeps ordinary emitted CSS untouched.",
+    "behaviorEvidence": "Focused warning-policy tests passed 42/42 and preserve emitted unresolved call bytes when warnings are suppressed.",
+    "buildEvidence": "pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit and pnpm --filter @jesscss/core build passed.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  },
+  {
+    "id": "ast-evaluator-function-call-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["unresolved-optional-function-call", "registered-sync-call-failure", "registered-async-call-failure"],
+    "why": "The evaluator accepts an already-resolved scoped callable from the serializer so one lexical lookup is authoritative. Optional CSS calls still preserve authored bytes, and selected callable failures continue through the established synchronous/asynchronous recovery policy rather than becoming lookup misses.",
+    "dangerTokensJustification": "The added optional parameter removes a duplicate scope lookup from the selected-call path. It neither allocates an Error nor changes async recovery, registry lookup semantics, output serialization, or the normal optional-call miss result.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  }
+]
+```
+- Evidence: strict `pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit`,
+  `pnpm run verify:diagnostic-cold-path`, and focused core tests (42/42) pass.
+  `pnpm --filter @jesscss/core build` passes. Exact upstream PostCSS workload:
+  288,434-byte Less input, Bootstrap SHA
+  `4a50207b956a4ab943640ee993118b554a34e96a23261cfe58b9aa1807a7849b`,
+  Jess Less median 52.71 ms (5 warmups/15 samples); post-fix 80-sample CPU
+  profile has no line-location/frame-split bucket.
+- Verdict: accepted as a measured cost cut. The PostCSS workload still has
+  Jess Less behind Less and PostCSS, so this is one committed batch in the
+  active performance goal, not completion.

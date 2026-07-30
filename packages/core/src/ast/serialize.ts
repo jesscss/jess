@@ -333,7 +333,7 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     const file = context.sourceContext?.file;
     const source = file?.source;
     const span = source === undefined ? undefined : sourceSpanOf(request.node);
-    const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start);
+    const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start, file);
     if (error instanceof JessError && error.code === 'import/not-found') {
       throw ERR.importNotFound({
         node: request.node,
@@ -702,12 +702,14 @@ function addScopedFns(frame: Frame, fns: readonly Fn[], e: EvalCtx): void {
   }
   e.fnScopeVersion = (e.fnScopeVersion ?? 0) + 1;
   const map = frame.fns ??= new Map();
+  const names = e.scopedFunctionNames ??= new Set();
   for (const fn of fns) {
-    map.set(fn.name.toLowerCase(), fn);
+    const name = fn.name.toLowerCase();
+    map.set(name, fn);
+    names.add(name);
   }
   frame.fnScope = frame;
   frame.fnScopeVersion = e.fnScopeVersion;
-  e.anyScopedFns = true;
 }
 
 /** Root-only configured functions; typed `Plugin` facts are prepared per body below. */
@@ -720,6 +722,11 @@ function globalScopedFns(host: PluginHost | undefined): Map<string, Fn> | null {
     fns.set(fn.name.toLowerCase(), fn);
   }
   return fns;
+}
+
+/** The render-local name gate: only these calls can require a lexical lookup. */
+function scopedFunctionNames(fns: ReadonlyMap<string, Fn> | null): Set<string> | undefined {
+  return fns === null ? undefined : new Set(fns.keys());
 }
 
 /**
@@ -824,28 +831,28 @@ function nearestFnScope(frame: Frame | null, state?: FnScopeCacheState): Frame |
 }
 
 /**
- * [plugin/P1] Build the {@link FnScope} a named call consults: a thin view that
- * jumps through frames that actually own function registrations, returning the
- * first registration for `name` (lower-cased, like the global registry). A
- * candidate frame that has functions but not this name is skipped; only the
- * nearest frame with the requested entry wins. `undefined` lets the evaluator
- * fall back to the global built-in registry.
- * Callers gate construction on {@link EvalCtx.anyScopedFns}, so this is never
- * even reached on the idle path (no scoped fn anywhere ⇒ no `FnScope` allocated,
- * no walk).
+ * Resolve one lower-cased name through frames that actually own function
+ * registrations. A candidate frame that has functions but not this name is
+ * skipped; only the nearest matching entry wins.
+ */
+export function lookupScopedFn(frame: Frame | null, lowerName: string, state?: FnScopeCacheState): Fn | undefined {
+  for (let f = nearestFnScope(frame, state); f; f = nearestFnScope(f.parent, state)) {
+    const hit = f.fns!.get(lowerName);
+    if (hit) {
+      return hit;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * [plugin/P1] Build the legacy {@link FnScope} lazy view a direct consumer can
+ * consult. The serializer resolves a name directly through {@link lookupScopedFn}
+ * and does not allocate this view on its hot path.
  */
 export function makeFnScope(frame: Frame | null, state?: FnScopeCacheState): FnScope {
   return {
-    lookup(name: string): Fn | undefined {
-      const lname = name.toLowerCase();
-      for (let f = nearestFnScope(frame, state); f; f = nearestFnScope(f.parent, state)) {
-        const hit = f.fns!.get(lname);
-        if (hit) {
-          return hit;
-        }
-      }
-      return undefined;
-    }
+    lookup: (name: string): Fn | undefined => lookupScopedFn(frame, name.toLowerCase(), state)
   };
 }
 
@@ -2247,7 +2254,7 @@ function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
   const span = source === undefined ? undefined : sourceSpanOf(node);
   const location = source === undefined || span === undefined
     ? undefined
-    : lineColAt(source, span.start);
+    : lineColAt(source, span.start, file);
   throw ERR.nameNotFound({
     node,
     filePath: file?.fullPath,
@@ -2264,7 +2271,7 @@ function recursiveReference(node: object, symbol: string, kind: 'Variable' | 'Pr
   const span = source === undefined ? undefined : sourceSpanOf(node);
   const location = source === undefined || span === undefined
     ? undefined
-    : lineColAt(source, span.start);
+    : lineColAt(source, span.start, file);
   throw ERR.recursiveReference({
     node,
     filePath: file?.fullPath,
@@ -2327,6 +2334,9 @@ interface EvalCtx {
   /** Context supplies document source only on cold diagnostic paths. */
   context?: Context;
 
+  /** True only when a registered-function preserve fallback must report. */
+  reportUnresolvedFunctionFailures: boolean;
+
   /** Parser-owned source trivia for comment/spacing emission. */
   trivia?: TriviaMap;
 
@@ -2386,14 +2396,11 @@ interface EvalCtx {
   defaultFn?: () => boolean;
 
   /*
-   * [plugin/P1] document-level flag: true iff SOME frame registered a scoped
-   * function. When false — every real
-   * document today, since nothing registers yet — `evalCall` passes `scope = null`
-   * to `ev.call` and the frame walk is skipped entirely, keeping the fn-dispatch
-   * hot path byte- and cost-identical to before P1. Set once at top-level
-   * `serialize`; threaded through the shared `EvalCtx`.
+   * [plugin/P1] Names registered by root or lexical plugin functions. Calls not
+   * in this set take the flat evaluator registry path directly: no scope-view
+   * allocation and no frame walk. The set is absent when no functions registered.
    */
-  anyScopedFns?: boolean;
+  scopedFunctionNames?: Set<string>;
 
   /** Render-local invalidation token for cached scoped-function parent links. */
   fnScopeVersion?: number;
@@ -2705,7 +2712,7 @@ function arithmeticSiteLocation(node: object, e: EvalCtx): {
   if (operatorOffset < searchStart || operatorOffset >= searchEnd) {
     return location;
   }
-  const operatorLocation = lineColAt(source, operatorOffset);
+  const operatorLocation = lineColAt(source, operatorOffset, e.context?.sourceContext?.file);
   return { ...location, line: operatorLocation.line, column: operatorLocation.column };
 }
 
@@ -4352,7 +4359,7 @@ function callSiteLocation(node: object, e: EvalCtx): {
   const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start);
+  const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start, file);
   return { filePath: file?.fullPath, source, line: location?.line, column: location?.column };
 }
 
@@ -4457,12 +4464,13 @@ function evalCall(
   const ev = e.ev;
 
   /*
-   * [plugin/P1] Build a scope-frame fn view ONLY when the document registered a
-   * scoped fn somewhere; otherwise pass null so `ev.call` takes its pre-P1 global
-   * path unchanged. `anyScopedFns` is false for every real document today.
+   * [plugin/P1] Only a call whose normalized name occurs in a registered-fn set
+   * can require lexical resolution. CSS calls and built-ins bypass frame walking
+   * entirely; a matching name is resolved once and passed directly to `ev.call`.
    */
-  const scope = e.anyScopedFns ? makeFnScope(frame, e) : null;
-  const selected = scope?.lookup(node.name);
+  const selected = e.scopedFunctionNames?.has(lname)
+    ? lookupScopedFn(frame, lname, e)
+    : undefined;
   const rawInvoker = e.pluginHost?.invokeRawFunction;
 
   /*
@@ -4496,18 +4504,22 @@ function evalCall(
   return combineAll(typed, (vals) => {
     const args: ValueGroup = sep === ',' ? makeList(vals, ',') : vals;
     try {
-      const result = ev.call(node.name, args, e.modes, scope, e.io, (error) => {
-        const reason = error instanceof JessError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : String(error);
-        e.context?.warn(WARN.unresolvedFunction({
-          node,
-          ...callSiteLocation(node, e),
-          meta: { name: node.name, reason }
-        }));
-      });
+      const context = e.context;
+      const onUnresolved = !e.reportUnresolvedFunctionFailures || context === undefined
+        ? undefined
+        : (error: unknown) => {
+            const reason = error instanceof JessError
+              ? error.message
+              : error instanceof Error
+                ? error.message
+                : String(error);
+            context.warn(WARN.unresolvedFunction({
+              node,
+              ...callSiteLocation(node, e),
+              meta: { name: node.name, reason }
+            }));
+          };
+      const result = ev.call(node.name, args, e.modes, null, e.io, onUnresolved, selected);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
@@ -5354,7 +5366,9 @@ function scratchEmit(e: EvalCtx): Emit {
     propNames: e.propNames,
     optional: e.optional,
     calcDepth: e.calcDepth,
-    anyScopedFns: e.anyScopedFns, // [plugin/P1] preserve the scoped-fn gate
+    reportUnresolvedFunctionFailures: false, // scratch captures have never emitted function diagnostics
+    scopedFunctionNames: e.scopedFunctionNames, // [plugin/P1] preserve the registered-name gate
+    fnScopeVersion: e.fnScopeVersion,
     pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
@@ -5639,8 +5653,8 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   if (source.slice(end - 2, end) !== '*/') {
     return;
   }
-  const open = source.lastIndexOf('/*', end - 2);
-  if (open < span.start) {
+  const open = lastIndexInSourceRange(source, '/*', span.start, end);
+  if (open < 0) {
     return;
   }
   let start = open;
@@ -5652,6 +5666,27 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
     start--;
   }
   put(e, source.slice(start, end));
+}
+
+/** Find one literal only inside the AST-owned source range; never scan a file prefix/suffix. */
+function firstIndexInSourceRange(source: string, needle: string, start: number, end: number): number {
+  const limit = end - needle.length;
+  for (let index = start; index <= limit; index++) {
+    if (source.startsWith(needle, index)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+/** Reverse counterpart to {@link firstIndexInSourceRange}, bounded to the same owner span. */
+function lastIndexInSourceRange(source: string, needle: string, start: number, end: number): number {
+  for (let index = end - needle.length; index >= start; index--) {
+    if (source.startsWith(needle, index)) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function firstDeclarationColon(source: string, span: AstSourceSpan): number | null {
@@ -5883,9 +5918,9 @@ function bodySpanForTriviaReplay(owner: object, e: Emit): ReplaySpan | undefined
   if (span === undefined || source === undefined) {
     return undefined;
   }
-  const open = source.indexOf('{', span.start);
-  const close = source.lastIndexOf('}', span.end - 1);
-  if (open < span.start || close <= open || close > span.end) {
+  const open = firstIndexInSourceRange(source, '{', span.start, span.end);
+  const close = lastIndexInSourceRange(source, '}', span.start, span.end);
+  if (open < 0 || close <= open) {
     return undefined;
   }
   return { start: open + 1, end: close };
@@ -6892,7 +6927,9 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new Set(),
-    anyScopedFns: rootFns !== null,
+    reportUnresolvedFunctionFailures: options?.context !== undefined
+      && !options.context.isWarningSilenced('function/unresolved'),
+    scopedFunctionNames: scopedFunctionNames(rootFns),
     fnScopeVersion: 0,
     pluginHost,
     io: options?.io
@@ -6939,7 +6976,6 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
   const pluginHost = options?.pluginHost;
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
   const rootFns = globalScopedFns(pluginHost);
-  const anyScopedFns = rootFns !== null;
   const e: Emit = {
     chunks: [],
     off: 0,
@@ -6948,6 +6984,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
+    reportUnresolvedFunctionFailures: options?.context !== undefined
+      && !options.context.isWarningSilenced('function/unresolved'),
     excluded: new Set(), // [resolver] per-declaration cycle guard
     propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
@@ -6967,7 +7005,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new Set(),
-    anyScopedFns, // [plugin/P1] gate: false idle ⇒ fn-dispatch walk skipped
+    scopedFunctionNames: scopedFunctionNames(rootFns), // absent idle ⇒ fn-dispatch walk skipped
     fnScopeVersion: 0,
     pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
     io: options?.io // [io] per-render file-read capability for the IO built-ins

@@ -111,6 +111,9 @@ jobs:
       - name: Gate — binding lookup hot paths
         run: pnpm run verify:binding-lookup-hot-paths
 
+      - name: Gate — diagnostic cold path
+        run: pnpm run verify:diagnostic-cold-path
+
       - name: Audit — node creation hotspots
         run: pnpm run audit:node-creation
 

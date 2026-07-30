@@ -140,6 +140,12 @@ describe('context.warn de-duplication', () => {
 });
 
 describe('context.warn silencing', () => {
+  it('exposes whether a warning code is silenced before a diagnostic is built', () => {
+    const context = makeContext({ warnings: { silence: ['function/*'] } });
+    expect(context.isWarningSilenced('function/unresolved')).toBe(true);
+    expect(context.isWarningSilenced('extend/not-found')).toBe(false);
+  });
+
   it('drops warnings matching an exact silenced code', () => {
     const context = makeContext({ warnings: { silence: ['selector/duplicate'] } });
     context.warn(diag('selector/duplicate'));
@@ -201,6 +207,18 @@ describe('context.warn verbose / limitRepetition:false', () => {
 });
 
 describe('context.warn accepts a JessError from WARN.*', () => {
+  it('does not extract code-frame lines for a surviving summary or line warning', () => {
+    const context = makeContext({ warnings: 'line' });
+    context.warn(WARN.parentlessAmpersand({
+      source: '.a {\n  & {}\n}',
+      line: 2,
+      column: 3,
+      meta: { selector: '&' }
+    }));
+
+    expect(context.warnings[0]?.lines).toBeUndefined();
+  });
+
   it('normalizes a JessError and dedups by site', () => {
     const context = makeContext();
     for (let i = 0; i < 3; i++) {
