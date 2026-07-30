@@ -76,15 +76,6 @@ import type {
 
 type SourceSpan = { readonly start: number; readonly end: number };
 type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
-type IdentifierStartFact = {
-  readonly name: string | Interpolation;
-  readonly selector: SimpleToken;
-};
-type ComplexSelectorTailFact = {
-  readonly combinator: ' ' | '>' | '+' | '~' | '|' | '||';
-  readonly term: SelectorTerm;
-};
-type SelectorListTailFact = { readonly branch: SelectorBranch };
 
 type GrammarRuleName =
   | 'AtRulePrelude'
@@ -111,7 +102,6 @@ type GrammarRuleName =
   | 'ContainerQueryPrelude'
   | 'ConditionalAtKeyword'
   | 'ContainerAtKeyword'
-  | 'CustomDeclaration'
   | 'CustomPropertyName'
   | 'DescriptorAtKeyword'
   | 'DocumentAtKeyword'
@@ -171,9 +161,6 @@ type GrammarRuleName =
   | 'ImportUrl'
   | 'ImportUrlUnquoted'
   | 'Important'
-  | 'IdentifierStart'
-  | 'IdentifierStatement'
-  | 'DeclarationListItem'
   | 'RoutedKeyword'
   | 'KeyframeBlock'
   | 'Keyframes'
@@ -419,30 +406,6 @@ function isRelative(value: unknown): value is Extract<SelectorBranch, { readonly
 
 function isSelectorBranch(value: unknown): value is SelectorBranch {
   return isSelectorTerm(value) || isComplex(value) || isRelative(value);
-}
-
-function isIdentifierStartFact(value: unknown): value is IdentifierStartFact {
-  return typeof value === 'object'
-    && value !== null
-    && 'name' in value
-    && 'selector' in value
-    && (typeof value.name === 'string' || isInterpolation(value.name))
-    && isSimpleToken(value.selector);
-}
-
-function isComplexSelectorTailFact(value: unknown): value is ComplexSelectorTailFact {
-  return typeof value === 'object'
-    && value !== null
-    && 'combinator' in value
-    && 'term' in value
-    && isSelectorTerm(value.term);
-}
-
-function isSelectorListTailFact(value: unknown): value is SelectorListTailFact {
-  return typeof value === 'object'
-    && value !== null
-    && 'branch' in value
-    && isSelectorBranch(value.branch);
 }
 
 function isSelectorList(value: unknown): value is SelectorList {
@@ -1532,21 +1495,6 @@ export const cssFactory = (g: GrammarSelf) => {
     g.Identifier,
     children => tokenText(children[0])
   );
-
-  /*
-   * Statement-position identifiers have one CSS-owned extension point. The
-   * derived grammars replace only this atom when their property/selector prefix
-   * admits interpolation; the colon and selector continuations remain the same
-   * CSS structure.
-   */
-  const IdentifierStart = node<IdentifierStartFact>(
-    'IdentifierStart',
-    g.Identifier,
-    (children) => {
-      const name = tokenText(children[0]);
-      return { name, selector: simpleSelector(name) };
-    }
-  );
   const CustomProperty = node(
     'CustomProperty',
     g.CustomPropertyName,
@@ -2466,34 +2414,15 @@ export const cssFactory = (g: GrammarSelf) => {
     sequence(literal('!'), g.ImportantToken),
     () => true
   );
-  const CustomDeclaration = node(
-    'Declaration',
-    sequence(
-      g.CustomProperty,
-      literal(':'),
-      g.CustomValue,
-      optional(g.Important)
-    ),
-    (children) => {
-      const value = children.find((child): child is ValueNode => isNodeType(
-        child,
-        'Any'
-      ));
-      if (value === undefined) {
-        throw new Error('Custom declaration requires a captured value');
-      }
-      return decl(
-        tokenText(children[0]),
-        valueSlot(value),
-        null,
-        children.includes(true)
-      );
-    }
-  );
   const Declaration = node(
     'Declaration',
     choice(
-      g.CustomDeclaration,
+      sequence(
+        g.CustomProperty,
+        literal(':'),
+        g.CustomValue,
+        optional(g.Important)
+      ),
       sequence(
         g.Property,
         literal(':'),
@@ -2512,10 +2441,22 @@ export const cssFactory = (g: GrammarSelf) => {
       )
     ),
     (children) => {
-      if (children.length === 1 && isDeclaration(children[0])) {
-        return children[0];
-      }
       const name = tokenText(children[0]);
+      if (name.startsWith('--')) {
+        const value = children.find((child): child is ValueNode => isNodeType(
+          child,
+          'Any'
+        ));
+        if (value === undefined) {
+          throw new Error('Declaration requires a captured custom-property value');
+        }
+        return decl(
+          name,
+          valueSlot(value),
+          null,
+          children.includes(true)
+        );
+      }
       const value = children.find(isValueSlotValue);
       if (value === undefined) {
         throw new Error('Declaration requires a structured value');
@@ -3299,131 +3240,7 @@ export const cssFactory = (g: GrammarSelf) => {
       peek(literal('}'))
     )
   );
-  const customDeclarationList = sequence(
-    g.CustomDeclaration,
-    choice(
-      literal(';'),
-      peek(literal('}'))
-    )
-  );
-  const ComplexSelectorTail = node<ComplexSelectorTailFact>(
-    'ComplexSelectorTail',
-    sequence(
-      optional(combinator),
-      g.CompoundSelector
-    ),
-    children => ({
-      combinator: children.length === 1 ? ' ' : selectorCombinator(children[0]),
-      term: children.find(isSelectorTerm)!
-    })
-  );
-  const SelectorListTail = node<SelectorListTailFact>(
-    'SelectorListTail',
-    sequence(
-      literal(','),
-      g.ComplexSelector
-    ),
-    children => ({ branch: children.find(isSelectorBranch)! })
-  );
-
-  /*
-   * An identifier can begin either a declaration or a qualified rule. Keep the
-   * prefix once, then use the delimiter that actually distinguishes the paths:
-   * trivia after `:` commits to a declaration; a glued pseudo continues through
-   * selector structure and must prove its `{`; the remaining `:` form is a
-   * declaration. This is deliberately a context helper, not a dispatch: the
-   * bare identifier does not decide the continuation.
-   */
-  const IdentifierStatement = node<Statement>(
-    'Statement',
-    sequence(
-      g.IdentifierStart,
-      choice(
-        sequence(
-          literal(':'),
-
-          /*
-           * Assert before ambient trivia consumes it; the following ValueList
-           * owns the actual run in the document trivia index.
-           */
-          parser({ trivia: null }, peek(whitespace)),
-          g.ValueList,
-          not(literal('{')),
-          optional(g.Important),
-          choice(literal(';'), peek(literal('}')))
-        ),
-        sequence(
-          parser(
-            { trivia: compoundTrivia },
-            many(choice(
-              parser({ trivia: interstitialTrivia }, g.AttributeSelector),
-              parser({ trivia: interstitialTrivia }, g.PseudoSelector),
-              g.BasicSelector
-            ))
-          ),
-          many(ComplexSelectorTail),
-          many(SelectorListTail),
-          literal('{'),
-          many(g.DeclarationListItem),
-          literal('}')
-        ),
-        sequence(
-          literal(':'),
-          g.ValueList,
-          not(literal('{')),
-          optional(g.Important),
-          choice(literal(';'), peek(literal('}')))
-        )
-      )
-    ),
-    (children, _fields, _span, rawChildren) => {
-      const open = children.findIndex(child => isTerminalText(child) && tokenText(child) === '{');
-      const start = children.find(isIdentifierStartFact);
-      if (start === undefined) {
-        throw new Error('CSS identifier statement requires an identifier start');
-      }
-      if (open < 0) {
-        const value = children.find(isValueSlotValue);
-        if (value === undefined) {
-          throw new Error('CSS identifier statement requires a declaration value');
-        }
-        return decl(
-          start.name,
-          Array.isArray(value) ? value : valueSlot(value),
-          null,
-          children.includes(true)
-        );
-      }
-
-      const selectorChildren = children.slice(children.indexOf(start) + 1, open);
-      const first = selectorTermFromTokens([
-        start.selector,
-        ...selectorChildren.filter(isSimpleToken)
-      ]);
-      const firstBranch = selectorBranchOf([
-        { term: first },
-        ...selectorChildren
-          .filter(isComplexSelectorTailFact)
-          .map(tail => ({ combinator: tail.combinator, term: tail.term }))
-      ]);
-      const selector = selist(
-        firstBranch,
-        ...selectorChildren
-          .filter(isSelectorListTailFact)
-          .map(tail => tail.branch)
-      );
-      return withBlockBody(rule(
-        selector,
-        rulesetStatements(children.slice(open + 1))
-      ), rawChildren);
-    }
-  );
-  const nonIdentifierRuleset = sequence(
-    not(g.IdentifierStart),
-    g.Ruleset
-  );
-  const DeclarationListItem = choice(g.IdentifierStatement, customDeclarationList, g.NestedConditionalBlock, g.DeclarationListAtRule, nonIdentifierRuleset, literal(';'));
-  const declarationListItem = g.DeclarationListItem;
+  const declarationListItem = choice(declarationListDeclaration, g.NestedConditionalBlock, g.DeclarationListAtRule, g.Ruleset, literal(';'));
   const descriptorBodyItem = choice(declarationListDeclaration, literal(';'));
   const conditionalGroupBodyItem = choice(g.ConditionalBlock, g.ConditionalGroupAtRule, g.TopLevelRuleset);
   const stylesheetBodyItem = choice(g.ConditionalBlock, g.StylesheetAtRule, g.TopLevelRuleset);
@@ -4094,10 +3911,6 @@ export const cssFactory = (g: GrammarSelf) => {
     LeadingDashRawPseudoArgument,
     NestingSelector,
     Property,
-    IdentifierStart,
-    IdentifierStatement,
-    DeclarationListItem,
-    CustomDeclaration,
     CustomProperty,
     CustomValue,
     Keyword,
