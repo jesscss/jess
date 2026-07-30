@@ -200,9 +200,9 @@ type LessRules = {
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
   DottedAtRuleKeyword: Combinator<ValueNode>;
-  StaticAtRuleAtom: Combinator<ValueNode>;
-  StaticAtRuleTerm: Combinator<ValueNode>;
-  StaticAtRulePrelude: Combinator<ValueNode>;
+  AtRulePreludeValueAtom: Combinator<ValueNode>;
+  AtRulePreludeValueTerm: Combinator<ValueNode>;
+  AtRulePreludeValue: Combinator<ValueNode>;
   AtRulePrelude: Combinator<ValueNode | null>;
   NamespacePrelude: Combinator<ValueNode>;
   AtRuleBlock: Combinator<AtRuleBlock>;
@@ -3264,7 +3264,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // A CSS custom-property token is an ordinary component value in Less
   // functions such as `var(--accent)`. It is not a Less declaration name here.
   // It reduces to the same Keyword the css/scss/jess grammars produce, and the
-  // same one StaticAtRuleCustomProperty already produces for the
+  // same one the at-rule prelude custom-property branch produces for the
   // identical token in an at-rule header.
   const CustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
@@ -4902,28 +4902,28 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(staticIdentifier, oneOrMore(sequence(noTrivia(literal('.')), noTrivia(staticIdentifier)))),
     children => keyword(children.map(requireTerminalText).join(''))
   );
-  const StaticAtRuleCustomProperty = node<ValueNode>(
+  const atRulePreludeCustomProperty = node<ValueNode>(
     'AtRulePreludeValueCustomProperty',
     g.LessSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
-  const staticIdentOrFunction = token(noTrivia(sequence(staticIdentifier, optional(literal('(')))));
-  const StaticAtRuleIdentifier = node<ValueNode>(
+  const atRulePreludeIdentOrFunction = token(noTrivia(sequence(staticIdentifier, optional(literal('(')))));
+  const AtRulePreludeKeyword = node<ValueNode>(
     'Keyword',
     routed(),
     children => keyword(requireToken(children[0]).value)
   );
-  const StaticAtRuleIdentOrFunction = dispatch(
-    staticIdentOrFunction,
+  const AtRulePreludeIdentOrFunction = dispatch(
+    atRulePreludeIdentOrFunction,
     caseOf('url(', RoutedStaticUrl),
     caseOf('calc(', CalcFunction),
     when(endsWith('('), GenericFunction),
-    otherwise(StaticAtRuleIdentifier)
+    otherwise(AtRulePreludeKeyword)
   );
   // Generic at-rule headers have no parser-owned syntax-preserving evaluation
   // model for interpolation or parenthesized forms. Their direct subset stays
   // static; `@layer` gets its own typed interpolation alternative below.
-  const StaticAtRuleAtom = node<ValueNode>(
+  const AtRulePreludeValueAtom = node<ValueNode>(
     'AtRulePreludeValueAtom',
     choice(
       g.EscapedQuoted,
@@ -4934,23 +4934,23 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       g.PagePseudo,
       g.Paren,
       g.DottedAtRuleKeyword,
-      StaticAtRuleCustomProperty,
-      StaticAtRuleIdentOrFunction
+      atRulePreludeCustomProperty,
+      AtRulePreludeIdentOrFunction
     ),
     children => requireValueNode(children[0])
   );
-  const StaticAtRuleTerm = node<ValueNode>(
+  const AtRulePreludeValueTerm = node<ValueNode>(
     'AtRulePreludeValueTerm',
-    oneOrMore(g.StaticAtRuleAtom),
+    oneOrMore(g.AtRulePreludeValueAtom),
     (children) => {
       const values = children.map(requireValueNode);
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const StaticAtRulePrelude = node<ValueNode>(
+  const AtRulePreludeValue = node<ValueNode>(
     'AtRulePreludeValue',
     oneOrMoreSep(
-      g.StaticAtRuleTerm,
+      g.AtRulePreludeValueTerm,
       field('separator', regex(/,[ \t\n\r\f]*/))
     ),
     (children, fields) => {
@@ -5049,7 +5049,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       // Generic headers serialize as ordinary bytes. Their interpolation and
       // parenthesized forms need a dedicated syntax-preserving model, so this
       // This route deliberately leaves them closed.
-      attempt(g.StaticAtRulePrelude),
+      attempt(g.AtRulePreludeValue),
       atRuleBlockBody
     )),
     sequence(
@@ -5064,7 +5064,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       sequence(
         layerAtRuleName,
         not(noTrivia(literal('('))),
-        optional(choice(BareVariableInterpolation, g.InterpolatedValue, g.StaticAtRulePrelude)),
+        optional(choice(BareVariableInterpolation, g.InterpolatedValue, g.AtRulePreludeValue)),
         atRuleBlockBody
       ),
       sequence(
@@ -5149,7 +5149,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
           sequence(
             routed(),
             not(noTrivia(literal('('))),
-            optional(choice(BareVariableInterpolation, g.InterpolatedValue, g.StaticAtRulePrelude)),
+            optional(choice(BareVariableInterpolation, g.InterpolatedValue, g.AtRulePreludeValue)),
             literal(';')
           )
         ),
@@ -5157,7 +5157,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
           routed(),
           choice(
             attempt(sequence(
-              g.StaticAtRulePrelude,
+              g.AtRulePreludeValue,
               literal(';')
             )),
             sequence(
@@ -6021,9 +6021,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     KeyframeBlock,
     Keyframes,
     DottedAtRuleKeyword,
-    StaticAtRuleAtom,
-    StaticAtRuleTerm,
-    StaticAtRulePrelude,
+    AtRulePreludeValueAtom,
+    AtRulePreludeValueTerm,
+    AtRulePreludeValue,
     AtRulePrelude,
     NamespacePrelude,
     AtRuleBlock,

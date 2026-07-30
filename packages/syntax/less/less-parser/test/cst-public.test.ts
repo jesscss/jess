@@ -410,7 +410,6 @@ describe('Less direct-AST closure CST contract', () => {
       ['screen'],
       ['print']
     ]);
-    expect(findNodes(result.tree, 'StaticAtRulePrelude')).toHaveLength(0);
   });
 
   it('routes static query identifiers and functions without widening url() into a query function', () => {
