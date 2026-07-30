@@ -157,7 +157,8 @@ export default {
     },
     diagnostics: {
       'var/undefined': 'warn',
-      'mixin/undefined': 'warn'
+      'mixin/undefined': 'warn',
+      'call/unknown-named-argument': 'error'
     }
   }
 }
@@ -171,9 +172,9 @@ intent is familiar and Jess-native names for Jess-only diagnostics.
 Every stable lint rule has two names: a public `lint.rules` key and a shared
 Jess diagnostic `code`. Jess uses Stylelint rule names when that helps
 migration, while JSON output preserves both `ruleName` and `code`.
-`stylelint-near` in the rule table is only a parity label: the rule name is
-stable, but detection may intentionally be a Jess-native or VSCode-data-backed
-subset.
+`stylelint-near` in the rule table is comparison metadata only: the lint rule
+name and diagnostic code stay stable, but detection may intentionally be a
+Jess-native or VSCode-data-backed subset.
 
 Compiler-style diagnostics are configured by diagnostic code under
 `lint.diagnostics`. They are not lint rules and do not appear in
@@ -285,8 +286,9 @@ The rule name is the user-facing configuration key and the compact lint output
 label. The diagnostic code is the shared problem identity used by
 diagnostics-core, the language service, JSON output, and compatibility aliases.
 JSON diagnostics include both `ruleName` and `code` for stable tool migration.
-Comparison labels such as "near Stylelint" or "VSCode parity" are metadata only:
-they do not rename a rule or diagnostic.
+Comparison labels such as "near Stylelint" or "VSCode parity" are status
+metadata only: they do not rename a rule or diagnostic, and they only decide
+which checks belong in matched Stylelint comparison runs.
 
 Parser syntax failures are not lint rules. `jess lint` can surface them as
 diagnostics when `reportSyntax` is enabled, but they are controlled separately

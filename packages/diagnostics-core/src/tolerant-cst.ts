@@ -91,7 +91,8 @@ export const LINT_CODES = {
 
 export const SEMANTIC_CODES = {
   undefinedVariable: 'var/undefined',
-  undefinedMixin: 'mixin/undefined'
+  undefinedMixin: 'mixin/undefined',
+  unknownNamedArgument: 'call/unknown-named-argument'
 } as const;
 
 const LENGTH_UNITS = new Set([
@@ -594,10 +595,22 @@ type LessFixedMixinDefinitionFact = {
   readonly arity: number;
 };
 
+type LessMixinSignatureFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly parameters: ReadonlySet<string> | null;
+};
+
 type LessFixedMixinCallFact = {
   readonly name: string;
   readonly display: string;
   readonly arity: number;
+  readonly span: DiagnosticSpan;
+};
+
+type NamedArgumentFact = {
+  readonly name: string;
+  readonly display: string;
   readonly span: DiagnosticSpan;
 };
 
@@ -607,10 +620,22 @@ type MixinReferenceFact = {
   readonly span: DiagnosticSpan;
 };
 
+type MixinNamedArgumentCallFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly namedArguments: readonly NamedArgumentFact[];
+};
+
 type VariableReferenceFact = {
   readonly name: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
+};
+
+type VariableParameterScopeFact = {
+  readonly names: ReadonlySet<string>;
+  readonly start: number;
+  readonly end: number;
 };
 
 type FunctionDefinitionFact = {
@@ -3333,6 +3358,80 @@ function lessFixedMixinDefinitionOf(source: string, node: CssCstNode): LessFixed
       };
 }
 
+function descendantNodesOfType(node: CssCstNode, grammarType: string, out: CssCstNode[]): void {
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (child.grammarType === grammarType) {
+      out.push(child);
+    }
+    descendantNodesOfType(child, grammarType, out);
+  }
+}
+
+function lessMixinSignatureOf(source: string, node: CssCstNode): LessMixinSignatureFact | null {
+  if (node.grammarType !== 'Statement') {
+    return null;
+  }
+  const definition = firstChildNodeOf(node, 'MixinDefinition');
+  if (definition === undefined) {
+    return null;
+  }
+  const selector = firstChildNodeOf(node, 'SelectorBranch');
+  const name = selector === undefined ? null : lessSimpleMixinNameFromSelector(source, selector);
+  if (name === null) {
+    return null;
+  }
+  const signature = firstChildNodeOf(definition, 'MixinSignature');
+  if (
+    signature === undefined
+    || hasDescendantNodeOf(signature, 'MixinRestParam')
+    || hasDescendantNodeOf(signature, 'MixinAnonymousRestParam')
+    || hasDescendantNodeOf(signature, 'MixinPatternParam')
+  ) {
+    return {
+      name: name.name,
+      display: name.display,
+      parameters: null
+    };
+  }
+  const boundParams: CssCstNode[] = [];
+  descendantNodesOfType(signature, 'MixinBoundParam', boundParams);
+  const parameters = new Set<string>();
+  for (const parameter of boundParams) {
+    const authored = authoredVariableNameOf(source, absoluteStart(parameter), absoluteEnd(parameter));
+    if (authored === null) {
+      return {
+        name: name.name,
+        display: name.display,
+        parameters: null
+      };
+    }
+    parameters.add(normalizedVariableName(authored.name, 'less'));
+  }
+  return {
+    name: name.name,
+    display: name.display,
+    parameters
+  };
+}
+
+function lessMixinParameterScopeOf(source: string, node: CssCstNode): VariableParameterScopeFact | null {
+  const signature = lessMixinSignatureOf(source, node);
+  if (signature === null || signature.parameters === null || signature.parameters.size === 0) {
+    return null;
+  }
+  const definition = firstChildNodeOf(node, 'MixinDefinition');
+  return definition === undefined
+    ? null
+    : {
+        names: signature.parameters,
+        start: absoluteStart(definition),
+        end: absoluteEnd(definition)
+      };
+}
+
 function lessFixedMixinCallOf(source: string, node: CssCstNode): LessFixedMixinCallFact | null {
   if (node.grammarType !== 'Statement') {
     return null;
@@ -3351,6 +3450,51 @@ function lessFixedMixinCallOf(source: string, node: CssCstNode): LessFixedMixinC
         arity: countDescendantNodesOf(call, 'PositionalMixinArgument'),
         span: name.span
       };
+}
+
+function lessNamedArgumentOf(source: string, node: CssCstNode): NamedArgumentFact | null {
+  const authored = authoredVariableNameOf(source, absoluteStart(node), absoluteEnd(node));
+  if (authored === null || authored.name.charCodeAt(0) !== 64 /* @ */) {
+    return null;
+  }
+  return {
+    name: normalizedVariableName(authored.name, 'less'),
+    display: authored.name,
+    span: spanFromNodeStart(node, authored.start, authored.end)
+  };
+}
+
+function lessMixinNamedArgumentCallOf(source: string, node: CssCstNode): MixinNamedArgumentCallFact | null {
+  if (node.grammarType !== 'Statement') {
+    return null;
+  }
+  const call = firstChildNodeOf(node, 'MixinCall');
+  if (call === undefined) {
+    return null;
+  }
+  const selector = firstChildNodeOf(node, 'SelectorBranch');
+  const name = selector === undefined ? null : lessSimpleMixinNameFromSelector(source, selector);
+  if (name === null) {
+    return null;
+  }
+  const namedArgumentNodes: CssCstNode[] = [];
+  descendantNodesOfType(call, 'NamedMixinArgument', namedArgumentNodes);
+  if (namedArgumentNodes.length === 0) {
+    return null;
+  }
+  const namedArguments: NamedArgumentFact[] = [];
+  for (const argument of namedArgumentNodes) {
+    const fact = lessNamedArgumentOf(source, argument);
+    if (fact === null) {
+      return null;
+    }
+    namedArguments.push(fact);
+  }
+  return {
+    name: name.name,
+    display: name.display,
+    namedArguments
+  };
 }
 
 function lessSimpleMixinCallFactOf(source: string, node: CssCstNode): MixinReferenceFact | null {
@@ -5011,9 +5155,12 @@ export function cstLintDiagnostics(
   const variableDeclarations: VariableDeclarationFact[] = [];
   const variableReferences = new Set<string>();
   const variableReferenceFacts: VariableReferenceFact[] = [];
+  const variableParameterScopes: VariableParameterScopeFact[] = [];
   const mixinDefinitions: MixinDefinitionFact[] = [];
   const mixinReferences = new Set<string>();
   const lessMixinReferenceFacts: MixinReferenceFact[] = [];
+  const lessMixinSignatureFacts: LessMixinSignatureFact[] = [];
+  const lessMixinNamedArgumentCallFacts: MixinNamedArgumentCallFact[] = [];
   const functionDefinitions: FunctionDefinitionFact[] = [];
   const functionReferences = new Set<string>();
   const functionDefinitionNames = new Set<string>();
@@ -5233,6 +5380,18 @@ export function cstLintDiagnostics(
     const lessMixinReference = language === 'less' ? lessSimpleMixinCallFactOf(source, node) : null;
     if (lessMixinReference !== null) {
       lessMixinReferenceFacts.push(lessMixinReference);
+    }
+    const lessMixinSignature = language === 'less' ? lessMixinSignatureOf(source, node) : null;
+    if (lessMixinSignature !== null) {
+      lessMixinSignatureFacts.push(lessMixinSignature);
+    }
+    const lessMixinParameterScope = language === 'less' ? lessMixinParameterScopeOf(source, node) : null;
+    if (lessMixinParameterScope !== null) {
+      variableParameterScopes.push(lessMixinParameterScope);
+    }
+    const lessMixinNamedArgumentCall = language === 'less' ? lessMixinNamedArgumentCallOf(source, node) : null;
+    if (lessMixinNamedArgumentCall !== null) {
+      lessMixinNamedArgumentCallFacts.push(lessMixinNamedArgumentCall);
     }
 
     const functionDefinition = functionDefinitionOf(source, node, language);
@@ -6206,7 +6365,12 @@ export function cstLintDiagnostics(
     const variableDeclarationNames = new Set(variableDeclarations.map(declaration => declaration.name));
     const undefinedVariableSeverity = hasStrictVariableResolution ? 'error' : 'warning';
     for (const reference of variableReferenceFacts) {
-      if (!variableDeclarationNames.has(reference.name)) {
+      const inParameterScope = variableParameterScopes.some(scope =>
+        Number(reference.span.start) >= scope.start
+        && Number(reference.span.end) <= scope.end
+        && scope.names.has(reference.name)
+      );
+      if (!variableDeclarationNames.has(reference.name) && !inParameterScope) {
         pushDiagnostic(
           SEMANTIC_CODES.undefinedVariable,
           undefinedVariableSeverity,
@@ -6230,6 +6394,36 @@ export function cstLintDiagnostics(
             undefined,
             'eval'
           );
+        }
+      }
+
+      if (!hasExternalSources) {
+        const signaturesByName = new Map<string, LessMixinSignatureFact[]>();
+        for (const signature of lessMixinSignatureFacts) {
+          const signatures = signaturesByName.get(signature.name);
+          if (signatures === undefined) {
+            signaturesByName.set(signature.name, [signature]);
+          } else {
+            signatures.push(signature);
+          }
+        }
+        for (const call of lessMixinNamedArgumentCallFacts) {
+          const signatures = signaturesByName.get(call.name);
+          if (signatures === undefined || signatures.some(signature => signature.parameters === null)) {
+            continue;
+          }
+          for (const argument of call.namedArguments) {
+            if (!signatures.some(signature => signature.parameters?.has(argument.name) === true)) {
+              pushDiagnostic(
+                SEMANTIC_CODES.unknownNamedArgument,
+                'error',
+                `Unknown named argument ${argument.display} for mixin ${call.display}`,
+                argument.span,
+                undefined,
+                'eval'
+              );
+            }
+          }
         }
       }
     }

@@ -56,17 +56,18 @@ jess lint src/card.scss --format json
 
 `packages/lint/src/rules.ts` exposes these stable rule names. Rule names follow
 Stylelint when the behavior is close enough to be familiar; Jess-only checks use
-a `jess/` prefix. Each stable rule also maps to a shared Jess diagnostic code:
-the rule name is the user-facing `lint.rules` key, while the diagnostic code is
-the shared identity used by diagnostics-core, the language service, JSON output,
-and compatibility aliases. Lint JSON carries both names when a diagnostic maps
-to a stable lint rule. Comparison labels describe parity only. A
-`Stylelint-near` entry still has a stable lint rule name and a stable diagnostic
-code, but the implementation may be a VSCode-data-backed or Jess-native subset
-and can stay out of matched benchmark mode until its behavior is comparable
-enough.
-Comparison kind never replaces either name: stable lint findings keep the lint
-rule name for configuration and the diagnostic code for shared tooling identity.
+a `jess/` prefix. Every entry in `STABLE_LINT_RULES` carries both public names:
+the `ruleName` is the user-facing `lint.rules` key, while the `diagnosticCode`
+is the shared identity used by diagnostics-core, the language service, JSON
+output, and compatibility aliases. Lint JSON carries both names when a
+diagnostic maps to a stable lint rule.
+
+Comparison status is separate metadata. `stylelint-equivalent`,
+`stylelint-near`, `vscode-equivalent`, and `jess-only` describe evidence and
+benchmark eligibility; they never replace either name. A `stylelint-near` rule
+still has a stable lint rule name and a stable diagnostic code, but its detector
+may intentionally be a VSCode-data-backed or Jess-native subset and can stay out
+of matched benchmark mode until its behavior is comparable enough.
 
 | Rule | Diagnostic code | Kind |
 | --- | --- | --- |
@@ -312,7 +313,7 @@ the language service because they are often the most useful author feedback.
 | Definite unresolved variable | Compiler/evaluator | Initial shared same-file CST diagnostic landed as `var/undefined` for Less/SCSS/Jess variable references; strict SCSS `@use` and Less/Jess `@from`/`@compose` syntax defaults to error. Resolver/import-aware certainty remains future work. |
 | Missing import or module cycle | Resolver/compiler | Report the path and config context. |
 | No matching mixin/function overload | Compiler/evaluator | Initial shared same-file Less mixin diagnostic landed as `mixin/undefined`; `CallSignature` and `OverloadSet` facts can later handle functions, namespaces, arguments, guards, imports, and richer overload messages. |
-| Unknown named argument | Compiler/evaluator | Same ownership as call resolution. |
+| Unknown named argument | Compiler/evaluator | Initial shared same-file Less mixin diagnostic landed as `call/unknown-named-argument` for simple named calls whose static candidate signatures do not contain the authored parameter; rest/pattern overloads, imports, functions, namespaces, guards, and richer overload resolution remain future work. |
 | Private member access | Compiler later | Language rule, not style preference. |
 | Readonly assignment | Compiler later | Language rule, not style preference. |
 | Unsupported SCSS runtime form | Compatibility/compiler | Current lint can report it; long-term owner is dialect support policy. |

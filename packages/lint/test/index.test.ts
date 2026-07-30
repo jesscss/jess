@@ -433,7 +433,7 @@ describe('lintText', () => {
 
   it('surfaces semantic diagnostics by diagnostic code without treating them as lint rules', async () => {
     const input = {
-      source: '@used: red;\n.a { color: @used; background: @missing; .missing(); }',
+      source: '@used: red;\n.theme(@color) { color: @color; }\n.a { color: @used; background: @missing; .missing(); .theme(@tone: red); }',
       filePath: '/tmp/input.less'
     };
     const defaults = await lintText(input, {
@@ -441,26 +441,30 @@ describe('lintText', () => {
     });
     expect(defaults.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)).toBe(false);
     expect(defaults.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)).toBe(false);
+    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.unknownNamedArgument)).toBe(false);
 
     const configuredAsRules = await lintText(input, {
       stylesConfig: {
         lint: {
           rules: {
             [SEMANTIC_CODES.undefinedVariable]: 'error',
-            [SEMANTIC_CODES.undefinedMixin]: 'warn'
+            [SEMANTIC_CODES.undefinedMixin]: 'warn',
+            [SEMANTIC_CODES.unknownNamedArgument]: 'error'
           }
         }
       }
     });
     expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)).toBe(false);
     expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)).toBe(false);
+    expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.unknownNamedArgument)).toBe(false);
 
     const configured = await lintText(input, {
       stylesConfig: {
         lint: {
           diagnostics: {
             [SEMANTIC_CODES.undefinedVariable]: 'error',
-            [SEMANTIC_CODES.undefinedMixin]: 'warn'
+            [SEMANTIC_CODES.undefinedMixin]: 'warn',
+            [SEMANTIC_CODES.unknownNamedArgument]: 'error'
           }
         }
       }
@@ -474,7 +478,8 @@ describe('lintText', () => {
       diagnostic.message
     ])).toEqual([
       [undefined, SEMANTIC_CODES.undefinedVariable, 'eval', 'error', 'Undefined variable @missing'],
-      [undefined, SEMANTIC_CODES.undefinedMixin, 'eval', 'warning', 'Undefined mixin .missing']
+      [undefined, SEMANTIC_CODES.undefinedMixin, 'eval', 'warning', 'Undefined mixin .missing'],
+      [undefined, SEMANTIC_CODES.unknownNamedArgument, 'eval', 'error', 'Unknown named argument @tone for mixin .theme']
     ]);
   });
 

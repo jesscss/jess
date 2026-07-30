@@ -485,6 +485,17 @@ describe('JessLanguageServiceEngine', () => {
       const codes = diagnostics.map(d => d.code);
       expect(codes).toContain('mixin/undefined');
     });
+
+    it('reports unknown Less named mixin arguments (semantic)', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '.theme(@color) { color: @color; }\n.a { .theme(@tone: red); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diag = diagnostics.find(diagnostic => diagnostic.code === 'call/unknown-named-argument');
+      expect(diag).toBeDefined();
+      expect(diag?.severity).toBe(1); // DiagnosticSeverity.Error
+      expect(diag?.message).toBe('Unknown named argument @tone for mixin .theme');
+    });
   });
 
   describe('lint rules (MS css-languageservice parity)', () => {
