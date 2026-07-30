@@ -12,6 +12,12 @@
  *   the narrow dynamic at-rule/header leaves Jess actually supports.
  * - Jess extends CSS: unchanged CSS structure stays CSS-owned and this grammar
  *   overrides only the smallest changed child, value slot, or reference.
+ * - The one place that rule is knowingly broken is the `calc()` math family
+ *   (`CalcValue`/`CalcParen`/`CalcProduct`/`CalcSum`/`CalcFunction`), which is
+ *   PORTED from the CSS base rather than referenced, because parseman cannot
+ *   share a mutually recursive, AST-reducing family across packages. See the
+ *   comment on those consts. Less and SCSS model the same ladder as
+ *   `MathProduct`/`MathSum`; converging the four is an open decision.
  *   Shared preprocessor constructs belong in parser-shared only after they
  *   prove real reuse.
  *
@@ -82,6 +88,11 @@ type JessRules = {
   CallComponent: Combinator<ValueSlot>;
   CallArgument: Combinator<ValueSlot>;
   VarCall: Combinator<FunctionCall>;
+  CalcValue: Combinator<ValueNode>;
+  CalcParen: Combinator<ValueNode>;
+  CalcProduct: Combinator<ValueNode>;
+  CalcSum: Combinator<ValueNode>;
+  CalcFunction: Combinator<FunctionCall>;
   IdentifierOrFunction: Combinator<ValueNode>;
   CollectionEntry: Combinator<CollectionEntry>;
   Collection: Combinator<Collection>;
@@ -1210,7 +1221,57 @@ function reduceSelectorList(children: readonly unknown[]): SelectorList {
   return selist(...children.filter(isSelectorBranch));
 }
 
+/*
+ * Left-fold a `operand (operator operand)*` run into nested Operations. The
+ * operator token carries its own padding (calc's additive operators require
+ * it), so the spelling is trimmed back to the bare operator.
+ */
+function foldCalcOperation(children: readonly unknown[]): ValueNode {
+  const first = children.find(isValueNode);
+  if (first === undefined) {
+    throw new TypeError('Jess calc grammar requires an operand.');
+  }
+  let result = first;
+  for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
+    const operatorToken = children[index];
+    const right = children[index + 1];
+    if (operatorToken === undefined || !isValueNode(right)) {
+      throw new TypeError('Jess calc grammar lost an operator operand.');
+    }
+    result = operation(
+      requireToken(operatorToken).value.trim(),
+      result,
+      right
+    );
+  }
+  return result;
+}
+
 const rawWhitespace = regex(/[ \t\n\r\f]+/);
+
+/*
+ * calc() arithmetic, ported from the CSS base
+ * (`../../../css/css-parser/src/grammar.ts`, `CalcValue`/`CalcProduct`/
+ * `CalcSum`/`CalcParen`/`CalcFunction`). The operator spellings are CSS's and
+ * are not a Jess divergence: the multiplicative operators bind tighter than
+ * `+`/`-`, and the additive operators REQUIRE surrounding whitespace because
+ * `+`/`-` are sign-ambiguous against a following number (css-values-4 §10.1).
+ * The product class also admits `%`, which §10 does not define as a calc
+ * operator; that over-acceptance is inherited from the CSS base verbatim
+ * rather than introduced here, and narrowing it belongs in CSS, not Jess.
+ *
+ * These rules cannot be hoisted into `@jesscss/parser-shared`: that package's
+ * artifacts are `g.`-free by contract (`rules(_g => ...)`) so a consuming
+ * grammar can inline them at its own macro-fusion site, and the calc family is
+ * mutually recursive through `g.` and carries AST reductions. `CalcValue` is
+ * the only rule below that differs SEMANTICALLY from CSS — it admits Jess
+ * operands. `CalcParen`/`CalcProduct`/`CalcSum`/`CalcFunction` are the CSS
+ * bodies with Jess's typed reducers substituted; arm ORDER inside `CalcValue`
+ * differs from CSS (first sets are disjoint, so the accept set is unchanged).
+ */
+const calcProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
+const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
+
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
 
@@ -3001,6 +3062,81 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     urlFromChildren
   );
+
+  /*
+   * The single Jess divergence from the CSS calc family: an operand may be any
+   * Jess value form ($var, `$.`-lookup, and the three interpolation spellings).
+   * They resolve to an operand — Jess does not REDUCE the arithmetic here, it
+   * only records the structure, exactly as CSS does for `var()`.
+   */
+  const CalcValue = node<ValueNode>(
+    'CalcValue',
+    choice(
+      g.Dimension,
+      g.Color,
+      g.DollarValue,
+      g.InterpolatedValue,
+      g.CalcParen,
+      g.IdentifierOrFunction,
+      g.Quoted,
+      g.CustomPropertyValue
+    ),
+    { project: 0 }
+  );
+
+  /*
+   * CSS arithmetic parentheses are structural only inside calc(), where they
+   * preserve math precedence in the AST.
+   */
+  const CalcParen = node<ValueNode>(
+    'CalcParen',
+    noTrivia(sequence(
+      literal('('),
+      many(rawWhitespace),
+      g.CalcSum,
+      many(rawWhitespace),
+      literal(')')
+    )),
+    children => block(requireValueNode(children.find(isValueNode)))
+  );
+
+  const CalcProduct = node<ValueNode>(
+    'CalcProduct',
+    noTrivia(sequence(
+      g.CalcValue,
+      many(sequence(
+        calcProductOperator,
+        g.CalcValue
+      ))
+    )),
+    foldCalcOperation
+  );
+  const CalcSum = node<ValueNode>(
+    'CalcSum',
+    noTrivia(sequence(
+      g.CalcProduct,
+      many(sequence(
+        calcSumOperator,
+        g.CalcProduct
+      ))
+    )),
+    foldCalcOperation
+  );
+  const CalcFunction = node<FunctionCall>(
+    'CalcCall',
+    noTrivia(sequence(
+      routed(),
+      many(rawWhitespace),
+      g.CalcSum,
+      many(rawWhitespace),
+      literal(')')
+    )),
+    children => funcCall(
+      functionOpenName(children[0]),
+      [requireValueNode(children.find(isValueNode))]
+    )
+  );
+
   const IdentifierOrFunction = dispatch(
     identifierOrFunction,
     caseInsensitiveWhen(
@@ -3010,6 +3146,10 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     caseInsensitiveWhen(
       'var(',
       VarCall
+    ),
+    caseInsensitiveWhen(
+      'calc(',
+      CalcFunction
     ),
     when(
       endsWith('('),
@@ -5654,6 +5794,11 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     CallComponent,
     CallArgument,
     VarCall,
+    CalcValue,
+    CalcParen,
+    CalcProduct,
+    CalcSum,
+    CalcFunction,
     IdentifierOrFunction,
     CollectionEntry,
     Collection,
