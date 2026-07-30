@@ -13,7 +13,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when, word } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, composeLeaf, dispatch, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -2134,6 +2134,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       alias: children.length === 3 ? requireToken(children[2]).value : null
     })
   );
+  const moduleSpecifierList = oneOrMoreSep(
+    g.ModuleSpecifier,
+    literal(',')
+  );
   const moduleImportDirective = keywords(['@-use', '@-from'], {
     boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
   });
@@ -2165,21 +2169,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
               g.ModuleSpecifier,
               literal(','),
               literal('('),
-              g.ModuleSpecifier,
-              many(sequence(
-                literal(','),
-                g.ModuleSpecifier
-              )),
+              moduleSpecifierList,
               literal(')')
             ),
             g.ModuleSpecifier,
             sequence(
               literal('('),
-              g.ModuleSpecifier,
-              many(sequence(
-                literal(','),
-                g.ModuleSpecifier
-              )),
+              moduleSpecifierList,
               literal(')')
             )
           ),

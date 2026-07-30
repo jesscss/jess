@@ -4848,3 +4848,23 @@ pinning the current case-sensitive keyword policy. `pnpm --filter
 check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled with 0 interpreter fallbacks; `pnpm run verify:compose-integrity`
 passed; and `git diff --check` passed. This slice makes no speed claim.
+
+Jess module specifier-list cleanup, 2026-07-30: the two grouped
+`@-from ... import (...)` named-import runs now use one local
+`oneOrMoreSep(g.ModuleSpecifier, literal(','))` helper instead of repeating
+`ModuleSpecifier, many(',' ModuleSpecifier)` by hand. This is a separated-list
+cleanup inside the already-routed `ModuleImport` tail. The outer binding-form
+`choice(...)` remains a context decision because `* as`, default import,
+default plus grouped named imports, and grouped named imports are decided by
+later delimiter facts after `@-from` and `import` are already consumed.
+
+Evidence for the Jess module specifier-list cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/ast-grammar.test.ts --reporter=dot` passed
+with 1 file and 105 tests; `pnpm --filter @jesscss/jess-parser test --
+test/cst-public.test.ts test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 119
+tests; `pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+parser-shared; `pnpm run check:macro` reported parser-shared, CSS, Less, SCSS,
+and Jess all fully compiled with 0 interpreter fallbacks; `pnpm run
+verify:compose-integrity` passed; and `git diff --check` passed. This slice
+makes no speed claim.
