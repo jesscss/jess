@@ -7,17 +7,17 @@
   },
   "ownerSignoff": "INITIAL RECORD, NOT AN OWNER APPROVAL: first measurement of the bar. These ceilings are where jess stands today; they are not a target the owner has accepted. Owner to confirm, tighten, or set an explicit goal.",
   "recordedOn": {
-    "sha": "d0439382d95e2758eb00af7ecc31dfb14b6a56d9",
+    "sha": "e68c26604c7a5592fa8a5402d41a843fb591659d",
     "dirty": false,
-    "recordedAt": "2026-07-30T21:31:29.600Z",
+    "recordedAt": "2026-07-30T21:36:10.137Z",
     "node": "v24.11.1",
     "platform": "darwin-arm64",
     "parseman": "parseman@0.43.0",
     "postcss": "postcss@8.5.25",
     "upstreamCommit": "ddc1a86710a65de302e0675ef3a5a1cc7db270bd",
     "processes": 5,
-    "foldedNoiseFloorPct": 3.9839,
-    "worstBetweenProcessSpreadPct": 24.367
+    "foldedNoiseFloorPct": 3.696,
+    "worstBetweenProcessSpreadPct": 16.4898
   },
   "toleranceFraction": 0.08,
   "fixtures": {
@@ -32,48 +32,48 @@
   },
   "cases": {
     "bootstrap/jess-ast": {
-      "recordedRatioVsPostcss": 1.3547,
+      "recordedRatioVsPostcss": 1.3014,
       "perProcessRatios": [
-        1.3133,
-        1.1345,
-        1.3547,
-        1.4646,
-        1.3934
+        1.4009,
+        1.3014,
+        1.2765,
+        1.3607,
+        1.2899
       ],
-      "maxRatioVsPostcss": 1.4631
+      "maxRatioVsPostcss": 1.4055
     },
     "bootstrap/jess-cst": {
-      "recordedRatioVsPostcss": 3.1017,
+      "recordedRatioVsPostcss": 3.1143,
       "perProcessRatios": [
-        3.1017,
-        2.7753,
-        3.0543,
-        3.211,
-        3.3174
+        3.3339,
+        3.1179,
+        3.0229,
+        3.1143,
+        2.9216
       ],
-      "maxRatioVsPostcss": 3.3498
+      "maxRatioVsPostcss": 3.3634
     },
     "jess-benchmark-css/jess-ast": {
-      "recordedRatioVsPostcss": 1.6492,
+      "recordedRatioVsPostcss": 1.6561,
       "perProcessRatios": [
-        1.6581,
-        1.7106,
-        1.6492,
-        1.5956,
-        1.5862
+        1.6011,
+        1.6583,
+        1.6044,
+        1.6561,
+        1.7349
       ],
-      "maxRatioVsPostcss": 1.7811
+      "maxRatioVsPostcss": 1.7886
     },
     "jess-benchmark-css/jess-cst": {
-      "recordedRatioVsPostcss": 3.9407,
+      "recordedRatioVsPostcss": 4.0801,
       "perProcessRatios": [
-        3.9407,
-        4.0381,
-        4.2307,
-        3.8376,
-        3.8586
+        3.6748,
+        4.0801,
+        3.9173,
+        4.3021,
+        4.3476
       ],
-      "maxRatioVsPostcss": 4.256
+      "maxRatioVsPostcss": 4.4065
     }
   }
 }
