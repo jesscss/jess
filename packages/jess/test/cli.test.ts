@@ -121,6 +121,36 @@ describe('jess CLI', () => {
     }
   });
 
+  it('surfaces recommended vendor-prefix diagnostics through jess lint', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-cli-lint-vendor-prefix-'));
+    try {
+      const input = path.join(directory, 'entry.css');
+      fs.writeFileSync(input, '.entry { -webkit-transform: rotate(0); }');
+
+      const result = await run(['lint', input, '--format', 'json']);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe('');
+      const json = JSON.parse(result.stdout) as {
+        results: Array<{
+          diagnostics: Array<{ code: string; ruleName?: string; severity: string }>;
+        }>;
+        warningCount: number;
+        errorCount: number;
+      };
+      expect(json.warningCount).toBe(1);
+      expect(json.errorCount).toBe(0);
+      expect(json.results[0]?.diagnostics).toEqual([
+        expect.objectContaining({
+          code: 'lint/vendor-prefix',
+          ruleName: 'vendor-prefix',
+          severity: 'warning'
+        })
+      ]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('honors lint exit policy flags', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-cli-lint-policy-'));
     try {

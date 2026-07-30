@@ -90,6 +90,7 @@ mode until its behavior is comparable enough.
 | `property-ignored-due-to-display` | `lint/property-ignored-due-to-display` | VSCode-equivalent |
 | `box-model` | `lint/box-model` | VSCode-equivalent, opt-in |
 | `float` | `lint/float` | VSCode-equivalent, opt-in |
+| `vendor-prefix` | `lint/vendor-prefix` | VSCode-equivalent |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | Stylelint-equivalent |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
 | `no-unknown-animations` | `lint/no-unknown-animations` | Stylelint-near |
@@ -218,6 +219,7 @@ can detect over authored source.
 | Landed | Display/property interactions | `property-ignored-due-to-display` | Matches VSCode `propertyIgnoredDueToDisplay` for CSS `display: inline-block` with non-`none` `float`, and `display: block` with `vertical-align`; dynamic and dialect values stay unknown until semantic facts exist. |
 | Landed | Box model | `box-model` | Opt-in VSCode `boxModel` parity for definite CSS `width`/`height` with non-zero padding or border; `box-sizing` suppresses the rule, and dynamic/dialect values stay unknown until semantic facts exist. |
 | Landed | Float layout | `float` | Opt-in VSCode `float` parity for definite CSS `float` declarations whose value is not `none`; dynamic/dialect values stay unknown until semantic facts exist. |
+| Landed | Vendor prefixes | `vendor-prefix` | Matches VSCode `vendorPrefix` for CSS vendor-prefixed declarations whose standard property is missing from the same ruleset; keyframe prefix parity and all-prefix compatibility stay future work. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
 | Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |

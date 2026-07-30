@@ -105,6 +105,7 @@ export default {
       'function-linear-gradient-no-nonstandard-direction': 'warn',
       'font-face-no-missing-required-properties': 'warn',
       'property-ignored-due-to-display': 'warn',
+      'vendor-prefix': 'warn',
       'box-model': 'off',
       'float': 'off',
       'color-function-no-invalid-arguments': 'error',
@@ -159,6 +160,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `property-ignored-due-to-display` | `lint/property-ignored-due-to-display` | VSCode `propertyIgnoredDueToDisplay` parity |
 | `box-model` | `lint/box-model` | VSCode `boxModel` parity, opt-in |
 | `float` | `lint/float` | VSCode `float` parity, opt-in |
+| `vendor-prefix` | `lint/vendor-prefix` | VSCode `vendorPrefix` parity |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | `no-invalid-position-at-import-rule` |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | `no-duplicate-at-import-rules` |
 | `no-unknown-animations` | `lint/no-unknown-animations` | near `no-unknown-animations` |

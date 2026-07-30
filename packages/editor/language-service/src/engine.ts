@@ -792,6 +792,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.fontFamilyMissingGeneric]: DiagnosticSeverity.Warning,
     [LINT_CODES.fontFaceMissingRequiredProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.propertyIgnoredDueToDisplay]: DiagnosticSeverity.Warning,
+    [LINT_CODES.vendorPrefix]: DiagnosticSeverity.Warning,
     [LINT_CODES.invalidImportPosition]: DiagnosticSeverity.Warning,
     [LINT_CODES.duplicateAtImportRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownAnimations]: DiagnosticSeverity.Warning,

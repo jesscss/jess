@@ -618,6 +618,43 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.float)).toBe(false);
   });
 
+  it('reports vendor-prefixed CSS declarations missing their standard property', () => {
+    const source = [
+      '.prefixed { -webkit-transform: rotate(0); -moz-user-select: none; user-select: none; }',
+      '.standard { -webkit-transform: rotate(0); transform: rotate(0); }',
+      '.unknown { -webkit-made-up: x; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const vendorPrefix = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.vendorPrefix);
+    const transformStart = source.indexOf('-webkit-transform');
+
+    expect(vendorPrefix.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Also define the standard property "transform" for compatibility',
+        transformStart,
+        transformStart + '-webkit-transform'.length
+      ]
+    ]);
+  });
+
+  it('does not report vendor-prefix diagnostics in dialect files before property facts exist', () => {
+    const source = '.a { -webkit-transform: rotate(0); }';
+    const scss = collectTolerantDiagnostics({
+      source,
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source,
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.vendorPrefix)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.vendorPrefix)).toBe(false);
+  });
+
   it('reports definite CSS box-model size risks', () => {
     const source = [
       '.wide { width: 100px; padding-left: 1px; padding-right: 0; }',
