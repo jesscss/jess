@@ -1242,6 +1242,22 @@ const interpolatedDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))+/)
 const interpolatedSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))+/);
 
 /*
+ * Opaque Jess spans must not terminate inside a static quoted string. These
+ * skippers reject `$` forms that the dialect treats as structural, so raw
+ * scanner consumers still leave interpolation to their typed grammar.
+ */
+const scanSkipDoubleQuoted = sequence(
+  literal('"'),
+  plainDoubleQuotedText,
+  literal('"')
+);
+const scanSkipSingleQuoted = sequence(
+  literal('\''),
+  plainSingleQuotedText,
+  literal('\'')
+);
+
+/*
  * Jess's live `$` grammar does not permit CSS escapes in names. Keep that
  * dialect-local fact explicit while the value keyword leaf remains shared.
  */
@@ -2811,16 +2827,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * required `)` then fails: a Jess interpolation in a pseudo
    * argument still rejects rather than being flattened into opaque text.
    */
-  const pseudoRawDoubleQuoted = sequence(
-    literal('"'),
-    plainDoubleQuotedText,
-    literal('"')
-  );
-  const pseudoRawSingleQuoted = sequence(
-    literal('\''),
-    plainSingleQuotedText,
-    literal('\'')
-  );
   const pseudoRawArgument = scanTo(
     choice(
       literal('$'),
@@ -2828,19 +2834,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     {
       skip: [
-        balanced(
-          '(',
-          ')',
-          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
-        ),
-        balanced(
-          '[',
-          ']',
-          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
-        ),
-        pseudoRawDoubleQuoted,
-        pseudoRawSingleQuoted,
-        blockComment
+        balanced('(', ')'),
+        balanced('[', ']')
       ]
     }
   );
@@ -5822,22 +5817,22 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
 };
 
 export const jessGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
-  { trivia: whitespace },
+  { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted] },
   jessFactory
 )]);
 
 export const jessLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
-  { trivia: whitespace, trackLines: true },
+  { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted], trackLines: true },
   jessFactory
 )]);
 
 export const jessCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
-  { trivia: whitespace, hostMode: 'cst' },
+  { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted], hostMode: 'cst' },
   jessFactory
 )]);
 
 export const jessDiagnosticCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
-  { trivia: whitespace, hostMode: 'cst', trackLines: true },
+  { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted], hostMode: 'cst', trackLines: true },
   jessFactory
 )]);
 
