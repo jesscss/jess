@@ -148,14 +148,26 @@ with SHA-256 `3ea6c1bdae41511923deece75676d453ff470cb447f531aae935b44eae6f5083`.
   `bda41a0bb`: legacy labeled logs stream contiguous comment ranges directly,
   and comment-only emission uses an exact binary search over those sparse runs.
   The larger root-capture cost remains until Parseman 0.44.0 is published. Its
-  release branch `release/0.44.0-root-trivia` (currently `bedb66a`) adds
+  release branch `release/0.44.0-root-trivia` (currently `0d5ddfd`) adds
   `run(..., { rootTrivia: { selectedKinds } })`: labeled `blockComment` and
   `lineComment` markers retain their complete owning gap without storing every
-  whitespace entry. It is verified across composed grammar factories,
-  macro-fused artifacts, transactional rollback, and AST/CST host modes. Do not
-  put an unavailable dependency range on Jess; adopt it through the Less parser
-  only once `parseman@0.44.0` exists in the registry, then re-run all-Less and
-  this exact eval+emit harness.
+  whitespace entry. The release fix also carries selected markers through
+  semantic `leaf()` wrappers and uses the requested label table rather than a
+  scope-local label index, so composed grammar factories can use different
+  trivia-label orders. It is verified across composed grammar factories,
+  macro-fused artifacts, transactional rollback, and AST/CST host modes.
+
+  A disposable local Jess build against that branch passes the Less
+  custom-property comment round trip, `check:macro` (zero interpreter
+  fallbacks), `verify:compose-integrity`, the AST-v2 production ratchet, and
+  the all-Less corpus. On the exact 288,434-byte source it reduces Parseman's
+  root payload from 67,989 numbers / 22,663 entries / 22,631 gaps to 100 numbers
+  / 20 selected entries / 16 gaps. This is an allocation and retained-memory
+  correction, not a claimed end-to-end speedup: one local 61-sample eval+emit
+  run measured Jess at 38.64 ms and Less at 28.32 ms (1.36×), while isolated
+  parser timing remains order-sensitive. Do not put an unavailable dependency
+  range on Jess; adopt it through the Less parser only once `parseman@0.44.0`
+  exists in the registry, then re-run all-Less and this exact eval+emit harness.
 
 ### P2 — allocation profile after sparse root capture
 
