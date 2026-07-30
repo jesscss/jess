@@ -123,7 +123,6 @@ type LessRules = {
   Dimension: Combinator<ValueNode>;
   UnicodeRange: Combinator<Any>;
   EscapeValue: Combinator<Any>;
-  PercentEscape: Combinator<Any>;
   PagePseudo: Combinator<Any>;
   DoubledQuoteArgument: Combinator<Any>;
   FunctionArgument: Combinator<ValueSlot>;
@@ -166,25 +165,16 @@ type LessRules = {
   CustomValue: Combinator<ValueNode>;
   CustomPropertyValue: Combinator<Keyword>;
   CustomDeclaration: Combinator<Declaration>;
-  PunctuationMapDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
-  MixinParam: Combinator<Param>;
-  MixinParameterList: Combinator<MixinParameterListFact>;
   ClassIdStatement: Combinator<Statement>;
-  PositionalMixinCallArgument: Combinator<MixinCallArgument>;
   MixinArgumentGroup: Combinator<MixinCallArgument>;
   MixinArguments: Combinator<readonly MixinCallArgument[]>;
   MixinInterior: Combinator<MixinInteriorFact>;
   ClassIdSelectorPrefix: Combinator<SelectorBranchFact>;
-  MixinStatementTail: Combinator<MixinStatementFact>;
-  BareMixinCall: Combinator<BareMixinCallFact>;
-  RulesetTail: Combinator<RulesetTailFact>;
-  SelectorBranch: Combinator<SelectorBranchFact>;
   SelectorBranchTail: Combinator<SelectorBranchFact>;
   FlatMixinCall: Combinator<MixinCall>;
   NamespacedMixinCall: Combinator<MixinCall>;
   NamespacedMixinValue: Combinator<MixinCall>;
-  MixinPathTail: Combinator<MixinPathSegmentFact>;
   MixinReference: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
   MixinGuard: Combinator<MixinGuard>;
@@ -211,16 +201,9 @@ type LessRules = {
   GeneralEnclosed: Combinator<GeneralEnclosed>;
   SupportsBlock: Combinator<AtRuleBlock>;
   QueryValue: Combinator<ValueNode>;
-  QueryLogicalGroup: Combinator<ValueNode>;
-  QueryNegatedFeature: Combinator<ValueNode>;
   QueryColonFeature: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryClause: Combinator<ValueNode>;
-  QueryPrelude: Combinator<ValueNode>;
-  MediaQueryTerm: Combinator<ValueNode>;
-  MediaQueryOnlyClause: Combinator<ValueNode>;
-  MediaQueryClause: Combinator<ValueNode>;
-  MediaQueryPrelude: Combinator<ValueNode>;
   ContainerStyleQuery: Combinator<FunctionCall>;
   ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
@@ -276,8 +259,6 @@ type LessRules = {
   RelativeComplex: Combinator<SelectorBranch>;
   SelectorTail: Combinator<SelectorBranch>;
   Selector: Combinator<SelectorList>;
-  RelativeSelector: Combinator<SelectorList>;
-  ExtendComplex: Combinator<SelectorBranch>;
   ExtendTarget: Combinator<ExtendTargetFact>;
   ExtendStatement: Combinator<ExtendInstruction[]>;
   RulesetWithExtends: Combinator<Ruleset>;
@@ -6267,7 +6248,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Dimension,
     UnicodeRange,
     EscapeValue,
-    PercentEscape,
     PagePseudo,
     DoubledQuoteArgument,
     FunctionArgument,
@@ -6310,25 +6290,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CustomValue,
     CustomPropertyValue,
     CustomDeclaration,
-    PunctuationMapDeclaration,
     Declaration,
-    MixinParam,
-    MixinParameterList,
     ClassIdStatement,
-    PositionalMixinCallArgument,
     MixinArgumentGroup,
     MixinArguments,
     MixinInterior,
     ClassIdSelectorPrefix,
-    MixinStatementTail,
-    BareMixinCall,
-    RulesetTail,
-    SelectorBranch,
     SelectorBranchTail,
     FlatMixinCall,
     NamespacedMixinCall,
     NamespacedMixinValue,
-    MixinPathTail,
     MixinReference,
     ReferenceCall,
     MixinGuard,
@@ -6354,16 +6325,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     GeneralEnclosed,
     SupportsBlock,
     QueryValue,
-    QueryLogicalGroup,
-    QueryNegatedFeature,
     QueryColonFeature,
     QueryFeature,
     QueryClause,
-    QueryPrelude,
-    MediaQueryTerm,
-    MediaQueryOnlyClause,
-    MediaQueryClause,
-    MediaQueryPrelude,
     ContainerStyleQuery,
     ContainerScrollStateQuery,
     ContainerName,
@@ -6418,12 +6382,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Complex,
     SelectorTail,
     Selector,
-    ExtendComplex,
     ExtendTarget,
     ExtendStatement,
     RulesetWithExtends,
     RelativeComplex,
-    RelativeSelector,
     NestedRulesetWithExtends,
     Quoted,
     LiteralQuoted,

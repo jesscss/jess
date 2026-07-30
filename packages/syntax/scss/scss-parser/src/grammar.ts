@@ -84,8 +84,6 @@ type ScssRules = {
   NestedPropertyDeclaration: Combinator<Declaration>;
   ImportAtRule: Combinator<ImportAtRule>;
   UseNamespace: Combinator<string>;
-  UseRule: Combinator<StyleImport | ModuleImport>;
-  ForwardRule: Combinator<StyleImport>;
   ModuleDirective: Combinator<StyleImport | ModuleImport>;
   ImportUrl: Combinator<Url>;
   ImportLayer: Combinator<ValueNode>;
@@ -95,7 +93,6 @@ type ScssRules = {
   ImportMediaFeature: Combinator<ValueNode>;
   ImportMediaInParens: Combinator<ValueNode>;
   ImportMediaCondition: Combinator<ValueNode>;
-  ImportMediaOnlyClause: Combinator<ValueNode>;
   ImportMediaClause: Combinator<ValueNode>;
   ImportMediaPrelude: Combinator<ValueNode>;
   ImportTail: Combinator<ValueNode>;
@@ -148,9 +145,6 @@ type ScssRules = {
   AtRulePreludeSingleQuoted: Combinator<Token>;
   AtRuleStatement: Combinator<AtRuleStatement>;
   AtRootFilterPrelude: Combinator<ValueNode>;
-  AtRootBlock: Combinator<AtRuleBlock>;
-  AtRootFilter: Combinator<AtRuleBlock>;
-  AtRootContinuation: Combinator<AtRuleBlock>;
   SassDirective: Combinator<AtRuleBlock | For | If | MixinCall | MixinDefinition | VariableDeclaration>;
   SassNestedDirective: Combinator<AtRuleBlock | For | If | MixinCall | MixinDefinition>;
   SassControlDirective: Combinator<For | If>;
@@ -5002,8 +4996,6 @@ export const scssFactory = (g: ScssInputRules) => {
     NestedPropertyDeclaration,
     ImportAtRule,
     UseNamespace,
-    UseRule,
-    ForwardRule,
     ModuleDirective,
     ImportUrl,
     ImportLayer,
@@ -5013,7 +5005,6 @@ export const scssFactory = (g: ScssInputRules) => {
     ImportMediaFeature,
     ImportMediaInParens,
     ImportMediaCondition,
-    ImportMediaOnlyClause,
     ImportMediaClause,
     ImportMediaPrelude,
     ImportTail,
@@ -5064,9 +5055,6 @@ export const scssFactory = (g: ScssInputRules) => {
     AtRulePreludeSingleQuoted,
     AtRuleStatement,
     AtRootFilterPrelude,
-    AtRootBlock,
-    AtRootFilter,
-    AtRootContinuation,
     SassDirective,
     SassNestedDirective,
     SassControlDirective,

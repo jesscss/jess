@@ -151,9 +151,6 @@ type JessRules = {
   HeaderValueAtom: Combinator<ValueNode>;
   HeaderValue: Combinator<ValueSlot>;
   HeaderCallArgument: Combinator<ValueSlot>;
-  HeaderCall: Combinator<FunctionCall>;
-  QueryNonOnlyKeyword: Combinator<Keyword>;
-  QueryTerm: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryDashedIdentifier: Combinator<Keyword>;
   QueryClause: Combinator<ValueNode>;
@@ -5689,9 +5686,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     HeaderValueAtom,
     HeaderValue,
     HeaderCallArgument,
-    HeaderCall,
-    QueryNonOnlyKeyword,
-    QueryTerm,
     QueryFeature,
     QueryDashedIdentifier,
     QueryClause,
