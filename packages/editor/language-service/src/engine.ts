@@ -810,6 +810,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.duplicateModuleLoads]: DiagnosticSeverity.Warning,
     [LINT_CODES.unboundedExtends]: DiagnosticSeverity.Warning,
     [LINT_CODES.deadExtends]: DiagnosticSeverity.Warning,
+    [LINT_CODES.suspiciousMapKeyAccess]: DiagnosticSeverity.Warning,
 
     /*
      * Parsed-but-never-evaluated SCSS forms. The "Unsupported Sass Features"

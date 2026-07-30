@@ -109,6 +109,7 @@ mode until its behavior is comparable enough.
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess-only module diagnostic |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess-only selector diagnostic |
 | `jess/no-dead-extend` | `lint/no-dead-extend` | Jess-only selector diagnostic |
+| `jess/no-suspicious-map-key-access` | `lint/no-suspicious-map-key-access` | Jess-only value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -217,7 +218,6 @@ can detect over authored source.
 | Landed | Box model | `box-model` | Opt-in VSCode `boxModel` parity for definite CSS `width`/`height` with non-zero padding or border; `box-sizing` suppresses the rule, and dynamic/dialect values stay unknown until semantic facts exist. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
 | Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
-| Landed | Units | `unit-no-unknown` | Flags unknown Dimension units; URL values and resolution `x` contexts are suppressed. |
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
 | Landed | Gradient directions | `function-linear-gradient-no-nonstandard-direction` | Flags old side-or-corner direction syntax and unitless numeric directions in CSS `linear-gradient()` / `repeating-linear-gradient()` calls. |
 | Landed | Media feature names and values | `media-feature-name-no-unknown`, `media-feature-name-value-no-unknown` | Flags unknown CSS `@media` feature names and definite invalid static values; dialect media facts remain future work. |
@@ -280,6 +280,7 @@ Stylelint.
 | `jess/no-duplicate-module-load` | warn | Module refs now; import graph/config later | Initial same-file static SCSS/Jess duplicate directive check landed; same resolved file through multiple specifiers still needs module graph facts. |
 | `jess/no-unbounded-extend` | warn | Static targets now; selector facts later | Initial Less/SCSS/Jess diagnostic flags static extend targets with no top-level class, id, placeholder, or parent selector anchor; selector graph facts can later catch broad resolved targets more precisely. |
 | `jess/no-dead-extend` | warn | Same-file exact targets now; selector graph later | Initial import-free Less/SCSS/Jess diagnostic flags exact static extend targets that match no same-file selector; accessible imported surfaces and partial extend submatching still need selector graph facts. |
+| `jess/no-suspicious-map-key-access` | warn | Same-file map-like declarations now; value facts later | Initial Less/SCSS/Jess diagnostic flags numeric bracket or `map-get()` access against same-file map-like variables; real collection/list type facts can later catch reassignment and imported values precisely. |
 
 ## Type and value linting
 
@@ -310,7 +311,7 @@ Follow-on value/type diagnostics:
 | Invalid typed custom property value | Diagnostics-core/type facts | Initial CSS `@property` descriptor check landed as `jess/no-invalid-typed-custom-property-value` for simple static syntax/value pairs; future work is full CSS value-definition syntax and Jess constraints. |
 | Impossible guard | Lint preference | Guard condition that is statically always false. |
 | Unused default branch | Lint preference | Mixin `default()` branch that cannot be selected. |
-| Suspicious map key access | Lint preference | Numeric bracket access against a collection when the author likely meant a value key. |
+| Suspicious map key access | Lint preference | Initial same-file Less map, SCSS map, and Jess collection diagnostic landed as `jess/no-suspicious-map-key-access`; richer collection/list value facts remain future work. |
 
 Use TypeScript-adjacent names for callable/type facts:
 

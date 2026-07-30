@@ -58,6 +58,7 @@ export const LINT_CODES = {
   unusedVariables: 'lint/no-unused-variable',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
+  suspiciousMapKeyAccess: 'lint/no-suspicious-map-key-access',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -270,6 +271,7 @@ const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'PlainQuoted', 'ImportTarg
 const EXTEND_TARGET_TYPES = new Set(['ExtendTargetComplex', 'Selector', 'PseudoSelectorComplex']);
 const EXTERNAL_SELECTOR_SOURCE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
+const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'Map', 'ValueBlock']);
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
 const ANB_PSEUDO_CLASSES = new Set([
@@ -520,6 +522,11 @@ type CustomPropertyReference = {
 type VariableDeclarationFact = {
   readonly name: string;
   readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+type SuspiciousMapKeyAccess = {
+  readonly variable: string;
   readonly span: DiagnosticSpan;
 };
 
@@ -2479,7 +2486,7 @@ function variableDeclarationOf(source: string, node: CssCstNode, language: JessL
   if (language === 'css') {
     return null;
   }
-  if (node.grammarType !== 'VarDeclaration' && node.grammarType !== 'VariableDeclaration') {
+  if (node.grammarType !== 'VarDeclaration' && node.grammarType !== 'VariableDeclaration' && node.grammarType !== 'ValueBlockDeclaration') {
     return null;
   }
   const nameNode = firstChildNodeOf(node, 'VariableName');
@@ -2494,6 +2501,28 @@ function variableDeclarationOf(source: string, node: CssCstNode, language: JessL
     display: authored.name,
     span: nameNode !== undefined ? nameNode.span : spanFromNodeStart(node, authored.start, authored.end)
   };
+}
+
+function nodeContainsExactDescendant(node: CssCstNode, grammarType: string): boolean {
+  const descendant = firstDescendantNodeOf(node, grammarType);
+  return descendant !== undefined
+    && absoluteStart(descendant) === absoluteStart(node)
+    && absoluteEnd(descendant) === absoluteEnd(node);
+}
+
+function variableDeclarationIsMapLike(node: CssCstNode, language: JessLanguage): boolean {
+  if (language === 'css') {
+    return false;
+  }
+  if (language === 'less') {
+    return node.grammarType === 'VarDeclaration' && firstChildNodeOf(node, 'ValueBlock') !== undefined;
+  }
+  if (language === 'scss') {
+    const value = firstChildNodeOf(node, 'Value');
+    return node.grammarType === 'VariableDeclaration' && value !== undefined && nodeContainsExactDescendant(value, 'Map');
+  }
+  const value = firstChildNodeMatching(node, MAP_LIKE_VALUE_TYPES);
+  return value !== undefined && nodeContainsExactDescendant(value, 'Collection');
 }
 
 function variableReferenceNameOf(source: string, node: CssCstNode, language: JessLanguage): string | null {
@@ -2514,6 +2543,102 @@ function variableReferenceNameOf(source: string, node: CssCstNode, language: Jes
     return null;
   }
   return normalizedVariableName(authored.name, language);
+}
+
+function numericBracketAccessSpan(source: string, node: CssCstNode): DiagnosticSpan | null {
+  const bracketTail = firstChildNodeOf(node, 'ReferenceBracketTail');
+  if (bracketTail === undefined) {
+    return null;
+  }
+  const start = absoluteStart(bracketTail);
+  const end = absoluteEnd(bracketTail);
+  const text = source.slice(start, end);
+  if (!/^\[\s*[+-]?(?:\d+\.?\d*|\.\d+)\s*\]$/.test(text)) {
+    return null;
+  }
+  return bracketTail.span;
+}
+
+function scssCallArguments(node: CssCstNode): CssCstNode[] {
+  const args: CssCstNode[] = [];
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (child.grammarType === 'ValueTerm') {
+      args.push(child);
+    } else if (child.grammarType === 'ValuePair') {
+      const value = firstChildNodeOf(child, 'ValueTerm');
+      if (value !== undefined) {
+        args.push(value);
+      }
+    }
+  }
+  return args;
+}
+
+function scssMapGetNumericKeyAccess(source: string, node: CssCstNode, mapLikeVariables: ReadonlySet<string>): SuspiciousMapKeyAccess | null {
+  if (node.grammarType !== 'Call' || functionNameOf(source, absoluteStart(node), absoluteEnd(node)) !== 'map-get') {
+    return null;
+  }
+  const args = scssCallArguments(node);
+  if (args.length !== 2) {
+    return null;
+  }
+  const baseStart = absoluteStart(args[0]!);
+  const baseEnd = absoluteEnd(args[0]!);
+  const baseTrimmed = trimOffsets(source.slice(baseStart, baseEnd), baseStart);
+  const authoredBase = authoredVariableNameOf(source, baseTrimmed.start, baseTrimmed.end);
+  if (authoredBase === null || authoredBase.start !== baseTrimmed.start || authoredBase.end !== baseTrimmed.end) {
+    return null;
+  }
+  const variable = normalizedVariableName(authoredBase.name, 'scss');
+  if (!mapLikeVariables.has(variable)) {
+    return null;
+  }
+  const keyStart = absoluteStart(args[1]!);
+  const keyEnd = absoluteEnd(args[1]!);
+  const keyText = source.slice(keyStart, keyEnd).trim();
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(keyText)) {
+    return null;
+  }
+  return {
+    variable,
+    span: args[1]!.span
+  };
+}
+
+function suspiciousMapKeyAccessOf(
+  source: string,
+  node: CssCstNode,
+  language: JessLanguage,
+  mapLikeVariables: ReadonlySet<string>
+): SuspiciousMapKeyAccess | null {
+  if (language === 'css') {
+    return null;
+  }
+  if (language === 'scss') {
+    return scssMapGetNumericKeyAccess(source, node, mapLikeVariables);
+  }
+  const isReferenceNode = language === 'less'
+    ? node.grammarType === 'Reference'
+    : node.grammarType === 'DollarValue' || node.grammarType === 'Reference';
+  if (!isReferenceNode) {
+    return null;
+  }
+  const authored = authoredVariableNameOf(source, absoluteStart(node), absoluteEnd(node));
+  if (authored === null) {
+    return null;
+  }
+  const variable = normalizedVariableName(authored.name, language);
+  if (!mapLikeVariables.has(variable)) {
+    return null;
+  }
+  const span = numericBracketAccessSpan(source, node);
+  if (span !== null && Number(span.start) !== authored.end) {
+    return null;
+  }
+  return span === null ? null : { variable, span };
 }
 
 function normalizedVariableName(name: string, language: JessLanguage): string {
@@ -3591,6 +3716,7 @@ export function cstLintDiagnostics(
   const customPropertyReferences: CustomPropertyReference[] = [];
   const variableDeclarations: VariableDeclarationFact[] = [];
   const variableReferences = new Set<string>();
+  const mapLikeVariables = new Set<string>();
   const ruleSelectorKeys = new Set<string>();
   const exactExtendTargets: ExactExtendTargetFact[] = [];
   let hasExternalSelectorSources = false;
@@ -3710,11 +3836,26 @@ export function cstLintDiagnostics(
     const variableDeclaration = variableDeclarationOf(source, node, language);
     if (variableDeclaration !== null) {
       variableDeclarations.push(variableDeclaration);
+      if (variableDeclarationIsMapLike(node, language)) {
+        mapLikeVariables.add(variableDeclaration.name);
+      } else {
+        mapLikeVariables.delete(variableDeclaration.name);
+      }
     }
 
     const variableReference = variableReferenceNameOf(source, node, language);
     if (variableReference !== null) {
       variableReferences.add(variableReference);
+    }
+
+    const suspiciousMapKeyAccess = suspiciousMapKeyAccessOf(source, node, language, mapLikeVariables);
+    if (suspiciousMapKeyAccess !== null) {
+      push(
+        LINT_CODES.suspiciousMapKeyAccess,
+        'warning',
+        `Numeric key access on map-like variable "${suspiciousMapKeyAccess.variable}" is probably an accidental positional lookup`,
+        suspiciousMapKeyAccess.span
+      );
     }
 
     if (language === 'css' && gt === 'DescriptorBlock' && descriptorAtRuleName === 'property') {

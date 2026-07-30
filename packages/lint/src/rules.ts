@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 37;
+export const STABLE_LINT_RULE_SET_VERSION = 38;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -50,6 +50,7 @@ export const LINT_RULE_NAMES = {
   duplicateModuleLoads: 'jess/no-duplicate-module-load',
   unboundedExtends: 'jess/no-unbounded-extend',
   deadExtends: 'jess/no-dead-extend',
+  suspiciousMapKeyAccess: 'jess/no-suspicious-map-key-access',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
 
@@ -109,6 +110,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.duplicateModuleLoads]: LINT_CODES.duplicateModuleLoads,
   [LINT_RULE_NAMES.unboundedExtends]: LINT_CODES.unboundedExtends,
   [LINT_RULE_NAMES.deadExtends]: LINT_CODES.deadExtends,
+  [LINT_RULE_NAMES.suspiciousMapKeyAccess]: LINT_CODES.suspiciousMapKeyAccess,
   [LINT_RULE_NAMES.unsupportedSassForm]: LINT_CODES.unsupportedSassForm
 };
 
@@ -155,6 +157,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.duplicateModuleLoads]: LINT_RULE_NAMES.duplicateModuleLoads,
   [LINT_CODES.unboundedExtends]: LINT_RULE_NAMES.unboundedExtends,
   [LINT_CODES.deadExtends]: LINT_RULE_NAMES.deadExtends,
+  [LINT_CODES.suspiciousMapKeyAccess]: LINT_RULE_NAMES.suspiciousMapKeyAccess,
   [LINT_CODES.unsupportedSassForm]: LINT_RULE_NAMES.unsupportedSassForm
 };
 
@@ -201,6 +204,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'warn',
   [LINT_RULE_NAMES.unboundedExtends]: 'warn',
   [LINT_RULE_NAMES.deadExtends]: 'warn',
+  [LINT_RULE_NAMES.suspiciousMapKeyAccess]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
 };
 
@@ -250,6 +254,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'off',
   [LINT_RULE_NAMES.unboundedExtends]: 'off',
   [LINT_RULE_NAMES.deadExtends]: 'off',
+  [LINT_RULE_NAMES.suspiciousMapKeyAccess]: 'off',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'off'
 };
 
@@ -663,6 +668,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'warn',
     comparison: 'jess-only',
     notes: 'Flags exact static Less/SCSS/Jess extend targets that match no same-file selector when the file has no imports or module loads; import graph reachability remains future work.'
+  },
+  {
+    diagnosticCode: LINT_CODES.suspiciousMapKeyAccess,
+    ruleName: LINT_RULE_NAMES.suspiciousMapKeyAccess,
+    title: 'Suspicious map key access',
+    tier: 'maintainability',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags numeric bracket or map-get() access against same-file map-like Less, SCSS, and Jess variables; project value facts can later replace the same-file approximation.'
   },
   {
     diagnosticCode: LINT_CODES.unsupportedSassForm,

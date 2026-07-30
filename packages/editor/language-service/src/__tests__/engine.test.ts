@@ -845,6 +845,20 @@ describe('JessLanguageServiceEngine', () => {
         disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
         expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-dead-extend');
       });
+
+      it('surfaces suspicious map key access diagnostics by default and allows disable', () => {
+        const source = '$tokens: (tone: blue);\n.a { color: map-get($tokens, 0); }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-suspicious-map-key-access');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-suspicious-map-key-access', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-suspicious-map-key-access');
+      });
     });
 
     describe('duplicateProperties (lint/duplicate-property)', () => {
