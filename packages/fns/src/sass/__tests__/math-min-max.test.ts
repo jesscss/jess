@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeDimension, makeKeyword, makeList, type Dimension } from '@jesscss/core/value';
+import { makeDimension, makeKeyword, makeList, type Dimension } from '@jesscss/core';
 import { sassMinMax } from '../math/min-max.js';
 
 /**

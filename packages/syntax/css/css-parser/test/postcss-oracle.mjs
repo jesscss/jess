@@ -56,7 +56,7 @@ function collectJessFacts(value) {
     if (typeof node !== 'object' || node === null) {
       return;
     }
-    if (node.type === 'Rule') {
+    if (node.type === 'Ruleset') {
       facts.rules += 1;
     } else if (node.type === 'Declaration') {
       facts.declarations += 1;

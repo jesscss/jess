@@ -1,5 +1,5 @@
-import { defineFunction } from '@jesscss/core/value';
-import type { Fn } from '@jesscss/core/value';
+import { defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core';
 import { colorBlend, requireColor } from './color-helper.js';
 
 /** per-channel `soft-light` blend (W3C compositing-1). */
@@ -15,6 +15,6 @@ export const softlightBase = (cb: number, cs: number): number => {
 
 /** `softlight(color1, color2)` — Photoshop soft-light blend. Byte-faithful to `less/softlight`. */
 export const softlight: Fn = defineFunction('softlight', {
-  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
+  params: [{ type: 'Color' }, { type: 'Color' }],
   body: (c1, c2) => colorBlend(softlightBase, requireColor(c1), requireColor(c2))
 });

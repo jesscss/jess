@@ -1,6 +1,12 @@
 /**
  * Canonical CSS grammar.
  *
+ * CSS owns the shared stylesheet structure: rulesets, declarations, selectors,
+ * values, standard at-rules, conditional query/supports/container preludes,
+ * custom properties, pseudos, and opaque unknown CSS at-rules. Dialects should
+ * reuse these rules unless they expand a specific value/selector/header shape
+ * or add language-specific statements.
+ *
  * Parseman reductions call core AST constructors directly in the default
  * artifact. The CST artifact is compiled from the same factory with
  * `hostMode: 'cst'` for language-service and dialect composition use.
@@ -20,9 +26,10 @@ import {
   atRuleBlock,
   atRuleStatement,
   color,
-  complexSelector,
-  complexCanonical,
-  compoundSelectorOf,
+  selectorBranchCanonical,
+  selectorBranchOf,
+  relativeSelector,
+  selectorTermOf,
   decl,
   dimension,
   funcCall,
@@ -48,22 +55,23 @@ import {
 import type {
   AtRuleBlock,
   OpaqueAtRuleBlock,
-  ComplexSelector as ComplexSelectorNode,
-  CompoundSelector as CompoundSelectorNode,
-  Color as ColorNode,
-  Declaration as DeclarationNode,
-  Dimension as DimensionNode,
+  CompoundSelector as AstCompoundSelector,
+  Color as AstColor,
+  Declaration as AstDeclaration,
+  Dimension as AstDimension,
   Interpolation,
   Keyword,
-  Quoted as QuotedNode,
-  Rule,
-  SelectorList as SelectorListNode,
+  Quoted as AstQuoted,
+  Ruleset as AstRuleset,
+  SelectorBranch as AstSelectorBranch,
+  SelectorList as AstSelectorList,
+  SelectorTerm as AstSelectorTerm,
   SimpleSelector,
   SimpleToken,
   Statement,
   ValueNode,
   ValueSlot,
-  Url as UrlNode
+  Url as AstUrl
 } from '@jesscss/core/ast';
 
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -90,8 +98,6 @@ type CssGrammarRuleName =
   | 'ContainerPrelude'
   | 'ContainerQueryClause'
   | 'ContainerQueryPrelude'
-  | 'CssOpaqueCaptureBody'
-  | 'CssOpaqueCapturePrelude'
   | 'CssSyntax'
   | 'CssSyntaxAttributeModifier'
   | 'CssSyntaxAttributeOperator'
@@ -171,7 +177,9 @@ type CssGrammarRuleName =
   | 'NestedStartingStyleBlock'
   | 'NestingSelector'
   | 'OfTypePseudoArgument'
+  | 'OpaqueAtRuleBodyCapture'
   | 'OpaqueAtPrelude'
+  | 'OpaqueAtRulePreludeCapture'
   | 'OpaqueAtRuleBlock'
   | 'OpaqueBody'
   | 'PageBlock'
@@ -369,21 +377,39 @@ function isSimpleToken(value: unknown): value is SimpleToken {
  */
 const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 
-function isCompound(value: unknown): value is CompoundSelectorNode {
+function isCompound(value: unknown): value is AstCompoundSelector {
   return isNodeType(
     value,
     'CompoundSelector'
   );
 }
 
-function isComplex(value: unknown): value is ComplexSelectorNode {
+function isSelectorTerm(value: unknown): value is AstSelectorTerm {
+  return isSimpleToken(value) || isCompound(value);
+}
+
+const selectorTermFromTokens = (tokens: readonly SimpleToken[]): AstSelectorTerm =>
+  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
+
+function isComplex(value: unknown): value is Extract<AstSelectorBranch, { readonly type: 'ComplexSelector' }> {
   return isNodeType(
     value,
     'ComplexSelector'
   );
 }
 
-function isSelectorList(value: unknown): value is SelectorListNode {
+function isRelative(value: unknown): value is Extract<AstSelectorBranch, { readonly type: 'RelativeSelector' }> {
+  return isNodeType(
+    value,
+    'RelativeSelector'
+  );
+}
+
+function isSelectorBranch(value: unknown): value is AstSelectorBranch {
+  return isSelectorTerm(value) || isComplex(value) || isRelative(value);
+}
+
+function isSelectorList(value: unknown): value is AstSelectorList {
   return isNodeType(
     value,
     'SelectorList'
@@ -404,17 +430,17 @@ function isInterpolation(value: unknown): value is Interpolation {
   );
 }
 
-function isDeclaration(value: unknown): value is DeclarationNode {
+function isDeclaration(value: unknown): value is AstDeclaration {
   return isNodeType(
     value,
     'Declaration'
   );
 }
 
-function isRule(value: unknown): value is Rule {
+function isRuleset(value: unknown): value is AstRuleset {
   return isNodeType(
     value,
-    'Rule'
+    'Ruleset'
   );
 }
 
@@ -456,8 +482,8 @@ function valueSlot(value: ValueSlot): ValueSlot {
   if (value.type === 'SpacedValue') {
     return value.parts;
   }
-  if (value.type === 'Block' && isValue(value.inner) && value.inner.type === 'SpacedValue') {
-    return { ...value, inner: value.inner.parts };
+  if (value.type === 'Block' && isValue(value.value) && value.value.type === 'SpacedValue') {
+    return { ...value, value: value.value.parts };
   }
   return value;
 }
@@ -503,7 +529,7 @@ function chainedQueryComparison(left: ValueNode, children: readonly unknown[]): 
   return result;
 }
 
-function isImportTarget(value: unknown): value is QuotedNode | { readonly type: 'Url'; readonly value: ValueNode } {
+function isImportTarget(value: unknown): value is AstQuoted | { readonly type: 'Url'; readonly value: ValueNode } {
   return isNodeType(
     value,
     'Quoted'
@@ -516,7 +542,7 @@ function isImportTarget(value: unknown): value is QuotedNode | { readonly type: 
 /** CSS `@import` is an ordinary statement at-rule. Its dedicated grammar only
  * validates the required target and retains its authored prelude; it does not
  * make import loading or resolution part of the AST. */
-function importPrelude(target: QuotedNode | { readonly type: 'Url'; readonly value: ValueNode }, tail: ValueNode | null): ValueNode {
+function importPrelude(target: AstQuoted | { readonly type: 'Url'; readonly value: ValueNode }, tail: ValueNode | null): ValueNode {
   const targetText = target.type === 'Url'
     ? `url(${sourceText(target.value)})`
     : target.src;
@@ -529,7 +555,7 @@ function isRulesetStatement(value: unknown): value is Statement {
 }
 
 function isDocumentStatement(value: unknown): value is Statement {
-  return isRule(value)
+  return isRuleset(value)
     || isNodeType(
       value,
       'AtRuleStatement'
@@ -541,40 +567,65 @@ function isDocumentStatement(value: unknown): value is Statement {
     || isOpaqueAtRuleBlock(value);
 }
 
-function selectorComplexes(children: readonly unknown[]): ComplexSelectorNode[] {
-  const selectors = children.filter(isComplex);
-  if (selectors.length === 0) {
-    throw new Error('SelectorList requires a complex selector');
-  }
-  return selectors;
-}
+const selectorBranches = (children: readonly unknown[]): AstSelectorBranch[] =>
+  children.filter(isSelectorBranch);
 
 function selectorArgumentText(value: unknown): string {
   if (isSelectorList(value)) {
-    return value.selectors.map(complexCanonical).join(',');
+    return value.selectors.map(selectorBranchCanonical).join(',');
   }
   return tokenText(value);
 }
 
-function complexSegments(children: readonly unknown[]): Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: CompoundSelectorNode }> {
-  const segments: Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: CompoundSelectorNode }> = [];
-  let comb: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
+type CssComplexSegment = { combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm };
+
+function cssCombinator(child: unknown): NonNullable<CssComplexSegment['combinator']> {
+  const token = tokenText(child);
+  if (token === '>' || token === '+' || token === '~' || token === '|' || token === '||') {
+    return token;
+  }
+  return ' ';
+}
+
+function cssRelativeCombinator(child: unknown): '>' | '+' | '~' {
+  const token = tokenText(child);
+  if (token === '>' || token === '+') {
+    return token;
+  }
+  return '~';
+}
+
+function complexSegments(children: readonly unknown[]): [CssComplexSegment, ...CssComplexSegment[]] {
+  const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }> = [];
+  let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   for (const child of children) {
-    if (isCompound(child)) {
-      segments.push(segments.length === 0 ? { compound: child } : { comb, compound: child });
-      comb = ' ';
+    if (isSelectorTerm(child)) {
+      segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
+      combinator = ' ';
       continue;
     }
-    const token = tokenText(child);
-    if (token !== '>' && token !== '+' && token !== '~' && token !== '|' && token !== '||') {
-      throw new Error('ComplexSelector has an invalid combinator');
+    combinator = cssCombinator(child);
+  }
+  return [segments[0]!, ...segments.slice(1)];
+}
+
+function branchSegments(branch: AstSelectorBranch): [CssComplexSegment, ...CssComplexSegment[]] {
+  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
+    return [{ term: branch }];
+  }
+  const segments: CssComplexSegment[] = [];
+  let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
+  const start = branch.type === 'RelativeSelector' ? 1 : 0;
+  for (let index = start; index < branch.value.length; index++) {
+    const part = branch.value[index]!;
+    if (typeof part === 'string') {
+      combinator = part;
+    } else {
+      segments.push(segments.length === 0 ? { term: part } : { combinator, term: part });
+      combinator = ' ';
     }
-    comb = token;
   }
-  if (segments.length === 0) {
-    throw new Error('ComplexSelector requires a compound selector');
-  }
-  return segments;
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 function valueChildren(children: readonly unknown[]): ValueNode[] {
@@ -670,11 +721,8 @@ function blockStatements(children: readonly unknown[]): Statement[] {
   return children.filter(isDocumentStatement);
 }
 
-function keyframeSelectorList(children: readonly unknown[]): SelectorListNode {
-  const selectors = children.filter(isSimple).map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
-  if (selectors.length === 0) {
-    throw new Error('KeyframeBlock requires a keyframe selector');
-  }
+function keyframeSelectorList(children: readonly unknown[]): AstSelectorList {
+  const selectors = children.filter(isSimple);
   return selist(...selectors);
 }
 
@@ -1250,10 +1298,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
 
   /*
-   * A `:has()` argument is a relative selector, so an individual complex may open
+   * A `:has()` argument is a relative selector, so an individual branch may open
    * with a combinator (`:has(> .b)`). The outer selector grammar forbids a leading
-   * combinator, so this pseudo-private complex admits an optional relative one and
-   * rides it on the ComplexSelector's `leadingComb`. A leading `|` is namespace
+   * combinator, so this pseudo-private branch admits an optional relative one and
+   * emits a `RelativeSelector`. A leading `|` is namespace
    * syntax, not a relative combinator, so it is excluded (mirrors Less's
    * `relativeSelectorCombinator`).
    */
@@ -1264,18 +1312,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.ComplexSelector
     ),
     (children) => {
-      const complex = children.find(isComplex);
-      if (complex === undefined) {
-        throw new Error('RelativeComplexSelector requires a complex selector');
-      }
+      const branch = children.find(isSelectorBranch)!;
       if (children.length === 1) {
-        return complex;
+        return branch;
       }
-      const lead = tokenText(children[0]);
-      if (lead !== '>' && lead !== '+' && lead !== '~') {
-        throw new Error('RelativeComplexSelector produced an invalid leading combinator');
-      }
-      return { ...complex, leadingComb: lead };
+      const lead = cssRelativeCombinator(children[0]);
+      return relativeSelector(lead, branchSegments(branch));
     }
   );
 
@@ -1284,7 +1326,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    * selector-ONLY argument: a (relative) selector list with no general-any text
    * fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
    * non-relative shape reduces byte-identically to `SelectorList` (both assemble
-   * `selist(...selectorComplexes(children))`); the retained `SelectorList` becomes
+   * `selist(...selectorBranches(children))`); the retained `SelectorList` becomes
    * structured `PseudoSelector.args` in `PseudoSelector`, never joined at parse.
    */
   const SelectorOnlyPseudoArgument = node(
@@ -1296,7 +1338,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal(',')
       )
     ),
-    children => selist(...selectorComplexes(children))
+    children => selist(...selectorBranches(children))
   );
 
   /*
@@ -1404,16 +1446,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.BasicSelector
       ))
     )),
-    (children) => {
-      const simples: SimpleToken[] = [];
-      for (const child of children) {
-        if (!isSimpleToken(child)) {
-          throw new TypeError('CompoundSelector produced a non-simple selector child.');
-        }
-        simples.push(child);
-      }
-      return compoundSelectorOf(simples);
-    }
+    children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
   const TopLevelCompoundSelector = node(
     'TopLevelCompoundSelector',
@@ -1431,16 +1464,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.BasicSelector
       ))
     )),
-    (children) => {
-      const simples: SimpleToken[] = [];
-      for (const child of children) {
-        if (!isSimpleToken(child)) {
-          throw new TypeError('TopLevelCompoundSelector produced a non-simple selector child.');
-        }
-        simples.push(child);
-      }
-      return compoundSelectorOf(simples);
-    }
+    children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
   const ComplexSelector = node(
     'ComplexSelector',
@@ -1458,7 +1482,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.CompoundSelector
       ))
     ),
-    children => complexSelector(complexSegments(children))
+    children => selectorBranchOf(complexSegments(children))
   );
   const TopLevelComplexSelector = node(
     'TopLevelComplexSelector',
@@ -1469,7 +1493,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.TopLevelCompoundSelector
       ))
     ),
-    children => complexSelector(complexSegments(children))
+    children => selectorBranchOf(complexSegments(children))
   );
   const SelectorList = node(
     'SelectorList',
@@ -1477,7 +1501,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.ComplexSelector,
       literal(',')
     ),
-    children => selist(...selectorComplexes(children))
+    children => selist(...selectorBranches(children))
   );
   const TopLevelSelectorList = node(
     'TopLevelSelectorList',
@@ -1485,7 +1509,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.TopLevelComplexSelector,
       literal(',')
     ),
-    children => selist(...selectorComplexes(children))
+    children => selist(...selectorBranches(children))
   );
   const Property = node(
     'Property',
@@ -1519,7 +1543,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     g.CssSyntaxCustomProperty,
     children => keyword(tokenText(children[0]))
   );
-  const Color = node<ColorNode>(
+  const Color = node<AstColor>(
     'Color',
     hexColor,
     children => color(tokenText(children[0]))
@@ -1535,7 +1559,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     g.CssSyntaxUnicodeRange,
     children => any(tokenText(children[0]))
   );
-  const Percentage = node<DimensionNode>(
+  const Percentage = node<AstDimension>(
     'Percentage',
     noTrivia(sequence(
       numberValue,
@@ -1550,7 +1574,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const Dimension = node<DimensionNode>(
+  const Dimension = node<AstDimension>(
     'Dimension',
     noTrivia(sequence(
       numberNoPercentage,
@@ -1566,7 +1590,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const Quoted = node<QuotedNode>(
+  const Quoted = node<AstQuoted>(
     'Quoted',
     choice(
       noTrivia(sequence(
@@ -1613,7 +1637,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     g.CssSyntaxUrlInner,
     children => any(tokenText(children[0]!))
   );
-  const Url = node<UrlNode>(
+  const Url = node<AstUrl>(
     'Url',
     sequence(
       urlOpen,
@@ -2128,7 +2152,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const UrlFunction = node<UrlNode>(
+  const UrlFunction = node<AstUrl>(
     'Url',
     sequence(
       routed(),
@@ -2670,7 +2694,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const OpaqueAtPrelude = node(
     'OpaqueAtPrelude',
-    g.CssOpaqueCapturePrelude,
+    g.OpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : tokenText(children[0]).trim();
       return text === '' ? null : text;
@@ -2678,7 +2702,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const OpaqueBody = node(
     'OpaqueBody',
-    g.CssOpaqueCaptureBody,
+    g.OpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : tokenText(children[0])
   );
   const OpaqueAtRuleBlock = node(
@@ -3302,7 +3326,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
-      children.filter((value): value is DeclarationNode | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
+      children.filter((value): value is AstDeclaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
     ), rawChildren)
   );
   const RoutedKeyframes = node(
@@ -3631,7 +3655,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
-      children.filter((value): value is DeclarationNode | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
+      children.filter((value): value is AstDeclaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
     ), rawChildren)
   );
   const keyframeSelector = node(
@@ -3692,10 +3716,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       expect(literal('}'), '}')
     ),
     (children, _fields, _span, rawChildren) => {
-      const selector = children.find(isSelectorList);
-      if (selector === undefined) {
-        throw new Error('Ruleset requires a selector');
-      }
+      const selector = children.find(isSelectorList)!;
       return withBlockBody(rule(
         selector,
         rulesetStatements(children)
@@ -3717,10 +3738,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       expect(literal('}'), '}')
     ),
     (children, _fields, _span, rawChildren) => {
-      const selector = children.find(isSelectorList);
-      if (selector === undefined) {
-        throw new Error('TopLevelRuleset requires a selector');
-      }
+      const selector = children.find(isSelectorList)!;
       return withBlockBody(rule(
         selector,
         rulesetStatements(children)
@@ -4035,7 +4053,7 @@ export const cssCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cs
   cssFactory
 )]);
 
-export const cssCstLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+export const cssDiagnosticCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], hostMode: 'cst', trackLines: true },
   cssFactory
 )]);
@@ -4047,11 +4065,10 @@ export type CssGrammarOptions = {
 
 export function cssGrammarFor(options: CssGrammarOptions = {}) {
   if (options.cst) {
-    return options.trackLines ? cssCstLineGrammar : cssCstGrammar;
+    return options.trackLines ? cssDiagnosticCstGrammar : cssCstGrammar;
   }
   return options.trackLines ? cssAstLineGrammar : cssAstGrammar;
 }
-
 export const {
   Stylesheet,
   Ruleset,

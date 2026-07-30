@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { absolutizeCST } from 'parseman';
-import { parseCssCst, parseCssDoc } from '../src/cst-css.js';
+import { parseCssCst, parseCssDiagnosticCst, parseCssDoc } from '../src/cst-css.js';
 import type { CssCstChild } from '../src/cst-css.js';
 
 /**
@@ -13,9 +13,9 @@ function cstStructKey(node: CssCstChild): unknown {
     return { l: node.value, s: node.span.start, e: node.span.end };
   }
   if (node._tag === 'error') {
-    return { err: node.type, s: node.span.start, e: node.span.end, children: node.children.map(cstStructKey) };
+    return { err: node.type, s: node.span.start, e: node.span.end, rules: node.rules.map(cstStructKey) };
   }
-  return { t: node.type, s: node.span.start, e: node.span.end, children: node.children.map(cstStructKey) };
+  return { t: node.type, s: node.span.start, e: node.span.end, rules: node.rules.map(cstStructKey) };
 }
 
 type CstNode = ReturnType<typeof parseCssCst>['tree'];
@@ -29,7 +29,7 @@ function nodesByGrammarType(tree: CstNode, grammarType: string): CstNode[] {
     if (node.grammarType === grammarType) {
       matches.push(node);
     }
-    node.children.forEach(visit);
+    node.rules.forEach(visit);
   };
   visit(tree);
   return matches;
@@ -51,7 +51,7 @@ function collect(tree: CstNode) {
       if (node.type === 'BasicSelector') {
         basicSelectors++;
       }
-      node.children.forEach(visit);
+      node.rules.forEach(visit);
     }
   };
   visit(tree);
@@ -75,8 +75,27 @@ describe('@jesscss/css-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
-    expect(result.tree.children.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
+    expect(result.tree.rules.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
     expectNoModeLabels(result.tree);
+  });
+
+  it('keeps line tracking isolated to the diagnostic CST artifact', () => {
+    const source = '.entry {\n  width: 0px;\n}\n';
+    const normal = parseCssCst(source);
+    const diagnostic = parseCssDiagnosticCst(source);
+    const normalDimension = nodesByGrammarType(normal.tree, 'Dimension')[0];
+    const diagnosticDimension = nodesByGrammarType(diagnostic.tree, 'Dimension')[0];
+
+    expect(normalDimension?.span).toMatchObject({ start: 18, end: 21 });
+    expect(normalDimension?.span.startLine).toBeUndefined();
+    expect(diagnosticDimension?.span).toMatchObject({
+      start: 18,
+      end: 21,
+      startLine: 2,
+      startColumn: 10,
+      endLine: 2,
+      endColumn: 13
+    });
   });
 
   it('ignores trailing CSS trivia but reports a non-trivia tail', () => {
@@ -92,7 +111,7 @@ describe('@jesscss/css-parser/cst', () => {
     const result = parseCssCst('a.foo { color: red; }', 'Stylesheet', { collapse: true });
 
     expect(result.errors).toHaveLength(0);
-    expect(result.tree.children.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
+    expect(result.tree.rules.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
     expectNoModeLabels(result.tree);
   });
 
@@ -167,7 +186,7 @@ describe('@jesscss/css-parser/cst', () => {
     expect(nodesByGrammarType(result.tree, 'QueryNonOnlyKeyword')).toHaveLength(2);
     expect(nodesByGrammarType(result.tree, 'QueryFunction')).toHaveLength(1);
     expect(nodesByGrammarType(result.tree, 'QueryIdentOrFunction')).toHaveLength(0);
-    expect(queryFunction?.children[0]).toMatchObject({
+    expect(queryFunction?.rules[0]).toMatchObject({
       _tag: 'leaf',
       value: 'style('
     });
@@ -193,7 +212,7 @@ describe('@jesscss/css-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     const url = nodesByGrammarType(result.tree, 'Url')[0];
-    expect(url?.children[0]).toMatchObject({
+    expect(url?.rules[0]).toMatchObject({
       _tag: 'leaf',
       value: 'URL('
     });

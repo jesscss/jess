@@ -1,4 +1,4 @@
-import { readEvalErrorLocation } from '../tree/util/provenance.js';
+import { readEvalErrorLocation } from './eval-error-location.js';
 
 /**
  * Derive 1-based line/column at a source offset. Line/col are not stored on

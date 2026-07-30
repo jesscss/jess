@@ -15,6 +15,10 @@ export interface SourceDiagnostic {
   readonly filePath?: string;
   readonly start: number;
   readonly end: number;
+  readonly line?: number;
+  readonly column?: number;
+  readonly endLine?: number;
+  readonly endColumn?: number;
 }
 
 export interface CssDiagnosticMetadata {

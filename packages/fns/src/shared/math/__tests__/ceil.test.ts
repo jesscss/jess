@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeDimension } from '@jesscss/core/value';
+import { makeDimension } from '@jesscss/core';
 import sharedCeil from '../ceil.js';
 
 describe('shared ceil()', () => {
@@ -12,6 +12,6 @@ describe('shared ceil()', () => {
   });
 
   it('rejects raw JavaScript numbers at the canonical callable boundary', () => {
-    expect(() => Reflect.apply(sharedCeil, undefined, [2.1])).toThrow('typed ValueObj');
+    expect(() => Reflect.apply(sharedCeil, undefined, [2.1])).toThrow('typed value node');
   });
 });

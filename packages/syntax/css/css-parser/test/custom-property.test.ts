@@ -42,7 +42,7 @@ describe('CSS custom properties', () => {
   for (const [label, source, expected, important = false] of ACCEPTED) {
     it(`accepts ${label}`, () => {
       expect(parse(source)).toMatchObject({
-        children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected }, important }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected }, important }] }]
       });
     });
   }
@@ -50,7 +50,7 @@ describe('CSS custom properties', () => {
   for (const name of NAMES) {
     it(`accepts the custom-property name \`${name}\``, () => {
       expect(parse(`a { ${name}: red; }`)).toMatchObject({
-        children: [{ type: 'Rule', body: [{ type: 'Declaration', name, value: { type: 'Any', src: 'red' } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name, value: { type: 'Any', src: 'red' } }] }]
       });
     });
   }
@@ -67,7 +67,7 @@ describe('CSS custom properties', () => {
 
   it('accepts a custom-property reference in a var() consumer', () => {
     expect(parse('a { color: var(--x, blue); }')).toMatchObject({
-      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] }]
     });
   });
 });

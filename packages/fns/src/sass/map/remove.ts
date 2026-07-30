@@ -6,44 +6,24 @@
  * @example
  * map.remove((a: 1, b: 2), a) // (b: 2)
  */
-import { defineFunction, Collection, Node, Declaration } from '@jesscss/core';
-import type { FunctionThis } from '@jesscss/core';
-import { isNode, N } from '@jesscss/core';
+import { defineFunction, makeCollection } from '@jesscss/core';
+import { entryIndex } from './util.js';
 
 const remove = defineFunction(
   'remove',
-  function(this: FunctionThis, map: Collection, ...keys: Node[]): Collection {
-    if (keys.length === 0) {
-      // No keys to remove, return map as-is
-      return map;
-    }
-
-    // Convert keys to strings
-    const keysToRemove = new Set(keys.map(k => String(k.valueOf())));
-
-    // Filter out declarations with keys to remove
-    const newRules = map.rules.filter((node) => {
-      if (isNode(node, N.Declaration)) {
-        const keyStr = String(node.name.valueOf());
-        return !keysToRemove.has(keyStr);
-      }
-      return true; // Keep non-declaration nodes
-    });
-
-    return new Collection(newRules, map.options);
-  },
   {
     params: [
-      {
-        name: 'map',
-        type: Collection
-      },
-      {
-        name: 'keys',
-        type: Node,
-        rest: true
+      { name: 'map', type: 'Collection' },
+      { name: 'keys', type: 'any', rest: true }
+    ] as const,
+    body: (map, keys) => {
+      if (keys.length === 0) {
+        return map;
       }
-    ]
+      const keyEntries = keys.map(key => ({ key, value: key }));
+      const entries = map.entries.filter(entry => entryIndex(keyEntries, entry.key) < 0);
+      return entries.length === map.entries.length ? map : makeCollection(entries, map.base);
+    }
   }
 );
 

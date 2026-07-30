@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { bindArgs } from '../mixin-dispatch.js';
 import {
   mixinDef, mixinCall, any, isLiteralNode, keyword,
-  type MixinCall, type MixinDef, type Param, type ValueSlot
+  type MixinCall, type MixinDefinition, type Param, type ValueSlot
 } from '../nodes.js';
 
 /*
@@ -25,7 +25,7 @@ import {
 const resolve = (v: ValueSlot): string =>
   'type' in v ? (isLiteralNode(v) ? v.src : '') : v.map(resolve).join(' ');
 
-const argumentsOf = (def: MixinDef, call: MixinCall): ValueSlot => {
+const argumentsOf = (def: MixinDefinition, call: MixinCall): ValueSlot => {
   const bound = bindArgs(def, call, resolve);
   expect(bound).not.toBeNull();
   const a = bound!.get('arguments');
@@ -45,7 +45,7 @@ const slotText = (value: ValueSlot): string => {
   return isLiteralNode(value) ? value.src : '';
 };
 
-const argumentsText = (def: MixinDef, call: MixinCall): string => slotText(argumentsOf(def, call));
+const argumentsText = (def: MixinDefinition, call: MixinCall): string => slotText(argumentsOf(def, call));
 
 describe('mixin @arguments (vs less@4.6.3)', () => {
   const params: Param[] = [

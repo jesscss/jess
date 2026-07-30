@@ -1,15 +1,16 @@
 /*
- * Value substrate + fn-authoring surface for `@jesscss/fns`. Append-only.
+ * Value substrate + fn-authoring compatibility barrel. Append-only.
  *
- * This is the single, narrow, named contract fns imports from core (`fns → core`,
- * one direction). Nothing reachable from this barrel may import `@jesscss/fns`
- * (grep-gated) — keeping the edge acyclic. Types are re-exported with `export type`
+ * New function/plugin authoring examples should import this surface from the
+ * `@jesscss/core` root. This subpath remains the narrow value-domain barrel for
+ * compatibility and for consumers that intentionally want only value helpers.
+ * Nothing reachable from this barrel may import `@jesscss/fns` (grep-gated),
+ * keeping the dependency edge acyclic. Types are re-exported with `export type`
  * so they are provably erased and never forge a runtime edge.
  */
 
 // --- value-domain types (erased) ---
 export type {
-  ValueObj,
   ValueGroup,
   Value,
   Dimension,
@@ -44,6 +45,8 @@ export {
   makeKeyword,
   makeAny,
   makeBool,
+  makeNil,
+  NIL,
   makeList,
   makeBlock,
   makeCollection,
@@ -64,7 +67,7 @@ export {
 } from './ast/value-list.js';
 
 // --- value-domain map (Collection) accessors ---
-export { isCollection, collectionEntries, collectionKeyIndex } from './ast/value-collection.js';
+export { isCollection, collectionEntries, collectionEntryIndex, collectionKeyIndex } from './ast/value-collection.js';
 
 // --- value serializer ---
 export { HEX, RGB, HSL, serializeColor, hslToRgb } from './ast/color.js';

@@ -4,12 +4,14 @@
  * CSS base: ../../../css/css-parser/src/grammar.ts
  *
  * Less adds and overrides:
- * - @variables, property variables, detached rulesets, mixins, guards, loops,
- *   plugin/import options, escaped strings, and dynamic selectors.
- * - Less-specific block and at-rule placement, including documented deviations
- *   from CSS ordering/nesting rules.
- * - Inline :extend(...) collection during selector parsing; selectors must not
- *   be reparsed to discover extends.
+ * - Language-specific features: @variables, property variables, detached
+ *   rulesets, mixins, guards, loops, plugin/import options, escaped strings,
+ *   and inline :extend(...). Extends are collected while parsing selectors
+ *   because reparsing selectors to discover them loses source ownership.
+ * - Expanded CSS shapes: dynamic/interpolated values, selectors, property
+ *   names, imports, and media/query terms where Less permits runtime data.
+ * - Less-specific placement: block and at-rule ordering/nesting deviations
+ *   that are documented Less behavior rather than generic CSS structure.
  *
  * Its structural `node(parser)` entries are consumed by the CST runner or by
  * parser-local AST reductions; core supplies neither a parse host nor a
@@ -24,8 +26,8 @@ import {
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, atRuleBlock, atRuleStatement, block, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
@@ -33,26 +35,26 @@ import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInline
 // ---------------------------------------------------------------------------
 
 type Token = { readonly value: string };
-type ChildContainer = { readonly children: readonly unknown[] };
+type ChildContainer = { readonly rules: readonly unknown[] };
 type InterpolationFact = { readonly ref: ValueNode; readonly src: string };
 type InterpolationAccessorFact = { readonly key: ValueNode | number; readonly keyKind: 'var' | 'prop' | 'index'; readonly src: string };
 /** A typed continuation of a left-associated public Reference chain. */
 type ReferenceTailFact = { readonly step: Reference['steps'][number]; readonly src: string };
-type ComplexTailFact = { readonly comb: ' ' | '>' | '+' | '~' | '|' | '||'; readonly compound: CompoundSelector };
-type MixinPathTailFact = { readonly comb: ' ' | '>'; readonly sel: string };
+type ComplexTailFact = { readonly combinator: ' ' | '>' | '+' | '~' | '|' | '||'; readonly term: SelectorTerm };
+type MixinPathSegmentFact = { readonly combinator: ' ' | '>'; readonly selector: string };
 type LessEachCallback = { readonly binding: ForBinding; readonly rules: Statement[] };
-type MixinGuard = NonNullable<MixinDef['guard']>;
+type MixinGuard = NonNullable<MixinDefinition['guard']>;
 type MixinCallArgument = MixinCall['args'][number];
 type CallValue = ValueSlot | MixinCall;
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
 /** Private grammar reduction: delimiters remain parser facts, while the public
- * MixinDef receives only the semantic Param array. */
+ * MixinDefinition receives only the semantic Param array. */
 type MixinParameterListFact = { readonly params: readonly Param[] };
 type MixinSignatureFact = { readonly name: string; readonly params: readonly Param[]; readonly guard?: MixinGuard };
 type StaticAttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
 type StaticAttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
-type SelectorBranchFact = { readonly selector: ComplexSelector; readonly extensions: readonly ExtendInstruction[] };
+type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
 type SelectorListWithExtendsFact = { readonly selector: SelectorList; readonly extensions: readonly ExtendInstruction[] };
 type CustomValuePart = string | InterpolationFact | VariableReference | readonly CustomValuePart[];
 type GeneralEnclosedNameFact = { readonly name: string };
@@ -133,13 +135,13 @@ type LessRules = {
   CustomSquare: Combinator<readonly CustomValuePart[]>;
   CustomCurly: Combinator<readonly CustomValuePart[]>;
   CustomValue: Combinator<ValueNode>;
-  CssCustomPropertyValue: Combinator<Keyword>;
+  CustomPropertyValue: Combinator<Keyword>;
   CustomDeclaration: Combinator<Declaration>;
   PunctuationMapDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
   MixinParam: Combinator<Param>;
   MixinParameterList: Combinator<MixinParameterListFact>;
-  MixinDefinition: Combinator<MixinDef>;
+  MixinDefinition: Combinator<MixinDefinition>;
   PositionalMixinCallArgument: Combinator<MixinCallArgument>;
   MixinArgumentGroup: Combinator<MixinCallArgument>;
   MixinArguments: Combinator<readonly MixinCallArgument[]>;
@@ -148,7 +150,7 @@ type LessRules = {
   FlatMixinCall: Combinator<MixinCall>;
   NamespacedMixinCall: Combinator<MixinCall>;
   NamespacedMixinValue: Combinator<MixinCall>;
-  MixinPathTail: Combinator<MixinPathTailFact>;
+  MixinPathTail: Combinator<MixinPathSegmentFact>;
   MixinReference: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
   MixinGuard: Combinator<MixinGuard>;
@@ -193,13 +195,13 @@ type LessRules = {
   MediaContainerBody: Combinator<readonly Statement[]>;
   MediaContainerBlock: Combinator<AtRuleBlock>;
   KeyframeSelector: Combinator<SimpleSelector>;
-  KeyframeBlock: Combinator<Rule>;
+  KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
   DottedAtRuleKeyword: Combinator<ValueNode>;
   StaticAtRuleAtom: Combinator<ValueNode>;
   StaticAtRuleTerm: Combinator<ValueNode>;
   StaticAtRulePrelude: Combinator<ValueNode>;
-  CssAtRulePrelude: Combinator<ValueNode | null>;
+  AtRulePrelude: Combinator<ValueNode | null>;
   NamespacePrelude: Combinator<ValueNode>;
   AtRuleBlock: Combinator<AtRuleBlock>;
   OpaqueAtPrelude: Combinator<string | null>;
@@ -216,10 +218,10 @@ type LessRules = {
   StaticPseudoGroup: Combinator<string>;
   StaticPseudoSquare: Combinator<string>;
   StaticPseudoQuoted: Combinator<string>;
-  StaticPseudoCompound: Combinator<CompoundSelector>;
+  StaticPseudoCompound: Combinator<SelectorTerm>;
   StaticPseudoComplexTail: Combinator<ComplexTailFact>;
-  StaticPseudoComplex: Combinator<ComplexSelector>;
-  StaticPseudoSelectorTail: Combinator<ComplexSelector>;
+  StaticPseudoComplex: Combinator<SelectorBranch>;
+  StaticPseudoSelectorTail: Combinator<SelectorBranch>;
   StaticPseudoSelector: Combinator<SelectorList>;
   StaticAttributeNamespace: Combinator<string>;
   StaticNamespaceType: Combinator<SimpleSelector>;
@@ -236,15 +238,18 @@ type LessRules = {
   AdjacentInterpolatedSelector: Combinator<SimpleSelector>;
   BareInterpolatedSelectorWithSuffix: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
-  Compound: Combinator<CompoundSelector>;
+  Compound: Combinator<SelectorTerm>;
   ComplexTail: Combinator<ComplexTailFact>;
-  Complex: Combinator<ComplexSelector>;
-  SelectorTail: Combinator<ComplexSelector>;
+  Complex: Combinator<SelectorBranch>;
+  RelativeComplex: Combinator<SelectorBranch>;
+  SelectorTail: Combinator<SelectorBranch>;
   Selector: Combinator<SelectorList>;
-  ExtendComplex: Combinator<ComplexSelector>;
+  RelativeSelector: Combinator<SelectorList>;
+  ExtendComplex: Combinator<SelectorBranch>;
   ExtendTarget: Combinator<ExtendTargetFact>;
   ExtendStatement: Combinator<ExtendInstruction[]>;
-  RulesetWithExtends: Combinator<Rule>;
+  RulesetWithExtends: Combinator<Ruleset>;
+  NestedRulesetWithExtends: Combinator<Ruleset>;
   Quoted: Combinator<Quoted | Interpolation>;
   StaticQuoted: Combinator<Quoted>;
   EscapedQuoted: Combinator<Quoted | Interpolation>;
@@ -326,8 +331,8 @@ function isUnsupportedVariableNameFact(value: unknown): value is UnsupportedVari
 function hasChildren(value: unknown): value is ChildContainer {
   return typeof value === 'object'
     && value !== null
-    && 'children' in value
-    && Array.isArray(value.children);
+    && 'rules' in value
+    && Array.isArray(value.rules);
 }
 
 function hasGrammarType(value: unknown, grammarType: string): boolean {
@@ -360,7 +365,7 @@ function variableNameTerminalText(value: unknown): string | undefined {
     return value.value;
   }
   if (hasChildren(value)) {
-    return variableNameTerminalText(value.children);
+    return variableNameTerminalText(value.rules);
   }
   return undefined;
 }
@@ -373,7 +378,7 @@ function unsupportedVariableNameFrom(value: unknown): string | undefined {
     return '-';
   }
   if (hasGrammarType(value, 'UnsupportedVariableName') && hasChildren(value)) {
-    return variableNameTerminalText(value.children);
+    return variableNameTerminalText(value.rules);
   }
   if (Array.isArray(value)) {
     for (const child of value) {
@@ -388,7 +393,7 @@ function unsupportedVariableNameFrom(value: unknown): string | undefined {
     return unsupportedVariableNameFrom(value.value);
   }
   if (hasChildren(value)) {
-    return unsupportedVariableNameFrom(value.children);
+    return unsupportedVariableNameFrom(value.rules);
   }
   return undefined;
 }
@@ -414,10 +419,10 @@ function requireString(value: unknown): string {
 
 function requireCombinator(value: unknown): SelectorCombinator {
   const text = requireTerminalText(value);
-  if (text !== ' ' && text !== '>' && text !== '+' && text !== '~' && text !== '|' && text !== '||') {
-    throw new TypeError('Less grammar produced an invalid selector combinator.');
+  if (text === '>' || text === '+' || text === '~' || text === '|' || text === '||') {
+    return text;
   }
-  return text;
+  return ' ';
 }
 
 function isTerminalText(value: unknown, text: string): boolean {
@@ -634,7 +639,7 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
  * reduced facts; it never inspects or re-parses source bytes. */
 function mixinArgumentSource(value: CallValue): string {
   if (isMixinCall(value)) {
-    const path = value.path.map((segment, index) => index === 0 ? segment.sel : `${segment.comb}${segment.sel}`).join('');
+    const path = value.path.map((segment, index) => index === 0 ? segment.selector : `${segment.combinator}${segment.selector}`).join('');
     const args = value.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ');
     return `${path}${value.name}(${args})${value.important ? ' !important' : ''}`;
   }
@@ -650,11 +655,11 @@ function mixinArgumentSource(value: CallValue): string {
     case 'VarIndirect': return `@${mixinArgumentSource(node.nameRef)}`;
     case 'Reference': return node.raw;
     case 'FunctionCall': return `${node.name}(${node.args.map(mixinArgumentSource).join(', ')})`;
-    case 'Block': return `${node.escaped ? '~' : ''}${node.delimiter === 'square' ? '[' : '('}${mixinArgumentSource(node.inner)}${node.delimiter === 'square' ? ']' : ')'}`;
+    case 'Block': return `${node.escaped ? '~' : ''}${node.delimiter === 'square' ? '[' : '('}${mixinArgumentSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     case 'Operation': return `${mixinArgumentSource(node.left)} ${node.operator} ${mixinArgumentSource(node.right)}`;
     case 'SpacedValue': return node.parts.map(mixinArgumentSource).join(' ');
     case 'List': return node.value.map(mixinArgumentSource).join(node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ');
-    case 'Important': return `${mixinArgumentSource(node.inner)} !important`;
+    case 'Important': return `${mixinArgumentSource(node.value)} !important`;
     default: throw new TypeError(`Less mixin-reference raw source cannot represent ${node.type}.`);
   }
 }
@@ -1086,19 +1091,16 @@ function spacedFromValueChildren(
 }
 
 function isComplexTailFact(value: unknown): value is ComplexTailFact {
-  return typeof value === 'object' && value !== null && 'comb' in value && 'compound' in value;
+  return typeof value === 'object' && value !== null && 'combinator' in value && 'term' in value;
 }
 
-/** Shared `optional(combinator) compound` selector-tail reduction: the compound
+/** Shared `optional(combinator) term` selector-tail reduction: the term
  * and combinator sub-rules vary by selector family, but the fold to a
- * `{ comb, compound }` fact is identical. */
+ * `{ combinator, term }` fact is identical. */
 function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
-  const compound = children.find(isCompound);
-  if (compound === undefined) {
-    throw new TypeError('Less grammar produced a selector tail without a compound.');
-  }
-  const token = children.find(child => !isCompound(child));
-  return { comb: token === undefined ? ' ' : requireCombinator(token), compound };
+  const token = children.find(child => !isSelectorTerm(child));
+  const term = children.find(isSelectorTerm)!;
+  return { combinator: token === undefined ? ' ' : requireCombinator(token), term };
 }
 
 /** Space-separated query clause reduction: keyword/value children join into a
@@ -1238,8 +1240,8 @@ function valueSlot(value: ValueSlot): ValueSlot {
   if (isSpacedValue(value)) {
     return value.parts;
   }
-  if (isValueNode(value) && value.type === 'Block' && isSpacedValue(value.inner)) {
-    return { ...value, inner: value.inner.parts };
+  if (isValueNode(value) && value.type === 'Block' && isSpacedValue(value.value)) {
+    return { ...value, value: value.value.parts };
   }
   return value;
 }
@@ -1270,10 +1272,10 @@ function variableValueSlot(value: unknown): ValueSlot {
     const authoredBoundary = slot.separators?.some(separator => separator.length > 0) === true;
     return preservedDivision && authoredBoundary ? slot : slot.parts;
   }
-  if (isValueNode(slot) && slot.type === 'Block' && isSpacedValue(slot.inner)) {
-    const preservedDivision = slot.inner.parts.some(part =>
+  if (isValueNode(slot) && slot.type === 'Block' && isSpacedValue(slot.value)) {
+    const preservedDivision = slot.value.parts.some(part =>
       (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
-    return preservedDivision ? slot : { ...slot, inner: slot.inner.parts };
+    return preservedDivision ? slot : { ...slot, value: slot.value.parts };
   }
   return slot;
 }
@@ -1387,24 +1389,43 @@ function isComplex(value: unknown): value is ComplexSelector {
     && value !== null
     && 'type' in value
     && value.type === 'ComplexSelector'
-    && 'head' in value
-    && 'tail' in value
-    && Array.isArray(value.tail);
+    && 'value' in value
+    && Array.isArray(value.value);
 }
 
-function requireComplex(value: unknown): ComplexSelector {
-  if (!isComplex(value)) {
-    throw new TypeError('Less grammar produced a non-complex selector child.');
-  }
-  return value;
+function isRelative(value: unknown): value is Extract<SelectorBranch, { readonly type: 'RelativeSelector' }> {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'RelativeSelector'
+    && 'value' in value
+    && Array.isArray(value.value);
 }
 
-function requireComplexes(children: readonly unknown[]): ComplexSelector[] {
-  const selectors: ComplexSelector[] = [];
-  for (const child of children) {
-    selectors.push(requireComplex(child));
+function isSelectorBranch(value: unknown): value is SelectorBranch {
+  return isSelectorTerm(value) || isComplex(value) || isRelative(value);
+}
+
+const selectorBranchesFrom = (children: readonly unknown[]): SelectorBranch[] =>
+  children.filter(isSelectorBranch);
+
+function branchSegments(branch: SelectorBranch): [{ combinator?: SelectorCombinator; term: SelectorTerm }, ...Array<{ combinator?: SelectorCombinator; term: SelectorTerm }>] {
+  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
+    return [{ term: branch }];
   }
-  return selectors;
+  const segments: Array<{ combinator?: SelectorCombinator; term: SelectorTerm }> = [];
+  let combinator: SelectorCombinator = ' ';
+  const start = branch.type === 'RelativeSelector' ? 1 : 0;
+  for (let index = start; index < branch.value.length; index++) {
+    const part = branch.value[index]!;
+    if (typeof part === 'string') {
+      combinator = part;
+    } else {
+      segments.push(segments.length === 0 ? { term: part } : { combinator, term: part });
+      combinator = ' ';
+    }
+  }
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -1444,13 +1465,16 @@ function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[
   return span === undefined ? node : withBodySpan(node, span);
 }
 
-function isCompound(value: unknown): value is CompoundSelector {
+function isSelectorTerm(value: unknown): value is SelectorTerm {
+  if (isSimpleToken(value)) {
+    return true;
+  }
   return typeof value === 'object'
     && value !== null
     && 'type' in value
     && value.type === 'CompoundSelector'
-    && 'simples' in value
-    && Array.isArray(value.simples);
+    && 'value' in value
+    && Array.isArray(value.value);
 }
 
 function isSimpleSelector(value: unknown): value is SimpleSelector {
@@ -1476,12 +1500,8 @@ function isSimpleToken(value: unknown): value is SimpleToken {
     && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
 }
 
-function requireSimpleToken(value: unknown): SimpleToken {
-  if (!isSimpleToken(value)) {
-    throw new TypeError('Less AST grammar produced a non-simple selector child.');
-  }
-  return value;
-}
+const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
+  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
 function pseudoNameFromHead(head: string): string {
   return head.slice(0, 2) === '::'
@@ -1495,7 +1515,7 @@ function staticSelectorPseudoFrom(head: string, arg: unknown): SimpleToken {
   if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoNameFromHead(head).toLowerCase())) {
     return pseudoSelector(head, arg);
   }
-  return simpleSelector(`${head}(${requireSelectorList(arg).selectors.map(complexCanonical).join(',')})`);
+  return simpleSelector(`${head}(${requireSelectorList(arg).selectors.map(selectorBranchCanonical).join(',')})`);
 }
 
 function staticNonSelectorPseudoFrom(head: string, arg: string | null): SimpleSelector {
@@ -1504,28 +1524,21 @@ function staticNonSelectorPseudoFrom(head: string, arg: string | null): SimpleSe
     : simpleSelector(`${head}(${arg})`);
 }
 
-function requireCompound(value: unknown): CompoundSelector {
-  if (!isCompound(value)) {
-    throw new TypeError('Less grammar produced a non-compound selector child.');
-  }
-  return value;
-}
-
-function isRule(value: unknown): value is Rule {
+function isRuleset(value: unknown): value is Ruleset {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
-    && value.type === 'Rule'
+    && value.type === 'Ruleset'
     && 'selector' in value
     && isSelectorList(value.selector)
-    && 'body' in value
-    && Array.isArray(value.body);
+    && 'rules' in value
+    && Array.isArray(value.rules);
 }
 
 function isAtRuleBlock(value: unknown): value is AtRuleBlock {
   return typeof value === 'object' && value !== null && 'type' in value
     && value.type === 'AtRuleBlock' && 'name' in value && typeof value.name === 'string'
-    && 'prelude' in value && 'body' in value && Array.isArray(value.body);
+    && 'prelude' in value && 'rules' in value && Array.isArray(value.rules);
 }
 
 function isAtRuleStatement(value: unknown): value is AtRuleStatement {
@@ -1534,10 +1547,10 @@ function isAtRuleStatement(value: unknown): value is AtRuleStatement {
     && 'prelude' in value;
 }
 
-function isMixinDef(value: unknown): value is MixinDef {
+function isMixinDefinition(value: unknown): value is MixinDefinition {
   return typeof value === 'object' && value !== null && 'type' in value
-    && value.type === 'MixinDef' && 'name' in value && typeof value.name === 'string'
-    && 'params' in value && Array.isArray(value.params) && 'body' in value && Array.isArray(value.body);
+    && value.type === 'MixinDefinition' && 'name' in value && typeof value.name === 'string'
+    && 'params' in value && Array.isArray(value.params) && 'rules' in value && Array.isArray(value.rules);
 }
 
 function isMixinCall(value: unknown): value is MixinCall {
@@ -1591,7 +1604,7 @@ function isExtendTargetFact(value: unknown): value is ExtendTargetFact {
 
 function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
   return typeof value === 'object' && value !== null
-    && 'selector' in value && isComplex(value.selector)
+    && 'selector' in value && isSelectorBranch(value.selector)
     && 'extensions' in value && Array.isArray(value.extensions)
     && value.extensions.every(isExtendInstruction);
 }
@@ -1610,9 +1623,9 @@ function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExt
   return value;
 }
 
-function isMixinPathTail(value: unknown): value is MixinPathTailFact {
-  return typeof value === 'object' && value !== null && 'comb' in value
-    && (value.comb === ' ' || value.comb === '>') && 'sel' in value && typeof value.sel === 'string';
+function isMixinPathTail(value: unknown): value is MixinPathSegmentFact {
+  return typeof value === 'object' && value !== null && 'combinator' in value
+    && (value.combinator === ' ' || value.combinator === '>') && 'selector' in value && typeof value.selector === 'string';
 }
 
 function isMixinCallArgument(value: unknown): value is MixinCallArgument {
@@ -1699,7 +1712,7 @@ function functionConditionSource(value: ValueSlot): string {
     case 'VariableReference': return `@${node.name}`;
     case 'FunctionCall': return `${node.name}(${node.args.map(functionConditionSource).join(', ')})`;
     case 'Operation': return `${functionConditionSource(node.left)} ${node.operator} ${functionConditionSource(node.right)}`;
-    case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.inner)}${node.delimiter === 'square' ? ']' : ')'}`;
+    case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     case 'SpacedValue': return node.parts.map(functionConditionSource).join(' ');
     case 'Condition': return node.src;
     default: throw new TypeError(`Less function condition cannot preserve ${node.type}.`);
@@ -1740,8 +1753,8 @@ function isStatement(value: unknown): value is Statement {
       return isVarDeclaration(value);
     case 'Declaration':
       return isDeclaration(value);
-    case 'Rule':
-      return isRule(value);
+    case 'Ruleset':
+      return isRuleset(value);
     case 'AtRuleBlock':
       return isAtRuleBlock(value);
     case 'OpaqueAtRuleBlock':
@@ -1750,8 +1763,8 @@ function isStatement(value: unknown): value is Statement {
       return isAtRuleStatement(value);
     case 'Plugin':
       return true;
-    case 'MixinDef':
-      return isMixinDef(value);
+    case 'MixinDefinition':
+      return isMixinDefinition(value);
     case 'MixinCall':
       return isMixinCall(value);
     case 'Reference':
@@ -1788,14 +1801,14 @@ function isFor(value: unknown): value is For {
 }
 
 function requireRulesetBody(children: readonly unknown[]): Statement[] {
-  const body: Statement[] = [];
+  const rules: Statement[] = [];
   for (const child of children) {
     if (!isStatement(child)) {
       throw new TypeError('Less grammar produced a non-ruleset-body child.');
     }
-    body.push(child);
+    rules.push(child);
   }
-  return body;
+  return rules;
 }
 
 /** Retain every callback body fact except an authored empty statement. */
@@ -2203,14 +2216,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
         : withSourceSpan(base, span);
     }
   );
-  const MixinPathTail = node<MixinPathTailFact>(
+  const MixinPathTail = node<MixinPathSegmentFact>(
     'MixinPathTail',
     sequence(optional(mixinPathCombinator), mixinName),
     (children) => {
       const combToken = children.find(child => isTerminalText(child, '>'));
       return {
-        comb: combToken === undefined ? ' ' : '>',
-        sel: requireToken(children.at(-1)).value
+        combinator: combToken === undefined ? ' ' : '>',
+        selector: requireToken(children.at(-1)).value
       };
     }
   );
@@ -2903,7 +2916,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       g.IndirectVariableReference,
       g.VariableReferenceChain,
       g.PropertyReference,
-      g.CssCustomPropertyValue,
+      g.CustomPropertyValue,
       g.Dimension,
       g.Color,
       g.NamedColor,
@@ -3254,8 +3267,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // It reduces to the same Keyword the css/scss/jess grammars produce, and the
   // same one StaticAtRuleCustomProperty already produces for the
   // identical token in an at-rule header.
-  const CssCustomPropertyValue = node<Keyword>(
-    'CssCustomPropertyValue',
+  const CustomPropertyValue = node<Keyword>(
+    'CustomPropertyValue',
     g.LessSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
@@ -3370,7 +3383,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
         throw new TypeError('Less grammar produced an invalid declaration merge modifier.');
       }
       const node = !Array.isArray(value) && isValueNode(value) && value.type === 'Important'
-        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, valueSlot(value.inner), merge, true, valueOnNewLine)
+        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, valueSlot(value.value), merge, true, valueOnNewLine)
         : decl(isInterp(rawName) ? rawName : requireToken(rawName).value, Array.isArray(value) ? value : valueSlot(value), merge, false, valueOnNewLine);
       return withSourceSpan(node, span);
     }
@@ -3705,13 +3718,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       const head = requireToken(children[0]).value;
       const tails = children.filter(isMixinPathTail);
       const last = tails.at(-1);
-      const call = mixinCall(last?.sel ?? head, mixinArgumentsFromChildren(children));
+      const call = mixinCall(last?.selector ?? head, mixinArgumentsFromChildren(children));
       return withSourceSpan({
         ...call,
         ...(tails.length > 0
           ? {
               path: [
-                { comb: ' ', sel: head },
+                { combinator: ' ', selector: head },
                 ...tails.slice(0, -1)
               ]
             }
@@ -3730,9 +3743,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       const head = requireToken(children[0]).value;
       const tails = children.filter(isMixinPathTail);
       const last = tails.at(-1);
-      const call = mixinCall(last?.sel ?? head, []);
+      const call = mixinCall(last?.selector ?? head, []);
       const path: MixinCall['path'] = [
-        { comb: ' ', sel: head },
+        { combinator: ' ', selector: head },
         ...tails.slice(0, -1)
       ];
       const withPath = tails.length === 0
@@ -3781,9 +3794,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       if (last === undefined) {
         throw new TypeError('Less namespaced iterable lost its final mixin name.');
       }
-      const path: MixinCall['path'] = [{ comb: ' ', sel: head }, ...tails.slice(0, -1)];
+      const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
       return {
-        ...mixinCall(last.sel, mixinArgumentsFromChildren(children)),
+        ...mixinCall(last.selector, mixinArgumentsFromChildren(children)),
         path
       };
     }
@@ -3809,9 +3822,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       if (last === undefined) {
         throw new TypeError('Less namespaced variable value lost its final mixin name.');
       }
-      const path: MixinCall['path'] = [{ comb: ' ', sel: head }, ...tails.slice(0, -1)];
+      const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
       const call = {
-        ...mixinCall(last.sel, mixinArgumentsFromChildren(children)),
+        ...mixinCall(last.selector, mixinArgumentsFromChildren(children)),
         path
       };
       return children.some(child => isTerminalText(child, '!important')) ? { ...call, important: true } : call;
@@ -3832,12 +3845,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       const head = requireToken(children[0]).value;
       const tails = children.filter(isMixinPathTail);
       const terminal = tails.at(-1);
-      const call = mixinCall(terminal?.sel ?? head, mixinArgumentsFromChildren(children));
-      const withPath = tails.length === 0
-        ? call
-        : { ...call, path: [{ comb: ' ', sel: head }, ...tails.slice(0, -1)] as MixinCall['path'] };
+      const call = mixinCall(terminal?.selector ?? head, mixinArgumentsFromChildren(children));
+      const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
+      const withPath = tails.length === 0 ? call : { ...call, path };
       const hasCall = children.some(child => isTerminalText(child, '('));
-      const raw = `${head}${tails.map(tail => `${tail.comb}${tail.sel}`).join('')}${hasCall ? `(${withPath.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` : ''}`;
+      const raw = `${head}${tails.map(tail => `${tail.combinator}${tail.selector}`).join('')}${hasCall ? `(${withPath.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` : ''}`;
       return { call: withPath, raw };
     }
   );
@@ -4085,7 +4097,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   // A `node()` reduction boundary keeps the gated group's single mixin fact from
   // splicing the zero-width lookahead marker into the parent statement list; the
-  // reducer returns the inner MixinDef/MixinCall/MixinCall (bare) node unchanged,
+  // reducer returns the inner MixinDefinition/MixinCall/MixinCall (bare) node unchanged,
   // so the emitted AST and its `type`-keyed shape are identical to the ungrouped
   // arms. `collapse` lets parseman drop the transparent wrapper allocation.
   const mixinStatement = node<Statement>(
@@ -4113,11 +4125,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // emitted AST and PEG priority are unchanged; a `node()` boundary keeps the
   // lookahead marker from splicing into the statement list.
   const rulesetNotDeclaration = not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
-  const guardedRuleset = node<Rule>(
+  const guardedRuleset = node<Ruleset>(
     'GuardedRuleset',
     sequence(rulesetNotDeclaration, g.RulesetWithExtends),
     (children) => {
-      const ruleset = children.find(isRule);
+      const ruleset = children.find(isRuleset);
       if (ruleset === undefined) {
         throw new TypeError('Less declaration-guarded ruleset lost its rule.');
       }
@@ -4180,7 +4192,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     },
     { collapse: true }
   );
-  const blockItem = choice(atStatement, mixinStatement, g.Each, g.FunctionStatement, guardedRuleset, declarationItem, literal(';'));
+  const nestedGuardedRuleset = node<Ruleset>(
+    'GuardedRuleset',
+    sequence(rulesetNotDeclaration, g.NestedRulesetWithExtends),
+    (children) => {
+      const ruleset = children.find(isRuleset);
+      if (ruleset === undefined) {
+        throw new TypeError('Less guarded ruleset lost its ruleset fact.');
+      }
+      return ruleset;
+    },
+    { collapse: true }
+  );
+  const blockItem = choice(atStatement, mixinStatement, g.Each, g.FunctionStatement, nestedGuardedRuleset, declarationItem, literal(';'));
   const blockBody = many(blockItem);
   // The ruleset body adds one extra arm (`ExtendStatement`) after the
   // shared arms. Nesting the shared choice ahead of it preserves the original
@@ -4189,7 +4213,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // former flat `choice(<shared arms>, ExtendStatement, ';')` because
   // an extend head never matches `;` or any shared arm the flat list did not.
   const rulesetBody = many(choice(blockItem, g.ExtendStatement));
-  const MixinDefinition = node<MixinDef>(
+  const MixinDefinition = node<MixinDefinition>(
     'MixinOrQualifiedRule',
     sequence(
       mixinSignature,
@@ -4793,7 +4817,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       );
     }
   );
-  // Keyframes use the existing canonical AtRuleBlock + Rule shape. Keeping the
+  // Keyframes use the existing canonical AtRuleBlock + Ruleset shape. Keeping the
   // header and selector list structural avoids routing valid CSS keyframes
   // through the generic Less at-rule/ruleset combination, which cannot model
   // percentage selectors as selector facts.
@@ -4806,7 +4830,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     choice(keyframeEndpoint, keyframePercent),
     children => simpleSelector(requireToken(children[0]).value)
   );
-  const KeyframeBlock = node<Rule>(
+  const KeyframeBlock = node<Ruleset>(
     'KeyframeBlock',
     sequence(
       oneOrMoreSep(
@@ -4820,7 +4844,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     (children, _fields, span, rawChildren) => {
       const selectors = children.filter(isSimpleSelector)
-        .map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
+        .map(selector => selector);
       if (selectors.length === 0) {
         throw new TypeError('Less keyframe block requires a selector.');
       }
@@ -4952,8 +4976,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     scanSkipSingleString
   ));
   const atPreludeText = noTrivia(regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
-  const CssAtRulePrelude = node<ValueNode | null>(
-    'CssAtRulePrelude',
+  const AtRulePrelude = node<ValueNode | null>(
+    'AtRulePrelude',
     parser(
       { trivia: atPreludeCommentTrivia },
       many(choice(
@@ -5024,7 +5048,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     )),
     sequence(
       not(peek(regex(/[ \t\n\r\f]*:/))),
-      g.CssAtRulePrelude,
+      g.AtRulePrelude,
       atRuleBlockBody
     )
   );
@@ -5132,7 +5156,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
             )),
             sequence(
               not(peek(regex(/[ \t\n\r\f]*:/))),
-              g.CssAtRulePrelude,
+              g.AtRulePrelude,
               literal(';')
             )
           )
@@ -5153,7 +5177,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const nth = requireToken(children[0]).value;
       const selector = children.find(isSelectorList);
-      return selector === undefined ? nth : `${nth} of ${selector.selectors.map(complexCanonical).join(',')}`;
+      return selector === undefined ? nth : `${nth} of ${selector.selectors.map(selectorBranchCanonical).join(',')}`;
     }
   );
   const StaticNthPseudo: Combinator<SimpleSelector> = choice(
@@ -5260,7 +5284,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // Retain the parsed `SelectorList` rather than collapsing it to text. A
   // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
   // `args`; `StaticSelectorPseudo` joins the opaque `:global`/`:local`
-  // fallback via `complexCanonical`. The parser never bakes the inline
+  // fallback via `selectorBranchCanonical`. The parser never bakes the inline
   // `:is(a, b)` spelling — core serialization owns that.
   const staticPseudoArgument = node<SelectorList>(
     'StaticPseudoArgument',
@@ -5271,13 +5295,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // comment immediately between two simple selectors is lexical trivia, not a
   // descendant relation (`.a/*x*/.b` is one compound); actual whitespace still
   // belongs to the complex-tail descendant boundary.
-  const StaticPseudoCompound = node<CompoundSelector>(
+  const StaticPseudoCompound = node<SelectorTerm>(
     'StaticPseudoCompound',
     parser(
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.StaticNamespaceType, staticSimpleSelector, staticAmpersand, g.StaticPseudo, g.StaticNthPseudo, g.StaticAttribute))
     ),
-    children => compoundSelectorOf(children.map((child) => {
+    children => selectorTermFromTokens(children.map((child) => {
       return isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
     }))
   );
@@ -5291,7 +5315,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.StaticPseudoCompound)),
     combinatorTailReducer
   );
-  const StaticPseudoComplex = node<ComplexSelector>(
+  const StaticPseudoComplex = node<SelectorBranch>(
     'StaticPseudoComplex',
     sequence(
       optional(relativeSelectorCombinator),
@@ -5299,23 +5323,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(whenGuardAhead), g.StaticPseudoComplexTail))
     ),
     (children) => {
-      const head = requireCompound(children.find(isCompound));
+      const head = children.find(isSelectorTerm)!;
       const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
-      return complexSelector([
-        { compound: head },
+      const branch = selectorBranchOf([
+        { term: head },
         ...children.filter(isComplexTailFact)
-      ], leading === undefined ? undefined : requireCombinator(leading));
+      ]);
+      return leading === undefined ? branch : relativeSelector(requireCombinator(leading), branchSegments(branch));
     }
   );
-  const StaticPseudoSelectorTail = node<ComplexSelector>(
+  const StaticPseudoSelectorTail = node<SelectorBranch>(
     'StaticPseudoSelectorTail',
     sequence(literal(','), parser({ trivia: staticSelectorTrivia }, g.StaticPseudoComplex)),
-    children => requireComplex(children[1])
+    children => children.find(isSelectorBranch)!
   );
   const StaticPseudoSelector = node<SelectorList>(
     'StaticPseudoSelector',
     sequence(g.StaticPseudoComplex, many(g.StaticPseudoSelectorTail)),
-    children => selist(...requireComplexes(children))
+    children => selist(...selectorBranchesFrom(children))
   );
   // `*[ … ]` is only the glued capture delimiter around the existing static
   // selector-list grammar. It is a selector-valued Less value, not a text
@@ -5326,7 +5351,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(noTrivia(literal('*[')), parser({ trivia: staticSelectorTrivia }, g.StaticPseudoSelector), noTrivia(literal(']'))),
     (children) => {
       const selector = requireSelectorList(children[1]);
-      const branches = selector.selectors.map(complexCanonical);
+      const branches = selector.selectors.map(selectorBranchCanonical);
       return selectorCapture(branches, `*[${branches.join(', ')}]`);
     }
   );
@@ -5405,7 +5430,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const StaticPseudo = node<SimpleToken>(
     'StaticPseudo',
     staticPseudoDispatch,
-    children => requireSimpleToken(children.find(isSimpleToken))
+    children => children.find(isSimpleToken)!
   );
   // A Less pseudo name may itself be interpolated (`:@{pseudo}` / `::@{pseudo}`)
   // and remains one interpolation-backed selector atom. Keep the delimiter and
@@ -5631,7 +5656,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.StaticAttribute,
     g.InterpolatedAttribute
   );
-  const Compound: Combinator<CompoundSelector> = node<CompoundSelector>(
+  const Compound: Combinator<SelectorTerm> = node<SelectorTerm>(
     'Compound',
     // Production's CompoundSelector is a run of adjacent simple selectors.
     // Keep that same structural distinction here: `.a#id` is one CompoundSelector with
@@ -5644,32 +5669,35 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     parser({ trivia: compoundSelectorTrivia }, oneOrMore(compoundSimple)),
     (children) => {
       const simples = children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value));
-      return compoundSelectorOf(simples);
+      return selectorTermFromTokens(simples);
     }
   );
-  const Complex = node<ComplexSelector>(
+  const Complex = node<SelectorBranch>(
     'Complex',
     sequence(
-      optional(relativeSelectorCombinator),
       g.Compound,
       many(sequence(not(whenGuardAhead), g.ComplexTail))
     ),
     (children, _fields, span) => {
-      const head = children.find(isCompound);
-      if (head === undefined) {
-        throw new TypeError('Less grammar produced a selector without a head compound.');
-      }
-      const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
-      const tails = children.filter(isComplexTailFact).map((tail): ComplexTailFact => {
-        if (typeof tail !== 'object' || tail === null || !('comb' in tail) || !('compound' in tail)) {
-          throw new TypeError('Less grammar produced an invalid selector tail.');
-        }
-        return tail as ComplexTailFact;
-      });
-      return withSourceSpan(complexSelector([
-        { compound: head },
+      const head = children.find(isSelectorTerm)!;
+      const tails = children.filter(isComplexTailFact);
+      const branch = selectorBranchOf([
+        { term: head },
         ...tails
-      ], leading === undefined ? undefined : requireCombinator(leading)), span);
+      ]);
+      return withSourceSpan(branch, span);
+    }
+  );
+  const RelativeComplex = node<SelectorBranch>(
+    'RelativeComplex',
+    sequence(
+      optional(relativeSelectorCombinator),
+      g.Complex
+    ),
+    (children, _fields, span) => {
+      const branch = children.find(isSelectorBranch)!;
+      const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
+      return withSourceSpan(leading === undefined ? branch : relativeSelector(requireCombinator(leading), branchSegments(branch)), span);
     }
   );
   const ComplexTail = node<ComplexTailFact>(
@@ -5677,38 +5705,43 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(optional(staticCombinator), g.Compound),
     combinatorTailReducer
   );
-  const SelectorTail = node<ComplexSelector>(
+  const SelectorTail = node<SelectorBranch>(
     'SelectorTail',
     sequence(literal(','), g.Complex),
-    children => requireComplex(children[1])
+    children => children.find(isSelectorBranch)!
   );
   const Selector = node<SelectorList>(
     'Selector',
     parser({ trivia: outerSelectorTrivia }, sequence(g.Complex, many(g.SelectorTail))),
-    (children, _fields, span) => withSourceSpan(selist(...requireComplexes(children)), span)
+    (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
+  );
+  const RelativeSelector = node<SelectorList>(
+    'RelativeSelector',
+    parser({ trivia: outerSelectorTrivia }, sequence(g.RelativeComplex, many(g.SelectorTail))),
+    (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
   const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-  const StaticExtendCompound = node<CompoundSelector>(
+  const StaticExtendCompound = node<SelectorTerm>(
     'StaticExtendCompound',
     parser(
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.StaticNamespaceType, staticSimpleSelector, staticAmpersand, pseudo, g.StaticNthPseudo, g.StaticAttribute))
     ),
-    children => compoundSelectorOf(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
+    children => selectorTermFromTokens(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
   const StaticExtendComplexTail = node<ComplexTailFact>(
     'StaticExtendComplexTail',
     sequence(optional(staticCombinator), StaticExtendCompound),
     combinatorTailReducer
   );
-  const ExtendComplex = node<ComplexSelector>(
+  const ExtendComplex = node<SelectorBranch>(
     'ExtendComplex',
     sequence(
       StaticExtendCompound,
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), StaticExtendComplexTail))
     ),
-    (children, _fields, span) => withSourceSpan(complexSelector([
-      { compound: requireCompound(children[0]) },
+    (children, _fields, span) => withSourceSpan(selectorBranchOf([
+      { term: children.find(isSelectorTerm)! },
       // The terminal-flag lookahead is a recognition-only child. Keep only
       // actual tail facts: otherwise the successful stop check is emitted as
       // a fake descendant tail with no compound.
@@ -5720,7 +5753,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(optional(staticCombinator), g.Compound),
     combinatorTailReducer
   );
-  const ExtendTargetComplex = node<ComplexSelector>(
+  const ExtendTargetComplex = node<SelectorBranch>(
     'ExtendTargetComplex',
     sequence(
       // An extend target can carry a typed selector interpolation, unlike its
@@ -5728,8 +5761,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       g.Compound,
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), ExtendTargetComplexTail))
     ),
-    (children, _fields, span) => withSourceSpan(complexSelector([
-      { compound: requireCompound(children[0]) },
+    (children, _fields, span) => withSourceSpan(selectorBranchOf([
+      { term: children.find(isSelectorTerm)! },
       ...children.slice(1).filter(isComplexTailFact)
     ]), span)
   );
@@ -5737,7 +5770,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'ExtendTarget',
     sequence(ExtendTargetComplex, optional(extendAllFlag)),
     children => ({
-      target: selist(requireComplex(children[0])),
+      target: selist(children.find(isSelectorBranch)!),
       partial: children.some(child => isTerminalText(child, 'all') || isTerminalText(child, '!all'))
     })
   );
@@ -5769,7 +5802,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'SelectorBranch',
     sequence(ExtendComplex, selectorBranchContinuation),
     (children) => {
-      const subject = requireComplex(children[0]);
+      const subject = children.find(isSelectorBranch)!;
       const extensions = children
         .filter(Array.isArray)
         .flatMap(child => child.filter(isExtendTargetFact))
@@ -5780,7 +5813,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DynamicSelectorBranch = node<SelectorBranchFact>(
     'SelectorBranch',
     g.Complex,
-    children => ({ selector: requireComplex(children[0]), extensions: [] })
+    children => ({ selector: children.find(isSelectorBranch)!, extensions: [] })
   );
   const selectorListWithExtends = node<SelectorListWithExtendsFact>(
     'SelectorListWithExtends',
@@ -5798,7 +5831,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions)
     })
   );
-  const RulesetWithExtends = node<Rule>(
+  const relativeSelectorListWithExtends = node<SelectorListWithExtendsFact>(
+    'SelectorListWithExtends',
+    parser(
+      { trivia: outerSelectorTrivia },
+      oneOrMoreSep(
+        choice(SelectorBranch, node<SelectorBranchFact>(
+          'SelectorBranch',
+          g.RelativeComplex,
+          children => ({ selector: children.find(isSelectorBranch)!, extensions: [] })
+        )),
+        literal(',')
+      )
+    ),
+    (children, _fields, span) => ({
+      selector: withSourceSpan(selist(...children.flatMap(child => isSelectorBranchFact(child)
+        ? [child.selector]
+        : [])), span),
+      extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions)
+    })
+  );
+  const RulesetWithExtends = node<Ruleset>(
     'Ruleset',
     sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
@@ -5810,6 +5863,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
           selectorFact.selector,
           // The fixed sequence places only direct declaration/comment facts between
           // the braces. This validates that fact list; it never reparses body text.
+          requireRulesetBody(children.filter(isStatement)),
+          extensions.length === 0 ? undefined : extensions,
+          children.find(isMixinGuard)
+        ),
+        rawChildren
+      ), span);
+    }
+  );
+  const NestedRulesetWithExtends = node<Ruleset>(
+    'Ruleset',
+    sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
+    (children, _fields, span, rawChildren) => {
+      const selectorFact = requireSelectorListWithExtendsFact(children[0]);
+      const bodyExtensions = children.filter(Array.isArray).flatMap(child => child.filter(isExtendInstruction));
+      const extensions = [...selectorFact.extensions, ...bodyExtensions];
+      return withSourceSpan(withBlockBody(
+        rule(
+          selectorFact.selector,
           requireRulesetBody(children.filter(isStatement)),
           extensions.length === 0 ? undefined : extensions,
           children.find(isMixinGuard)
@@ -5892,7 +5963,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     CustomSquare,
     CustomCurly,
     CustomValue,
-    CssCustomPropertyValue,
+    CustomPropertyValue,
     CustomDeclaration,
     PunctuationMapDeclaration,
     Declaration,
@@ -5957,7 +6028,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     StaticAtRuleAtom,
     StaticAtRuleTerm,
     StaticAtRulePrelude,
-    CssAtRulePrelude,
+    AtRulePrelude,
     NamespacePrelude,
     AtRuleBlock,
     OpaqueAtPrelude,
@@ -6003,6 +6074,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     ExtendTarget,
     ExtendStatement,
     RulesetWithExtends,
+    RelativeComplex,
+    RelativeSelector,
+    NestedRulesetWithExtends,
     Quoted,
     StaticQuoted,
     EscapedQuoted,
@@ -6030,7 +6104,8 @@ export const lessAstLineGrammar = lessLineGrammar;
 /** Public Less CST artifact: the same grammar factory compiled in CST mode. */
 export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst' }, lessGrammarFactory)]);
 
-export const lessCstLineGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst', trackLines: true }, lessGrammarFactory)]);
+/** Diagnostic Less CST artifact: CST mode with Parseman line tracking enabled. */
+export const lessDiagnosticCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst', trackLines: true }, lessGrammarFactory)]);
 
 export type LessGrammarOptions = {
   readonly cst?: boolean;
@@ -6039,7 +6114,7 @@ export type LessGrammarOptions = {
 
 export function lessGrammarFor(options: LessGrammarOptions = {}) {
   if (options.cst) {
-    return options.trackLines ? lessCstLineGrammar : lessCstGrammar;
+    return options.trackLines ? lessDiagnosticCstGrammar : lessCstGrammar;
   }
   return options.trackLines ? lessAstLineGrammar : lessAstGrammar;
 }

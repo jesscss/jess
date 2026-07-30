@@ -38,7 +38,7 @@ function collectJessFacts(value) {
   const facts = emptyFacts();
   walkAuthoredAst(value, {
     enterNode(node) {
-      if (node.type === 'Rule') {
+      if (node.type === 'Ruleset') {
         facts.rules += 1;
       } else if (node.type === 'Declaration') {
         facts.declarations += 1;

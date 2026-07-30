@@ -1,5 +1,5 @@
 import type { MathMode } from '../../types/modes.js';
-import type { Operator } from './calculate.js';
+import type { Operator } from '../../util/calculate.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import type { Node } from '../node.js';

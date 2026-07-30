@@ -1,4 +1,4 @@
-import { defineFunction, makeKeyword } from '@jesscss/core/value';
+import { defineFunction, makeKeyword } from '@jesscss/core';
 
 /** The base-36 range dart-sass draws from: always six digits, never zero-padded away. */
 const MIN = 36 ** 5;

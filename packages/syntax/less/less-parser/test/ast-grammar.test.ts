@@ -1,5 +1,5 @@
 import { run } from 'parseman';
-import type { Stylesheet } from '@jesscss/core/ast';
+import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseLessCst, type LessCstChild } from '../src/cst.js';
 import { lessAstGrammar } from '../src/grammar.js';
@@ -17,8 +17,7 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && value !== null
     && 'type' in value
     && value.type === 'Stylesheet'
-    && 'children' in value
-    && Array.isArray(value.children)
+    && Array.isArray(value.rules)
   );
 }
 
@@ -62,6 +61,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function selectorTermTokens(term: SelectorTerm): unknown[] {
+  return term.type === 'CompoundSelector' ? term.value : [term];
+}
+
+function firstSelectorTerm(branch: SelectorBranch): SelectorTerm {
+  if (branch.type === 'ComplexSelector') {
+    return branch.value[0];
+  }
+  if (branch.type === 'RelativeSelector') {
+    return branch.value[1];
+  }
+  return branch;
+}
+
 function findCstNodes(
   node: LessCstChild,
   grammarType: string
@@ -72,7 +85,7 @@ function findCstNodes(
   const self = node.grammarType === grammarType ? [node] : [];
   return [
     ...self,
-    ...node.children.flatMap(child => findCstNodes(child, grammarType))
+    ...node.rules.flatMap(child => findCstNodes(child, grammarType))
   ];
 }
 
@@ -80,7 +93,7 @@ function cstLeafValues(node: LessCstChild): string[] {
   if (node._tag === 'leaf') {
     return [node.value];
   }
-  return node.children.flatMap(cstLeafValues);
+  return node.rules.flatMap(cstLeafValues);
 }
 
 function cstIssueCount(result: ReturnType<typeof parseLessCst>): number {
@@ -100,7 +113,7 @@ describe('Less AST grammar facts', () => {
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(stylesheet(result.value).children.slice(0, 2)).toMatchObject([
+    expect(stylesheet(result.value).rules.slice(0, 2)).toMatchObject([
       {
         type: 'VariableDeclaration',
         name: 'space',
@@ -129,10 +142,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'color',
@@ -142,6 +155,13 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
+
+    const rootRelative = run(
+      lessAstGrammar.Document,
+      '> .second { color: purple; }',
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(rootRelative.ok && rootRelative.unconsumedFrom === null && isStylesheet(rootRelative.value)).toBe(false);
   });
 
   it('completes a document with final Less line-comment trivia', () => {
@@ -154,7 +174,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'VariableDeclaration', name: 'tone' }]
+      rules: [{ type: 'VariableDeclaration', name: 'tone' }]
     });
   });
 
@@ -168,7 +188,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule' }]
+      rules: [{ type: 'Ruleset' }]
     });
   });
 
@@ -183,12 +203,12 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@document',
           prelude: { type: 'FunctionCall', name: 'url-prefix', args: [] },
-          body: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         }
       ]
     });
@@ -205,12 +225,12 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@unknown',
           prelude: { type: 'Any', src: '[data-x="}"] and (--flag: value)' },
-          body: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         }
       ]
     });
@@ -227,7 +247,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleStatement',
           name: '@unknown',
@@ -248,12 +268,12 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@unknown',
           prelude: { type: 'SpacedValue' },
-          body: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         }
       ]
     });
@@ -270,7 +290,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@-moz-document',
@@ -279,7 +299,7 @@ describe('Less AST grammar facts', () => {
             name: 'regexp',
             args: [{ type: 'Quoted', value: '(\\d{0,15})' }]
           },
-          body: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         }
       ]
     });
@@ -296,7 +316,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@unknown',
@@ -312,7 +332,7 @@ describe('Less AST grammar facts', () => {
               }
             ]
           },
-          body: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         }
       ]
     });
@@ -328,12 +348,12 @@ describe('Less AST grammar facts', () => {
     expect(block.unconsumedFrom).toBeNull();
     expect(block.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@-moz-document',
           prelude: { type: 'Url' },
-          body: []
+          rules: []
         }
       ]
     });
@@ -347,7 +367,7 @@ describe('Less AST grammar facts', () => {
     expect(statement.unconsumedFrom).toBeNull();
     expect(statement.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleStatement',
           name: '@arbitrary',
@@ -365,7 +385,7 @@ describe('Less AST grammar facts', () => {
     expect(detachedCall.unconsumedFrom).toBeNull();
     expect(detachedCall.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Reference' }]
+      rules: [{ type: 'Reference' }]
     });
   });
 
@@ -380,7 +400,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@-x-document',
@@ -405,7 +425,7 @@ describe('Less AST grammar facts', () => {
     expect(generic.unconsumedFrom).toBeNull();
     expect(generic.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           prelude: {
             type: 'FunctionCall',
@@ -428,10 +448,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               value: {
@@ -480,10 +500,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               value: {
@@ -564,7 +584,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'x' },
         { type: 'VariableDeclaration', name: 'v' }
       ]
@@ -601,7 +621,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'v',
@@ -622,7 +642,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'For',
           binding: { kind: 'comma', names: ['abbrev', 'prop', undefined] }
@@ -642,40 +662,51 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
-              type: 'Rule',
+              type: 'Ruleset',
               selector: {
                 selectors: [
                   {
-                    head: {
-                      simples: [
-                        { type: 'SimpleSelector', text: '&', interp: null },
+                    value: [
+                      {
+                        type: 'CompoundSelector',
+                        value: [
+                          { type: 'SimpleSelector', text: '&', interp: null },
 
-                        // The argument is typed parts, never a joined string.
-                        {
-                          type: 'SimpleSelector',
-                          text: null,
-                          interp: {
-                            type: 'Interpolation',
-                            parts: [
-                              { lit: ':lang(' },
-                              {
-                                ref: {
-                                  type: 'VariableReference',
-                                  name: 'lang'
+                          // The argument is typed parts, never a joined string.
+                          {
+                            type: 'SimpleSelector',
+                            text: null,
+                            interp: {
+                              type: 'Interpolation',
+                              parts: [
+                                { lit: ':lang(' },
+                                {
+                                  ref: {
+                                    type: 'VariableReference',
+                                    name: 'lang'
+                                  },
+                                  unquote: true
                                 },
-                                unquote: true
-                              },
-                              { lit: ')' }
-                            ]
+                                { lit: ')' }
+                              ]
+                            }
                           }
-                        }
-                      ]
-                    }
+                        ]
+                      },
+                      '~',
+                      {
+                        type: 'CompoundSelector',
+                        value: [
+                          { type: 'SimpleSelector', text: '.b', interp: null },
+                          { type: 'SimpleSelector', text: '::after', interp: null }
+                        ]
+                      }
+                    ]
                   }
                 ]
               }
@@ -709,16 +740,14 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: ':lang(en)', interp: null }
-                  ]
-                }
+                type: 'SimpleSelector',
+                text: ':lang(en)',
+                interp: null
               }
             ]
           }
@@ -738,10 +767,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               value: [
@@ -768,7 +797,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@unknown',
@@ -780,7 +809,7 @@ describe('Less AST grammar facts', () => {
               {
                 type: 'Block',
                 delimiter: 'paren',
-                inner: { type: 'Keyword', src: 'bar' }
+                value: { type: 'Keyword', src: 'bar' }
               }
             ]
           }
@@ -802,7 +831,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@page',
@@ -829,7 +858,7 @@ describe('Less AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'targets',
@@ -878,7 +907,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'For',
           iterable: {
@@ -1015,7 +1044,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'For',
           iterable: {
@@ -1059,9 +1088,9 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         {
-          body: [
+          rules: [
             {
               type: 'For',
               binding: { kind: 'comma', names: ['value', 'index', undefined] }
@@ -1086,13 +1115,13 @@ describe('Less AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'MixinDef', name: '.values' },
+      rules: [
+        { type: 'MixinDefinition', name: '.values' },
         {
           type: 'For',
           iterable: { type: 'MixinCall', name: '.values', args: [], path: [] },
           binding: { kind: 'comma', names: ['value', 'key', undefined] },
-          rules: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         }
       ]
     });
@@ -1112,13 +1141,13 @@ describe('Less AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
-            selectors: [{ head: { simples: [{ text: '.library' }] } }]
+            selectors: [{ type: 'SimpleSelector', text: '.library' }]
           },
-          body: [{ type: 'MixinDef', name: '.values' }]
+          rules: [{ type: 'MixinDefinition', name: '.values' }]
         },
         {
           type: 'For',
@@ -1126,10 +1155,10 @@ describe('Less AST grammar facts', () => {
             type: 'MixinCall',
             name: '.values',
             args: [],
-            path: [{ comb: ' ', sel: '.library' }]
+            path: [{ combinator: ' ', selector: '.library' }]
           },
           binding: { kind: 'comma', names: ['value', 'key', undefined] },
-          rules: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         }
       ]
     });
@@ -1174,8 +1203,8 @@ describe('Less AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'MixinDef', name: '.make-map' },
+      rules: [
+        { type: 'MixinDefinition', name: '.make-map' },
         {
           type: 'VariableDeclaration',
           name: 'map',
@@ -1205,7 +1234,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'For',
           binding: { kind: 'comma', names: ['value', 'key', 'index'] },
@@ -1234,16 +1263,16 @@ describe('Less AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           value: {
             type: 'AnonymousMixin',
-            body: [
+            rules: [
               {
                 type: 'AtRuleBlock',
                 name: '@keyframes',
-                body: [{ type: 'Rule' }]
+                rules: [{ type: 'Ruleset' }]
               }
             ]
           }
@@ -1255,7 +1284,7 @@ describe('Less AST grammar facts', () => {
               type: 'AtRuleBlock',
               name: '@-webkit-keyframes',
               prelude: { type: 'Quoted', value: 'slide' },
-              body: [{ type: 'Rule' }]
+              rules: [{ type: 'Ruleset' }]
             }
           ]
         }
@@ -1275,7 +1304,7 @@ describe('Less AST grammar facts', () => {
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'theme',
@@ -1289,23 +1318,14 @@ describe('Less AST grammar facts', () => {
           write: { mode: 'declare' }
         },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.a', interp: null }
-                  ]
-                },
-                tail: []
-              }
+              { type: 'SimpleSelector', text: '.a', interp: null }
             ]
           },
-          body: [
+          rules: [
             {
               type: 'Declaration',
               name: 'color',
@@ -1360,12 +1380,12 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'name' },
         { type: 'VariableDeclaration', name: 'tone' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'color',
@@ -1403,11 +1423,11 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'a' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'sum',
@@ -1432,7 +1452,7 @@ describe('Less AST grammar facts', () => {
                 left: {
                   type: 'Block',
                   delimiter: 'paren',
-                  inner: { type: 'Operation', operator: '+' }
+                  value: { type: 'Operation', operator: '+' }
                 },
                 right: { type: 'Dimension', src: '3' }
               }
@@ -1447,7 +1467,7 @@ describe('Less AST grammar facts', () => {
                 right: {
                   type: 'Block',
                   delimiter: 'paren',
-                  inner: { type: 'Operation', operator: '+' }
+                  value: { type: 'Operation', operator: '+' }
                 }
               }
             },
@@ -1546,7 +1566,7 @@ describe('Less AST grammar facts', () => {
       expect(direct.ok, source).toBe(true);
       expect(direct.unconsumedFrom, source).toBeNull();
       expect(stylesheet(direct.value), source).toMatchObject({
-        children: [{ body: [{ name: 'v', value }] }]
+        rules: [{ rules: [{ name: 'v', value }] }]
       });
     }
 
@@ -1583,10 +1603,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'background',
@@ -1646,10 +1666,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'product',
@@ -1702,10 +1722,10 @@ describe('Less AST grammar facts', () => {
     expect(product.ok && product.unconsumedFrom === null).toBe(true);
     expect(product.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'star',
@@ -1749,8 +1769,8 @@ describe('Less AST grammar facts', () => {
       trivia: lessAstGrammar.whitespace
     });
     expect(spacedSum.value).toMatchObject({
-      children: [
-        { body: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
+      rules: [
+        { rules: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
       ]
     });
   });
@@ -1767,7 +1787,7 @@ describe('Less AST grammar facts', () => {
       throw new TypeError('Expected a Less Stylesheet.');
     }
     expect(
-      result.value.children.find(
+      result.value.rules.find(
         child =>
           child.type === 'VariableDeclaration'
           && child.name === 'gridsystem-width'
@@ -1790,7 +1810,7 @@ describe('Less AST grammar facts', () => {
     if (!isStylesheet(result.value)) {
       throw new TypeError('expected Stylesheet');
     }
-    expect(result.value.children[0]).toMatchObject({
+    expect(result.value.rules[0]).toMatchObject({
       type: 'VariableDeclaration',
       name: 'ratio',
       value: [
@@ -1822,7 +1842,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'trivia',
@@ -1839,8 +1859,8 @@ describe('Less AST grammar facts', () => {
           }
         },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'bare',
@@ -1904,7 +1924,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'Reference',
           base: { type: 'VariableReference', name: 'theme', lookup: 'scoped' },
@@ -1912,8 +1932,8 @@ describe('Less AST grammar facts', () => {
           raw: '@theme()'
         },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Reference',
               base: {
@@ -1943,15 +1963,15 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'FunctionCall',
           name: 'e',
           args: [{ type: 'Quoted', value: 'x' }]
         },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'FunctionCall',
               name: 'e',
@@ -1976,10 +1996,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'text',
@@ -2025,10 +2045,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               value: {
@@ -2048,7 +2068,7 @@ describe('Less AST grammar facts', () => {
 
   it('constructs static body and inline extends with exact/all multi-target semantics', () => {
     const source =
-      '.target { color: navy; } .body { &:extend(.target, .other !all); } .first, .inline:extend(.target all), .sibling { color: red; }';
+      '.target { color: navy; } .rules { &:extend(.target, .other !all); } .first, .inline:extend(.target all), .sibling { color: red; }';
     const result = run(lessAstGrammar.Document, source, {
       trivia: lessAstGrammar.whitespace
     });
@@ -2057,23 +2077,23 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'Rule', selector: { type: 'SelectorList' } },
+      rules: [
+        { type: 'Ruleset', selector: { type: 'SelectorList' } },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           extendInstructions: [
             { target: { type: 'SelectorList' }, partial: false },
             { target: { type: 'SelectorList' }, partial: true }
           ]
         },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
-              { type: 'ComplexSelector' },
-              { type: 'ComplexSelector' },
-              { type: 'ComplexSelector' }
+              { type: 'SimpleSelector', text: '.first' },
+              { type: 'SimpleSelector', text: '.inline' },
+              { type: 'SimpleSelector', text: '.sibling' }
             ]
           },
           extendInstructions: [
@@ -2082,7 +2102,7 @@ describe('Less AST grammar facts', () => {
               partial: true,
               subject: {
                 type: 'SelectorList',
-                selectors: [{ type: 'ComplexSelector' }]
+                selectors: [{ type: 'SimpleSelector', text: '.inline' }]
               }
             }
           ]
@@ -2105,34 +2125,25 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                head: { simples: [{ text: '.first' }] }
-              },
-              {
-                type: 'ComplexSelector',
-                head: { simples: [{ text: '.inline' }] }
-              },
-              {
-                type: 'ComplexSelector',
-                head: { simples: [{ text: '.sibling' }] }
-              }
+              { type: 'SimpleSelector', text: '.first' },
+              { type: 'SimpleSelector', text: '.inline' },
+              { type: 'SimpleSelector', text: '.sibling' }
             ]
           },
           extendInstructions: [
             {
               partial: true,
               subject: {
-                selectors: [{ head: { simples: [{ text: '.inline' }] } }]
+                selectors: [{ type: 'SimpleSelector', text: '.inline' }]
               },
               target: {
-                selectors: [{ head: { simples: [{ text: '.target' }] } }]
+                selectors: [{ type: 'SimpleSelector', text: '.target' }]
               }
             }
           ]
@@ -2167,42 +2178,33 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
                 type: 'ComplexSelector',
-                head: { simples: [{ text: '.ext3' }] },
-                tail: [
-                  { comb: '>', compound: { simples: [{ text: '.leaf' }] } }
-                ]
+                value: [{ text: '.ext3' }, '>', { text: '.leaf' }]
               },
               {
-                type: 'ComplexSelector',
-                head: { simples: [{ text: '.ext4' }, { text: ':hover' }] }
+                type: 'CompoundSelector',
+                value: [{ text: '.ext4' }, { text: ':hover' }]
               },
-              {
-                type: 'ComplexSelector',
-                head: { simples: [{ text: '.plain' }] }
-              }
+              { type: 'SimpleSelector', text: '.plain' }
             ]
           },
           extendInstructions: [
             {
               partial: true,
               target: {
-                selectors: [{ head: { simples: [{ text: '.foo' }] } }]
+                selectors: [{ type: 'SimpleSelector', text: '.foo' }]
               },
               subject: {
                 selectors: [
                   {
-                    head: { simples: [{ text: '.ext3' }] },
-                    tail: [
-                      { comb: '>', compound: { simples: [{ text: '.leaf' }] } }
-                    ]
+                    value: [{ text: '.ext3' }, '>', { text: '.leaf' }]
                   }
                 ]
               }
@@ -2210,12 +2212,13 @@ describe('Less AST grammar facts', () => {
             {
               partial: true,
               target: {
-                selectors: [{ head: { simples: [{ text: '.bar' }] } }]
+                selectors: [{ type: 'SimpleSelector', text: '.bar' }]
               },
               subject: {
                 selectors: [
                   {
-                    head: { simples: [{ text: '.ext4' }, { text: ':hover' }] }
+                    type: 'CompoundSelector',
+                    value: [{ text: '.ext4' }, { text: ':hover' }]
                   }
                 ]
               }
@@ -2248,17 +2251,14 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
-              { head: { simples: [{ text: '.active' }, { text: '&' }] } },
+              { type: 'CompoundSelector', value: [{ text: '.active' }, { text: '&' }] },
               {
-                head: { simples: [{ text: '.ext1' }] },
-                tail: [
-                  { comb: ' ', compound: { simples: [{ text: '.ext2' }] } }
-                ]
+                value: [{ text: '.ext1' }, ' ', { text: '.ext2' }]
               }
             ]
           },
@@ -2267,11 +2267,11 @@ describe('Less AST grammar facts', () => {
               partial: false,
               subject: {
                 selectors: [
-                  { head: { simples: [{ text: '.active' }, { text: '&' }] } }
+                  { type: 'CompoundSelector', value: [{ text: '.active' }, { text: '&' }] }
                 ]
               },
               target: {
-                selectors: [{ head: { simples: [{ text: '.target' }] } }]
+                selectors: [{ type: 'SimpleSelector', text: '.target' }]
               }
             },
             {
@@ -2279,15 +2279,12 @@ describe('Less AST grammar facts', () => {
               subject: {
                 selectors: [
                   {
-                    head: { simples: [{ text: '.ext1' }] },
-                    tail: [
-                      { comb: ' ', compound: { simples: [{ text: '.ext2' }] } }
-                    ]
+                    value: [{ text: '.ext1' }, ' ', { text: '.ext2' }]
                   }
                 ]
               },
               target: {
-                selectors: [{ head: { simples: [{ text: '.foo' }] } }]
+                selectors: [{ type: 'SimpleSelector', text: '.foo' }]
               }
             }
           ]
@@ -2335,19 +2332,16 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           extendInstructions: [
             {
               partial: true,
               target: {
                 selectors: [
                   {
-                    head: { simples: [{ text: '.a' }] },
-                    tail: [
-                      { comb: ' ', compound: { simples: [{ text: '.b' }] } }
-                    ]
+                    value: [{ text: '.a' }, ' ', { text: '.b' }]
                   }
                 ]
               }
@@ -2357,10 +2351,7 @@ describe('Less AST grammar facts', () => {
               target: {
                 selectors: [
                   {
-                    head: { simples: [{ text: '.c' }] },
-                    tail: [
-                      { comb: '>', compound: { simples: [{ text: '.d' }] } }
-                    ]
+                    value: [{ text: '.c' }, '>', { text: '.d' }]
                   }
                 ]
               }
@@ -2385,13 +2376,13 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'MixinDef', name: '.paint' },
-        { type: 'Rule' },
+      rules: [
+        { type: 'MixinDefinition', name: '.paint' },
+        { type: 'Ruleset' },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           extendInstructions: [{ target: { type: 'SelectorList' } }],
-          body: [
+          rules: [
             { type: 'MixinCall', name: '.paint' },
             { type: 'For' },
             { type: 'AtRuleBlock', name: '@media' }
@@ -2412,7 +2403,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule' }, { type: 'Rule' }]
+      rules: [{ type: 'Ruleset' }, { type: 'Ruleset' }]
     });
   });
 
@@ -2429,13 +2420,13 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'theme',
           value: {
             type: 'AnonymousMixin',
-            body: [
+            rules: [
               {
                 type: 'VariableDeclaration',
                 name: 'accent',
@@ -2464,13 +2455,13 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'grays',
           value: {
             type: 'AnonymousMixin',
-            body: [
+            rules: [
               {
                 type: 'Declaration',
                 name: '100',
@@ -2505,26 +2496,26 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'theme',
           value: {
             type: 'AnonymousMixin',
-            body: [
-              { type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] },
-              { type: 'AtRuleBlock', name: '@media', body: [{ type: 'Rule' }] },
+            rules: [
+              { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] },
+              { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'Ruleset' }] },
               {
-                type: 'MixinDef',
+                type: 'MixinDefinition',
                 name: '.tone',
-                body: [{ type: 'Declaration', name: 'color' }]
+                rules: [{ type: 'Declaration', name: 'color' }]
               },
               {
                 type: 'For',
                 rules: [
                   {
-                    type: 'Rule',
-                    body: [{ type: 'Declaration', name: 'order' }]
+                    type: 'Ruleset',
+                    rules: [{ type: 'Declaration', name: 'order' }]
                   }
                 ]
               }
@@ -2535,8 +2526,8 @@ describe('Less AST grammar facts', () => {
           type: 'For',
           binding: { kind: 'single', name: 'entry' },
           rules: [
-            { type: 'Rule', body: [{ type: 'Declaration', name: 'order' }] },
-            { type: 'AtRuleBlock', name: '@media', body: [{ type: 'Rule' }] }
+            { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'order' }] },
+            { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'Ruleset' }] }
           ]
         }
       ]
@@ -2576,7 +2567,7 @@ describe('Less AST grammar facts', () => {
       result.ok && result.unconsumedFrom === null && isStylesheet(result.value)
     ).toBe(true);
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         {
           type: 'Reference',
           base: { type: 'VariableReference', name: 'theme', lookup: 'scoped' },
@@ -2602,24 +2593,24 @@ describe('Less AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'theme',
           value: {
             type: 'AnonymousMixin',
-            body: [{ type: 'Declaration', name: 'color' }]
+            rules: [{ type: 'Declaration', name: 'color' }]
           }
         },
         {
-          type: 'MixinDef',
+          type: 'MixinDefinition',
           name: '.m',
           params: [
             {
               name: 'default',
               default: {
                 type: 'AnonymousMixin',
-                body: [{ type: 'Declaration', name: 'width' }]
+                rules: [{ type: 'Declaration', name: 'width' }]
               }
             }
           ]
@@ -2631,7 +2622,7 @@ describe('Less AST grammar facts', () => {
             {
               value: {
                 type: 'AnonymousMixin',
-                body: [{ type: 'Declaration', name: 'color' }]
+                rules: [{ type: 'Declaration', name: 'color' }]
               }
             }
           ]
@@ -2644,7 +2635,7 @@ describe('Less AST grammar facts', () => {
               name: 'named',
               value: {
                 type: 'AnonymousMixin',
-                body: [{ type: 'Declaration', name: 'color' }]
+                rules: [{ type: 'Declaration', name: 'color' }]
               }
             }
           ]
@@ -2655,7 +2646,7 @@ describe('Less AST grammar facts', () => {
           args: [
             {
               type: 'AnonymousMixin',
-              body: [{ type: 'Declaration', name: 'display' }]
+              rules: [{ type: 'Declaration', name: 'display' }]
             }
           ]
         }
@@ -2671,7 +2662,7 @@ describe('Less AST grammar facts', () => {
     expect(valueArgument.unconsumedFrom).toBeNull();
     expect(valueArgument.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'Declaration',
           name: 'value',
@@ -2681,7 +2672,7 @@ describe('Less AST grammar facts', () => {
             args: [
               {
                 type: 'AnonymousMixin',
-                body: [{ type: 'Declaration', name: 'color' }]
+                rules: [{ type: 'Declaration', name: 'color' }]
               }
             ]
           }
@@ -2698,7 +2689,7 @@ describe('Less AST grammar facts', () => {
     expect(finalRootDeclaration.unconsumedFrom).toBeNull();
     expect(finalRootDeclaration.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'Declaration',
           name: 'value',
@@ -2708,7 +2699,7 @@ describe('Less AST grammar facts', () => {
             args: [
               {
                 type: 'AnonymousMixin',
-                body: [{ type: 'Declaration', name: 'color' }]
+                rules: [{ type: 'Declaration', name: 'color' }]
               }
             ]
           }
@@ -2725,7 +2716,7 @@ describe('Less AST grammar facts', () => {
     expect(separatedRootDeclaration.unconsumedFrom).toBeNull();
     expect(separatedRootDeclaration.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'Declaration', name: 'value' },
         { type: 'AtRuleBlock', name: '@media' }
       ]
@@ -2760,10 +2751,10 @@ describe('Less AST grammar facts', () => {
     expect(customValueKeepsAtRuleBytes.unconsumedFrom).toBeNull();
     expect(customValueKeepsAtRuleBytes.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: '--x',
@@ -2783,10 +2774,10 @@ describe('Less AST grammar facts', () => {
     expect(customValueWithSeparator.unconsumedFrom).toBeNull();
     expect(customValueWithSeparator.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             { type: 'Declaration', name: '--x' },
             { type: 'AtRuleBlock', name: '@media' }
           ]
@@ -2826,13 +2817,13 @@ describe('Less AST grammar facts', () => {
     expect(rawResult.unconsumedFrom).toBeNull();
     expect(rawResult.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'theme',
           value: {
             type: 'AnonymousMixin',
-            body: [
+            rules: [
               {
                 type: 'Declaration',
                 name: '<',
@@ -2864,7 +2855,7 @@ describe('Less AST grammar facts', () => {
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'ImportAtRule',
           name: '@import',
@@ -2898,7 +2889,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'var' },
         {
           type: 'ImportAtRule',
@@ -2909,7 +2900,7 @@ describe('Less AST grammar facts', () => {
           tail: {
             type: 'Block',
             delimiter: 'paren',
-            inner: {
+            value: {
               type: 'Operation',
               operator: ':',
               left: { type: 'Keyword', src: 'min-width' },
@@ -2936,7 +2927,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'ImportAtRule',
           options: {
@@ -2975,7 +2966,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'ImportAtRule',
           options: {
@@ -3013,12 +3004,12 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'asset' },
         { type: 'VariableDeclaration', name: 'theme' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'variable',
@@ -3082,7 +3073,7 @@ describe('Less AST grammar facts', () => {
         source
       ).toBe(true);
       expect(result.value).toMatchObject({
-        children: [{ type: 'ImportAtRule', target: { type: 'Quoted' } }]
+        rules: [{ type: 'ImportAtRule', target: { type: 'Quoted' } }]
       });
     }
   });
@@ -3132,7 +3123,7 @@ describe('Less AST grammar facts', () => {
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'base',
@@ -3146,23 +3137,14 @@ describe('Less AST grammar facts', () => {
           write: { mode: 'declare' }
         },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.a', interp: null }
-                  ]
-                },
-                tail: []
-              }
+              { type: 'SimpleSelector', text: '.a', interp: null }
             ]
           },
-          body: [
+          rules: [
             {
               type: 'Declaration',
               name: 'color',
@@ -3214,10 +3196,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'VariableDeclaration',
               name: 'values',
@@ -3256,25 +3238,16 @@ describe('Less AST grammar facts', () => {
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.a', interp: null }
-                  ]
-                },
-                tail: []
-              }
+              { type: 'SimpleSelector', text: '.a', interp: null }
             ]
           },
-          body: [
+          rules: [
             {
               type: 'Declaration',
               name: 'margin',
@@ -3366,7 +3339,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'Declaration',
           value: {
@@ -3408,7 +3381,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         {
           value: {
             args: [
@@ -3432,7 +3405,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         {
           value: {
             type: 'FunctionCall',
@@ -3499,7 +3472,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         {
           value: {
             type: 'FunctionCall',
@@ -3519,7 +3492,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         {
           value: {
             type: 'FunctionCall',
@@ -3545,7 +3518,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           value: {
             type: 'FunctionCall',
@@ -3573,15 +3546,15 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'color',
           value: { type: 'Color', src: '#FFF' }
         },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               value: {
                 type: 'FunctionCall',
@@ -3612,7 +3585,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         {
           value: {
             type: 'FunctionCall',
@@ -3671,16 +3644,16 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         {
-          body: [
+          rules: [
             {
               type: 'Declaration',
               value: {
                 type: 'Block',
                 delimiter: 'paren',
                 escaped: true,
-                inner: {
+                value: {
                   type: 'List',
                   sep: ',',
                   value: [
@@ -3697,7 +3670,7 @@ describe('Less AST grammar facts', () => {
                 type: 'Block',
                 delimiter: 'paren',
                 escaped: true,
-                inner: [
+                value: [
                   { type: 'Dimension' },
                   { type: 'Dimension' },
                   { type: 'Dimension' }
@@ -3721,9 +3694,9 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          body: [
+          rules: [
             {
               type: 'Declaration',
               name: 'color',
@@ -3758,10 +3731,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'grid-template-areas',
@@ -3798,10 +3771,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'direct',
@@ -3862,10 +3835,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'color',
@@ -3899,7 +3872,7 @@ describe('Less AST grammar facts', () => {
   });
 
   it('keeps fallback CSS at-rule prelude comments in trivia, not semantic bytes', () => {
-    const result = run(lessAstGrammar.CssAtRulePrelude, 'a/* note */b', {
+    const result = run(lessAstGrammar.AtRulePrelude, 'a/* note */b', {
       trivia: lessAstGrammar.whitespace
     });
 
@@ -3923,31 +3896,22 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'accent',
-          value: { type: 'Important', inner: { type: 'Color', src: 'navy' } },
+          value: { type: 'Important', value: { type: 'Color', src: 'navy' } },
           write: { mode: 'declare' }
         },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card', interp: null }
-                  ]
-                },
-                tail: []
-              }
+              { type: 'SimpleSelector', text: '.card', interp: null }
             ]
           },
-          body: [
+          rules: [
             {
               type: 'Declaration',
               name: 'box-shadow',
@@ -3993,7 +3957,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleStatement',
           name: '@charset',
@@ -4025,7 +3989,7 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleBlock',
           name: '@font-face',
           prelude: null,
-          body: [
+          rules: [
             {
               type: 'Declaration',
               name: 'font-family',
@@ -4042,11 +4006,11 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleBlock',
           name: '@media',
           prelude: { type: 'Keyword', src: 'screen' },
-          body: [
+          rules: [
             {
-              type: 'Rule',
+              type: 'Ruleset',
               selector: { type: 'SelectorList' },
-              body: [
+              rules: [
                 {
                   type: 'Declaration',
                   name: 'color',
@@ -4057,13 +4021,13 @@ describe('Less AST grammar facts', () => {
           ]
         },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'AtRuleBlock',
               name: '@layer',
               prelude: { type: 'Keyword', src: 'utilities' },
-              body: [
+              rules: [
                 {
                   type: 'Declaration',
                   name: 'color',
@@ -4108,7 +4072,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'OpaqueAtRuleBlock',
           name: '@future',
@@ -4157,7 +4121,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleStatement',
           name: '@charset',
@@ -4304,7 +4268,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'layer-name' },
         {
           type: 'AtRuleBlock',
@@ -4318,10 +4282,10 @@ describe('Less AST grammar facts', () => {
               }
             ]
           },
-          body: [
+          rules: [
             {
-              type: 'Rule',
-              body: [
+              type: 'Ruleset',
+              rules: [
                 {
                   type: 'Declaration',
                   name: 'color',
@@ -4335,10 +4299,10 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleBlock',
           name: '@layer',
           prelude: { type: 'Keyword', src: 'framework.buttons' },
-          body: [
+          rules: [
             {
-              type: 'Rule',
-              body: [
+              type: 'Ruleset',
+              rules: [
                 {
                   type: 'Declaration',
                   name: 'color',
@@ -4378,50 +4342,38 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@keyframes',
           prelude: { type: 'Keyword', src: 'fade' },
-          body: [
+          rules: [
             {
-              type: 'Rule',
+              type: 'Ruleset',
               selector: {
                 type: 'SelectorList',
                 selectors: [
-                  {
-                    type: 'ComplexSelector',
-                    head: {
-                      type: 'CompoundSelector',
-                      simples: [{ type: 'SimpleSelector', text: 'from' }]
-                    }
-                  },
-                  {
-                    type: 'ComplexSelector',
-                    head: {
-                      type: 'CompoundSelector',
-                      simples: [{ type: 'SimpleSelector', text: '50%' }]
-                    }
-                  }
+                  { type: 'SimpleSelector', text: 'from' },
+                  { type: 'SimpleSelector', text: '50%' }
                 ]
               },
-              body: [{ type: 'Declaration', name: 'opacity' }]
+              rules: [{ type: 'Declaration', name: 'opacity' }]
             },
-            { type: 'Rule', body: [{ type: 'Declaration', name: 'opacity' }] }
+            { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'opacity' }] }
           ]
         },
         {
           type: 'AtRuleBlock',
           name: '@-webkit-keyframes',
           prelude: { type: 'Quoted', value: 'slide' },
-          body: [
+          rules: [
             {
-              type: 'Rule',
+              type: 'Ruleset',
               selector: {
                 type: 'SelectorList',
                 selectors: [
-                  { type: 'ComplexSelector' },
-                  { type: 'ComplexSelector' }
+                  { type: 'SimpleSelector' },
+                  { type: 'SimpleSelector' }
                 ]
               }
             }
@@ -4436,12 +4388,12 @@ describe('Less AST grammar facts', () => {
             value: 'spin',
             escaped: true
           },
-          body: [
+          rules: [
             {
-              type: 'Rule',
+              type: 'Ruleset',
               selector: {
                 type: 'SelectorList',
-                selectors: [{ type: 'ComplexSelector' }]
+                selectors: [{ type: 'SimpleSelector' }]
               }
             }
           ]
@@ -4484,13 +4436,13 @@ describe('Less AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
-          body: [
+          rules: [
             {
-              type: 'Rule',
-              body: [{ type: 'Declaration', name: 'opacity' }]
+              type: 'Ruleset',
+              rules: [{ type: 'Declaration', name: 'opacity' }]
             }
           ]
         }
@@ -4527,12 +4479,12 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@foo',
           prelude: null,
-          body: [
+          rules: [
             {
               type: 'Declaration',
               name: 'color',
@@ -4560,7 +4512,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@supports',
@@ -4570,19 +4522,19 @@ describe('Less AST grammar facts', () => {
               {
                 type: 'Block',
                 delimiter: 'paren',
-                inner: {
+                value: {
                   type: 'SpacedValue',
                   parts: [
                     {
                       type: 'Block',
                       delimiter: 'paren',
-                      inner: { type: 'Operation', operator: ':' }
+                      value: { type: 'Operation', operator: ':' }
                     },
                     { type: 'Keyword', src: 'or' },
                     {
                       type: 'Block',
                       delimiter: 'paren',
-                      inner: { type: 'Operation', operator: ':' }
+                      value: { type: 'Operation', operator: ':' }
                     }
                   ]
                 }
@@ -4591,12 +4543,12 @@ describe('Less AST grammar facts', () => {
               {
                 type: 'Block',
                 delimiter: 'paren',
-                inner: { type: 'Keyword', src: 'hover' }
+                value: { type: 'Keyword', src: 'hover' }
               }
             ]
           },
-          body: [
-            { type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }
+          rules: [
+            { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] }
           ]
         }
       ]
@@ -4634,7 +4586,7 @@ describe('Less AST grammar facts', () => {
     if (!isStylesheet(result.value)) {
       throw new TypeError('expected Stylesheet');
     }
-    expect(result.value.children[0]).toMatchObject({
+    expect(result.value.rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@supports',
       prelude: {
@@ -4643,7 +4595,7 @@ describe('Less AST grammar facts', () => {
           {
             type: 'Block',
             delimiter: 'paren',
-            inner: {
+            value: {
               type: 'Operation',
               operator: ':',
               right: { type: 'SpacedValue' }
@@ -4653,7 +4605,7 @@ describe('Less AST grammar facts', () => {
           {
             type: 'Block',
             delimiter: 'paren',
-            inner: {
+            value: {
               type: 'Operation',
               operator: ':',
               right: { type: 'SpacedValue' }
@@ -4681,7 +4633,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'limit' },
         {
           type: 'AtRuleBlock',
@@ -4698,7 +4650,7 @@ describe('Less AST grammar facts', () => {
                   {
                     type: 'Block',
                     delimiter: 'paren',
-                    inner: {
+                    value: {
                       type: 'Operation',
                       operator: ':',
                       right: { type: 'VariableReference', name: 'limit' }
@@ -4709,7 +4661,7 @@ describe('Less AST grammar facts', () => {
               { type: 'Keyword', src: 'print' }
             ]
           },
-          body: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         },
         {
           type: 'AtRuleBlock',
@@ -4717,13 +4669,13 @@ describe('Less AST grammar facts', () => {
           prelude: {
             type: 'Block',
             delimiter: 'paren',
-            inner: {
+            value: {
               type: 'Operation',
               operator: '<',
               right: { type: 'VariableReference', name: 'limit' }
             }
           },
-          body: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         }
       ]
     });
@@ -4746,16 +4698,16 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@media',
           prelude: {
             type: 'Block',
             delimiter: 'paren',
-            inner: { type: 'Keyword', src: 'tv' }
+            value: { type: 'Keyword', src: 'tv' }
           },
-          body: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         }
       ]
     });
@@ -4789,12 +4741,12 @@ describe('Less AST grammar facts', () => {
       });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
       expect(result.value, source).toMatchObject({
-        children: [
+        rules: [
           {
             prelude: {
               type: 'Block',
               delimiter: 'paren',
-              inner: { type: 'Operation', operator, right: ratio }
+              value: { type: 'Operation', operator, right: ratio }
             }
           }
         ]
@@ -4808,12 +4760,12 @@ describe('Less AST grammar facts', () => {
     );
     expect(range.ok && range.unconsumedFrom === null).toBe(true);
     expect(range.value).toMatchObject({
-      children: [
+      rules: [
         {
           prelude: {
             type: 'Block',
             delimiter: 'paren',
-            inner: {
+            value: {
               type: 'Operation',
               operator: '<',
               left: {
@@ -4848,7 +4800,7 @@ describe('Less AST grammar facts', () => {
     );
     expect(styleQuery.ok && styleQuery.unconsumedFrom === null).toBe(true);
     expect(styleQuery.value).toMatchObject({
-      children: [
+      rules: [
         {
           prelude: {
             type: 'FunctionCall',
@@ -4883,7 +4835,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'size' },
         {
           type: 'VariableDeclaration',
@@ -4891,7 +4843,7 @@ describe('Less AST grammar facts', () => {
           value: {
             type: 'Block',
             delimiter: 'paren',
-            inner: {
+            value: {
               type: 'Operation',
               operator: ':',
               left: { type: 'Keyword', src: 'min-width' },
@@ -4934,25 +4886,25 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         /*
          * `#ns { … }` is an ordinary ID-selector ruleset which owns mixin
          * declarations; it is not itself a mixin declaration.
          */
         {
-          type: 'Rule',
-          selector: { selectors: [{ head: { simples: [{ text: '#ns' }] } }] },
-          body: [
-            { type: 'MixinDef', name: '.sizes' },
-            { type: 'MixinDef', name: '.breakpoint' }
+          type: 'Ruleset',
+          selector: { selectors: [{ type: 'SimpleSelector', text: '#ns' }] },
+          rules: [
+            { type: 'MixinDefinition', name: '.sizes' },
+            { type: 'MixinDefinition', name: '.breakpoint' }
           ]
         },
         {
-          type: 'Rule',
-          selector: { selectors: [{ head: { simples: [{ text: '#ns' }] } }] },
-          body: [{ type: 'MixinDef', name: '.sizes' }]
+          type: 'Ruleset',
+          selector: { selectors: [{ type: 'SimpleSelector', text: '#ns' }] },
+          rules: [{ type: 'MixinDefinition', name: '.sizes' }]
         },
-        { type: 'MixinDef', name: '.valToGet' },
+        { type: 'MixinDefinition', name: '.valToGet' },
         {
           type: 'AtRuleBlock',
           name: '@media',
@@ -4961,7 +4913,7 @@ describe('Less AST grammar facts', () => {
             base: {
               type: 'MixinCall',
               name: '.breakpoint',
-              path: [{ comb: ' ', sel: '#ns' }]
+              path: [{ combinator: ' ', selector: '#ns' }]
             },
             steps: [
               {
@@ -4994,7 +4946,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@media',
@@ -5005,11 +4957,11 @@ describe('Less AST grammar facts', () => {
               {
                 type: 'Block',
                 delimiter: 'paren',
-                inner: { type: 'Operation', operator: '<=' }
+                value: { type: 'Operation', operator: '<=' }
               }
             ]
           },
-          body: [{ type: 'Rule' }]
+          rules: [{ type: 'Ruleset' }]
         }
       ]
     });
@@ -5029,7 +4981,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@container',
@@ -5039,20 +4991,20 @@ describe('Less AST grammar facts', () => {
               {
                 type: 'Block',
                 delimiter: 'paren',
-                inner: { type: 'Operation', operator: '>' }
+                value: { type: 'Operation', operator: '>' }
               },
               { type: 'Keyword', src: 'and' },
               {
                 type: 'Block',
                 delimiter: 'paren',
-                inner: {
+                value: {
                   type: 'SpacedValue',
                   parts: [
                     { type: 'Keyword', src: 'not' },
                     {
                       type: 'Block',
                       delimiter: 'paren',
-                      inner: { type: 'Operation', operator: '>' }
+                      value: { type: 'Operation', operator: '>' }
                     }
                   ]
                 }
@@ -5078,11 +5030,11 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'AtRuleBlock',
           name: '@container',
-          body: [
+          rules: [
             {
               type: 'AtRuleBlock',
               name: '@container',
@@ -5119,7 +5071,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'name' },
         { type: 'VariableDeclaration', name: 'limit' },
         {
@@ -5140,7 +5092,7 @@ describe('Less AST grammar facts', () => {
               {
                 type: 'Block',
                 delimiter: 'paren',
-                inner: {
+                value: {
                   type: 'Operation',
                   operator: '>',
                   right: { type: 'VariableReference', name: 'limit' }
@@ -5240,7 +5192,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'query' },
         { type: 'VariableDeclaration', name: 'condition' },
         { type: 'VariableDeclaration', name: 'animation' },
@@ -5307,7 +5259,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'feature' },
         {
           type: 'AtRuleBlock',
@@ -5389,15 +5341,15 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'MixinDef',
+          type: 'MixinDefinition',
           name: '.space',
           params: [
             { name: 'amount' },
             { name: 'color', default: { type: 'Color', src: 'blue' } }
           ],
-          body: [
+          rules: [
             {
               type: 'Declaration',
               name: 'padding',
@@ -5411,8 +5363,8 @@ describe('Less AST grammar facts', () => {
           ]
         },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.space',
@@ -5458,12 +5410,12 @@ describe('Less AST grammar facts', () => {
     });
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'MixinDef',
+          type: 'MixinDefinition',
           name: '.gradient-mixin',
           params: [{ name: 'color' }],
-          body: [
+          rules: [
             {
               type: 'Declaration',
               name: 'background',
@@ -5485,11 +5437,11 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'MixinDef', name: '.mixin\\!tUp' },
+      rules: [
+        { type: 'MixinDefinition', name: '.mixin\\!tUp' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             { type: 'MixinCall', name: '.mixin\\!tUp', path: [], args: [] }
           ]
         }
@@ -5507,11 +5459,11 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'MixinDef', name: '.wrap', params: [{ name: 'value' }] },
+      rules: [
+        { type: 'MixinDefinition', name: '.wrap', params: [{ name: 'value' }] },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.wrap',
@@ -5539,7 +5491,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'Plugin',
           target: {
@@ -5548,18 +5500,18 @@ describe('Less AST grammar facts', () => {
           }
         },
         {
-          type: 'MixinDef',
+          type: 'MixinDefinition',
           name: '.two',
           params: [
             {
               name: 'rules',
-              default: { type: 'AnonymousMixin', body: [] }
+              default: { type: 'AnonymousMixin', rules: [] }
             }
           ],
-          body: [
+          rules: [
             {
-              type: 'Rule',
-              body: [
+              type: 'Ruleset',
+              rules: [
                 {
                   type: 'Reference',
                   base: {
@@ -5574,8 +5526,8 @@ describe('Less AST grammar facts', () => {
           ]
         },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.two',
@@ -5583,7 +5535,7 @@ describe('Less AST grammar facts', () => {
                 {
                   value: {
                     type: 'AnonymousMixin',
-                    body: [
+                    rules: [
                       {
                         type: 'Declaration',
                         name: '--foo',
@@ -5628,17 +5580,17 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'MixinDef',
+          type: 'MixinDefinition',
           name: '.configure',
           params: [
-            { name: 'a', default: { type: 'AnonymousMixin', body: [] } },
+            { name: 'a', default: { type: 'AnonymousMixin', rules: [] } },
             {
               name: 'b',
               default: {
                 type: 'AnonymousMixin',
-                body: [{ type: 'Declaration', name: 'default' }]
+                rules: [{ type: 'Declaration', name: 'default' }]
               }
             }
           ]
@@ -5658,25 +5610,25 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'MixinDef' },
+      rules: [
+        { type: 'MixinDefinition' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               args: [
                 {
                   value: {
                     type: 'AnonymousMixin',
-                    body: [{ type: 'Declaration', name: 'direct' }]
+                    rules: [{ type: 'Declaration', name: 'direct' }]
                   }
                 },
                 {
                   name: 'b',
                   value: {
                     type: 'AnonymousMixin',
-                    body: [{ type: 'Declaration', name: 'named' }]
+                    rules: [{ type: 'Declaration', name: 'named' }]
                   }
                 }
               ]
@@ -5698,11 +5650,11 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'MixinDef' },
+      rules: [
+        { type: 'MixinDefinition' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.tone',
@@ -5725,11 +5677,11 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'MixinDef' },
+      rules: [
+        { type: 'MixinDefinition' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.generic',
@@ -5782,11 +5734,11 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'MixinDef' },
+      rules: [
+        { type: 'MixinDefinition' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.multi-bg',
@@ -5824,9 +5776,9 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'MixinDef',
+          type: 'MixinDefinition',
           name: '.badge',
           params: [
             { pattern: { type: 'Color', src: 'red' } },
@@ -5835,8 +5787,8 @@ describe('Less AST grammar facts', () => {
           ]
         },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.badge',
@@ -5879,12 +5831,12 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'MixinDef', name: '.pair' },
+      rules: [
+        { type: 'MixinDefinition', name: '.pair' },
         { type: 'VariableDeclaration', name: 'args' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.pair',
@@ -5921,17 +5873,17 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.tone',
               important: false,
               path: [
-                { comb: ' ', sel: '.library' },
-                { comb: '>', sel: '.colors' }
+                { combinator: ' ', selector: '.library' },
+                { combinator: '>', selector: '.colors' }
               ],
               args: [{ value: { type: 'Color', src: 'red' } }]
             }
@@ -5951,7 +5903,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'MixinCall',
           name: '.wrapper',
@@ -6004,10 +5956,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'a',
@@ -6032,7 +5984,7 @@ describe('Less AST grammar facts', () => {
                 base: {
                   type: 'MixinCall',
                   name: '.vars',
-                  path: [{ comb: ' ', sel: '#ns1' }],
+                  path: [{ combinator: ' ', selector: '#ns1' }],
                   args: []
                 },
                 steps: [
@@ -6053,7 +6005,7 @@ describe('Less AST grammar facts', () => {
                 base: {
                   type: 'MixinCall',
                   name: '.colors',
-                  path: [{ comb: ' ', sel: '#DEF' }],
+                  path: [{ combinator: ' ', selector: '#DEF' }],
                   args: []
                 },
                 steps: [
@@ -6074,7 +6026,7 @@ describe('Less AST grammar facts', () => {
                 base: {
                   type: 'MixinCall',
                   name: '.add-one',
-                  path: [{ comb: ' ', sel: '#library' }],
+                  path: [{ combinator: ' ', selector: '#library' }],
                   args: [{ value: { type: 'Dimension', src: '1px' } }]
                 },
                 steps: [
@@ -6109,11 +6061,11 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {},
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'value',
@@ -6122,7 +6074,7 @@ describe('Less AST grammar facts', () => {
                 base: {
                   type: 'MixinCall',
                   name: '.seed',
-                  path: [{ comb: ' ', sel: '#library' }],
+                  path: [{ combinator: ' ', selector: '#library' }],
                   args: []
                 },
                 steps: [
@@ -6195,12 +6147,12 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {},
         {},
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'value',
@@ -6243,7 +6195,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'VariableDeclaration',
           name: 'theme-colors',
@@ -6253,9 +6205,9 @@ describe('Less AST grammar facts', () => {
             args: [],
             important: true,
             path: [
-              { comb: ' ', sel: '#theme' },
-              { comb: ' ', sel: '.dark' },
-              { comb: ' ', sel: '.navbar' }
+              { combinator: ' ', selector: '#theme' },
+              { combinator: ' ', selector: '.dark' },
+              { combinator: ' ', selector: '.navbar' }
             ]
           }
         }
@@ -6277,12 +6229,12 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {},
         {},
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'val',
@@ -6297,7 +6249,7 @@ describe('Less AST grammar facts', () => {
                     base: {
                       type: 'MixinCall',
                       name: '.options',
-                      path: [{ comb: ' ', sel: '#ns' }],
+                      path: [{ combinator: ' ', selector: '#ns' }],
                       args: []
                     },
                     steps: [
@@ -6411,30 +6363,38 @@ describe('Less AST grammar facts', () => {
     if (!isStylesheet(result.value)) {
       throw new TypeError('expected Stylesheet');
     }
-    expect(result.value.children[2]).toMatchObject({
+    expect(result.value.rules[2]).toMatchObject({
       type: 'VariableDeclaration',
       name: 'defaults',
       value: {
         type: 'Collection',
         entries: [
-          { type: 'VariableDeclaration', name: 'default-color' },
           {
-            type: 'VariableDeclaration',
-            name: 'nested',
+            type: 'CollectionEntry',
+            key: { type: 'Keyword', src: 'default-color' }
+          },
+          {
+            type: 'CollectionEntry',
+            key: { type: 'Keyword', src: 'nested' },
             value: {
               type: 'Collection',
-              entries: [{ type: 'VariableDeclaration', name: 'color' }]
+              entries: [
+                {
+                  type: 'CollectionEntry',
+                  key: { type: 'Keyword', src: 'color' }
+                }
+              ]
             }
           }
         ]
       }
     });
-    const outputRule = result.value.children[1];
-    expect(outputRule).toMatchObject({ type: 'Rule' });
-    if (outputRule?.type !== 'Rule') {
+    const outputRule = result.value.rules[1];
+    expect(outputRule).toMatchObject({ type: 'Ruleset' });
+    if (outputRule?.type !== 'Ruleset') {
       throw new TypeError('expected output rule');
     }
-    expect(outputRule.body[0]).toMatchObject({
+    expect(outputRule.rules[0]).toMatchObject({
       type: 'Reference',
       base: { type: 'VariableReference', name: 'defaults', lookup: 'scoped' },
       steps: [{ type: 'Call', args: [] }],
@@ -6482,27 +6442,27 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
-        { type: 'Rule', body: [{ type: 'MixinDef', name: '.mixin' }] },
+      rules: [
+        { type: 'Ruleset', rules: [{ type: 'MixinDefinition', name: '.mixin' }] },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.mixin',
               args: [],
-              path: [{ comb: ' ', sel: '#theme' }]
+              path: [{ combinator: ' ', selector: '#theme' }]
             }
           ]
         },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.mixin',
               args: [],
-              path: [{ comb: ' ', sel: '#theme' }],
+              path: [{ combinator: ' ', selector: '#theme' }],
               important: true
             }
           ]
@@ -6536,10 +6496,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.space',
@@ -6576,17 +6536,17 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'MixinCall',
               name: '.tone',
               important: false,
               path: [
-                { comb: ' ', sel: '.library' },
-                { comb: '>', sel: '.colors' }
+                { combinator: ' ', selector: '.library' },
+                { combinator: '>', selector: '.colors' }
               ],
               args: [
                 { name: 'shade', value: { type: 'Color', src: 'red' } },
@@ -6621,9 +6581,9 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'MixinDef',
+          type: 'MixinDefinition',
           name: '.wide',
           guard: {
             g: 'cmp',
@@ -6633,7 +6593,7 @@ describe('Less AST grammar facts', () => {
           }
         },
         {
-          type: 'MixinDef',
+          type: 'MixinDefinition',
           name: '.enabled',
           guard: { g: 'truth', value: { type: 'Keyword', src: 'true' } }
         }
@@ -6678,10 +6638,10 @@ describe('Less AST grammar facts', () => {
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    const children = stylesheet(result.value).children;
+    const children = stylesheet(result.value).rules;
     expect([children[2], children[3], children[7]]).toMatchObject([
       {
-        type: 'Rule',
+        type: 'Ruleset',
         guard: {
           g: 'truth',
           value: {
@@ -6689,7 +6649,7 @@ describe('Less AST grammar facts', () => {
             base: {
               type: 'MixinCall',
               name: '.options',
-              path: [{ comb: ' ', sel: '#ns' }],
+              path: [{ combinator: ' ', selector: '#ns' }],
               args: []
             },
             steps: [
@@ -6704,7 +6664,7 @@ describe('Less AST grammar facts', () => {
         }
       },
       {
-        type: 'Rule',
+        type: 'Ruleset',
         guard: {
           g: 'cmp',
           op: '=',
@@ -6713,7 +6673,7 @@ describe('Less AST grammar facts', () => {
             base: {
               type: 'MixinCall',
               name: '.options',
-              path: [{ comb: ' ', sel: '#ns' }],
+              path: [{ combinator: ' ', selector: '#ns' }],
               args: []
             },
             steps: [
@@ -6729,7 +6689,7 @@ describe('Less AST grammar facts', () => {
         }
       },
       {
-        type: 'Rule',
+        type: 'Ruleset',
         guard: {
           g: 'cmp',
           op: '=',
@@ -6774,8 +6734,8 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({ type: 'Stylesheet' });
-    expect(stylesheet(result.value).children[0]).toMatchObject({
-      type: 'MixinDef',
+    expect(stylesheet(result.value).rules[0]).toMatchObject({
+      type: 'MixinDefinition',
       name: '.match',
       guard: {
         g: 'cmp',
@@ -6806,9 +6766,9 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'MixinDef',
+          type: 'MixinDefinition',
           name: '.match',
           guard: {
             g: 'or',
@@ -6847,9 +6807,9 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'MixinDef',
+          type: 'MixinDefinition',
           name: '.fallback',
           guard: {
             g: 'cmp',
@@ -6910,10 +6870,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'data',
@@ -6972,10 +6932,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'glued',
@@ -6993,7 +6953,7 @@ describe('Less AST grammar facts', () => {
                 {
                   type: 'Block',
                   delimiter: 'paren',
-                  inner: { type: 'Dimension', src: '1' }
+                  value: { type: 'Dimension', src: '1' }
                 }
               ]
             },
@@ -7040,7 +7000,7 @@ describe('Less AST grammar facts', () => {
     expect(listResult.ok).toBe(true);
     expect(listResult.unconsumedFrom).toBeNull();
     expect(isStylesheet(listResult.value)).toBe(true);
-    expect(listResult.value.children[0]).toEqual({
+    expect(listResult.value.rules[0]).toEqual({
       type: 'Declaration',
       name: 'shadow',
       merge: null,
@@ -7066,7 +7026,7 @@ describe('Less AST grammar facts', () => {
       ).toBe(true);
       expect(result.value).toMatchObject({
         type: 'Stylesheet',
-        children: [
+        rules: [
           {
             type: 'Declaration',
             value: {
@@ -7089,7 +7049,7 @@ describe('Less AST grammar facts', () => {
     expect(commented.unconsumedFrom).toBeNull();
     expect(commented.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           type: 'Declaration',
           value: {
@@ -7173,10 +7133,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'content',
@@ -7299,11 +7259,11 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'name' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: '--theme',
@@ -7372,11 +7332,11 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'n' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: '--a',
@@ -7461,10 +7421,10 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: '--a',
@@ -7566,10 +7526,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'plain',
@@ -7633,10 +7593,10 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'double',
@@ -7685,11 +7645,11 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'tone' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: 'color',
@@ -7729,45 +7689,20 @@ describe('Less AST grammar facts', () => {
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
                 type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.a', interp: null }
-                  ]
-                },
-                tail: [
-                  {
-                    comb: '>',
-                    compound: {
-                      type: 'CompoundSelector',
-                      simples: [
-                        { type: 'SimpleSelector', text: '.b', interp: null }
-                      ]
-                    }
-                  }
-                ]
+                value: [{ type: 'SimpleSelector', text: '.a', interp: null }, '>', { type: 'SimpleSelector', text: '.b', interp: null }]
               },
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '#c', interp: null }
-                  ]
-                },
-                tail: []
-              }
+              { type: 'SimpleSelector', text: '#c', interp: null }
             ]
           },
-          body: [
+          rules: [
             {
               type: 'Declaration',
               name: 'color',
@@ -7792,14 +7727,14 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
-              { head: { simples: [{ text: '#a' }] }, tail: [] },
-              { head: { simples: [{ text: '.b' }] }, tail: [] }
+              { type: 'SimpleSelector', text: '#a' },
+              { type: 'SimpleSelector', text: '.b' }
             ]
           }
         }
@@ -7822,59 +7757,28 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value.children[0]).toEqual({
-      type: 'Rule',
+    expect(result.value.rules[0]).toEqual({
+      type: 'Ruleset',
       selector: {
         type: 'SelectorList',
         selectors: [
           {
             type: 'ComplexSelector',
-            head: {
-              type: 'CompoundSelector',
-              simples: [{ type: 'SimpleSelector', text: '.a', interp: null }]
-            },
-            tail: [
-              {
-                comb: '+',
-                compound: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.b', interp: null }
-                  ]
-                }
-              },
-              {
-                comb: '~',
-                compound: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '#c', interp: null }
-                  ]
-                }
-              },
-              {
-                comb: '|',
-                compound: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '*', interp: null }
-                  ]
-                }
-              },
-              {
-                comb: '||',
-                compound: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: 'article', interp: null }
-                  ]
-                }
-              }
+            value: [
+              { type: 'SimpleSelector', text: '.a', interp: null },
+              '+',
+              { type: 'SimpleSelector', text: '.b', interp: null },
+              '~',
+              { type: 'SimpleSelector', text: '#c', interp: null },
+              '|',
+              { type: 'SimpleSelector', text: '*', interp: null },
+              '||',
+              { type: 'SimpleSelector', text: 'article', interp: null }
             ]
           }
         ]
       },
-      body: [
+      rules: [
         {
           type: 'Declaration',
           name: 'color',
@@ -7898,37 +7802,29 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value.children[0]).toEqual({
-      type: 'Rule',
+    expect(result.value.rules[0]).toEqual({
+      type: 'Ruleset',
       selector: {
         type: 'SelectorList',
         selectors: [
           {
-            type: 'ComplexSelector',
-            head: {
-              type: 'CompoundSelector',
-              simples: [
-                { type: 'SimpleSelector', text: 'button', interp: null },
-                { type: 'SimpleSelector', text: '.primary', interp: null },
-                { type: 'SimpleSelector', text: '#submit', interp: null }
-              ]
-            },
-            tail: []
+            type: 'CompoundSelector',
+            value: [
+              { type: 'SimpleSelector', text: 'button', interp: null },
+              { type: 'SimpleSelector', text: '.primary', interp: null },
+              { type: 'SimpleSelector', text: '#submit', interp: null }
+            ]
           },
           {
-            type: 'ComplexSelector',
-            head: {
-              type: 'CompoundSelector',
-              simples: [
-                { type: 'SimpleSelector', text: '&', interp: null },
-                { type: 'SimpleSelector', text: '.is-open', interp: null }
-              ]
-            },
-            tail: []
+            type: 'CompoundSelector',
+            value: [
+              { type: 'SimpleSelector', text: '&', interp: null },
+              { type: 'SimpleSelector', text: '.is-open', interp: null }
+            ]
           }
         ]
       },
-      body: [
+      rules: [
         {
           type: 'Declaration',
           name: 'color',
@@ -7957,20 +7853,17 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value.children[0]).toEqual({
-      type: 'Rule',
+    expect(result.value.rules[0]).toEqual({
+      type: 'Ruleset',
       selector: {
         type: 'SelectorList',
         selectors: ['&', '&-active', '&1'].map(text => ({
-          type: 'ComplexSelector',
-          head: {
-            type: 'CompoundSelector',
-            simples: [{ type: 'SimpleSelector', text, interp: null }]
-          },
-          tail: []
+          type: 'SimpleSelector',
+          text,
+          interp: null
         }))
       },
-      body: [
+      rules: [
         {
           type: 'Declaration',
           name: 'color',
@@ -7996,7 +7889,7 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('constructs nested Less relative selectors through the existing leading-combinator field', () => {
+  it('constructs nested Less relative selectors directly', () => {
     const result = run(
       lessAstGrammar.Document,
       '#first { > .second { + #third { color: purple; } } }',
@@ -8007,28 +7900,28 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
-              type: 'Rule',
+              type: 'Ruleset',
               selector: {
                 selectors: [
                   {
-                    leadingComb: '>',
-                    head: { simples: [{ text: '.second' }] }
+                    type: 'RelativeSelector',
+                    value: ['>', { type: 'SimpleSelector', text: '.second', interp: null }]
                   }
                 ]
               },
-              body: [
+              rules: [
                 {
-                  type: 'Rule',
+                  type: 'Ruleset',
                   selector: {
                     selectors: [
                       {
-                        leadingComb: '+',
-                        head: { simples: [{ text: '#third' }] }
+                        type: 'RelativeSelector',
+                        value: ['+', { type: 'SimpleSelector', text: '#third', interp: null }]
                       }
                     ]
                   }
@@ -8056,32 +7949,19 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value.children[0]).toMatchObject({
-      type: 'Rule',
+    expect(result.value.rules[0]).toMatchObject({
+      type: 'Ruleset',
       selector: {
         type: 'SelectorList',
         selectors: [
           {
             type: 'ComplexSelector',
-            head: {
-              type: 'CompoundSelector',
-              simples: [{ type: 'SimpleSelector', text: '.a' }]
-            },
-            tail: [
-              {
-                comb: ' ',
-                compound: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: '.b' }]
-                }
-              },
-              {
-                comb: '>',
-                compound: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: '.c' }]
-                }
-              }
+            value: [
+              { type: 'SimpleSelector', text: '.a' },
+              ' ',
+              { type: 'SimpleSelector', text: '.b' },
+              '>',
+              { type: 'SimpleSelector', text: '.c' }
             ]
           }
         ]
@@ -8103,86 +7983,73 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'name' },
         { type: 'VariableDeclaration', name: 'state' },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
-                head: {
-                  simples: [
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    { lit: '.' },
                     {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          { lit: '.' },
-                          {
-                            ref: { type: 'VariableReference', name: 'name' },
-                            unquote: true
-                          },
-                          { lit: '-item' }
-                        ]
-                      }
-                    }
+                      ref: { type: 'VariableReference', name: 'name' },
+                      unquote: true
+                    },
+                    { lit: '-item' }
                   ]
                 }
               },
               {
-                head: {
-                  simples: [
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    { lit: '#tone-' },
                     {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          { lit: '#tone-' },
-                          {
-                            ref: { type: 'VariableReference', name: 'state' },
-                            unquote: true
-                          }
-                        ]
-                      }
+                      ref: { type: 'VariableReference', name: 'state' },
+                      unquote: true
                     }
                   ]
                 }
               }
             ]
           },
-          body: [
+          rules: [
             { type: 'Declaration', name: 'color' },
             {
-              type: 'Rule',
+              type: 'Ruleset',
               selector: {
                 selectors: [
                   {
-                    head: {
-                      simples: [
-                        { text: '&' },
-                        {
-                          type: 'SimpleSelector',
-                          text: null,
-                          interp: {
-                            type: 'Interpolation',
-                            parts: [
-                              { lit: '.' },
-                              {
-                                ref: {
-                                  type: 'VariableReference',
-                                  name: 'state'
-                                },
-                                unquote: true
-                              }
-                            ]
-                          }
+                    type: 'CompoundSelector',
+                    value: [
+                      { text: '&' },
+                      {
+                        type: 'SimpleSelector',
+                        text: null,
+                        interp: {
+                          type: 'Interpolation',
+                          parts: [
+                            { lit: '.' },
+                            {
+                              ref: {
+                                type: 'VariableReference',
+                                name: 'state'
+                              },
+                              unquote: true
+                            }
+                          ]
                         }
-                      ]
-                    }
+                      }
+                    ]
                   }
                 ]
               }
@@ -8211,44 +8078,34 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {},
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
-              type: 'Rule',
+              type: 'Ruleset',
               selector: {
                 selectors: [
                   {
-                    head: { simples: [{ type: 'SimpleSelector', text: '&' }] },
-                    tail: [
-                      {
-                        comb: ' ',
-                        compound: {
-                          simples: [
-                            {
-                              type: 'SimpleSelector',
-                              text: null,
-                              interp: {
-                                type: 'Interpolation',
-                                parts: [
-                                  {
-                                    ref: {
-                                      type: 'VariableReference',
-                                      name: 'base',
-                                      lookup: 'scoped'
-                                    },
-                                    unquote: true
-                                  },
-                                  { lit: '.bbb' }
-                                ]
-                              }
-                            }
-                          ]
-                        }
+                    value: [{ type: 'SimpleSelector', text: '&' }, ' ', {
+                      type: 'SimpleSelector',
+                      text: null,
+                      interp: {
+                        type: 'Interpolation',
+                        parts: [
+                          {
+                            ref: {
+                              type: 'VariableReference',
+                              name: 'base',
+                              lookup: 'scoped'
+                            },
+                            unquote: true
+                          },
+                          { lit: '.bbb' }
+                        ]
                       }
-                    ]
+                    }]
                   }
                 ]
               }
@@ -8270,74 +8127,62 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {},
         {},
         {},
         {},
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
-                head: {
-                  simples: [
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
                     {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'cap-a',
-                              lookup: 'scoped'
-                            },
-                            unquote: true
-                          },
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'cap-b',
-                              lookup: 'scoped'
-                            },
-                            unquote: true
-                          }
-                        ]
-                      }
+                      ref: {
+                        type: 'VariableReference',
+                        name: 'cap-a',
+                        lookup: 'scoped'
+                      },
+                      unquote: true
+                    },
+                    {
+                      ref: {
+                        type: 'VariableReference',
+                        name: 'cap-b',
+                        lookup: 'scoped'
+                      },
+                      unquote: true
                     }
                   ]
                 }
               },
               {
-                head: {
-                  simples: [
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
                     {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'quoted-a',
-                              lookup: 'scoped'
-                            },
-                            unquote: true
-                          },
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'quoted-b',
-                              lookup: 'scoped'
-                            },
-                            unquote: true
-                          }
-                        ]
-                      }
+                      ref: {
+                        type: 'VariableReference',
+                        name: 'quoted-a',
+                        lookup: 'scoped'
+                      },
+                      unquote: true
+                    },
+                    {
+                      ref: {
+                        type: 'VariableReference',
+                        name: 'quoted-b',
+                        lookup: 'scoped'
+                      },
+                      unquote: true
                     }
                   ]
                 }
@@ -8363,63 +8208,51 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration' },
         { type: 'VariableDeclaration' },
         { type: 'VariableDeclaration' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
-              type: 'Rule',
+              type: 'Ruleset',
               selector: {
                 selectors: [
                   {
-                    head: {
-                      simples: [
+                    type: 'SimpleSelector',
+                    text: null,
+                    interp: {
+                      type: 'Interpolation',
+                      parts: [
+                        { lit: '&-' },
                         {
-                          type: 'SimpleSelector',
-                          text: null,
-                          interp: {
-                            type: 'Interpolation',
-                            parts: [
-                              { lit: '&-' },
-                              {
-                                ref: {
-                                  type: 'VariableReference',
-                                  name: 'suffix'
-                                }
-                              }
-                            ]
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'suffix'
                           }
                         }
                       ]
                     }
                   },
                   {
-                    head: {
-                      simples: [
+                    type: 'SimpleSelector',
+                    text: null,
+                    interp: {
+                      type: 'Interpolation',
+                      parts: [
+                        { lit: '&' },
                         {
-                          type: 'SimpleSelector',
-                          text: null,
-                          interp: {
-                            type: 'Interpolation',
-                            parts: [
-                              { lit: '&' },
-                              {
-                                ref: {
-                                  type: 'VariableReference',
-                                  name: 'left'
-                                }
-                              },
-                              { lit: '-' },
-                              {
-                                ref: {
-                                  type: 'VariableReference',
-                                  name: 'right'
-                                }
-                              }
-                            ]
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'left'
+                          }
+                        },
+                        { lit: '-' },
+                        {
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'right'
                           }
                         }
                       ]
@@ -8471,30 +8304,29 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration' },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        parts: [
-                          { lit: ':' },
-                          {
-                            ref: { type: 'VariableReference', name: 'pseudo' }
-                          }
-                        ]
-                      }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.card' },
+                  {
+                    type: 'SimpleSelector',
+                    text: null,
+                    interp: {
+                      parts: [
+                        { lit: ':' },
+                        {
+                          ref: { type: 'VariableReference', name: 'pseudo' }
+                        }
+                      ]
                     }
-                  ]
-                }
+                  }
+                ]
               }
             ]
           }
@@ -8516,32 +8348,26 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    { type: 'SimpleSelector', text: ':hover' },
-                    { type: 'SimpleSelector', text: '::before' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.card' },
+                  { type: 'SimpleSelector', text: ':hover' },
+                  { type: 'SimpleSelector', text: '::before' }
+                ]
               },
               {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.note' },
-                    { type: 'SimpleSelector', text: ':focus' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.note' },
+                  { type: 'SimpleSelector', text: ':focus' }
+                ]
               }
             ]
           }
@@ -8573,25 +8399,24 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    { type: 'SimpleSelector', text: ':hover' },
-                    {
-                      type: 'PseudoSelector',
-                      name: ':not',
-                      text: null,
-                      crossable: false
-                    },
-                    { type: 'SimpleSelector', text: ':lang(en)' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.card' },
+                  { type: 'SimpleSelector', text: ':hover' },
+                  {
+                    type: 'PseudoSelector',
+                    name: ':not',
+                    text: null,
+                    crossable: false
+                  },
+                  { type: 'SimpleSelector', text: ':lang(en)' }
+                ]
               }
             ]
           }
@@ -8627,32 +8452,26 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    { type: 'SimpleSelector', text: ':nth-child(odd)' },
-                    { type: 'SimpleSelector', text: ':nth-last-child(2n + 1)' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.card' },
+                  { type: 'SimpleSelector', text: ':nth-child(odd)' },
+                  { type: 'SimpleSelector', text: ':nth-last-child(2n + 1)' }
+                ]
               },
               {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.note' },
-                    { type: 'SimpleSelector', text: ':nth-child(even)' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.note' },
+                  { type: 'SimpleSelector', text: ':nth-child(even)' }
+                ]
               }
             ]
           }
@@ -8723,42 +8542,40 @@ describe('Less AST grammar facts', () => {
      */
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    {
-                      type: 'PseudoSelector',
-                      name: ':not',
-                      text: null,
-                      crossable: false
-                    },
-                    {
-                      type: 'PseudoSelector',
-                      name: ':has',
-                      text: null,
-                      crossable: false
-                    }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.card' },
+                  {
+                    type: 'PseudoSelector',
+                    name: ':not',
+                    text: null,
+                    crossable: false
+                  },
+                  {
+                    type: 'PseudoSelector',
+                    name: ':has',
+                    text: null,
+                    crossable: false
+                  }
+                ]
               },
               {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.note' },
-                    {
-                      type: 'PseudoSelector',
-                      name: ':is',
-                      text: null,
-                      crossable: true
-                    }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.note' },
+                  {
+                    type: 'PseudoSelector',
+                    name: ':is',
+                    text: null,
+                    crossable: true
+                  }
+                ]
               }
             ]
           }
@@ -8773,15 +8590,16 @@ describe('Less AST grammar facts', () => {
   });
 
   it('structures whitelisted selector-function pseudos while interpolated and :extend forms stay opaque', () => {
-    const headSimples = (source: string): unknown[] => {
+    const headTokens = (source: string): unknown[] => {
       const parsed = run(lessAstGrammar.Document, source, {
         trivia: lessAstGrammar.whitespace
       });
       expect(parsed.ok, source).toBe(true);
       expect(parsed.unconsumedFrom, source).toBeNull();
-      return stylesheet(parsed.value).children.flatMap(child =>
-        child.type === 'Rule' ? [child] : []
-      )[0].selector.selectors[0].head.simples;
+      const selector = stylesheet(parsed.value).rules.flatMap(child =>
+        child.type === 'Ruleset' ? [child] : []
+      )[0].selector.selectors[0];
+      return selectorTermTokens(firstSelectorTerm(selector));
     };
 
     /*
@@ -8789,7 +8607,7 @@ describe('Less AST grammar facts', () => {
      * joined `text`; the inline `:is(.a, .b)` spelling is core serialization's job.
      * `:is`/`:matches` are crossable for extend.
      */
-    expect(headSimples('.x:is(.a, .b) { color: red; }')).toMatchObject([
+    expect(headTokens('.x:is(.a, .b) { color: red; }')).toMatchObject([
       { type: 'SimpleSelector', text: '.x' },
       {
         type: 'PseudoSelector',
@@ -8800,21 +8618,21 @@ describe('Less AST grammar facts', () => {
         args: {
           type: 'SelectorList',
           selectors: [
-            { head: { simples: [{ type: 'SimpleSelector', text: '.a' }] } },
-            { head: { simples: [{ type: 'SimpleSelector', text: '.b' }] } }
+            { type: 'SimpleSelector', text: '.a' },
+            { type: 'SimpleSelector', text: '.b' }
           ]
         }
       }
     ]);
 
     // `:not` structures too but is sealed (crossable:false).
-    expect(headSimples('.x:not(.a, .b) { color: red; }')).toMatchObject([
+    expect(headTokens('.x:not(.a, .b) { color: red; }')).toMatchObject([
       { type: 'SimpleSelector', text: '.x' },
       { type: 'PseudoSelector', name: ':not', text: null, crossable: false }
     ]);
 
     // Non-whitelist `:global`/`:local` stay opaque SimpleSelector text (no space).
-    expect(headSimples('.x:global(.a, .b) { color: red; }')).toMatchObject([
+    expect(headTokens('.x:global(.a, .b) { color: red; }')).toMatchObject([
       { type: 'SimpleSelector', text: '.x' },
       { type: 'SimpleSelector', text: ':global(.a,.b)' }
     ]);
@@ -8823,7 +8641,7 @@ describe('Less AST grammar facts', () => {
      * An interpolated pseudo name stays an opaque interp-backed SimpleSelector —
      * it never becomes a structured PseudoSelector.
      */
-    expect(headSimples('.x:@{state} { color: red; }')).toMatchObject([
+    expect(headTokens('.x:@{state} { color: red; }')).toMatchObject([
       { type: 'SimpleSelector', text: '.x' },
       {
         type: 'SimpleSelector',
@@ -8839,7 +8657,7 @@ describe('Less AST grammar facts', () => {
      * Less 4.8.0 models this same case structurally (literal chunks and refs as
      * separate elements), so the parts stay typed and are never joined to text.
      */
-    expect(headSimples('.x:is(@{sel}) { color: red; }')).toMatchObject([
+    expect(headTokens('.x:is(@{sel}) { color: red; }')).toMatchObject([
       { type: 'SimpleSelector', text: '.x' },
       {
         type: 'SimpleSelector',
@@ -8849,7 +8667,7 @@ describe('Less AST grammar facts', () => {
         }
       }
     ]);
-    expect(headSimples('.x:not(.a@{b}) { color: red; }')).toMatchObject([
+    expect(headTokens('.x:not(.a@{b}) { color: red; }')).toMatchObject([
       { type: 'SimpleSelector', text: '.x' },
       {
         type: 'SimpleSelector',
@@ -8864,7 +8682,7 @@ describe('Less AST grammar facts', () => {
      * `:extend(...)` is a Less extend directive, not a pseudo: it is never
      * structured and leaves the compound with only the subject SimpleSelector.
      */
-    expect(headSimples('.x:extend(.a) { color: red; }')).toMatchObject([
+    expect(headTokens('.x:extend(.a) { color: red; }')).toMatchObject([
       { type: 'SimpleSelector', text: '.x' }
     ]);
   });
@@ -8880,22 +8698,16 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
-                    {
-                      type: 'PseudoSelector',
-                      name: ':is',
-                      text: null,
-                      crossable: true
-                    }
-                  ]
-                }
+                type: 'PseudoSelector',
+                name: ':is',
+                text: null,
+                crossable: true
               }
             ]
           }
@@ -8928,20 +8740,19 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    { type: 'SimpleSelector', text: ':lang(en-US)' },
-                    { type: 'SimpleSelector', text: '::part(icon)' },
-                    { type: 'SimpleSelector', text: ':state(foo [bar])' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.card' },
+                  { type: 'SimpleSelector', text: ':lang(en-US)' },
+                  { type: 'SimpleSelector', text: '::part(icon)' },
+                  { type: 'SimpleSelector', text: ':state(foo [bar])' }
+                ]
               }
             ]
           }
@@ -9015,28 +8826,26 @@ describe('Less AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
-                    { text: '.child' },
-                    { text: ':nth-child(-n+2 of .item)' },
-                    { text: ':nth-last-child(2n + 1)' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { text: '.child' },
+                  { text: ':nth-child(-n+2 of .item)' },
+                  { text: ':nth-last-child(2n + 1)' }
+                ]
               },
               {
-                head: {
-                  simples: [
-                    { text: '.type' },
-                    { text: ':nth-of-type(odd)' },
-                    { text: ':nth-last-of-type(3n)' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { text: '.type' },
+                  { text: ':nth-of-type(odd)' },
+                  { text: ':nth-last-of-type(3n)' }
+                ]
               }
             ]
           }
@@ -9101,22 +8910,21 @@ describe('Less AST grammar facts', () => {
     ).toBe(true);
     expect(interp.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: 'a' },
-                    {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: { type: 'Interpolation' }
-                    }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: 'a' },
+                  {
+                    type: 'SimpleSelector',
+                    text: null,
+                    interp: { type: 'Interpolation' }
+                  }
+                ]
               }
             ]
           }
@@ -9139,24 +8947,23 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    {
-                      type: 'PseudoSelector',
-                      name: ':not',
-                      text: null,
-                      crossable: false
-                    },
-                    { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.card' },
+                  {
+                    type: 'PseudoSelector',
+                    name: ':not',
+                    text: null,
+                    crossable: false
+                  },
+                  { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
+                ]
               }
             ]
           }
@@ -9201,23 +9008,20 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    { type: 'SimpleSelector', text: '[data-state]' },
-                    { type: 'SimpleSelector', text: '[role=button]' },
-                    { type: 'SimpleSelector', text: '[title="Save" i]' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.card' },
+                  { type: 'SimpleSelector', text: '[data-state]' },
+                  { type: 'SimpleSelector', text: '[role=button]' },
+                  { type: 'SimpleSelector', text: '[title="Save" i]' }
+                ]
               }
             ]
           }
@@ -9237,12 +9041,12 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
           selector: {
             selectors: [
-              { head: { simples: [{ text: '[ng\\:cloak]' }] } },
-              { head: { simples: [{ text: 'ng\\:form' }] } }
+              { type: 'SimpleSelector', text: '[ng\\:cloak]' },
+              { type: 'SimpleSelector', text: 'ng\\:form' }
             ]
           }
         }
@@ -9264,23 +9068,20 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    { type: 'SimpleSelector', text: '[svg|role=button]' },
-                    { type: 'SimpleSelector', text: '[*|data-state]' },
-                    { type: 'SimpleSelector', text: '[|title="Save" i]' }
-                  ]
-                }
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.card' },
+                  { type: 'SimpleSelector', text: '[svg|role=button]' },
+                  { type: 'SimpleSelector', text: '[*|data-state]' },
+                  { type: 'SimpleSelector', text: '[|title="Save" i]' }
+                ]
               }
             ]
           }
@@ -9302,43 +9103,27 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: 'svg|a' }]
-                },
-                tail: []
+                type: 'SimpleSelector',
+                text: 'svg|a'
               },
               {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: '*|a' }]
-                },
-                tail: []
+                type: 'SimpleSelector',
+                text: '*|a'
               },
               {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: '|a' }]
-                },
-                tail: []
+                type: 'SimpleSelector',
+                text: '|a'
               },
               {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: 'svg|*' }]
-                },
-                tail: []
+                type: 'SimpleSelector',
+                text: 'svg|*'
               }
             ]
           }
@@ -9358,27 +9143,15 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
                 type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: 'a' }]
-                },
-                tail: [
-                  {
-                    comb: '|',
-                    compound: {
-                      type: 'CompoundSelector',
-                      simples: [{ type: 'SimpleSelector', text: 'b' }]
-                    }
-                  }
-                ]
+                value: [{ type: 'SimpleSelector', text: 'a' }, '|', { type: 'SimpleSelector', text: 'b' }]
               }
             ]
           }
@@ -9401,77 +9174,76 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'field' },
         { type: 'VariableDeclaration', name: 'value' },
         { type: 'VariableDeclaration', name: 'name' },
         { type: 'VariableDeclaration', name: 'quoted' },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          { lit: '[data-' },
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'field',
-                              lookup: 'scoped'
-                            },
-                            unquote: true
+                type: 'CompoundSelector',
+                value: [
+                  { type: 'SimpleSelector', text: '.card' },
+                  {
+                    type: 'SimpleSelector',
+                    text: null,
+                    interp: {
+                      type: 'Interpolation',
+                      parts: [
+                        { lit: '[data-' },
+                        {
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'field',
+                            lookup: 'scoped'
                           },
-                          { lit: '=' },
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'value',
-                              lookup: 'scoped'
-                            },
-                            unquote: false
+                          unquote: true
+                        },
+                        { lit: '=' },
+                        {
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'value',
+                            lookup: 'scoped'
                           },
-                          { lit: ']' }
-                        ]
-                      }
-                    },
-                    {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          { lit: '[svg|' },
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'name',
-                              lookup: 'scoped'
-                            },
-                            unquote: true
-                          },
-                          { lit: '="' },
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'quoted',
-                              lookup: 'scoped'
-                            },
-                            unquote: true
-                          },
-                          { lit: '"]' }
-                        ]
-                      }
+                          unquote: false
+                        },
+                        { lit: ']' }
+                      ]
                     }
-                  ]
-                }
+                  },
+                  {
+                    type: 'SimpleSelector',
+                    text: null,
+                    interp: {
+                      type: 'Interpolation',
+                      parts: [
+                        { lit: '[svg|' },
+                        {
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'name',
+                            lookup: 'scoped'
+                          },
+                          unquote: true
+                        },
+                        { lit: '="' },
+                        {
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'quoted',
+                            lookup: 'scoped'
+                          },
+                          unquote: true
+                        },
+                        { lit: '"]' }
+                      ]
+                    }
+                  }
+                ]
               }
             ]
           }
@@ -9528,29 +9300,23 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'num' },
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [
               {
-                head: {
-                  simples: [
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  parts: [
+                    { lit: '[prop|="value' },
                     {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        parts: [
-                          { lit: '[prop|="value' },
-                          {
-                            ref: { type: 'VariableReference', name: 'num' },
-                            unquote: true
-                          },
-                          { lit: '"]' }
-                        ]
-                      }
-                    }
+                      ref: { type: 'VariableReference', name: 'num' },
+                      unquote: true
+                    },
+                    { lit: '"]' }
                   ]
                 }
               }

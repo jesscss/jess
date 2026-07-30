@@ -1,4 +1,4 @@
-import { F_VISIBLE, el, sel, sellist, compound, is, co, pseudo, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
+import { F_VISIBLE, el, sel, sellist, compound, is, co, pseudo, type Selector, PseudoSelector, type SelectorList } from '../../index.js';
 import { extendSelector, tryExtendSelector, ExtendErrorType, createProcessedSelector } from '../extend.js';
 import { isNode } from '../is-node.js';
 import { N } from '../../node-type.js';

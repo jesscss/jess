@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeKeyword, makeList, makeQuoted, type FnCtx } from '@jesscss/core/value';
+import { makeKeyword, makeList, makeQuoted, type FnCtx } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { escape } from '../escape.js';
 

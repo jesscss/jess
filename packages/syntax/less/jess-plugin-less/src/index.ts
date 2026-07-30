@@ -9,7 +9,7 @@ import {
   type PluginInterface,
   buildEvaluator
 } from '@jesscss/core';
-import { type PluginHost } from '@jesscss/core/value';
+import { type PluginHost } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';

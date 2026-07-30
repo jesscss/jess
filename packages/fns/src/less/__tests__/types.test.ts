@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { emitValue, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core/value';
-import type { Fn, FnCtx, ValueGroup } from '@jesscss/core/value';
+import { emitValue, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core';
+import type { Fn, FnCtx, ValueGroup } from '@jesscss/core';
 import {
   iscolor,
   isem,

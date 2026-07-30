@@ -175,7 +175,7 @@ describe("@jesscss/plugin-less", () => {
     expect(result.errors).toEqual([]);
     expect(result.document).toMatchObject({
       type: "Stylesheet",
-      children: [{ type: "AtRuleStatement", name: "@charset" }],
+      rules: [{ type: 'AtRuleStatement', name: '@charset' }]
     });
   });
 

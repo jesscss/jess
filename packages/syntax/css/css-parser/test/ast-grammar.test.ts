@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { run } from 'parseman';
 import { createTriviaMapFromParseman, triviaMapOf, valueLayoutOf, withSourceSpan, withTriviaMap } from '@jesscss/core/ast';
-import type { Stylesheet } from '@jesscss/core/ast';
+import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
 import { cssAstGrammar } from '../src/grammar.js';
@@ -13,8 +13,7 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && value !== null
     && 'type' in value
     && value.type === 'Stylesheet'
-    && 'children' in value
-    && Array.isArray(value.children);
+    && Array.isArray(value.rules);
 }
 
 function parseAst(input: string): Stylesheet {
@@ -61,12 +60,28 @@ function containsNode(value: unknown, predicate: (value: Record<string, unknown>
   return predicate(value) || Object.values(value).some(child => containsNode(child, predicate));
 }
 
+function termTexts(term: SelectorTerm): string[] {
+  return term.type === 'CompoundSelector'
+    ? term.value.map(simpleTokenText)
+    : [simpleTokenText(term)];
+}
+
+function leadingSelectorTexts(selector: SelectorBranch): string[] {
+  if (selector.type === 'ComplexSelector') {
+    return termTexts(selector.value[0]);
+  }
+  if (selector.type === 'RelativeSelector') {
+    return termTexts(selector.value[1]);
+  }
+  return termTexts(selector);
+}
+
 describe('CSS canonical-AST grammar', () => {
   it('keeps ordinary adjacency as a raw value array and reserves List for explicit separators', () => {
     const document = parseAst('.x { space: red blue; comma: red, blue; ratio: 1 / 2; }');
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         { type: 'Declaration', name: 'space', value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] },
         { type: 'Declaration', name: 'comma', value: { type: 'List', sep: ',' } },
         { type: 'Declaration', name: 'ratio', value: [{ type: 'Dimension', src: '1' }, { type: 'Any', src: '/' }, { type: 'Dimension', src: '2' }] }
@@ -87,22 +102,22 @@ describe('CSS canonical-AST grammar', () => {
    */
   it('keeps declaration-only permissive component values out of calc and nested-rule headers', () => {
     const document = parseAst('.a { x: (foo); ratio: 1 / 2; filter: alpha(opacity=50); flag: foo|bar; color: red ! IMPORTANT; b:c { color: blue; } }');
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
-        { type: 'Declaration', name: 'x', value: { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'foo' } } },
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
+        { type: 'Declaration', name: 'x', value: { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'foo' } } },
         { type: 'Declaration', name: 'ratio' },
         { type: 'Declaration', name: 'filter', value: { type: 'FunctionCall', name: 'alpha' } },
         { type: 'Declaration', name: 'flag' },
         { type: 'Declaration', name: 'color', important: true },
-        { type: 'Rule' }
+        { type: 'Ruleset' }
       ]
     });
   });
 
   it('uses shared basic-selector recognition plus structural attribute and percentage simple selectors', () => {
     for (const input of ['* { color: red; }', '.c\\6f lor { color: red; }', '#hero { color: red; }', '[role=button] { color: red; }', '50% { color: red; }']) {
-      expect(parseAst(input).children[0]).toMatchObject({ type: 'Rule' });
+      expect(parseAst(input).rules[0]).toMatchObject({ type: 'Ruleset' });
     }
     for (const input of ['[role=] { color: red; }', '[role=button i extra] { color: red; }']) {
       expect(() => parseAst(input)).toThrow();
@@ -112,28 +127,25 @@ describe('CSS canonical-AST grammar', () => {
   it('constructs static pseudo classes and elements as direct canonical SimpleSelector nodes', () => {
     const document = parseAst('.card:hover::before { color: red; }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
       selector: {
         type: 'SelectorList',
         selectors: [{
-          type: 'ComplexSelector',
-          head: {
-            type: 'CompoundSelector',
-            simples: [
-              { type: 'SimpleSelector', text: '.card' },
-              { type: 'SimpleSelector', text: ':hover' },
-              { type: 'SimpleSelector', text: '::before' }
-            ]
-          }
+          type: 'CompoundSelector',
+          value: [
+            { type: 'SimpleSelector', text: '.card' },
+            { type: 'SimpleSelector', text: ':hover' },
+            { type: 'SimpleSelector', text: '::before' }
+          ]
         }]
       }
     });
     expect(serialize(document)).toEqual({
       css: '.card:hover::before {\n  color: red;\n}\n'
     });
-    expect(parseAst('.card:nth-child(2) { color: red; }').children[0]).toMatchObject({
-      type: 'Rule', selector: { selectors: [{ head: { simples: [{ text: '.card' }, { text: ':nth-child(2)' }] } }] }
+    expect(parseAst('.card:nth-child(2) { color: red; }').rules[0]).toMatchObject({
+      type: 'Ruleset', selector: { selectors: [{ value: [{ text: '.card' }, { text: ':nth-child(2)' }] }] }
     });
   });
 
@@ -179,9 +191,9 @@ describe('CSS canonical-AST grammar', () => {
      * Structured pseudo: parser keeps `args` (pieces), `text` is null; the inline
      * join is core serialization's job (spaced).
      */
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule', selector: {
-        selectors: [{ head: { simples: [{ type: 'PseudoSelector', name: ':is', text: null }] } }]
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset', selector: {
+        selectors: [{ type: 'PseudoSelector', name: ':is', text: null }]
       }
     });
     expect(serialize(document).css).toEqual(':is(.card, [data-kind=primary]) {\n  color: red;\n}\n');
@@ -195,52 +207,51 @@ describe('CSS canonical-AST grammar', () => {
 
   it('retains the parsed SelectorList as structured PseudoSelector args for whitelisted selector-function pseudos', () => {
     const document = parseAst('.x:is(.a, .b) { color: red; }');
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
       selector: {
         selectors: [{
-          head: {
-            simples: [
-              { type: 'SimpleSelector', text: '.x' },
-              {
-                type: 'PseudoSelector',
-                name: ':is',
-                text: null,
-                crossable: true,
-                interp: null,
-                args: {
-                  type: 'SelectorList',
-                  selectors: [
-                    { head: { simples: [{ type: 'SimpleSelector', text: '.a' }] } },
-                    { head: { simples: [{ type: 'SimpleSelector', text: '.b' }] } }
-                  ]
-                }
+          type: 'CompoundSelector',
+          value: [
+            { type: 'SimpleSelector', text: '.x' },
+            {
+              type: 'PseudoSelector',
+              name: ':is',
+              text: null,
+              crossable: true,
+              interp: null,
+              args: {
+                type: 'SelectorList',
+                selectors: [
+                  { type: 'SimpleSelector', text: '.a' },
+                  { type: 'SimpleSelector', text: '.b' }
+                ]
               }
-            ]
-          }
+            }
+          ]
         }]
       }
     });
 
     // `:not` structures too, but is sealed (crossable:false).
     const sealed = parseAst('.x:not(.a, .b) { color: red; }');
-    expect(sealed.children[0]).toMatchObject({
-      type: 'Rule',
-      selector: { selectors: [{ head: { simples: [
+    expect(sealed.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      selector: { selectors: [{ value: [
         { type: 'SimpleSelector', text: '.x' },
         { type: 'PseudoSelector', name: ':not', text: null, crossable: false }
-      ] } }] }
+      ] }] }
     });
 
     // Non-whitelist pseudos (`::before`, `:hover`) stay opaque SimpleSelector text.
     const opaque = parseAst('.x::before:hover { color: red; }');
-    expect(opaque.children[0]).toMatchObject({
-      type: 'Rule',
-      selector: { selectors: [{ head: { simples: [
+    expect(opaque.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      selector: { selectors: [{ value: [
         { type: 'SimpleSelector', text: '.x' },
         { type: 'SimpleSelector', text: '::before' },
         { type: 'SimpleSelector', text: ':hover' }
-      ] } }] }
+      ] }] }
     });
 
     /*
@@ -433,16 +444,19 @@ describe('CSS canonical-AST grammar', () => {
     ]);
     expect(document).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             selectors: [{
-              head: { simples: [{ text: 'a' }, { text: '.card' }] },
-              tail: [{ comb: '>', compound: { simples: [{ text: '[data-kind=primaryi]' }, { text: ':hover' }] } }]
+              value: [
+                { value: [{ text: 'a' }, { text: '.card' }] },
+                '>',
+                { value: [{ text: '[data-kind=primaryi]' }, { text: ':hover' }] }
+              ]
             }]
           },
-          body: [
+          rules: [
             { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }
           ]
         }
@@ -459,10 +473,10 @@ describe('CSS canonical-AST grammar', () => {
     expect(parse(source)).toEqual(parseAst(source));
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: { selectors: [{ head: { simples: [{ text: 'a' }] } }] },
-        body: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
+      rules: [{
+        type: 'Ruleset',
+        selector: { selectors: [{ type: 'SimpleSelector', text: 'a' }] },
+        rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
       }]
     });
 
@@ -470,9 +484,9 @@ describe('CSS canonical-AST grammar', () => {
      * This boundary-only rule must not change the existing selector-internal
      * comment treatment into a lexical concatenation rule.
      */
-    expect(parseAst('a/**/.card { color: red; }').children[0]).toMatchObject({
-      type: 'Rule',
-      selector: { selectors: [{ head: { simples: [{ text: 'a' }, { text: '.card' }] } }] }
+    expect(parseAst('a/**/.card { color: red; }').rules[0]).toMatchObject({
+      type: 'Ruleset',
+      selector: { selectors: [{ value: [{ text: 'a' }, { text: '.card' }] }] }
     });
   });
 
@@ -483,9 +497,9 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(parse(source)).toEqual(parseAst(source));
-    expect(parse(source).children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{
+    expect(parse(source).rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{
         type: 'Declaration',
         name: 'width',
         value: [
@@ -517,9 +531,9 @@ describe('CSS canonical-AST grammar', () => {
       expect(cst.errors, source).toHaveLength(0);
       expect(cst.unconsumedFrom, source).toBeNull();
       const document = parseAst(source);
-      const first = document.children[0];
-      expect(first, source).toMatchObject({ type: 'Rule' });
-      if (first?.type !== 'Rule') {
+      const first = document.rules[0];
+      expect(first, source).toMatchObject({ type: 'Ruleset' });
+      if (first?.type !== 'Ruleset') {
         throw new Error(`Expected a rule for ${source}`);
       }
 
@@ -528,7 +542,8 @@ describe('CSS canonical-AST grammar', () => {
        * inline spelling is produced by core serialization (`simpleTokenText`), not
        * the parser. Opaque simples/nth pseudos still carry verbatim `text`.
        */
-      expect(first.selector.selectors[0]?.head.simples.map(simpleTokenText), source).toEqual(expectedSimples);
+      const selector = first.selector.selectors[0];
+      expect(selector ? leadingSelectorTexts(selector) : [], source).toEqual(expectedSimples);
     }
 
     for (const source of [
@@ -546,18 +561,15 @@ describe('CSS canonical-AST grammar', () => {
   it('constructs CSS nesting selectors as direct canonical SimpleSelector nodes', () => {
     const document = parseAst('.card { &.featured { color: red; } }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{
-        type: 'Rule',
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{
+        type: 'Ruleset',
         selector: {
           type: 'SelectorList',
           selectors: [{
-            type: 'ComplexSelector',
-            head: {
-              type: 'CompoundSelector',
-              simples: [{ type: 'SimpleSelector', text: '&' }, { type: 'SimpleSelector', text: '.featured' }]
-            }
+            type: 'CompoundSelector',
+            value: [{ type: 'SimpleSelector', text: '&' }, { type: 'SimpleSelector', text: '.featured' }]
           }]
         }
       }]
@@ -576,7 +588,7 @@ describe('CSS canonical-AST grammar', () => {
   });
 
   it('shares the strict CSS hex-color terminal with the other direct dialect grammars', () => {
-    expect(parseAst('.card { color: #0a1B2c; }').children[0]).toMatchObject({ type: 'Rule' });
+    expect(parseAst('.card { color: #0a1B2c; }').rules[0]).toMatchObject({ type: 'Ruleset' });
     for (const input of ['.card { color: #fffff; }', '.card { color: #1234567; }']) {
       expect(() => parseAst(input)).toThrow();
     }
@@ -588,9 +600,9 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    expect(parseAst(source).children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(parseAst(source).rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         { type: 'Declaration', name: 'a', value: { type: 'Dimension', number: 1000, unit: '' } },
         { type: 'Declaration', name: 'b', value: { type: 'Dimension', number: -0.25, unit: 'px' } },
         { type: 'Declaration', name: 'c', value: { type: 'Dimension', number: 50, unit: '%' } },
@@ -625,25 +637,31 @@ describe('CSS canonical-AST grammar', () => {
 
     expect(document).toMatchObject({
       type: 'Stylesheet',
-      children: [
+      rules: [
         {
-          type: 'Rule',
+          type: 'Ruleset',
           selector: {
             type: 'SelectorList',
             selectors: [
               {
                 type: 'ComplexSelector',
-                head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.card' }, { type: 'SimpleSelector', text: '.featured' }] },
-                tail: [{ comb: '>', compound: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '#hero' }] } }]
+                value: [
+                  { type: 'CompoundSelector', value: [{ type: 'SimpleSelector', text: '.card' }, { type: 'SimpleSelector', text: '.featured' }] },
+                  '>',
+                  { type: 'SimpleSelector', text: '#hero' }
+                ]
               },
               {
                 type: 'ComplexSelector',
-                head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: 'main' }] },
-                tail: [{ comb: ' ', compound: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.card' }] } }]
+                value: [
+                  { type: 'SimpleSelector', text: 'main' },
+                  ' ',
+                  { type: 'SimpleSelector', text: '.card' }
+                ]
               }
             ]
           },
-          body: [
+          rules: [
             { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' }, merge: null, important: false },
             { type: 'Declaration', name: 'margin', value: [{ type: 'Dimension', number: 12, unit: 'px', src: '12px' }, { type: 'Dimension', number: 0, unit: '', src: '0' }] },
             { type: 'Declaration', name: 'font-family', value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'system-ui' }, { type: 'Keyword', src: 'sans-serif' }] }, important: true }
@@ -660,7 +678,7 @@ describe('CSS canonical-AST grammar', () => {
   it('keeps nested CSS rules and @media bodies as grammar-built AST statements', () => {
     const document = parseAst('@media screen { .card { color: #abc; .title { width: 100%; } } }');
 
-    expect(document.children[0]).toMatchObject({
+    expect(document.rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@media',
       prelude: { type: 'Keyword', src: 'screen' }
@@ -672,14 +690,14 @@ describe('CSS canonical-AST grammar', () => {
 
   it('uses `only` only before a media type', () => {
     expect(parseAst('@media only screen and (min-width: 1px) { .card { color: red; } }')).toMatchObject({
-      children: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
+      rules: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
     });
     expect(() => parseAst('@media only (min-width: 1px) { .card { color: red; } }')).toThrow();
     expect(() => parseAst('@media layer { .card { color: red; } }')).toThrow();
     expect(() => parseAst('@media only layer { .card { color: red; } }')).toThrow();
     expect(() => parseAst('@container only screen { .card { color: red; } }')).toThrow();
     expect(parseAst('@media not (min-width: 1px) { .card { color: red; } }')).toMatchObject({
-      children: [{ type: 'AtRuleBlock', name: '@media' }]
+      rules: [{ type: 'AtRuleBlock', name: '@media' }]
     });
   });
 
@@ -691,10 +709,10 @@ describe('CSS canonical-AST grammar', () => {
       '@SUPPORTS NOT (display: grid) { .grid { display: block; } }'
     ]) {
       expect(parseCssCst(source).errors).toHaveLength(0);
-      expect(parseAst(source).children[0]).toMatchObject({ type: 'AtRuleBlock' });
+      expect(parseAst(source).rules[0]).toMatchObject({ type: 'AtRuleBlock' });
     }
-    expect(parseAst('.card { @supports (display: grid) { display: grid; } }').children[0]).toMatchObject({
-      type: 'Rule', body: [{ type: 'AtRuleBlock', name: '@supports' }]
+    expect(parseAst('.card { @supports (display: grid) { display: grid; } }').rules[0]).toMatchObject({
+      type: 'Ruleset', rules: [{ type: 'AtRuleBlock', name: '@supports' }]
     });
     for (const source of [
       '@supports (display: grid) { @font-face { font-family: A; src: url(a); } }',
@@ -702,22 +720,22 @@ describe('CSS canonical-AST grammar', () => {
       '@supports (display: grid) { @starting-style { .grid { display: grid; } } }'
     ]) {
       expect(parseCssCst(source).errors).toHaveLength(0);
-      expect(parseAst(source).children[0]).toMatchObject({ type: 'AtRuleBlock', body: [{ type: 'AtRuleBlock' }] });
+      expect(parseAst(source).rules[0]).toMatchObject({ type: 'AtRuleBlock', rules: [{ type: 'AtRuleBlock' }] });
     }
 
     const document = parseAst('@supports not ((display: grid) and (color: red)) { .grid { display: grid; } }');
-    expect(document.children[0]).toMatchObject({
+    expect(document.rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@supports',
       prelude: {
         type: 'SpacedValue',
         parts: [
           { type: 'Keyword', src: 'not' },
-          { type: 'Block', delimiter: 'paren', inner: { type: 'SpacedValue' } }
+          { type: 'Block', delimiter: 'paren', value: { type: 'SpacedValue' } }
         ]
       }
     });
-    expect(parseAst('@SUPPORTS NOT (display: grid) { .grid { display: grid; } }').children[0]).toMatchObject({
+    expect(parseAst('@SUPPORTS NOT (display: grid) { .grid { display: grid; } }').rules[0]).toMatchObject({
       name: '@SUPPORTS', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'NOT' }, { type: 'Block', delimiter: 'paren' }] }
     });
 
@@ -747,7 +765,7 @@ describe('CSS canonical-AST grammar', () => {
      * spec's narrower supports-condition shape. Direct AST must not silently
      * narrow the public language during the cutover.
      */
-    expect(parseAst('@supports (display: grid), (color: red) { .grid { display: grid; } }').children[0]).toMatchObject({
+    expect(parseAst('@supports (display: grid), (color: red) { .grid { display: grid; } }').rules[0]).toMatchObject({
       type: 'AtRuleBlock', prelude: { type: 'List', sep: ',', value: [{ type: 'Block', delimiter: 'paren' }, { type: 'Block', delimiter: 'paren' }] }
     });
   });
@@ -760,7 +778,7 @@ describe('CSS canonical-AST grammar', () => {
 
     expect(parseAst(source)).toMatchObject({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
           type: 'GeneralEnclosed', form: 'function', name: 'selector',
           content: { type: 'Interpolation', parts: [{ lit: '  .grid /* keep */ [data-kind=")"] :is(.a, .b) ' }] }
@@ -771,7 +789,7 @@ describe('CSS canonical-AST grammar', () => {
     const paren = '@supports (future-feature "quoted ) byte" [x]) { .grid { display: grid; } }';
     expect(parseCssCst(paren).errors).toHaveLength(0);
     expect(parseAst(paren)).toMatchObject({
-      children: [{
+      rules: [{
         prelude: {
           type: 'GeneralEnclosed', form: 'paren', name: null,
           content: { type: 'Interpolation', parts: [{ lit: 'future-feature "quoted ) byte" [x]' }] }
@@ -797,10 +815,10 @@ describe('CSS canonical-AST grammar', () => {
       expect(cst.unconsumedFrom, input).toBeNull();
       expect(parse(input), input).toEqual(parseAst(input));
     }
-    expect(parseAst(source).children[0]).toMatchObject({
+    expect(parseAst(source).rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@supports',
-      body: [{ type: 'Rule' }]
+      rules: [{ type: 'Ruleset' }]
     });
   });
 
@@ -829,12 +847,12 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.unconsumedFrom).toBeNull();
 
     const document = parseAst(source);
-    expect(document.children).toMatchObject([
-      { type: 'AtRuleBlock', name: '@SUPPORTS', prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }, body: [{ type: 'Rule' }] },
-      { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '>' } }] }, body: [{ type: 'Rule' }] },
-      { type: 'AtRuleBlock', name: '@FONT-FACE', prelude: null, body: [{ type: 'Declaration', name: 'font-family' }, { type: 'Declaration', name: 'src' }] },
-      { type: 'AtRuleBlock', name: '@property', prelude: { type: 'Any', src: '--angle' }, body: [{ type: 'Declaration', name: 'syntax' }, { type: 'Declaration', name: 'inherits' }, { type: 'Declaration', name: 'initial-value' }] },
-      { type: 'AtRuleBlock', name: '@scope', prelude: { type: 'Any', src: '(.card) to (.edge)' }, body: [{ type: 'Declaration', name: 'color' }, { type: 'Rule' }] }
+    expect(document.rules).toMatchObject([
+      { type: 'AtRuleBlock', name: '@SUPPORTS', prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }, rules: [{ type: 'Ruleset' }] },
+      { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '>' } }] }, rules: [{ type: 'Ruleset' }] },
+      { type: 'AtRuleBlock', name: '@FONT-FACE', prelude: null, rules: [{ type: 'Declaration', name: 'font-family' }, { type: 'Declaration', name: 'src' }] },
+      { type: 'AtRuleBlock', name: '@property', prelude: { type: 'Any', src: '--angle' }, rules: [{ type: 'Declaration', name: 'syntax' }, { type: 'Declaration', name: 'inherits' }, { type: 'Declaration', name: 'initial-value' }] },
+      { type: 'AtRuleBlock', name: '@scope', prelude: { type: 'Any', src: '(.card) to (.edge)' }, rules: [{ type: 'Declaration', name: 'color' }, { type: 'Ruleset' }] }
     ]);
   });
 
@@ -847,17 +865,17 @@ describe('CSS canonical-AST grammar', () => {
       '@media (width >= 100em < 200em) { .card { color: red; } }'
     ]) {
       expect(parseCssCst(range).errors, range).toHaveLength(0);
-      expect(parseAst(range).children[0], range).toMatchObject({
+      expect(parseAst(range).rules[0], range).toMatchObject({
         type: 'AtRuleBlock',
         prelude: { type: 'Block', delimiter: 'paren' }
       });
     }
-    expect(parseAst(source).children[0]).toMatchObject({
+    expect(parseAst(source).rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@media',
       prelude: {
         type: 'Block', delimiter: 'paren',
-        inner: {
+        value: {
           type: 'Operation',
           operator: '<',
           left: {
@@ -887,20 +905,20 @@ describe('CSS canonical-AST grammar', () => {
       '@container (aspect-ratio: 16/9) { .card { color: red; } }'
     ]) {
       expect(parseCssCst(source).errors, source).toHaveLength(0);
-      expect(parseAst(source).children[0], source).toMatchObject({
+      expect(parseAst(source).rules[0], source).toMatchObject({
         type: 'AtRuleBlock',
-        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: ratio } }
+        prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', right: ratio } }
       });
     }
 
-    expect(parseAst('@media (aspect-ratio >= 16/9) { .card { color: red; } }').children[0]).toMatchObject({
-      prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '>=', right: ratio } }
+    expect(parseAst('@media (aspect-ratio >= 16/9) { .card { color: red; } }').rules[0]).toMatchObject({
+      prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '>=', right: ratio } }
     });
 
-    expect(parseAst('@media (16/9 < aspect-ratio < 2/1) { .card { color: red; } }').children[0]).toMatchObject({
+    expect(parseAst('@media (16/9 < aspect-ratio < 2/1) { .card { color: red; } }').rules[0]).toMatchObject({
       prelude: {
         type: 'Block', delimiter: 'paren',
-        inner: {
+        value: {
           type: 'Operation', operator: '<',
           left: { type: 'Operation', operator: '<', left: ratio, right: { type: 'Keyword', src: 'aspect-ratio' } },
           right: { type: 'Operation', operator: '/', left: { type: 'Dimension', src: '2' }, right: { type: 'Dimension', src: '1' } }
@@ -916,8 +934,8 @@ describe('CSS canonical-AST grammar', () => {
       ['@media (aspect-ratio: 1) { .card { color: red; } }', { type: 'Dimension', src: '1' }],
       ['@media (min-width: 100px) { .card { color: red; } }', { type: 'Dimension', src: '100px' }]
     ] as const) {
-      expect(parseAst(source).children[0], source).toMatchObject({
-        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: inner } }
+      expect(parseAst(source).rules[0], source).toMatchObject({
+        prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', right: inner } }
       });
     }
 
@@ -925,7 +943,7 @@ describe('CSS canonical-AST grammar', () => {
      * A slash between multi-part operands is not a ratio: `@supports` still
      * hands the whole payload to general-enclosed instead of hard-failing.
      */
-    expect(parseAst('@supports (a b / c) { .card { color: red; } }').children[0]).toMatchObject({
+    expect(parseAst('@supports (a b / c) { .card { color: red; } }').rules[0]).toMatchObject({
       prelude: { type: 'GeneralEnclosed', form: 'paren', name: null }
     });
   });
@@ -934,13 +952,13 @@ describe('CSS canonical-AST grammar', () => {
     const source = 'a { @media (width: 1px) { color: red; } }';
     const cst = parseCssCst(source);
     expect(cst.errors, JSON.stringify(cst.errors)).toHaveLength(0);
-    expect(parseAst(source).children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{
+    expect(parseAst(source).rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{
         type: 'AtRuleBlock',
         name: '@media',
-        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } },
-        body: [{ type: 'Declaration', name: 'color' }]
+        prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } },
+        rules: [{ type: 'Declaration', name: 'color' }]
       }]
     });
   });
@@ -951,7 +969,7 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    expect(parseAst(source).children[0]).toMatchObject({
+    expect(parseAst(source).rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@container',
       prelude: {
@@ -963,7 +981,7 @@ describe('CSS canonical-AST grammar', () => {
           { type: 'FunctionCall', name: 'scroll-state', args: [{ type: 'Any', src: 'stuck: block-start' }] }
         ]
       },
-      body: [{ type: 'Rule' }]
+      rules: [{ type: 'Ruleset' }]
     });
   });
 
@@ -992,14 +1010,14 @@ describe('CSS canonical-AST grammar', () => {
     `;
     expect(parseCssCst(source).errors).toHaveLength(0);
     const document = parseAst(source);
-    expect(document.children[0]).toMatchObject({
+    expect(document.rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@PAGE',
       prelude: { type: 'Any', src: 'report:left' },
-      body: [
+      rules: [
         { type: 'Declaration', name: 'size' },
         { type: 'Declaration', name: 'margin' },
-        { type: 'AtRuleBlock', name: '@TOP-LEFT-CORNER', prelude: null, body: [{ type: 'Declaration', name: 'content' }] },
+        { type: 'AtRuleBlock', name: '@TOP-LEFT-CORNER', prelude: null, rules: [{ type: 'Declaration', name: 'content' }] },
         { type: 'AtRuleBlock', name: '@top-left' },
         { type: 'AtRuleBlock', name: '@top-center' },
         { type: 'AtRuleBlock', name: '@top-right' },
@@ -1031,12 +1049,12 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(parse(source)).toEqual(parseAst(source));
-    expect(parseAst(source).children[0]).toMatchObject({
+    expect(parseAst(source).rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@page',
-      body: [
-        { type: 'AtRuleBlock', name: '@top-left-corner', prelude: null, body: [{ type: 'Declaration', name: 'content' }] },
-        ...names.slice(1).map(name => ({ type: 'AtRuleBlock', name: `@${name}`, prelude: null, body: [{ type: 'Declaration', name: 'content' }] }))
+      rules: [
+        { type: 'AtRuleBlock', name: '@top-left-corner', prelude: null, rules: [{ type: 'Declaration', name: 'content' }] },
+        ...names.slice(1).map(name => ({ type: 'AtRuleBlock', name: `@${name}`, prelude: null, rules: [{ type: 'Declaration', name: 'content' }] }))
       ]
     });
   });
@@ -1053,7 +1071,7 @@ describe('CSS canonical-AST grammar', () => {
   it('retains the public CST page-keyword boundary behavior', () => {
     for (const source of ['@pageé { size: A4; }']) {
       expect(parseCssCst(source).errors).toHaveLength(0);
-      expect(parseAst(source).children[0]).toMatchObject({ type: 'AtRuleBlock' });
+      expect(parseAst(source).rules[0]).toMatchObject({ type: 'AtRuleBlock' });
     }
   });
 
@@ -1086,18 +1104,18 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    expect(parseAst(source).children[0]).toMatchObject({
+    expect(parseAst(source).rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@FONT-FEATURE-VALUES',
       prelude: { type: 'Any', src: '"Fira Code", Demo' },
-      body: [
-        { type: 'AtRuleBlock', name: '@STYLISTIC', prelude: null, body: [{ type: 'Declaration', name: 'salt' }] },
-        { type: 'AtRuleBlock', name: '@styleset', prelude: null, body: [{ type: 'Declaration', name: 'nice' }] },
-        { type: 'AtRuleBlock', name: '@character-variant', prelude: null, body: [{ type: 'Declaration', name: 'cv01' }] },
-        { type: 'AtRuleBlock', name: '@swash', prelude: null, body: [{ type: 'Declaration', name: 'swsh' }] },
-        { type: 'AtRuleBlock', name: '@ornaments', prelude: null, body: [{ type: 'Declaration', name: 'orn' }] },
-        { type: 'AtRuleBlock', name: '@annotation', prelude: null, body: [{ type: 'Declaration', name: 'note' }] },
-        { type: 'AtRuleBlock', name: '@historical-forms', prelude: null, body: [{ type: 'Declaration', name: 'hist' }] }
+      rules: [
+        { type: 'AtRuleBlock', name: '@STYLISTIC', prelude: null, rules: [{ type: 'Declaration', name: 'salt' }] },
+        { type: 'AtRuleBlock', name: '@styleset', prelude: null, rules: [{ type: 'Declaration', name: 'nice' }] },
+        { type: 'AtRuleBlock', name: '@character-variant', prelude: null, rules: [{ type: 'Declaration', name: 'cv01' }] },
+        { type: 'AtRuleBlock', name: '@swash', prelude: null, rules: [{ type: 'Declaration', name: 'swsh' }] },
+        { type: 'AtRuleBlock', name: '@ornaments', prelude: null, rules: [{ type: 'Declaration', name: 'orn' }] },
+        { type: 'AtRuleBlock', name: '@annotation', prelude: null, rules: [{ type: 'Declaration', name: 'note' }] },
+        { type: 'AtRuleBlock', name: '@historical-forms', prelude: null, rules: [{ type: 'Declaration', name: 'hist' }] }
       ]
     });
   });
@@ -1119,18 +1137,18 @@ describe('CSS canonical-AST grammar', () => {
     const cst = parseCssCst(source);
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(parseAst(source).children[0]).toMatchObject({
+    expect(parseAst(source).rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@font-feature-values',
       prelude: { type: 'Any', src: 'é' },
-      body: [{ type: 'AtRuleBlock', name: '@styleset', prelude: null, body: [{ type: 'Declaration', name: 'nice' }] }]
+      rules: [{ type: 'AtRuleBlock', name: '@styleset', prelude: null, rules: [{ type: 'Declaration', name: 'nice' }] }]
     });
   });
 
   it('constructs non-import statement at-rule headers as grammar-owned public bytes', () => {
     const document = parseAst('@namespace svg url("https://example.test/ns"); @layer utilities; @layer; .card { color: red; }');
 
-    expect(document.children).toMatchObject([
+    expect(document.rules).toMatchObject([
       {
         type: 'AtRuleStatement',
         name: '@namespace',
@@ -1138,7 +1156,7 @@ describe('CSS canonical-AST grammar', () => {
       },
       { type: 'AtRuleStatement', name: '@layer', prelude: { type: 'Any', src: 'utilities' } },
       { type: 'AtRuleStatement', name: '@layer', prelude: null },
-      { type: 'Rule' }
+      { type: 'Ruleset' }
     ]);
     expect(serialize(document)).toEqual({
       css: '@namespace svg url("https://example.test/ns");\n@layer utilities;\n@layer;\n.card {\n  color: red;\n}\n'
@@ -1148,18 +1166,18 @@ describe('CSS canonical-AST grammar', () => {
   it('constructs case-insensitive named and anonymous @layer blocks as structured AST subtrees', () => {
     const document = parseAst('@LAYER utilities.components { .card { color: red; } } @layer { .reset { margin: 0; } }');
 
-    expect(document.children).toMatchObject([
+    expect(document.rules).toMatchObject([
       {
         type: 'AtRuleBlock',
         name: '@LAYER',
         prelude: { type: 'Any', src: 'utilities.components' },
-        body: [{ type: 'Rule', selector: { type: 'SelectorList' } }]
+        rules: [{ type: 'Ruleset', selector: { type: 'SelectorList' } }]
       },
       {
         type: 'AtRuleBlock',
         name: '@layer',
         prelude: null,
-        body: [{ type: 'Rule', selector: { type: 'SelectorList' } }]
+        rules: [{ type: 'Ruleset', selector: { type: 'SelectorList' } }]
       }
     ]);
     expect(serialize(document)).toEqual({
@@ -1170,26 +1188,26 @@ describe('CSS canonical-AST grammar', () => {
   it('constructs keyframe selector blocks directly instead of treating keyframes as ordinary rulesets', () => {
     const document = parseAst('@KEYFRAMES fade { /* half-way */ from, 50% { opacity: 0; } to { opacity: 1; } } @-MOZ-KEYFRAMES zoom { from { opacity: 0; } }');
 
-    expect(document.children).toMatchObject([
+    expect(document.rules).toMatchObject([
       {
         type: 'AtRuleBlock',
         name: '@KEYFRAMES',
         prelude: { type: 'Any', src: 'fade' },
-        body: [
+        rules: [
           {
-            type: 'Rule',
+            type: 'Ruleset',
             selector: {
               type: 'SelectorList',
               selectors: [
-                { type: 'ComplexSelector', head: { simples: [{ type: 'SimpleSelector', text: 'from' }] } },
-                { type: 'ComplexSelector', head: { simples: [{ type: 'SimpleSelector', text: '50%' }] } }
+                { type: 'SimpleSelector', text: 'from' },
+                { type: 'SimpleSelector', text: '50%' }
               ]
             },
-            body: [{ type: 'Declaration', name: 'opacity' }]
+            rules: [{ type: 'Declaration', name: 'opacity' }]
           },
           {
-            type: 'Rule',
-            selector: { type: 'SelectorList', selectors: [{ type: 'ComplexSelector', head: { simples: [{ type: 'SimpleSelector', text: 'to' }] } }] }
+            type: 'Ruleset',
+            selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'to' }] }
           }
         ]
       },
@@ -1197,7 +1215,7 @@ describe('CSS canonical-AST grammar', () => {
         type: 'AtRuleBlock',
         name: '@-MOZ-KEYFRAMES',
         prelude: { type: 'Any', src: 'zoom' },
-        body: [{ type: 'Rule', selector: { type: 'SelectorList' } }]
+        rules: [{ type: 'Ruleset', selector: { type: 'SelectorList' } }]
       }
     ]);
     expect(serialize(document)).toEqual({
@@ -1214,21 +1232,21 @@ describe('CSS canonical-AST grammar', () => {
     expect(parse(source)).toEqual(parseAst(source));
     expect(parseAst(source)).toMatchObject({
       type: 'Stylesheet',
-      children: [{
+      rules: [{
         type: 'AtRuleBlock',
         name: '@keyframes',
-        body: [
+        rules: [
           {
-            type: 'Rule',
+            type: 'Ruleset',
             selector: {
               type: 'SelectorList',
               selectors: [
-                { type: 'ComplexSelector', head: { simples: [{ type: 'SimpleSelector', text: 'from' }] } },
-                { type: 'ComplexSelector', head: { simples: [{ type: 'SimpleSelector', text: '50%' }] } },
-                { type: 'ComplexSelector', head: { simples: [{ type: 'SimpleSelector', text: 'to' }] } }
+                { type: 'SimpleSelector', text: 'from' },
+                { type: 'SimpleSelector', text: '50%' },
+                { type: 'SimpleSelector', text: 'to' }
               ]
             },
-            body: [
+            rules: [
               { type: 'Declaration', name: 'opacity', value: { type: 'Dimension', number: 0, unit: '' } }
             ]
           }
@@ -1248,8 +1266,8 @@ describe('CSS canonical-AST grammar', () => {
     const cst = parseCssCst(source);
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(parseAst(source).children[0]).toMatchObject({
-      type: 'AtRuleBlock', name: '@layer', prelude: { type: 'Any', src: 'utilities, components' }, body: [{ type: 'Rule' }]
+    expect(parseAst(source).rules[0]).toMatchObject({
+      type: 'AtRuleBlock', name: '@layer', prelude: { type: 'Any', src: 'utilities, components' }, rules: [{ type: 'Ruleset' }]
     });
   });
 
@@ -1265,10 +1283,10 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    expect(parseAst(source).children).toMatchObject([
-      { type: 'AtRuleBlock', name: '@STARTING-STYLE', prelude: { type: 'Any', src: 'legacy header' }, body: [{ type: 'Rule' }] },
-      { type: 'AtRuleBlock', name: '@SCOPE', prelude: null, body: [{ type: 'Declaration' }, { type: 'Rule' }] },
-      { type: 'AtRuleBlock', name: '@KEYFRAMES', prelude: { type: 'Any', src: 'fade alternate' }, body: [{ type: 'Rule' }] },
+    expect(parseAst(source).rules).toMatchObject([
+      { type: 'AtRuleBlock', name: '@STARTING-STYLE', prelude: { type: 'Any', src: 'legacy header' }, rules: [{ type: 'Ruleset' }] },
+      { type: 'AtRuleBlock', name: '@SCOPE', prelude: null, rules: [{ type: 'Declaration' }, { type: 'Ruleset' }] },
+      { type: 'AtRuleBlock', name: '@KEYFRAMES', prelude: { type: 'Any', src: 'fade alternate' }, rules: [{ type: 'Ruleset' }] },
       { type: 'AtRuleStatement', name: '@CHARSET', prelude: { type: 'Any', src: 'custom (encoding)' } },
       { type: 'AtRuleStatement', name: '@namespace', prelude: { type: 'Any', src: 'svg url("https://example.test/ns")' } }
     ]);
@@ -1283,13 +1301,13 @@ describe('CSS canonical-AST grammar', () => {
     const cst = parseCssCst(source);
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(parseAst(source).children).toMatchObject([
-      { type: 'AtRuleBlock', name: '@layer', body: [{ type: 'AtRuleStatement' }, { type: 'AtRuleBlock', name: '@keyframes' }] },
-      { type: 'AtRuleBlock', name: '@starting-style', body: [{ type: 'AtRuleStatement' }, { type: 'AtRuleBlock', name: '@keyframes' }] },
-      { type: 'Rule', body: [
-        { type: 'AtRuleBlock', name: '@layer', body: [{ type: 'Declaration', name: 'color' }, { type: 'AtRuleBlock', name: '@starting-style', body: [{ type: 'Declaration', name: 'color' }] }] },
-        { type: 'AtRuleBlock', name: '@scope', body: [{ type: 'Declaration', name: 'color' }, { type: 'AtRuleStatement', name: '@namespace' }] },
-        { type: 'AtRuleBlock', name: '@starting-style', body: [{ type: 'Declaration', name: 'color' }] }
+    expect(parseAst(source).rules).toMatchObject([
+      { type: 'AtRuleBlock', name: '@layer', rules: [{ type: 'AtRuleStatement' }, { type: 'AtRuleBlock', name: '@keyframes' }] },
+      { type: 'AtRuleBlock', name: '@starting-style', rules: [{ type: 'AtRuleStatement' }, { type: 'AtRuleBlock', name: '@keyframes' }] },
+      { type: 'Ruleset', rules: [
+        { type: 'AtRuleBlock', name: '@layer', rules: [{ type: 'Declaration', name: 'color' }, { type: 'AtRuleBlock', name: '@starting-style', rules: [{ type: 'Declaration', name: 'color' }] }] },
+        { type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'Declaration', name: 'color' }, { type: 'AtRuleStatement', name: '@namespace' }] },
+        { type: 'AtRuleBlock', name: '@starting-style', rules: [{ type: 'Declaration', name: 'color' }] }
       ] }
     ]);
   });
@@ -1297,12 +1315,12 @@ describe('CSS canonical-AST grammar', () => {
   it('keeps @charset in the public generic statement and unknown-block families', () => {
     for (const [source, expected] of [
       ['@charseté custom;', { type: 'AtRuleStatement', name: '@charseté', prelude: { type: 'Any', src: 'custom' } }],
-      ['@charset { body: raw; }', { type: 'OpaqueAtRuleBlock', name: '@charset', prelude: null, rawBody: ' body: raw; ' }]
+      ['@charset { rules: raw; }', { type: 'OpaqueAtRuleBlock', name: '@charset', prelude: null, rawBody: ' rules: raw; ' }]
     ] as const) {
       const cst = parseCssCst(source);
       expect(cst.errors).toHaveLength(0);
       expect(cst.unconsumedFrom).toBeNull();
-      expect(parseAst(source).children[0]).toMatchObject(expected);
+      expect(parseAst(source).rules[0]).toMatchObject(expected);
     }
   });
 
@@ -1313,7 +1331,7 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.unconsumedFrom).toBeNull();
 
     const document = parseAst(source);
-    expect(document.children).toMatchObject([{
+    expect(document.rules).toMatchObject([{
       type: 'OpaqueAtRuleBlock',
       name: '@layered',
       prelude: 'screen',
@@ -1337,13 +1355,13 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.unconsumedFrom).toBeNull();
 
     const document = parseAst(source);
-    expect(document.children).toMatchObject([{
+    expect(document.rules).toMatchObject([{
       type: 'AtRuleBlock',
       name: '@-MOZ-DOCUMENT',
       prelude: { type: 'Any', src: 'url-prefix("https://example.test/"), domain("example.test")' },
-      body: [
+      rules: [
         { type: 'AtRuleBlock', name: '@font-face' },
-        { type: 'Rule' }
+        { type: 'Ruleset' }
       ]
     }]);
   });
@@ -1357,14 +1375,14 @@ describe('CSS canonical-AST grammar', () => {
       const cst = parseCssCst(source);
       expect(cst.errors).toHaveLength(0);
       expect(cst.unconsumedFrom).toBeNull();
-      expect(parseAst(source).children[0]).toMatchObject({ type: 'AtRuleBlock', name });
+      expect(parseAst(source).rules[0]).toMatchObject({ type: 'AtRuleBlock', name });
     }
   });
 
   it('constructs CSS imports as ordinary statement at-rules with grammar-owned preludes', () => {
     const document = parseAst('@IMPORT "theme.css" layer(theme) /* keep */ supports(display: grid) screen and (min-width: 40rem); @import url(icons.css) print; @import url("quoted.css"); @import url();');
 
-    expect(document.children).toMatchObject([
+    expect(document.rules).toMatchObject([
       {
         type: 'AtRuleStatement',
         name: '@IMPORT',
@@ -1391,12 +1409,12 @@ describe('CSS canonical-AST grammar', () => {
 
   it('admits top-level @imports only in the CSS import phase', () => {
     expect(parseAst('@layer reset, theme; @import "theme.css"; @layer components; @import "components.css"; .card { color: red; }')).toMatchObject({
-      children: [
+      rules: [
         { type: 'AtRuleStatement', name: '@layer' },
         { type: 'AtRuleStatement', name: '@import' },
         { type: 'AtRuleStatement', name: '@layer' },
         { type: 'AtRuleStatement', name: '@import' },
-        { type: 'Rule' }
+        { type: 'Ruleset' }
       ]
     });
 
@@ -1419,7 +1437,7 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(parse(source)).toEqual(parseAst(source));
-    expect(parse(source).children).toMatchObject([
+    expect(parse(source).rules).toMatchObject([
       { type: 'AtRuleStatement', prelude: { type: 'Any', src: '"theme.css"' } },
       { type: 'AtRuleStatement', prelude: { type: 'Any', src: 'url(icons.css)' } },
       { type: 'AtRuleStatement', prelude: { type: 'Any', src: 'url()' } },
@@ -1436,7 +1454,7 @@ describe('CSS canonical-AST grammar', () => {
     const document = parseAst(source);
     expect(document).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [{
+      rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration', name: 'background'
       }] }]
     });
@@ -1452,7 +1470,7 @@ describe('CSS canonical-AST grammar', () => {
   it('keeps at-rule prelude comments out of semantic bytes while preserving them for rendering', () => {
     const document = parseAst('@namespace svg/* comment */url("https://example.test/ns");');
 
-    expect(document.children[0]).toMatchObject({
+    expect(document.rules[0]).toMatchObject({
       type: 'AtRuleStatement',
       name: '@namespace',
       prelude: { type: 'Any', src: 'svg url("https://example.test/ns")' }
@@ -1479,9 +1497,9 @@ describe('CSS canonical-AST grammar', () => {
   it('constructs quoted, url, and function values without a value re-parser', () => {
     const document = parseAst('.asset { content: "hello\\\"world"; background: url("icons\\\"logo.svg"); color: rgb(255, 0, 128); }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         { type: 'Declaration', name: 'content', value: { type: 'Quoted', src: '"hello\\\"world"', value: 'hello\\\"world', quote: '"', escaped: false } },
         { type: 'Declaration', name: 'background', value: { type: 'Url', value: { type: 'Quoted', value: 'icons\\\"logo.svg' } } },
         { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', name: 'rgb', args: [{ type: 'Dimension', number: 255 }, { type: 'Dimension', number: 0 }, { type: 'Dimension', number: 128 }] } }
@@ -1495,9 +1513,9 @@ describe('CSS canonical-AST grammar', () => {
   it('captures custom declarations as one grammar-owned opaque value through balanced groups and quoted terminators', () => {
     const document = parseAst('.theme { --palette: { primary: rgb(1; 2); nested: ["}"; /* ; } */]; }; color: red; }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         {
           type: 'Declaration',
           name: '--palette',
@@ -1521,9 +1539,9 @@ describe('CSS canonical-AST grammar', () => {
      */
     const document = parseAst('.theme { --a: red !important; --b: red    !important; --c: red!important; --d: red ! important; --e: red !IMPORTANT; --f: red ! /*c*/ important; --g: !important; }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'red' }, important: true },
         { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'red' }, important: true },
         { type: 'Declaration', name: '--c', value: { type: 'Any', src: 'red' }, important: true },
@@ -1538,9 +1556,9 @@ describe('CSS canonical-AST grammar', () => {
   it('keeps a custom-property priority marker that is not the declaration trailer inside the value', () => {
     const document = parseAst('.theme { --a: red !importantx; --b: a !important b; --c: "a !important"; --d: f(a !important); --e: [a !important]; --f: red; }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'red !importantx' }, important: false },
         { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'a !important b' }, important: false },
         { type: 'Declaration', name: '--c', value: { type: 'Any', src: '"a !important"' }, important: false },
@@ -1551,8 +1569,8 @@ describe('CSS canonical-AST grammar', () => {
     });
 
     // Only the final marker is priority; the earlier one stays value text.
-    expect(parseAst('.theme { --a: a !important !important; }').children[0]).toMatchObject({
-      body: [{ type: 'Declaration', name: '--a', value: { type: 'Any', src: 'a !important' }, important: true }]
+    expect(parseAst('.theme { --a: a !important !important; }').rules[0]).toMatchObject({
+      rules: [{ type: 'Declaration', name: '--a', value: { type: 'Any', src: 'a !important' }, important: true }]
     });
   });
 
@@ -1565,9 +1583,9 @@ describe('CSS canonical-AST grammar', () => {
   });
 
   it('does not classify an ordinary declaration or a malformed custom-property boundary as a custom declaration', () => {
-    expect(parseAst('.theme { color: red; }').children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
+    expect(parseAst('.theme { color: red; }').rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
     });
     expect(() => parseAst('.theme { --palette: { primary: red; }')).toThrow('CSS AST grammar did not consume the document');
     expect(() => parseAst('.theme { --: red; }')).toThrow('CSS AST grammar did not consume the document');
@@ -1576,9 +1594,9 @@ describe('CSS canonical-AST grammar', () => {
   it('keeps escaped declaration terminators and an empty custom value inside the custom-property grammar', () => {
     const document = parseAst('.theme { --escaped: before\\;after\\}still-value; --empty: ; color: red; }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         { type: 'Declaration', name: '--escaped', value: { type: 'Any', src: 'before\\;after\\}still-value' } },
         { type: 'Declaration', name: '--empty', value: { type: 'Any', src: '' } },
         { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }
@@ -1592,9 +1610,9 @@ describe('CSS canonical-AST grammar', () => {
   it('accepts an escaped identifier start after the custom-property prefix', () => {
     const document = parseAst('.theme { --\\31 accent: red; }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{ type: 'Declaration', name: '--\\31 accent', value: { type: 'Any', src: 'red' } }]
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{ type: 'Declaration', name: '--\\31 accent', value: { type: 'Any', src: 'red' } }]
     });
     expect(serialize(document)).toEqual({ css: '.theme {\n  --\\31 accent: red;\n}\n' });
   });
@@ -1610,9 +1628,9 @@ describe('CSS canonical-AST grammar', () => {
   it('keeps unquoted url payload bytes when building ordinary declarations', () => {
     const document = parseAst('.asset { background: url(icon.svg); }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{ type: 'Declaration', name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'icon.svg' } } }]
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{ type: 'Declaration', name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'icon.svg' } } }]
     });
     expect(serialize(document)).toEqual({ css: '.asset {\n  background: url(icon.svg);\n}\n' });
   });
@@ -1620,9 +1638,9 @@ describe('CSS canonical-AST grammar', () => {
   it('recognizes escaped url-token payloads through fused grammar syntax leaves', () => {
     const document = parseAst('.asset { background: url(icon\\41 svg); content: \'it\\\\\\\'s\'; }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         { type: 'Declaration', name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'icon\\41 svg' } } },
         { type: 'Declaration', name: 'content', value: { type: 'Quoted', src: '\'it\\\\\\\'s\'', value: 'it\\\\\\\'s', quote: '\'' } }
       ]
@@ -1633,9 +1651,9 @@ describe('CSS canonical-AST grammar', () => {
   it('constructs an empty generic function call without inventing an argument', () => {
     const document = parseAst('.a { transform: translate(); }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{ type: 'Declaration', name: 'transform', value: { type: 'FunctionCall', name: 'translate', args: [] } }]
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{ type: 'Declaration', name: 'transform', value: { type: 'FunctionCall', name: 'translate', args: [] } }]
     });
     expect(serialize(document)).toEqual({ css: '.a {\n  transform: translate();\n}\n' });
   });
@@ -1643,9 +1661,9 @@ describe('CSS canonical-AST grammar', () => {
   it('builds calc arithmetic, modulo, and parentheses directly as canonical value nodes', () => {
     const document = parseAst('.a { width: calc(1px + 2px * (3 - 4)); remainder: calc(5px % 2); }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{
         type: 'Declaration',
         name: 'width',
         value: {
@@ -1661,7 +1679,7 @@ describe('CSS canonical-AST grammar', () => {
               left: { type: 'Dimension', number: 2, unit: 'px' },
               right: {
                 type: 'Block', delimiter: 'paren',
-                inner: {
+                value: {
                   type: 'Operation',
                   operator: '-',
                   left: { type: 'Dimension', number: 3, unit: '' },
@@ -1698,9 +1716,9 @@ describe('CSS canonical-AST grammar', () => {
     expect(directVar.unconsumedFrom).toBeNull();
     const document = parseAst(source);
     expect(parse(source)).toEqual(document);
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         { type: 'Declaration', name: 'a', value: [{ type: 'Url' }, { type: 'Any', src: '/' }, { type: 'Keyword', src: 'cover' }] },
         { type: 'Declaration', name: 'b', value: [{ type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }] }, { type: 'Keyword', src: 'solid' }] },
         { type: 'Declaration', name: 'c', value: [{ type: 'FunctionCall', name: 'rgb', args: [{ type: 'Dimension', number: 1 }, { type: 'Dimension', number: 2 }, { type: 'Dimension', number: 3 }] }, { type: 'Any', src: '/' }, { type: 'Dimension', number: 0.5 }] },
@@ -1722,13 +1740,13 @@ describe('CSS canonical-AST grammar', () => {
     const nestedFallback = '.a { h: calc(var(--x, (foo) [foo]) + 2px); i: calc(var(--x, foo, bar) + 2px); j: calc(var(--x, foo([bar])) + 2px); k: calc(var(--x, {foo}) + 2px); l: calc(var(--x, var(--y, a, b)) + 2px); m: calc(var(--x,) + 2px); n: calc(var(--x, foo,) + 2px); o: calc(var(--x, foo(a,)) + 2px); p: calc(var(--x, foo(,a)) + 2px); q: calc(var(--x, a,,b) + 2px); }';
     const nestedDocument = parseAst(nestedFallback);
     expect(parse(nestedFallback)).toEqual(nestedDocument);
-    expect(nestedDocument.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{
+    expect(nestedDocument.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{
         type: 'Declaration', name: 'h', value: {
           type: 'FunctionCall', name: 'calc', args: [{
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, [{ type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'foo' } }, { type: 'Any', src: '[foo]' }]] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, [{ type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'foo' } }, { type: 'Any', src: '[foo]' }]] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
           }]
         }
@@ -1863,9 +1881,9 @@ describe('CSS canonical-AST grammar', () => {
   it('recognizes CSS importance as a declaration flag with case and trivia permitted by grammar', () => {
     const document = parseAst('.a { color: red ! IMPORTANT; }');
 
-    expect(document.children[0]).toMatchObject({
-      type: 'Rule',
-      body: [{ type: 'Declaration', name: 'color', important: true, value: { type: 'Keyword', src: 'red' } }]
+    expect(document.rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [{ type: 'Declaration', name: 'color', important: true, value: { type: 'Keyword', src: 'red' } }]
     });
     expect(serialize(document)).toEqual({ css: '.a {\n  color: red !important;\n}\n' });
   });
@@ -1874,9 +1892,9 @@ describe('CSS canonical-AST grammar', () => {
     const source = '.a { color: /* opening */ a/* ; */ b; background: foo, /* next term */ bar; padding: 1px/* separator */!important; width: 100px ! /*! marker */ important; }';
 
     expect(parseCssCst(source).errors).toHaveLength(0);
-    expect(parseAst(source).children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(parseAst(source).rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         {
           type: 'Declaration',
           name: 'color',
@@ -1915,26 +1933,26 @@ describe('CSS canonical-AST grammar', () => {
     expect(parseCssCst(source).errors).toHaveLength(0);
     const document = parseAst(source);
 
-    expect(document.children).toMatchObject([
+    expect(document.rules).toMatchObject([
       {
-        type: 'Rule',
-        body: [
+        type: 'Ruleset',
+        rules: [
           { type: 'Declaration', name: 'color' },
-          { type: 'AtRuleBlock', name: '@media', body: [{ type: 'Declaration', name: 'width' }] },
-          { type: 'AtRuleBlock', name: '@scope', body: [{ type: 'Declaration', name: 'height' }] },
-          { type: 'AtRuleBlock', name: '@layer', body: [{ type: 'Declaration', name: 'z-index' }] },
-          { type: 'AtRuleBlock', name: '@starting-style', body: [{ type: 'Declaration', name: 'opacity' }] }
+          { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'Declaration', name: 'width' }] },
+          { type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'Declaration', name: 'height' }] },
+          { type: 'AtRuleBlock', name: '@layer', rules: [{ type: 'Declaration', name: 'z-index' }] },
+          { type: 'AtRuleBlock', name: '@starting-style', rules: [{ type: 'Declaration', name: 'opacity' }] }
         ]
       },
-      { type: 'AtRuleBlock', name: '@font-face', body: [{ type: 'Declaration', name: 'font-family' }] },
+      { type: 'AtRuleBlock', name: '@font-face', rules: [{ type: 'Declaration', name: 'font-family' }] },
       {
-        type: 'AtRuleBlock', name: '@page', body: [
+        type: 'AtRuleBlock', name: '@page', rules: [
           { type: 'Declaration', name: 'size' },
-          { type: 'AtRuleBlock', name: '@top-left', body: [{ type: 'Declaration', name: 'content' }] }
+          { type: 'AtRuleBlock', name: '@top-left', rules: [{ type: 'Declaration', name: 'content' }] }
         ]
       },
-      { type: 'AtRuleBlock', name: '@font-feature-values', body: [{ type: 'AtRuleBlock', name: '@styleset', body: [{ type: 'Declaration', name: 'nice' }] }] },
-      { type: 'AtRuleBlock', name: '@keyframes', body: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'opacity' }] }] }
+      { type: 'AtRuleBlock', name: '@font-feature-values', rules: [{ type: 'AtRuleBlock', name: '@styleset', rules: [{ type: 'Declaration', name: 'nice' }] }] },
+      { type: 'AtRuleBlock', name: '@keyframes', rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'opacity' }] }] }
     ]);
   });
 
@@ -1950,14 +1968,14 @@ describe('CSS canonical-AST grammar', () => {
     `;
 
     expect(parseCssCst(source).errors).toHaveLength(0);
-    expect(parseAst(source).children[0]).toMatchObject({
-      type: 'Rule',
-      body: [
+    expect(parseAst(source).rules[0]).toMatchObject({
+      type: 'Ruleset',
+      rules: [
         { type: 'AtRuleStatement', name: '@unknown', prelude: { type: 'Any', src: '"theme.css"' } },
-        { type: 'AtRuleBlock', name: '@media', body: [{ type: 'AtRuleStatement', name: '@custom-state' }, { type: 'Declaration', name: 'color' }] },
-        { type: 'AtRuleBlock', name: '@layer', body: [{ type: 'AtRuleStatement', name: '@vendor' }, { type: 'Declaration', name: 'width' }] },
-        { type: 'AtRuleBlock', name: '@scope', body: [{ type: 'AtRuleStatement', name: '@custom-state' }, { type: 'Declaration', name: 'height' }] },
-        { type: 'AtRuleBlock', name: '@starting-style', body: [{ type: 'AtRuleStatement', name: '@vendor' }, { type: 'Declaration', name: 'opacity' }] }
+        { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'AtRuleStatement', name: '@custom-state' }, { type: 'Declaration', name: 'color' }] },
+        { type: 'AtRuleBlock', name: '@layer', rules: [{ type: 'AtRuleStatement', name: '@vendor' }, { type: 'Declaration', name: 'width' }] },
+        { type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'AtRuleStatement', name: '@custom-state' }, { type: 'Declaration', name: 'height' }] },
+        { type: 'AtRuleBlock', name: '@starting-style', rules: [{ type: 'AtRuleStatement', name: '@vendor' }, { type: 'Declaration', name: 'opacity' }] }
       ]
     });
   });
@@ -1978,7 +1996,7 @@ describe('CSS canonical-AST grammar', () => {
   it('admits CSS imports only in the stylesheet document body', () => {
     expect(parse('@import "top.css";')).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Any', src: '"top.css"' } }]
+      rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Any', src: '"top.css"' } }]
     });
 
     for (const source of [
@@ -2003,9 +2021,9 @@ describe('CSS canonical-AST grammar', () => {
     const document = parseAst(source);
     expect(document).toMatchObject({
       type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock', name: '@scope', body: [{
-          type: 'AtRuleBlock', name: '@scope', body: [{ type: 'Declaration', name: 'color' }]
+      rules: [{
+        type: 'AtRuleBlock', name: '@scope', rules: [{
+          type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'Declaration', name: 'color' }]
         }]
       }]
     });
@@ -2016,13 +2034,13 @@ describe('CSS canonical-AST grammar', () => {
 
   it('retains authored comments and multiline indentation on raw ValueSlot boundaries', () => {
     const document = parseAst('.a { color: red /* keep */\n  blue; shadow: a,\n  b; fn: foo(red /* keep fn */\n  blue); }');
-    const body = document.children[0];
-    if (body?.type !== 'Rule') {
+    const body = document.rules[0];
+    if (body?.type !== 'Ruleset') {
       throw new Error('expected a CSS rule');
     }
-    const adjacent = body.body[0]?.type === 'Declaration' ? body.body[0].value : null;
-    const comma = body.body[1]?.type === 'Declaration' ? body.body[1].value : null;
-    const call = body.body[2]?.type === 'Declaration' ? body.body[2].value : null;
+    const adjacent = body.rules[0]?.type === 'Declaration' ? body.rules[0].value : null;
+    const comma = body.rules[1]?.type === 'Declaration' ? body.rules[1].value : null;
+    const call = body.rules[2]?.type === 'Declaration' ? body.rules[2].value : null;
     expect(Array.isArray(adjacent)).toBe(true);
     expect(comma).toMatchObject({ type: 'List' });
     if (typeof adjacent !== 'object' || adjacent === null || typeof comma !== 'object' || comma === null) {

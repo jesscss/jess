@@ -9,22 +9,20 @@
  * `pow`) and additive (a new fn = a new module + one line in the assembly list).
  *
  * This contract stays in core (it is the fn-authoring surface, re-exported via
- * `@jesscss/core/value`); dialect implementations live in the existing
+ * `@jesscss/core`); dialect implementations live in the existing
  * `@jesscss/fns` `shared/`, `less/`, and `sass/` folders.
  *
  * HARD MODULE BOUNDARY: value domain only — no `../tree`, no legacy nodes.
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { EvalModes, ValueGroup, ValueObj } from '../value-eval.js';
+import type { EvalModes, Value, ValueGroup } from '../value-eval.js';
 
-export type Kind = ValueObj['type'];
+export type Kind = Value['type'];
+export type ParamType = Kind | readonly Kind[] | 'any';
 
-export interface ParamSpec {
+interface ParamSpecBase {
   /** Name used by Sass/Jess direct record-style invocation. */
   readonly name?: string;
-
-  /** Accepted kinds for this positional slot, or `'any'`. */
-  readonly kinds: readonly Kind[] | 'any';
 
   /** A missing arg is allowed (no more required params follow). */
   readonly optional?: boolean;
@@ -38,6 +36,25 @@ export interface ParamSpec {
   /** Hand the body a typed thunk; evaluation and validation happen on invocation. */
   readonly lazy?: boolean;
 }
+
+type ParamTypeSpec = ParamSpecBase & {
+  /**
+   * Accepted value node type(s) for this slot, or `'any'`. A function that says
+   * `{ type: 'Color' }` receives a typed {@link Color} value node, not authored
+   * source bytes.
+   */
+  readonly type: ParamType;
+  readonly kinds?: never;
+};
+
+type LegacyParamKindSpec = ParamSpecBase & {
+  readonly type?: never;
+
+  /** @deprecated Public fn specs should use `type`. */
+  readonly kinds: readonly Kind[] | 'any';
+};
+
+export type ParamSpec = ParamTypeSpec | LegacyParamKindSpec;
 
 /**
  * The MINIMAL eval-context a VARIADIC (Tier-B) fn body receives — deliberately NOT
@@ -88,7 +105,7 @@ interface BaseSpec {
 /** A POSITIONAL fn: the dispatcher binds args by kind and spreads them. No ctx. */
 export interface PositionalSpec extends BaseSpec {
   readonly variadic?: false;
-  readonly body: (...args: ValueObj[]) => MaybePromise<ValueGroup>;
+  readonly body: (...args: never[]) => MaybePromise<ValueGroup>;
 }
 
 /**
@@ -109,16 +126,27 @@ export type FnSpec = PositionalSpec | VariadicSpec;
 /** A typed lazy argument. The thunk is deliberately the only deferral seam. */
 export type LazyValue<T extends ValueGroup = ValueGroup> = () => MaybePromise<T>;
 
-export type ValueForKinds<K extends ParamSpec['kinds']> =
-  K extends 'any' ? ValueGroup : Extract<ValueObj, { readonly type: K[number] }>;
+export type ValueForKinds<K> =
+  K extends 'any' ? ValueGroup : K extends readonly Kind[] ? Extract<Value, { readonly type: K[number] }> : never;
+export type ValueForType<T> =
+  T extends 'any' ? ValueGroup : T extends Kind ? Extract<Value, { readonly type: T }> : T extends readonly Kind[] ? Extract<Value, { readonly type: T[number] }> : never;
 
-export type ParamValue<P extends ParamSpec> = ValueForKinds<P['kinds']>;
+export type ParamValue<P extends ParamSpec> = P extends { readonly type: infer T }
+  ? ValueForType<T>
+  : P extends { readonly kinds: infer K }
+    ? ValueForKinds<K>
+    : never;
 export type ParamInput<P extends ParamSpec> = P['lazy'] extends true
   ? LazyValue<ParamValue<P>>
   : ParamValue<P>;
-type BodyParam<P extends ParamSpec> = P['rest'] extends true
+type RequiredBodyParam<P extends ParamSpec> = P['rest'] extends true
   ? readonly ParamInput<P>[]
   : ParamInput<P>;
+type BodyParam<P extends ParamSpec> = P extends { readonly default: ValueGroup }
+  ? RequiredBodyParam<P>
+  : IsOptional<P> extends true
+    ? RequiredBodyParam<P> | undefined
+    : RequiredBodyParam<P>;
 type IsOptional<P extends ParamSpec> = P extends { readonly optional: true } | { readonly default: ValueGroup } ? true : false;
 
 /** Tuple passed to a direct function body, including lazy/rest semantics. */

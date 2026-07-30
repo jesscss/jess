@@ -1,5 +1,5 @@
-import type { Fn, ValueGroup } from '@jesscss/core/value';
-import { defineFunction, groupItems } from '@jesscss/core/value';
+import type { Fn, ValueGroup } from '@jesscss/core';
+import { defineFunction, groupItems } from '@jesscss/core';
 import { isModern, makeRgb } from './kernels.js';
 
 /**
@@ -17,10 +17,10 @@ import { isModern, makeRgb } from './kernels.js';
  */
 export const rgb: Fn = defineFunction('rgb', {
   params: [
-    { name: 'red', kinds: 'any' },
-    { name: 'green', kinds: 'any', optional: true },
-    { name: 'blue', kinds: 'any', optional: true },
-    { name: 'alpha', kinds: 'any', optional: true }
+    { name: 'red', type: 'any' },
+    { name: 'green', type: 'any', optional: true },
+    { name: 'blue', type: 'any', optional: true },
+    { name: 'alpha', type: 'any', optional: true }
   ],
   variadic: true,
   body: (list: ValueGroup) => makeRgb(groupItems(list), isModern(list))

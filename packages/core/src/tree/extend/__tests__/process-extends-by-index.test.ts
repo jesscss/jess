@@ -8,7 +8,7 @@
  * delegation.
  */
 import { describe, it, expect } from 'vitest';
-import { el, sel, sellist, co, type Selector } from '../../../index.js';
+import { el, sel, sellist, co, type Selector } from '../../index.js';
 import { applyExtendsToSelector, type ExtendInstruction } from '../../util/extend.js';
 import { processExtendsByIndex, type IndexExtendInstruction } from '../process-extends-by-index.js';
 

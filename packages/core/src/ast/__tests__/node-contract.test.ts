@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isNode, type Node } from '../node.js';
 import {
   collection,
+  collectionEntry,
   declarationReference,
   generalEnclosed,
   important,
@@ -32,6 +33,12 @@ describe('AST node contract', () => {
 
   it('admits Collection through the exported Node union', () => {
     const value: Node = collection([]);
+
+    expect(isNode(value)).toBe(true);
+  });
+
+  it('admits CollectionEntry through the exported Node union', () => {
+    const value: Node = collectionEntry(keyword('a'), keyword('b'));
 
     expect(isNode(value)).toBe(true);
   });

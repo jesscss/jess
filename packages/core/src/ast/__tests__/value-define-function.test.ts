@@ -9,33 +9,33 @@ function invoke(fn: unknown, ...args: unknown[]): unknown {
 }
 
 const twice = defineFunction('twice', {
-  params: [{ name: 'value', kinds: ['Dimension'] }] as const,
+  params: [{ name: 'value', type: 'Dimension' }] as const,
   body: (value) => {
     return makeDimension(value.number * 2, value.unit);
   }
 });
 
 const lazyTwice = defineFunction('lazy-twice', {
-  params: [{ name: 'value', kinds: ['Dimension'], lazy: true }] as const,
+  params: [{ name: 'value', type: 'Dimension', lazy: true }] as const,
   body: value => Promise.resolve(value()).then(result => makeDimension(result.number * 2, result.unit))
 });
 
 const skipLazy = defineFunction('skip-lazy', {
-  params: [{ name: 'value', kinds: ['Dimension'], lazy: true }] as const,
+  params: [{ name: 'value', type: 'Dimension', lazy: true }] as const,
   body: () => makeDimension(1)
 });
 
 const collect = defineFunction('collect', {
   params: [
-    { name: 'value', kinds: ['Dimension'] },
-    { name: 'precision', kinds: ['Dimension'], default: makeDimension(1) },
-    { name: 'rest', kinds: ['Dimension'], rest: true }
+    { name: 'value', type: 'Dimension' },
+    { name: 'precision', type: 'Dimension', default: makeDimension(1) },
+    { name: 'rest', type: 'Dimension', rest: true }
   ] as const,
   body: (value, precision, rest) => makeDimension(value.number + precision.number + rest.length, value.unit)
 });
 
 const unnamedPositional = defineFunction('unnamed-positional', {
-  params: [{ kinds: ['Dimension'] }] as const,
+  params: [{ type: 'Dimension' }] as const,
   body: (...args) => {
     const value = args[0];
     if (value?.type !== 'Dimension') {
@@ -52,7 +52,7 @@ describe('value-domain defineFunction', () => {
     expect(Object.prototype.hasOwnProperty.call(twice, 'body')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(twice, 'options')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(twice, '_internal')).toBe(false);
-    expect(twice.params).toEqual([{ name: 'value', kinds: ['Dimension'] }]);
+    expect(twice.params).toEqual([{ name: 'value', type: 'Dimension' }]);
     expect(twice(makeDimension(2, 'px'))).toEqual({ type: 'Dimension', number: 4, unit: 'px', bytes: '4px' });
     const registry = createFnRegistry();
     registry.register(twice);
@@ -72,7 +72,7 @@ describe('value-domain defineFunction', () => {
     expect(() => twice({})).toThrow('missing required argument value');
     expect(() => twice(makeDimension(2, 'px'), makeDimension(3))).toThrow('too many');
     expect(() => twice({ value: { type: 'Keyword', text: 'x', bytes: 'x' } })).toThrow('expected Dimension');
-    expect(() => invoke(twice, 2)).toThrow('typed ValueObj');
+    expect(() => invoke(twice, 2)).toThrow('typed value node');
   });
 
   it('defers a lazy parameter and validates the typed value when the thunk is invoked', async () => {

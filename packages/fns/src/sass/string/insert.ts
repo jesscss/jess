@@ -1,5 +1,6 @@
-import { defineFunction } from '@jesscss/core/value';
-import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString, stringText } from './util.js';
+import { defineFunction } from '@jesscss/core';
+import type { Dimension } from '@jesscss/core';
+import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString, stringText, type SassString } from './util.js';
 
 /**
  * Sass `string.insert()` — the `str-insert()` global.
@@ -19,11 +20,11 @@ import { STRING_KINDS, codePoints, codepointForIndex, requireIntIndex, reString,
  */
 const insert = defineFunction('insert', {
   params: [
-    { name: 'string', kinds: STRING_KINDS },
-    { name: 'insert', kinds: STRING_KINDS },
-    { name: 'index', kinds: ['Dimension'] }
+    { name: 'string', type: STRING_KINDS },
+    { name: 'insert', type: STRING_KINDS },
+    { name: 'index', type: 'Dimension' }
   ] as const,
-  body: (string, insertValue, index) => {
+  body: (string: SassString, insertValue: SassString, index: Dimension) => {
     const chars = codePoints(stringText(string));
     const wanted = requireIntIndex('index', index.number, index.unit);
     const oneBased = wanted < 0 ? Math.max(chars.length + wanted + 2, 0) : wanted;

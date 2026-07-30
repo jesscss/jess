@@ -41,7 +41,7 @@ import {
   mkBranch,
   multisetSubset,
   simpleText,
-  textSimples
+  textSimpleTokens
 } from './ir.js';
 import type { Branch, Compound, Level, Simple } from './ir.js';
 import { composePath } from './compose.js';
@@ -49,7 +49,7 @@ import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { collectPlan, documentHasExtend, reaches } from './plan.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 import { buildContribs, runFixpoint, solveComposed } from './solve.js';
-import type { Stylesheet, Rule, Statement } from '../nodes.js';
+import type { Stylesheet, Ruleset, Statement } from '../nodes.js';
 
 export interface NestedRulePlan {
   /** Emit this rule (and its descendants) via the flat path at top level. */
@@ -63,7 +63,7 @@ export interface NestedRulePlan {
   splits: string[][];
 
   /**
-   * A cross-`&` flatten whose subject STILL HAS surviving nested children: instead
+   * A cross-`&` flatten whose subject STILL HAS surviving nested rules: instead
    * of collapsing (`flatten`, which composes children flat), the subtree is
    * RE-NESTED at the hoist position — its `header` carries the composed cross-`&`
    * sibling list (the flat solve with `:is()`-compaction) and its children stay
@@ -96,13 +96,13 @@ export interface NestedRulePlan {
 /**
  * Extend projections for one concrete render placement. A `$for` body is one
  * canonical AST body but may run several times under different bindings; its
- * projections therefore belong to the iteration token, not to the shared Rule.
+ * projections therefore belong to the iteration token, not to the shared Ruleset.
  */
 export interface ExtendPlacementResults {
-  flatByRule: Map<Rule, string[]>;
-  hiddenByRule: Map<Rule, boolean[]>;
-  nestedPlan: Map<Rule, NestedRulePlan>;
-  hoistHeader: Map<Rule, string[]>;
+  flatByRule: Map<Ruleset, string[]>;
+  hiddenByRule: Map<Ruleset, boolean[]>;
+  nestedPlan: Map<Ruleset, NestedRulePlan>;
+  hoistHeader: Map<Ruleset, string[]>;
 }
 
 export interface ExtendResults {
@@ -112,7 +112,7 @@ export interface ExtendResults {
    * the RAW parent and extend independently — the composed model needs no
    * child-parent propagation).
    */
-  flatByRule: Map<Rule, string[]>;
+  flatByRule: Map<Ruleset, string[]>;
 
   /**
    * [import:reference] Per-rule visibility mask aligned 1:1 with `flatByRule`'s
@@ -120,16 +120,16 @@ export interface ExtendResults {
    * `(reference)` rules, which the serializer drops. Absent for a rule with no
    * hidden branch (the common case). A rule whose mask is all-`true` emits nothing.
    */
-  hiddenByRule: Map<Rule, boolean[]>;
+  hiddenByRule: Map<Ruleset, boolean[]>;
 
   /** NESTED mode: per-rule projection (flatten / rewritten header / splits). */
-  nestedPlan: Map<Rule, NestedRulePlan>;
+  nestedPlan: Map<Ruleset, NestedRulePlan>;
 
   /**
    * NESTED mode: per-rule FLAT header branches to use when a rule is hoisted to
    * top level — the flat composition with sibling `:is()`-compaction applied.
    */
-  hoistHeader: Map<Rule, string[]>;
+  hoistHeader: Map<Ruleset, string[]>;
 
   /**
    * Render-local projections for dynamically placed canonical rules. The weak
@@ -142,7 +142,7 @@ export interface ExtendResults {
 
 /** The single compound of a one-segment branch, or null. */
 function branchSingleCompound(b: Branch): Compound | null {
-  return b.segs.length === 1 ? b.segs[0]!.compound : null;
+  return b.segments.length === 1 ? b.segments[0]!.compound : null;
 }
 
 /** [&-boundary] The number of LEADING segments of a composed branch whose `bnd`
@@ -155,7 +155,7 @@ function leadingWrapperSegs(b: Branch, maxBnd: number): number {
     return 0;
   }
   let n = 0;
-  while (n < b.segs.length && (b.bnd[n] ?? 0) > maxBnd) {
+  while (n < b.segments.length && (b.bnd[n] ?? 0) > maxBnd) {
     n++;
   }
   return n;
@@ -169,26 +169,26 @@ function dropLeadingSegs(b: Branch, n: number): Branch {
   if (n <= 0) {
     return cloneBranch(b);
   }
-  const segs = b.segs.slice(n).map(cloneSeg);
-  if (segs.length > 0) {
-    segs[0] = { comb: ' ', compound: segs[0]!.compound };
+  const segments = b.segments.slice(n).map(cloneSeg);
+  if (segments.length > 0) {
+    segments[0] = { combinator: ' ', compound: segments[0]!.compound };
   }
-  const out = mkBranch(segs);
+  const out = mkBranch(segments);
   if (b.hidden) {
     out.hidden = true;
   }
   return out;
 }
 
-/** True when `target`'s text-simples are ⊆ some compound in `level`. */
+/** True when `target`'s text-value are ⊆ some compound in `level`. */
 function compoundHitsLevel(target: Compound, level: Level): boolean {
-  const need = textSimples(target);
+  const need = textSimpleTokens(target);
   if (need.length === 0) {
     return false;
   }
   for (const b of level) {
-    for (const seg of b.segs) {
-      if (multisetSubset(need, textSimples(seg.compound))) {
+    for (const seg of b.segments) {
+      if (multisetSubset(need, textSimpleTokens(seg.compound))) {
         return true;
       }
     }
@@ -268,18 +268,18 @@ function siblingCompact(branches: Branch[], allowMultiSeg: boolean): Branch[] {
  * differ in structure or in more than one compound. Multi-segment rows only merge
  * when `allowMultiSeg` (see {@link siblingCompact}). */
 function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch | null {
-  if (a.segs.length !== b.segs.length) {
+  if (a.segments.length !== b.segments.length) {
     return null;
   }
-  const multiSeg = a.segs.length > 1;
+  const multiSeg = a.segments.length > 1;
   if (multiSeg && !allowMultiSeg) {
     return null;
   }
   let diff = -1;
-  for (let i = 0; i < a.segs.length; i++) {
-    const as = a.segs[i]!;
-    const bs = b.segs[i]!;
-    if (as.comb !== bs.comb) {
+  for (let i = 0; i < a.segments.length; i++) {
+    const as = a.segments[i]!;
+    const bs = b.segments[i]!;
+    if (as.combinator !== bs.combinator) {
       return null;
     }
     if (compoundText(as.compound) !== compoundText(bs.compound)) {
@@ -298,18 +298,18 @@ function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch 
    * (no shared segment context), only merge if the compounds share a suffix — two
    * whole branches sharing NOTHING (`.ext8.ext9` / `.fuu`) stay a comma list.
    */
-  const merged = mergeCompoundsToIs(a.segs[diff]!.compound, b.segs[diff]!.compound, multiSeg);
+  const merged = mergeCompoundsToIs(a.segments[diff]!.compound, b.segments[diff]!.compound, multiSeg);
   if (!merged) {
     return null;
   }
-  const segs = a.segs.map((s, i) => (i === diff ? { comb: s.comb, compound: merged } : cloneSeg(s)));
+  const segments = a.segments.map((s, i) => (i === diff ? { combinator: s.combinator, compound: merged } : cloneSeg(s)));
 
   /*
    * [import:reference] the merged branch is visible if EITHER source is visible (an
    * `:is(a, b)` emits its whole group). Only two hidden branches merge to hidden
    * (stamped after the factory, exactly as `cloneBranch` carries provenance).
    */
-  const out = mkBranch(segs);
+  const out = mkBranch(segments);
   if (a.hidden && b.hidden) {
     out.hidden = true;
   }
@@ -324,8 +324,8 @@ function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch 
  */
 function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): Compound | null {
   // Find the longest shared trailing simple run (by text).
-  const as = a.simples;
-  const bs = b.simples;
+  const as = a.value;
+  const bs = b.value;
   let suffix = 0;
   while (
     suffix < as.length
@@ -350,8 +350,8 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
     return [descendantBranch(lead.map(cloneSimple))];
   };
   const isGroup = isSimple([...leadBranch(aLead), ...leadBranch(bLead)]);
-  const suffixSimples = as.slice(as.length - suffix).map(cloneSimple);
-  return { simples: [isGroup, ...suffixSimples] };
+  const suffixTokens = as.slice(as.length - suffix).map(cloneSimple);
+  return { value: [isGroup, ...suffixTokens] };
 }
 
 /* ------------------------------------------------- relative extender folding */
@@ -393,8 +393,8 @@ function relativizeExtender(inst: PlanInstruction, subject: PlanSubject): PlanIn
  */
 export function computeExtends(
   root: Stylesheet,
-  hiddenRules?: ReadonlySet<Rule>,
-  referenceBoundaries?: ReadonlyMap<Rule, object>,
+  hiddenRules?: ReadonlySet<Ruleset>,
+  referenceBoundaries?: ReadonlyMap<Ruleset, object>,
   overlay?: PlanOverlay
 ): ExtendResults | null {
   /*
@@ -409,10 +409,10 @@ export function computeExtends(
     return null;
   }
 
-  const flatByRule = new Map<Rule, string[]>();
-  const hiddenByRule = new Map<Rule, boolean[]>();
-  const nestedPlan = new Map<Rule, NestedRulePlan>();
-  const hoistHeader = new Map<Rule, string[]>();
+  const flatByRule = new Map<Ruleset, string[]>();
+  const hiddenByRule = new Map<Ruleset, boolean[]>();
+  const nestedPlan = new Map<Ruleset, NestedRulePlan>();
+  const hoistHeader = new Map<Ruleset, string[]>();
   const staticProjection: ExtendPlacementResults = { flatByRule, hiddenByRule, nestedPlan, hoistHeader };
   let byPlacement: WeakMap<object, ExtendPlacementResults> | null = null;
   const projectionFor = (subject: PlanSubject): ExtendPlacementResults => {
@@ -479,27 +479,27 @@ export function computeExtends(
    * COMPOSED complex). This is a general nested-emit collapse, gated tightly so it
    * does not disturb ordinary nesting.
    */
-  const collapsedParent = new Set<Rule>();
+  const collapsedParent = new Set<Ruleset>();
   const collapsedChild = new Set<PlanSubject>();
   const isPureAmpSelfCompound = (s: PlanSubject): boolean => {
     if (s.ownLocal.length !== 1) {
       return false;
     }
     const br = s.ownLocal[0]!;
-    if (br.segs.length !== 1) {
+    if (br.segments.length !== 1) {
       return false;
     }
-    const simples = br.segs[0]!.compound.simples;
-    return simples.length >= 2 && simples.every(x => x.t === 'text' && x.text === '&');
+    const value = br.segments[0]!.compound.value;
+    return value.length >= 2 && value.every(x => x.t === 'text' && x.text === '&');
   };
   for (const p of plan.subjects) {
     let onlyRule: Statement | null = null;
     let bail = false;
-    for (const st of p.rule.body) {
-      if (st.type === 'MixinDef' || st.type === 'VariableDeclaration') {
+    for (const st of p.rule.rules) {
+      if (st.type === 'MixinDefinition' || st.type === 'VariableDeclaration') {
         continue;
       }
-      if (st.type === 'Rule' && onlyRule === null) {
+      if (st.type === 'Ruleset' && onlyRule === null) {
         onlyRule = st;
         continue;
       }
@@ -627,7 +627,7 @@ export function computeExtends(
    * ---- flatten decision (top-down; a COLLAPSE cascades to descendants) ----
    * 'collapse' — the flattened subtree is emitted FLAT (children composed); it
    * cascades flatten downward (a collapsed leaf's descendants collapse too).
-   * 'renest'  — the flattened subject STILL HAS nested children: it is RE-NESTED at
+   * 'renest'  — the flattened subject STILL HAS nested rules: it is RE-NESTED at
    * the hoist position (composed cross-`&` header, children stay literal-nested),
    * so it does NOT cascade (its children emit nested under the new header).
    */
@@ -708,7 +708,7 @@ export function computeExtends(
        * matches stay with trigger X (which keeps the extender-descends-from-parent
        * guard the match span alone cannot express).
        */
-      if (!inst.partial || inst.target.segs.length < 2) {
+      if (!inst.partial || inst.target.segments.length < 2) {
         continue;
       }
       for (const b of raw) {

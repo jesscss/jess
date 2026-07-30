@@ -1,5 +1,5 @@
-import type { ValueObj, Fn } from '@jesscss/core/value';
-import { makeDimension, defineFunction } from '@jesscss/core/value';
+import type { Value, Fn } from '@jesscss/core';
+import { makeDimension, defineFunction } from '@jesscss/core';
 import { requireDimension } from './math-helper.js';
 
 /**
@@ -10,7 +10,7 @@ import { requireDimension } from './math-helper.js';
  * `Sequence`; here a raw default-spaced value group).
  */
 export const range: Fn = defineFunction('range', {
-  params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'], optional: true }, { kinds: ['Dimension'], optional: true }],
+  params: [{ type: 'Dimension' }, { type: 'Dimension', optional: true }, { type: 'Dimension', optional: true }],
   body: (start, end, step) => {
     const stepValue = step !== undefined ? requireDimension(step).number : 1;
     if (stepValue === 0) {
@@ -18,7 +18,7 @@ export const range: Fn = defineFunction('range', {
     }
     const to = end !== undefined ? requireDimension(end) : requireDimension(start);
     const from = end !== undefined ? requireDimension(start).number : 1;
-    const items: ValueObj[] = [];
+    const items: Value[] = [];
     for (let i = from; i <= to.number; i += stepValue) {
       items.push(makeDimension(i, to.unit));
     }

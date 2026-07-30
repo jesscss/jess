@@ -25,7 +25,7 @@ describe('canonical AST source provenance', () => {
   });
 
   it('retains document trivia without changing the AST root shape', () => {
-    const doc = { type: 'Stylesheet' as const, children: [] };
+    const doc = { type: 'Stylesheet' as const, rules: [] };
     const keys = Object.keys(doc);
     const src = '/* keep */\n.a{}';
     const trivia = createTriviaMapFromRanges(src, [{ start: 0, end: 11 }]);

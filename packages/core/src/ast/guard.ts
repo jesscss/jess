@@ -151,7 +151,7 @@ function valueUsesDefault(v: ValueSlot): boolean {
     case 'FunctionCall':
       return v.name.toLowerCase() === 'default' || v.args.some(valueUsesDefault);
     case 'Block':
-      return valueUsesDefault(v.inner);
+      return valueUsesDefault(v.value);
     case 'Operation':
       return valueUsesDefault(v.left) || valueUsesDefault(v.right);
     case 'Sequence':

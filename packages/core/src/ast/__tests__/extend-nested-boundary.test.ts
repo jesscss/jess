@@ -36,14 +36,14 @@ const flat = (document: Stylesheet): string | undefined =>
  * shape the real parser builds (unlike `sel('a b')`, which collapses to one compound). */
 const descendant = (...parts: string[]) =>
   complexSelector(parts.map((p, i) => (i === 0
-    ? { compound: compoundSelectorOf([simpleSelector(p)]) }
-    : { comb: ' ' as const, compound: compoundSelectorOf([simpleSelector(p)]) })));
+    ? { term: compoundSelectorOf([simpleSelector(p)]) }
+    : { combinator: ' ' as const, term: compoundSelectorOf([simpleSelector(p)]) })));
 
 /** `& .x` (a bare-ampersand segment then a descendant). */
 const ampThen = (...parts: string[]) =>
   complexSelector([
-    { compound: compoundSelectorOf([simpleSelector('&')]) },
-    ...parts.map(p => ({ comb: ' ' as const, compound: compoundSelectorOf([simpleSelector(p)]) }))
+    { term: compoundSelectorOf([simpleSelector('&')]) },
+    ...parts.map(p => ({ combinator: ' ' as const, term: compoundSelectorOf([simpleSelector(p)]) }))
   ]);
 
 describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
@@ -55,9 +55,9 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
      * the full composed header, byte-identical to flat.
      */
     const inner = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('.a')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.leaf')]) }
+      { term: compoundSelectorOf([simpleSelector('.a')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('&')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('.leaf')]) }
     ]);
     const document = () => stylesheet([
       rule('.p', [rule(inner, [decl('c', keyword('d'))])]),
@@ -124,10 +124,10 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
      * ancestor depth, so it hoists to ROOT (`.p` is absorbed into the graft).
      */
     const inner = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('.a')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.b')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) }
+      { term: compoundSelectorOf([simpleSelector('.a')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('&')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('.b')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('&')]) }
     ]);
     const document = () => stylesheet([
       rule('.p', [rule(inner, [decl('c', keyword('d'))])]),
@@ -174,8 +174,8 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
      * in place — no hoist, no flatten.
      */
     const child = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('.item')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) }
+      { term: compoundSelectorOf([simpleSelector('.item')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('&')]) }
     ]);
     const document = () => stylesheet([
       rule('.box', [decl('color', keyword('red')), rule(child, [decl('c', keyword('d'))])]),
@@ -220,10 +220,10 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
      * `:is(.button, .submit):hover` — byte-identical to the flat solve (the oracle).
      */
     const buttonHover = complexSelector([{
-      compound: compoundSelectorOf([simpleSelector('.button'), simpleSelector(':hover')])
+      term: compoundSelectorOf([simpleSelector('.button'), simpleSelector(':hover')])
     }]);
     const ampHover = complexSelector([{
-      compound: compoundSelectorOf([simpleSelector('&'), simpleSelector(':hover')])
+      term: compoundSelectorOf([simpleSelector('&'), simpleSelector(':hover')])
     }]);
     const document = () => stylesheet([
       rule('.button', [

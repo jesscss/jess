@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { makeColorRgb, defineFunction, RGB } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { makeColorRgb, defineFunction, RGB } from '@jesscss/core';
 import { alphaToNumber, hsvToRgb, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { requireDimension } from './math-helper.js';
 
@@ -9,7 +9,7 @@ import { requireDimension } from './math-helper.js';
  * `alphaToNumber` (clamped 0-1). Positional (no context needed).
  */
 export const hsva: Fn = defineFunction('hsva', {
-  params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'] }, { kinds: ['Dimension'] }, { kinds: ['Dimension'] }],
+  params: [{ type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }],
   body: (hD, sD, vD, aD) => {
     const h = normalizeHue(requireDimension(hD));
     const s = percentOf(requireDimension(sD), 1);

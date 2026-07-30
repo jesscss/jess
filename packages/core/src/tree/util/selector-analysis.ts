@@ -14,7 +14,7 @@
  * of a selector is immutable per identity — eval mints new nodes, never mutates —
  * so the cache is pure memoization with no invalidation.
  */
-import type { BitSet, BitSetLibrary } from './bitset.js';
+import type { BitSet, BitSetLibrary } from '../../util/bitset.js';
 import type { Selector } from '../selector.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';

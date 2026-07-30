@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { makeDimension } from '@jesscss/core/value';
+import { makeDimension } from '@jesscss/core';
 import { floor } from '../shared/index.js';
 
 function invoke(fn: unknown, ...args: unknown[]): unknown {
@@ -16,7 +16,7 @@ describe('floor function typed value contract', () => {
   });
 
   test('rejects untyped direct inputs at the callable boundary', () => {
-    expect(() => invoke(floor, 1.7)).toThrow('typed ValueObj');
+    expect(() => invoke(floor, 1.7)).toThrow('typed value node');
     expect(() => invoke(floor, { value: 1.7 })).toThrow('structural value arguments');
   });
 

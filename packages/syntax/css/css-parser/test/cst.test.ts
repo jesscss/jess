@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseCssCst, type CssCstNode } from '../src/index.js';
 
-function childTypes(node: { children: ReadonlyArray<unknown> }) {
-  return node.children
+function childTypes(node: { rules: ReadonlyArray<unknown> }) {
+  return node.rules
     .filter(isNode)
     .map(c => c.type);
 }
@@ -23,7 +23,7 @@ describe('parseCssCst', () => {
     expect(result.tree.type).toBe('StyleSheet');
     expect(childTypes(result.tree)).toContain('QualifiedRule');
 
-    const rule = result.tree.children.find(c => isNode(c) && c.type === 'QualifiedRule');
+    const rule = result.tree.rules.find(c => isNode(c) && c.type === 'QualifiedRule');
     expect(rule).toBeDefined();
     expect(childTypes(rule!)).toContain('SelectorList');
     expect(childTypes(rule!)).toContain('Declaration');
@@ -37,7 +37,7 @@ describe('parseCssCst', () => {
         return;
       }
       seen.push(node.type);
-      for (const child of node.children) {
+      for (const child of node.rules) {
         visit(child);
       }
     };

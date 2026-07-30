@@ -1,5 +1,5 @@
-import { defineFunction } from '@jesscss/core/value';
-import { STRING_KINDS, asciiCase, reString, stringText } from './util.js';
+import { defineFunction } from '@jesscss/core';
+import { STRING_KINDS, asciiCase, reString, stringText, type SassString } from './util.js';
 
 /**
  * Sass `string.to-lower-case()` / the `to-lower-case()` global.
@@ -8,8 +8,8 @@ import { STRING_KINDS, asciiCase, reString, stringText } from './util.js';
  * `abc`, and ASCII-only like its upper-case twin (`to-lower-case("ÄÖÜ")` → `"ÄÖÜ"`).
  */
 const toLowerCase = defineFunction('to-lower-case', {
-  params: [{ name: 'string', kinds: STRING_KINDS }] as const,
-  body: string => reString(string, asciiCase(stringText(string), false))
+  params: [{ name: 'string', type: STRING_KINDS }] as const,
+  body: (string: SassString) => reString(string, asciiCase(stringText(string), false))
 });
 
 export default toLowerCase;

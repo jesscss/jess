@@ -1,10 +1,13 @@
-import type { LocationInfo } from '@jesscss/core';
+type SourceMapLocation = readonly [unknown, unknown, unknown, unknown, unknown, unknown];
+type OptionalLocation = readonly unknown[] | undefined;
 
-type OptionalLocation = LocationInfo | undefined;
+function isSourceMapLocation(value: OptionalLocation): value is SourceMapLocation {
+  return Array.isArray(value) && value.length === 6;
+}
 
 export class OutputCollector {
   strings: string[] = [];
-  map: any[] = [];
+  map: SourceMapLocation[] = [];
 
   /** @todo - for output tracking */
   line: number = 0;
@@ -18,7 +21,7 @@ export class OutputCollector {
      * @see https://hacks.mozilla.org/2013/05/compiling-to-javascript-and-debugging-with-source-maps/
      * @see https://github.com/mozilla/source-map
      */
-    if (Array.isArray(originalLocation) && originalLocation.length === 6) {
+    if (isSourceMapLocation(originalLocation)) {
       this.map.push(originalLocation);
     }
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { emitValue, makeColorRgb, makeKeyword, makeList, HEX } from '@jesscss/core/value';
-import type { FnCtx, ValueObj } from '@jesscss/core/value';
+import { emitValue, makeColorRgb, makeKeyword, makeList, HEX } from '@jesscss/core';
+import type { FnCtx, Value } from '@jesscss/core';
 import svgGradient from '../svg-gradient.js';
 
 const context: FnCtx = {
@@ -8,7 +8,7 @@ const context: FnCtx = {
   stringify: emitValue
 };
 
-function call(...args: ValueObj[]): ValueObj {
+function call(...args: Value[]): Value {
   const result = svgGradient(makeList(args, ','), context);
   if (result instanceof Promise || Array.isArray(result)) {
     throw new TypeError('Expected a synchronous scalar svg-gradient result.');

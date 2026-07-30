@@ -1,5 +1,5 @@
-import { colorRgbRounded, defineFunction, groupItems, isValueGroupArray, makeKeyword } from '@jesscss/core/value';
-import type { Color, Fn, ValueGroup, ValueObj } from '@jesscss/core/value';
+import { colorRgbRounded, defineFunction, groupItems, isValueGroupArray, makeKeyword } from '@jesscss/core';
+import type { Color, Fn, ValueGroup, Value } from '@jesscss/core';
 
 /**
  * Less `svg-gradient()` — build an inline SVG gradient data URI. Stops are
@@ -7,9 +7,9 @@ import type { Color, Fn, ValueGroup, ValueObj } from '@jesscss/core/value';
  * bytes. A malformed call throws so the shared call boundary owns preservation.
  */
 const svgGradient: Fn = defineFunction('svg-gradient', {
-  params: [{ kinds: 'any' }],
+  params: [{ type: 'any' }],
   variadic: true,
-  body: (value, ctx): ValueObj => {
+  body: (value, ctx): Value => {
     const items = groupItems(value);
     if (items.length < 2) {
       throw new TypeError(STOPS_ERROR);

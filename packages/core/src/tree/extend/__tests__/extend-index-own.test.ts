@@ -8,7 +8,7 @@
  * we skip the byte-compare and record the frontier), never a silent delegation.
  */
 import { describe, it, expect } from 'vitest';
-import { el, sel, sellist, compound, is, co, pseudo, amp, type Selector } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, pseudo, amp, type Selector } from '../../index.js';
 import { Ampersand } from '../../ampersand.js';
 import { extendSelector } from '../../util/extend.js';
 import { extendByIndexOwn, UNSUPPORTED } from '../extend-index.js';

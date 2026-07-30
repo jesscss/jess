@@ -6,7 +6,7 @@
  * otherwise. The suite's original `.toBe(...)` expectations remain the byte oracle.
  */
 import { describe, it, expect, afterAll } from 'vitest';
-import { el, sel, sellist, compound, is, co, pseudo } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, pseudo } from '../../index.js';
 import { extendViaOwn, reportFrontier, resetFrontier } from './corpus-harness.js';
 
 describe('CORPUS (own engine): Simplified Extend Test Cases', () => {

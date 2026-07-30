@@ -197,15 +197,17 @@ converted-in-core-then-moved).
 ### 2a. Core's seam surface
 
 Core exposes these seams from their owning modules. The public construction
-surface is `@jesscss/core/ast`; the value substrate is `@jesscss/core/value`.
+surface is `@jesscss/core/ast`; the fn/value authoring surface is exported from
+the `@jesscss/core` root. The `@jesscss/core/value` subpath exists as a narrow
+compatibility barrel, but new function examples should not require it.
 
 - `interface FnRegistry` — the runtime table: `register(fn: Fn)`,
   `registerAll(fns: readonly Fn[])`, `has(name): boolean`,
-  `dispatch(name, list, ctx): ValueObj`. **Already exists** in `value-dispatch.ts`
+  `dispatch(name, list, ctx): ValueGroup`. **Already exists** in `value-dispatch.ts`
   (the `register`/`registerAll`/`has`/`dispatch` shape is landed).
 - `createFnRegistry(): FnRegistry` — returns an **empty** registry (landed).
 - The value-domain public types + constructors fns need to author bodies
-  (`Fn`, `FnSpec`, `ParamSpec`, `Kind`, `FnCtx`, `ValueObj` and its
+  (`Fn`, `FnSpec`, `ParamSpec`, `Kind`, `FnCtx`, `Value`, `ValueGroup` and their
   members, `makeDimension`/`makeColor*`/`makeQuoted`/`makeKeyword`/`makeList`/…,
   plus the helpers the 68 bodies use — see §3).
 
@@ -270,11 +272,11 @@ The 68 fn modules import, in order of frequency:
 
 | Imported from core | Kind | Runtime or type-only? |
 | --- | --- | --- |
-| `value-eval.js` (`ValueObj`, `Dimension`, `Color`, `EvalModes`, `List`, …) | types | **type-only** (erased) |
+| `value-eval.js` (`Value`, `ValueGroup`, `Dimension`, `Color`, `EvalModes`, `List`, …) | types | **type-only** (erased) |
 | `functions/types.js` (`Fn`, `FnSpec`, `FnCtx`, `Kind`) | types | **type-only** (erased) |
 | `value-factory.js` (`makeDimension`, `makeColor*`, `makeKeyword`, `numOf`, `colorHsl`, …) | constructors | **runtime** |
 | `functions/color-helper.js`, `math-helper.js`, `color-ctor-helper.js`, and Less `min-max` policy | dialect helpers | **runtime** (these move WITH the Less fns) |
-| `@jesscss/core/value` list/index capability | shared value operations | **runtime** (consumed by Less and Sass; remains in core) |
+| `@jesscss/core` list/index capability | shared value operations | **runtime** (consumed by Less and Sass; remains in core) |
 | `serialize-value.js` | serializer | **runtime** |
 | `value-units.js` | unit table | **runtime** |
 | `literal-tag.js` | materialize | **runtime** |
@@ -318,34 +320,36 @@ textbook cycle-breaker, but it is **not needed here** and it is **premature**:
    direction-of-one-edge question that a **type-only import + adapter deletion**
    already answers.
 
-**Recommendation:** fns imports the value substrate from `@jesscss/core` via a
-**narrow, stable sub-path** (e.g. `@jesscss/core/value` mapped to `ast/value-*` +
-`literal-tag` + `color-names`) so the fns → core contract is a small named surface,
-not "reach anywhere into core." Type-only imports use `import type` so they are
+**Landed recommendation:** fns imports the value substrate from `@jesscss/core`
+itself. The root barrel is intentionally curated to expose the semantic value and
+fn-authoring API without reviving the old tree classes. The narrower
+`@jesscss/core/value` barrel can stay as compatibility, but it is no longer the
+preferred authoring path. Type-only imports still use `import type` so they are
 provably erased (verifiable with `--verbatimModuleSyntax` / `isolatedModules`, both
-already implied by the tsdown build). This is the single reviewer-critical
-interface; it must be minimal and append-only.
+already implied by the tsdown build). This is the reviewer-critical interface; it
+must stay minimal and append-only.
 
 ### 3c. The `Fn` authoring contract stays identical
 
-A fn in `@jesscss/fns` after conversion looks **exactly** like the canonical
-`functions/lighten.ts` shape — a self-describing object, no `defineFunction`, no
-`Context`:
+A fn in `@jesscss/fns` after conversion uses the canonical value-domain function
+shape — a self-describing typed callable, no legacy `Context`, no legacy tree
+classes:
 
 ```ts
 import { hslAdjust } from './color-helper.js';   // now fns-local
-import type { Fn } from '@jesscss/core/value';
-export const lighten: Fn = {
-  name: 'lighten',
-  params: [{ kinds: ['color'] }, { kinds: ['dimension'] }, { kinds: ['keyword','quoted'], optional: true }],
+import { defineFunction, type Fn } from '@jesscss/core';
+export const lighten: Fn = defineFunction('lighten', {
+  params: [{ type: 'Color' }, { type: 'Dimension' }, { type: ['Keyword', 'Quoted'], optional: true }],
   body: hslAdjust(2, 1),
-};
+});
 ```
 
-The contract is: **bodies operate on already-materialized `ValueObj`s and return a
-`ValueObj`, using core's `make*` constructors** — no legacy nodes, no `.operate`,
-no `.render`. This is the shape to produce by converting each existing owner in
-place; it is not a relocation or a reason to duplicate the function library.
+The contract is: **bodies receive semantic `Value`/`ValueGroup` objects and return
+`ValueGroup`, using core's `make*` constructors** — no legacy nodes, no `.operate`,
+no `.render`, and no source-string reparsing by function authors. A `Color`
+argument already carries channels, alpha, format, and preservation metadata. This
+is the shape to produce by converting each existing owner in place; it is not a
+relocation or a reason to duplicate the function library.
 
 ---
 
@@ -359,8 +363,9 @@ this must not collide with:
   the value materialization path fns consume.
 - **node-model unification** (`UNIFIED-NODE-MODEL-SPEC.md`, `ast-v2-unified-node-model`)
   — flips value discriminants from lowercase `kind: 'dimension'` to
-  `type: 'Dimension'`. This rewrites **every** `params: [{ kinds: ['color'] }]` and
-  every `v.kind === 'quoted'` check in all 68 bodies.
+  `type: 'Dimension'`. This rewrites every old-style param entry
+  (`params: [{ kinds: ['color'] }]`) to the canonical `type` spelling and every
+  `v.kind === 'quoted'` check in all 68 bodies.
 
 **Historical ordering rule (STRUCK): do not use the move/relocation sequence below.**
 The current rule is to convert each existing `shared`/`less`/`sass` owner in place,
@@ -371,8 +376,8 @@ The table is retained as historical evidence of the rejected package move:
 | --- | --- | --- |
 | **S0** | Land literal-tag P0 and the node-model unification **in core** while the 68 bodies still live in `core/ast/functions/` (single package = cheapest rebase). | existing byte-identity suites stay green |
 | **S1** | ✅ **Already landed.** `FnRegistry` + `createFnRegistry` exist in `ast/value-dispatch.ts`; `buildEvaluator()` in `ast/evaluator.ts` builds a registry and `registerAll(FN_LIST)`. What remains for the move: change `buildEvaluator()` → `buildEvaluator(registry)` so the registration is injected rather than self-imported. **Pure seam refactor, fns still in core.** | `native-value-differential.test.ts` byte-identical (native ≡ adapter); all `*-byte-identity.test.ts` green |
-| **S2** | Add `@jesscss/core/value` export sub-path (the narrow substrate surface from §3b). No behaviour change. | typecheck; substrate is `import type` where possible |
-| **S3** | **Relocate** the 68 bodies + dialect-private implementation details (`color-helper`, `math-helper`, `color-ctor-helper`, and the Less unit-policy data) from `core/ast/functions/` into `packages/fns/src/less/` (replacing the legacy twins), rewriting their imports to `@jesscss/core/value`. Keep generic list recovery, explicit index normalization/access, and list metadata in `@jesscss/core/value` for every library. Less and Sass register the same `defineFunction`/`Fn` shape and provide semantic policy data rather than separate helpers. Export `builtinLessFns` (successor to `FN_LIST`) from `@jesscss/fns`. | `native-value-differential.test.ts` **moves to fns or imports the moved set**, still byte-identical; per-fn tests in `fns/src/less/__tests__` and Sass list tests green |
+| **S2** | Add the value-domain export surface. Landed as root `@jesscss/core` exports plus a narrow `@jesscss/core/value` compatibility barrel. No behaviour change. | typecheck; substrate is `import type` where possible |
+| **S3** | **Relocate** the 68 bodies + dialect-private implementation details (`color-helper`, `math-helper`, `color-ctor-helper`, and the Less unit-policy data) from `core/ast/functions/` into `packages/fns/src/less/` (replacing the legacy twins), rewriting their imports to `@jesscss/core`. Keep generic list recovery, explicit index normalization/access, and list metadata in core for every library. Less and Sass register the same `defineFunction`/`Fn` shape and provide semantic policy data rather than separate helpers. Export `builtinLessFns` (successor to `FN_LIST`) from `@jesscss/fns`. | `native-value-differential.test.ts` **moves to fns or imports the moved set**, still byte-identical; per-fn tests in `fns/src/less/__tests__` and Sass list tests green |
 | **S4** | Switch the consumer: `jess-plugin-less` `_registerFunctions` builds a `createFnRegistry().registerAll(builtinLessFns)` and threads the registry into the AST-v2 render path (replacing legacy `setFunctionBinding` for the fns the AST path now owns). | plugin + `jess/test/less/**` byte-identical to expected output |
 | **S5** | Delete the in-core `FN_LIST` hard-import (S1), the `functions/index.ts` list, and — jointly with task #10 — the adapter `parse-host/value-eval.ts` (`buildAdapterEvaluator`), removing the phantom core → fns import. | full workspace build (`pnpm -r build`); all-less suite non-regressing |
 | **S6** | Convert the **11** remaining Less fns (`data-uri`, `iif`, `each`, `isdefined`, `isruleset`, `logical`, `get-unit`, `image-*`, `svg-gradient`) **in `packages/fns` directly**, extending `FnCtx` with the Tier-C IO/ruleset capabilities as each wave needs (per `functions/types.ts` deferral note). | new differential cases per fn; adapter-if-still-present or Less-4.x reference |
@@ -497,10 +502,10 @@ Importers that break or must change, grouped by edge:
 
 1. **§2b:** consumer-owned default registration in `jess-plugin-less` — confirm no
    third preset package. (Recommendation: no new package.)
-2. **§3b:** keep the value substrate in core behind a narrow `@jesscss/core/value`
-   subpath vs extract a `@jesscss/value` package. (Recommendation: keep in core;
-   defer extraction until after literal-tag P0 + node-model unification, and only if
-   a second consumer appears.)
+2. **§3b:** keep the value substrate in core and expose the curated authoring
+   surface from root `@jesscss/core` vs extract a `@jesscss/value` package.
+   (Recommendation: keep in core; defer extraction until after literal-tag P0 +
+   node-model unification, and only if a second consumer appears.)
 3. **§4:** the "flip before move" ordering (S0 before S3) — confirm the node-model
    unification lands in core first, so the 68 bodies move exactly once.
 4. **§5F:** `builtinLessFns` is additive to the existing legacy `@jesscss/fns` root
@@ -521,9 +526,9 @@ reference handling. **Read §8.0 first — three landed facts change the sequenc
 ### 8.0 Landed-state deltas since §0/§4 (verified on `2a898e9db`)
 
 1. **Historical relocation note (STRUCK).** The value discriminant is now `.type`
-   with PascalCase values: fn bodies read `arg.type === 'Color'`, params spell
-   `kinds: ['Dimension']` / `kinds: 'any'`, and `functions/types.ts` defines
-   `Kind = ValueObj['type']`; `value-dispatch.ts` binds on `a.type`. The old claim
+   with PascalCase values: fn bodies read `arg.type === 'Color'`, params now spell
+   `type: 'Dimension'` / `type: 'any'`, and `functions/types.ts` defines
+   `Kind = Value['type']`; `value-dispatch.ts` binds on `a.type`. The old claim
    that this authorizes a pure package relocation is not current architecture.
 
 2. **The AST-v2 render path is TEST-ONLY today.** No production code constructs
@@ -537,11 +542,10 @@ reference handling. **Read §8.0 first — three landed facts change the sequenc
    the *public parser/evaluator cutover*. Function conversion is independently
    red-to-green in the existing owners; it is not a package-relocation blocker.
 
-3. **The value substrate has a narrow public import path:** `@jesscss/core/value`.
-   It is the only supported target for converted function owners that need value
-   constructors or value-domain types. Do not widen the package root or revive the
-   deleted private `ast/index.ts` barrel to obtain those symbols; that would expose
-   the full AST engine instead of the intentionally narrow substrate.
+3. **Superseded import-path note.** This archived wave assumed the value substrate
+   would be exposed only through `@jesscss/core/value`. The landed public surface
+   now exports the curated fn/value API from root `@jesscss/core`; the `/value`
+   barrel remains a narrow compatibility path, not the required authoring import.
 
 ### 8.1 The reference knot, resolved (the crux — do not improvise)
 
@@ -560,8 +564,8 @@ No stage deletes `buildAdapterEvaluator` until Stage B's fixture is the active g
 | --- | --- | --- | --- | --- |
 | **A. Registry injection** | Change `buildEvaluator()` → `buildEvaluator(registry: FnRegistry)`; drop the `FN_LIST` + `createFnRegistry` self-import from `evaluator.ts`. Add `makeBuiltinRegistry()` (co-located, e.g. `functions/index.ts`) = `createFnRegistry().registerAll(FN_LIST)`. Update the **18** `buildEvaluator()` call sites → `buildEvaluator(makeBuiltinRegistry())` (list in §8.5). **In-core, fns still in core.** | No | Full `*-byte-identity` + `census` + `native-value-differential` (built-in vs adapter, unchanged) green | Revert one commit (`evaluator.ts` + 18 sites) |
 | **B. Freeze the reference** 🔒 | While `buildAdapterEvaluator` still exists and differential is green, capture a static fixture `parse-host/__tests__/__fixtures__/native-value-differential.snap.json` = every corpus case → its emitted bytes. Convert the differential test to assert **built-in bytes === frozen fixture** (keep the adapter arm as a *third* triple-check for this one commit, then it's redundant). | No | Fixture matches **both** built-in and adapter today (triple-checked in the freezing commit) | Delete fixture + revert test file |
-| **C. `@jesscss/core/value` subpath** 🔴 **CHECKPOINT** | Add the narrow build entry (exact diff in §8.3). Additive: `.` export unchanged. New `src/value.ts` barrel; second tsdown entry; new `./value` exports block. No behaviour change. | 🔴 build-config | `pnpm --filter @jesscss/core build` emits `lib/value.js`/`.cjs`/`.d.ts`; typecheck; grep-gate: nothing reachable from `src/value.ts` imports `@jesscss/fns` | Revert config + delete `src/value.ts` |
-| **D. Relocate the 68 + dialect helpers** 🔴 | Move the 68 bodies + dialect-private helpers (`color-helper`, `color-ctor-helper`, `math-helper`, `min-max`) from `core/ast/functions/` to `packages/fns/src/less/` (replacing legacy twins); rewrite their core imports to `@jesscss/core/value`. Keep the generic core list/index API in `@jesscss/core/value`, and port Sass list consumers to that same API with Sass-only policies local to `packages/fns/src/sass`. Export `builtinLessFns` (successor to `FN_LIST`) from `@jesscss/fns`. Point `makeBuiltinRegistry()` / test helper at `builtinLessFns`. Delete `core/ast/functions/*` bodies + `functions/index.ts`. | 🔴 deletes core fn bodies (git-reversible; **reference = Stage B fixture**) | Stage B fixture green (built-in path now sourced from fns) + per-fn `fns/src/less/__tests__`, Sass list tests, + all `*-byte-identity` | Revert relocation commit (bodies restored in `functions/`) |
+| **C. value authoring surface** 🔴 **CHECKPOINT** | Add the curated value/fn authoring surface (landed as root `@jesscss/core` exports plus `./value` compatibility). No behaviour change. | 🔴 build-config | `pnpm --filter @jesscss/core build`; typecheck; grep-gate: nothing reachable from `src/value.ts` imports `@jesscss/fns` | Revert config/barrel change |
+| **D. Relocate the 68 + dialect helpers** 🔴 | Move the 68 bodies + dialect-private helpers (`color-helper`, `color-ctor-helper`, `math-helper`, `min-max`) from `core/ast/functions/` to `packages/fns/src/less/` (replacing legacy twins); rewrite their core imports to `@jesscss/core`. Keep the generic core list/index API in core, and port Sass list consumers to that same API with Sass-only policies local to `packages/fns/src/sass`. Export `builtinLessFns` (successor to `FN_LIST`) from `@jesscss/fns`. Point `makeBuiltinRegistry()` / test helper at `builtinLessFns`. Delete `core/ast/functions/*` bodies + `functions/index.ts`. | 🔴 deletes core fn bodies (git-reversible; **reference = Stage B fixture**) | Stage B fixture green (built-in path now sourced from fns) + per-fn `fns/src/less/__tests__`, Sass list tests, + all `*-byte-identity` | Revert relocation commit (bodies restored in `functions/`) |
 | **E. Delete the adapter** 🔴 **CHECKPOINT** | Delete `parse-host/value-eval.ts` (`buildAdapterEvaluator`) + `parse-host/__tests__/oracle.ts`; re-anchor/delete the **7** adapter-reference tests (§8.5). Removes the phantom `core → @jesscss/fns` import. | 🔴 removes the reference (Stage B fixture is now sole gate) | Stage B fixture green; **grep-gate: zero `@jesscss/fns` in `core/src`**; `pnpm -r build`; all-less non-regressing | Revert deletion commit |
 | **F. Convert the 11 Tier-C fns** | In `packages/fns` directly: `data-uri`, `each`, `get-unit`, `iif`, `image-height/size/width`, `isdefined`, `isruleset`, `logical`, `svg-gradient`. Extend `FnCtx` with IO/ruleset capability per wave (per `functions/types.ts` deferral note). | No | New differential/expected-output case per fn; Less-4.x reference | Per-fn revert |
 
@@ -573,7 +577,7 @@ gates the built-in path and D has made the built-in path the sole fn path). D de
 core bodies but is git-reversible and fixture-gated, so it rides between the two
 checkpoints rather than needing its own.
 
-### 8.3 Exact `@jesscss/core/value` build-entry change (Stage C)
+### 8.3 Historical `@jesscss/core/value` build-entry sketch (Stage C)
 
 Mirror the landed multi-entry precedent in `packages/less-parser` (`./cst`,
 `./grammar`, `./jess`).
@@ -582,7 +586,7 @@ Mirror the landed multi-entry precedent in `packages/less-parser` (`./cst`,
 
 ```ts
 // Value substrate + fn-authoring surface for @jesscss/fns. Append-only.
-export type { ValueObj, Value, Dimension, Color, Quoted, Keyword, Bool, Nil, List, EvalModes } from './ast/value-eval.js';
+export type { ValueGroup, Value, Dimension, Color, Quoted, Keyword, Bool, Nil, List, EvalModes } from './ast/value-eval.js';
 export { makeDimension, makeColor, makeColorRgb, makeQuoted, makeKeyword, makeList /* …value-factory */ } from './ast/value-factory.js';
 export { operate, compare, typeCheck } from './ast/value-operate.js';
 export { serializeValue, serializeColor, serializeDimension, serializeQuoted, OutputMode } from './ast/serialize-value.js';

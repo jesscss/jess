@@ -8,8 +8,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   el, sel, sellist, compound, is, co, pseudo
-} from '../../../index.js';
-import type { Selector, ComplexSelector } from '../../../index.js';
+} from '../../index.js';
+import type { Selector, ComplexSelector } from '../../index.js';
 import {
   componentsMatch,
   compoundComponentMatches,

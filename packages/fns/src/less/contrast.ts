@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { makeColorRgb, defineFunction, RGB } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { makeColorRgb, defineFunction, RGB } from '@jesscss/core';
 import { getLuma, reformatColor, requireColor } from './color-helper.js';
 import { requireDimension } from './math-helper.js';
 
@@ -12,10 +12,10 @@ import { requireDimension } from './math-helper.js';
  */
 export const contrast: Fn = defineFunction('contrast', {
   params: [
-    { kinds: ['Color'] },
-    { kinds: ['Color'], optional: true },
-    { kinds: ['Color'], optional: true },
-    { kinds: ['Dimension'], optional: true }
+    { type: 'Color' },
+    { type: 'Color', optional: true },
+    { type: 'Color', optional: true },
+    { type: 'Dimension', optional: true }
   ],
   body: (c, dark, light, threshold) => {
     const color = requireColor(c);

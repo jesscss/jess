@@ -9,11 +9,9 @@
  * These are Sass's global (deprecated) functions; the module-specific sets live
  * in `sass/color`, `sass/list`, `sass/map`, `sass/math` and `sass/string`.
  *
- * Most entries here are still in the LEGACY tree-node domain. They stay part of
- * this module's JavaScript-callable surface but are not value-domain `Fn`s, so
- * registration skips them — converting one in place is what registers it. That
- * is why an unconverted Sass global currently has NO built-in implementation
- * rather than silently inheriting the Less one.
+ * Every exported callable here is value-domain `Fn`. Adding a Sass global means
+ * adding it to this index; the registry derives from the same surface consumers
+ * import and never falls back to Less.
  *
  * Usage:
  * ```typescript
@@ -92,14 +90,10 @@ export { default as quote } from './quote.js';
 export { default as toUpperCase } from './to-upper-case.js';
 export { default as toLowerCase } from './to-lower-case.js';
 export { default as uniqueId } from './unique-id.js';
+export { strLength } from './string/globals.js';
 export { default as strInsert } from './str-insert.js';
 export { default as strIndex } from './str-index.js';
 export { default as strSlice } from './str-slice.js';
-
-/*
- * TODO: Implement remaining global string functions
- * - str-length() (use string.length instead)
- */
 
 // Global List Functions (Deprecated - use list.* module instead)
 export { default as length } from './list/length.js';

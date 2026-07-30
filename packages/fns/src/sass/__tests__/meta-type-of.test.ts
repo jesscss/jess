@@ -3,7 +3,7 @@
  *
  * Cases from sass-spec `spec/core_functions/meta/type_of.hrx`.
  */
-import { isValueGroupArray, makeBlock, makeBool, makeCollection, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core/value';
+import { isValueGroupArray, makeBlock, makeBool, makeCollection, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
 import { typeOf } from '../meta/type-of.js';
 

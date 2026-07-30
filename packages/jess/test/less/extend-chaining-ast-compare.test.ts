@@ -24,8 +24,10 @@ import * as path from 'path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { resolveLessTestDataRoot } from '../test-utils.js';
+import { Context } from '@jesscss/core';
+import { serializeTypes } from '../../../core/src/tree/util/serialize-types.js';
+import { isNode } from '../../../core/src/tree/util/is-node.js';
 import {
-  serializeTypes,
   rules,
   ruleset,
   atrule,
@@ -35,11 +37,9 @@ import {
   any,
   sellist,
   sel,
-  Context,
   type Rules,
-  isNode,
   N
-} from '@jesscss/core';
+} from '../../../core/src/tree/index.js';
 
 const testData = resolveLessTestDataRoot();
 const extendChainingLess = path.join(testData, 'tests-unit/extend-chaining/extend-chaining.less');

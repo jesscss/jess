@@ -8,7 +8,7 @@ import {
   type NodeLocation,
   defineType
 } from './node.js';
-import { type Operator, calculate } from './util/calculate.js';
+import { type Operator, calculate } from '../util/calculate.js';
 import { logger } from '../logger.js';
 import { WARN } from '../jess-error.js';
 import { formatNumber } from '../ast/format-number.js';

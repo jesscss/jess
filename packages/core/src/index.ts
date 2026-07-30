@@ -1,23 +1,19 @@
 import '@ungap/set-methods';
 
 /**
- * Public API surface. Node classes/factories and their types come from the
- * tree barrel; everything else is exported explicitly from the modules below.
+ * Public API surface. The old tree classes are intentionally not exported from
+ * the package root; consumers should use the AST/value entrypoints below.
  * Core-internal helpers (print state, trivia emission, compare/cast/lookup
  * machinery) are intentionally NOT exported — import them relatively inside
  * core. See docs/architecture/core/CORE-CLEANUP.md.
  */
-export * from './tree/index.js';
 
 export {
   Context,
   DocumentContext,
   type ContextOptions,
   type DocumentContextOptions,
-  type SourceContext,
-  type SpineVisitor,
-  type SpineVisitorEnter,
-  type SpineVisitorExit
+  type SourceContext
 } from './context.js';
 export { logger, type Logger } from './logger.js';
 export {
@@ -36,47 +32,7 @@ export {
 export * from './plugin.js';
 export * from './jess-error.js';
 export * from './deprecation.js';
-export * from './define-function.js';
-
-export { isNode } from './tree/util/is-node.js';
-
-/*
- * Single-pass spine (cutover P1/P2): the pass-count RATCHET counter + the static
- * eligibility predicate. Exported so PRODUCTION-path tests (the jess Compiler)
- * can assert real spine routing (≥N corpus roots) and that the eval two-walk is
- * not entered for a wired extend-free eligible root.
- */
-export { spineRenderCounter, isSpineEligibleRoot } from './tree/util/emit-walk.js';
-export { engageExtendLayer, isSpineExtendTopology, treeHasExtend, extendLayerCounter } from './tree/extend/spine-extend.js';
-export { type Operator } from './tree/util/calculate.js';
-export {
-  shouldOperateWithMathFrames,
-  type MathFrameState
-} from './tree/util/should-operate.js';
-export { type PrintOptions } from './tree/util/print.js';
-export { makeTrivia, createTriviaMap } from './tree/util/trivia.js';
-export {
-  sourceSpanOf,
-  spanStartOf,
-  spanEndOf,
-  setSourceSpan,
-  copySourceSpan,
-  isSourceFree,
-  fieldSpansOf,
-  fieldSpanAt,
-  setFieldSpans,
-  valueSpansOf,
-  valueSpanAt,
-  setValueSpans,
-  type SourceSpan
-} from './tree/util/provenance.js';
-export {
-  coerceListItems,
-  getListSeparator,
-  isBracketedList,
-  type ListItems
-} from './tree/util/list-like.js';
-export { serializeTypes, type SerializeTypesOptions } from './tree/util/serialize-types.js';
+export type { ApplySelectorKind, ExtendSelectorKind, SelectorPolicyKind } from './types/config.js';
 
 /** Canonical AST-v2 stylesheet execution. Parser construction stays under `./ast`. */
 export { prepareStaticImports, serialize } from './ast/serialize.js';
@@ -84,19 +40,88 @@ export type { PreparedImports, PrepareStaticImportsOptions, SerializeOptions } f
 
 /** Construct the typed value evaluator used by the canonical AST-v2 execution path. */
 export { buildEvaluator } from './ast/evaluator.js';
+export type {
+  ValueGroup,
+  Value,
+  Dimension,
+  Color,
+  Quoted,
+  Keyword,
+  Any,
+  Bool,
+  Nil,
+  List,
+  ListSeparator,
+  Block,
+  Collection,
+  CollectionEntry,
+  EvalModes,
+  PluginHost,
+  PluginCallCtx,
+  PluginVariableHit,
+  PluginRawArgument,
+  PluginDetachedRuleset,
+  PluginDetachedDeclaration,
+  DefinedFunction,
+  Fn,
+  FnSpec,
+  ParamSpec,
+  FnCtx,
+  FnIo,
+  FnRecord,
+  PartialFnRecord,
+  FunctionArgs,
+  FunctionBodyArgs,
+  Kind,
+  LazyValue,
+  ParamInput,
+  ParamValue,
+  FnRegistry
+} from './value.js';
 export {
-  createRenderBuffer,
-  finalizeFlatRenderBuffer,
-  type FlatRenderBuffer,
-  type RenderBuffer
-} from './tree/util/render-buffer.js';
-export {
-  alphaToNumber,
-  normalizeHue,
-  percentOf,
-  splitSequence,
-  toNumber,
-  type ConversionPlugin,
-  type PreprocessParams
-} from './conversions.js';
+  emitValue,
+  isValueGroup,
+  isValueGroupArray,
+  makeDimension,
+  makeColorRgb,
+  makeColorHsl,
+  makeQuoted,
+  makeKeyword,
+  makeAny,
+  makeBool,
+  makeNil,
+  NIL,
+  makeList,
+  makeBlock,
+  makeCollection,
+  numOf,
+  textOf,
+  colorHsl,
+  colorHslClamped,
+  colorRawRgb,
+  colorRgbRounded,
+  groupItems,
+  groupSeparator,
+  listValueAt,
+  isBracketedList,
+  isCollection,
+  collectionEntries,
+  collectionEntryIndex,
+  collectionKeyIndex,
+  HEX,
+  RGB,
+  HSL,
+  serializeColor,
+  hslToRgb,
+  serializeValue,
+  round,
+  groupOf,
+  unify,
+  unitFactor,
+  parseHex,
+  sniffLiteral,
+  namedColor,
+  createFnRegistry,
+  defineFunction
+} from './value.js';
 export * from './types/index.js';

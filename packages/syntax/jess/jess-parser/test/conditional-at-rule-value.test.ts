@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/jess-parser';
+import type { AtRuleBlock, Declaration } from '@jesscss/core/ast';
 
 /**
  * A conditional at-rule prelude is the CSS "value hole": a composite shape whose
@@ -26,12 +27,26 @@ import { parse } from '@jesscss/jess-parser';
 
 const kw = (src: string) => ({ type: 'Keyword', src });
 const dim = (src: string) => ({ type: 'Dimension', src });
-const paren = (inner: unknown) => ({ type: 'Block', delimiter: 'paren', inner });
+const paren = (inner: unknown) => ({ type: 'Block', delimiter: 'paren', value: inner });
 const op = (operator: string, left: unknown, right: unknown) => ({ type: 'Operation', operator, left, right });
 const ratio = (n: string, d: string) => op('/', dim(n), dim(d));
 const call = (name: string, args: unknown[]) => ({ type: 'FunctionCall', name, args });
 const staticUrl = (src: string) => ({ type: 'Url', value: { type: 'Any', src } });
 const list = (...value: unknown[]) => ({ type: 'List', sep: ',', value });
+
+function isAtRuleBlock(value: unknown): value is AtRuleBlock {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'AtRuleBlock';
+}
+
+function isDeclaration(value: unknown): value is Declaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Declaration';
+}
 
 /**
  * `<ratio>` — mediaqueries-4 §2.1, `<number> [ / <number> ]?`. The slash is a
@@ -213,19 +228,19 @@ const SUPPORTS: Array<[string, string, object]> = [
 ];
 
 function descriptorValue(source: string): unknown {
-  const first = parse(source).children[0];
-  if (first === undefined || !('body' in first)) {
+  const first = parse(source).rules[0];
+  if (!isAtRuleBlock(first)) {
     throw new TypeError(`Expected an at-rule block for: ${source}`);
   }
-  const declaration = first.body[0];
-  if (declaration === undefined || !('value' in declaration)) {
+  const declaration = first.rules[0];
+  if (!isDeclaration(declaration)) {
     throw new TypeError(`Expected an @property descriptor for: ${source}`);
   }
   return declaration.value;
 }
 
 function prelude(source: string): unknown {
-  const first = parse(source).children[0];
+  const first = parse(source).rules[0];
   if (first === undefined || !('prelude' in first)) {
     throw new TypeError(`Expected an at-rule prelude for: ${source}`);
   }
@@ -260,7 +275,7 @@ describe('Jess conditional at-rule value holes', () => {
    */
   it('keeps the custom-property !important tail out of the preserved value', () => {
     expect(parse('a { --x: red !important; }')).toMatchObject({
-      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red' }, important: true }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red' }, important: true }] }]
     });
   });
 
@@ -345,7 +360,7 @@ describe('Jess conditional at-rule value holes', () => {
 
   it('preserves a custom-property value verbatim inside a conditional at-rule', () => {
     expect(parse('@media (min-width: 600px) { a { --x: 1px solid black; } }')).toMatchObject({
-      children: [{ type: 'AtRuleBlock', body: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: '1px solid black' } }] }] }]
+      rules: [{ type: 'AtRuleBlock', rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: '1px solid black' } }] }] }]
     });
   });
 

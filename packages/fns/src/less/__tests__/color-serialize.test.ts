@@ -8,8 +8,8 @@
  *      (hue & saturation collapse to `0`, lightness stays authored).
  */
 import { describe, it, expect } from 'vitest';
-import { makeColorRgb, makeDimension, makeList, HEX } from '@jesscss/core/value';
-import type { Color, Dimension } from '@jesscss/core/value';
+import { makeColorRgb, makeDimension, makeList, HEX } from '@jesscss/core';
+import type { Color, Dimension } from '@jesscss/core';
 import { fade as fadeFn } from '../fade.js';
 import { fadeout as fadeoutFn } from '../fadeout.js';
 import { hsl } from '../hsl.js';
@@ -25,8 +25,8 @@ function colorResult(value: unknown): Color {
   return value;
 }
 
-const hexColor = (rgb: [number, number, number], alpha: number, node: string): Color =>
-  makeColorRgb(rgb, alpha, HEX, { node });
+const hexColor = (rgb: [number, number, number], alpha: number, src: string): Color =>
+  makeColorRgb(rgb, alpha, HEX, { src });
 
 const pct = (n: number): Dimension => makeDimension(n, '%');
 

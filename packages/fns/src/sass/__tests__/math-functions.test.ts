@@ -12,8 +12,8 @@
 * keeps `input.scss` and drops `output.css`), and no Sass function registry is
  * wired into the compiler yet.
  */
-import type { Dimension } from '@jesscss/core/value';
-import { makeDimension } from '@jesscss/core/value';
+import type { Dimension } from '@jesscss/core';
+import { makeDimension } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
 import { abs } from '../../shared/index.js';
 import { isUnitless, unitless } from '../math/is-unitless.js';

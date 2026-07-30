@@ -2,19 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, collection, declarationReference, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
+  decl, collection, collectionEntry, declarationReference, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
   variableDeclaration, varIndirect, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
+const entry = (name: string, value: Parameters<typeof collectionEntry>[1]): ReturnType<typeof collectionEntry> =>
+  collectionEntry(keyword(name), value);
 
 describe('direct canonical value access', () => {
   it('resolves indirect variables, typed map members, and prior property values', () => {
     const tokens = collection([
-      decl('gap', dimension(8, 'px')),
-      variableDeclaration('tone', keyword('navy'), { mode: 'declare' })
+      entry('gap', dimension(8, 'px')),
+      entry('tone', keyword('navy'))
     ]);
     const document = stylesheet([
       variableDeclaration('indirect-name', keyword('width'), { mode: 'declare' }),
@@ -39,8 +41,8 @@ describe('direct canonical value access', () => {
 
   it('errors for missing property and map accessors', () => {
     const tokens = collection([
-      decl('gap', dimension(8, 'px')),
-      variableDeclaration('tone', keyword('navy'), { mode: 'declare' })
+      entry('gap', dimension(8, 'px')),
+      entry('tone', keyword('navy'))
     ]);
 
     expect(() => render(stylesheet([
@@ -60,7 +62,7 @@ describe('direct canonical value access', () => {
   it('follows ordered dot then bracket reference steps without byte recovery', () => {
     const document = stylesheet([
       variableDeclaration('theme', collection([
-        variableDeclaration('palette', collection([decl('accent', keyword('teal'))]), { mode: 'declare' })
+        entry('palette', collection([entry('accent', keyword('teal'))]))
       ]), { mode: 'declare' }),
       rule('.card', [
         decl('color', reference(
@@ -76,7 +78,7 @@ describe('direct canonical value access', () => {
 
   it('resolves declaration-member references across property and variable namespaces', () => {
     const document = stylesheet([
-      variableDeclaration('tokens', collection([decl('tone', keyword('blue'))]), { mode: 'declare' }),
+      variableDeclaration('tokens', collection([entry('tone', keyword('blue'))]), { mode: 'declare' }),
       rule('.card', [
         variableDeclaration('local', keyword('green'), { mode: 'declare' }),
         decl('tone', keyword('red')),
@@ -103,7 +105,7 @@ describe('direct canonical value access', () => {
     ]))).toThrow(/Ambiguous reference member: same/);
     expect(() => render(stylesheet([
       rule('.card', [
-        variableDeclaration('same', collection([decl('tone', keyword('blue'))]), { mode: 'declare' }),
+        variableDeclaration('same', collection([entry('tone', keyword('blue'))]), { mode: 'declare' }),
         decl('same', keyword('red')),
         decl('value', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'same' }, { type: 'DotLookup', name: 'tone' }], '$same.tone'))
       ])
@@ -113,7 +115,7 @@ describe('direct canonical value access', () => {
   it('resolves an indirect map-member name in the accessor frame, not the map owner', () => {
     const document = stylesheet([
       variableDeclaration('schemes', collection([
-        variableDeclaration('primary', collection([decl('color', keyword('blue'))]), { mode: 'declare' })
+        entry('primary', collection([entry('color', keyword('blue'))]))
       ]), { mode: 'declare' }),
       rule('.entry', [
         variableDeclaration('scheme-name', keyword('primary'), { mode: 'declare' }),
@@ -149,7 +151,7 @@ describe('direct canonical value access', () => {
     const namespaceCall = mixinCall('#ns1');
     const libraryCall = {
       type: 'MixinCall' as const,
-      name: '.m', args: [], path: [{ comb: ' ' as const, sel: '#library' }], important: false
+      name: '.m', args: [], path: [{ combinator: ' ' as const, selector: '#library' }], important: false
     };
     const document = stylesheet([
       variableDeclaration('foo', keyword('caller-foo'), { mode: 'declare' }),
@@ -268,10 +270,10 @@ describe('direct canonical value access', () => {
      * remains a cascade boundary in the authored enclosing declaration order.
      */
     const setLateColor = {
-      type: 'MixinDef' as const,
+      type: 'MixinDefinition' as const,
       name: '.set-late-color',
       params: [],
-      body: [decl('color', keyword('yellow'))]
+      rules: [decl('color', keyword('yellow'))]
     };
     const document = stylesheet([
       setLateColor,
@@ -297,10 +299,10 @@ describe('direct canonical value access', () => {
 
   it('resolves a mixin property read after the caller timeline has spliced later declarations', () => {
     const readColor = {
-      type: 'MixinDef' as const,
+      type: 'MixinDefinition' as const,
       name: '.read-color',
       params: [],
-      body: [decl('from-mixin', propertyReference('color'))]
+      rules: [decl('from-mixin', propertyReference('color'))]
     };
     const document = stylesheet([
       readColor,

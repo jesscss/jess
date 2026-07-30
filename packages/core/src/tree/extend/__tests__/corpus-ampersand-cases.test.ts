@@ -13,7 +13,7 @@
  * the same `partial` flag, with a parent-only NOT_FOUND gate — see `extendAmpersandTarget`.
  */
 import { describe, it, expect, afterAll } from 'vitest';
-import { el, sel, compound, co } from '../../../index.js';
+import { el, sel, compound, co } from '../../index.js';
 import { Ampersand } from '../../ampersand.js';
 import { extendViaOwn, reportFrontier, resetFrontier } from './corpus-harness.js';
 

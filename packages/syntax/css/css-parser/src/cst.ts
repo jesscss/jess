@@ -13,7 +13,7 @@ export type CssCstError = {
   readonly type: string;
   readonly span: Span;
   readonly expected: string[];
-  readonly children: CssCstChild[];
+  readonly rules: CssCstChild[];
   readonly state: unknown;
 };
 
@@ -23,6 +23,7 @@ export type CssCstNode = {
   readonly grammarType: string;
   readonly span: Span;
   readonly state: unknown;
+  readonly rules: CssCstChild[];
   readonly children: CssCstChild[];
 };
 
@@ -176,11 +177,28 @@ function publicGrammarType(grammarType: string, rawChildren: readonly unknown[])
   return grammarType;
 }
 
+function shiftedSpan(span: Span, start: number, columnDelta: number): Span {
+  return {
+    ...span,
+    start,
+    ...(span.startColumn === undefined ? {} : { startColumn: span.startColumn + columnDelta })
+  };
+}
+
+function joinedSpan(first: Span, second: Span): Span {
+  return {
+    ...first,
+    end: second.end,
+    ...(second.endLine === undefined ? {} : { endLine: second.endLine }),
+    ...(second.endColumn === undefined ? {} : { endColumn: second.endColumn })
+  };
+}
+
 function shiftedLeaf(leaf: CssCstLeaf, value: string, start: number): CssCstLeaf {
   return {
     _tag: 'leaf',
     value,
-    span: { start, end: leaf.span.end }
+    span: shiftedSpan(leaf.span, start, 1)
   };
 }
 
@@ -207,7 +225,7 @@ function publicChildren(grammarType: string, rawChildren: readonly unknown[]): C
         {
           _tag: 'leaf',
           value: `${first.value}(`,
-          span: { start: first.span.start, end: second.span.end }
+          span: joinedSpan(first.span, second.span)
         },
         ...children.slice(2)
       ];
@@ -220,10 +238,10 @@ function publicSpan(grammarType: string, span: Span, rawChildren: readonly unkno
   if (grammarType === 'Quoted') {
     const first = rawChildren.find(isCssCstLeaf);
     if (first?.value.startsWith('~')) {
-      return { start: span.start + 1, end: span.end };
+      return shiftedSpan(span, span.start + 1, 1);
     }
   }
-  return { start: span.start, end: span.end };
+  return span;
 }
 
 function buildCssCstNode(args: BuildHostArgs): CssCstNode {
@@ -239,6 +257,10 @@ function buildCssCstNode(args: BuildHostArgs): CssCstNode {
     grammarType,
     rawChildren
   );
+  const rules = publicChildren(
+    grammarType,
+    rawChildren
+  );
   return {
     _tag: 'node',
     type: publicTypeName(type),
@@ -249,10 +271,8 @@ function buildCssCstNode(args: BuildHostArgs): CssCstNode {
       rawChildren
     ),
     state: state ?? null,
-    children: publicChildren(
-      grammarType,
-      rawChildren
-    )
+    rules,
+    children: rules
   };
 }
 
@@ -268,6 +288,7 @@ function emptyStyleSheet(): CssCstNode {
     grammarType: 'Stylesheet',
     span: { start: 0, end: 0 },
     state: null,
+    rules: [],
     children: []
   };
 }
@@ -322,9 +343,8 @@ export function parseCst(
  * Incremental-document counterpart of {@link parseCst}: parse `input` from
  * `startRule` into a parseman `ParseDoc` that can be re-parsed in place with
  * `.edit(from, to, replacement)`. The tree is built with the same
- * {@link cssCstBuildHost} the one-shot `parseCst` uses, so `absolutizeCST(doc.tree)`
- * is structurally identical to `parseCst(...).tree` for the same input (the doc's
- * own spans are PARENT-RELATIVE — absolutize before comparing).
+ * {@link cssCstBuildHost} the one-shot `parseCst` uses, so `doc.tree` is
+ * structurally identical to `parseCst(...).tree` for the same input.
  *
  * `structuralReuse` is enabled: the CST list rules are genuine repetitions
  * (`many`/`sepBy`), so a whole-element insert/delete near the top of a large

@@ -10,16 +10,18 @@
  * conveniences, not a construction boundary. Narrow a node with
  * `node.type === '…'` (or `isNode`).
  *
- * Selector model: a selector is a `SelectorList` of `ComplexSelector`
- * selectors; a `ComplexSelector` is a head `CompoundSelector` plus `(combinator, compound)`
- * tail segments; a `CompoundSelector` is a run of `SimpleSelector` tokens concatenated with no
- * separator (`.a` + `.b` => `.a.b`). The `&` parent-reference is just a
+ * Selector model: a selector is a `SelectorList` of selector branches. A branch
+ * with no combinator is a direct `SelectorTerm`; a `ComplexSelector.value` is a
+ * flat sequence of selector term, combinator string, selector term, ...; a
+ * `RelativeSelector.value` is the same sequence with a leading combinator
+ * string; a `CompoundSelector.value` is a run of `SimpleSelector` tokens
+ * concatenated with no separator (`.a` + `.b` => `.a.b`). The `&` parent-reference is just a
  * `SimpleSelector` whose text is `'&'`. Canonical selector text is computed once and
  * cached (in an optional memo field) via the free `compoundCanonical` /
  * `complexCanonical` helpers — composition (nesting) then works on these cached
  * strings, with NO per-placement node cloning / `inherit` analog.
  *
- * Trivia (comments) is carried STRUCTURALLY as a body child, so byte-identity
+ * Trivia (comments) is carried STRUCTURALLY as a rules child, so byte-identity
  * holds with zero source-position tracking.
  */
 
@@ -42,7 +44,7 @@ import type { CallArg } from './mixin-dispatch.js'; // [guards]
  * value-domain `Bool` via the materialize sniff (VALUE-NODE-MODEL-DESIGN §CORR-4).
  *
  * The literal `type` strings REUSE the value-domain names (`Keyword`/`Color`/
- * `Dimension`/`Quoted`); the collision with `ValueObj` is neutralized by the lane
+ * `Dimension`/`Quoted`); the collision with `Value` is neutralized by the lane
  * invariant (a value object never enters the AST-build lane) plus the `src` vs
  * `bytes` structural split (`node.ts` `AST_NODE_TYPES` doc).
  */
@@ -192,7 +194,7 @@ export interface Sequence {
 
 /**
  * A value carrying Less `!important` importance (`@v: @c !important`). The
- * importance is a FLAG on the value, NOT part of the emitted bytes: `inner`
+ * importance is a FLAG on the value, NOT part of the emitted bytes: `value`
  * evaluates without any inline `!important`, and the importance propagates to the
  * enclosing declaration (Less `importantScope`) so the declaration prints exactly
  * ONE trailing `!important`. A variable whose value ends in `!important` binds an
@@ -201,7 +203,7 @@ export interface Sequence {
  */
 export interface Important {
   readonly type: 'Important';
-  readonly inner: ValueSlot;
+  readonly value: ValueSlot;
 }
 
 /**
@@ -236,7 +238,7 @@ export interface FunctionCall {
 /** A delimiter-bearing value, e.g. `(#aaa * 3)` or `[a, b]`. */
 export interface Block {
   readonly type: 'Block';
-  readonly inner: ValueSlot;
+  readonly value: ValueSlot;
   readonly delimiter: 'paren' | 'square';
 
   /** Less `~(...)` emits without the authored delimiters. */
@@ -319,62 +321,72 @@ export interface VarIndirect {
 
 /**
  * An anonymous mixin value `@rs: { … }` / `$x: { … }`: an executable block bound
- * to a value, callable (`@rs()`) to splice its body at the call site. Unlike a
- * {@link Collection} (a data map), its body CAN contain rulesets, at-rules, and
+ * to a value, callable (`@rs()`) to splice its rules at the call site. Unlike a
+ * {@link Collection} (a data map), its rules CAN contain rulesets, at-rules, and
  * mixin calls — it is the safe, more-capable classification for any value-position
- * `{ … }` block that cannot be clearly inferred to be a map. `body` is the
+ * `{ … }` block that cannot be clearly inferred to be a map. `rules` is the
  * CANONICAL block, stored once (never cloned). Its lexical closure belongs to the
  * render activation that binds it, never to this reusable source node.
  *
- * Like a {@link MixinDef}, it may carry a `params` list (same {@link Param} shape):
+ * Like a {@link MixinDefinition}, it may carry a `params` list (same {@link Param} shape):
  * a value-position lambda `@($n) > { result: … }` — the lowered form of an SCSS
  * user `@function f($n) { @return … }`. The field is OMITTED for the plain,
  * parameterless block so that shape stays monomorphic. A call binds args→params
- * (positional/named/default) and yields the value of the body's `result:` entry.
+ * (positional/named/default) and yields the value of the rules' `result:` entry.
  */
 export interface AnonymousMixin {
   readonly type: 'AnonymousMixin';
-  readonly body: Statement[];
+  readonly rules: Statement[];
   readonly params?: Param[];
 }
 
 /**
+ * One authored data/map entry in a {@link Collection}. Collection entries are
+ * not declarations: a collection is data, and the key may be any value shape the
+ * dialect admits. The value may itself be an {@link AnonymousMixin}.
+ */
+export interface CollectionEntry {
+  readonly type: 'CollectionEntry';
+  readonly key: ValueSlot;
+  readonly value: ValueSlot;
+  readonly merge: null | ',' | ' ';
+  readonly important: boolean;
+  readonly valueOnNewLine?: boolean;
+}
+
+/**
  * A data/map block value `{ key: value; … }`. Its ROOT-LEVEL children are
- * key/value ENTRIES only — {@link Declaration}s or {@link VariableDeclaration}s,
- * never at-rules, mixin calls, or rulesets. An entry's VALUE, however, may be any
- * value node (including an {@link AnonymousMixin}), so entries stay ordinary
- * declaration/variable-declaration nodes.
+ * key/value ENTRIES only — never declarations, variable declarations, at-rules,
+ * mixin calls, or rulesets. An entry's VALUE may be any value node (including an
+ * {@link AnonymousMixin}).
  *
  * Used for SCSS nested properties (`font: 20px { family: serif }`): the carrier
  * Declaration's `value` is a Collection whose entries keep LEAF-ONLY names, plus
  * an optional `base` holding the carrier's own declaration value (`20px`). The
  * hyphenated flattening happens at serialize time, never at parse. Also used for
- * a value-position `{ … }` block that is clearly a data map — one whose root-level
- * statements are ONLY variable declarations (`@dr: { @a: 1; @b: 2 }`).
+ * Jess collection literals and Less value-position `{ … }` blocks that are
+ * clearly data maps.
  */
 export interface Collection {
   readonly type: 'Collection';
-  readonly entries: (Declaration | VariableDeclaration)[];
+  readonly entries: CollectionEntry[];
 
   /** The carrier's own declaration value, e.g. `20px` in `font: 20px { … }`;
    * omitted when the nested property has no own value. */
   readonly base?: ValueSlot;
 }
 
-/** A value-position `{ … }` block: either a data-map {@link Collection} or an
- *  executable {@link AnonymousMixin}. Both carry a statement body (a Collection's
- *  is its `entries`), consumed uniformly by map access, iteration, and splicing. */
-export type ValueBlock = AnonymousMixin | Collection;
+/** A value-position executable `{ … }` block. Collections are value nodes too,
+ * but they are data-entry bodies, not statement bodies. */
+export type ValueBlock = AnonymousMixin;
 
-/** Narrow a value node to a value-position block ({@link AnonymousMixin} or
- *  {@link Collection}). */
+/** Narrow a value node to a value-position executable block. */
 export const isValueBlock = (n: { type: string }): n is ValueBlock =>
-  n.type === 'AnonymousMixin' || n.type === 'Collection';
+  n.type === 'AnonymousMixin';
 
-/** The statement body of a value-position block — a Collection exposes its
- *  `entries`, an AnonymousMixin its `body`. */
+/** The statement rules of a value-position executable block. */
 export const valueBlockBody = (n: ValueBlock): Statement[] =>
-  n.type === 'Collection' ? n.entries : n.body;
+  n.rules;
 
 /** One typed step in a left-associated {@link Reference} chain. */
 export type ReferenceStep = DotLookup | BracketLookup | ReferenceCall;
@@ -508,7 +520,7 @@ export type SimpleToken = SimpleSelector | PseudoSelector;
 /** A run of simple tokens with no separator, e.g. `.a.b`, `&:hover`. */
 export interface CompoundSelector {
   readonly type: 'CompoundSelector';
-  readonly simples: SimpleToken[];
+  readonly value: SimpleToken[];
 
   /** Serializer-owned memo of the canonical join (lazy). */
   _canon?: string;
@@ -521,7 +533,7 @@ export interface CompoundSelector {
 export const compoundCanonical = (c: CompoundSelector): string => {
   if (c._canon === undefined) {
     let s = '';
-    for (const sim of c.simples) {
+    for (const sim of c.value) {
       s += simpleTokenText(sim);
     }
     c._canon = s;
@@ -533,7 +545,7 @@ export const compoundCanonical = (c: CompoundSelector): string => {
 export const compoundHasInterp = (c: CompoundSelector): boolean => {
   if (c._hasInterp === undefined) {
     let has = false;
-    for (const sim of c.simples) {
+    for (const sim of c.value) {
       if (sim.interp !== null) {
         has = true;
         break;
@@ -546,7 +558,7 @@ export const compoundHasInterp = (c: CompoundSelector): boolean => {
 
 /** True iff any token carries a literal `&` (bare, fused, or in an interpolation template). */
 export const compoundHasAmpersand = (c: CompoundSelector): boolean => {
-  for (const sim of c.simples) {
+  for (const sim of c.value) {
     if (sim.type === 'PseudoSelector') {
       if (pseudoCanonical(sim).includes('&')) {
         return true;
@@ -567,22 +579,16 @@ export const compoundHasAmpersand = (c: CompoundSelector): boolean => {
   return false;
 };
 
-export interface ComplexSegment {
-  comb: Combinator;
-  compound: CompoundSelector;
-}
+export type SelectorTerm = SimpleToken | CompoundSelector;
 
 /**
- * A head compound plus combinator-joined tail compounds. `leadingComb` is an
- * optional leading combinator so an authored child selector like `> .b` (in
- * `.a { > .b {} }`) keeps its leading `>` verbatim in both flatten and nested
- * emit — the combinator prefixes the head compoundSelector (`> .b`).
+ * A flat selector-term / combinator sequence. A `ComplexSelector` is only for
+ * selector branches with at least one authored combinator; a no-combinator
+ * branch is a `SelectorTerm` directly.
  */
 export interface ComplexSelector {
   readonly type: 'ComplexSelector';
-  readonly head: CompoundSelector;
-  readonly tail: ComplexSegment[];
-  readonly leadingComb?: Combinator;
+  readonly value: [SelectorTerm, ...(SelectorTerm | Combinator)[]];
 
   /** Serializer-owned memo of the canonical join (lazy). */
   _canon?: string;
@@ -594,37 +600,75 @@ export interface ComplexSelector {
   _hasInterp?: boolean;
 }
 
-/** Canonical text of a complex selector (head + tail, leading combinator), memoised. */
+/**
+ * A combinator-leading relative selector branch. These are admitted only in
+ * grammar contexts that allow relative selectors.
+ */
+export interface RelativeSelector {
+  readonly type: 'RelativeSelector';
+  readonly value: [Combinator, SelectorTerm, ...(SelectorTerm | Combinator)[]];
+
+  /** Serializer-owned memo of the canonical join (lazy). */
+  _canon?: string;
+
+  /** Serializer-owned memo of the has-ampersand flag (lazy). */
+  _hasAmp?: boolean;
+
+  /** Serializer-owned memo of the has-interp flag (lazy). */
+  _hasInterp?: boolean;
+}
+
+export type SelectorBranch = SelectorTerm | ComplexSelector | RelativeSelector;
+
+/** Canonical text of a complex selector, memoised. */
 export const complexCanonical = (c: ComplexSelector): string => {
   if (c._canon === undefined) {
-    let s = compoundCanonical(c.head);
-
-    /*
-     * A leading combinator (e.g. `> .b`) is rendered surrounded on the right
-     * only: `renderCombinator` yields ` > `; the head has no left context, so
-     * trim the leading space to emit `> .b`.
-     */
-    if (c.leadingComb !== undefined && c.leadingComb !== ' ') {
-      s = renderCombinator(c.leadingComb).trimStart() + s;
-    }
-    for (const seg of c.tail) {
-      s += renderCombinator(seg.comb) + compoundCanonical(seg.compound);
+    let s = selectorTermCanonical(c.value[0]);
+    for (let index = 1; index < c.value.length; index += 2) {
+      const comb = c.value[index];
+      const term = c.value[index + 1];
+      if (typeof comb === 'string' && term !== undefined && typeof term !== 'string') {
+        s += renderCombinator(comb) + selectorTermCanonical(term);
+      }
     }
     c._canon = s;
   }
   return c._canon;
 };
 
+/** Canonical text of a relative selector, memoised. */
+export const relativeCanonical = (c: RelativeSelector): string => {
+  if (c._canon === undefined) {
+    let s = renderCombinator(c.value[0]).trimStart() + selectorTermCanonical(c.value[1]);
+    for (let index = 2; index < c.value.length; index += 2) {
+      const comb = c.value[index];
+      const term = c.value[index + 1];
+      if (typeof comb === 'string' && term !== undefined && typeof term !== 'string') {
+        s += renderCombinator(comb) + selectorTermCanonical(term);
+      }
+    }
+    c._canon = s;
+  }
+  return c._canon;
+};
+
+export const selectorBranchCanonical = (branch: SelectorBranch): string =>
+  branch.type === 'ComplexSelector'
+    ? complexCanonical(branch)
+    : branch.type === 'RelativeSelector'
+      ? relativeCanonical(branch)
+      : selectorTermCanonical(branch);
+
 /**
  * The inline canonical spelling of a structured pseudo, e.g. `:is(.a, .b)`. This
  * is the SINGLE core serialization site for the pseudo-arg join: branches join
- * with `, ` (normalized WS, one line) via the core-owned `complexCanonical`. The
+ * with `, ` (normalized WS, one line) via the core-owned branch canonicalizer. The
  * grammar NEVER computes this — it only supplies `args` (structure) + trivia. The
  * degrade-to-opaque case (`args: null`) falls back to the retained `text`.
  */
 export const pseudoCanonical = (p: PseudoSelector): string =>
   p.args !== null
-    ? `${p.name}(${p.args.selectors.map(complexCanonical).join(', ')})`
+    ? `${p.name}(${p.args.selectors.map(selectorBranchCanonical).join(', ')})`
     : p.text ?? '';
 
 /** The canonical contributed text of one simple token: a structured pseudo emits
@@ -633,15 +677,27 @@ export const pseudoCanonical = (p: PseudoSelector): string =>
 export const simpleTokenText = (sim: SimpleToken): string =>
   sim.type === 'PseudoSelector' ? pseudoCanonical(sim) : (sim.text ?? '');
 
+export const selectorTermCanonical = (term: SelectorTerm): string =>
+  term.type === 'CompoundSelector' ? compoundCanonical(term) : simpleTokenText(term);
+
+export const selectorTermHasAmpersand = (term: SelectorTerm): boolean =>
+  term.type === 'CompoundSelector'
+    ? compoundHasAmpersand(term)
+    : term.type === 'PseudoSelector'
+      ? pseudoCanonical(term).includes('&')
+      : term.text?.includes('&') === true
+        || term.interp?.parts.some(part => 'lit' in part && part.lit.includes('&')) === true;
+
+export const selectorTermHasInterp = (term: SelectorTerm): boolean =>
+  term.type === 'CompoundSelector' ? compoundHasInterp(term) : term.interp !== null;
+
 export const complexHasAmpersand = (c: ComplexSelector): boolean => {
   if (c._hasAmp === undefined) {
-    let has = compoundHasAmpersand(c.head);
-    if (!has) {
-      for (const seg of c.tail) {
-        if (compoundHasAmpersand(seg.compound)) {
-          has = true;
-          break;
-        }
+    let has = false;
+    for (const part of c.value) {
+      if (typeof part !== 'string' && selectorTermHasAmpersand(part)) {
+        has = true;
+        break;
       }
     }
     c._hasAmp = has;
@@ -652,13 +708,11 @@ export const complexHasAmpersand = (c: ComplexSelector): boolean => {
 /** True iff any compound carries an interpolated token (fast-path gate). */
 export const complexHasInterp = (c: ComplexSelector): boolean => {
   if (c._hasInterp === undefined) {
-    let has = compoundHasInterp(c.head);
-    if (!has) {
-      for (const seg of c.tail) {
-        if (compoundHasInterp(seg.compound)) {
-          has = true;
-          break;
-        }
+    let has = false;
+    for (const part of c.value) {
+      if (typeof part !== 'string' && selectorTermHasInterp(part)) {
+        has = true;
+        break;
       }
     }
     c._hasInterp = has;
@@ -666,10 +720,54 @@ export const complexHasInterp = (c: ComplexSelector): boolean => {
   return c._hasInterp;
 };
 
-/** A comma-separated list of complex selectors, e.g. `.a, .b`. */
+export const relativeHasAmpersand = (c: RelativeSelector): boolean => {
+  if (c._hasAmp === undefined) {
+    let has = false;
+    for (let index = 1; index < c.value.length; index += 1) {
+      const part = c.value[index]!;
+      if (typeof part !== 'string' && selectorTermHasAmpersand(part)) {
+        has = true;
+        break;
+      }
+    }
+    c._hasAmp = has;
+  }
+  return c._hasAmp;
+};
+
+export const relativeHasInterp = (c: RelativeSelector): boolean => {
+  if (c._hasInterp === undefined) {
+    let has = false;
+    for (let index = 1; index < c.value.length; index += 1) {
+      const part = c.value[index]!;
+      if (typeof part !== 'string' && selectorTermHasInterp(part)) {
+        has = true;
+        break;
+      }
+    }
+    c._hasInterp = has;
+  }
+  return c._hasInterp;
+};
+
+export const selectorBranchHasAmpersand = (branch: SelectorBranch): boolean =>
+  branch.type === 'ComplexSelector'
+    ? complexHasAmpersand(branch)
+    : branch.type === 'RelativeSelector'
+      ? relativeHasAmpersand(branch)
+      : selectorTermHasAmpersand(branch);
+
+export const selectorBranchHasInterp = (branch: SelectorBranch): boolean =>
+  branch.type === 'ComplexSelector'
+    ? complexHasInterp(branch)
+    : branch.type === 'RelativeSelector'
+      ? relativeHasInterp(branch)
+      : selectorTermHasInterp(branch);
+
+/** A comma-separated list of selector branches, e.g. `.a, .b`. */
 export interface SelectorList {
   readonly type: 'SelectorList';
-  readonly selectors: ComplexSelector[];
+  readonly selectors: SelectorBranch[];
 }
 
 /* -------------------------------------------------------------- statements */
@@ -745,7 +843,7 @@ export interface RawInline {
 /**
  * One `:extend()` instruction extracted from a ruleset body (or an attached
  * `.a:extend(...)`). The SUBJECT (the thing appended / substituted-in) is the
- * carrying Rule's own selector list; `target` is the FIND selector list;
+ * carrying Ruleset's own selector list; `target` is the FIND selector list;
  * `partial` is `true` for `all` (the parser's flag=0) and `false` for an exact
  * extend (flag=1). A multi-target `:extend(.aa, .bb)` fans into one instruction
  * per target branch, all sharing this `partial`.
@@ -765,15 +863,15 @@ export interface ExtendInstruction {
 }
 
 /**
- * A `selector { ...body }` rule; body may nest further rules.
- * `extendInstructions` carries the `:extend()` instructions parsed from the body
- * (the `Extend` body statements are removed and hoisted here);
+ * A `selector { ...rules }` ruleset; rules may nest further rules.
+ * `extendInstructions` carries the `:extend()` instructions parsed from the rules
+ * (the `Extend` statements are removed and hoisted here);
  * absent for the common no-extend rule so the serializer's zero-cost gate holds.
  */
-export interface Rule {
-  readonly type: 'Rule';
+export interface Ruleset {
+  readonly type: 'Ruleset';
   readonly selector: SelectorList;
-  readonly body: Statement[];
+  readonly rules: Statement[];
   readonly extendInstructions?: ExtendInstruction[];
 
   /**
@@ -809,20 +907,20 @@ export interface Param {
 }
 
 /**
- * A mixin definition. Its `body` is the CANONICAL body, stored ONCE — every
+ * A mixin definition. Its `rules` are the CANONICAL rules, stored ONCE — every
  * call reads it through an overlay (bindings + parent-selector context) and
  * NEVER clones it. [guards] `guard` is an optional `when (...)` condition.
  */
-export interface MixinDef {
-  readonly type: 'MixinDef';
+export interface MixinDefinition {
+  readonly type: 'MixinDefinition';
   readonly name: string;
   readonly params: Param[];
-  readonly body: Statement[];
+  readonly rules: Statement[];
   readonly guard?: GuardNode; // [guards]
   /*
    * [dedup] set only on a def SYNTHESIZED from a paren-less ruleset callable as a
    * zero-arg mixin (`.foo {…}` dispatched via `.foo()`). A real parametric
-   * `MixinDef` leaves it undefined. Duplicate-declaration dedup keeps overloaded
+   * `MixinDefinition` leaves it undefined. Duplicate-declaration dedup keeps overloaded
    * PARAMETRIC output verbatim (Less restricts its ambient lookup) but collapses
    * identical ruleset-mixin output, so the serializer must tell them apart.
    */
@@ -833,9 +931,9 @@ export interface MixinDef {
  * One segment of a namespaced-call path: a combinator (`' '` descendant or
  * `'>'` child) and a selector string (`#namespace`, `.borders`).
  */
-export interface PathSeg {
-  comb: Combinator;
-  sel: string;
+export interface MixinPathSegment {
+  combinator: Combinator;
+  selector: string;
 }
 
 /**
@@ -848,7 +946,7 @@ export interface MixinCall {
   readonly type: 'MixinCall';
   readonly name: string;
   readonly args: CallArg[];
-  readonly path: PathSeg[];
+  readonly path: MixinPathSegment[];
   readonly important: boolean;
 }
 
@@ -860,7 +958,7 @@ export interface MixinCall {
  */
 export interface Apply {
   readonly type: 'Apply';
-  readonly selectors: readonly CompoundSelector[];
+  readonly selectors: readonly SelectorTerm[];
 }
 
 /**
@@ -888,7 +986,7 @@ export interface For {
 /** One ordered arm of a Jess `$if` chain. A null guard is the final `$else`. */
 export interface IfBranch {
   readonly guard: GuardNode | null;
-  readonly body: Statement[];
+  readonly rules: Statement[];
 }
 
 /**
@@ -931,7 +1029,7 @@ export interface ModuleImport {
 /** The document stylesheet: an ordered list of top-level statements. */
 export interface Stylesheet {
   readonly type: 'Stylesheet';
-  readonly children: Statement[];
+  readonly rules: Statement[];
 }
 
 /*
@@ -941,10 +1039,10 @@ export interface Stylesheet {
 import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 
 export type Statement =
-  | Rule
+  | Ruleset
   | Declaration
   | Comment
-  | MixinDef
+  | MixinDefinition
   | MixinCall
   | Apply
   | VariableDeclaration
@@ -1030,30 +1128,28 @@ export const generalEnclosed = (
   content: Interpolation
 ): GeneralEnclosed => ({ type: 'GeneralEnclosed', form, name, content });
 export const varIndirect = (nameRef: ValueNode, lookup: VariableLookup): VarIndirect => ({ type: 'VarIndirect', nameRef, lookup });
-export const anonymousMixin = (body: Statement[], params?: Param[]): AnonymousMixin =>
-  params === undefined ? { type: 'AnonymousMixin', body } : { type: 'AnonymousMixin', body, params };
+export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
+  params === undefined ? { type: 'AnonymousMixin', rules } : { type: 'AnonymousMixin', rules, params };
 
 /**
- * Classify a value-position `{ … }` block by its CONTENT (parse-time, structural):
- *
- * - **{@link Collection}** (data map) when the block is CLEARLY a data map — its
- *   root-level statements are ONLY variable declarations (`@dr: { @a: 1; @b: 2 }`),
- *   with no rulesets, at-rules, mixin calls, or even comments. An entry's VALUE may
- *   itself be an anonymous mixin — that does not disqualify it; the restriction is on
- *   the block's direct STATEMENTS.
- * - **{@link AnonymousMixin}** otherwise — the safe, more-capable default when the
- *   block cannot be clearly inferred to be a map (property-keyed blocks, or any block
- *   containing a ruleset / at-rule / mixin call / comment). Nothing in the body is
- *   ever dropped: a block kept as an AnonymousMixin splices verbatim when called.
- *
- * This is a structural classification, not the lossy flatten/merge that must stay
- * eval-time.
+ * Classify a Less-style detached `{ … }` block by its direct statement shape.
+ * Jess collections parse through their own entry grammar and never reach this
+ * helper; Less keeps its legacy heuristic where variable-only blocks are data
+ * maps and every other statement body is an executable anonymous mixin.
  */
-export const classifyValueBlock = (body: Statement[]): ValueBlock => {
-  if (body.length === 0 || !body.every((s): s is VariableDeclaration => s.type === 'VariableDeclaration')) {
-    return anonymousMixin(body);
+type CollectionVariableDeclaration = VariableDeclaration & { readonly value: ValueSlot };
+
+const isCollectionVariableDeclaration = (statement: Statement): statement is CollectionVariableDeclaration =>
+  statement.type === 'VariableDeclaration'
+  && (!('type' in statement.value) || statement.value.type !== 'MixinCall');
+
+export const classifyValueBlock = (rules: Statement[]): AnonymousMixin | Collection => {
+  if (rules.length === 0 || !rules.every(isCollectionVariableDeclaration)) {
+    return anonymousMixin(rules);
   }
-  return { type: 'Collection', entries: body };
+  return collection(rules.map(entry =>
+    collectionEntry(keyword(entry.name), entry.value)
+  ));
 };
 export const forNode = (
   iterable: ValueSlot | MixinCall,
@@ -1076,28 +1172,54 @@ export const reference = (
 export const propertyReference = (name: string, raw: string = `$${name}`): PropertyReference => ({ type: 'PropertyReference', name, raw });
 
 /** A compound from an already-built list of simple tokens. */
-export const compoundSelectorOf = (simples: SimpleToken[]): CompoundSelector => ({ type: 'CompoundSelector', simples });
+export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => ({ type: 'CompoundSelector', value });
+
+/** A selector term: a lone simple token stays direct; adjacent tokens form a compound. */
+export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]): SelectorTerm => {
+  const [first, second, ...rest] = value;
+  return second === undefined ? first : compoundSelectorOf([first, second, ...rest]);
+};
 
 /** `compoundSelector('.a', '.b')` => `.a.b`. */
-export const compoundSelector = (...texts: string[]): CompoundSelector => compoundSelectorOf(texts.map(simpleSelector));
+export const compoundSelector = (first: string, second: string, ...rest: string[]): CompoundSelector =>
+  compoundSelectorOf([simpleSelector(first), simpleSelector(second), ...rest.map(simpleSelector)]);
 
-/** `complexSelector([{ compound: compoundSelector('.a') }, { comb: '>', compound: compoundSelector('.b') }])` => `.a > .b`. */
+type SelectorPartInput = { combinator?: Combinator; term: SelectorTerm };
+
+/** `complexSelector([{ term: simpleSelector('.a') }, { combinator: '>', term: simpleSelector('.b') }])` => `.a > .b`. */
 export const complexSelector = (
-  segments: Array<{ comb?: Combinator; compound: CompoundSelector }>,
-  leadingComb?: Combinator
+  segments: [SelectorPartInput, SelectorPartInput, ...SelectorPartInput[]]
 ): ComplexSelector => {
   const [head, ...tail] = segments;
-  if (!head) {
-    throw new Error('complexSelector() needs at least one segment');
-  }
+  const value: ComplexSelector['value'] = [
+    head.term,
+    ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
+  ];
   return {
     type: 'ComplexSelector',
-    head: head.compound,
-    tail: tail.map(s => ({ comb: s.comb ?? ' ', compound: s.compound })),
-    ...(leadingComb !== undefined ? { leadingComb } : {})
+    value
   };
 };
-export const selist = (...selectors: ComplexSelector[]): SelectorList => ({ type: 'SelectorList', selectors });
+export const relativeSelector = (
+  combinator: Combinator,
+  segments: [SelectorPartInput, ...SelectorPartInput[]]
+): RelativeSelector => {
+  const [head, ...tail] = segments;
+  const value: RelativeSelector['value'] = [
+    combinator,
+    head.term,
+    ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
+  ];
+  return {
+    type: 'RelativeSelector',
+    value
+  };
+};
+export const selectorBranchOf = (segments: readonly [SelectorPartInput, ...SelectorPartInput[]]): SelectorBranch => {
+  const [first, second, ...rest] = segments;
+  return second === undefined ? first.term : complexSelector([first, second, ...rest]);
+};
+export const selist = (...selectors: SelectorBranch[]): SelectorList => ({ type: 'SelectorList', selectors });
 
 export const decl = (
   name: string | Interpolation,
@@ -1110,9 +1232,20 @@ export const decl = (
     ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true }
     : { type: 'Declaration', name, value, merge, important };
 
+export const collectionEntry = (
+  key: ValueSlot,
+  value: ValueSlot,
+  merge: null | ',' | ' ' = null,
+  important = false,
+  valueOnNewLine = false
+): CollectionEntry =>
+  valueOnNewLine
+    ? { type: 'CollectionEntry', key, value, merge, important, valueOnNewLine: true }
+    : { type: 'CollectionEntry', key, value, merge, important };
+
 /** A data/map block value: leaf-named `entries`, plus an optional `base` carrier
  * value (`20px` in `font: 20px { … }`). See {@link Collection}. */
-export const collection = (entries: Declaration[], base?: ValueSlot): Collection =>
+export const collection = (entries: CollectionEntry[], base?: ValueSlot): Collection =>
   base === undefined ? { type: 'Collection', entries } : { type: 'Collection', entries, base };
 export const comment = (text: string): Comment => ({ type: 'Comment', text });
 
@@ -1124,7 +1257,7 @@ export const variableReference = (name: string, lookup: VariableLookup): Variabl
   ({ type: 'VariableReference', name, lookup });
 export const declarationReference = (raw: string = '$'): DeclarationReference => ({ type: 'DeclarationReference', raw });
 export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
-export const important = (inner: ValueSlot): Important => ({ type: 'Important', inner });
+export const important = (value: ValueSlot): Important => ({ type: 'Important', value });
 
 /** @deprecated Renamed to {@link sequence}; kept one cycle for straddling callers. */
 export const concat = sequence;
@@ -1132,12 +1265,12 @@ export const operation = (operator: string, left: ValueNode, right: ValueNode): 
   ({ type: 'Operation', operator, left, right });
 export const funcCall = (name: string, args: ValueSlot[], modern = false): FunctionCall =>
   ({ type: 'FunctionCall', name, args, modern });
-export const block = (inner: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
-  escaped ? { type: 'Block', inner, delimiter, escaped: true } : { type: 'Block', inner, delimiter };
+export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
+  escaped ? { type: 'Block', value, delimiter, escaped: true } : { type: 'Block', value, delimiter };
 
 /** The `$( … )` math boundary — see {@link Block.boundary}. */
-export const boundaryBlock = (inner: ValueSlot): Block =>
-  ({ type: 'Block', inner, delimiter: 'paren', boundary: true });
+export const boundaryBlock = (value: ValueSlot): Block =>
+  ({ type: 'Block', value, delimiter: 'paren', boundary: true });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
 export const variableDeclaration = (
   name: string,
@@ -1148,9 +1281,9 @@ export const variableDeclaration = (
 export const mixinDef = (
   name: string,
   params: Param[],
-  body: Statement[],
+  rules: Statement[],
   guard?: GuardNode // [guards]
-): MixinDef => ({ type: 'MixinDef', name, params, body, ...(guard !== undefined ? { guard } : {}) });
+): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard !== undefined ? { guard } : {}) });
 
 /** [guards] Args may be bare value nodes (positional) or `{ value, name? }`. */
 export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): MixinCall => ({
@@ -1160,19 +1293,19 @@ export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): 
   path: [],
   important: false
 });
-export const apply = (selectors: readonly CompoundSelector[]): Apply => ({ type: 'Apply', selectors });
+export const apply = (selectors: readonly SelectorTerm[]): Apply => ({ type: 'Apply', selectors });
 
-/** A single simple-string complex selector, e.g. `sel('.test')`. */
-export const sel = (text: string): ComplexSelector => complexSelector([{ compound: compoundSelector(text) }]);
+/** A single simple-string selector branch, e.g. `sel('.test')`. */
+export const sel = (text: string): SelectorBranch => simpleSelector(text);
 
 /** `rule('.test', [...])`, `rule(sel('.a > .b'), ...)`, or `rule(selist(...), ...)`.
  *  `extendInstructions` (optional) carries hoisted `:extend()` instructions. */
 export const rule = (
-  selector: string | ComplexSelector | SelectorList,
-  body: Statement[],
+  selector: string | SelectorBranch | SelectorList,
+  rules: Statement[],
   extendInstructions?: ExtendInstruction[],
   guard?: GuardNode
-): Rule => {
+): Ruleset => {
   const list =
     typeof selector === 'string'
       ? selist(sel(selector))
@@ -1180,9 +1313,9 @@ export const rule = (
         ? selector
         : selist(selector);
   return {
-    type: 'Rule',
+    type: 'Ruleset',
     selector: list,
-    body,
+    rules,
     ...(extendInstructions !== undefined ? { extendInstructions } : {}),
     ...(guard !== undefined ? { guard } : {})
   };
@@ -1200,4 +1333,4 @@ export const moduleImport = (
   imports: readonly ModuleImportSpecifier[] = [],
   defaultImport: string | null = null
 ): ModuleImport => ({ type: 'ModuleImport', path, mode, defaultImport, namespace, imports });
-export const stylesheet = (children: Statement[]): Stylesheet => ({ type: 'Stylesheet', children });
+export const stylesheet = (rules: Statement[]): Stylesheet => ({ type: 'Stylesheet', rules });

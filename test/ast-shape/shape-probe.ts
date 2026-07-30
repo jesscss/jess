@@ -143,14 +143,10 @@ export function formatShapeReport(result: CollectResult): string {
 export const SHAPE_DEBT_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   // Each polymorphic type below diverges purely on an OPTIONAL trailing field
   // that some construction sites omit. Every entry is a Phase-B monomorphization
-  // candidate (give the node a stable full shape — e.g. `leadingComb: undefined`,
-  // `guard: null` — at every construction site) so the field is always present
-  // and V8 keeps one hidden class. Do NOT fix here; this gate only prevents NEW
-  // divergence and any WORSE (third) shape.
-
-  // TODO(shape-debt): ComplexSelector omits `leadingComb` unless the selector has
-  // an authored leading combinator (`> .b`). Monomorphize by always emitting it.
-  ComplexSelector: ['type,head,tail', 'type,head,tail,leadingComb'],
+  // candidate (give the node a stable full shape — e.g. `guard: null` — at every
+  // construction site) so the field is always present and V8 keeps one hidden
+  // class. Do NOT fix here; this gate only prevents NEW divergence and any WORSE
+  // (third) shape.
 
   // TODO(shape-debt): MixinDef omits `guard` for unguarded definitions.
   MixinDef: ['type,name,params,body', 'type,name,params,body,guard'],

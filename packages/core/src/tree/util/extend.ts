@@ -131,7 +131,7 @@ import { N } from '../node-type.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
 import { normalizeSelectorForExtend, type ExtendSearchResult } from './find-extendable-locations.js';
 import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
-import { isDisjoint, isSubsetOf } from './bitset.js';
+import { isDisjoint, isSubsetOf } from '../../util/bitset.js';
 import { keySetOf, requiredKeySetOf } from './selector-analysis.js';
 import {
   selectorCompare,

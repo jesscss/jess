@@ -11,9 +11,9 @@ function cstStructKey(node: LessCstChild): unknown {
     return { l: node.value, s: node.span.start, e: node.span.end };
   }
   if (node._tag === 'error') {
-    return { err: node.type, s: node.span.start, e: node.span.end, children: node.children.map(cstStructKey) };
+    return { err: node.type, s: node.span.start, e: node.span.end, rules: node.rules.map(cstStructKey) };
   }
-  return { t: node.type, s: node.span.start, e: node.span.end, children: node.children.map(cstStructKey) };
+  return { t: node.type, s: node.span.start, e: node.span.end, rules: node.rules.map(cstStructKey) };
 }
 
 type CstNode = ReturnType<typeof parseLessCst>['tree'];
@@ -41,7 +41,7 @@ function stats(tree: CstNode) {
     if (node._tag === 'node') {
       types.add(node.type);
       grammarTypes.set(node.grammarType, (grammarTypes.get(node.grammarType) ?? 0) + 1);
-      node.children.forEach(visit);
+      node.rules.forEach(visit);
     }
   };
   visit(tree);
@@ -65,7 +65,7 @@ describe('@jesscss/less-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
-    expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
+    expect(result.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
     expectNoModeLabels(result.tree);
   });
 
@@ -102,7 +102,7 @@ describe('@jesscss/less-parser/cst', () => {
     expect(stats(expanded.tree).types).toContain('VarDeclaration');
     expect(stats(collapsed.tree).grammarTypes.get('Reference') ?? 0).toBeLessThanOrEqual(stats(expanded.tree).grammarTypes.get('Reference') ?? 0);
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
-    expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
+    expect(collapsed.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
     expectNoModeLabels(expanded.tree);
     expectNoModeLabels(collapsed.tree);
   });
@@ -115,7 +115,7 @@ function findNode(node: LessCstChild, grammarType: string): Extract<LessCstChild
   if (node.grammarType === grammarType) {
     return node;
   }
-  for (const child of node.children) {
+  for (const child of node.rules) {
     const found = findNode(child, grammarType);
     if (found) {
       return found;
@@ -135,7 +135,7 @@ function leafValues(node: LessCstChild): string[] {
   if (node._tag !== 'node') {
     return [];
   }
-  return node.children.flatMap(leafValues);
+  return node.rules.flatMap(leafValues);
 }
 
 function findNodes(node: LessCstChild, grammarType: string): Extract<LessCstChild, { _tag: 'node' }>[] {
@@ -144,7 +144,7 @@ function findNodes(node: LessCstChild, grammarType: string): Extract<LessCstChil
   }
   return [
     ...(node.grammarType === grammarType ? [node] : []),
-    ...node.children.flatMap(child => findNodes(child, grammarType))
+    ...node.rules.flatMap(child => findNodes(child, grammarType))
   ];
 }
 

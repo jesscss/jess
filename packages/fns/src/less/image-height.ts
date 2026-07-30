@@ -1,5 +1,5 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
-import type { Fn, ValueObj } from '@jesscss/core/value';
+import { defineFunction, makeDimension } from '@jesscss/core';
+import type { Fn, Value } from '@jesscss/core';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { readImageDimensions } from './image-helper.js';
 
@@ -8,11 +8,11 @@ import { readImageDimensions } from './image-helper.js';
  * The evaluator retains the raw typed argument group and injects file IO.
  */
 const imageHeight: Fn = defineFunction('image-height', {
-  params: [{ kinds: 'any' }],
+  params: [{ type: 'any' }],
   variadic: true,
-  body: (value, ctx): MaybePromise<ValueObj> => {
+  body: (value, ctx): MaybePromise<Value> => {
     const dimensions = readImageDimensions(value, ctx);
-    const finish = ({ height }: { height: number }): ValueObj => makeDimension(height, 'px');
+    const finish = ({ height }: { height: number }): Value => makeDimension(height, 'px');
     return isThenable(dimensions) ? dimensions.then(finish) : finish(dimensions);
   }
 });

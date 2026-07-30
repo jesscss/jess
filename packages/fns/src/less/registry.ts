@@ -2,10 +2,9 @@
  * The Less built-in registry, DERIVED from `less/index.ts` and nothing else.
  *
  * Deliberately in the dialect folder: a Less-only consumer must not pull the
- * Sass index (and its legacy tree-node modules) into its bundle just to build
- * the Less dispatch table.
+ * Sass index into its bundle just to build the Less dispatch table.
  */
-import type { Fn, FnRegistry } from '@jesscss/core/value';
+import type { Fn, FnRegistry } from '@jesscss/core';
 import { fnsOf, registryOf } from '../registry.js';
 import * as lessIndex from './index.js';
 

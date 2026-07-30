@@ -187,11 +187,7 @@ the nested lane byte-identical with tree2 clone/inherit/withComponents ZERO.
 ### Flagged for owner confirmation of intended v5 nested shape
 
 - **Leading-combinator child selectors.** A nested child authored with a leading
-  combinator (`.a { > .b { … } }` / `#ns { > .mixin }`) renders in the v5 reference
-  as `> .b` verbatim inside the parent, but tree2's selector MODEL (`Complex` =
-  head compound + combinator-joined tail) has no slot for a leading combinator, so
-  the bridge drops it (pre-existing gap noted since rung 7; it surfaces directly in
-  nested mode because the child header is emitted verbatim). This is a
-  bridge/selector-model gap, orthogonal to the R0 collapse policy — it needs the
-  selector model to carry an optional leading combinator, then both emit modes get
-  it for free. `rulesets/rulesets.less` is the corpus example.
+  combinator (`.a { > .b { … } }` / `#ns { > .mixin }`) is represented as a
+  `RelativeSelector`, not as a `ComplexSelector` side field. Root selector grammar
+  stays non-relative; nested selector grammar admits the relative branch
+  explicitly.

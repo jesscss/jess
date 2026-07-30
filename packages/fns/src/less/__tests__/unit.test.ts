@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeDimension, makeKeyword, makeQuoted } from '@jesscss/core/value';
+import { makeDimension, makeKeyword, makeQuoted } from '@jesscss/core';
 import { unit } from '../unit.js';
 
 describe('unit()', () => {

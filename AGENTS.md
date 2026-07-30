@@ -165,6 +165,42 @@ grammar-level routing combinator such as `dispatch(combinator, when(...),
 otherwise(...))`, whose job is recognition and macro-compilable branch
 selection.
 
+## Parser-Owned Shape Rules
+
+Parsers own AST validity. Core nodes are cheap value objects that assume their
+inputs are already right. View every parser/AST shape decision through the
+repo's performance pressure: prefer grammar-time decisions, macro-compilable
+Parseman structure, simple value objects, and typed construction over runtime
+branching. Do not push parser-shape enforcement into hot-path runtime
+constructors, node methods, eval/render visitors, or compatibility facades. If
+a shape can be made invalid only by parser construction, fix the parser
+reduction and pin it with parser AST tests. Diagnostics may optionally audit or
+report invalid shapes, but diagnostics are not the source of truth that makes
+nodes valid.
+
+Selector parsers must emit the smallest authored selector shape:
+
+- A selector-list branch with no combinator is a selector term, not a
+  `ComplexSelector`.
+- A `CompoundSelector` is only for multiple adjacent simple selector tokens. A
+  single simple, basic, pseudo, or parent selector remains that selector.
+- A `ComplexSelector` is only for selector-term/combinator/selector-term
+  sequences and must contain at least one combinator. It must never wrap one
+  selector term.
+- A `RelativeSelector` is only for combinator-leading relative selector branches
+  and must contain that leading combinator followed by at least one selector
+  term.
+- Combinators remain primitive strings in selector sequences; do not wrap them
+  in objects.
+- Do not admit leading-combinator branches through a generic selector
+  production. Contextualize the grammar so relative selectors are accepted only
+  where the language permits them, such as nested selector position or selector
+  function arguments that allow relative selectors.
+- Do not enforce these invariants with runtime shape rejection in core nodes.
+  Parser reductions should coalesce into legal shapes, and parser AST tests
+  should assert that one-item compounds, one-term complex selectors, and
+  out-of-context relative selectors are not produced.
+
 ## Parser Runtime Boundary
 
 In `packages/syntax/css/css-parser`, `packages/syntax/less/less-parser`,

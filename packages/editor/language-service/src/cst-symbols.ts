@@ -8,35 +8,35 @@
  * survives half-typed documents, so these features keep working mid-edit.
  *
  * SYMBOL SHAPES (raw `grammarType`, confirmed empirically across less/scss):
- *   - variable reference   → `Reference`            (`@primary` / `$primary`)
- *   - variable declaration → `VarDeclaration`       (`@primary: red;`)
- *   - mixin reference      → `MixinCall`            (`.button();`)
- *   - mixin definition     → `MixinOrQualifiedRule` (`.button() { … }`)
+ *   - variable reference   → `Reference` / `VariableReference` (`@primary` / `$primary`)
+ *   - variable declaration → `VarDeclaration` / `VariableDeclaration` (`@primary: red;`)
+ *   - mixin reference      → `MixinCall` / `MixinCallRule` (`.button();` / `@include foo`)
+ *   - mixin definition     → `MixinOrQualifiedRule` / `MixinDefinitionRule` / `MixinDefinition`
+ *                            (`.button() { … }` / `@mixin foo` / Jess mixin def)
  * A plain selector rule is `Ruleset`, so a mixin definition (which carries
  * `MixinArgs`) is cleanly distinguished by its grammarType.
  *
- * SPAN MODEL: the CST stores parent-relative spans, so absolute offsets come
- * from `buildCstIndex(root).spanOf` only. Identifiers are sliced from SOURCE
- * text over those absolute spans (whitespace lives in trivia, not leaves).
+ * SPAN MODEL: CST nodes carry absolute spans. Identifiers are sliced from
+ * source text over those spans (whitespace lives in trivia, not leaves).
  */
 import type { CssCstNode } from '@jesscss/css-parser';
 import type { Location, Range } from 'vscode-languageserver-types';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 import { buildCstIndex } from './cst-analysis.js';
 
-const VAR_REF = 'Reference';
-const VAR_DECL = 'VarDeclaration';
+const VAR_REF_TYPES = new Set(['Reference', 'VariableReference']);
+const VAR_DECL_TYPES = new Set(['VarDeclaration', 'VariableDeclaration']);
 
-// A mixin CALL site: Less `MixinCall` / SCSS `@include foo` (`ScssInclude`).
-const MIXIN_REF_TYPES = new Set(['MixinCall', 'ScssInclude']);
+// A mixin CALL site: Less/Jess `MixinCall` / SCSS `@include foo`.
+const MIXIN_REF_TYPES = new Set(['MixinCall', 'MixinCallRule']);
 
 /*
- * A mixin/function DEFINITION: Less `MixinOrQualifiedRule` / SCSS `@mixin foo`
- * (`ScssMixin`) and `@function bar` (`ScssFunction`). `@include`/`@mixin` are
- * DISTINCT grammarTypes (call vs def); `mixinNameOf` strips the differing keyword
- * so both resolve to the same bare `matchName`.
+ * A mixin/function DEFINITION: Less `MixinOrQualifiedRule`, Jess
+ * `MixinDefinition`, SCSS `@mixin foo`, and SCSS `@function bar`.
+ * `@include`/`@mixin` are DISTINCT grammarTypes (call vs def); `mixinNameOf`
+ * strips the differing keyword so both resolve to the same bare `matchName`.
  */
-const MIXIN_DEF_TYPES = new Set(['MixinOrQualifiedRule', 'MixinDefinition', 'Mixin', 'ScssMixin', 'ScssFunction']);
+const MIXIN_DEF_TYPES = new Set(['MixinOrQualifiedRule', 'MixinDefinitionRule', 'MixinDefinition', 'FunctionRule']);
 
 /** A variable/mixin symbol resolved from a cursor position. */
 export type CstSymbol = {
@@ -64,7 +64,7 @@ function toRange(doc: TextDocument, start: number, end: number): Range {
   };
 }
 
-/** Bare variable name from a `Reference` (`@primary`) or `VarDeclaration`
+/** Bare variable name from a `Reference`/`VariableReference` (`@primary`) or variable declaration
  * (`@primary: red;`) slice: take the head before any `:`, drop the sigil. */
 function varNameOf(slice: string): string {
   const head = slice.split(':')[0] ?? slice;
@@ -85,6 +85,48 @@ function mixinIdentOf(name: string): string {
   return name.replace(/^[.#]/, '').replace(/\(\s*\)\s*$/, '').trim();
 }
 
+function isNameChar(ch: string): boolean {
+  return ch === '-' || ch === '_' || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
+}
+
+function sourceVariableSymbolAtOffset(source: string, offset: number): CstSymbol | null {
+  if (source.length === 0) {
+    return null;
+  }
+  const pos = Math.min(Math.max(0, offset), source.length);
+  let start = pos;
+  while (start > 0 && isNameChar(source.charAt(start - 1))) {
+    start--;
+  }
+  if (start > 0 && (source.charAt(start - 1) === '@' || source.charAt(start - 1) === '$')) {
+    start--;
+  } else if (start >= 2 && source.slice(start - 2, start) === '--') {
+    start -= 2;
+  }
+
+  let end = pos;
+  while (end < source.length && isNameChar(source.charAt(end))) {
+    end++;
+  }
+
+  if (start >= end || offset < start || offset > end) {
+    return null;
+  }
+
+  const slice = source.slice(start, end);
+  const hasSigil = (slice.startsWith('@') || slice.startsWith('$')) && slice.length > 1;
+  const isCustomProperty = slice.startsWith('--') && slice.length > 2;
+  if (!hasSigil && !isCustomProperty) {
+    return null;
+  }
+
+  const name = varNameOf(slice);
+  if (!name) {
+    return null;
+  }
+  return { kind: 'variable', role: 'reference', matchName: name, refineIdent: name };
+}
+
 /**
  * Resolve the innermost variable/mixin symbol whose absolute span covers
  * `offset`. There are no parent pointers on CST nodes, so instead of walking up
@@ -98,7 +140,7 @@ export function cstSymbolAtOffset(root: CssCstNode, doc: TextDocument, offset: n
   let best: { node: CssCstNode; start: number; end: number } | null = null;
   for (const entry of index.nodes) {
     const gt = entry.node.grammarType;
-    const isSymbol = gt === VAR_REF || gt === VAR_DECL || MIXIN_REF_TYPES.has(gt) || MIXIN_DEF_TYPES.has(gt);
+    const isSymbol = VAR_REF_TYPES.has(gt) || VAR_DECL_TYPES.has(gt) || MIXIN_REF_TYPES.has(gt) || MIXIN_DEF_TYPES.has(gt);
     if (!isSymbol) {
       continue;
     }
@@ -109,15 +151,15 @@ export function cstSymbolAtOffset(root: CssCstNode, doc: TextDocument, offset: n
     }
   }
   if (!best) {
-    return null;
+    return sourceVariableSymbolAtOffset(src, offset);
   }
   const gt = best.node.grammarType;
   const slice = src.slice(best.start, best.end);
-  if (gt === VAR_REF) {
+  if (VAR_REF_TYPES.has(gt)) {
     const name = varNameOf(slice);
     return { kind: 'variable', role: 'reference', matchName: name, refineIdent: name };
   }
-  if (gt === VAR_DECL) {
+  if (VAR_DECL_TYPES.has(gt)) {
     const name = varNameOf(slice);
     return { kind: 'variable', role: 'definition', matchName: name, refineIdent: name };
   }
@@ -137,7 +179,7 @@ export function cstFindDefinitionInDoc(root: CssCstNode, doc: TextDocument, uri:
   for (const entry of index.nodes) {
     const gt = entry.node.grammarType;
     if (target.kind === 'variable') {
-      if (gt === VAR_DECL && varNameOf(src.slice(entry.start, entry.end)) === target.matchName) {
+      if (VAR_DECL_TYPES.has(gt) && varNameOf(src.slice(entry.start, entry.end)) === target.matchName) {
         return { uri, range: toRange(doc, entry.start, entry.end) };
       }
     } else if (MIXIN_DEF_TYPES.has(gt) && mixinNameOf(src.slice(entry.start, entry.end)) === target.matchName) {
@@ -157,7 +199,7 @@ export function cstCollectReferencesInDoc(root: CssCstNode, doc: TextDocument, u
     const slice = src.slice(entry.start, entry.end);
     let hit = false;
     if (target.kind === 'variable') {
-      hit = (gt === VAR_REF || gt === VAR_DECL) && varNameOf(slice) === target.matchName;
+      hit = (VAR_REF_TYPES.has(gt) || VAR_DECL_TYPES.has(gt)) && varNameOf(slice) === target.matchName;
     } else {
       hit = (MIXIN_REF_TYPES.has(gt) || MIXIN_DEF_TYPES.has(gt)) && mixinNameOf(slice) === target.matchName;
     }

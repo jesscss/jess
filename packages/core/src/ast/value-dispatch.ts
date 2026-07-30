@@ -1,12 +1,9 @@
 /**
- * Lean typed KIND-DISPATCH + fn registry for the value domain — replaces
- * `define-function.ts`'s `instanceof` coercion. Each built-in fn declares its
- * accepted param `kind`(s) + optionality (its `Fn` spec, co-located with its
- * body in `functions/<fn>.ts`); the registry validates/binds positionally by kind
- * and calls the body. The fn set is CALLER-POPULATED (`registerAll(FN_LIST)`), not
- * hard-imported here, so a later stage can move the fns to `@jesscss/fns` and
- * register them from the consumer without touching this module. Deliberately
- * minimal (owner complexity guardrail): a spec table, NOT a rebuilt coercion monster.
+ * Lean typed dispatch + fn registry for the value domain. Each fn declares the
+ * semantic value node type(s) it accepts (`type: 'Color'`, `type:
+ * ['Keyword', 'Quoted']`, or `type: 'any'`), and the registry validates/binds
+ * positionally before calling the tiny function body. The fn set is
+ * CALLER-POPULATED (`registerAll(FN_LIST)`), not hard-imported here.
  *
  * HARD MODULE BOUNDARY: value domain + built-in fns only.
  */
@@ -20,9 +17,9 @@ import type {
   FnRecord,
   FnSpec,
   FunctionBodyArgs,
+  Kind,
   LazyValue,
-  ParamSpec,
-  ValueForKinds
+  ParamSpec
 } from './functions/types.js';
 
 /**
@@ -39,6 +36,18 @@ export function dispatchFn(fn: Fn, value: ValueGroup, ctx: FnCtx): MaybePromise<
 
 type NamedParam = ParamSpec & { readonly name: string };
 type DirectInput = ValueGroup | LazyValue;
+const VALUE_TYPES: ReadonlySet<string> = new Set([
+  'Dimension',
+  'Color',
+  'Quoted',
+  'Keyword',
+  'Any',
+  'List',
+  'Block',
+  'Bool',
+  'Nil',
+  'Collection'
+]);
 
 function isRecord(value: unknown): value is FnRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && !('type' in value);
@@ -62,8 +71,35 @@ function isLazyValue(value: unknown): value is LazyValue {
   return typeof value === 'function';
 }
 
-function isValueForKinds<K extends ParamSpec['kinds']>(value: ValueGroup, kinds: K): value is ValueForKinds<K> {
-  return kinds === 'any' || (!isValueGroupArray(value) && kinds.some(kind => kind === value.type));
+type NormalizedParamType = readonly Kind[] | 'any';
+
+function isValueForType(value: ValueGroup, type: NormalizedParamType): boolean {
+  return type === 'any' || (!isValueGroupArray(value) && type.some(kind => kind === value.type));
+}
+
+function isKind(value: unknown): value is Kind {
+  return typeof value === 'string' && VALUE_TYPES.has(value);
+}
+
+function normalizeParamType(value: unknown): readonly Kind[] | 'any' | null {
+  if (value === 'any') {
+    return 'any';
+  }
+  if (isKind(value)) {
+    return [value];
+  }
+  if (Array.isArray(value) && value.every(isKind)) {
+    return value;
+  }
+  return null;
+}
+
+function paramType(param: ParamSpec): NormalizedParamType {
+  const normalized = normalizeParamType(param.type ?? param.kinds);
+  if (normalized === null) {
+    throw new TypeError('function parameter must declare a value type');
+  }
+  return normalized;
 }
 
 function isFnCtx(value: unknown): value is FnCtx {
@@ -75,10 +111,11 @@ function isFnCtx(value: unknown): value is FnCtx {
 }
 
 function isParamSpec(value: unknown): value is ParamSpec {
-  return typeof value === 'object'
-    && value !== null
-    && 'kinds' in value
-    && (value.kinds === 'any' || Array.isArray(value.kinds));
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const record = value as { readonly type?: unknown; readonly kinds?: unknown };
+  return normalizeParamType(record.type ?? record.kinds) !== null;
 }
 
 function isNamedParam(value: unknown): value is NamedParam {
@@ -103,35 +140,35 @@ function toDirectInput(value: unknown): DirectInput | FnRecord {
   if (isValueGroup(value) || isRecord(value) || isLazyValue(value)) {
     return value;
   }
-  throw new TypeError('direct calls require typed ValueObj, named-record, or lazy arguments');
+  throw new TypeError('direct calls require typed value nodes, named-record, or lazy arguments');
 }
 
-function validateValue<K extends ParamSpec['kinds']>(name: string, index: number, kinds: K, value: unknown): ValueForKinds<K> {
+function validateValue(name: string, index: number, type: NormalizedParamType, value: unknown): ValueGroup {
   if (!isValueGroup(value)) {
     throw new TypeError(`${name}: direct calls require structural value arguments`);
   }
-  if (!isValueForKinds(value, kinds)) {
-    const expected = kinds === 'any' ? 'any' : kinds.join('|');
+  if (!isValueForType(value, type)) {
+    const expected = type === 'any' ? 'any' : type.join('|');
     throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${isValueGroupArray(value) ? 'sequence' : value.type}`);
   }
   return value;
 }
 
-function checkedLazy<K extends ParamSpec['kinds']>(
+function checkedLazy(
   name: string,
   index: number,
-  kinds: K,
+  type: NormalizedParamType,
   thunk: unknown
-): LazyValue<ValueForKinds<K>> {
+): LazyValue<ValueGroup> {
   if (typeof thunk !== 'function') {
     throw new TypeError(`${name}: lazy argument ${index} must be a thunk`);
   }
   return () => {
     const value = thunk();
     if (value instanceof Promise) {
-      return value.then(result => validateValue(name, index, kinds, result));
+      return value.then(result => validateValue(name, index, type, result));
     }
-    return validateValue(name, index, kinds, value);
+    return validateValue(name, index, type, value);
   };
 }
 
@@ -145,9 +182,10 @@ function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly
       const rest = inputs.length === offset + 1 && Array.isArray(supplied)
         ? supplied
         : inputs.slice(offset);
+      const type = paramType(param);
       out.push(param.lazy
-        ? rest.map(value => checkedLazy(name, index, param.kinds, value))
-        : rest.map(value => validateValue(name, index, param.kinds, value)));
+        ? rest.map(value => checkedLazy(name, index, type, value))
+        : rest.map(value => validateValue(name, index, type, value)));
       offset = inputs.length;
       continue;
     }
@@ -163,9 +201,10 @@ function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly
       }
       throw new TypeError(`${name}: missing required argument ${param.name ?? index}`);
     }
+    const type = paramType(param);
     out.push(param.lazy
-      ? checkedLazy(name, index, param.kinds, input)
-      : validateValue(name, index, param.kinds, input));
+      ? checkedLazy(name, index, type, input)
+      : validateValue(name, index, type, input));
   }
   if (offset < inputs.length) {
     throw new TypeError(`${name}: too many arguments`);
@@ -178,11 +217,19 @@ function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly
  * use named records (including mixed positional/record calls); evaluator routes
  * call the same function with `(List, FnCtx)` and do not expose that capability.
  */
-export function defineFunction<const P extends readonly NamedParam[]>(
+export function defineFunction<const P extends readonly ParamSpec[]>(
   name: string,
   spec: {
     readonly params: P;
-    readonly body: (...args: FunctionBodyArgs<P>) => MaybePromise<ValueGroup>;
+    readonly body: (...args: FunctionBodyArgs<NoInfer<P>>) => MaybePromise<ValueGroup>;
+    readonly variadic?: false;
+  },
+): DefinedFunction<P>;
+export function defineFunction<const P extends readonly ParamSpec[]>(
+  name: string,
+  spec: {
+    readonly params: P;
+    readonly body: (...args: never[]) => MaybePromise<ValueGroup>;
     readonly variadic?: false;
   },
 ): DefinedFunction<P>;
@@ -208,7 +255,7 @@ export function defineFunction(
        * Keep evaluator invocation intentionally positional and permissive: its
        * historical contract binds declared slots and lets a callable establish
        * its own failure policy. A raw nested group is still one argument;
-       * `bindDirect` accepts it only for `kinds: 'any'` and rejects it for a
+       * `bindDirect` accepts it only for `type: 'any'` and rejects it for a
        * typed scalar parameter. Flattening would destroy ordinary adjacency.
        */
       const items = groupItems(value);

@@ -1,6 +1,64 @@
 # AST v2 and `@jesscss/fns` naming/DX audit
 
-Status: audit/recommendations, no implementation.
+Status: audit/recommendations plus implementation tranche.
+
+Implemented in `codex/ast-v2-dx-fns`:
+
+- AST v2 `Collection.entries` now uses `CollectionEntry { key, value }`.
+- Jess collection literals parse through a dedicated entry grammar; explicit
+  `@{ ... }` remains the anonymous-mixin/callable spelling.
+- SCSS map keys preserve typed authored shape instead of squeezing through
+  declaration names.
+- Sass map functions in `packages/fns` use the value-domain map API.
+- Literal colors use `Color.src` for authored source spelling instead of the old
+  misleading `Color.node` name.
+- Single-payload wrappers use `.value` for `Block`, `Important`,
+  `CompoundSelector`, and `ComplexSelector`.
+- Canonical selector construction uses `term`/`combinator` at construction
+  boundaries and emits flat `ComplexSelector.value` sequences.
+- The canonical AST uses `Ruleset` and `MixinDefinition`; no compatibility alias
+  is being preserved for older accidental names.
+- SCSS nested-property grammar labels are internal construction labels, now
+  `NestedPropertyDeclaration` / `NestedPropertyMember`, not public
+  `Static...Leaf`-style names.
+- Statement containers now align on `.rules`; function definitions still use
+  `body` for executable callbacks because they are not AST statement containers.
+- Canonical authored traversal is exported from `@jesscss/core/ast`, with
+  explicit ruleset/value/selector/guard edges and no diagnostics-local object
+  crawls.
+- `@jesscss/core` no longer re-exports old tree helpers/utilities from its root
+  package entrypoint.
+- Relative selectors are first-class `RelativeSelector` branches; the former
+  leading-combinator side field is gone, and parser tests assert relative
+  selectors only in valid contexts.
+- Sass global `str-length` is exported from the Sass dialect index and therefore
+  participates in the derived Sass registry.
+- `defineFunction` authoring now uses `type: 'Color'` /
+  `type: ['Keyword', 'Quoted']` style parameter declarations. `kinds` remains
+  accepted only as a deprecated compatibility spelling.
+- `@jesscss/core` root exports the value-domain function authoring API
+  (`Value`, `Color`, `Dimension`, `defineFunction`, `createFnRegistry`, and
+  related types) so fns and plugin authors do not need a `/value` escape hatch.
+- Function bodies receive typed semantic value nodes at the author boundary,
+  not parser literals, raw source strings, or old tree classes.
+- The internal AST-v2 extend selector IR now follows the same naming pressure:
+  `SelectorPart`, `segments`, `combinator`, and `Compound.value` replace the old
+  `Seg`/`segs`/`comb`/`simples` shorthand.
+
+Still recommended, not implemented here: continue deleting old tree internals
+rather than treating them as protected API. The exception is evidence-based
+Less/plugin compatibility: if published Less visitors or plugin functions
+actually use `instanceof`, constructors, or prototype methods, a lazy
+compatibility facade may be justified for that observed shape. Jess v2 should
+not resurrect tree classes speculatively.
+
+Current installed Less-plugin evidence:
+
+| Package | Version | Entry point / shape observed | Compatibility conclusion |
+| --- | ---: | --- | --- |
+| `less-plugin-clean-css` | 1.6.0 | No `less.tree`, visitor, `instanceof`, or prototype usage in the installed package source. | No class facade evidence. |
+| `less-plugin-autoprefix` | 2.0.0 | No `less.tree`, visitor, `instanceof`, or prototype usage in the installed package source. | No class facade evidence. |
+| `less-plugin-dls` | 1.5.0 | Function registrations plus `src/enhancers/reduce-calc.js` monkey-patches `less.tree.Call.prototype.genCSS`. | Evidence for a possible lazy Less tree/prototype compat lane, not for changing canonical AST nodes into classes. |
 
 Context: this audit compares the current canonical AST v2 and `packages/fns`
 usage against Less 4.x tree naming, the public CSS/Less CST surface, and the
@@ -10,7 +68,7 @@ fixes poor Less semantics.
 ## Executive summary
 
 The value-domain direction is mostly right. Modern `packages/fns` code imports
-from `@jesscss/core/value`, reads typed value objects, and avoids legacy tree
+from `@jesscss/core`, reads typed value objects, and avoids legacy tree
 materialization. Those fields mostly have good DX:
 
 - `Dimension.number`/`unit` is better than Less 4.x `Dimension.value` plus a
@@ -21,17 +79,10 @@ materialization. Those fields mostly have good DX:
 - `List.value` follows the repo rule that a single payload should be `.value`.
 - `Collection.entries` in the value domain is the right map model.
 
-The problematic parts are the straddling surfaces:
-
-1. Sass map functions in `packages/fns/src/sass/map/*.ts` still use legacy tree
-   classes from `@jesscss/core`: `Collection.rules`, `Declaration`, `Node`,
-   `Any`, `List`, `Bool`, `Nil`, `N.*`, and `isNode`.
-2. AST v2 `Collection` still stores `(Declaration | VariableDeclaration)[]`,
-   while the value domain has the better `CollectionEntry { key, value }`.
-3. A few AST/value field names are unnecessarily awkward for visitors and
-   function authors: `MixinDef`, mixed `body`/`rules` container fields,
-   `Block.inner`, `Important.inner`, `Color.node`, selector payload fields that
-   should be `.value`, and abbreviated `comb`.
+The remaining problematic parts are the straddling/runtime surfaces: old tree
+internals and future visitor/facade needs. Accidental labels are not protected
+API during the AST v2 cutover. Compatibility facades are a demand-driven bridge,
+not the canonical model.
 
 ## What should intentionally deviate from Less 4.x
 
@@ -64,17 +115,63 @@ AST literal nodes reuse value-domain type strings (`Dimension`, `Color`,
 carry canonical `bytes`. That split is worth keeping. It lets diagnostics and
 the language service read authored facts without forcing value materialization.
 
+### Function authors receive semantic value nodes
+
+Jess functions should feel like old Jess tree functions and useful Less 4.x
+functions in the place that matters: a declared color parameter arrives as a
+`Color`, a declared dimension parameter arrives as a `Dimension`, and so on.
+They should not receive parser leaves with only `src`, nor raw strings that make
+each function re-parse the same value.
+
+Implemented recommendation: public function specs use `type`, not `kinds`.
+
+Examples:
+
+```ts
+defineFunction('lightness', {
+  params: [{ name: 'color', type: 'Color' }] as const,
+  body: color => makeDimension(colorHsl(color).l, '%')
+});
+
+defineFunction('str-index', {
+  params: [
+    { name: 'string', type: ['Keyword', 'Quoted'] },
+    { name: 'substring', type: ['Keyword', 'Quoted'] }
+  ] as const,
+  body: (string, substring) => ...
+});
+```
+
+`kinds` is accepted only as a deprecated spelling for compatibility with the
+first value-domain fn API. It should not appear in new fns.
+
+This is the materialization boundary: parsed literals may stay cheap internally,
+but once a function, visitor, plugin bridge, diagnostic typed-value rule, or
+language-service semantic fact asks for a typed value, Jess materializes the
+semantic value node before user code observes it. This slice does not decide a
+cache location for materialized values. A future reviewed design can choose
+between node-local caching, a side table, or no cache based on eval/render
+pressure; do not add an ad-hoc cache in a function or visitor helper.
+
+Public naming:
+
+- `Value` is the typed scalar value union (`Color | Dimension | ...`).
+- `ValueGroup` is the structural value carrier (`Value` or nested groups).
+- `EvalValue` is the internal lane that may still hold inert literal bytes.
+- The old object-name alias is not public API and should disappear from author
+  docs.
+
 ## Unnecessary or harmful deviations
 
 ### `Collection` is split-brained
 
-Current AST v2:
+Prior AST v2:
 
-- `packages/core/src/ast/nodes.ts` has `Collection.entries:
+- `packages/core/src/ast/nodes.ts` had `Collection.entries:
   (Declaration | VariableDeclaration)[]`.
-- `collection()` accepts `Declaration[]`.
-- `classifyValueBlock()` promotes a variable-declaration-only block to
-  `Collection`.
+- `collection()` accepted `Declaration[]`.
+- `classifyValueBlock()` promoted a variable-declaration-only block to
+  `Collection` by keeping variable declarations as entries.
 
 Current value domain:
 
@@ -84,9 +181,10 @@ Current value domain:
 - `packages/core/src/ast/value-collection.ts` owns key lookup through
   `collectionKeyIndex()` and value equality.
 
-Recommendation: fix this split and converge AST v2 on `CollectionEntry`.
+Implemented recommendation: fix this split and converge AST v2 on
+`CollectionEntry`.
 
-This is a high-priority architectural fix, not a cosmetic rename. Entries are
+This was a high-priority architectural fix, not a cosmetic rename. Entries are
 not declarations. A map key is a value, not a CSS property name; squeezing it
 through `Declaration.name: string | Interpolation` destroys the authored key
 type and forces consumers to recover meaning from bytes. This directly affects
@@ -106,8 +204,8 @@ Files:
 
 Problems:
 
-- They import legacy tree classes from `@jesscss/core`, not
-  `@jesscss/core/value`.
+- They import legacy tree classes from `@jesscss/core`, not the value-domain
+  API.
 - They inspect `map.rules` and filter `Declaration` nodes.
 - They compare keys with `String(key.valueOf())`, not Sass/Jess value equality.
 - They allocate tree nodes (`new Declaration`, `new Collection`, `new List`,
@@ -116,99 +214,99 @@ Problems:
 - `set.ts` contains explicit `any` pressure around property-shaped keys, which
   is exactly what `CollectionEntry.key` avoids.
 
-Recommendation: port the Sass map module to value-domain `Fn`s.
+Implemented recommendation: port the Sass map module to value-domain `Fn`s.
 
 Use `Collection.entries`, `makeCollection`, `makeList`, `makeBool`, a shared
 `NIL` constructor/constant, and `collectionKeyIndex()`. This should delete the
 string-key declaration shim and make map functions naturally line up with Sass
 semantics.
 
-### `Color.node` is bad field DX
+### `Color.node` was bad field DX
 
-Value-domain `Color.node` means "original literal/source spelling"; it is not a
-node. Fns read it in color helpers, for example Less alpha/hex preservation and
-named-color handling.
+Former value-domain `Color.node` meant "original literal/source spelling"; it
+was not a node. Fns read it in color helpers, for example Less alpha/hex
+preservation and named-color handling.
 
-Recommendation: rename to `src`.
+Implemented recommendation: rename to `src`.
 
 `src` lines up with AST authored leaves and makes the old meaning honest: this
 field is the optional authored source spelling. It was historically able to hold
 an actual AST node, but the current value-domain field should not imply that.
-Prefer one field and migrate callers; avoid keeping long-lived aliases.
+Prefer one field and migrate callers; do not keep a compatibility alias solely
+because the old name existed.
 
-### Single-payload wrappers use `inner`
+### Single-payload wrappers use `.value`
 
-AST and value-domain `Block` use `inner`; AST `Important` uses `inner`. Less
+AST and value-domain `Block` use `.value`; AST `Important` uses `.value`. Less
 4.x `Paren` uses `value`, and the repo's AST contract says single-payload nodes
 should expose that payload as `.value`.
 
-Recommendation: rename:
+Implemented recommendation:
 
-- `Block.inner` -> `Block.value`
-- `Important.inner` -> `Important.value`
+- `Block.value`
+- `Important.value`
 
 The delimiter/importance fields already carry the extra metadata. The payload
 should be `.value` for visitor and function-author DX.
 
-### `MixinDef` is an unnecessary abbreviation
+### `MixinDefinition` is the right canonical name
 
-Less 4.x and the Less grammar use `MixinDefinition`; AST v2 uses `MixinDef`.
-The abbreviation saves little and leaks into visitor hook names.
+Less 4.x and the Less grammar use `MixinDefinition`; AST v2 should use the same
+clear name. Shorter construction helpers can exist for ergonomics, but the node
+type should not abbreviate the concept.
 
-Recommendation: rename `MixinDef` -> `MixinDefinition`.
+Current state: the canonical node is `MixinDefinition`.
 
 The factory can stay `mixinDef()` if desired, but the node type should be the
 clear public shape. A Less bridge can then map it directly.
 
 ### Statement containers should align on `.rules`
 
-AST v2 currently mixes `body`, `children`, and `rules` for statement containers.
-That makes visitors and Less-compat facades carry avoidable special cases.
+Prior AST v2 mixed `body`, `children`, and `rules` for statement containers.
+That made visitors and Less-compat facades carry avoidable special cases.
 
-Recommendation: align statement-container payloads on `.rules`.
+Implemented recommendation: align statement-container payloads on `.rules`.
 
 This is not a new convention: AST v1 already established it. `For.rules` is
 already the preferred direction. Other block-like canonical nodes should move
 toward `.rules` rather than renaming `For.rules` to `body`.
 
-### `Rule` is ambiguous
+### `Ruleset` is the right canonical name
 
-AST v2 `Rule` means a selector-qualified CSS rule. It deviates from:
+The canonical AST node for a selector-qualified CSS rule should be `Ruleset`.
+That matches Less 4.x and legitimate CSS terminology better than a generic
+`Rule` name, while `QualifiedRule` can remain the CST-facing CSS term.
 
-- Less 4.x `Ruleset`
-- CSS/Less CST public `QualifiedRule`
+Current state: the canonical node is `Ruleset`.
 
-Recommendation: rename canonical AST `Rule` to `Ruleset`.
-
-`Ruleset` is legitimate CSS terminology and is more intuitive than `QualifiedRule`
-for the canonical AST. `QualifiedRule` can remain the CST-facing CSS term. The
-important part is removing generic `Rule`, which gets confusing around lint
-rules, `rules` arrays, rule bodies, and visitor hook names.
+The important part is avoiding a generic `Rule` node name, which gets confusing
+around lint rules, `rules` arrays, rule bodies, and visitor hook names.
 
 ### Selector payloads should use `.value`
 
-Current shapes:
+Prior shapes:
 
 - `CompoundSelector.simples`
-- `ComplexSegment.comb`
-- `PathSeg.comb`
+- abbreviated mixin path segment field `.comb`
 - `ComplexSelector.head` / `tail`
 - no explicit `RelativeSelector` node in AST v2, though the shape is distinct
 
-Recommendation:
+Implemented recommendation:
 
-- `CompoundSelector.simples` -> `CompoundSelector.value`
-- `ComplexSelector.head` / `tail` -> `ComplexSelector.value`
-- add/keep `RelativeSelector` as the relative-selector counterpart when that
-  authored shape matters
+- `CompoundSelector.value`
+- `ComplexSelector.value`
+- `RelativeSelector.value`
+- `MixinPathSegment.combinator` / `MixinPathSegment.selector`
+- construction helpers accept `term` and `combinator`, then emit flat canonical
+  selector values
 - keep combinators as primitive string values inside the selector sequence; do
   not introduce a full object wrapper just to carry a combinator
 
 The stronger rule is the repo's existing single-payload convention: when a node
 has one semantic payload, that field should be `.value`. Selector nodes should
-not invent local payload names per type. `comb` is also just an avoidable
-abbreviation in the current implementation; the canonical sequence should carry
-the combinator string directly.
+not invent local payload names per type. `comb` was also just an avoidable
+abbreviation; construction boundaries now spell it `combinator`, while the
+canonical selector sequence carries the combinator string directly.
 
 The intended selector shapes are sequence-shaped:
 
@@ -219,6 +317,14 @@ The intended selector shapes are sequence-shaped:
 
 That is clearer than `head`/`tail`, preserves the authored selector grammar
 shape, and gives visitors one payload field to traverse.
+
+The selector-list branch domain should be `SelectorTerm | ComplexSelector |
+RelativeSelector`. A branch with no combinator is a selector term directly. A
+`ComplexSelector` must contain at least one combinator. A `RelativeSelector`
+must contain its leading combinator and at least one selector term. A
+`CompoundSelector` must contain multiple adjacent simple selector tokens.
+One-term complex selectors and one-item compounds are illegal parser outputs,
+not shapes to reject at runtime.
 
 The selector term in those sequences is not necessarily a
 `CompoundSelector`. A `SimpleSelector` can occupy that position directly when
@@ -239,6 +345,27 @@ single-element arrays or single-child wrapper nodes should appear merely because
 an older representation required a uniform container. The parser should emit the
 smallest semantic shape the authored grammar justifies.
 
+Parser reductions own those invariants. This is a performance rule as much as a
+shape rule. Core nodes should remain dumb and cheap: they trust parser
+construction and should not spend hot-path work branching over shape validity.
+Use grammar-time decisions, macro-compilable Parseman structure, typed factory
+boundaries, and parser AST tests. Diagnostics may optionally audit invalid AST
+shapes for tooling, but diagnostics are not the mechanism that makes the
+canonical nodes valid.
+
+The private extend solver IR is a different boundary. It may keep a lowered
+`SelectorPart { combinator, compound }` shape when that makes the matcher cheap:
+the solver compares each compound together with its incoming combinator and
+carries per-part boundary provenance. That internal shape should stay private,
+well named, and covered by extend op-budget tests; it is not a public AST
+visitor shape and does not justify wrapping canonical selector terms.
+
+Leading-combinator selectors also need contextual grammar pressure. They should
+not be accepted by a generic selector production and normalized later. Each
+dialect should admit relative selectors only in positions where that dialect
+allows them, such as nested selector contexts or selector-function arguments
+whose grammar permits relative selectors.
+
 ### `List.sep` is acceptable
 
 Both AST and value-domain lists use `sep`. It is compact, already consistent,
@@ -248,17 +375,17 @@ Recommendation: keep `List.sep` unless later public API feedback shows it is a
 real authoring problem. Do not spend rename budget here while higher-value AST
 shape fixes are pending.
 
-## Recommended change list
+## Change list
 
-### P0: Fix map semantics before expanding visitor consumers
+### Implemented P0: Fix map semantics before expanding visitor consumers
 
-1. Port `packages/fns/src/sass/map/*` to `@jesscss/core/value`.
+1. Port `packages/fns/src/sass/map/*` to the `@jesscss/core` value-domain API.
 2. Use `Collection.entries` and `collectionKeyIndex()` for value-equality keys.
 3. Replace legacy tree results with value-domain constructors.
 4. Add tests for typed keys: quoted vs unquoted string equality, numeric keys,
    color keys, nested maps, replacement order, and list-of-pairs behavior.
 
-### P0: Fix split-brained `Collection`
+### Implemented P0: Fix split-brained `Collection`
 
 1. Add AST `CollectionEntry { key: ValueSlot, value: ValueSlot, variable?,
    important? }`.
@@ -268,17 +395,23 @@ shape fixes are pending.
 4. Update traversal edge ownership so collection entries expose key and value
    edges, not a fake declaration node.
 
-### P1: Clean node and field names that affect visitation
+### Implemented P1: Clean node and field names that affect visitation
 
-1. Rename `MixinDef` to `MixinDefinition`.
-2. Align statement-container payload fields on `.rules`.
-3. Rename `Block.inner` and `Important.inner` to `.value`.
-4. Rename AST `Rule` to `Ruleset`.
-5. Rename selector single-payload fields to `.value`; do not keep
-   `CompoundSelector.simples`.
-6. Model `ComplexSelector.value` as alternating selector-term/combinator-string
+1. Canonical traversal is exported from `@jesscss/core/ast`.
+2. Model selector-list branches as `SelectorTerm | ComplexSelector |
+   RelativeSelector`.
+3. Model `ComplexSelector.value` as alternating selector-term/combinator-string
    pieces and `RelativeSelector.value` as the same sequence starting with a
-   combinator string.
+   combinator string where relative selectors become first-class.
+4. Require `ComplexSelector` to contain at least one combinator, require
+   `RelativeSelector` to contain its leading combinator and at least one selector
+   term, and require `CompoundSelector` to contain multiple simple selector
+   tokens.
+5. Enforce those requirements in parser reductions and parser AST tests, not
+   runtime node constructors or eval/render visitors.
+6. Audit CSS/Less/SCSS/Jess selector productions so leading-combinator branches
+   are accepted only in relative-selector contexts, not globally through generic
+   selector parsing.
 7. Keep combinators as primitive strings, not `{ combinator }` wrapper objects.
 8. Preserve simple selector terms directly: `.a > .b` should have
    `BasicSelector` terms on each side of the combinator, not synthetic one-item
@@ -286,18 +419,31 @@ shape fixes are pending.
 9. Apply the no-aggressive-wrapping rule generally: do not introduce
    single-element arrays or one-child wrapper nodes without authored structure
    that justifies them.
+10. Extend IR internals should use readable names when they intentionally lower
+    canonical selectors for matching: `SelectorPart`, `segments`, `combinator`,
+    and `Compound.value`, not abbreviations or one-off payload names.
 
-### P1: Rename misleading value fields
+### P1: Finish deleting protected old-tree assumptions
 
-1. Rename value-domain `Color.node` to `src`.
-2. Audit docs/tests for "node" meaning "source spelling".
-3. Keep `bytes` as canonical emitted bytes and avoid overloading it with source.
+1. Keep old tree utilities off `@jesscss/core` root exports.
+2. Move remaining tests that need old tree internals to direct internal imports
+   until that test surface is deleted.
+3. Delete old tree classes/helpers in coherent follow-up batches instead of
+   preserving bridges.
+4. Before reintroducing any class/prototype facade for Less visitor or plugin
+   compatibility, record corpus evidence in a table: package, version, visitor
+   or plugin entrypoint, observed shape (`instanceof`, constructor equality,
+   prototype method call, plain property read), and the minimal lazy facade
+   needed. Plain property-read compatibility is not evidence that canonical
+   Jess nodes should become classes.
 
-### P2: Public function-author ergonomics
+### Implemented P2: Public function-author ergonomics
 
 1. Document the AST-vs-value lane split: AST leaves have `src`, value objects
    have `bytes`.
-2. Keep legacy Less field names in the compatibility facade, not the canonical
+2. Prefer `type: 'Color'` / `type: ['Keyword', 'Quoted']` parameter metadata;
+   keep `kinds` as deprecated compatibility only.
+3. Keep legacy Less field names in the compatibility facade, not the canonical
    AST, when Less semantics are worse.
 
 ## Non-recommendations

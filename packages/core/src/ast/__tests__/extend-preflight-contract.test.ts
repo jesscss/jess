@@ -45,7 +45,7 @@ describe('AST extend preflight cost contract', () => {
 
   it('records only concrete imported-loop placements and their typed IR facts', async () => {
     const loopSelector = ast.complexSelector([{
-      compound: ast.compoundSelectorOf([ast.interpolatedSimpleSelector(ast.interpolation([
+      term: ast.compoundSelectorOf([ast.interpolatedSimpleSelector(ast.interpolation([
         { lit: '.from-' }, { ref: ast.variableReference('name', 'scoped'), unquote: true }
       ]))])
     }]);

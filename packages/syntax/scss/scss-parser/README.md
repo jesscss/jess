@@ -139,7 +139,7 @@ The grammar is decoupled from the tree it builds. Every capitalized rule is a pa
 import { run } from 'parseman'
 import { scssGrammar } from '@jesscss/scss-parser/grammar'
 
-const myHost = (type, children, fields, span) => ({ type, span, children: children.filter(Boolean) })
+const myHost = (type, children, fields, span) => ({ type, span, rules: children.filter(Boolean) })
 
 const result = run(scssGrammar.Stylesheet, '$c: red; .foo { color: $c; }', {
   build: myHost,
@@ -154,7 +154,7 @@ The `BuildHost` signature (from parseman):
 ```ts
 type BuildHost = (
   type: string,
-  children: readonly unknown[],
+  rules: readonly unknown[],
   fields: FieldMap | undefined,
   span: { start: number; end: number },
   rawChildren: readonly unknown[],

@@ -1295,9 +1295,10 @@ AST threw 120, CST threw 0).
 Follow-up shared CSS recognition naming cleanup: `parser-shared` now exports
 the CSS lexical artifact as `cssSyntax` and the pseudo-argument artifact as
 `cssPseudoSyntax`, and their shared rule keys now use `CssSyntax*` instead of
-`CssAstSyntax*`. Opaque CSS capture leaves likewise use `CssOpaqueCapture*`.
-This removes the false compile-mode word from shared recognition used by CSS,
-Less, SCSS, Jess, and the SCSS CST grammar.
+`CssAstSyntax*`. Opaque CSS capture leaves likewise use concept names
+(`OpaqueAtRulePreludeCapture` / `OpaqueAtRuleBodyCapture`). This removes the
+false compile-mode word from shared recognition used by CSS, Less, SCSS, Jess,
+and the SCSS CST grammar.
 
 Rejected in this pass: renaming the exported direct AST grammar
 `cssAstGrammar`, because that name is still consumed by current public parse

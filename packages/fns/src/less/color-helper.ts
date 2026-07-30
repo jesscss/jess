@@ -6,11 +6,11 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../tree`, no legacy node).
  */
-import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, round, serializeColor, textOf, type Color, type ValueObj } from '@jesscss/core/value';
+import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, round, serializeColor, textOf, type Color, type Value } from '@jesscss/core';
 import { clamp01 } from './color-ctor-helper.js';
 import { requireDimension } from './math-helper.js';
 
-export function requireColor(value: ValueObj): Color {
+export function requireColor(value: Value): Color {
   if (value.type !== 'Color') {
     throw new TypeError('Expected a color value.');
   }
@@ -40,7 +40,7 @@ export const snapAlpha = (a: number): number => (Math.abs(a - 1) < 1e-12 ? 1 : a
  * `rgba(255, 255, 0, 0.5)`, but `fade(#5F59, 10%)` → `#55ff551a`).
  */
 export function withAlpha(color: Color, newAlpha: number): Color {
-  const node = color.node;
+  const node = color.src;
   const hexDigits = typeof node === 'string' && node.startsWith('#') ? node.length - 1 : 0;
   const preserveHex = color.format === HEX && (hexDigits === 4 || hexDigits === 8);
   return makeColorRgb(colorRawRgb(color), round(newAlpha, 8), preserveHex ? HEX : RGB, { modernSyntax: color.modernSyntax === true });
@@ -52,7 +52,7 @@ export function withAlpha(color: Color, newAlpha: number): Color {
  * subtracts the amount. A `relative` method scales the delta by the current
  * channel value. Preserves the input's alpha + output format.
  */
-export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: ValueObj[]) => ValueObj {
+export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: Value[]) => Value {
   return (c, amt, m) => {
     const color = requireColor(c);
     const hsl = colorHsl(color);

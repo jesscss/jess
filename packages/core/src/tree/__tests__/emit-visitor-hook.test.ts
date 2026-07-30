@@ -6,34 +6,34 @@ import { N } from '../node-type.js';
 import { isNode } from '../util/is-node.js';
 
 /**
- * Generic single-pass EMIT visitor hook (design §6). Locks the CORE-owned
+ * Generic single-pass emit visitor hook (design §6). Locks the core-owned
  * mechanism: a registered `(node) => Node | void` fires at each resolved output
- * node's emit moment; VOID leaves the node unchanged, a returned Node REPLACES
- * it; the list is ZERO-cost when empty. Does NOT test the less-compat consumer
+ * node's emit moment; void leaves the node unchanged, a returned Node replaces
+ * it; the list is zero-cost when empty. Does not test the less-compat consumer
  * (that lives in the `less` package, registered only for real Less visitors).
  *
  * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §6.
  */
-describe('spine generic EMIT visitor hook (P2, core surface)', () => {
+describe('generic emit visitor hook (P2, core internal surface)', () => {
   let context: Context;
 
   beforeEach(() => {
     context = new Context();
   });
 
-  it('is ZERO-cost when nothing is registered (list undefined, output unchanged)', () => {
+  it('is zero-cost when nothing is registered (list undefined, output unchanged)', () => {
     const root = rules([
       ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
     ]);
-    expect(context.spineVisitors).toBeUndefined();
+    expect(context.emitVisitors).toBeUndefined();
     const css = root.render(context) as string;
     expect(css).toContain('color: red');
-    expect(context.spineVisitors).toBeUndefined(); // still no list allocated
+    expect(context.emitVisitors).toBeUndefined(); // still no list allocated
   });
 
-  it('fires enter on each resolved leaf; VOID return leaves output unchanged (inspect-only)', () => {
+  it('fires enter on each resolved leaf; void return leaves output unchanged (inspect-only)', () => {
     const seen: string[] = [];
-    context.registerSpineVisitor((node) => {
+    context.registerEmitVisitor((node) => {
       if (isNode(node, N.Declaration)) {
         seen.push(String(node.name.valueOf()));
       }
@@ -53,7 +53,7 @@ describe('spine generic EMIT visitor hook (P2, core surface)', () => {
   });
 
   it('a returned Node REPLACES the emitted node (output-affecting change)', () => {
-    context.registerSpineVisitor((node) => {
+    context.registerEmitVisitor((node) => {
       if (isNode(node, N.Declaration) && String(node.name.valueOf()) === 'color') {
         // Replace the whole declaration with a fresh transient.
         return decl({ name: 'color', value: any('blue') });
@@ -69,11 +69,11 @@ describe('spine generic EMIT visitor hook (P2, core surface)', () => {
 
   it('threads multiple visitors in registration order (shape = enter(shape) ?? shape)', () => {
     const order: string[] = [];
-    context.registerSpineVisitor((node) => {
+    context.registerEmitVisitor((node) => {
       order.push('first');
       return node;
     });
-    context.registerSpineVisitor(() => {
+    context.registerEmitVisitor(() => {
       order.push('second');
     });
     const root = rules([
@@ -84,7 +84,7 @@ describe('spine generic EMIT visitor hook (P2, core surface)', () => {
   });
 
   it('the hook does not re-introduce the eval two-walk (Rules.derive uncalled)', () => {
-    context.registerSpineVisitor(() => {});
+    context.registerEmitVisitor(() => {});
     const root = rules([
       ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
     ]);

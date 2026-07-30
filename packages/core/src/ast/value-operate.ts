@@ -10,7 +10,7 @@
  * HARD MODULE BOUNDARY: imports only the value domain, the factory, and the shared
  * units table.
  */
-import { isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type ValueObj } from './value-eval.js';
+import { isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { convertValue } from './value-units.js';
@@ -38,7 +38,7 @@ function calculate(a: number, op: string, b: number): number {
 /* ---------------------------------------------------------- color math */
 
 /** Color arithmetic: color ⊕ dimension (per-channel scalar) or color ⊕ color (per-channel + alpha compositing). */
-function colorOperate(a: Color, b: ValueObj, op: string): Color {
+function colorOperate(a: Color, b: Value, op: string): Color {
   const aRGB = colorRawRgb(a);
   let newAlpha = a.alpha;
   let out: [number, number, number];
@@ -160,7 +160,7 @@ export function validateFinalUnits(value: ValueGroup, modes: EvalModes): void {
     return;
   }
   if (value.type === 'Block') {
-    validateFinalUnits(value.inner, modes);
+    validateFinalUnits(value.value, modes);
   }
 }
 
@@ -324,7 +324,7 @@ function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
  *   3. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
  *      `calc(l op r)` fallback.
  */
-export function operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj {
+export function operate(op: string, left: Value, right: Value, modes: EvalModes): Value {
   /*
    * Guard 1: calc-wrapper keyword operand → flat calc splice.
    * byte-faithful: opaque operand, no structured node — at the seam a calc

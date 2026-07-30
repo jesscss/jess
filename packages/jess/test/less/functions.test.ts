@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import { Context } from '@jesscss/core';
-import { defineFunction, makeDimension, makeKeyword, type Fn } from '@jesscss/core/value';
+import { defineFunction, makeDimension, makeKeyword, type Fn } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -54,15 +54,15 @@ const lessHarnessFunctionsPlugin = {
 // public compiler route depend on a Less tree/plugin bridge.
 const lessHarnessFunctions: readonly Fn[] = [
   defineFunction('add', {
-    params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'] }] as const,
+    params: [{ type: 'Dimension' }, { type: 'Dimension' }] as const,
     body: (a, b) => makeDimension(a.number + b.number, a.unit || b.unit)
   }),
   defineFunction('increment', {
-    params: [{ kinds: ['Dimension'] }] as const,
+    params: [{ type: 'Dimension' }] as const,
     body: a => makeDimension(a.number + 1, a.unit)
   }),
   defineFunction('_color', {
-    params: [{ kinds: 'any' }] as const,
+    params: [{ type: 'any' }] as const,
     body: value => value.type === 'Quoted' && value.value === 'evil red'
       ? makeKeyword('#660000')
       : value

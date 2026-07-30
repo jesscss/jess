@@ -28,14 +28,14 @@ const flat = (document: Stylesheet): string | undefined =>
   serialize(document, { evaluator, collapseNesting: true }).css;
 
 /** `& { … }` — a root guard block, modelled as its post-guard rule. */
-const ampBlock = (body: Parameters<typeof rule>[1]) => rule('&', body);
+const ampBlock = (rules: Parameters<typeof rule>[1]) => rule('&', rules);
 
 /** A structured descendant complex (`sel('a b')` would collapse to ONE compound,
  * which no `all`-extend can match through). */
 const descendant = (...parts: string[]) =>
   complexSelector(parts.map((p, i) => (i === 0
-    ? { compound: compoundSelectorOf([simpleSelector(p)]) }
-    : { comb: ' ' as const, compound: compoundSelectorOf([simpleSelector(p)]) })));
+    ? { term: compoundSelectorOf([simpleSelector(p)]) }
+    : { combinator: ' ' as const, term: compoundSelectorOf([simpleSelector(p)]) })));
 
 describe('root parentless ampersand', () => {
   it('does not leak `&` into an extender folded into its target header', () => {

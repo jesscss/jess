@@ -65,7 +65,7 @@ export function serializeValue(v: ValueGroup): string {
     case 'Block': {
       const open = v.delimiter === 'square' ? '[' : '(';
       const close = v.delimiter === 'square' ? ']' : ')';
-      return `${v.escaped ? '~' : ''}${open}${serializeValue(v.inner)}${close}`;
+      return `${v.escaped ? '~' : ''}${open}${serializeValue(v.value)}${close}`;
     }
     case 'Collection': {
       const body = v.entries.map(collectionEntryBytes).join('; ');

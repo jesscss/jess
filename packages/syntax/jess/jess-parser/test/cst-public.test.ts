@@ -15,7 +15,7 @@ function stats(tree: CstNode) {
     if (node._tag === 'node') {
       types.add(node.type);
       grammarTypes.set(node.grammarType, (grammarTypes.get(node.grammarType) ?? 0) + 1);
-      node.children.forEach(visit);
+      node.rules.forEach(visit);
     }
   };
   visit(tree);
@@ -39,7 +39,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
-    expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
+    expect(result.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
     expectNoModeLabels(result.tree);
   });
 
@@ -59,7 +59,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect([...stats(collapsed.tree).types]).not.toContain('Unknown');
     expect(stats(expanded.tree).types).toContain('VariableDeclaration');
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
-    expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
+    expect(collapsed.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
     expectNoModeLabels(expanded.tree);
     expectNoModeLabels(collapsed.tree);
   });
@@ -130,8 +130,14 @@ describe('@jesscss/jess-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
+    expect(stats(result.tree).grammarTypes.get('ImportStatement')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ImportPrelude')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ImportTarget')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('InterpolatedUrl')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('UrlInterpolatedValue')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('CssImport')).toBeUndefined();
+    expect(stats(result.tree).grammarTypes.get('CssImportPrelude')).toBeUndefined();
+    expect(stats(result.tree).grammarTypes.get('CssImportTarget')).toBeUndefined();
   });
 
   it('keeps documented expression arithmetic in the public CST route', () => {

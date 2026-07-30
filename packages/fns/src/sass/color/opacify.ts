@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core';
 import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js';
 
 /**
@@ -15,9 +15,9 @@ import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js'
  */
 export const opacify: Fn = defineFunction('opacify', {
   params: [
-    { name: 'color', kinds: ['Color'] },
-    { name: 'amount', kinds: ['Dimension'] },
-    { name: 'excess', kinds: 'any', optional: true }
+    { name: 'color', type: 'Color' },
+    { name: 'amount', type: 'Dimension' },
+    { name: 'excess', type: 'any', optional: true }
   ],
   body: (c, amt, excess) => {
     noExcess(excess, 2);

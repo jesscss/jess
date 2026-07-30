@@ -21,14 +21,17 @@ part of a documented protocol implemented and tested here.
 
 ## Current state
 
-Today `@jesscss/plugin-less-compat` supports only native AST-v2 function
-contribution:
+Today `@jesscss/plugin-less-compat` supports native AST-v2 function
+contribution and Less-style function-registration plugins:
 
-- callers pass typed `Fn` values from `@jesscss/core/value`;
+- callers pass typed `Fn` values from `@jesscss/core`;
+- Less-style plugins can register functions through
+  `install(less, manager, functions)`;
 - function bodies receive Jess typed values and `FnCtx` capabilities;
 - the package does not support Less 4 visitor plugins, process-global
-  `functionRegistry` callbacks, Less `tree` node constructors, post-processors,
-  file-manager plugins, or arbitrary Less `@plugin` script runtime behavior.
+  `functionRegistry` callbacks, a broad Less `tree` node facade,
+  post-processors, file-manager plugins, or arbitrary Less `@plugin` script
+  runtime behavior.
 
 `@jesscss/plugin-less` currently owns the Less language adapter work needed by
 the compiler route: Less parsing, Less-style plugin installs passed through

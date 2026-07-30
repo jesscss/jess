@@ -23,7 +23,7 @@ node, no re-parse, no `render()` walk).
   per-channel `mode` (overlay reuses multiply+screen, hardlight reuses overlay).
   The HSL adjusters reduce to a `[h,s,l]` tweak → `makeColorHsl(...)`.
 - **Core list capability** — structural group access (`groupItems`,
-  `groupSeparator`, `listValueAt`) belongs to `@jesscss/core/value`; `min-max.ts`
+  `groupSeparator`, `listValueAt`) belongs to `@jesscss/core`; `min-max.ts`
   owns only Less's unit-grouping policy. A variadic callable receives one typed
   `ValueGroup`: raw arrays are the default spaced form, while explicit `List`
   values carry only comma/slash boundaries.

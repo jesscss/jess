@@ -2,7 +2,7 @@ import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { color, dimension, num, op } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
-import { type Operator } from '../util/calculate.js';
+import { type Operator } from '../../util/calculate.js';
 import { OutputWriter } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {

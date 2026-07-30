@@ -16,7 +16,7 @@ import {
 import { PseudoSelector } from '../selector-pseudo.js';
 import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
-import { isDisjoint, isSubsetOf } from './bitset.js';
+import { isDisjoint, isSubsetOf } from '../../util/bitset.js';
 import { keySetOf, requiredKeySetOf, visibleKeySetOf } from './selector-analysis.js';
 import { isNode } from './is-node.js';
 import { isCombinator } from './combinator.js';

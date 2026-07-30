@@ -9,7 +9,7 @@ describe('scss-plugin direct AST parse route', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.document).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule' }]
+      rules: [{ type: 'Ruleset' }]
     });
   });
 

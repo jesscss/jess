@@ -12,8 +12,8 @@
  * argument to `percentage` (`percentage.hrx` § `error/unit`).
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { Dimension, ValueGroup } from '@jesscss/core/value';
-import { isValueGroupArray, makeDimension, makeKeyword, makeList } from '@jesscss/core/value';
+import type { Dimension, ValueGroup } from '@jesscss/core';
+import { isValueGroupArray, makeDimension, makeKeyword, makeList } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
 import { unit } from '../math/unit.js';
 import { percentage } from '../math/percentage.js';

@@ -7,7 +7,7 @@ describe('@jesscss/core/ast', () => {
 
     expect(doc).toEqual({
       type: 'Stylesheet',
-      children: [{ type: 'AtRuleBlock', name: '@media', prelude: value, body: [] }]
+      rules: [{ type: 'AtRuleBlock', name: '@media', prelude: value, rules: [] }]
     });
   });
 });

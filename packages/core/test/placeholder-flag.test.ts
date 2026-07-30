@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ruleset, decl, any } from '../src/index.js';
+import { ruleset, decl, any } from '../src/tree/index.js';
 
 /**
  * `Ruleset.isPlaceholder` — a ruleset whose selector(s) are ALL `\\name`

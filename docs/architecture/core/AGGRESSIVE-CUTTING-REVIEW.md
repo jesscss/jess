@@ -213,6 +213,9 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/ast/value-guards.ts",
       "packages/core/src/ast/value-list.ts",
       "packages/core/src/ast/extend/compose.ts",
+      "packages/core/src/ast/extend/emit.ts",
+      "packages/core/src/ast/extend/ir.ts",
+      "packages/core/src/ast/extend/match.ts",
       "packages/core/src/ast/extend/plan.ts",
       "packages/core/src/ast/extend/solve.ts"
     ],
@@ -310,7 +313,7 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/reference.ts",
       "packages/core/src/tree/ruleset.ts",
       "packages/core/src/tree/selector-list.ts",
-      "packages/core/src/tree/util/bitset.ts",
+      "packages/core/src/util/bitset.ts",
       "packages/core/src/tree/util/combinator.ts",
       "packages/core/src/tree/util/extend.ts",
       "packages/core/src/tree/util/extend-roots.ts",
@@ -318,6 +321,18 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/util/render-buffer.ts",
       "packages/core/src/tree/util/selector-analysis.ts"
     ],
+    "supportFiles": [
+      "packages/core/src/util/calculate.ts",
+      "packages/core/src/tree/color.ts",
+      "packages/core/src/tree/dimension.ts",
+      "packages/core/src/tree/node.ts",
+      "packages/core/src/tree/number.ts",
+      "packages/core/src/tree/operation.ts",
+      "packages/core/src/tree/selector.ts",
+      "packages/core/src/tree/util/selector-utils.ts",
+      "packages/core/src/tree/util/should-operate.ts"
+    ],
+    "coverage": "owner-plus-named-carry-forward-support",
     "semanticRuntime": {
       "owner": "the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
       "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. A mixin's invisible render is synchronously empty when it has no effect to await, and interpolated-name registration truthfully returns Mixin rather than promising the receiver subtype because preparation may return a distinct withParts result. Extend registration, root composition, and composed-match walking now admit the same selector surface and materialize it only at APIs that require Selector node behavior. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
@@ -355,7 +370,7 @@ a blanket optimization exemption or a new active architecture queue.
     "files": ["packages/core/src/tree/node-base.ts"],
     "neutralRefactor": {
       "costDelta": "neutral",
-      "why": "The Less-style Visitor and Node.accept ABI had no production or test consumers after the compat bridge cutover. Removing the dead per-node dispatch surface deletes only unreachable methods, probes, symbols, and the visitor module; Context's separate SpineVisitor lifecycle hook remains, and no parser, import resolver, plugin dispatcher, or canonical AST serializer path enters this deleted boundary.",
+      "why": "The Less-style Visitor and Node.accept ABI had no production or test consumers after the compat bridge cutover. Removing the dead per-node dispatch surface deletes only unreachable methods, probes, symbols, and the visitor module; Context's separate emit lifecycle hook remains internal, and no parser, import resolver, plugin dispatcher, or canonical AST serializer path enters this deleted boundary.",
       "byteIdentity": {"fixture": "benchmark.less", "collapseNesting": true, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390}
     },
     "benchmark": {"fixture": "benchmark.less", "phase": "render", "medianMs": 80.056, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390},
@@ -382,18 +397,6 @@ a blanket optimization exemption or a new active architecture queue.
       "costDelta": "decrease",
       "allowsProsecutedDangerTokens": true,
       "why": "The deleted legacy StyleImport class and its Rules/spine consumers duplicated the canonical AST-v2 serializer's typed import execution. This cut removes the tree resolver, retry queue, placement construction, import-body scans, registration wiring, caches, dedupe ledger, imported-extend re-gate, public tree export, and abort sentinel. Context/plugin loading and AST StyleImport execution remain unchanged, and no replacement bridge, traversal, allocation, or output policy is introduced.",
-      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
-    }
-  },
-  {
-    "id": "ast-extend-emit-lint-only-normalization",
-    "kind": "neutral-or-negative",
-    "surface": "mechanical ESLint normalization in the existing AST extend emitter",
-    "files": ["packages/core/src/ast/extend/emit.ts"],
-    "neutralRefactor": {
-      "costDelta": "neutral",
-      "allowsProsecutedDangerTokens": true,
-      "why": "This slice changes only ESLint-required braces, operator layout, arrow-parameter style, and trailing commas in the existing AST extend emitter. It adds no planner, selector traversal, allocation, or output policy; the emitted extend facts and dispatch path are unchanged.",
       "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
     }
   },
@@ -439,6 +442,11 @@ active owners of the current `origin/dev..HEAD` integration delta:
 `ast-extend-prefilter-toggle-deletion`,
 `ast-evaluator-stale-adapter-comment-deletion`, and
 `ast-extend-public-toggle-export-deletion`.
+
+`ast-extend-emit-lint-only-normalization` is also retired as of the AST extend
+IR naming cleanup: `emit.ts` now belongs to the broader
+`ast-semantic-runtime-cutover` owner, and the old lint-only record would
+incorrectly claim a non-lint patch.
 
 They are deliberately absent from the machine-readable registry. Several owned
 files now contain independent AST-v2/runtime work (in particular

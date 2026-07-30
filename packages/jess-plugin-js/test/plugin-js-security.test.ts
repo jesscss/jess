@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core/value';
+import { makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core';
 import jsPlugin, { JsPlugin, sanitizeSpawnEnv } from '../src/index.js';
 
 const makeTmpDir = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));

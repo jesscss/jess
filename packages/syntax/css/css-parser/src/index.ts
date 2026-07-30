@@ -1,6 +1,6 @@
-export { cssCstGrammar, cssGrammar } from './grammar.js';
+export { cssCstGrammar, cssDiagnosticCstGrammar, cssGrammar } from './grammar.js';
 export {
-  cssCstBuildHost, parseCst, parseDocCst, parseCssCst, parseCssDoc,
+  cssCstBuildHost, parseCst, parseDocCst, parseCssCst, parseCssDiagnosticCst, parseCssDiagnosticDoc, parseCssDoc,
   type CssCstChild, type CssCstError, type CssCstLeaf, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type CssCstType, type ParseDoc
 } from './cst-css.js';
 import { run } from 'parseman';
@@ -54,8 +54,8 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && value !== null
     && 'type' in value
     && value.type === 'Stylesheet'
-    && 'children' in value
-    && Array.isArray(value.children);
+    && 'rules' in value
+    && Array.isArray(value.rules);
 }
 
 function lineOptions(span: Span): {

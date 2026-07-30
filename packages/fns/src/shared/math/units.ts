@@ -1,5 +1,5 @@
-import type { Dimension } from '@jesscss/core/value';
-import { groupOf } from '@jesscss/core/value';
+import type { Dimension } from '@jesscss/core';
+import { groupOf } from '@jesscss/core';
 
 /**
  * Unit-multiset helpers shared by every dialect. Nothing here is Sass-specific:

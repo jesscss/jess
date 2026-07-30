@@ -1,5 +1,5 @@
-import type { Color, ValueGroup, Fn } from '@jesscss/core/value';
-import { colorHsl, defineFunction, groupItems, makeColorHsl, makeColorRgb, hslToRgb, HSL } from '@jesscss/core/value';
+import type { Color, ValueGroup, Fn } from '@jesscss/core';
+import { colorHsl, defineFunction, groupItems, makeColorHsl, makeColorRgb, hslToRgb, HSL } from '@jesscss/core';
 import { clamp01, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { requireDimension } from './math-helper.js';
 
@@ -60,7 +60,7 @@ export function makeHsl(value: ValueGroup): Color {
 }
 
 export const hsl: Fn = defineFunction('hsl', {
-  params: [{ kinds: 'any' }, { kinds: 'any', optional: true }, { kinds: 'any', optional: true }, { kinds: 'any', optional: true }],
+  params: [{ type: 'any' }, { type: 'any', optional: true }, { type: 'any', optional: true }, { type: 'any', optional: true }],
   variadic: true,
   body: list => makeHsl(list)
 });

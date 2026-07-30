@@ -79,11 +79,11 @@ describe('R3 live and scoped variable stores', () => {
       rule('.before', [decl('scoped', variableReference('tone', 'scoped'))]),
       ifNode([{
         guard: { g: 'truth', value: keyword('true') },
-        body: [
+        rules: [
           variableDeclaration('tone', keyword('navy'), { mode: 'declare' }),
           ifNode([{
             guard: { g: 'truth', value: keyword('true') },
-            body: [variableDeclaration('nested', keyword('blue'), { mode: 'declare' })]
+            rules: [variableDeclaration('nested', keyword('blue'), { mode: 'declare' })]
           }]),
           variableDeclaration('tone', keyword('green'), { mode: 'declare' }),
           rule('.inside', [
@@ -110,11 +110,11 @@ describe('R3 live and scoped variable stores', () => {
       ifNode([
         {
           guard: { g: 'truth', value: keyword('false') },
-          body: [variableDeclaration('tone', keyword('red'), { mode: 'declare' })]
+          rules: [variableDeclaration('tone', keyword('red'), { mode: 'declare' })]
         },
         {
           guard: null,
-          body: [
+          rules: [
             variableDeclaration('tone', keyword('blue'), { mode: 'declare' }),
             variableDeclaration('tone', keyword('navy'), { mode: 'if-absent', lookup: 'live' }),
             variableDeclaration('tone', keyword('white'), { mode: 'if-absent', lookup: 'scoped' }),
@@ -137,19 +137,19 @@ describe('R3 live and scoped variable stores', () => {
       variableDeclaration('tone', keyword('gray'), { mode: 'declare' }),
       ifNode([{
         guard: { g: 'truth', value: keyword('true') },
-        body: [variableDeclaration('tone', variableReference('tone', 'scoped'), { mode: 'declare' })]
+        rules: [variableDeclaration('tone', variableReference('tone', 'scoped'), { mode: 'declare' })]
       }]),
       forNode(spaced([dimension(1)]), [
         ifNode([{
           guard: { g: 'truth', value: keyword('true') },
-          body: [variableDeclaration('tone', keyword('blue'), { mode: 'declare' })]
+          rules: [variableDeclaration('tone', keyword('blue'), { mode: 'declare' })]
         }]),
         rule('.loop', [decl('scoped', variableReference('tone', 'scoped'))])
       ], { kind: 'single', name: 'item' }),
       mixinDef('.m', [], [
         ifNode([{
           guard: { g: 'truth', value: keyword('true') },
-          body: [variableDeclaration('tone', keyword('navy'), { mode: 'declare' })]
+          rules: [variableDeclaration('tone', keyword('navy'), { mode: 'declare' })]
         }]),
         decl('from-mixin', variableReference('tone', 'scoped'))
       ]),
@@ -166,7 +166,7 @@ describe('R3 live and scoped variable stores', () => {
       variableDeclaration('b', keyword('root-b'), { mode: 'declare' }),
       ifNode([{
         guard: { g: 'truth', value: keyword('true') },
-        body: [
+        rules: [
           variableDeclaration('a', variableReference('b', 'scoped'), { mode: 'declare' }),
           variableDeclaration('b', variableReference('a', 'scoped'), { mode: 'declare' })
         ]
@@ -185,7 +185,7 @@ describe('R3 live and scoped variable stores', () => {
       mixinDef('.m', [{ name: 'seed' }], [
         ifNode([{
           guard: { g: 'truth', value: keyword('true') },
-          body: [variableDeclaration('branch', keyword('selected'), { mode: 'declare' })]
+          rules: [variableDeclaration('branch', keyword('selected'), { mode: 'declare' })]
         }]),
         variableDeclaration('after', keyword('later'), { mode: 'declare' }),
         decl('seed', variableReference('seed', 'scoped')),

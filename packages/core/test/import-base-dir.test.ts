@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Context, TreeContext } from '../src/context.js';
 import { AbstractPlugin } from '../src/plugin.js';
-import { rules } from '../src/index.js';
+import { rules } from '../src/tree/index.js';
 
 /**
  * Repro for Cluster B: relative `@import` base dir must come from the importing
@@ -21,6 +21,7 @@ class CapturingPlugin extends AbstractPlugin {
 
   override locate(_paths: string[], currentDir: string) {
     this.seenDir = currentDir;
+
     // Return a resolved path so `_getPath` doesn't throw before we can assert.
     return '/resolved/tokens.less';
   }
@@ -32,13 +33,19 @@ describe('import base dir resolution', () => {
   function driveGetPath(root: ReturnType<typeof rules>) {
     const plugin = new CapturingPlugin();
     const context = new Context({}, [plugin]);
-    // Mirror `_setupContextForRules`: a root Rules carrying a treeContext
-    // establishes the eval-time treeContext.
+
+    /*
+     * Mirror `_setupContextForRules`: a root Rules carrying a treeContext
+     * establishes the eval-time treeContext.
+     */
     if (root._treeContext) {
       context.treeContext = root._treeContext;
     }
-    // We only care about the base dir `_getPath` passes to `locate`; that fires
-    // before `getTree` reads the (nonexistent) resolved file. Swallow the later throw.
+
+    /*
+     * We only care about the base dir `_getPath` passes to `locate`; that fires
+     * before `getTree` reads the (nonexistent) resolved file. Swallow the later throw.
+     */
     return { plugin, promise: context.getTree('tokens').catch(() => undefined) };
   }
 

@@ -9,8 +9,8 @@ import {
   HEX,
   type PluginDetachedRuleset,
   type ValueGroup,
-  type ValueObj
-} from '@jesscss/core/value';
+  type Value
+} from '@jesscss/core';
 
 export type JsBridgeDeclaration = { name: string; value: JsBridgeValue };
 
@@ -43,7 +43,7 @@ const isBridgeValue = (value: unknown): value is JsBridgeValue =>
   && value.__jessBridge === true
   && typeof value.kind === 'string';
 
-const isValueObj = (value: unknown): value is ValueObj =>
+const isValueNode = (value: unknown): value is Value =>
   isRecord(value)
   && typeof value.type === 'string'
   && typeof value.bytes === 'string';
@@ -123,7 +123,7 @@ export function encodeBridgeValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return { __jessBridge: true, kind: 'expression', items: value.map(encodeBridgeChildValue) } satisfies JsBridgeValue;
   }
-  if (isValueObj(value)) {
+  if (isValueNode(value)) {
     switch (value.type) {
       case 'Dimension': return { __jessBridge: true, kind: 'dimension', value: value.number, unit: value.unit } satisfies JsBridgeValue;
       case 'Color': return { __jessBridge: true, kind: 'color', rgb: [value.rgb[0], value.rgb[1], value.rgb[2]], alpha: value.alpha } satisfies JsBridgeValue;

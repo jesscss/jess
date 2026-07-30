@@ -21,7 +21,7 @@
  */
 
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { MixinCall, MixinDef, ValueSlot } from './nodes.js';
+import type { MixinCall, MixinDefinition, ValueSlot } from './nodes.js';
 import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
@@ -42,7 +42,7 @@ export type CallValue = ValueSlot | MixinCall;
 
 /** A selected definition plus the variable bindings its body reads. */
 export interface Selection {
-  def: MixinDef;
+  def: MixinDefinition;
   bindings: Map<string, CallValue> | null;
 }
 
@@ -75,13 +75,13 @@ export class DefaultGuardAmbiguityError extends Error {
 export type DefaultBlockResolver = (
   value: ValueSlot,
   boundSoFar: Map<string, CallValue>,
-  def: MixinDef
+  def: MixinDefinition
 ) => ValueSlot | undefined;
 
 export type DefaultResolver = (
   v: ValueSlot,
   boundSoFar: Map<string, CallValue>,
-  def: MixinDef,
+  def: MixinDefinition,
 ) => MaybePromise<string>;
 
 /**
@@ -98,9 +98,9 @@ export type DefaultResolver = (
  * awaitable lane existed.
  */
 interface BindState {
-  readonly def: MixinDef;
-  readonly params: readonly MixinDef['params'][number][];
-  readonly fixedParams: readonly MixinDef['params'][number][];
+  readonly def: MixinDefinition;
+  readonly params: readonly MixinDefinition['params'][number][];
+  readonly fixedParams: readonly MixinDefinition['params'][number][];
   readonly positional: CallArg[];
   readonly named: Map<string, CallArg>;
   readonly hasRest: boolean;
@@ -114,7 +114,7 @@ interface BindState {
 }
 
 export function bindArgs(
-  def: MixinDef,
+  def: MixinDefinition,
   call: MixinCall,
   resolveCaller: ValueResolver,
   resolveDefault?: DefaultResolver,
@@ -268,7 +268,7 @@ function bindFixedFrom(st: BindState, from: number): MaybePromise<Map<string, Ca
 
 function resumePlace(
   st: BindState,
-  p: MixinDef['params'][number],
+  p: MixinDefinition['params'][number],
   argVal: CallValue
 ): MaybePromise<boolean> {
   if (p.pattern !== undefined) {
@@ -385,7 +385,7 @@ function isTypedGuardValue(v: CallValue): v is ValueSlot {
 function resolveEagerDefault(
   v: ValueSlot,
   boundSoFar: Map<string, CallValue>,
-  def: MixinDef,
+  def: MixinDefinition,
   resolveCaller: ValueResolver,
   resolveDefault?: DefaultResolver,
   resolveDefaultBlock?: DefaultBlockResolver
@@ -426,11 +426,11 @@ function isValueSlot(value: CallValue): value is ValueSlot {
  * `ValueEvaluator`.
  */
 export function selectDefinitions(
-  candidates: MixinDef[],
+  candidates: MixinDefinition[],
   call: MixinCall,
   resolveCaller: ValueResolver,
   makeCalleeTyped: (
-    def: MixinDef,
+    def: MixinDefinition,
     bindings: Map<string, CallValue> | null,
     isDefault: () => boolean,
   ) => TypedResolver,
@@ -440,9 +440,9 @@ export function selectDefinitions(
   resolveDefaultBlock?: DefaultBlockResolver,
   onNoViable?: () => void
 ): MaybePromise<Selection[]> {
-  type Viable = { def: MixinDef; bindings: Map<string, CallValue> | null; order: number };
+  type Viable = { def: MixinDefinition; bindings: Map<string, CallValue> | null; order: number };
 
-  const guardDeps = (def: MixinDef, bindings: Map<string, CallValue> | null, isDefault: () => boolean) => {
+  const guardDeps = (def: MixinDefinition, bindings: Map<string, CallValue> | null, isDefault: () => boolean) => {
     /*
      * A guard resolves its free variables in the mixin's DEFINITION scope (closure),
      * so `makeCalleeTyped` keys the typed resolver off the def (see serialize `dispatch`).

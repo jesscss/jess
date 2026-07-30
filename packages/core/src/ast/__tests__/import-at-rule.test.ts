@@ -461,7 +461,7 @@ describe('ImportAtRule', () => {
 
   it('keeps imported loop extend placements isolated per concrete iteration', async () => {
     const loopSelector = complexSelector([{
-      compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
+      term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
         { lit: '.from-' }, { ref: variableReference('name', 'scoped'), unquote: true }
       ]))])
     }]);
@@ -730,7 +730,7 @@ describe('ImportAtRule', () => {
       rule('.mixin', [decl('was', keyword('included'))])
     ]);
     const namespacedCall = mixinCall('.mixin');
-    namespacedCall.path = [{ comb: '>' as const, sel: '#Namespace' }];
+    namespacedCall.path = [{ combinator: '>' as const, selector: '#Namespace' }];
     const document = stylesheet([
       rule('#Namespace', [
         importAtRule(
@@ -927,7 +927,7 @@ describe('ImportAtRule', () => {
     const importedCall = {
       type: 'MixinCall' as const,
       name: '.add-one', args: [{ value: dimension(1, 'px', '1px') }],
-      path: [{ comb: ' ' as const, sel: '#library' }], important: false
+      path: [{ combinator: ' ' as const, selector: '#library' }], important: false
     };
     const document = stylesheet([
       importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),
@@ -949,7 +949,7 @@ describe('ImportAtRule', () => {
     const importedCall = {
       type: 'MixinCall' as const,
       name: '.add-one', args: [{ value: dimension(1, 'px', '1px') }],
-      path: [{ comb: ' ' as const, sel: '#library' }], important: false
+      path: [{ combinator: ' ' as const, selector: '#library' }], important: false
     };
     const document = stylesheet([
       importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),

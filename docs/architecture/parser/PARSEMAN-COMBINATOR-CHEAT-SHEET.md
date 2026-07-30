@@ -143,6 +143,28 @@ Less examples:
   and public CST owner families whose safe shared-opener rewrite has not been
   designed yet.
 
+CSS ownership and at-rule cleanup rule:
+
+- All CSS structure is CSS-owned unless a downstream grammar changes that
+  exact structure. Even then, override only the smallest changed child, value
+  slot, or reference; a dialect change is not a license to replace the whole CSS
+  rule. Less/SCSS/Jess should be lean overlays that describe only the syntax they
+  add or the specific CSS substructure they change. Interpolation is a
+  leaf/value extension point, not a reason to reimplement a whole CSS production
+  from scratch.
+- Treat at-rules as routed at-keyword families. Do not "clean up" at-keyword
+  regexes by replacing them with `word(...)` / `makeWord(...)` as the final
+  shape.
+- The target shape is one consumed at-keyword router plus `dispatch(...)`,
+  `makeWhen(...)`, and `routed()` in the selected branch so the node owns the
+  consumed keyword/span.
+- A local `choice(...)` may remain after the at-keyword is routed when the
+  branch is decided by later syntax such as `{`, `;`, a prelude form, or the
+  caller's body context. Document that delimiter/context at the const.
+- If a `choice(...)` has multiple sibling `@...` arms, classify it as a
+  routed-at-keyword family first. Preserve it only with a written exception that
+  names why the routed value cannot decide the branch.
+
 ## Grammar Surface
 
 | Export | Use it when |
@@ -206,8 +228,9 @@ Less examples:
 ## Anti-Patterns
 
 - Do not write keyword regexes such as `regex(/@page(?![-\w])/i)` when a
-  grammar-local `makeWord(..., { caseInsensitive: true })` expresses the same
-  boundary.
+  routed at-keyword family should own the branch. Route the at-keyword once
+  with `dispatch(...)` / `makeWhen(...)` / `routed()` instead of swapping one
+  at-keyword terminal spelling for another.
 - Do not hand-roll non-empty separated lists as `sequence(item,
   many(sequence(separator, item)))` when `oneOrMoreSep(item, separator)` states
   the same shape.

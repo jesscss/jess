@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/core/value';
+import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/core';
 
 /**
  * Less `round(value, precision = 0)` — the second argument is DECIMAL PRECISION.
@@ -9,8 +9,8 @@ import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/co
  */
 const round = defineFunction('round', {
   params: [
-    { name: 'value', kinds: ['Dimension'] },
-    { name: 'precision', kinds: ['Dimension'], optional: true }
+    { name: 'value', type: 'Dimension' },
+    { name: 'precision', type: 'Dimension', optional: true }
   ] as const,
   body: (value, precision) => makeDimension(
     roundNumber(value.number, precision?.number ?? 0),

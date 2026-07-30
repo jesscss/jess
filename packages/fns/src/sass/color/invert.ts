@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { colorRawRgb, defineFunction, makeColorRgb } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { colorRawRgb, defineFunction, makeColorRgb } from '@jesscss/core';
 import { noExcess, percentAmount, requireColor } from './kernels.js';
 
 /**
@@ -18,9 +18,9 @@ import { noExcess, percentAmount, requireColor } from './kernels.js';
  */
 export const invert: Fn = defineFunction('invert', {
   params: [
-    { name: 'color', kinds: ['Color'] },
-    { name: 'weight', kinds: ['Dimension'], optional: true },
-    { name: 'excess', kinds: 'any', optional: true }
+    { name: 'color', type: 'Color' },
+    { name: 'weight', type: 'Dimension', optional: true },
+    { name: 'excess', type: 'any', optional: true }
   ],
   body: (c, weight, excess) => {
     noExcess(excess, 2);

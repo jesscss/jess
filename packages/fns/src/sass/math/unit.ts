@@ -1,4 +1,4 @@
-import { defineFunction, makeQuoted } from '@jesscss/core/value';
+import { defineFunction, makeQuoted } from '@jesscss/core';
 import { unitText } from './units.js';
 
 /**
@@ -22,7 +22,7 @@ import { unitText } from './units.js';
  *   unit(10px, em)        → Error: Only 1 argument allowed, but 2 were passed.
  */
 const unit = defineFunction('unit', {
-  params: [{ name: 'number', kinds: ['Dimension'] }] as const,
+  params: [{ name: 'number', type: 'Dimension' }] as const,
   body: number => makeQuoted(unitText(number), '"', false)
 });
 

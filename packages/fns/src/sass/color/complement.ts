@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core';
 import { noExcess, requireColor, rotateHue } from './kernels.js';
 
 /**
@@ -16,7 +16,7 @@ import { noExcess, requireColor, rotateHue } from './kernels.js';
  * verbatim rather than silently answering the legacy-space result.
  */
 export const complement: Fn = defineFunction('complement', {
-  params: [{ name: 'color', kinds: ['Color'] }, { name: 'excess', kinds: 'any', optional: true }],
+  params: [{ name: 'color', type: 'Color' }, { name: 'excess', type: 'any', optional: true }],
   body: (c, excess) => {
     noExcess(excess, 1);
     return rotateHue(requireColor(c), 180);

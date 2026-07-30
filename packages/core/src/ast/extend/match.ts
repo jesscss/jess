@@ -15,14 +15,14 @@ import {
   collectBranchAtoms,
   compoundText,
   descendantBranch,
-  isOrPlainSimples,
+  isOrPlainSimpleTokens,
   mkBranch,
   multisetEqual,
   multisetSubset,
   simpleTexts,
-  textSimples
+  textSimpleTokens
 } from './ir.js';
-import type { Branch, Compound, Seg, Simple } from './ir.js';
+import type { Branch, Compound, SelectorPart, Simple } from './ir.js';
 import { wouldConflict } from './conflict.js';
 import { recordAstExtendProfile } from './plan.js';
 
@@ -42,7 +42,7 @@ export function applyInstruction(
   extenderHidden = false,
 
   /*
-   * The plain-text simples of the ENCLOSING compound(s) this list sits inside — non-empty
+   * The plain-text simple tokens of the ENCLOSING compound(s) this list sits inside — non-empty
    * only when the fixpoint re-enters an instruction into an `:is()` graft (`div:is(<list>)`
    * threads `['div']`). The element/id conflict guard unions it so a wrap decided INSIDE a
    * graft still sees the full outer compound context (an extender that would form
@@ -91,7 +91,7 @@ export function applyInstruction(
      * Whole-branch EXACT match → append extenders as siblings. Matches by selector
      * EQUIVALENCY (EXTEND_RULES §0), not serialization: `.b.c` ≡ `.c.b`, and a target
      * may match THROUGH a base's crossable `:is()` graft — in a single compound
-     * (`.x:is(.a, .b)` matched by `.x.a`), alongside trailing simples (`.x:is(.a, .b).c`
+     * (`.x:is(.a, .b)` matched by `.x.a`), alongside trailing value (`.x:is(.a, .b).c`
      * by `.x.a.c`), across ANY number of segments (`.x:is(.a, .b) .y` by `.x.a .y`), or
      * as a lone-graft segment expanding (`:is(.a .b, .c) .d` by `.a .b .d`).
      */
@@ -282,17 +282,17 @@ function classifySpan(bnd: Int8Array | undefined, start: number, len: number): S
 export function matchBoundarySpan(b: Branch, target: Branch, partial: boolean): SpanBoundary {
   // Whole-branch (exact/all) append: the span is the ENTIRE branch.
   if (branchWholeMatch(b, target, false) || (partial && branchWholeMatch(b, target, true))) {
-    return classifySpan(b.bnd, 0, b.segs.length);
+    return classifySpan(b.bnd, 0, b.segments.length);
   }
   if (!partial) {
     return { boundary: 'none', maxBnd: 0 };
   }
 
   // Single-compound `all` sub-match: the first segment the target compound subsets.
-  if (target.segs.length === 1) {
-    const need = textSimples(target.segs[0]!.compound);
-    for (let i = 0; i < b.segs.length; i++) {
-      if (multisetSubset(need, textSimples(b.segs[i]!.compound))) {
+  if (target.segments.length === 1) {
+    const need = textSimpleTokens(target.segments[0]!.compound);
+    for (let i = 0; i < b.segments.length; i++) {
+      if (multisetSubset(need, textSimpleTokens(b.segments[i]!.compound))) {
         return classifySpan(b.bnd, i, 1);
       }
     }
@@ -300,15 +300,15 @@ export function matchBoundarySpan(b: Branch, target: Branch, partial: boolean): 
   }
 
   // Multi-segment `all` sub-match: the first aligned span (mirrors substituteMultiCompound).
-  const P = target.segs.length;
-  for (let start = 0; start + P <= b.segs.length; start++) {
+  const P = target.segments.length;
+  for (let start = 0; start + P <= b.segments.length; start++) {
     let ok = true;
     for (let k = 0; k < P; k++) {
-      if (!multisetSubset(textSimples(target.segs[k]!.compound), textSimples(b.segs[start + k]!.compound))) {
+      if (!multisetSubset(textSimpleTokens(target.segments[k]!.compound), textSimpleTokens(b.segments[start + k]!.compound))) {
         ok = false;
         break;
       }
-      if (k > 0 && target.segs[k]!.comb !== b.segs[start + k]!.comb) {
+      if (k > 0 && target.segments[k]!.combinator !== b.segments[start + k]!.combinator) {
         ok = false;
         break;
       }
@@ -333,8 +333,8 @@ export function classifyMatchBoundary(b: Branch, target: Branch, partial: boolea
  * solve.ts's `guardMax`) so a pathological graft nesting can never spin.
  */
 interface Walk {
-  base: readonly Seg[];
-  target: readonly Seg[];
+  base: readonly SelectorPart[];
+  target: readonly SelectorPart[];
   partial: boolean;
   memo: Map<number, boolean> | null;
   guard: number;
@@ -380,7 +380,7 @@ export function branchWholeMatch(b: Branch, target: Branch, partial: boolean): b
    * append (the former `matchesWholeBranchSubset` P<2 guard). Exact mode still matches
    * a single compound by order-independent equality, so this gate is ALL-mode only.
    */
-  if (partial && target.segs.length < 2) {
+  if (partial && target.segments.length < 2) {
     return false;
   }
 
@@ -392,19 +392,19 @@ export function branchWholeMatch(b: Branch, target: Branch, partial: boolean): b
    * dev. The recursive cross-through machinery is reserved for the rare grafted base.
    */
   if (!branchHasGraft(b)) {
-    return flatWholeMatch(b.segs, target.segs, partial);
+    return flatWholeMatch(b.segments, target.segments, partial);
   }
 
   /*
    * ATOM FAST-REJECT (grafted base): every atom the target REQUIRES (its plain-text
-   * simples across all segments) must be suppliable by the base — its bare text simples
+   * value across all segments) must be suppliable by the base — its bare text value
    * plus every atom reachable inside a crossable graft. A required atom no branch
    * supplies is unmatchable, so bail before exploring any OR-path.
    */
   const baseAtoms = new Set<string>();
   collectBranchAtoms(b, baseAtoms);
-  for (const seg of target.segs) {
-    for (const s of seg.compound.simples) {
+  for (const seg of target.segments) {
+    for (const s of seg.compound.value) {
       if (s.t === 'text' && !baseAtoms.has(s.text)) {
         return false;
       }
@@ -417,12 +417,12 @@ export function branchWholeMatch(b: Branch, target: Branch, partial: boolean): b
    * lockstep (linear), so no memo Map is allocated on that path either.
    */
   const walk: Walk = {
-    base: b.segs,
-    target: target.segs,
+    base: b.segments,
+    target: target.segments,
     partial,
     memo: hasLoneGraftSeg(b) ? new Map<number, boolean>() : null,
     guard: 0,
-    guardMax: (b.segs.length + 2) * (target.segs.length + 2)
+    guardMax: (b.segments.length + 2) * (target.segments.length + 2)
   };
   return segMatch(walk, 0, 0);
 }
@@ -433,14 +433,14 @@ export function branchWholeMatch(b: Branch, target: Branch, partial: boolean): b
  * aligned (EXACT includes the head; ALL ignores the leading combinator). No fork, so no
  * allocation beyond the per-segment `multiset*` the compare already needs.
  */
-function flatWholeMatch(base: readonly Seg[], target: readonly Seg[], partial: boolean): boolean {
+function flatWholeMatch(base: readonly SelectorPart[], target: readonly SelectorPart[], partial: boolean): boolean {
   if (base.length !== target.length) {
     return false;
   }
   for (let k = 0; k < base.length; k++) {
     const bs = base[k]!;
     const ts = target[k]!;
-    if (!combAligned(k, bs.comb, ts.comb, partial) || !compoundMatch(bs.compound, ts.compound, partial)) {
+    if (!combAligned(k, bs.combinator, ts.combinator, partial) || !compoundMatch(bs.compound, ts.compound, partial)) {
       return false;
     }
   }
@@ -475,7 +475,7 @@ function segMatch(w: Walk, si: number, fi: number): boolean {
   if (graft) {
     result = false;
     for (const arm of graft.branches) {
-      if (segSpanMatch(w, si, bSeg.comb, arm, fi)) {
+      if (segSpanMatch(w, si, bSeg.combinator, arm, fi)) {
         result = true;
         break;
       }
@@ -483,7 +483,7 @@ function segMatch(w: Walk, si: number, fi: number): boolean {
   } else {
     const fSeg = w.target[fi]!;
     result =
-      combAligned(fi, bSeg.comb, fSeg.comb, w.partial)
+      combAligned(fi, bSeg.combinator, fSeg.combinator, w.partial)
       && compoundMatch(bSeg.compound, fSeg.compound, w.partial)
       && segMatch(w, si + 1, fi + 1);
   }
@@ -499,16 +499,16 @@ function segMatch(w: Walk, si: number, fi: number): boolean {
  * the rest their own), each an EXACT combinator-aligned compound match. On success the
  * outer walk resumes past the consumed span. Exact-mode only (the caller gates it).
  */
-function segSpanMatch(w: Walk, si: number, headComb: Seg['comb'], arm: Branch, fi: number): boolean {
-  const armSegs = arm.segs;
+function segSpanMatch(w: Walk, si: number, headCombinator: SelectorPart['combinator'], arm: Branch, fi: number): boolean {
+  const armSegs = arm.segments;
   if (fi + armSegs.length > w.target.length) {
     return false;
   }
   for (let k = 0; k < armSegs.length; k++) {
     const aSeg = armSegs[k]!;
     const fSeg = w.target[fi + k]!;
-    const comb = k === 0 ? headComb : aSeg.comb;
-    if (comb !== fSeg.comb || !compoundMatch(aSeg.compound, fSeg.compound, false)) {
+    const combinator = k === 0 ? headCombinator : aSeg.combinator;
+    if (combinator !== fSeg.combinator || !compoundMatch(aSeg.compound, fSeg.compound, false)) {
       return false;
     }
   }
@@ -517,30 +517,30 @@ function segSpanMatch(w: Walk, si: number, headComb: Seg['comb'], arm: Branch, f
 
 /** Head-combinator rule: EXACT aligns every combinator including the leading one; ALL
  *  ignores the leading combinator (`fi === 0`) and aligns only internal ones. */
-function combAligned(fi: number, bComb: Seg['comb'], fComb: Seg['comb'], partial: boolean): boolean {
-  return partial && fi === 0 ? true : bComb === fComb;
+function combAligned(fi: number, bCombinator: SelectorPart['combinator'], fCombinator: SelectorPart['combinator'], partial: boolean): boolean {
+  return partial && fi === 0 ? true : bCombinator === fCombinator;
 }
 
 /**
  * Match one target compound against one base compound. EXACT: order-independent
- * multiset EQUALITY of the serialized simples (grafts as opaque tokens), OR — when the
+ * multiset EQUALITY of the serialized value (grafts as opaque tokens), OR — when the
  * base carries a graft — a positional cross THROUGH it (`compoundCross`). ALL: the
- * target's plain-text simples are a multiset SUBSET of the base's (grafts dropped, as
+ * target's plain-text simple tokens are a multiset SUBSET of the base's (grafts dropped, as
  * the former `matchesWholeBranchSubset`).
  */
 function compoundMatch(baseC: Compound, findC: Compound, partial: boolean): boolean {
   if (partial) {
-    return multisetSubset(textSimples(findC), textSimples(baseC));
+    return multisetSubset(textSimpleTokens(findC), textSimpleTokens(baseC));
   }
   if (multisetEqual(simpleTexts(baseC), simpleTexts(findC))) {
     return true;
   }
   return compoundHasGraft(baseC)
-    && compoundCross(baseC.simples, baseC.simples.length - 1, findC.simples, findC.simples.length - 1);
+    && compoundCross(baseC.value, baseC.value.length - 1, findC.value, findC.value.length - 1);
 }
 
 /**
- * EXACT positional cross of one base compound's simples through its crossable grafts.
+ * EXACT positional cross of one base compound's value through its crossable grafts.
  * Two cursors walk `base`/`find` back-to-front: a base TEXT simple must equal the
  * aligned find text simple; a base GRAFT forks over its single-segment OR-arms
  * (`consumeArm`), the first that lets the remaining cursors exhaust winning (a
@@ -561,10 +561,10 @@ function compoundCross(base: readonly Simple[], bi: number, find: readonly Simpl
     return fs.t === 'text' && fs.text === bs.text && compoundCross(base, bi - 1, find, fi - 1);
   }
   for (const arm of bs.branches) {
-    if (arm.segs.length !== 1) {
+    if (arm.segments.length !== 1) {
       continue;
     }
-    const nf = consumeArm(arm.segs[0]!.compound.simples, find, fi);
+    const nf = consumeArm(arm.segments[0]!.compound.value, find, fi);
     if (nf !== NO_MATCH && compoundCross(base, bi - 1, find, nf)) {
       return true;
     }
@@ -573,7 +573,7 @@ function compoundCross(base: readonly Simple[], bi: number, find: readonly Simpl
 }
 
 /**
- * Consume a single-segment graft arm's `inner` simples against `find` back-to-front
+ * Consume a single-segment graft arm's `inner` value against `find` back-to-front
  * from `fi`, returning the new find cursor (may be `-1` when fully consumed) or
  * `NO_MATCH`. Text-only positional match; a non-text inner simple bails.
  */
@@ -593,9 +593,9 @@ function consumeArm(inner: readonly Simple[], find: readonly Simple[], fi: numbe
   return f;
 }
 
-/** True when any of a compound's simples is a crossable `:is()` graft. */
+/** True when any of a compound's value is a crossable `:is()` graft. */
 function compoundHasGraft(c: Compound): boolean {
-  for (const s of c.simples) {
+  for (const s of c.value) {
     if (s.t === 'is') {
       return true;
     }
@@ -605,7 +605,7 @@ function compoundHasGraft(c: Compound): boolean {
 
 /** True when any segment of a branch carries a crossable `:is()` graft. */
 function branchHasGraft(b: Branch): boolean {
-  for (const seg of b.segs) {
+  for (const seg of b.segments) {
     if (compoundHasGraft(seg.compound)) {
       return true;
     }
@@ -616,13 +616,13 @@ function branchHasGraft(b: Branch): boolean {
 /** The lone `:is()` graft when a compound is exactly one crossable graft simple, else
  *  null — the segment-level expansion case (`:is(.a .b, .c) .d`). */
 function loneGraftSimple(c: Compound): Extract<Simple, { t: 'is' }> | null {
-  return c.simples.length === 1 && c.simples[0]!.t === 'is' ? c.simples[0]! : null;
+  return c.value.length === 1 && c.value[0]!.t === 'is' ? c.value[0]! : null;
 }
 
 /** True when a branch has a segment that is exactly one crossable graft — the only
  *  source of segment-level forking, so the memo is allocated only for these bases. */
 function hasLoneGraftSeg(b: Branch): boolean {
-  for (const seg of b.segs) {
+  for (const seg of b.segments) {
     if (loneGraftSimple(seg.compound)) {
       return true;
     }
@@ -650,8 +650,8 @@ function rewriteBranchPartial(
   work = recurseIntoGrafts(work, target, extenders, partial, extenderKeys, targetAtoms, outerSurrounding);
 
   // (2) span substitution against the (possibly graft-updated) branch.
-  if (target.segs.length === 1) {
-    work = substituteSingleCompound(work, target.segs[0]!.compound, extenders, outerSurrounding);
+  if (target.segments.length === 1) {
+    work = substituteSingleCompound(work, target.segments[0]!.compound, extenders, outerSurrounding);
   } else {
     work = substituteMultiCompound(work, target, extenders);
   }
@@ -660,8 +660,8 @@ function rewriteBranchPartial(
 }
 
 /** Recurse an instruction into every `:is()` graft simple in the branch. A graft
- * `:is(<inner>)` distributes back over its compound's BARE text simples, so those
- * simples (unioned with the inherited `outerSurrounding`) become the outer conflict
+ * `:is(<inner>)` distributes back over its compound's BARE text value, so those
+ * value (unioned with the inherited `outerSurrounding`) become the outer conflict
  * context threaded into the inner apply — keeping the element/id guard aware of the
  * full enclosing compound one level down. */
 function recurseIntoGrafts(
@@ -673,17 +673,17 @@ function recurseIntoGrafts(
   targetAtoms: Set<string>,
   outerSurrounding: readonly string[]
 ): Branch {
-  return mkBranch(b.segs.map((seg) => {
+  return mkBranch(b.segments.map((seg) => {
     let graftOuter = outerSurrounding;
-    for (const s of seg.compound.simples) {
+    for (const s of seg.compound.value) {
       if (s.t === 'text') {
         graftOuter = graftOuter === outerSurrounding ? [...outerSurrounding, s.text] : [...graftOuter, s.text];
       }
     }
     return {
-      comb: seg.comb,
+      combinator: seg.combinator,
       compound: {
-        simples: seg.compound.simples.map((s): Simple => {
+        value: seg.compound.value.map((s): Simple => {
           if (s.t !== 'is') {
             return s;
           }
@@ -712,8 +712,8 @@ function nonConflictingExtenders(surrounding: readonly string[], extenders: Bran
   let kept: Branch[] | null = null;
   for (let i = 0; i < extenders.length; i++) {
     const e = extenders[i]!;
-    const lastSeg = e.segs[e.segs.length - 1];
-    if (lastSeg && wouldConflict(surrounding, textSimples(lastSeg.compound))) {
+    const lastSeg = e.segments[e.segments.length - 1];
+    if (lastSeg && wouldConflict(surrounding, textSimpleTokens(lastSeg.compound))) {
       // First conflict: materialize the survivors seen so far, then skip this one.
       kept ??= extenders.slice(0, i);
     } else if (kept !== null) {
@@ -723,12 +723,12 @@ function nonConflictingExtenders(surrounding: readonly string[], extenders: Bran
   return kept ?? extenders;
 }
 
-/** The matched compound's simples left OUTSIDE the `:is()` wrap (bare text simples not
+/** The matched compound's value left OUTSIDE the `:is()` wrap (bare text value not
  * pulled in by `needSet`), unioned with the enclosing-graft `outerSurrounding`. This is
  * the full compound context an extender must not conflict with. */
 function surroundingOf(compound: Compound, needSet: Set<string>, outerSurrounding: readonly string[]): string[] {
   const out: string[] = outerSurrounding.length > 0 ? [...outerSurrounding] : [];
-  for (const s of compound.simples) {
+  for (const s of compound.value) {
     if (s.t === 'text' && !needSet.has(s.text)) {
       out.push(s.text);
     }
@@ -738,10 +738,10 @@ function surroundingOf(compound: Compound, needSet: Set<string>, outerSurroundin
 
 /** Substitute a single-compound target inside every matching compound. */
 function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders: Branch[], outerSurrounding: readonly string[]): Branch {
-  const need = textSimples(targetCompound);
+  const need = textSimpleTokens(targetCompound);
   const needSet = new Set(need);
-  const segs = b.segs.map((seg) => {
-    const have = textSimples(seg.compound);
+  const segments = b.segments.map((seg) => {
+    const have = textSimpleTokens(seg.compound);
     if (!multisetSubset(need, have)) {
       return seg;
     }
@@ -756,7 +756,7 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
       return seg;
     }
     if (need.length > 1) {
-      return { comb: seg.comb, compound: collapseMatchedAtoms(seg.compound, needSet, targetCompound, kept) };
+      return { combinator: seg.combinator, compound: collapseMatchedAtoms(seg.compound, needSet, targetCompound, kept) };
     }
 
     /*
@@ -764,16 +764,16 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
      * self-extend's `:is(x, x)` down to `x`).
      */
     return {
-      comb: seg.comb,
+      combinator: seg.combinator,
       compound: {
-        simples: seg.compound.simples.flatMap((s): Simple[] =>
+        value: seg.compound.value.flatMap((s): Simple[] =>
           s.t === 'text' && needSet.has(s.text)
-            ? isOrPlainSimples([descendantBranch([cloneSimple(s)]), ...kept])
+            ? isOrPlainSimpleTokens([descendantBranch([cloneSimple(s)]), ...kept])
             : [cloneSimple(s)])
       }
     };
   });
-  return mkBranch(segs);
+  return mkBranch(segments);
 }
 
 /** Collapse contiguous matched atoms into one `:is(<matched>, ext)`, keep the rest. */
@@ -786,10 +786,10 @@ function collapseMatchedAtoms(
   const matchedBranch = descendantBranch([{ t: 'text', text: compoundText(targetCompound) }]);
   const out: Simple[] = [];
   let placed = false;
-  for (const s of compound.simples) {
+  for (const s of compound.value) {
     if (s.t === 'text' && needSet.has(s.text)) {
       if (!placed) {
-        out.push(...isOrPlainSimples([matchedBranch, ...extenders]));
+        out.push(...isOrPlainSimpleTokens([matchedBranch, ...extenders]));
         placed = true;
       }
 
@@ -798,7 +798,7 @@ function collapseMatchedAtoms(
       out.push(cloneSimple(s));
     }
   }
-  return { simples: out };
+  return { value: out };
 }
 
 /**
@@ -807,18 +807,18 @@ function collapseMatchedAtoms(
  * internal combinators align; collapses the span into one `:is(span, ext)`.
  */
 function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[]): Branch {
-  const P = target.segs.length;
-  const segs = b.segs;
-  for (let start = 0; start + P <= segs.length; start++) {
+  const P = target.segments.length;
+  const segments = b.segments;
+  for (let start = 0; start + P <= segments.length; start++) {
     let ok = true;
     for (let k = 0; k < P; k++) {
-      const ts = target.segs[k]!;
-      const bs = segs[start + k]!;
-      if (!multisetSubset(textSimples(ts.compound), textSimples(bs.compound))) {
+      const ts = target.segments[k]!;
+      const bs = segments[start + k]!;
+      if (!multisetSubset(textSimpleTokens(ts.compound), textSimpleTokens(bs.compound))) {
         ok = false;
         break;
       }
-      if (k > 0 && ts.comb !== bs.comb) {
+      if (k > 0 && ts.combinator !== bs.combinator) {
         ok = false;
         break;
       }
@@ -828,19 +828,19 @@ function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[])
     }
 
     // Build the matched span text (segments start..start+P-1, internal combinators).
-    const spanSegs: Seg[] = [];
+    const spanSegs: SelectorPart[] = [];
     for (let k = 0; k < P; k++) {
-      const bs = segs[start + k]!;
-      spanSegs.push({ comb: k === 0 ? ' ' : bs.comb, compound: { simples: bs.compound.simples.map(cloneSimple) } });
+      const bs = segments[start + k]!;
+      spanSegs.push({ combinator: k === 0 ? ' ' : bs.combinator, compound: { value: bs.compound.value.map(cloneSimple) } });
     }
-    const isSeg: Seg = {
-      comb: start === 0 ? ' ' : segs[start]!.comb,
-      compound: { simples: isOrPlainSimples([mkBranch(spanSegs), ...extenders]) }
+    const isSeg: SelectorPart = {
+      combinator: start === 0 ? ' ' : segments[start]!.combinator,
+      compound: { value: isOrPlainSimpleTokens([mkBranch(spanSegs), ...extenders]) }
     };
-    const outSegs: Seg[] = [];
-    for (let i = 0; i < segs.length; i++) {
+    const outSegs: SelectorPart[] = [];
+    for (let i = 0; i < segments.length; i++) {
       if (i < start || i >= start + P) {
-        outSegs.push(cloneSeg(segs[i]!));
+        outSegs.push(cloneSeg(segments[i]!));
       } else if (i === start) {
         outSegs.push(isSeg);
       }

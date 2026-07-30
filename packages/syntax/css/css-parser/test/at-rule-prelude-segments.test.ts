@@ -2,11 +2,11 @@ import { parseCssCst } from '../src/cst-css.js';
 import { triviaEntries } from 'parseman';
 
 function segmentText(tree: ReturnType<typeof parseCssCst>['tree']): Array<[string, string]> {
-  return tree.children.map((child) => {
+  return tree.rules.map((child) => {
     if (child._tag !== 'node') {
       throw new Error('expected a prelude segment node');
     }
-    return [child.grammarType, child.children.map((leaf) => {
+    return [child.grammarType, child.rules.map((leaf) => {
       if (leaf._tag !== 'leaf') {
         throw new Error('expected a segment leaf');
       }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   collection,
+  collectionEntry,
   decl,
   dimension,
   funcCall,
@@ -95,7 +96,7 @@ describe('canonical authored AST traversal', () => {
     const document = stylesheet([
       rule('.host', [
         decl(name, collection([
-          decl('entry', dimension(0, 'px', '0px'))
+          collectionEntry(keyword('entry'), dimension(0, 'px', '0px'))
         ], dimension(0, 'em', '0em'))),
         variableDeclaration('from-call', mixinCall('.make', [
           { value: mixinCall('.inner', [dimension(0, 'rem', '0rem')]) }
@@ -119,11 +120,13 @@ describe('canonical authored AST traversal', () => {
     });
 
     expect(edges).toContain('declaration.name');
-    expect(edges).toContain('rule.guard');
-    expect(edges).toContain('rule.extend.target');
-    expect(edges).toContain('rule.extend.subject');
+    expect(edges).toContain('ruleset.guard');
+    expect(edges).toContain('ruleset.extend.target');
+    expect(edges).toContain('ruleset.extend.subject');
     expect(edges).toContain('value.collection.base');
     expect(edges).toContain('value.collection.entry');
+    expect(edges).toContain('value.collection.key');
+    expect(edges).toContain('value.collection.value');
     expect(edges).toContain('variable.value');
     expect(edges).toContain('mixin-call.arg');
     expect(edges).toContain('mixin.param-default');

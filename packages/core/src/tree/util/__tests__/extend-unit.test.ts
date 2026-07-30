@@ -7,8 +7,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   el, sel, sellist, compound, is, co
-} from '../../../index.js';
-import type { Selector } from '../../../index.js';
+} from '../../index.js';
+import type { Selector } from '../../index.js';
 import {
   applyExtendsToSelector,
   tryExtendSelector,

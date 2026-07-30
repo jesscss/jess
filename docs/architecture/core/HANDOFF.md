@@ -468,7 +468,7 @@ conversion, and finally invokes either `_internal` or a Context-bound function.
 That contract is the bridge deletion target, not a public runtime model.
 
 The replacement is the existing AST-v2 value seam. A canonical `Fn` is called
-with `(List, FnCtx)` by `buildEvaluator`/`value-dispatch`; `ParamSpec` kinds,
+with `(List, FnCtx)` by `buildEvaluator`/`value-dispatch`; `ParamSpec.type`,
 defaults, rest, and explicit lazy thunks provide typed binding, while direct
 Sass/Jess embeddings may use named records. `FnCtx` carries only resolved modes,
 the value-to-string hook, and optional IO; it does not expose `Context`, legacy
@@ -481,7 +481,7 @@ plugin/import dispatcher rather than a function-body ABI.
 The deletion gate is therefore concrete: migrate every production consumer of
 the old contract (currently the Less `rgb`/`hsl`/`rgba`/`hsla`/`each` paths and
 the Sass compatibility/map functions), then migrate their direct tests from
-`RuntimeFunction`/`callWithContext` to typed `ValueObj` and registry calls.
+`RuntimeFunction`/`callWithContext` to typed `Value`/`ValueGroup` and registry calls.
 Only after the consumer/test search is empty may `tree/call.ts`,
 `define-function.ts`, and their old conversion exports be removed; no adapter,
 alias, or tree-to-AST bridge is allowed as an intermediate state.
@@ -489,13 +489,11 @@ alias, or tree-to-AST bridge is allowed as an intermediate state.
 ### Alpha packaging blocker: generated legacy declarations
 
 The alpha tarball audit found a packaging surface issue, not a reason to
-delete declaration files blindly. `@jesscss/core` exposes only `.`, `./value`,
-and `./ast` in its package `exports`, but `src/index.ts` still does
-`export * from './tree/index.js'`; therefore the legacy tree classes and the
-explicit tree utility exports are genuinely public through the root entry.
-`tsconfig.build.json` separately emits declarations and maps for every
-`src/**/*.ts`, so unexported `lib/tree/**` helpers are generated artifacts but
-must remain until no reachable declaration refers to them.
+delete declaration files blindly. `@jesscss/core` now exposes only the curated
+root API plus `./value` and `./ast`; `src/index.ts` intentionally does not export
+the old tree classes. `tsconfig.build.json` separately emits declarations and
+maps for every `src/**/*.ts`, so unexported `lib/tree/**` helpers are generated
+artifacts but must remain until no reachable declaration refers to them.
 
 `@jesscss/fns` was broader and inconsistent: its `./*` export map claimed every
 generated `lib/*.d.ts/js/cjs` subpath while `tsdown.config.ts` emitted only the
@@ -518,14 +516,15 @@ entries only for `index` and `builtins`, and the former
 state that those folders are source ownership boundaries, not published
 entrypoints. `plugin-js`'s filesystem trust rule remains a separate sandbox
 boundary for resolved built-in files and is not used to justify package
-subpaths. The core root tree barrel is intentionally not cut in this batch:
-`Context`, the legacy fns implementation, and compat consumers still import
-its classes, so the prerequisite migration remains the next required slice.
+subpaths. The core root tree barrel has since been cut from the public root
+surface. The remaining deletion lane is internal: `Context`, the legacy fns
+implementation, and compat consumers still import tree classes directly, so
+those migrations remain the next required slice.
 
 The minimal cut sequence is:
 
 **A.** Finish the remaining legacy `@jesscss/fns` Less/Sass function and test
-migrations to `@jesscss/core/value`; rewrite or intentionally retire the
+migrations to root `@jesscss/core` semantic values; rewrite or intentionally retire the
 production `packages/jess-plugin-js/src/bridge.ts`, which still transports
 legacy `Any`/`Color`/`Dimension`/`List`/`Rules` values.
 
@@ -536,9 +535,10 @@ after the consumer search is empty.
 `Node`/`Rules` state, spine/visitor fields, and tree-only utilities while
 retaining the AST-v2 `DocumentContext`, plugin host, and import dispatch.
 
-**D.** Remove `export * from './tree/index.js'` and explicit legacy utility
-exports from `core/src/index.ts`; expose only the stable Context/plugin/error,
-`ast`, and `value` seams.
+**D.** Keep the already-narrowed `core/src/index.ts` root surface narrow; remove
+any remaining explicit legacy utility exports only after the consumer search is
+empty. The public root should expose only stable Context/plugin/error, canonical
+AST execution, and semantic value/fn seams.
 
 **E.** Remove the now-unreachable tree runtime and legacy tests/visitor ABI.
 
@@ -592,7 +592,7 @@ That ABI is observable and tested by
 `packages/jess-plugin-js/test/plugin-js-security.test.ts` (the
 `less.tree`/`less.dimension`/`less.value` `instanceof` and legacy `@plugin`
 cases), by `packages/jess/test/less/wall8-repro.test.ts`, and by the
-`plugin-js` README's typed-bridge guarantee. AST-v2 `@jesscss/core/value` is
+`plugin-js` README's typed-bridge guarantee. The AST-v2 semantic value API is
 not a 1:1 replacement: it has structural `Dimension`/`Color`/`Quoted`/
 `Keyword`/`List`/`Block`/`Bool`/`Nil`, but no Less-compatible
 `Anonymous`-vs-`Keyword` class identity,
@@ -888,8 +888,8 @@ workspace search found no production or test consumer after the
 `jess-plugin-less-compat` bridge cutover. Core no longer exports
 `visitor/index.ts`, and `tree/Node` no longer carries the Less-style
 `accept()`/`ABORT`/`REMOVE` machinery. This is distinct from the retained
-Context-owned `SpineVisitor` hook, which is a separate render lifecycle seam
-and does not expose legacy per-node visitor dispatch. The separate
+Context-owned emit hook, which is a separate internal render lifecycle seam and
+does not expose legacy per-node visitor dispatch. The separate
 `packages/jess/src/visitor/index.ts` identity wrapper was likewise unimported,
 unexported, and deleted; it was not a second valid visitor implementation.
 
@@ -1545,6 +1545,182 @@ involved.
   `pnpm run verify:aggressive-cutting-review`, `pnpm run verify:less-alpha`,
   `pnpm run check:macro`, and `pnpm run verify:compose-integrity` passed. No
   measured performance claim is made.
+- Latest pass: AST extend IR naming normalization on 2026-07-29.
+- Architecture surface: private extend-solver IR naming changed intentionally.
+  The existing lowered selector facts are now spelled `SelectorPart`,
+  `segments`, `combinator`, and `Compound.value`. The public canonical selector
+  AST remains the flat selector-term/combinator sequence; the lowered
+  `{ combinator, compound }` shape stays private to the extend matcher and is
+  not a visitor or parser-output precedent.
+- Separation/duplication: improved slightly. The private IR no longer carries
+  separate shorthand vocabulary (`Seg`/`segs`/`comb`/`simples`) that conflicts
+  with the canonical AST naming rules. The exported `ComplexSelectorPart` alias
+  is gone; public AST types speak directly in `SelectorTerm | Combinator`.
+- Cumulative node weight: neutral. No AST node, selector wrapper, side table,
+  runtime validator, or compatibility alias was added or removed.
+- New traversal: none. Existing extend loops were renamed in place; no planner
+  pass, matcher pass, selector scan, parser replay, or diagnostics crawl was
+  added.
+- New node/materialization: none. Existing arrays, spreads, and object literals
+  in the extend solver retain their current ownership and are only renamed.
+- Render path: unchanged. The serializer still constructs the same private
+  extend IR after selector interpolation and emits the same CSS; no output
+  policy or fallback path changed.
+- Helper/API surface: no public helper was added. The public
+  `ComplexSelectorPart` alias was removed from the AST barrel surface; the
+  remaining `SelectorPart` type is private to `ast/extend`.
+- Metadata mutations: none. Existing `key` and `bnd` provenance fields keep
+  their behavior; this pass adds no parent/source/frozen/trivia mutation.
+- Behavior evidence: `pnpm --filter @jesscss/core test -- --run src/ast`
+  passed 38/38 files and 342/342 tests after the rename.
+- Build evidence: `pnpm --filter @jesscss/core build` passed after the final
+  public-alias cleanup; `pnpm run verify:types` passed 25/25 configs.
+- Boundary evidence: `pnpm run verify:types` proved removing the exported
+  `ComplexSelectorPart` alias does not break workspace consumers; the public
+  AST shape remains inline `SelectorTerm | Combinator`.
+- Evidence: behavior, build, type, and boundary evidence are listed above. No
+  measured performance claim is made.
+- Review-flagged diff tokens: [loop/traversal], [array helper], [array
+  spread/materialization], and [materialized array/object] are existing extend
+  solver loops/arrays/objects renamed in place; no new loop, allocation family,
+  spread path, or materialized selector wrapper was introduced.
+- Verdict: accepted as a neutral private naming cleanup with no speed claim and
+  no canonical AST shape change.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "This pass changes naming inside the existing AST-v2 extend owner rather than introducing a new optimization boundary. The private solver still performs the same composition, matching, interpolation resolution, and fixpoint solve work; the patch removes misleading public/internal names without claiming cost neutrality or speed.",
+    "dangerTokensJustification": "The flagged loops, maps, spreads, arrays, and object literals are existing extend solver work with renamed fields/types. No planner pass, matcher pass, selector traversal, allocation family, render policy, public selector wrapper, or runtime validation was added.",
+    "behaviorEvidence": "pnpm --filter @jesscss/core test -- --run src/ast passed 38 files / 342 tests.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passed after the final public-alias cleanup; pnpm run verify:types passed 25/25 configs.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": [
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
+    ],
+    "why": "This slice relocates generic helper imports used by Context and extend-index to their new core util paths. The Context/plugin dispatcher, extend-index tagged IR behavior, selector matching, callable output, and serializer contracts are unchanged; this is ownership cleanup without a speed or semantic expansion claim.",
+    "dangerTokensJustification": "The diff rewrites import specifiers and moves existing helper modules. It adds no parser host, alternate evaluator, resolver, output policy, AST materialization route, render-output array path, traversal, or runtime validation.",
+    "behaviorEvidence": "Focused bitset and dimension behavior passed: `pnpm --filter @jesscss/core test bitset.test.ts bitset-disjoint.test.ts dimension.test.ts -- --run` (61/61).",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the helper relocation.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "legacy-tree-strict-contract-drain",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "cases": [
+      "declaration-sync-and-async-render-result",
+      "declaration-merge-source-span-exclusion",
+      "default-guard-owned-value",
+      "bitset-inversion-and-disjointness",
+      "string-and-node-combinator-recognition",
+      "selector-list-singleton-collapse",
+      "selector-list-array-or-node-inheritance",
+      "parser-delivered-selector-array-ampersand",
+      "selector-array-ruleset-callable-registration",
+      "selector-array-key-set-analysis",
+      "selector-compose-cache-node-boundary",
+      "ordered-registration-context-restoration",
+      "property-merge-container-scope",
+      "mixin-invisible-sync-render-and-registration-result",
+      "extend-record-selector-surface",
+      "extend-root-composition-selector-surface",
+      "extend-walk-composed-match-selector-surface"
+    ],
+    "why": "This slice relocates the generic bitset and numeric operator helpers from legacy tree util paths to core util paths, then repoints their existing legacy tree consumers. The helper behavior and selector/extend contracts are unchanged; this is ownership cleanup for the retained legacy-tree drain, not a speed, neutrality, or semantic expansion claim.",
+    "dangerTokensJustification": "The diff moves existing helper modules and rewrites import specifiers. It adds no traversal, no object allocation, no parser replay, no materialization cache, no selector matching branch, no output policy, and no new runtime validation.",
+    "behaviorEvidence": "Focused bitset and dimension behavior passed: `pnpm --filter @jesscss/core test bitset.test.ts bitset-disjoint.test.ts dimension.test.ts -- --run` (61/61).",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the helper relocation.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "legacy-tree-visitor-abi-removal",
+    "verdict": "accepted",
+    "costDelta": "neutral",
+    "why": "This import-only slice touches `node-base.ts` solely because its `Operator` type import now points at the core util helper. It does not restore or alter the removed visitor ABI, add a dispatch method, allocate a facade, or change node behavior.",
+    "byteIdentity": {
+      "fixture": "benchmark.less",
+      "collapseNesting": true,
+      "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6",
+      "outputBytes": 122390
+    }
+  },
+  {
+    "id": "bounded-core-tree-lint-guards",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the five bounded core tree helper owners listed by bounded-core-tree-lint-guards",
+    "cases": [
+      "List raw NodeArrayItem normalization",
+      "canonical node-array prefix guard",
+      "root node validation narrowing",
+      "callable candidate record narrowing",
+      "extend helper lint-safe syntax"
+    ],
+    "why": "This slice changes `List` only to import the shared `Operator` type from its new core util path. The List normalization and validation behavior named by the bounded lint-guard contract is untouched; this is a dependency-path cleanup, not a performance or semantic behavior change.",
+    "dangerTokensJustification": "The touched List hunk is an import-specifier rewrite. It adds no branch, traversal, allocation, validation helper, parser replay, or render path.",
+    "behaviorEvidence": "Focused dimension operator coverage passed as part of `pnpm --filter @jesscss/core test bitset.test.ts bitset-disjoint.test.ts dimension.test.ts -- --run`.",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the import rewrite.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  }
+]
+```
 - Latest pass: Less alpha parser/error integration state on 2026-07-27. The working diff includes
   the one-grammar parser fold, Parseman 0.41 grammar cleanup, parser-owned diagnostics, trivia
   extraction work, and the recursive reference error fix that graduated the Less recursion fixtures
@@ -1643,6 +1819,78 @@ involved.
     }
   },
   {
+    "id": "legacy-tree-strict-contract-drain",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "cases": [
+      "declaration-sync-and-async-render-result",
+      "declaration-merge-source-span-exclusion",
+      "default-guard-owned-value",
+      "bitset-inversion-and-disjointness",
+      "string-and-node-combinator-recognition",
+      "selector-list-singleton-collapse",
+      "selector-list-array-or-node-inheritance",
+      "parser-delivered-selector-array-ampersand",
+      "selector-array-ruleset-callable-registration",
+      "selector-array-key-set-analysis",
+      "selector-compose-cache-node-boundary",
+      "ordered-registration-context-restoration",
+      "property-merge-container-scope",
+      "mixin-invisible-sync-render-and-registration-result",
+      "extend-record-selector-surface",
+      "extend-root-composition-selector-surface",
+      "extend-walk-composed-match-selector-surface"
+    ],
+    "why": "This slice relocates the generic bitset and numeric operator helpers from legacy tree util paths to core util paths, then repoints their existing legacy tree consumers. The helper behavior and selector/extend contracts are unchanged; this is ownership cleanup for the retained legacy-tree drain, not a speed, neutrality, or semantic expansion claim.",
+    "dangerTokensJustification": "The diff moves existing helper modules and rewrites import specifiers. It adds no traversal, no object allocation, no parser replay, no materialization cache, no selector matching branch, no output policy, and no new runtime validation.",
+    "behaviorEvidence": "Focused bitset and dimension behavior passed: `pnpm --filter @jesscss/core test bitset.test.ts bitset-disjoint.test.ts dimension.test.ts -- --run` (61/61).",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the helper relocation.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "legacy-tree-visitor-abi-removal",
+    "verdict": "accepted",
+    "costDelta": "neutral",
+    "why": "This import-only slice touches `node-base.ts` solely because its `Operator` type import now points at the core util helper. It does not restore or alter the removed visitor ABI, add a dispatch method, allocate a facade, or change node behavior.",
+    "byteIdentity": {
+      "fixture": "benchmark.less",
+      "collapseNesting": true,
+      "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6",
+      "outputBytes": 122390
+    }
+  },
+  {
+    "id": "bounded-core-tree-lint-guards",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the five bounded core tree helper owners listed by bounded-core-tree-lint-guards",
+    "cases": [
+      "List raw NodeArrayItem normalization",
+      "canonical node-array prefix guard",
+      "root node validation narrowing",
+      "callable candidate record narrowing",
+      "extend helper lint-safe syntax"
+    ],
+    "why": "This slice changes `List` only to import the shared `Operator` type from its new core util path. The List normalization and validation behavior named by the bounded lint-guard contract is untouched; this is a dependency-path cleanup, not a performance or semantic behavior change.",
+    "dangerTokensJustification": "The touched List hunk is an import-specifier rewrite. It adds no branch, traversal, allocation, validation helper, parser replay, or render path.",
+    "behaviorEvidence": "Focused dimension operator coverage passed as part of `pnpm --filter @jesscss/core test bitset.test.ts bitset-disjoint.test.ts dimension.test.ts -- --run`.",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the import rewrite.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
     "id": "ast-value-guard-equality-modes",
     "verdict": "accepted",
     "performanceClaim": "none",
@@ -1655,6 +1903,48 @@ involved.
     "dangerTokensJustification": "The flagged diagnostic object spreads are existing error-construction shape inside root call rejection, not new normal successful render allocation. The equality branch adds one scalar type check to an already mode-gated comparison path and introduces no collection, traversal, parser replay, or node materialization loop.",
     "behaviorEvidence": "Focused e() and Less public error tests passed, including root e() output and plugin scalar root-call rejection without eval/async-in-sync-position.",
     "buildEvidence": "pnpm --filter @jesscss/core build, pnpm --filter @jesscss/fns build, and pnpm run verify:less-alpha passed after the Any value-domain change.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "ast-value-guard-negate-result",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": [
+      "incomparable-remains-undefined",
+      "negative-and-positive-reverse",
+      "equality-remains-zero"
+    ],
+    "why": "This slice removes the old internal value-object alias spelling in favor of `Value`. The guard negation logic is unchanged; the touched file still owns the same closed comparison-result inversion contract.",
+    "dangerTokensJustification": "The diff changes type annotations and comments only in this area. It adds no comparison branch, traversal, allocation, parser replay, or materialization path.",
+    "behaviorEvidence": "Focused value tests passed: `pnpm --filter @jesscss/core test -- value-define-function.test.ts value-operate-compare.test.ts value-operate-units.test.ts --run` (25/25).",
+    "buildEvidence": "`pnpm --filter @jesscss/core build`, `pnpm --filter @jesscss/fns build`, and `pnpm run verify:types` passed after the alias removal.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "ast-value-operate-preserve-calc",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": [
+      "preserve-percentage-product",
+      "loose-percentage-product",
+      "explicit-calc-composition"
+    ],
+    "why": "This slice removes the old internal value-object alias spelling in favor of `Value`. The preserve-mode calc arithmetic policy is unchanged; the touched file still owns the same semantic result-construction boundary.",
+    "dangerTokensJustification": "The diff changes type annotations and comments only in this area. It adds no arithmetic branch, traversal, allocation, parser replay, or materialization path.",
+    "behaviorEvidence": "Focused value tests passed: `pnpm --filter @jesscss/core test -- value-define-function.test.ts value-operate-compare.test.ts value-operate-units.test.ts --run` (25/25).",
+    "buildEvidence": "`pnpm --filter @jesscss/core build`, `pnpm --filter @jesscss/fns build`, and `pnpm run verify:types` passed after the alias removal.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",

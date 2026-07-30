@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  compoundSelector, complexSelector, decl, keyword, rule, sel, selist, stylesheet,
-  type ComplexSelector, type Stylesheet
+  decl, keyword, relativeSelector, rule, sel, selist, simpleSelector, stylesheet,
+  type SelectorBranch, type Stylesheet
 } from '../nodes.js';
 import { type Combinator } from '../node.js';
 import { serialize } from '../serialize.js';
@@ -13,14 +13,14 @@ const flat = (document: Stylesheet): string | undefined =>
   serialize(document, { evaluator, collapseNesting: true }).css;
 
 /** `parents { children… { color: red } }`, rendered flat. */
-const nest = (parents: string[], children: ComplexSelector[]): string =>
+const nest = (parents: string[], rules: SelectorBranch[]): string =>
   (flat(stylesheet([
-    rule(selist(...parents.map(sel)), [rule(selist(...children), [decl('color', keyword('red'))])])
+    rule(selist(...parents.map(sel)), [rule(selist(...rules), [decl('color', keyword('red'))])])
   ])) ?? '').split('{')[0]!.trim().replace(/,\s+/g, ', ');
 
 /** A single-compound branch opening with `comb` — `> .col`. */
-const relative = (comb: Combinator, text: string): ComplexSelector =>
-  complexSelector([{ compound: compoundSelector(text) }], comb);
+const relative = (combinator: Combinator, text: string): SelectorBranch =>
+  relativeSelector(combinator, [{ term: simpleSelector(text) }]);
 
 describe('a leading combinator is hoisted OUT of the `:is()` group', () => {
   it('an all-relative child list expands, one header branch per child', () => {

@@ -1,6 +1,6 @@
 import { extendSelector, tryExtendSelector } from '../extend.js';
-import { el, sel, compound, co, sellist, rules, ruleset, extend, ExtendFlag } from '../../../index.js';
-import type { Ruleset } from '../../../index.js';
+import { el, sel, compound, co, sellist, rules, ruleset, extend, ExtendFlag } from '../../index.js';
+import type { Ruleset } from '../../index.js';
 import { isNode } from '../is-node.js';
 import { N } from '../../node-type.js';
 import { type Combinator, type Combinators } from '../../combinator.js';
