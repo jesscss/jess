@@ -971,6 +971,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.unknownTypeSelectors]: DiagnosticSeverity.Warning,
     [LINT_CODES.incompatibleMathFunctionUnits]: DiagnosticSeverity.Warning,
     [LINT_CODES.invalidColorFunctionChannels]: DiagnosticSeverity.Error,
+    [LINT_CODES.invalidTypedCustomPropertyRegistration]: DiagnosticSeverity.Warning,
     [LINT_CODES.invalidTypedCustomPropertyValue]: DiagnosticSeverity.Warning,
     [LINT_CODES.leakyScopeDependence]: DiagnosticSeverity.Warning,
     [LINT_CODES.ambiguousMixinCalls]: DiagnosticSeverity.Warning,

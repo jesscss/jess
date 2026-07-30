@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 57;
+export const STABLE_LINT_RULE_SET_VERSION = 58;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -64,6 +64,7 @@ export const LINT_RULE_NAMES = {
   selectorMaxUniversal: 'selector-max-universal',
   incompatibleMathFunctionUnits: 'jess/no-incompatible-math-function-units',
   invalidColorFunctionChannels: 'color-function-no-invalid-arguments',
+  invalidTypedCustomPropertyRegistration: 'jess/no-invalid-typed-custom-property-registration',
   invalidTypedCustomPropertyValue: 'jess/no-invalid-typed-custom-property-value',
   shadowedTokens: 'jess/no-shadowed-token',
   unusedVariables: 'jess/no-unused-variable',
@@ -149,6 +150,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.selectorMaxUniversal]: LINT_CODES.selectorMaxUniversal,
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: LINT_CODES.incompatibleMathFunctionUnits,
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: LINT_CODES.invalidColorFunctionChannels,
+  [LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]: LINT_CODES.invalidTypedCustomPropertyRegistration,
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: LINT_CODES.invalidTypedCustomPropertyValue,
   [LINT_RULE_NAMES.shadowedTokens]: LINT_CODES.shadowedTokens,
   [LINT_RULE_NAMES.unusedVariables]: LINT_CODES.unusedVariables,
@@ -221,6 +223,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.selectorMaxUniversal]: LINT_RULE_NAMES.selectorMaxUniversal,
   [LINT_CODES.incompatibleMathFunctionUnits]: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
   [LINT_CODES.invalidColorFunctionChannels]: LINT_RULE_NAMES.invalidColorFunctionChannels,
+  [LINT_CODES.invalidTypedCustomPropertyRegistration]: LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
   [LINT_CODES.invalidTypedCustomPropertyValue]: LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
   [LINT_CODES.shadowedTokens]: LINT_RULE_NAMES.shadowedTokens,
   [LINT_CODES.unusedVariables]: LINT_RULE_NAMES.unusedVariables,
@@ -293,6 +296,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.selectorMaxUniversal]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'warn',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'error',
+  [LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]: 'warn',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'warn',
   [LINT_RULE_NAMES.shadowedTokens]: 'off',
   [LINT_RULE_NAMES.unusedVariables]: 'off',
@@ -366,6 +370,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.hueDegreeNotation]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'off',
+  [LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]: 'off',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'off',
   [LINT_RULE_NAMES.shadowedTokens]: 'off',
   [LINT_RULE_NAMES.selectorMaxId]: 'off',
@@ -933,6 +938,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'error',
     comparison: 'vscode-equivalent',
     notes: 'Matches VSCode stylesheet-service argumentsInColorFunction for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors while leaving dynamic and nested values unknown.'
+  },
+  {
+    diagnosticCode: LINT_CODES.invalidTypedCustomPropertyRegistration,
+    ruleName: LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
+    title: 'Invalid typed custom property registrations',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags CSS @property rules missing required syntax/inherits descriptors, and missing initial-value when the syntax descriptor is not the universal "*".'
   },
   {
     diagnosticCode: LINT_CODES.invalidTypedCustomPropertyValue,

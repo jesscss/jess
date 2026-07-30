@@ -139,6 +139,7 @@ export default {
       'box-model': 'off',
       'float': 'off',
       'color-function-no-invalid-arguments': 'error',
+      'jess/no-invalid-typed-custom-property-registration': 'warn',
       'jess/no-invalid-typed-custom-property-value': 'warn',
       'jess/no-shadowed-token': 'off',
       'jess/no-unused-variable': 'off',
@@ -240,6 +241,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `selector-max-universal` | `lint/selector-max-universal` | near `selector-max-universal`, opt-in |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess value diagnostic |
 | `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode `argumentsInColorFunction` parity |
+| `jess/no-invalid-typed-custom-property-registration` | `lint/invalid-typed-custom-property-registration` | Jess CSS validity diagnostic |
 | `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess value diagnostic |
 | `jess/no-shadowed-token` | `lint/no-shadowed-token` | Jess same-file symbol diagnostic, opt-in |
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Jess same-file symbol diagnostic, opt-in |

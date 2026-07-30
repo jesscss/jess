@@ -1875,6 +1875,30 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports typed custom property registrations missing required descriptors', () => {
+    const source = [
+      '@property --missing-syntax { inherits: false; initial-value: red; }',
+      '@property --missing-inherits { syntax: "<color>"; initial-value: red; }',
+      '@property --missing-initial { syntax: "<color>"; inherits: false; }',
+      '@property --any { syntax: "*"; inherits: false; }',
+      '@property --invalid-syntax { syntax: <color>; inherits: false; }',
+      '@property --complete { syntax: "<color>"; inherits: false; initial-value: red; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'css' });
+    const registrations = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.invalidTypedCustomPropertyRegistration
+    );
+
+    const missingSyntaxStart = source.indexOf('@property --missing-syntax');
+    const missingInheritsStart = source.indexOf('@property --missing-inherits');
+    const missingInitialStart = source.indexOf('@property --missing-initial');
+    expect(registrations.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['@property rule must define "syntax"', missingSyntaxStart, missingSyntaxStart + '@property'.length],
+      ['@property rule must define "inherits"', missingInheritsStart, missingInheritsStart + '@property'.length],
+      ['@property rule must define "initial-value"', missingInitialStart, missingInitialStart + '@property'.length]
+    ]);
+  });
+
   it('does not report invalid typed custom property values in dialect files before value facts exist', () => {
     const scss = collectTolerantDiagnostics({
       source: '@property --gap { syntax: "<length>"; initial-value: red; inherits: false; }',

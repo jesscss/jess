@@ -124,6 +124,7 @@ enough.
 | `selector-max-universal` | `lint/selector-max-universal` | Stylelint-near, opt-in |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess-only value diagnostic |
 | `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode-equivalent |
+| `jess/no-invalid-typed-custom-property-registration` | `lint/invalid-typed-custom-property-registration` | Jess-only CSS validity diagnostic |
 | `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess-only value diagnostic |
 | `jess/no-shadowed-token` | `lint/no-shadowed-token` | Jess-only symbol diagnostic, opt-in |
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Jess-only symbol diagnostic, opt-in |
@@ -272,7 +273,7 @@ can detect over authored source.
 | Landed | At-rule descriptors | `at-rule-descriptor-no-unknown` | Flags unknown descriptors in parsed CSS descriptor blocks, including `@page` page-context and margin-box descriptors. |
 | Landed | At-rule descriptor values | `at-rule-descriptor-value-no-unknown` | Flags definite invalid descriptor values in parsed CSS descriptor blocks; covers special `@property` `syntax` checks plus simple static descriptor values from VSCode web custom data such as `@font-face font-style` and `@counter-style system`. |
 | Landed | Color function arguments | `color-function-no-invalid-arguments` | Matches VSCode `argumentsInColorFunction` for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |
-| Landed | Typed custom properties | `jess/no-invalid-typed-custom-property-value` | Flags definite CSS `@property` `initial-value` mismatches for simple syntax descriptors; full CSS value-definition syntax and dialect value facts remain future work. |
+| Landed | Typed custom properties | `jess/no-invalid-typed-custom-property-registration`, `jess/no-invalid-typed-custom-property-value` | Flags CSS `@property` rules missing required `syntax`/`inherits` descriptors, missing `initial-value` for non-universal syntax, and definite `initial-value` mismatches for simple syntax descriptors; full CSS value-definition syntax and dialect value facts remain future work. |
 | Landed | Less callable ambiguity | `jess/no-ambiguous-mixin-call` | Initial conservative same-file diagnostic for Less calls that match multiple unguarded static mixin definitions with the same fixed positional arity; guards, defaults, rest params, patterns, namespaces, and external sources wait for callable facts. |
 | P3 | Browser legacy hacks | `ie-hack` | VSCode has opt-in `ieHack`, but current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule. |
 | Landed | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Opt-in Stylelint-named convention rules for static color function notation, alpha values, and HSL hue units. CLI and language-service configuration require a secondary `notation` option; comparison remains Stylelint-near until the option surface is broader. |
@@ -360,7 +361,7 @@ Follow-on value/type diagnostics:
 | --- | --- | --- |
 | Incompatible units | Compiler or strict lint | Arithmetic and comparisons with impossible unit families. If Jess rejects it, compiler owns it; if Jess can still emit useful CSS, lint owns it. |
 | Invalid color channel | CSS validity/compiler | Initial CSS-authored rgb()/rgba()/hsl()/hsla() arity/type checks landed as `color-function-no-invalid-arguments`; broader color functions and semantic value facts remain future work. |
-| Invalid typed custom property value | Diagnostics-core/type facts | Initial CSS `@property` descriptor check landed as `jess/no-invalid-typed-custom-property-value` for simple static syntax/value pairs; future work is full CSS value-definition syntax and Jess constraints. |
+| Invalid typed custom property registration/value | Diagnostics-core/type facts | Initial CSS `@property` descriptor checks landed as `jess/no-invalid-typed-custom-property-registration` for missing required descriptors and `jess/no-invalid-typed-custom-property-value` for simple static syntax/value pairs; future work is full CSS value-definition syntax and Jess constraints. |
 | Impossible guard | Lint preference | Initial static CST-backed guard diagnostic landed as `jess/no-impossible-guard`; richer callable/type facts can expand coverage without guessing. |
 | Unused default branch | Lint preference | Mixin `default()` branch that cannot be selected. |
 | Suspicious map key access | Lint preference | Initial same-file Less map, SCSS map, and Jess collection diagnostic landed as `jess/no-suspicious-map-key-access`; richer collection/list value facts remain future work. |

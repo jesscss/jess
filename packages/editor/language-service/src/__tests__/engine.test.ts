@@ -1284,6 +1284,7 @@ describe('JessLanguageServiceEngine', () => {
         const engine = createEngine();
         const source = [
           '@property --gap { syntax: "<length>"; inherits: yes; initial-value: red; }',
+          '@property --tone { syntax: "<color>"; }',
           '@font-face { font-family: Inter; src: url(inter.woff2); font-style: sideways; }',
           '.a:nonsense { color: --brand; animation: missing 1s; grid-template-areas: "a" "a b"; }',
           '.a:nonsense { color: red; }'
@@ -1293,6 +1294,7 @@ describe('JessLanguageServiceEngine', () => {
         const codes = codesOf(engine, doc.uri);
 
         expect(codes).toContain('lint/at-rule-descriptor-value-no-unknown');
+        expect(codes).toContain('lint/invalid-typed-custom-property-registration');
         expect(codes).toContain('lint/invalid-typed-custom-property-value');
         expect(codes).toContain('lint/custom-property-no-missing-var-function');
         expect(codes).toContain('lint/no-unknown-animations');

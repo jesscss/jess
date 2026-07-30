@@ -73,6 +73,7 @@ export const LINT_CODES = {
   duplicateSelectors: 'lint/no-duplicate-selectors',
   incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
   invalidColorFunctionChannels: 'lint/invalid-color-function-channels',
+  invalidTypedCustomPropertyRegistration: 'lint/invalid-typed-custom-property-registration',
   invalidTypedCustomPropertyValue: 'lint/invalid-typed-custom-property-value',
   shadowedTokens: 'lint/no-shadowed-token',
   unusedVariables: 'lint/no-unused-variable',
@@ -536,6 +537,11 @@ type TypedCustomPropertyInitialValue = {
 type TypedCustomPropertyValueProblem = {
   readonly syntax: TypedCustomPropertySyntax;
   readonly value: TypedCustomPropertyInitialValue;
+};
+
+type TypedCustomPropertyRegistrationProblem = {
+  readonly missing: readonly string[];
+  readonly span: DiagnosticSpan;
 };
 
 type SelectorSeen = {
@@ -2659,6 +2665,50 @@ function typedCustomPropertyValueProblem(source: string, node: CssCstNode): Type
   }
   const compatible = isTypedCustomPropertyInitialValueCompatible(syntax, value);
   return compatible === false ? { syntax, value } : null;
+}
+
+function typedCustomPropertyRegistrationProblem(source: string, node: CssCstNode): TypedCustomPropertyRegistrationProblem | null {
+  let hasInherits = false;
+  let hasInitialValue = false;
+  let syntaxRequiresInitialValue = false;
+  let hasSyntaxDescriptor = false;
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child) || !DECLARATION_TYPES.has(child.grammarType)) {
+      continue;
+    }
+    const start = absoluteStart(child);
+    const end = absoluteEnd(child);
+    const name = propNameOf(source.slice(start, end)).toLowerCase();
+    if (name === 'inherits') {
+      hasInherits = true;
+    } else if (name === 'initial-value') {
+      hasInitialValue = true;
+    } else if (name === 'syntax') {
+      hasSyntaxDescriptor = true;
+      const syntax = typedCustomPropertySyntax(source, child);
+      if (syntax !== null && syntax.kind !== 'any') {
+        syntaxRequiresInitialValue = true;
+      }
+    }
+  }
+
+  const missing: string[] = [];
+  if (!hasSyntaxDescriptor) {
+    missing.push('syntax');
+  }
+  if (!hasInherits) {
+    missing.push('inherits');
+  }
+  if (syntaxRequiresInitialValue && !hasInitialValue) {
+    missing.push('initial-value');
+  }
+
+  return missing.length > 0
+    ? {
+        missing,
+        span: spanFromNodeStart(node, absoluteStart(node), atRuleNameEnd(source, absoluteStart(node), absoluteEnd(node)))
+      }
+    : null;
 }
 
 function isResolutionMediaFeatureDimension(source: string, dimensionStart: number): boolean {
@@ -5043,6 +5093,16 @@ export function cstLintDiagnostics(
           'warning',
           `Custom property "${registeredName.name}" does not match the configured pattern`,
           registeredName.span
+        );
+      }
+      const registrationProblem = typedCustomPropertyRegistrationProblem(source, node);
+      if (registrationProblem !== null) {
+        const requirement = registrationProblem.missing.map(name => `"${name}"`).join(' and ');
+        push(
+          LINT_CODES.invalidTypedCustomPropertyRegistration,
+          'warning',
+          `@property rule must define ${requirement}`,
+          registrationProblem.span
         );
       }
       const problem = typedCustomPropertyValueProblem(source, node);

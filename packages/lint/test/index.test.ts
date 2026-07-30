@@ -77,6 +77,7 @@ describe('stable rule set', () => {
       LINT_CODES.selectorMaxUniversal,
       LINT_CODES.incompatibleMathFunctionUnits,
       LINT_CODES.invalidColorFunctionChannels,
+      LINT_CODES.invalidTypedCustomPropertyRegistration,
       LINT_CODES.invalidTypedCustomPropertyValue,
       LINT_CODES.shadowedTokens,
       LINT_CODES.unusedVariables,
@@ -148,6 +149,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.selectorMaxUniversal,
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.invalidColorFunctionChannels,
+      LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.shadowedTokens,
       LINT_RULE_NAMES.unusedVariables,
@@ -162,9 +164,10 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(57);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(58);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
+    expect(recommended[LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.vendorPrefix]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.boxModel]).toBe('off');
@@ -258,6 +261,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.hueDegreeNotation]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyValue]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.shadowedTokens]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxId]).toBe('off');
@@ -1550,6 +1554,32 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.invalidTypedCustomPropertyValue, 'error']
+    ]);
+  });
+
+  it('applies policy to invalid typed custom property registration diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '@property --tone { syntax: "<color>"; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
+      [
+        LINT_CODES.invalidTypedCustomPropertyRegistration,
+        LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
+        'error'
+      ]
     ]);
   });
 
