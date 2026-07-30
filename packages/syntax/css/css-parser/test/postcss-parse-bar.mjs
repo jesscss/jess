@@ -286,12 +286,54 @@ for (const testCase of cases) {
     process.exit(1);
   }
 }
+
+/*
+ * Count what each parser actually produced, once, outside the timed region.
+ * This is CONTEXT for reading the ratio, and is never applied to it. Do not add
+ * a work-per-node or structure-adjusted figure here: the bar is wall-clock on
+ * identical bytes.
+ */
+const countObjects = (root, onlyTyped) => {
+  let count = 0;
+  const seen = new Set();
+  const visit = (node) => {
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        visit(child);
+      }
+      return;
+    }
+    if (typeof node !== 'object' || node === null || seen.has(node)) {
+      return;
+    }
+    seen.add(node);
+    if (!onlyTyped || typeof node.type === 'string') {
+      count += 1;
+    }
+    for (const child of Object.values(node)) {
+      visit(child);
+    }
+  };
+  visit(root);
+  return count;
+};
+
 for (const fixture of fixtures) {
   const cst = parseCssCst(fixture.source);
   if (cst.ok !== true) {
     console.error(`${fixture.name}: CST parse did not succeed; refusing to time a failure path.`);
     process.exit(1);
   }
+  let postcssNodes = 0;
+  postcss.parse(fixture.source, { from: fixture.path }).walk(() => {
+    postcssNodes += 1;
+  });
+  fixture.produced = {
+    postcssWalkedNodes: postcssNodes,
+    jessAstTypedNodes: countObjects(parse(fixture.source), true),
+    jessCstObjects: countObjects(cst.tree, false),
+    jessCstTriviaEntries: Array.isArray(cst.triviaLog) ? cst.triviaLog.length : null
+  };
 }
 
 for (const testCase of cases) {
@@ -420,14 +462,17 @@ const report = {
       + 'parsed into structured nodes, with source spans, in the same pass.',
     jessCstProduces:
       'A full concrete syntax tree from parseCssCst(): every token, plus trivia (whitespace '
-      + 'and comments) retained in a trivia log, plus an error/expectation set.'
+      + 'and comments) retained in a trivia log, plus an error/expectation set.',
+    counted:
+      'Per-fixture node counts are under fixtures[].produced. They are measured, not asserted, '
+      + 'and they are context only — no ratio in results[] is derived from or adjusted by them.'
   },
   observedNoiseFloorPct,
   gateQualityNoiseFloorPct,
   gateQuality: observedNoiseFloorPct <= gateQualityNoiseFloorPct ? 'usable' : 'contaminated',
   noiseFloors,
-  fixtures: fixtures.map(({ name, path, origin, bytes, sha256 }) => ({
-    name, path, origin, bytes, sha256
+  fixtures: fixtures.map(({ name, path, origin, bytes, sha256, produced }) => ({
+    name, path, origin, bytes, sha256, produced
   })),
   results: measured,
   sink
