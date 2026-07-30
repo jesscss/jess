@@ -55,6 +55,29 @@ copying an entire CSS production; compose the CSS rule and override the smallest
 changed child/reference. If that small override is not expressible yet, record
 the specific blocker rather than restating the whole CSS shape locally.
 
+Minimal override bar, 2026-07-29: aim for the lightest CSS-derived grammars the
+codebase can sustain. A downstream file should read as a list of additions and
+pinpoint overrides, not a second rendering of CSS with dialect seasoning. Before
+adding or keeping any downstream production that resembles CSS, write down the
+one CSS slot it overrides or the one added language feature it introduces. If
+the answer is "this rule is mostly CSS but with a different quoted string,
+identifier, value leaf, interpolation point, guard, or body item," the rule is
+too broad until proven otherwise. Move that difference into a semantic slot such
+as `Quoted`, `Keyword`, `Value`, `Selector`, `AtRulePrelude`, or a narrower
+recorded split. A split is allowed only when implementation pressure shows that
+one shared slot cannot express the needed override policy without breaking a
+different context.
+
+Horizontal cleanup rule, 2026-07-29: CSS may be cleaned vertically until it is
+spotless, because it is the base grammar. Derived grammar cleanup should move by
+production family across Less, SCSS, and Jess. If the work touches imports,
+at-rules, quoted values, identifiers/functions, pseudo selectors, selector
+starts, query/supports/container forms, guards, or custom-property values, check
+the same family in all four grammars and land the shared shape plus the smallest
+necessary overrides. Do not fix `@supports`, an import tail, or a quoted-value
+rule in one dialect by creating a local structure that the next dialect will
+need to rediscover.
+
 Current integration warning: the physical fold blocker is paid: CSS, Less, SCSS,
 and Jess now each ship AST and CST from one host-mode grammar source. Older
 green Less byte-identity evidence below is historical evidence for the batches
@@ -363,15 +386,23 @@ recognizes a dialect-specific language shape and that divergence is documented
 near the rule.
 
 CSS ownership re-audit, 2026-07-29: downstream grammars should use CSS for
-every construct they do not actually change. The naming target is semantic,
-generic, and shared: a guard is `Guard`, a mixin is `Mixin`, a selector is a
-`Selector`, and a pseudo selector is `PseudoSelector`, not bare `Pseudo` or a
-dialect/provenance-prefixed alias. `Css*` grammar rules and CST labels are
-findings by default for the same reason `Direct*`, `Ast*`, and `Core*` names
-are findings: they describe the current owner, not the language concept. The
-narrow exception is parser-shared terminal recognition such as `CssSyntax*` and
-`ScssSyntax*`, where the prefix names the accepted syntax surface; those names
-should not leak into grammar-family nodes, AST concepts, or public CST labels.
+every construct they do not actually change. A downstream change does not give
+the dialect permission to replace the whole CSS production: override only the
+specific child, value reference, or body item that accepts a different language,
+then let the original CSS frame consume that override. The naming target is
+semantic, generic, and shared: a guard is `Guard`, a mixin is `Mixin`, a selector
+is a `Selector`, a quoted value is `Quoted`, and a pseudo selector is
+`PseudoSelector`, not bare `Pseudo` or a dialect/provenance-prefixed alias.
+`Css*` grammar rules and CST labels are findings by default for the same reason
+`Direct*`, `Ast*`, and `Core*` names are findings: they describe the current
+owner, not the language concept. Parser-shared `CssSyntax*` / `ScssSyntax*`
+style leaves are transition debt, not an architectural exception. The target is
+semantic slots such as `Keyword`, `Quoted`, `AttributeOperator`, `Nth`,
+`AtKeyword`, and `PseudoSelector` that CSS-owned structure calls through `g.*`;
+Less, SCSS, and Jess override those slots granularly when their syntax differs.
+Only split one of those slots when implementation pressure proves that contexts
+with the same visible concept need different override behavior, and record that
+proof near the split.
 
 At-rule naming decision, 2026-07-29: the top-level family is `AtRule`.
 Concrete public CST/AST node kinds may distinguish statement and block forms
@@ -409,12 +440,13 @@ highest-priority non-Parseman grammar surfaces:
   the selector frame only after settling percentage differences explicitly.
 - SCSS still carries local CSS-like leaves (`pseudoColon`, `hexColor`,
   `numberValue`, comments, at-keyword leaves) because cross-composed
-  `CssSyntax*` leaves have macro first-set limits. That is a temporary blocker,
-  not an architectural exception; either make the shared leaves macro-visible or
-  fix the Parseman compose limitation before calling the duplication done.
-- SCSS `propertyName` is documented as byte-identical to `CssSyntaxProperty`
-  but accepts optional leading `*`. Either use the shared leaf or rename and
-  document it as a deliberate legacy `*property` override.
+  shared leaves have macro first-set limits. That is a temporary blocker, not
+  an architectural exception; either make the shared semantic slots
+  macro-visible or fix the Parseman compose limitation before calling the
+  duplication done.
+- SCSS `propertyName` is documented as byte-identical to the CSS property-name
+  leaf but accepts optional leading `*`. Either use the shared semantic slot or
+  rename and document it as a deliberate legacy `*property` override.
 - CSS at-rule block frames in SCSS and Jess restate at-rule headers/tails with
   dialect body substitutions. Share the at-rule frame/reducer pattern where the
   accepted header language is unchanged; keep local bodies where the dialect

@@ -217,9 +217,17 @@ document order; it is stated here.
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | **1** | **Parseman grammar floor**                                                                                                                                               | paid by `parseman@0.43.0`; future parseman releases remain owner-only                                | **owner only for future releases** |
 | **2** | **Physical eight-to-four fold** — one host-mode `src/grammar.ts` per dialect                                                                                             | **complete**; deleted `src/ast/grammar.ts` files are historical evidence only                        | agent                              |
-| **3** | **CSS polish** — spec names, small rules, documented deviations, `word(...)`, separated-list helpers, and `dispatch(...)`/`routed()` for known-or-generic token families | step 2 complete; CSS remains the base for dialect cleanup                                            | agent                              |
-| **4** | **Less polish** — compose on CSS, keep Less deviations explicit, delete SCSS-only inheritance, parse selectors/extends/values once                                       | step 3 shape decisions; CSS/Less are the alpha bar                                                   | agent                              |
-| **5** | **SCSS, then Jess polish** — repair the folded grammars without recreating second grammar bodies or Less inheritance                                                     | step 4; SCSS/Jess may be temporarily red while being rebuilt, but duplicate grammar bodies stay dead | agent                              |
+| **3** | **CSS polish** — spec names, small reusable slots, documented deviations, `word(...)`, separated-list helpers, and `dispatch(...)`/`routed()` for known-or-generic token families | step 2 complete; CSS remains the base for dialect cleanup                                            | agent                              |
+| **4** | **Less polish** — compose on CSS, keep Less deviations explicit, delete SCSS-only inheritance, parse selectors/extends/values once, and make the Less grammar the thinnest possible overlay | step 3 shape decisions; CSS/Less are the alpha bar                                                   | agent                              |
+| **5** | **SCSS, then Jess polish** — repair the folded grammars as additions plus pinpoint CSS-slot overrides, without recreating second grammar bodies or Less inheritance                                                     | step 4; SCSS/Jess may be temporarily red while being rebuilt, but duplicate grammar bodies stay dead | agent                              |
+
+CSS can be cleaned vertically until it is spotless because it is the base
+grammar. Derived cleanup should be horizontal by production family: imports,
+at-rules, quoted values, identifiers/functions, pseudo selectors, selector
+starts, query/supports/container forms, guards, custom-property values, and
+similar repeated families should be audited across CSS, Less, SCSS, and Jess
+before landing the shape. The intended outcome is one CSS-owned frame plus the
+smallest necessary dialect overrides, not one local fix per dialect.
 
 **Acceptance, identical for every dialect** (§8.2 states these with evidence
 requirements):
@@ -333,15 +341,16 @@ consumed by **two or more** parsers **and** parser-specific. Anything failing
 either half of that test does not belong there.
 
 It has no package-root export; consumers import by subpath —
-`./recognition`, `./opaque-at-rule`, `./pseudo-consts`. Its four value exports
-are `cssSyntax`, `lessSyntax`, `cssPseudoSyntax`, and
-`opaqueAtRuleRecognition`. The shared recognition exports were cleaned on
-2026-07-26 from `cssAstSyntax` / `cssAstPseudoSyntax` and `lessAstSyntax` to
-remove false compile-mode names; their rule keys likewise moved from
-`CssAstSyntax*` / `LessAstSyntax*` to `CssSyntax*` / `LessSyntax*`. The CSS and
-Less prefixes are now language scope markers rather than compile-mode markers;
-if the four-grammar rebuild later makes a base module itself unambiguous, that
-prefix can disappear too.
+`./recognition`, `./opaque-at-rule`, `./pseudo-consts`. Its current value
+exports include `cssSyntax`, `lessSyntax`, `cssPseudoSyntax`, and
+`opaqueAtRuleRecognition`. Those names are transition-era recognition maps, not
+the naming target. The target grammar model is CSS-owned structure consuming
+semantic slots (`Keyword`, `Quoted`, `AttributeOperator`, `Nth`, `AtKeyword`,
+`PseudoSelector`, and similar), while Less, SCSS, and Jess override only the
+slot whose accepted language actually differs. Do not replace an enclosing CSS
+production because one child changes. Split a shared CSS slot only when
+implementation pressure proves two contexts with the same visible concept need
+different override behavior, and record that proof near the split.
 
 **Cross-artifact `compose()` is not available, so the rebuild proceeds as
 terminal leaves.** The constraint a builder must satisfy to be statically
