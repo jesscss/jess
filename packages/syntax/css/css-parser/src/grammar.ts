@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -726,10 +726,22 @@ function keyframeSelectorList(children: readonly unknown[]): SelectorList {
 }
 
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const whitespace = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
-  blockComment
-)));
+
+/*
+ * Document trivia arms carry their category so root capture can retain just the
+ * comment gaps the renderer replays, the way the other three dialects do.
+ *
+ * Parseman trivia labels belong to terminal identity, so the arm needs its own
+ * terminal: labeling the shared `blockComment` would also class every comment
+ * the ambient `scanSkip` steps over inside an opaque custom value, and the
+ * renderer would replay those bytes a second time outside the value.
+ */
+const whitespaceRun = regex(/[ \t\n\r\f]+/);
+const triviaBlockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const whitespace = classifiedTrivia({
+  whitespace: whitespaceRun,
+  blockComment: triviaBlockComment
+});
 
 /*
  * Value-slot boundaries are authored trivia, not semantic leaves. Capture the
@@ -742,12 +754,12 @@ const cssValueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
  * Block comments are grammar trivia. noTrivia lexical leaves still cannot glue
  * `10/*x*\/px` into one Dimension.
  */
-const interstitialTrivia = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
-  blockComment
-)));
-const compoundTrivia = trivia(oneOrMore(blockComment));
-const commentTrivia = trivia(oneOrMore(blockComment));
+const interstitialTrivia = classifiedTrivia({
+  whitespace: whitespaceRun,
+  blockComment: triviaBlockComment
+});
+const compoundTrivia = classifiedTrivia({ blockComment: triviaBlockComment });
+const commentTrivia = classifiedTrivia({ blockComment: triviaBlockComment });
 const calcWhitespace = regex(/[ \t\n\r\f]+/);
 const calcProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
 const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
@@ -1500,9 +1512,13 @@ export const cssFactory = (g: GrammarSelf) => {
     g.CustomPropertyName,
     children => tokenText(children[0])
   );
+
+  /* A custom-property value is one opaque token. Comments the balanced-group
+   * scanner steps over inside it are value bytes the token already carries, so
+   * this scope keeps them out of the root capture the renderer replays. */
   const CustomValue = node(
     'CustomValue',
-    customValue,
+    parser({ trivia: whitespace, rootCapture: 'opaque' }, customValue),
     children => any(children.length === 0 ? '' : tokenText(children[0]))
   );
   const Keyword = node(

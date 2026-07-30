@@ -74,7 +74,12 @@ describe('@jesscss/scss-parser public parse API', () => {
     const trivia = triviaMapOf(root);
 
     expect(sourceSpanOf(root)).toEqual({ start: 0, end: source.length });
-    expect(trivia?.lookup(12, 'after')).toMatchObject({ start: 12, end: 13 });
+
+    /* Root trivia capture is comment-selected: a whitespace-only gap has no
+     * root entry, because the renderer reads comment runs and nothing else. */
+    expect(trivia).toBeDefined();
+    expect(trivia?.lookup(12, 'after')).toBeUndefined();
+
     // A call site is left exactly as authored: whether `double` names a user
     // `@function` or a builtin is a scope question, decided at eval, not here.
     expect(root.rules.find(child => child.type === 'Ruleset')).toMatchObject({

@@ -1,6 +1,10 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
 import { grammarFor, jessDiagnosticCstGrammar } from './grammar.js';
 
+/* The Jess grammar labels its document trivia arms `whitespace` and `comment`;
+ * only the comment arm needs a root entry. */
+export const commentTriviaLabels = ['comment'];
+
 export function parseJessCst(
   input: string,
   startRule = 'Stylesheet',
@@ -10,7 +14,7 @@ export function parseJessCst(
     grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
     input,
     startRule,
-    options
+    { ...options, commentTriviaLabels }
   );
 }
 
@@ -23,7 +27,7 @@ export function parseJessDiagnosticCst(
     jessDiagnosticCstGrammar as Record<string, unknown>,
     input,
     startRule,
-    options
+    { ...options, commentTriviaLabels }
   );
 }
 

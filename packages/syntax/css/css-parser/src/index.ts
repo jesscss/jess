@@ -12,6 +12,8 @@ import {
   type Stylesheet
 } from '@jesscss/core/ast';
 import { grammarFor } from './grammar.js';
+import { commentTriviaLabels } from './cst.js';
+
 
 export type CssParseOptions = {
   readonly trackLines?: boolean;
@@ -83,7 +85,7 @@ export function parse(input: string, options: CssParseOptions = {}): Stylesheet 
   const result = run(
     entry,
     input,
-    { trivia }
+    { trivia, rootTrivia: { select: commentTriviaLabels } }
   );
   const recoveryError = result.errors[0];
   if (!result.ok || result.unconsumedFrom !== null || recoveryError !== undefined || !isStylesheet(result.value)) {
@@ -99,6 +101,6 @@ export function parse(input: string, options: CssParseOptions = {}): Stylesheet 
   }
   return withTriviaMap(
     withSourceSpan(result.value, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
+    createTriviaMapFromParseman(input, result.rootTrivia?.index)
   );
 }

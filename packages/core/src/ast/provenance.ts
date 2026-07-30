@@ -71,14 +71,15 @@ export interface ParserRootTriviaGap {
   readonly end: number;
   hasKind?(kind: string): boolean;
 }
+
+/**
+ * Parseman root trivia capture. Entries name the individual selected markers
+ * inside an owned trivia range, so an entry span is never itself a renderable
+ * gap range — the complete contiguous gap is only reachable through the gap
+ * accessors below.
+ */
 export interface ParserRootTriviaIndex {
   readonly labels?: readonly string[];
-
-  /**
-   * `selectedKinds` entries name markers inside an owned trivia range, so their
-   * entry spans are not themselves renderable gap ranges.
-   */
-  readonly rootCaptureMode?: 'allEntries' | 'selectedKinds';
   readonly entries: ParserTriviaEntriesView;
   gapBefore(offset: number): ParserRootTriviaGap | undefined;
   gapAfter(offset: number): ParserRootTriviaGap | undefined;
@@ -86,6 +87,11 @@ export interface ParserRootTriviaIndex {
   gapsWithKind?(kind: string | readonly string[]): readonly ParserRootTriviaGap[];
 }
 
+/**
+ * Trivia labels a grammar may use for an authored comment. Each dialect parser
+ * selects the subset its own grammar actually labels: Parseman root trivia is
+ * opt-in, selected by label, and rejects a label the grammar never declares.
+ */
 const COMMENT_TRIVIA_KINDS = ['comment', 'blockComment', 'lineComment'] as const;
 type CommentTriviaKind = typeof COMMENT_TRIVIA_KINDS[number];
 
@@ -98,58 +104,6 @@ function gapHasCommentKind(gap: ParserRootTriviaGap): boolean {
     return true;
   }
   return COMMENT_TRIVIA_KINDS.some(kind => gap.hasKind?.(kind) === true);
-}
-
-type TriviaRange = Readonly<{ start: number; end: number }>;
-
-/**
- * Legacy Parseman root capture stores every labeled trivia chunk. When the
- * renderer only needs comments, derive just their complete contiguous gaps
- * directly from that packed log. Calling `gapsWithKind()` on the legacy index
- * first materializes a map, gap object, and entry-index array for every
- * whitespace run in the document.
- *
- * Selected-root capture deliberately stores marker spans instead; its sparse
- * index owns the complete ranges and is queried through `gapsWithKind()`.
- */
-function labeledCommentRangesFromEntries(
-  index: ParserRootTriviaIndex,
-  hasCommentKind: boolean
-): readonly TriviaRange[] | undefined {
-  if (!hasCommentKind || index.rootCaptureMode === 'selectedKinds') {
-    return undefined;
-  }
-  const { entries } = index;
-  if (typeof entries.kind !== 'function') {
-    return undefined;
-  }
-  if (entries.length === 0) {
-    return [];
-  }
-
-  const ranges: TriviaRange[] = [];
-  let start = entries.start(0);
-  let end = entries.end(0);
-  let containsComment = isCommentTriviaKind(entries.kind(0) ?? '');
-  for (let entry = 1; entry < entries.length; entry++) {
-    const nextStart = entries.start(entry);
-    const nextEnd = entries.end(entry);
-    if (nextStart === end) {
-      end = nextEnd;
-      containsComment ||= isCommentTriviaKind(entries.kind(entry) ?? '');
-      continue;
-    }
-    if (containsComment) {
-      ranges.push({ start, end });
-    }
-    start = nextStart;
-    end = nextEnd;
-    containsComment = isCommentTriviaKind(entries.kind(entry) ?? '');
-  }
-  if (containsComment) {
-    ranges.push({ start, end });
-  }
-  return ranges;
 }
 
 /** Authored separator/trivia facts for a raw ValueSlot array.
@@ -249,11 +203,20 @@ export function createTriviaMapFromRanges(
   };
 }
 
-/** Adapt Parseman's lazy root trivia index without rebuilding intermediate ranges. */
+/** Adapt Parseman's lazy root trivia index without rebuilding intermediate ranges.
+ *
+ * Root capture is sparse and opt-in: a parse whose input holds none of the
+ * selected trivia kinds retains no root index at all. An absent index is
+ * therefore an ordinary outcome — a document with no comments — and yields the
+ * same empty lookup as an index with no gaps.
+ */
 export function createTriviaMapFromParseman(
   src: string,
-  index: ParserRootTriviaIndex
+  index: ParserRootTriviaIndex | undefined
 ): TriviaMap {
+  if (index === undefined) {
+    return createTriviaMapFromRanges(src, []);
+  }
   const canonicalByStart = new Map<number, Map<number, Trivia>>();
   const hasCommentKind = index.labels?.some(isCommentTriviaKind) === true;
   let sortedComments: readonly Trivia[] | undefined;
@@ -323,27 +286,20 @@ export function createTriviaMapFromParseman(
     commentRuns() {
       if (sortedComments === undefined) {
         const runs: Trivia[] = [];
-        const labeledRanges = labeledCommentRangesFromEntries(index, hasCommentKind);
-        const labeledGaps = labeledRanges === undefined && hasCommentKind && index.gapsWithKind !== undefined
+
+        /* Selected-kind capture already retains only the gaps that own a
+         * comment marker, so the labeled query walks no whitespace-only gap.
+         * An unlabeled index still has to be read back out of the source. */
+        const labeledGaps = hasCommentKind && index.gapsWithKind !== undefined
           ? index.gapsWithKind(COMMENT_TRIVIA_KINDS)
           : undefined;
-        if (labeledRanges !== undefined && labeledRanges.length > 0) {
-          for (const range of labeledRanges) {
-            const run = triviaForRange(range.start, range.end, true);
-            if (run !== undefined) {
-              runs.push(run);
-            }
+        for (const gap of labeledGaps ?? index.gaps()) {
+          if (labeledGaps === undefined && !rangeHasComment(src, gap.start, gap.end)) {
+            continue;
           }
-        } else {
-          const candidates = labeledGaps ?? index.gaps();
-          for (const gap of candidates) {
-            if (labeledGaps === undefined && !rangeHasComment(src, gap.start, gap.end)) {
-              continue;
-            }
-            const run = triviaForGap(gap);
-            if (run?.hasComment === true) {
-              runs.push(run);
-            }
+          const run = triviaForGap(gap);
+          if (run?.hasComment === true) {
+            runs.push(run);
           }
         }
         runs.sort((a, b) => a.start - b.start);

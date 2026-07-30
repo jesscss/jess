@@ -6,6 +6,7 @@ import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
 import { cssGrammar } from '../src/grammar.js';
 import { parseCssCst } from '../src/cst-css.js';
+import { commentTriviaLabels } from '../src/cst.js';
 import { parse } from '../src/index.js';
 import { wptAnbParsing } from './wpt-syntax-vectors.js';
 import { bare } from '../../../../../test/provenance-free.js';
@@ -19,13 +20,16 @@ function isStylesheet(value: unknown): value is Stylesheet {
 }
 
 function parseAst(input: string): Stylesheet {
-  const result = run(cssGrammar.Stylesheet, input, { trivia: cssGrammar.whitespace });
+  const result = run(cssGrammar.Stylesheet, input, {
+    trivia: cssGrammar.whitespace,
+    rootTrivia: { select: commentTriviaLabels }
+  });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     throw new Error(`CSS AST grammar did not consume the document: ${JSON.stringify(result)}`);
   }
   return withTriviaMap(
     withSourceSpan(result.value, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
+    createTriviaMapFromParseman(input, result.rootTrivia?.index)
   );
 }
 
@@ -1913,7 +1917,10 @@ describe('CSS canonical-AST grammar', () => {
       '.a { width: calc(1px -2px); }'
     ]) {
       try {
-        const result = run(cssGrammar.Stylesheet, input, { trivia: cssGrammar.whitespace });
+        const result = run(cssGrammar.Stylesheet, input, {
+          trivia: cssGrammar.whitespace,
+          rootTrivia: { select: commentTriviaLabels }
+        });
         expect(result.ok && result.unconsumedFrom === null).toBe(false);
       } catch (error) {
         throw new Error(`${input}: ${error instanceof Error ? error.message : String(error)}`);

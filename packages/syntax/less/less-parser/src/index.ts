@@ -9,6 +9,7 @@ import {
 } from '@jesscss/core/ast';
 import { grammarFor } from './grammar.js';
 import { LessParseError } from './parse-error.js';
+import { commentTriviaLabels } from './cst.js';
 
 export type LessParseOptions = {
   readonly trackLines?: boolean;
@@ -59,7 +60,11 @@ export function parse(input: string, options: LessParseOptions = {}): Stylesheet
       'Less AST grammar is missing its public document entry.'
     );
   }
-  const result = run(entry, input, { trivia, state: { source: input } });
+  const result = run(entry, input, {
+    trivia,
+    state: { source: input },
+    rootTrivia: { select: commentTriviaLabels }
+  });
   if (!result.ok) {
     throw new LessParseError(result.span.start, result.expected, lineOptions(result.span));
   }
@@ -89,7 +94,7 @@ export function parse(input: string, options: LessParseOptions = {}): Stylesheet
   }
   return withTriviaMap(
     withSourceSpan(result.value, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
+    createTriviaMapFromParseman(input, result.rootTrivia?.index)
   );
 }
 

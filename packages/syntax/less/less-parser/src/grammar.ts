@@ -20,9 +20,9 @@
  * parse entry.
  */
 import {
-  attempt, rules, composeLeaf,
+  attempt, rules, classifiedTrivia, composeLeaf,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
-  not, scanTo, balanced, parser, trivia, noTrivia, label, word, keywords, field, leaf, peek,
+  not, scanTo, balanced, parser, noTrivia, label, word, keywords, field, leaf, peek,
   dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, when
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
@@ -2036,19 +2036,19 @@ const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
  * keeps custom-value comments classed as `blockComment` in the root index rather
  * than inheriting the generic whitespace label of the shared scanner terminal.
  */
-const customValueBlockComment = label('blockComment', regex(/\/\*(?:[^*]|\*(?!\/))*\*\//));
-const lessTriviaGap = oneOrMore(choice(
-  label('whitespace', regex(/[ \t\n\r\f]+/)),
-  label('lineComment', lineComment),
-  label('blockComment', blockComment)
-));
+const customValueBlockCommentRun = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const whitespaceRun = regex(/[ \t\n\r\f]+/);
 
 // Less comments are trivia. Line comments must not become renderable CSS
 // comments; block comments may still make an otherwise empty ruleset renderable
 // through body-span trivia, not through a `Comment` statement node.
 // URL bodies explicitly disable trivia below, so `url(//host/path)` remains
 // URL content rather than a comment.
-const whitespace = trivia(lessTriviaGap);
+const whitespace = classifiedTrivia({
+  whitespace: whitespaceRun,
+  lineComment,
+  blockComment
+});
 const selectorAttributeModifierSpace = regex(/[ \t\n\r\f]+/);
 const importKeyword = keywords(
   ['@-import', '@import'],
@@ -2078,11 +2078,19 @@ const lessOpaqueBodyCapture = noTrivia(scanTo(
 // operator position this trivia is a separator the arithmetic consumes; a comment
 // in value-LIST position (`1 /* c */ 2`, no operator char follows) makes the
 // operator loop backtrack and is left as preserved value syntax.
-const mathTrivia = trivia(lessTriviaGap);
+const mathTrivia = classifiedTrivia({
+  whitespace: whitespaceRun,
+  lineComment,
+  blockComment
+});
 // Function argument comments are trivia. Block comments stay out of the value
 // AST and are replayed through the call argument ValueLayout when they sit on an
 // argument boundary.
-const functionTrivia = trivia(lessTriviaGap);
+const functionTrivia = classifiedTrivia({
+  whitespace: whitespaceRun,
+  lineComment,
+  blockComment
+});
 // Mixin signatures and guards are invisible definition syntax. Unlike an
 // ordinary declaration value, a block comment at one of their token boundaries
 // is lexical trivia (the legacy MixinArgs production used the same rule). The
@@ -2092,20 +2100,28 @@ const functionTrivia = trivia(lessTriviaGap);
 const mixinSignatureGap = regex(/(?:(?:[ \t\n\r\f]+)|(?:\/\/[^\n\r]*)|(?:\/\*(?:[^*]|\*(?!\/))*\*\/))+/);
 const mixinGuardGap = regex(/(?:(?:[ \t\n\r\f]+)|(?:\/\/[^\n\r]*)|(?:\/\*(?:[^*]|\*(?!\/))*\*\/))+/);
 const mixinSignatureTrivia = whitespace;
-const mixinGuardTrivia = trivia(label('whitespace', mixinGuardGap));
+const mixinGuardTrivia = classifiedTrivia({ whitespace: mixinGuardGap });
 // Selector grammar components used inside functional pseudos retain their
 // established lexical-comment behavior.
-const staticSelectorTrivia = trivia(lessTriviaGap);
-const compoundSelectorTrivia = trivia(oneOrMore(choice(
-  label('lineComment', lineComment),
-  label('blockComment', blockComment)
-)));
-const atPreludeCommentTrivia = trivia(oneOrMore(label('blockComment', blockComment)));
-const customValueCommentTrivia = trivia(oneOrMore(customValueBlockComment));
+const staticSelectorTrivia = classifiedTrivia({
+  whitespace: whitespaceRun,
+  lineComment,
+  blockComment
+});
+const compoundSelectorTrivia = classifiedTrivia({
+  lineComment,
+  blockComment
+});
+const atPreludeCommentTrivia = classifiedTrivia({ blockComment });
+const customValueCommentTrivia = classifiedTrivia({ blockComment: customValueBlockCommentRun });
 // Outer selector comments are lexical trivia. Render-time body/source spans own
 // whether a trivia-only body remains output-bearing; selectors do not invent
 // comment simple selectors.
-const outerSelectorTrivia = trivia(lessTriviaGap);
+const outerSelectorTrivia = classifiedTrivia({
+  whitespace: whitespaceRun,
+  lineComment,
+  blockComment
+});
 const staticSimpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
 const staticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 // A selector simple that contains Less interpolation stays one selector atom.

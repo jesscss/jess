@@ -22,6 +22,7 @@ import {
 } from '@jesscss/core/ast';
 import type { ApplySelectorKind, ExtendSelectorKind } from '@jesscss/core';
 import { grammarFor } from './grammar.js';
+import { commentTriviaLabels } from './cst.js';
 
 export interface JessParseOptions {
   readonly trackLines?: boolean;
@@ -191,7 +192,7 @@ export function parse(input: string, options: JessParseOptions = {}): Stylesheet
   const result = run(
     entry,
     input,
-    { trivia }
+    { trivia, rootTrivia: { select: commentTriviaLabels } }
   );
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     const failureSpan = result.ok ? undefined : result.span;
@@ -207,7 +208,7 @@ export function parse(input: string, options: JessParseOptions = {}): Stylesheet
   }
   const document = withTriviaMap(
     withSourceSpan(result.value, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
+    createTriviaMapFromParseman(input, result.rootTrivia?.index)
   );
   validateJessOptions(document, options);
   return document;

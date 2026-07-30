@@ -1,4 +1,4 @@
-import { run, parseDoc, cstBuildHost as parsemanCstBuildHost, type BuildHost, type ParseDoc, type ParseError, type Registry, type Runnable, type Span } from 'parseman';
+import { run, parseDoc, cstBuildHost as parsemanCstBuildHost, type BuildHost, type ParseDoc, type ParseError, type Registry, type RootTriviaCapture, type Runnable, type Span } from 'parseman';
 
 export type CssCstType = string;
 
@@ -30,19 +30,30 @@ export type CssCstNode = {
 
 export type CssCstChild = CssCstNode | CssCstLeaf | CssCstError;
 
+/* The CSS grammar labels its document trivia arms `whitespace` and
+ * `blockComment`; only the comment arm needs a root entry. */
+export const commentTriviaLabels = ['blockComment'];
+
 export type CssCstParseResult = {
   readonly ok: boolean;
   readonly tree: CssCstNode;
   readonly span: Span;
   readonly expected: string[];
   readonly errors: ParseError[];
-  readonly triviaLog: number[];
+
+  /* Selected root trivia, absent when the parse retained none. */
+  readonly rootTrivia?: RootTriviaCapture;
   readonly unconsumedFrom: number | null;
 };
 
 export type CssCstParseOptions = {
   readonly collapse?: boolean;
   readonly trackLines?: boolean;
+
+  /* Root trivia labels to retain, when the dialect's grammar labels its
+   * comment arms differently from CSS. Parseman rejects a label the grammar
+   * never declares, so a composing dialect must name its own. */
+  readonly commentTriviaLabels?: readonly string[];
 };
 
 type BuildHostArgs = Parameters<BuildHost>;
@@ -388,7 +399,8 @@ export function parseCst(
       trivia: rule(
         grammar,
         'rw'
-      )
+      ),
+      rootTrivia: { select: options.commentTriviaLabels ?? commentTriviaLabels }
     }
   );
   const tree = isCssCstChild(result.value) && result.value._tag === 'node'
@@ -400,7 +412,7 @@ export function parseCst(
     span: result.span,
     expected: result.expected,
     errors: result.errors,
-    triviaLog: result.triviaLog,
+    rootTrivia: result.rootTrivia,
     unconsumedFrom: result.unconsumedFrom
   };
 }

@@ -1,6 +1,12 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
 import { grammarFor, scssDiagnosticCstGrammar } from './grammar.js';
 
+/* The SCSS grammar labels its trivia arms `whitespace` and `comment`: a
+ * statement-level block comment is a `Comment` node rather than trivia, so the
+ * comment category covers document line comments and the block comments the
+ * custom-value scope strips out of the value. */
+export const commentTriviaLabels = ['comment'];
+
 export function parseScssCst(
   input: string,
   startRule = 'Stylesheet',
@@ -10,7 +16,7 @@ export function parseScssCst(
     grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
     input,
     startRule,
-    options
+    { ...options, commentTriviaLabels }
   );
 }
 
@@ -23,7 +29,7 @@ export function parseScssDiagnosticCst(
     scssDiagnosticCstGrammar as Record<string, unknown>,
     input,
     startRule,
-    options
+    { ...options, commentTriviaLabels }
   );
 }
 
