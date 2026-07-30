@@ -525,34 +525,6 @@ describe('JessLanguageServiceEngine', () => {
         expect(diag?.message).toBe(item.message);
       }
     });
-
-    it('reports same-file callable calls with no matching positional overload (semantic)', () => {
-      const engine = createEngine();
-      const cases = [
-        {
-          doc: createDocument('less', '.theme(@color) { color: @color; }\n.a { .theme(red, blue); }'),
-          message: 'No matching overload for mixin ".theme": expected 1 argument, got 2 arguments'
-        },
-        {
-          doc: createDocument('scss', '@mixin theme($color) { color: $color; }\n.a { @include theme(red, blue); }'),
-          message: 'No matching overload for mixin "theme": expected 1 argument, got 2 arguments'
-        },
-        {
-          doc: createDocument('scss', '@function tone($color, $scale) { @return $color; }\n.a { color: tone(red, 2, 3); }'),
-          message: 'No matching overload for function "tone": expected 2 arguments, got 3 arguments'
-        }
-      ];
-
-      for (const item of cases) {
-        engine.open(item.doc.uri, item.doc.languageId, item.doc.version, item.doc.getText());
-        const diagnostics = engine.getDiagnostics(item.doc.uri);
-        const diag = diagnostics.find(diagnostic => diagnostic.code === 'call/no-matching-overload');
-
-        expect(diag).toBeDefined();
-        expect(diag?.severity).toBe(1); // DiagnosticSeverity.Error
-        expect(diag?.message).toBe(item.message);
-      }
-    });
   });
 
   describe('lint rules (MS css-languageservice parity)', () => {

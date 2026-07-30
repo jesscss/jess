@@ -92,8 +92,7 @@ export const LINT_CODES = {
 export const SEMANTIC_CODES = {
   undefinedVariable: 'var/undefined',
   undefinedMixin: 'mixin/undefined',
-  unknownNamedArgument: 'call/unknown-named-argument',
-  noMatchingOverload: 'call/no-matching-overload'
+  unknownNamedArgument: 'call/unknown-named-argument'
 } as const;
 
 const LENGTH_UNITS = new Set([
@@ -607,37 +606,6 @@ type LessFixedMixinCallFact = {
   readonly display: string;
   readonly arity: number;
   readonly span: DiagnosticSpan;
-};
-
-type LessFixedMixinFacts = {
-  readonly definitionsByArity: Map<string, LessFixedMixinDefinitionFact[]>;
-  readonly definitionsByName: Map<string, LessFixedMixinDefinitionFact[]>;
-  readonly nonFixedDefinitionNames: Set<string>;
-  readonly calls: LessFixedMixinCallFact[];
-};
-
-type ScssCallableKind = 'mixin' | 'function';
-
-type ScssCallableSignatureFact = {
-  readonly kind: ScssCallableKind;
-  readonly name: string;
-  readonly display: string;
-  readonly minArity: number;
-  readonly maxArity: number;
-};
-
-type ScssCallableCallFact = {
-  readonly kind: ScssCallableKind;
-  readonly name: string;
-  readonly display: string;
-  readonly arity: number;
-  readonly span: DiagnosticSpan;
-};
-
-type ScssCallableFacts = {
-  readonly signaturesByKey: Map<string, ScssCallableSignatureFact[]>;
-  readonly dynamicSignatureKeys: Set<string>;
-  readonly calls: ScssCallableCallFact[];
 };
 
 type NamedArgumentFact = {
@@ -3440,104 +3408,6 @@ function scssCallableParameterScopeOf(source: string, node: CssCstNode): Variabl
       };
 }
 
-function scssParameterArityOf(source: string, node: CssCstNode): { readonly min: number; readonly max: number } | null {
-  const params = firstChildNodeOf(node, 'MixinParameters');
-  if (params === undefined) {
-    return { min: 0, max: 0 };
-  }
-  if (source.slice(absoluteStart(params), absoluteEnd(params)).includes('...')) {
-    return null;
-  }
-  let min = 0;
-  let max = 0;
-  for (const parameter of childNodesOfType(params, 'MixinParameter')) {
-    const authored = authoredVariableNameOf(source, absoluteStart(parameter), absoluteEnd(parameter));
-    if (authored === null || authored.name.charCodeAt(0) !== 36 /* $ */) {
-      return null;
-    }
-    max++;
-    if (!source.slice(authored.end, absoluteEnd(parameter)).includes(':')) {
-      min++;
-    }
-  }
-  return { min, max };
-}
-
-function scssCallableSignatureOf(source: string, node: CssCstNode): ScssCallableSignatureFact | null {
-  const kind: ScssCallableKind | null = node.grammarType === 'MixinDefinition'
-    ? 'mixin'
-    : node.grammarType === 'FunctionRule'
-      ? 'function'
-      : null;
-  if (kind === null) {
-    return null;
-  }
-  const name = scssNamedRuleName(source, node, kind === 'mixin' ? '@mixin' : '@function');
-  if (name === null) {
-    return null;
-  }
-  const arity = scssParameterArityOf(source, node);
-  return arity === null
-    ? null
-    : {
-        kind,
-        name: name.name,
-        display: name.display,
-        minArity: arity.min,
-        maxArity: arity.max
-      };
-}
-
-function scssDynamicCallableSignatureKeyOf(source: string, node: CssCstNode): string | null {
-  const kind: ScssCallableKind | null = node.grammarType === 'MixinDefinition'
-    ? 'mixin'
-    : node.grammarType === 'FunctionRule'
-      ? 'function'
-      : null;
-  if (kind === null || scssParameterArityOf(source, node) !== null) {
-    return null;
-  }
-  const name = scssNamedRuleName(source, node, kind === 'mixin' ? '@mixin' : '@function');
-  return name === null ? null : scssCallableKey(kind, name.name);
-}
-
-function scssCallableKey(kind: ScssCallableKind, name: string): string {
-  return `${kind}\0${name}`;
-}
-
-function scssMixinArityCallOf(source: string, node: CssCstNode): ScssCallableCallFact | null {
-  if (node.grammarType !== 'MixinCall') {
-    return null;
-  }
-  const name = scssMixinCallFactOf(source, node);
-  if (name === null || childNodesOfType(node, 'MixinCallArgument').some(argument => scssNamedArgumentOf(source, argument) !== null)) {
-    return null;
-  }
-  return {
-    kind: 'mixin',
-    name: name.name,
-    display: name.display,
-    arity: childNodesOfType(node, 'MixinCallArgument').length,
-    span: name.span
-  };
-}
-
-function scssFunctionArityCallOf(source: string, node: CssCstNode): ScssCallableCallFact | null {
-  if (node.grammarType !== 'Call') {
-    return null;
-  }
-  const rawName = functionNameOf(source, absoluteStart(node), absoluteEnd(node));
-  return rawName === null
-    ? null
-    : {
-        kind: 'function',
-        name: normalizedScssCallableName(rawName),
-        display: rawName,
-        arity: scssCallArguments(node).length,
-        span: spanFromNodeStart(node, absoluteStart(node), absoluteStart(node) + rawName.length)
-      };
-}
-
 function normalizedScssCallableName(name: string): string {
   return name.replace(/_/g, '-');
 }
@@ -3670,14 +3540,6 @@ function lessFixedMixinDefinitionOf(source: string, node: CssCstNode): LessFixed
           ? lessMixinBindingNodes(node).length
           : countDescendantNodesOf(signature, 'MixinParamWithSignatureTrivia')
       };
-}
-
-function lessSimpleMixinDefinitionOf(source: string, node: CssCstNode): MixinDefinitionFact | null {
-  if (node.grammarType !== 'Statement' || lessMixinDefinitionChild(node) === undefined) {
-    return null;
-  }
-  const selector = firstChildNodeOf(node, 'SelectorBranch');
-  return selector === undefined ? null : lessSimpleMixinNameFromSelector(source, selector);
 }
 
 function descendantNodesOfType(node: CssCstNode, grammarType: string, out: CssCstNode[]): void {
@@ -4374,163 +4236,61 @@ function lessLeakyScopeDiagnostics(
 function collectLessFixedMixinFacts(
   source: string,
   node: CssCstNode,
-  facts: LessFixedMixinFacts
+  definitions: Map<string, LessFixedMixinDefinitionFact[]>,
+  calls: LessFixedMixinCallFact[]
 ): void {
   const definition = lessFixedMixinDefinitionOf(source, node);
   if (definition !== null) {
     const key = `${definition.name}\0${definition.arity}`;
-    const arityDefinitions = facts.definitionsByArity.get(key);
-    if (arityDefinitions === undefined) {
-      facts.definitionsByArity.set(key, [definition]);
+    const existing = definitions.get(key);
+    if (existing === undefined) {
+      definitions.set(key, [definition]);
     } else {
-      arityDefinitions.push(definition);
+      existing.push(definition);
     }
-    const namedDefinitions = facts.definitionsByName.get(definition.name);
-    if (namedDefinitions === undefined) {
-      facts.definitionsByName.set(definition.name, [definition]);
-    } else {
-      namedDefinitions.push(definition);
-    }
-    return;
-  }
-
-  const simpleDefinition = lessSimpleMixinDefinitionOf(source, node);
-  if (simpleDefinition !== null) {
-    facts.nonFixedDefinitionNames.add(simpleDefinition.name);
     return;
   }
 
   const call = lessFixedMixinCallOf(source, node);
   if (call !== null) {
-    facts.calls.push(call);
+    calls.push(call);
     return;
   }
 
   for (const child of cstChildrenOf(node)) {
     if (isCstNode(child)) {
-      collectLessFixedMixinFacts(source, child, facts);
+      collectLessFixedMixinFacts(source, child, definitions, calls);
     }
   }
-}
-
-function lessFixedMixinFacts(source: string, root: CssCstNode): LessFixedMixinFacts {
-  const facts: LessFixedMixinFacts = {
-    definitionsByArity: new Map(),
-    definitionsByName: new Map(),
-    nonFixedDefinitionNames: new Set(),
-    calls: []
-  };
-  collectLessFixedMixinFacts(source, root, facts);
-  return facts;
-}
-
-function lessArityLabel(arity: number): string {
-  return `${arity} ${arity === 1 ? 'argument' : 'arguments'}`;
-}
-
-function lessExpectedArityLabel(definitions: readonly LessFixedMixinDefinitionFact[]): string {
-  const arities = Array.from(new Set(definitions.map(definition => definition.arity))).sort((a, b) => a - b);
-  if (arities.length === 1) {
-    return lessArityLabel(arities[0]!);
-  }
-  if (arities.length === 2) {
-    return `${lessArityLabel(arities[0]!)} or ${lessArityLabel(arities[1]!)}`;
-  }
-  return `${arities.slice(0, -1).map(lessArityLabel).join(', ')}, or ${lessArityLabel(arities[arities.length - 1]!)}`;
 }
 
 function lessAmbiguousMixinCallDiagnostics(
-  facts: LessFixedMixinFacts,
+  source: string,
+  root: CssCstNode,
+  hasExternalSources: boolean,
   push: (code: string, severity: DiagnosticSeverityName, message: string, span: DiagnosticSpan, qualifiers?: readonly string[]) => void
 ): void {
-  if (facts.calls.length === 0 || facts.definitionsByArity.size === 0) {
+  if (hasExternalSources) {
+    return;
+  }
+  const definitions = new Map<string, LessFixedMixinDefinitionFact[]>();
+  const calls: LessFixedMixinCallFact[] = [];
+  collectLessFixedMixinFacts(source, root, definitions, calls);
+  if (calls.length === 0 || definitions.size === 0) {
     return;
   }
 
-  for (const call of facts.calls) {
-    const candidates = facts.definitionsByArity.get(`${call.name}\0${call.arity}`);
+  for (const call of calls) {
+    const candidates = definitions.get(`${call.name}\0${call.arity}`);
     if (candidates === undefined || candidates.length < 2) {
       continue;
     }
+    const argumentLabel = call.arity === 1 ? 'argument' : 'arguments';
     push(
       LINT_CODES.ambiguousMixinCalls,
       'warning',
-      `Mixin call "${call.display}" matches ${candidates.length} same-file unguarded definitions with ${lessArityLabel(call.arity)}`,
+      `Mixin call "${call.display}" matches ${candidates.length} same-file unguarded definitions with ${call.arity} ${argumentLabel}`,
       call.span
-    );
-  }
-}
-
-function lessNoMatchingOverloadDiagnostics(
-  facts: LessFixedMixinFacts,
-  push: (code: string, severity: DiagnosticSeverityName, message: string, span: DiagnosticSpan, qualifiers?: readonly string[], phase?: Phase) => void
-): void {
-  if (facts.calls.length === 0 || facts.definitionsByName.size === 0) {
-    return;
-  }
-
-  for (const call of facts.calls) {
-    const definitions = facts.definitionsByName.get(call.name);
-    if (
-      definitions === undefined
-      || facts.nonFixedDefinitionNames.has(call.name)
-      || facts.definitionsByArity.has(`${call.name}\0${call.arity}`)
-    ) {
-      continue;
-    }
-    push(
-      SEMANTIC_CODES.noMatchingOverload,
-      'error',
-      `No matching overload for mixin "${call.display}": expected ${lessExpectedArityLabel(definitions)}, got ${lessArityLabel(call.arity)}`,
-      call.span,
-      undefined,
-      'eval'
-    );
-  }
-}
-
-function scssSignatureArityLabel(signature: ScssCallableSignatureFact): string {
-  if (signature.minArity === signature.maxArity) {
-    return lessArityLabel(signature.minArity);
-  }
-  return `${signature.minArity}-${signature.maxArity} arguments`;
-}
-
-function scssExpectedArityLabel(signatures: readonly ScssCallableSignatureFact[]): string {
-  const labels = Array.from(new Set(signatures.map(scssSignatureArityLabel)));
-  if (labels.length === 1) {
-    return labels[0]!;
-  }
-  if (labels.length === 2) {
-    return `${labels[0]!} or ${labels[1]!}`;
-  }
-  return `${labels.slice(0, -1).join(', ')}, or ${labels[labels.length - 1]!}`;
-}
-
-function scssNoMatchingOverloadDiagnostics(
-  facts: ScssCallableFacts,
-  push: (code: string, severity: DiagnosticSeverityName, message: string, span: DiagnosticSpan, qualifiers?: readonly string[], phase?: Phase) => void
-): void {
-  if (facts.calls.length === 0 || facts.signaturesByKey.size === 0) {
-    return;
-  }
-  for (const call of facts.calls) {
-    const key = scssCallableKey(call.kind, call.name);
-    const signatures = facts.signaturesByKey.get(key);
-    if (
-      signatures === undefined
-      || facts.dynamicSignatureKeys.has(key)
-      || signatures.some(signature => call.arity >= signature.minArity && call.arity <= signature.maxArity)
-    ) {
-      continue;
-    }
-    push(
-      SEMANTIC_CODES.noMatchingOverload,
-      'error',
-      `No matching overload for ${call.kind} "${call.display}": expected ${scssExpectedArityLabel(signatures)}, got ${lessArityLabel(call.arity)}`,
-      call.span,
-      undefined,
-      'eval'
     );
   }
 }
@@ -5811,11 +5571,6 @@ export function cstLintDiagnostics(
   const lessMixinNamedArgumentCallFacts: MixinNamedArgumentCallFact[] = [];
   const scssMixinSignatureFacts: MixinSignatureFact[] = [];
   const scssMixinNamedArgumentCallFacts: MixinNamedArgumentCallFact[] = [];
-  const scssCallableFacts: ScssCallableFacts = {
-    signaturesByKey: new Map(),
-    dynamicSignatureKeys: new Set(),
-    calls: []
-  };
   const functionDefinitions: FunctionDefinitionFact[] = [];
   const functionReferences = new Set<string>();
   const functionDefinitionNames = new Set<string>();
@@ -6067,30 +5822,6 @@ export function cstLintDiagnostics(
     const scssMixinNamedArgumentCall = language === 'scss' ? scssMixinNamedArgumentCallOf(source, node) : null;
     if (scssMixinNamedArgumentCall !== null) {
       scssMixinNamedArgumentCallFacts.push(scssMixinNamedArgumentCall);
-    }
-    if (language === 'scss') {
-      const scssCallableSignature = scssCallableSignatureOf(source, node);
-      if (scssCallableSignature !== null) {
-        const key = scssCallableKey(scssCallableSignature.kind, scssCallableSignature.name);
-        const signatures = scssCallableFacts.signaturesByKey.get(key);
-        if (signatures === undefined) {
-          scssCallableFacts.signaturesByKey.set(key, [scssCallableSignature]);
-        } else {
-          signatures.push(scssCallableSignature);
-        }
-      }
-      const dynamicKey = scssDynamicCallableSignatureKeyOf(source, node);
-      if (dynamicKey !== null) {
-        scssCallableFacts.dynamicSignatureKeys.add(dynamicKey);
-      }
-      const scssMixinArityCall = scssMixinArityCallOf(source, node);
-      if (scssMixinArityCall !== null) {
-        scssCallableFacts.calls.push(scssMixinArityCall);
-      }
-      const scssFunctionArityCall = scssFunctionArityCallOf(source, node);
-      if (scssFunctionArityCall !== null) {
-        scssCallableFacts.calls.push(scssFunctionArityCall);
-      }
     }
 
     const functionDefinition = functionDefinitionOf(source, node, language);
@@ -7007,13 +6738,7 @@ export function cstLintDiagnostics(
 
   if (language === 'less') {
     lessLeakyScopeDiagnostics(source, root, hasExternalSources, push);
-    if (!hasExternalSources) {
-      const fixedMixinFacts = lessFixedMixinFacts(source, root);
-      lessAmbiguousMixinCallDiagnostics(fixedMixinFacts, push);
-      lessNoMatchingOverloadDiagnostics(fixedMixinFacts, pushDiagnostic);
-    }
-  } else if (language === 'scss' && !hasExternalSources) {
-    scssNoMatchingOverloadDiagnostics(scssCallableFacts, pushDiagnostic);
+    lessAmbiguousMixinCallDiagnostics(source, root, hasExternalSources, push);
   }
 
   for (const group of keyframesVendorGroups.values()) {

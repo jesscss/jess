@@ -442,7 +442,6 @@ describe('lintText', () => {
     expect(defaults.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)).toBe(false);
     expect(defaults.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)).toBe(false);
     expect(defaults.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.unknownNamedArgument)).toBe(false);
-    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.noMatchingOverload)).toBe(false);
 
     const configuredAsRules = await lintText(input, {
       stylesConfig: {
@@ -450,8 +449,7 @@ describe('lintText', () => {
           rules: {
             [SEMANTIC_CODES.undefinedVariable]: 'error',
             [SEMANTIC_CODES.undefinedMixin]: 'warn',
-            [SEMANTIC_CODES.unknownNamedArgument]: 'error',
-            [SEMANTIC_CODES.noMatchingOverload]: 'error'
+            [SEMANTIC_CODES.unknownNamedArgument]: 'error'
           }
         }
       }
@@ -459,7 +457,6 @@ describe('lintText', () => {
     expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)).toBe(false);
     expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)).toBe(false);
     expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.unknownNamedArgument)).toBe(false);
-    expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.noMatchingOverload)).toBe(false);
 
     const configured = await lintText(input, {
       stylesConfig: {
@@ -508,56 +505,6 @@ describe('lintText', () => {
       diagnostic.message
     ])).toEqual([
       [undefined, SEMANTIC_CODES.unknownNamedArgument, 'eval', 'error', 'Unknown named argument $tone for mixin theme']
-    ]);
-
-    const noMatchingOverload = await lintText(
-      {
-        source: '.theme(@color) { color: @color; }\n.a { .theme(red, blue); }',
-        filePath: '/tmp/input.less'
-      },
-      {
-        stylesConfig: {
-          lint: {
-            diagnostics: {
-              [SEMANTIC_CODES.noMatchingOverload]: 'error'
-            }
-          }
-        }
-      }
-    );
-    expect(noMatchingOverload.diagnostics.map(diagnostic => [
-      diagnostic.ruleName,
-      diagnostic.code,
-      diagnostic.phase,
-      diagnostic.severity,
-      diagnostic.message
-    ])).toEqual([
-      [undefined, SEMANTIC_CODES.noMatchingOverload, 'eval', 'error', 'No matching overload for mixin ".theme": expected 1 argument, got 2 arguments']
-    ]);
-
-    const scssNoMatchingOverload = await lintText(
-      {
-        source: '@function tone($color, $scale) { @return $color; }\n.a { color: tone(red, 2, 3); }',
-        filePath: '/tmp/input.scss'
-      },
-      {
-        stylesConfig: {
-          lint: {
-            diagnostics: {
-              [SEMANTIC_CODES.noMatchingOverload]: 'error'
-            }
-          }
-        }
-      }
-    );
-    expect(scssNoMatchingOverload.diagnostics.map(diagnostic => [
-      diagnostic.ruleName,
-      diagnostic.code,
-      diagnostic.phase,
-      diagnostic.severity,
-      diagnostic.message
-    ])).toEqual([
-      [undefined, SEMANTIC_CODES.noMatchingOverload, 'eval', 'error', 'No matching overload for function "tone": expected 2 arguments, got 3 arguments']
     ]);
 
     const scssParameters = await lintText(
