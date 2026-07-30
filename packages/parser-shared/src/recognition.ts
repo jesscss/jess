@@ -17,12 +17,6 @@ const urlOpen = literal(
 );
 const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
-/*
- * Jess's direct literal URL target deliberately reserves `$` forms for its
- * own grammar. Keep this as a macro-recognition leaf, not a parser-local text
- * scan, so `url($path)` / `url($[path])` cannot reach a URL reducer.
- */
-const plainUrlInner = regex(/(?:[^"'()\\$ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
 
 /* Pseudo names are adjacent to `:`/`::`; ambient trivia must not swallow whitespace here. */
@@ -432,7 +426,6 @@ export const cssSyntax = rules(_g => ({
   SingleQuotedText: singleQuotedText,
   UrlOpen: urlOpen,
   UrlInner: urlInner,
-  PlainUrlInner: plainUrlInner,
   SimpleSelectorToken: simpleSelector,
   PseudoSelectorColon: pseudoColon,
   NthExpression: nth,

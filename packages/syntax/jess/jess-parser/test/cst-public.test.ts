@@ -158,7 +158,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(stats(plain.tree).grammarTypes.get('DollarBrace')).toBeUndefined();
   });
 
-  it('keeps CSS import targets static while ordinary value URLs retain interpolation', () => {
+  it('keeps CSS import targets static while unquoted value URLs retain ${…} templates', () => {
     const result = parseJessCst('@import url(theme.css) supports(display: grid); .asset { image: url(images/${file}.svg); }');
 
     expect(result.errors).toHaveLength(0);
