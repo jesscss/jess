@@ -881,7 +881,7 @@ const simpleSelectorToken = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9
 /*
  * Grammar-local copies of the leading hex-color and number recognizers (identical
  * to HexColor / NumberToken). Leading a component-value choice
- * arm with a cross-composition `g.CssSyntax*` reference leaves that arm's
+ * arm with a cross-composition shared `g.*` reference leaves that arm's
  * first-set unresolved (`any`), so the compiler enters the Color / Dimension node
  * frame speculatively at every value atom. A local leading recognizer resolves the
  * arm's first-set (`#` / `[+-.0-9]`) so it is first-char-gated instead.

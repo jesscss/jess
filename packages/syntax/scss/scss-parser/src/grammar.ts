@@ -1028,7 +1028,7 @@ const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
  * Grammar-local copies of the leading pseudo-colon, hex-color and number
  * recognizers (byte-identical to the shared PseudoSelectorColon /
  * HexColor / NumberToken). Leading a choice arm with a
- * cross-composition `g.CssSyntax*` reference leaves that arm's first-set
+ * cross-composition shared `g.*` reference leaves that arm's first-set
  * unresolved (`any`) across the composeLeaf artifact boundary, so the compiler
  * enters the PseudoSelector / Color / Dimension node frame SPECULATIVELY at every simple
  * selector and value atom. A grammar-local leading recognizer lets the compiler
@@ -1068,7 +1068,7 @@ const scssScanSkipSingleString = noTrivia(sequence(
 
 /*
  * Grammar-local CSS bubbling-at-rule keyword recognizers (byte-identical to the
- * shared CssSyntax*AtKeyword leaves). Every nested at-statement arm must have
+ * shared CSS at-keyword leaves). Every nested at-statement arm must have
  * a resolvable first-set for the whole `@`-cluster choice to first-char-gate: the
  * mixin/control-flow arms already lead with local `@…` regexes, so spelling these
  * CSS block keywords locally too resolves the cluster's first-set to `@` and lets
