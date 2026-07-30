@@ -3514,11 +3514,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // failing at the required interpolation. This positive lookahead is the cheap
   // commit signal: only enter the interpolated-property arm when a marker is
   // actually present before the delimiter, so plain properties fall straight to
-  // the literal DeclarationProperty arm. The `node()` boundary keeps the marker
-  // off the declaration reducer's `children[0]` property slot.
+  // the literal DeclarationProperty arm. The collapsed semantic node keeps the
+  // marker off the declaration reducer's `children[0]` property slot without
+  // adding a second public CST name for the same InterpolatedProperty concept.
   const interpolatedPropertyAhead = peek(regex(/[^:;{}]*[@$]\{/));
-  const gatedInterpolatedProperty = node<Interpolation>(
-    'GatedInterpolatedProperty',
+  const interpolatedPropertyHead = node<Interpolation>(
+    'InterpolatedProperty',
     sequence(interpolatedPropertyAhead, g.InterpolatedProperty),
     (children) => {
       const property = children.find(isInterp);
@@ -3534,7 +3535,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // comments from the source trivia map before writing the colon.
   const DeclarationHead = parser({ trivia: whitespace }, sequence(
     choice(
-      gatedInterpolatedProperty,
+      interpolatedPropertyHead,
       g.NumericMapKeyToken,
       g.DeclarationPropertyToken
     ),

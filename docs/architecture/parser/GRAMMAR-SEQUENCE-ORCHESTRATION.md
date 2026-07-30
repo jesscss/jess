@@ -190,6 +190,9 @@ the class/id statement route now retains one typed selector prefix, then uses
 the actual `(`/`;`/ruleset continuation to construct the selected statement.
 A cosmetic `peek(...)` swap at the function-condition site would still preserve
 the wrong architecture.
+The declaration interpolated-property helper is a collapsed
+`InterpolatedProperty` node over that gate and the semantic production: it must
+not introduce a second public CST name for the same property concept.
 Less mixin-reference routing, 2026-07-29: the value-position
 `mixinReferenceAhead` probe was replaced by a typed shared mixin-reference base
 plus `dispatch(...)` on the first accessor delimiter (`[]`, `[`, `.`, or `(`).

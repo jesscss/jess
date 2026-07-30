@@ -220,6 +220,10 @@ describe('Less custom-property interpolation CST facts', () => {
       ['${', 'tone', '}'],
       ['${', 'tone', '}']
     ]);
+    expect(findNodes(result.tree, 'InterpolatedProperty').map(leafValues)).toEqual([
+      ['pre-', '@{', 'name', '[', 'key', ']', '}', '-', '${', 'tone', '}', '-post']
+    ]);
+    expect(findNodes(result.tree, 'GatedInterpolatedProperty')).toHaveLength(0);
   });
 
   it('keeps valid interpolation typed instead of swallowing it in opaque custom-property chunks', () => {
