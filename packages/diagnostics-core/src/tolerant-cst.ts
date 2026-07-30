@@ -24,6 +24,7 @@ export const LINT_CODES = {
   keyframeDeclarationNoImportant: 'lint/keyframe-declaration-no-important',
   fontFamilyDuplicateNames: 'lint/font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
+  invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   unknownUnits: 'lint/unit-no-unknown',
   unknownFunctions: 'lint/function-no-unknown',
@@ -887,6 +888,179 @@ function isDeclarationValueContext(source: string, offset: number): boolean {
   return lastColon > lastStatement;
 }
 
+function sourceSpan(source: string, start: number, end: number): DiagnosticSpan {
+  let line = 1;
+  let column = 1;
+  for (let i = 0; i < start; i++) {
+    const code = source.charCodeAt(i);
+    if (code === 10) {
+      line++;
+      column = 1;
+    } else {
+      column++;
+    }
+  }
+  let endLine = line;
+  let endColumn = column;
+  for (let i = start; i < end; i++) {
+    const code = source.charCodeAt(i);
+    if (code === 10) {
+      endLine++;
+      endColumn = 1;
+    } else {
+      endColumn++;
+    }
+  }
+  return { start, end: Math.max(start, end), startLine: line, startColumn: column, endLine, endColumn };
+}
+
+function skipCssString(source: string, start: number, end: number): number {
+  const quote = source.charCodeAt(start);
+  let i = start + 1;
+  while (i < end) {
+    const code = source.charCodeAt(i);
+    if (code === 92) {
+      i += 2;
+      continue;
+    }
+    i++;
+    if (code === quote) {
+      break;
+    }
+  }
+  return i;
+}
+
+function skipCssComment(source: string, start: number, end: number): number {
+  let i = start + 2;
+  while (i + 1 < end) {
+    if (source.charCodeAt(i) === 42 && source.charCodeAt(i + 1) === 47) {
+      return i + 2;
+    }
+    i++;
+  }
+  return end;
+}
+
+function skipCssTrivia(source: string, start: number, end: number): number {
+  let i = start;
+  while (i < end) {
+    const code = source.charCodeAt(i);
+    const next = i + 1 < end ? source.charCodeAt(i + 1) : 0;
+    if (code === 9 || code === 10 || code === 12 || code === 13 || code === 32) {
+      i++;
+      continue;
+    }
+    if (code === 47 && next === 42) {
+      i = skipCssComment(source, i, end);
+      continue;
+    }
+    break;
+  }
+  return i;
+}
+
+function cssConstructEnd(source: string, start: number, end: number): { end: number; hasBlock: boolean } {
+  let parenDepth = 0;
+  for (let i = start; i < end;) {
+    const code = source.charCodeAt(i);
+    const next = i + 1 < end ? source.charCodeAt(i + 1) : 0;
+    if (code === 47 && next === 42) {
+      i = skipCssComment(source, i, end);
+      continue;
+    }
+    if (code === 34 || code === 39) {
+      i = skipCssString(source, i, end);
+      continue;
+    }
+    if (code === 40) {
+      parenDepth++;
+      i++;
+      continue;
+    }
+    if (code === 41 && parenDepth > 0) {
+      parenDepth--;
+      i++;
+      continue;
+    }
+    if (parenDepth === 0 && code === 59) {
+      return { end: i + 1, hasBlock: false };
+    }
+    if (parenDepth === 0 && code === 123) {
+      return { end: cssBlockEnd(source, i, end), hasBlock: true };
+    }
+    i++;
+  }
+  return { end, hasBlock: false };
+}
+
+function cssBlockEnd(source: string, start: number, end: number): number {
+  let depth = 0;
+  for (let i = start; i < end;) {
+    const code = source.charCodeAt(i);
+    const next = i + 1 < end ? source.charCodeAt(i + 1) : 0;
+    if (code === 47 && next === 42) {
+      i = skipCssComment(source, i, end);
+      continue;
+    }
+    if (code === 34 || code === 39) {
+      i = skipCssString(source, i, end);
+      continue;
+    }
+    if (code === 123) {
+      depth++;
+      i++;
+      continue;
+    }
+    if (code === 125) {
+      depth--;
+      i++;
+      if (depth <= 0) {
+        return i;
+      }
+      continue;
+    }
+    i++;
+  }
+  return end;
+}
+
+function invalidImportPositionSpans(source: string): DiagnosticSpan[] {
+  const spans: DiagnosticSpan[] = [];
+  const end = source.length;
+  let invalidPosition = false;
+  let i = 0;
+  while (i < end) {
+    i = skipCssTrivia(source, i, end);
+    if (i >= end) {
+      break;
+    }
+    const code = source.charCodeAt(i);
+    if (code === 64 /* @ */) {
+      const nameEnd = atRuleNameEnd(source, i, end);
+      if (nameEnd <= i + 1) {
+        invalidPosition = true;
+        i++;
+        continue;
+      }
+      const name = source.slice(i + 1, nameEnd).toLowerCase();
+      const construct = cssConstructEnd(source, nameEnd, end);
+      if (name === 'import') {
+        if (invalidPosition) {
+          spans.push(sourceSpan(source, i, construct.end));
+        }
+      } else if (name !== 'charset' && !(name === 'layer' && !construct.hasBlock)) {
+        invalidPosition = true;
+      }
+      i = construct.end;
+      continue;
+    }
+    invalidPosition = true;
+    i = cssConstructEnd(source, i, end).end;
+  }
+  return spans;
+}
+
 function diagnostic(
   code: string,
   defaultSeverity: DiagnosticSeverityName,
@@ -1381,6 +1555,17 @@ export function cstLintDiagnostics(
   visit(root);
 
   if (tolerantSourceScan) {
+    if (language === 'css') {
+      for (const span of invalidImportPositionSpans(source)) {
+        push(
+          LINT_CODES.invalidImportPosition,
+          'warning',
+          'Invalid position for @import rule',
+          span
+        );
+      }
+    }
+
     const sourceForHexScan = blankStringsAndComments(source);
     const sourceHexRe = /#([0-9a-fA-F]+)/g;
     let match: RegExpExecArray | null;

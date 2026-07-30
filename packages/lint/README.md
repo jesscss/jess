@@ -123,6 +123,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | `keyframe-declaration-no-important` |
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | near `font-family-no-duplicate-names` |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | near `font-family-no-missing-generic-family-keyword` |
+| `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | `no-invalid-position-at-import-rule` |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | `no-duplicate-at-import-rules` |
 | `unit-no-unknown` | `lint/unit-no-unknown` | near `unit-no-unknown` |
 | `function-no-unknown` | `lint/function-no-unknown` | near `function-no-unknown` |

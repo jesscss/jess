@@ -34,6 +34,7 @@ const STYLELINT_RULES = {
   'keyframe-declaration-no-important': true,
   'font-family-no-duplicate-names': true,
   'font-family-no-missing-generic-family-keyword': true,
+  'no-invalid-position-at-import-rule': true,
   'no-duplicate-at-import-rules': true,
   'unit-no-unknown': true,
   'function-no-unknown': true,

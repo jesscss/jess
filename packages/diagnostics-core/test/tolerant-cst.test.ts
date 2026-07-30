@@ -172,6 +172,21 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('reports @import rules after style rules or blocking at-rules', () => {
+    const source = '@charset "utf-8";\n@layer reset;\n@import "ok.css";\n@namespace svg url(http://www.w3.org/2000/svg);\n@import "late-at.css";\n@layer theme { .x { color: red; } }\n@import "late-layer.css";\n.a { color: red; }\n@import "late-rule.css";';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const invalidImports = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.invalidImportPosition);
+
+    expect(invalidImports.map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Invalid position for @import rule', 5, 1],
+      ['Invalid position for @import rule', 7, 1],
+      ['Invalid position for @import rule', 9, 1]
+    ]);
+  });
+
   it('keeps duplicate @import checks conservative for dialect options and dynamic imports', () => {
     const less = collectTolerantDiagnostics({
       source: '@import (less) "theme.less";\n@import (reference) "theme.less";',
