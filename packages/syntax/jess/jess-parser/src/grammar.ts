@@ -2426,8 +2426,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * Cheap superset lookahead so an ordinary `.card` simple selector does not
-   * consume its `[.#]`+text run, fail the required `$[…]`, and backtrack a
+   * Cheap `${…}` lookahead so an ordinary `.card` simple selector does not
+   * consume its `[.#]`+text run, fail the required interpolation, and backtrack a
    * re-parse through Simple. The predicate mirrors this arm's own
    * leading shape (optional class/id sigil + selector-text run) and requires an
    * interpolation opener immediately after it, so the opener is bound to THIS

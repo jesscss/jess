@@ -21,7 +21,10 @@ import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, JessError, toDiagnostic, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
+import { sourceSpanOf } from './ast/provenance.js';
+import { extractRelevantLines, lineColAt } from './error/code-frame.js';
+import { type JessErrorCode, type Phase, resolveTemplate } from './error/codes.js';
 import type { Deprecation } from './deprecation.js';
 import {
   type WarningsConfigInput,
@@ -318,6 +321,7 @@ export class DocumentContext {
 
 /** The source facts shared by canonical documents and retained legacy trees. */
 export type SourceContext = Pick<DocumentContext, 'options' | 'file' | 'plugin'>;
+type DiagnosticFile = NonNullable<DocumentContextOptions['file']>;
 
 function isAsyncDocumentWork<T>(value: T | Promise<T>): value is Promise<T> {
   return value instanceof Promise;
@@ -567,13 +571,77 @@ export class Context {
    */
   errors: ErrorDiagnostic[] = [];
 
-  /**
-   * Collected warnings during safeParse/safeRender.
-   * Only populated when using safe methods. Prefer routing warnings through
-   * {@link warn} rather than pushing here directly, so silencing / fatal
-   * promotion / de-duplication / the tail summary all apply uniformly.
+  /*
+   * Warning rows deliberately stay columnar until a public result or renderer
+   * asks for them. A warning is an expected compiler event—not an exception—so
+   * eval must not allocate a JessError and then another diagnostic object just
+   * to retain it. Parser/plugin boundaries may still hand us their public
+   * WarningDiagnostic objects; those are copied into these scalar columns.
    */
-  warnings: WarningDiagnostic[] = [];
+  private readonly _warningCodes: string[] = [];
+  private readonly _warningPhases: Phase[] = [];
+  private readonly _warningMessages: string[] = [];
+  private readonly _warningReasons: string[] = [];
+  private readonly _warningFixes: string[] = [];
+  private readonly _warningNotes: Array<string | undefined> = [];
+  private readonly _warningFiles: Array<DiagnosticFile | undefined> = [];
+  private readonly _warningFilePaths: Array<string | undefined> = [];
+  private readonly _warningSources: Array<string | undefined> = [];
+  private readonly _warningOffsets: number[] = [];
+  private readonly _warningLines: number[] = [];
+  private readonly _warningColumns: number[] = [];
+  private readonly _warningEndLines: Array<number | undefined> = [];
+  private readonly _warningEndColumns: Array<number | undefined> = [];
+  private _warningsSnapshot?: WarningDiagnostic[];
+
+  /**
+   * Public compatibility view. Materialization is intentionally a boundary
+   * operation: normal compile throughput reads {@link warningCount} instead.
+   */
+  get warnings(): WarningDiagnostic[] {
+    if (this._warningsSnapshot === undefined) {
+      const includeLines = this.warnConfig.display === 'frame';
+      const rows: WarningDiagnostic[] = [];
+      for (let index = 0; index < this._warningCodes.length; index++) {
+        const source = this._warningSources[index];
+        const file = this._warningFiles[index];
+        const offset = this._warningOffsets[index]!;
+        const location = source !== undefined && offset >= 0
+          ? lineColAt(source, offset, file)
+          : undefined;
+        const line = location?.line ?? this._warningLines[index]!;
+        const column = location?.column ?? this._warningColumns[index]!;
+        rows.push({
+          code: this._warningCodes[index]!,
+          phase: this._warningPhases[index]!,
+          message: this._warningMessages[index]!,
+          reason: this._warningReasons[index]!,
+          fix: this._warningFixes[index]!,
+          note: this._warningNotes[index],
+          file: file === undefined
+            ? undefined
+            : {
+                name: file.name,
+                path: file.path,
+                fullPath: file.fullPath
+              },
+          filePath: this._warningFilePaths[index],
+          line,
+          column,
+          endLine: this._warningEndLines[index],
+          endColumn: this._warningEndColumns[index],
+          lines: includeLines ? extractRelevantLines(source, line, 1, file) : undefined
+        });
+      }
+      this._warningsSnapshot = rows;
+    }
+    return this._warningsSnapshot;
+  }
+
+  /** Number of admitted warning rows without forcing public materialization. */
+  get warningCount(): number {
+    return this._warningCodes.length;
+  }
 
   /** Lazily-resolved warnings config (folded from compile options). */
   private _warnConfig?: ResolvedWarningsConfig;
@@ -613,63 +681,155 @@ export class Context {
    * The unified warnings entry point. Accepts a {@link JessError} (from
    * `WARN.x(...)`) or an already-normalized {@link WarningDiagnostic} and
    * applies, in order: silencing, fatal promotion, then de-duplication +
-   * per-code site capping before pushing onto {@link warnings}.
+   * per-code site capping. It normalizes to a display diagnostic only after the
+   * warning survives those policy decisions.
    *
    * Pass `options.code` to override the diagnostic code used for matching /
    * dedup / summary (e.g. deprecations routed as `deprecation/<id>`).
    */
   warn(warning: JessError | WarningDiagnostic, options?: { code?: string }): void {
-    const diag: WarningDiagnostic = warning instanceof JessError
-      ? toDiagnostic(warning) as WarningDiagnostic
-      : warning;
-    if (options?.code) {
-      diag.code = options.code;
-    }
-    const code = diag.code;
-    const cfg = this.warnConfig;
-
-    if (warnCodeMatchesAny(code, cfg.silence)) {
+    const code = options?.code ?? warning.code;
+    if (warnCodeMatchesAny(code, this.warnConfig.silence)) {
       return;
     }
+    const source = warning instanceof JessError
+      ? warning.source ?? warning.fileObj?.source
+      : undefined;
+    const file = warning instanceof JessError ? warning.fileObj : undefined;
+    const line = warning.line;
+    const column = warning.column;
+    if (!this.admitWarning(code, warning.phase, `${warning.filePath ?? ''}:${line}:${column}`, () => warning.message)) {
+      return;
+    }
+    this.appendWarning(
+      code,
+      warning.phase,
+      warning.message,
+      warning.reason,
+      warning.fix,
+      warning.note,
+      file,
+      warning.filePath,
+      source,
+      -1,
+      line,
+      column,
+      warning.endLine,
+      warning.endColumn
+    );
+  }
 
+  /**
+   * Record a Jess-originated warning at an AST node without allocating a
+   * JessError or WarningDiagnostic. Template strings and source line/column are
+   * resolved only after warning policy admits the row; lines/frame remain lazy.
+   */
+  warnAtNode(
+    templateCode: JessErrorCode,
+    phase: Phase,
+    node: object,
+    meta: Record<string, unknown>,
+    options?: { code?: string; note?: string }
+  ): void {
+    const code = options?.code ?? templateCode;
+    const file = this.sourceContext?.file;
+    const source = file?.source;
+    const offset = source === undefined ? -1 : sourceSpanOf(node)?.start ?? -1;
+    const site = offset >= 0
+      ? `${file?.fullPath ?? ''}:@${offset}`
+      : `${file?.fullPath ?? ''}:1:1`;
+    if (warnCodeMatchesAny(code, this.warnConfig.silence)) {
+      return;
+    }
+    if (!this.admitWarning(code, phase, site, () => resolveTemplate(templateCode, meta).summary)) {
+      return;
+    }
+    const template = resolveTemplate(templateCode, meta);
+    this.appendWarning(
+      code,
+      phase,
+      template.summary,
+      template.reason,
+      template.fix,
+      options?.note,
+      file,
+      file?.fullPath,
+      source,
+      offset,
+      1,
+      1,
+      undefined,
+      undefined
+    );
+  }
+
+  private admitWarning(
+    code: string,
+    phase: Phase,
+    site: string,
+    fatalMessage: () => string
+  ): boolean {
+    const cfg = this.warnConfig;
     if (warnCodeMatchesAny(code, cfg.fatal)) {
-      const base = warning instanceof JessError ? warning.message : diag.message;
-      const error = new Error(`${base}\n\nThis is only an error because you've set ${code} to be fatal.\n`
+      const message = fatalMessage();
+      const error = new Error(`${message}\n\nThis is only an error because you've set ${code} to be fatal.\n`
         + 'Remove this setting if you need to keep using this feature.');
       error.name = 'FatalWarningError';
       throw error;
     }
-
-    const capping = cfg.limitRepetition && !cfg.verbose;
-    if (!capping) {
-      this.warnings.push(diag);
-      return;
+    if (!cfg.limitRepetition || cfg.verbose) {
+      return true;
     }
-
-    const key = `${code}@${diag.filePath ?? ''}:${diag.line}:${diag.column}`;
     let stats = this._warnStats.get(code);
     if (!stats) {
       stats = {
-        phase: diag.phase,
+        phase,
         emittedSites: new Set<string>(),
         suppressedSites: new Set<string>(),
         suppressedCount: 0
       };
       this._warnStats.set(code, stats);
     }
-
-    /*
-     * A previously-emitted site repeating, or a new site over the per-code cap:
-     * count it for the summary and drop it.
-     */
-    if (stats.emittedSites.has(key) || stats.emittedSites.size >= cfg.maxSitesPerCode) {
+    if (stats.emittedSites.has(site) || stats.emittedSites.size >= cfg.maxSitesPerCode) {
       stats.suppressedCount++;
-      stats.suppressedSites.add(key);
-      return;
+      stats.suppressedSites.add(site);
+      return false;
     }
+    stats.emittedSites.add(site);
+    return true;
+  }
 
-    stats.emittedSites.add(key);
-    this.warnings.push(diag);
+  private appendWarning(
+    code: string,
+    phase: Phase,
+    message: string,
+    reason: string,
+    fix: string,
+    note: string | undefined,
+    file: DiagnosticFile | undefined,
+    filePath: string | undefined,
+    source: string | undefined,
+    offset: number,
+    line: number,
+    column: number,
+    endLine: number | undefined,
+    endColumn: number | undefined
+  ): void {
+    this._warningCodes.push(code);
+    this._warningPhases.push(phase);
+    this._warningMessages.push(message);
+    this._warningReasons.push(reason);
+    this._warningFixes.push(fix);
+    this._warningNotes.push(note);
+    this._warningFiles.push(file);
+    this._warningFilePaths.push(filePath);
+    this._warningSources.push(source);
+    this._warningOffsets.push(offset);
+    this._warningLines.push(line);
+    this._warningColumns.push(column);
+    this._warningEndLines.push(endLine);
+    this._warningEndColumns.push(endColumn);
+    this._warningsSnapshot = undefined;
   }
 
   /**
@@ -696,7 +856,23 @@ export class Context {
     }
     for (const [code, stats] of this._warnStats) {
       if (stats.suppressedCount > 0) {
-        this.warnings.push(makeSuppressionSummary(code, stats));
+        const summary = makeSuppressionSummary(code, stats);
+        this.appendWarning(
+          summary.code,
+          summary.phase,
+          summary.message,
+          summary.reason,
+          summary.fix,
+          summary.note,
+          undefined,
+          summary.filePath,
+          undefined,
+          -1,
+          summary.line,
+          summary.column,
+          summary.endLine,
+          summary.endColumn
+        );
       }
     }
   }
@@ -1355,7 +1531,9 @@ export class Context {
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);
-    this.warnings.push(...parseResult.warnings);
+    for (const warning of parseResult.warnings) {
+      this.warn(warning);
+    }
 
     // Check if we have errors and should break
     if (parseResult.errors.length > 0 && this.opts.breakOnError !== false) {
@@ -1497,7 +1675,9 @@ export class Context {
       compilerOptions: this.opts
     });
     this.errors.push(...result.errors);
-    this.warnings.push(...result.warnings);
+    for (const warning of result.warnings) {
+      this.warn(warning);
+    }
     if (result.errors.length > 0 && this.opts.breakOnError !== false) {
       throw makeJessErrorFromDiagnostic(result.errors[0]!);
     }

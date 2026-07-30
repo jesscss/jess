@@ -107,7 +107,7 @@ export class JessError {
     // Line/col derive from the node's source offset + source (not stored on nodes).
     const nodeOffset = inlineSpanStart(init.node);
     const derived = nodeOffset !== undefined && source !== undefined
-      ? lineColAt(source, nodeOffset)
+      ? lineColAt(source, nodeOffset, fileObj)
       : undefined;
 
     const t = resolveTemplate(init.code, init.meta ?? {});

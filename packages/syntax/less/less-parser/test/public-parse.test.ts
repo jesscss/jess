@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import {
+  bodySpanOf,
   sourceSpanOf,
   triviaMapOf,
   valueLayoutOf
@@ -46,6 +47,80 @@ describe('public Less parse()', () => {
 
     expect(result.span.startLine).toBe(1);
     expect(result.span.endLine).toBe(3);
+  });
+
+  it('keeps provenance for composite math without storing it on standalone dimensions', () => {
+    const source = '.x { plain: 10px; math: (1px * 1em / 1cm); }';
+    const document = parse(source);
+    const rule = document.rules[0];
+    if (rule?.type !== 'Ruleset') {
+      throw new Error('expected a ruleset');
+    }
+    const plain = rule.rules[0];
+    const math = rule.rules[1];
+    if (plain?.type !== 'Declaration' || math?.type !== 'Declaration') {
+      throw new Error('expected two declarations');
+    }
+    if (
+      math.value.type !== 'Block'
+      || Array.isArray(math.value.value)
+      || math.value.value.type !== 'Operation'
+    ) {
+      throw new Error('expected parenthesized arithmetic');
+    }
+
+    expect(sourceSpanOf(plain.value)).toBeUndefined();
+    const outer = math.value.value;
+    if (outer.left.type !== 'Operation') {
+      throw new Error('expected the left folded operation');
+    }
+    expect(sourceSpanOf(outer.left)).toEqual({
+      start: source.indexOf('1px'),
+      end: source.indexOf('/') - 1
+    });
+    expect(sourceSpanOf(outer)).toEqual({
+      start: source.indexOf('1px'),
+      end: source.indexOf(')')
+    });
+  });
+
+  it('keeps trivia through a silent ruleset optional-semicolon tail', () => {
+    const source = '.a{}/*between-close-and-semicolon*/;.b{color:blue;}';
+
+    expect(
+      serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe(
+      '.b {\n  color: blue;\n}\n'
+    );
+  });
+
+  it('keeps selector and body provenance without a duplicate ruleset span', () => {
+    const source = '.a{color:red;}';
+    const document = parse(source);
+    const rule = document.rules[0];
+    if (rule?.type !== 'Ruleset') {
+      throw new Error('expected a ruleset');
+    }
+
+    expect(sourceSpanOf(rule)).toBeUndefined();
+    expect(sourceSpanOf(rule.selector)).toEqual({ start: 0, end: 2 });
+    expect(bodySpanOf(rule)).toEqual({ start: 3, end: 13 });
+  });
+
+  it('keeps a ruleset span only when an optional semicolon owns tail trivia', () => {
+    const source = '.outer{.inner{}/*between-close-and-semicolon*/;}';
+    const document = parse(source);
+    const outer = document.rules[0];
+    const inner = outer?.type === 'Ruleset' ? outer.rules[0] : undefined;
+    if (outer?.type !== 'Ruleset' || inner?.type !== 'Ruleset') {
+      throw new Error('expected nested rulesets');
+    }
+
+    expect(sourceSpanOf(outer)).toBeUndefined();
+    expect(sourceSpanOf(inner)).toEqual({
+      start: source.indexOf('.inner'),
+      end: source.lastIndexOf(';') + 1
+    });
   });
 
   it('constructs boundary-complete CSS named colors as Color values', () => {

@@ -178,6 +178,29 @@ SCSS output passed while a clean rebuild failed.
 missing-rule and runtime-fallback output. It is also part of the PR-quality
 workflow.
 
+## 10. Source-derived facts are constructed once, then read
+
+**RULE:** every fact derived from source bytes—line starts, code-frame lines,
+token classes, selector atoms, import boundaries, lookup keys—has one owner and
+one construction point. All later consumers read that fact. They do not scan,
+split, re-parse, or rediscover the same source region. Policy must reject a
+diagnostic before constructing it; surviving line/frame diagnostics use a lazy,
+file-owned index and only slice the lines their display tier needs.
+
+*Why:* compiler work that can be determined once must not scale with every
+consumer or every recoverable event. Repeated source derivation is hidden
+O(consumers × source length) time plus allocation, often mislabeled as general
+evaluation or GC cost.
+
+**INCIDENT:** suppressed preserved-function warnings scanned a 288 KB source
+and split it into every line per call, consuming 39.3% of samples in a
+CSS-heavy Less workload.
+
+**DETECTOR:** `verify:diagnostic-cold-path` enforces the incident's
+policy-before-normalization, capping, indexed frame, and display-tier contracts;
+the PR workflow runs it. Reviewers must extend the same one-owner proof to any
+new source-derived runtime fact rather than adding a one-off cache afterward.
+
 ---
 
 ## Regression-fixture catalogue (reviewer must always catch)
@@ -193,6 +216,7 @@ diff reintroduces each applicable shape.
 | R4 | **polymorphic node shapes** | 1 | A sometimes-present field or branch-varying shape that de-optimizes a hot call site. |
 | R5 | **20x7 choice fan-out** | 8 | Shared-prefix alternatives re-parsing the same prefix. Prefer factoring or first-set guards. |
 | R6 | **compose-integrity / stale-build degrade** | 9 | A grammar/macro change that falls back to the runtime interpreter or references a missing rule, masked by stale generated output. |
+| R7 | **repeated source derivation / eager suppressed diagnostics** | 10 | Constructing a warning, locating its source, splitting its code frame, or otherwise rediscovering a source-derived fact after an owner could have carried it. |
 
 When a new performance regression is fixed, add a row and, where possible, a
 deterministic detector. The catalogue and detector set must remain grounded in

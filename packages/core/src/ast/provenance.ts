@@ -13,6 +13,7 @@ export interface ParserTriviaEntriesView {
   readonly length: number;
   start(index: number): number;
   end(index: number): number;
+  kind?(index: number): string | undefined;
 }
 export interface ParserRootTriviaGap {
   readonly start: number;
@@ -21,6 +22,12 @@ export interface ParserRootTriviaGap {
 }
 export interface ParserRootTriviaIndex {
   readonly labels?: readonly string[];
+
+  /**
+   * `selectedKinds` entries name markers inside an owned trivia range, so their
+   * entry spans are not themselves renderable gap ranges.
+   */
+  readonly rootCaptureMode?: 'allEntries' | 'selectedKinds';
   readonly entries: ParserTriviaEntriesView;
   gapBefore(offset: number): ParserRootTriviaGap | undefined;
   gapAfter(offset: number): ParserRootTriviaGap | undefined;
@@ -40,6 +47,58 @@ function gapHasCommentKind(gap: ParserRootTriviaGap): boolean {
     return true;
   }
   return COMMENT_TRIVIA_KINDS.some(kind => gap.hasKind?.(kind) === true);
+}
+
+type TriviaRange = Readonly<{ start: number; end: number }>;
+
+/**
+ * Legacy Parseman root capture stores every labeled trivia chunk. When the
+ * renderer only needs comments, derive just their complete contiguous gaps
+ * directly from that packed log. Calling `gapsWithKind()` on the legacy index
+ * first materializes a map, gap object, and entry-index array for every
+ * whitespace run in the document.
+ *
+ * Selected-root capture deliberately stores marker spans instead; its sparse
+ * index owns the complete ranges and is queried through `gapsWithKind()`.
+ */
+function labeledCommentRangesFromEntries(
+  index: ParserRootTriviaIndex,
+  hasCommentKind: boolean
+): readonly TriviaRange[] | undefined {
+  if (!hasCommentKind || index.rootCaptureMode === 'selectedKinds') {
+    return undefined;
+  }
+  const { entries } = index;
+  if (typeof entries.kind !== 'function') {
+    return undefined;
+  }
+  if (entries.length === 0) {
+    return [];
+  }
+
+  const ranges: TriviaRange[] = [];
+  let start = entries.start(0);
+  let end = entries.end(0);
+  let containsComment = isCommentTriviaKind(entries.kind(0) ?? '');
+  for (let entry = 1; entry < entries.length; entry++) {
+    const nextStart = entries.start(entry);
+    const nextEnd = entries.end(entry);
+    if (nextStart === end) {
+      end = nextEnd;
+      containsComment ||= isCommentTriviaKind(entries.kind(entry) ?? '');
+      continue;
+    }
+    if (containsComment) {
+      ranges.push({ start, end });
+    }
+    start = nextStart;
+    end = nextEnd;
+    containsComment = isCommentTriviaKind(entries.kind(entry) ?? '');
+  }
+  if (containsComment) {
+    ranges.push({ start, end });
+  }
+  return ranges;
 }
 
 /** Authored separator/trivia facts for a raw ValueSlot array.
@@ -160,12 +219,11 @@ export function createTriviaMapFromParseman(
   const hasCommentKind = index.labels?.some(isCommentTriviaKind) === true;
   let sortedComments: readonly Trivia[] | undefined;
 
-  const triviaForGap = (gap: ParserRootTriviaGap | undefined): Trivia | undefined => {
-    if (gap === undefined) {
-      return undefined;
-    }
-    const start = gap.start;
-    const end = gap.end;
+  const triviaForRange = (
+    start: number,
+    end: number,
+    knownHasComment?: boolean
+  ): Trivia | undefined => {
     if (end <= start) {
       return undefined;
     }
@@ -176,18 +234,22 @@ export function createTriviaMapFromParseman(
     }
     let run = byEnd.get(end);
     if (run === undefined) {
-      const labeledHasComment = hasCommentKind && typeof gap.hasKind === 'function'
-        ? gapHasCommentKind(gap)
-        : undefined;
-      run = makeAstTrivia(
-        src,
-        start,
-        end,
-        labeledHasComment === true ? true : undefined
-      );
+      run = makeAstTrivia(src, start, end, knownHasComment);
       byEnd.set(end, run);
     }
     return run;
+  };
+
+  const triviaForGap = (gap: ParserRootTriviaGap | undefined): Trivia | undefined => {
+    if (gap === undefined) {
+      return undefined;
+    }
+    const start = gap.start;
+    const end = gap.end;
+    const labeledHasComment = hasCommentKind && typeof gap.hasKind === 'function'
+      ? gapHasCommentKind(gap)
+      : undefined;
+    return triviaForRange(start, end, labeledHasComment === true ? true : undefined);
   };
 
   return {
@@ -222,21 +284,27 @@ export function createTriviaMapFromParseman(
     commentRuns() {
       if (sortedComments === undefined) {
         const runs: Trivia[] = [];
-        const seen = new Set<Trivia>();
-        const labeledGaps = hasCommentKind
-          ? new Set(index.gapsWithKind?.(COMMENT_TRIVIA_KINDS) ?? index.gaps().filter(gapHasCommentKind))
+        const labeledRanges = labeledCommentRangesFromEntries(index, hasCommentKind);
+        const labeledGaps = labeledRanges === undefined && hasCommentKind && index.gapsWithKind !== undefined
+          ? index.gapsWithKind(COMMENT_TRIVIA_KINDS)
           : undefined;
-        for (const gap of index.gaps()) {
-          if (labeledGaps !== undefined && !labeledGaps.has(gap) && !rangeHasComment(src, gap.start, gap.end)) {
-            continue;
+        if (labeledRanges !== undefined) {
+          for (const range of labeledRanges) {
+            const run = triviaForRange(range.start, range.end, true);
+            if (run !== undefined) {
+              runs.push(run);
+            }
           }
-          const run = triviaForGap(gap);
-          if (run?.hasComment === true) {
-            if (seen.has(run)) {
+        } else {
+          const candidates = labeledGaps ?? index.gaps();
+          for (const gap of candidates) {
+            if (labeledGaps === undefined && !rangeHasComment(src, gap.start, gap.end)) {
               continue;
             }
-            seen.add(run);
-            runs.push(run);
+            const run = triviaForGap(gap);
+            if (run?.hasComment === true) {
+              runs.push(run);
+            }
           }
         }
         runs.sort((a, b) => a.start - b.start);
@@ -291,8 +359,40 @@ export function bodySpanOf(node: object): AstSourceSpan | undefined {
  * keeping the semantic payload (`value` + `sep`) minimal.
  */
 export function withValueLayout<T extends object>(value: T, separators: ValueLayout): T {
+  /* The normal raw ValueSlot renderer already joins absent layout with one space,
+   * so recording `[' ', …]` duplicates an implied fact. The one exception is a
+   * Less top-level slash: its authored spacedness carries deferred-division
+   * semantics (see `variableValueSlot`), so keep that boundary explicit. */
+  let hasOnlyDefaultSpaces = true;
+  for (const separator of separators) {
+    if (separator !== ' ') {
+      hasOnlyDefaultSpaces = false;
+      break;
+    }
+  }
+  if (separators.length > 0 && hasOnlyDefaultSpaces && !hasTopLevelSlash(value)) {
+    return value;
+  }
   layouts.set(value, separators);
   return value;
+}
+
+function hasTopLevelSlash(value: object): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  for (const part of value) {
+    if (
+      typeof part === 'object'
+      && part !== null
+      && 'src' in part
+      && typeof part.src === 'string'
+      && part.src.trim() === '/'
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Read parser-authored separators for a raw ValueSlot array. */

@@ -11,10 +11,37 @@ import {
   variableReference,
   withBodySpan,
   withSourceSpan,
-  withTriviaMap
+  withTriviaMap,
+  valueLayoutOf,
+  withValueLayout
 } from '../../ast.js';
 
 describe('canonical AST source provenance', () => {
+  it('does not retain implied single-space value layout', () => {
+    const value = [{ type: 'Keyword' as const, src: 'red' }, { type: 'Keyword' as const, src: 'blue' }];
+
+    expect(withValueLayout(value, [' '])).toBe(value);
+    expect(valueLayoutOf(value)).toBeUndefined();
+  });
+
+  it('keeps a spaced top-level slash layout as a Less semantic boundary', () => {
+    const value = [
+      { type: 'Dimension' as const, value: '10', unit: 'px' },
+      { type: 'Keyword' as const, src: '/' },
+      { type: 'Dimension' as const, value: '2', unit: '' }
+    ];
+
+    expect(withValueLayout(value, [' ', ' '])).toBe(value);
+    expect(valueLayoutOf(value)).toEqual([' ', ' ']);
+  });
+
+  it('keeps an explicit empty layout as a parser-owned function-boundary fact', () => {
+    const value: object[] = [];
+
+    expect(withValueLayout(value, [])).toBe(value);
+    expect(valueLayoutOf(value)).toEqual([]);
+  });
+
   it('retains a Parseman reduction span without changing the AST node shape', () => {
     const ref = variableReference('tone', 'scoped');
     const keys = Object.keys(ref);
@@ -209,6 +236,68 @@ describe('canonical AST source provenance', () => {
       }
     ]);
     expect(gapsWithKindCalls).toBe(1);
+  });
+
+  it('enumerates labeled comment gaps without forcing Parseman\'s full root-gap walk', () => {
+    const src = '  /* keep */\n  .a{}';
+    const commentGap = {
+      start: 0,
+      end: 15,
+      hasKind: (kind: string) => kind === 'blockComment'
+    };
+    let gapsCalls = 0;
+    const trivia = createTriviaMapFromParseman(src, {
+      labels: ['whitespace', 'blockComment'],
+      entries: {
+        length: 1,
+        start: () => commentGap.start,
+        end: () => commentGap.end
+      },
+      gapBefore: () => undefined,
+      gapAfter: () => undefined,
+      gaps() {
+        gapsCalls++;
+        return [commentGap];
+      },
+      gapsWithKind(kinds) {
+        return kinds.includes('blockComment') ? [commentGap] : [];
+      }
+    });
+
+    expect(trivia.commentRuns()).toEqual([{ start: 0, end: 15, src, hasComment: true }]);
+    expect(gapsCalls).toBe(0);
+  });
+
+  it('derives legacy labeled comment gaps from packed entries without building Parseman maps', () => {
+    const src = '  /* keep */\n  .a{}';
+    const starts = [0, 2, 12];
+    const ends = [2, 12, 15];
+    const kinds = ['whitespace', 'blockComment', 'whitespace'];
+    const trivia = createTriviaMapFromParseman(src, {
+      labels: ['whitespace', 'blockComment'],
+      entries: {
+        length: starts.length,
+        start(index) {
+          return starts[index]!;
+        },
+        end(index) {
+          return ends[index]!;
+        },
+        kind(index) {
+          return kinds[index];
+        }
+      },
+      gapBefore: () => undefined,
+      gapAfter: () => undefined,
+      gaps() {
+        throw new Error('commentRuns must not build every root gap');
+      },
+      gapsWithKind() {
+        throw new Error('commentRuns must not materialize legacy root maps');
+      }
+    });
+
+    expect(trivia.commentRuns()).toEqual([{ start: 0, end: 15, src, hasComment: true }]);
   });
 
   it('falls back to source detection when a labeled gap is not comment-labeled', () => {

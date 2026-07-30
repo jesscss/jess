@@ -135,7 +135,7 @@ import type { Branch, Level } from './extend/ir.js';
 import { mkBranch } from './extend/ir.js';
 import type { Context } from '../context.js';
 import { Deprecation } from '../deprecation.js';
-import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
+import { ERR, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
 import { bodySpanOf, sourceSpanOf, triviaMapOf, valueLayoutOf, type AstSourceSpan } from './provenance.js';
@@ -333,7 +333,7 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     const file = context.sourceContext?.file;
     const source = file?.source;
     const span = source === undefined ? undefined : sourceSpanOf(request.node);
-    const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start);
+    const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start, file);
     if (error instanceof JessError && error.code === 'import/not-found') {
       throw ERR.importNotFound({
         node: request.node,
@@ -702,12 +702,14 @@ function addScopedFns(frame: Frame, fns: readonly Fn[], e: EvalCtx): void {
   }
   e.fnScopeVersion = (e.fnScopeVersion ?? 0) + 1;
   const map = frame.fns ??= new Map();
+  const names = e.scopedFunctionNames ??= new Set();
   for (const fn of fns) {
-    map.set(fn.name.toLowerCase(), fn);
+    const name = fn.name.toLowerCase();
+    map.set(name, fn);
+    names.add(name);
   }
   frame.fnScope = frame;
   frame.fnScopeVersion = e.fnScopeVersion;
-  e.anyScopedFns = true;
 }
 
 /** Root-only configured functions; typed `Plugin` facts are prepared per body below. */
@@ -720,6 +722,11 @@ function globalScopedFns(host: PluginHost | undefined): Map<string, Fn> | null {
     fns.set(fn.name.toLowerCase(), fn);
   }
   return fns;
+}
+
+/** The render-local name gate: only these calls can require a lexical lookup. */
+function scopedFunctionNames(fns: ReadonlyMap<string, Fn> | null): Set<string> | undefined {
+  return fns === null ? undefined : new Set(fns.keys());
 }
 
 /**
@@ -745,15 +752,17 @@ function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: E
           : evalBytesSync(statement.target, frame, e);
       const options = statement.options === null ? null : evalBytesSync(statement.options, frame, e);
       const deprecation = Deprecation.fromId('less-plugin') ?? Deprecation.userAuthored;
-      e.context?.warnDeprecation(deprecation, WARN.deprecated({
-        node: statement,
-        ...callSiteLocation(statement, e),
-        meta: {
+      e.context?.warnAtNode(
+        'eval/deprecated',
+        'eval',
+        statement,
+        {
           what: 'Less @plugin',
           use: '@use or @-use',
           deprecation
-        }
-      }));
+        },
+        { code: `deprecation/${deprecation.id}` }
+      );
 
       /*
        * A `@plugin` that cannot be resolved, or whose script throws while
@@ -824,28 +833,28 @@ function nearestFnScope(frame: Frame | null, state?: FnScopeCacheState): Frame |
 }
 
 /**
- * [plugin/P1] Build the {@link FnScope} a named call consults: a thin view that
- * jumps through frames that actually own function registrations, returning the
- * first registration for `name` (lower-cased, like the global registry). A
- * candidate frame that has functions but not this name is skipped; only the
- * nearest frame with the requested entry wins. `undefined` lets the evaluator
- * fall back to the global built-in registry.
- * Callers gate construction on {@link EvalCtx.anyScopedFns}, so this is never
- * even reached on the idle path (no scoped fn anywhere ⇒ no `FnScope` allocated,
- * no walk).
+ * Resolve one lower-cased name through frames that actually own function
+ * registrations. A candidate frame that has functions but not this name is
+ * skipped; only the nearest matching entry wins.
+ */
+export function lookupScopedFn(frame: Frame | null, lowerName: string, state?: FnScopeCacheState): Fn | undefined {
+  for (let f = nearestFnScope(frame, state); f; f = nearestFnScope(f.parent, state)) {
+    const hit = f.fns!.get(lowerName);
+    if (hit) {
+      return hit;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * [plugin/P1] Build the legacy {@link FnScope} lazy view a direct consumer can
+ * consult. The serializer resolves a name directly through {@link lookupScopedFn}
+ * and does not allocate this view on its hot path.
  */
 export function makeFnScope(frame: Frame | null, state?: FnScopeCacheState): FnScope {
   return {
-    lookup(name: string): Fn | undefined {
-      const lname = name.toLowerCase();
-      for (let f = nearestFnScope(frame, state); f; f = nearestFnScope(f.parent, state)) {
-        const hit = f.fns!.get(lname);
-        if (hit) {
-          return hit;
-        }
-      }
-      return undefined;
-    }
+    lookup: (name: string): Fn | undefined => lookupScopedFn(frame, name.toLowerCase(), state)
   };
 }
 
@@ -1703,7 +1712,7 @@ function findPathInScope(
            * Rulesets are namespace containers too, so a false Less `when` guard
            * prevents descent just as it prevents ordinary rule emission.
            */
-          if (!settledGuard(ruleGuardPasses(s, scope, e), 'namespace-path index build', s, e)) {
+          if (!settledGuard(ruleGuardPasses(s, scope, e), 'namespace-path index build', s.selector, e)) {
             continue;
           }
 
@@ -2247,7 +2256,7 @@ function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
   const span = source === undefined ? undefined : sourceSpanOf(node);
   const location = source === undefined || span === undefined
     ? undefined
-    : lineColAt(source, span.start);
+    : lineColAt(source, span.start, file);
   throw ERR.nameNotFound({
     node,
     filePath: file?.fullPath,
@@ -2264,7 +2273,7 @@ function recursiveReference(node: object, symbol: string, kind: 'Variable' | 'Pr
   const span = source === undefined ? undefined : sourceSpanOf(node);
   const location = source === undefined || span === undefined
     ? undefined
-    : lineColAt(source, span.start);
+    : lineColAt(source, span.start, file);
   throw ERR.recursiveReference({
     node,
     filePath: file?.fullPath,
@@ -2324,7 +2333,7 @@ interface EvalCtx {
   ev: ValueEvaluator | null;
   modes: EvalModes;
 
-  /** Context supplies document source only on cold diagnostic paths. */
+  /** Context supplies document source only on genuine cold diagnostic paths. */
   context?: Context;
 
   /** Parser-owned source trivia for comment/spacing emission. */
@@ -2386,14 +2395,11 @@ interface EvalCtx {
   defaultFn?: () => boolean;
 
   /*
-   * [plugin/P1] document-level flag: true iff SOME frame registered a scoped
-   * function. When false — every real
-   * document today, since nothing registers yet — `evalCall` passes `scope = null`
-   * to `ev.call` and the frame walk is skipped entirely, keeping the fn-dispatch
-   * hot path byte- and cost-identical to before P1. Set once at top-level
-   * `serialize`; threaded through the shared `EvalCtx`.
+   * [plugin/P1] Names registered by root or lexical plugin functions. Calls not
+   * in this set take the flat evaluator registry path directly: no scope-view
+   * allocation and no frame walk. The set is absent when no functions registered.
    */
-  anyScopedFns?: boolean;
+  scopedFunctionNames?: Set<string>;
 
   /** Render-local invalidation token for cached scoped-function parent links. */
   fnScopeVersion?: number;
@@ -2705,7 +2711,7 @@ function arithmeticSiteLocation(node: object, e: EvalCtx): {
   if (operatorOffset < searchStart || operatorOffset >= searchEnd) {
     return location;
   }
-  const operatorLocation = lineColAt(source, operatorOffset);
+  const operatorLocation = lineColAt(source, operatorOffset, e.context?.sourceContext?.file);
   return { ...location, line: operatorLocation.line, column: operatorLocation.column };
 }
 
@@ -4352,7 +4358,7 @@ function callSiteLocation(node: object, e: EvalCtx): {
   const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start);
+  const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start, file);
   return { filePath: file?.fullPath, source, line: location?.line, column: location?.column };
 }
 
@@ -4364,11 +4370,11 @@ function reportPluginLog(node: FunctionCall, record: { level: string; message: s
   if (record.level !== 'warn' && record.level !== 'error') {
     return;
   }
-  e.context?.warn(WARN.pluginLog({
-    node,
-    ...callSiteLocation(node, e),
-    meta: { name: node.name, level: record.level, message: record.message }
-  }));
+  e.context?.warnAtNode('plugin/log', 'plugin', node, {
+    name: node.name,
+    level: record.level,
+    message: record.message
+  });
 }
 
 function needsPluginRawArguments(args: readonly ValueSlot[], frame: Frame | null, e: EvalCtx): boolean {
@@ -4457,12 +4463,13 @@ function evalCall(
   const ev = e.ev;
 
   /*
-   * [plugin/P1] Build a scope-frame fn view ONLY when the document registered a
-   * scoped fn somewhere; otherwise pass null so `ev.call` takes its pre-P1 global
-   * path unchanged. `anyScopedFns` is false for every real document today.
+   * [plugin/P1] Only a call whose normalized name occurs in a registered-fn set
+   * can require lexical resolution. CSS calls and built-ins bypass frame walking
+   * entirely; a matching name is resolved once and passed directly to `ev.call`.
    */
-  const scope = e.anyScopedFns ? makeFnScope(frame, e) : null;
-  const selected = scope?.lookup(node.name);
+  const selected = e.scopedFunctionNames?.has(lname)
+    ? lookupScopedFn(frame, lname, e)
+    : undefined;
   const rawInvoker = e.pluginHost?.invokeRawFunction;
 
   /*
@@ -4496,18 +4503,7 @@ function evalCall(
   return combineAll(typed, (vals) => {
     const args: ValueGroup = sep === ',' ? makeList(vals, ',') : vals;
     try {
-      const result = ev.call(node.name, args, e.modes, scope, e.io, (error) => {
-        const reason = error instanceof JessError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : String(error);
-        e.context?.warn(WARN.unresolvedFunction({
-          node,
-          ...callSiteLocation(node, e),
-          meta: { name: node.name, reason }
-        }));
-      });
+      const result = ev.call(node.name, args, e.modes, null, e.io, selected);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
@@ -4543,23 +4539,27 @@ function pluginCallFailure(
       ? error.message
       : String(error);
   const stack = error instanceof Error && typeof error.stack === 'string' ? error.stack : undefined;
-  const attribution = {
-    node,
-    ...callSiteLocation(node, e),
-    ...(stack === undefined ? {} : { note: stack }),
-    meta: { name: node.name, reason }
-  };
 
   /*
    * `breakOnError` is the render-level "stop at the first real problem" switch,
    * and a plugin fault IS a real problem: it aborts unless the caller explicitly
    * opted into collecting failures instead (`breakOnError: false`).
    */
-  const diagnostic = ERR.pluginFunctionThrew(attribution);
   if (e.context?.opts.breakOnError !== false) {
-    throw diagnostic;
+    throw ERR.pluginFunctionThrew({
+      node,
+      ...callSiteLocation(node, e),
+      ...(stack === undefined ? {} : { note: stack }),
+      meta: { name: node.name, reason }
+    });
   }
   if (e.modes.functionMode === 'error') {
+    const diagnostic = ERR.pluginFunctionThrew({
+      node,
+      ...callSiteLocation(node, e),
+      ...(stack === undefined ? {} : { note: stack }),
+      meta: { name: node.name, reason }
+    });
     const collected = toDiagnostic(diagnostic);
     if ('errors' in collected) {
       e.context.errors.push(collected);
@@ -4568,7 +4568,10 @@ function pluginCallFailure(
     }
     return preserveCall(node, frame, e);
   }
-  e.context?.warn(WARN.pluginFunctionThrew(attribution));
+  e.context?.warnAtNode('plugin/function-threw', 'plugin', node, {
+    name: node.name,
+    reason
+  }, stack === undefined ? undefined : { note: stack });
   return preserveCall(node, frame, e);
 }
 
@@ -4872,9 +4875,9 @@ class AsyncSelectorInterp extends Error {
 
 /**
  * Span-carrying nodes to attribute a selector-interp failure to, most specific
- * first. Rules and selectors carry no source span (the parser records them only
- * for a few value nodes), but the `@{…}` REFERENCE inside the interpolation does
- * — and that reference is the thing the author would have to change.
+ * first. An interpolation reference carries the most precise source span, even
+ * when its containing selector or rule also carries broader provenance; that
+ * reference is the thing the author would have to change.
  */
 function interpSpanCandidates(token: SimpleToken): object[] {
   const out: object[] = [];
@@ -5354,7 +5357,8 @@ function scratchEmit(e: EvalCtx): Emit {
     propNames: e.propNames,
     optional: e.optional,
     calcDepth: e.calcDepth,
-    anyScopedFns: e.anyScopedFns, // [plugin/P1] preserve the scoped-fn gate
+    scopedFunctionNames: e.scopedFunctionNames, // [plugin/P1] preserve the registered-name gate
+    fnScopeVersion: e.fnScopeVersion,
     pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
@@ -5528,12 +5532,23 @@ function statementStartOf(node: Statement): number | undefined {
   if (node.type === 'VariableDeclaration') {
     return undefined;
   }
+  if (node.type === 'Ruleset') {
+    return sourceSpanOf(node.selector)?.start;
+  }
   return sourceSpanOf(node)?.start;
 }
 
 function statementEndOf(node: Statement): number | undefined {
   if (node.type === 'VariableDeclaration') {
     return undefined;
+  }
+  if (node.type === 'Ruleset') {
+    const span = sourceSpanOf(node);
+    if (span !== undefined) {
+      return span.end;
+    }
+    const body = bodySpanOf(node);
+    return body === undefined ? undefined : body.end + 1;
   }
   return sourceSpanOf(node)?.end;
 }
@@ -5587,13 +5602,34 @@ function emitBlockCommentTriviaBetween(
   return emitted;
 }
 
+/** Find a comment-bearing trivia range that starts at one exact source offset. */
+function commentTriviaAfter(trivia: TriviaMap, offset: number): Trivia | undefined {
+  const runs = trivia.commentRuns();
+  let low = 0;
+  let high = runs.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (runs[middle]!.start < offset) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  const run = runs[low];
+  return run?.start === offset ? run : undefined;
+}
+
 function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   const trivia = e.trivia;
   const span = sourceSpanOf(node);
   if (trivia === undefined || span === undefined) {
     return;
   }
-  const trailing = trivia.lookup(span.end, 'after');
+
+  /* This path only emits comments. A general trivia-boundary lookup forces a
+   * legacy Parseman root map for all whitespace gaps; comment runs are already
+   * sparse and source ordered. */
+  const trailing = commentTriviaAfter(trivia, span.end);
   if (trailing !== undefined && !e.emittedBlockTrivia.has(trailing) && blockCommentsIn(trailing).length > 0) {
     e.emittedBlockTrivia.add(trailing);
     put(e, inlineBlockCommentText(trailing));
@@ -5639,8 +5675,8 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   if (source.slice(end - 2, end) !== '*/') {
     return;
   }
-  const open = source.lastIndexOf('/*', end - 2);
-  if (open < span.start) {
+  const open = lastIndexInSourceRange(source, '/*', span.start, end);
+  if (open < 0) {
     return;
   }
   let start = open;
@@ -5652,6 +5688,27 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
     start--;
   }
   put(e, source.slice(start, end));
+}
+
+/** Find one literal only inside the AST-owned source range; never scan a file prefix/suffix. */
+function firstIndexInSourceRange(source: string, needle: string, start: number, end: number): number {
+  const limit = end - needle.length;
+  for (let index = start; index <= limit; index++) {
+    if (source.startsWith(needle, index)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+/** Reverse counterpart to {@link firstIndexInSourceRange}, bounded to the same owner span. */
+function lastIndexInSourceRange(source: string, needle: string, start: number, end: number): number {
+  for (let index = end - needle.length; index >= start; index--) {
+    if (source.startsWith(needle, index)) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function firstDeclarationColon(source: string, span: AstSourceSpan): number | null {
@@ -5883,9 +5940,9 @@ function bodySpanForTriviaReplay(owner: object, e: Emit): ReplaySpan | undefined
   if (span === undefined || source === undefined) {
     return undefined;
   }
-  const open = source.indexOf('{', span.start);
-  const close = source.lastIndexOf('}', span.end - 1);
-  if (open < span.start || close <= open || close > span.end) {
+  const open = firstIndexInSourceRange(source, '{', span.start, span.end);
+  const close = lastIndexInSourceRange(source, '}', span.start, span.end);
+  if (open < 0 || close <= open) {
     return undefined;
   }
   return { start: open + 1, end: close };
@@ -5929,8 +5986,12 @@ function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
   if (trivia === undefined) {
     return;
   }
-  const run = trivia.lookup(0, 'after');
-  if (run === undefined) {
+
+  /* `commentRuns()` is already source ordered. Going through a boundary lookup
+   * at offset zero makes legacy Parseman materialize every root whitespace gap
+   * merely to discover that a stylesheet begins with authored content. */
+  const run = trivia.commentRuns()[0];
+  if (run?.start !== 0) {
     return;
   }
   if (e.emittedBlockTrivia.has(run)) {
@@ -6892,7 +6953,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new Set(),
-    anyScopedFns: rootFns !== null,
+    scopedFunctionNames: scopedFunctionNames(rootFns),
     fnScopeVersion: 0,
     pluginHost,
     io: options?.io
@@ -6939,7 +7000,6 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
   const pluginHost = options?.pluginHost;
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
   const rootFns = globalScopedFns(pluginHost);
-  const anyScopedFns = rootFns !== null;
   const e: Emit = {
     chunks: [],
     off: 0,
@@ -6967,7 +7027,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new Set(),
-    anyScopedFns, // [plugin/P1] gate: false idle ⇒ fn-dispatch walk skipped
+    scopedFunctionNames: scopedFunctionNames(rootFns), // absent idle ⇒ fn-dispatch walk skipped
     fnScopeVersion: 0,
     pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
     io: options?.io // [io] per-render file-read capability for the IO built-ins
@@ -7430,14 +7490,14 @@ function ruleGuardPasses(rule: Ruleset, frame: Frame, e: EvalCtx): MaybePromise<
   if (rule.selector.selectors.length > 1) {
     throw ERR.guardedSelectorList({
       node: rule,
-      ...callSiteLocation(rule, e),
+      ...callSiteLocation(rule.selector, e),
       meta: { count: rule.selector.selectors.length }
     });
   }
   if (guardUsesDefault(rule.guard)) {
     throw ERR.invalidFunction({
       node: rule,
-      ...callSiteLocation(rule, e),
+      ...callSiteLocation(rule.selector, e),
       meta: {
         name: 'default',
         reason: 'default() is only allowed in parametric mixin guards'

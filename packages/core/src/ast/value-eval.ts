@@ -446,16 +446,17 @@ export interface ValueEvaluator {
    * built-ins); omitted/`null` is the idle path — flat global registry only.
    * `io`, when supplied, is the per-render file-read capability an IO built-in
    * (`data-uri`/`image-*`) reaches through {@link FnCtx.io}; absent on renders
-   * with no IO host wired. */
+   * with no IO host wired. `scopedFn`, when supplied, is an already-resolved
+   * lexical function. It avoids repeating the caller's scope lookup; `scope`
+   * remains for direct consumers that need the legacy lazy lookup seam. */
   call(
     name: string,
     args: ValueGroup,
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
-
-    /** Called only when a registered function is preserved after it rejects. */
-    onUnresolved?: (error: unknown) => void,
+    /** A caller-resolved scoped function; takes precedence over `scope`. */
+    scopedFn?: Fn,
   ): MaybePromise<ValueGroup>;
 
   /** Guard comparison leaf (`@a > 0`) on typed operands -> boolean. */

@@ -1,20 +1,66 @@
 import { readEvalErrorLocation } from './eval-error-location.js';
 
-/**
- * Derive 1-based line/column at a source offset. Line/col are not stored on
- * nodes (only offsets are) — they're computed here on the cold error path.
+type SourceIndex = {
+  readonly source: string;
+
+  /** Offset of the first character of every 1-based source line. */
+  readonly lineStarts: readonly number[];
+};
+
+/*
+ * A DocumentContext owns one stable `file` object for its lifetime, so this is
+ * naturally per source file, per compile, and cannot retain a finished compile.
+ * Do not cache by source string: that would keep arbitrary caller input alive.
  */
-export function lineColAt(source: string, offset: number): { line: number; column: number } {
-  let line = 1;
-  let lineStart = 0;
-  const end = Math.min(offset, source.length);
-  for (let i = 0; i < end; i++) {
-    if (source.charCodeAt(i) === 10 /* \n */) {
-      line++;
-      lineStart = i + 1;
+const sourceIndexes = new WeakMap<object, SourceIndex>();
+
+function buildSourceIndex(source: string): SourceIndex {
+  const lineStarts = [0];
+  for (let offset = 0; offset < source.length; offset++) {
+    if (source.charCodeAt(offset) === 10 /* \n */) {
+      lineStarts.push(offset + 1);
     }
   }
-  return { line, column: end - lineStart + 1 };
+  return { source, lineStarts };
+}
+
+function sourceIndex(source: string, owner?: object): SourceIndex {
+  const cached = owner === undefined ? undefined : sourceIndexes.get(owner);
+  if (cached?.source === source) {
+    return cached;
+  }
+  const indexed = buildSourceIndex(source);
+  if (owner !== undefined) {
+    sourceIndexes.set(owner, indexed);
+  }
+  return indexed;
+}
+
+function lineIndexAt(lineStarts: readonly number[], offset: number): number {
+  let low = 0;
+  let high = lineStarts.length - 1;
+  while (low < high) {
+    const middle = (low + high + 1) >>> 1;
+    if (lineStarts[middle]! <= offset) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return low;
+}
+
+/**
+ * Derive 1-based line/column at a source offset. The first diagnostic for a
+ * file builds the same line-start index / binary-search shape Parseman uses;
+ * later diagnostics use its O(log n) lookup.
+ * `owner` should be the stable source-file object when one is available.
+ */
+export function lineColAt(source: string, offset: number, owner?: object): { line: number; column: number } {
+  const end = Math.min(offset, source.length);
+  const lineStarts = sourceIndex(source, owner).lineStarts;
+  const index = lineIndexAt(lineStarts, end);
+  return { line: index + 1, column: end - lineStarts[index]! + 1 };
 }
 
 /**
@@ -25,19 +71,24 @@ export function lineColAt(source: string, offset: number): { line: number; colum
 export function extractRelevantLines(
   source: string | undefined,
   line: number,
-  contextLines = 1
+  contextLines = 1,
+  owner?: object
 ): Record<number, string> | undefined {
   if (!source) {
     return undefined;
   }
-  const lines = source.split(/\r?\n/);
-  const target = Math.max(1, Math.min(line, lines.length));
+  const { lineStarts } = sourceIndex(source, owner);
+  const target = Math.max(1, Math.min(line, lineStarts.length));
   const start = Math.max(1, target - contextLines);
-  const end = Math.min(lines.length, target + contextLines);
+  const end = Math.min(lineStarts.length, target + contextLines);
 
   const result: Record<number, string> = {};
   for (let i = start; i <= end; i++) {
-    result[i] = lines[i - 1]!;
+    const from = lineStarts[i - 1]!;
+    const next = lineStarts[i] ?? source.length;
+    const newline = next > from && source.charCodeAt(next - 1) === 10 ? 1 : 0;
+    const carriageReturn = newline === 1 && next - from > 1 && source.charCodeAt(next - 2) === 13 ? 1 : 0;
+    result[i] = source.slice(from, next - newline - carriageReturn);
   }
   return result;
 }

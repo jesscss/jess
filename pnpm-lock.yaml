@@ -605,6 +605,9 @@ importers:
       sass:
         specifier: ~1.101.0
         version: 1.101.0
+      stylis:
+        specifier: ~4.4.0
+        version: 4.4.0
 
   packages/jess-plugin:
     dependencies:
@@ -21732,6 +21735,10 @@ packages:
     transitivePeerDependencies:
       - supports-color
       - typescript
+    dev: true
+
+  /stylis@4.4.0:
+    resolution: {integrity: sha512-5Z9ZpRzfuH6l/UAvCPAPUo3665Nk2wLaZU3x+TLHKVzIz33+sbJqbtrYoC3KD4/uVOr2Zp+L0LySezP9OHV9yA==}
     dev: true
 
   /subarg@1.0.0:

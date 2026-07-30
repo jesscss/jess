@@ -110,9 +110,8 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(grammarTypes.get('QueryComparisonFeature')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryFeatureName')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryValue')).toBeGreaterThan(0);
-    expect(grammarTypes.get('ContainerQueryClause')).toBe(1);
-    expect(grammarTypes.get('ContainerQueryPrelude')).toBe(1);
-    expect(grammarTypes.get('ContainerPrelude')).toBe(1);
+    expect(grammarTypes.get('QueryClause')).toBe(1);
+    expect(grammarTypes.get('QueryPrelude')).toBeGreaterThan(0);
     expect(grammarTypes.get('AtRuleStatementHeader')).toBe(1);
     expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
   });

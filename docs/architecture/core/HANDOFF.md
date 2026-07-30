@@ -1495,7 +1495,7 @@ the selected member retains the call-level `!important` fact. No import
 resolver, parser replay, source reconstruction, or compatibility path is
 involved.
 
-## Aggressive Cutting Self-Prosecution
+## Archived Aggressive Cutting Self-Prosecution
 
 - Latest pass: scoped-caret parser syntax slice on 2026-07-29. Jess source now
   spells scoped/final variable lookup as `$^foo`, with expression-only `^foo`
@@ -2042,3 +2042,259 @@ involved.
 - Evidence: `pnpm --filter @jesscss/core build` — GREEN; `pnpm --filter @jesscss/core test -- --run` — GREEN, 203 files / 3219 tests / 9 skipped / 2 todo; `pnpm --filter jess test -- test/less/reference-public-semantics.test.ts --run --globals --reporter=dot` — GREEN, 15/15; `pnpm --filter jess test -- test/less/all-less-error.test.ts --run --globals --reporter=dot` — GREEN, 94/94. No performance claim is made or implied.
 - Verdict: accepted as semantic parser/error-quality integration evidence for the current dirty
   worktree; still requires slice commits and normal parser macro/compose/oracle gates before merge.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: 2026-07-30 conditional Less ruleset provenance elision. Ordinary
+  rulesets retain their parser-owned selector span and brace-body span but no
+  longer receive a duplicate whole-ruleset source span. The optional Less `;`
+  production keeps its whole span because comments between `}` and `;` belong to
+  that statement tail. `statementEndOf` reads the retained tail span when present
+  and otherwise reconstructs the ordinary boundary from the body closing brace;
+  namespace async-guard diagnostics use the surviving selector span.
+- Architecture surface: Less AST grammar reductions plus core serializer
+  provenance reads and diagnostic location selection. CST recognition, grammar
+  shape, CSS text emission policy, and public AST fields are unchanged.
+- Separation/duplication: deletes the duplicate full-rule source provenance
+  association for the normal production, while keeping the only exceptional tail
+  boundary that selector/body facts cannot represent. The parser remains the sole
+  provenance owner; the serializer performs only O(1) side-table reads.
+- Cumulative node weight: reduced by 3,050 whole-ruleset source-span associations
+  per parse on the exact 288,434-byte PostCSS workload; six optional-semicolon
+  rules keep their required tail span. No AST node fields or runtime object shapes change.
+- New traversal: none. One indexed read observes the final direct raw child of
+  this fixed grammar production; it is not a source scan or AST traversal.
+- New node/materialization: none. Existing `{ start, end }` source-span values
+  are retained only where Less optional-tail trivia requires them; normal rules
+  no longer allocate or register that association.
+- Render path: ordinary Ruleset statement boundaries use selector/body facts;
+  optional-semicolon tail comments use the existing full span. The output writer
+  and comment replay route remain singular.
+- Helper/API surface: one parser-private `hasRulesetTerminator` predicate; no
+  public API, factory contract, CST/AST field, or compatibility facade added.
+- Metadata mutations: deletes normal `withSourceSpan(rule, span)` writes; retains
+  the existing write only for raw `;` tails. The serializer adds no map, cache,
+  source scan, or metadata mutation.
+- Review-flagged diff tokens: [array spread/materialization] the two changed
+  guard-error object literals already existed and still materialize exactly one
+  diagnostic payload only on an exceptional error path—the change substitutes
+  `rule.selector` as the existing location owner. [materialized array/object] is
+  the TypeScript `readonly unknown[]` parameter syntax detected by the mechanical
+  scan; it allocates nothing and the helper reads its final item by index.
+- Evidence: exact built PostCSS eval+emit reverse pairs (181 samples, Node
+  v24.11.1) were candidate/base 35.93/35.58 ms and base/candidate 38.29/38.77 ms,
+  so this claims no time win. Direct provenance inspection counts 3,056 Rulesets,
+  six retained tail spans, and 3,050 deleted writes.
+- Behavior evidence: Less public parse tests cover top-level and nested no-tail
+  elision, retained optional-tail spans, silent close-to-semicolon trivia
+  suppression, and exact provenance; the Jess async guard test pins the namespace
+  diagnostic at selector line/column; all-Less is 110/110 green.
+- Build evidence: `pnpm --filter jess... build` rebuilt parser-shared, the Less
+  parser, core, and Jess in dependency order successfully.
+- Boundary evidence: `check:macro` reports zero interpreter fallbacks; focused
+  Less parser AST and public Jess async tests exercise the grammar factory's AST
+  route; `verify:compose-integrity` cleanly rebuilds composed grammar artifacts
+  for AST and CST host modes.
+- Verdict: accepted only as a deterministic allocation/metadata cut, never as a
+  benchmark speedup.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "Ordinary Less Rulesets duplicate a full source span already represented by selector and brace-body facts. The parser retains a full span only for the optional terminator whose intervening trivia cannot be reconstructed; the serializer reads already-owned facts without changing canonical AST semantics or output policy.",
+    "dangerTokensJustification": "The fixed production reads only its terminal raw token and does not scan source or walk AST descendants. Existing exceptional diagnostic object literals retain their one allocation, while their location node changes from the discarded Ruleset span to its surviving selector span; no successful render path adds materialization.",
+    "behaviorEvidence": "Less parser public tests cover ordinary/nested elision and optional-tail trivia; Jess async guard tests pin source location; full all-Less passed 110/110.",
+    "buildEvidence": "pnpm --filter jess... build, check:macro with zero interpreter fallbacks, and verify:compose-integrity passed.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  }
+]
+```
+
+- Latest pass: 2026-07-30 root-trivia map elimination. Renderer comment replay
+  now consumes the source-ordered comment ranges it actually needs instead of
+  materializing every root whitespace gap through Parseman 0.43's generic map.
+  The pending Parseman 0.44 selected-root mode is marked explicitly so its marker
+  entries continue to use its owned-gap query rather than being mistaken for full
+  ranges.
+- Architecture surface: parser-owned trivia provenance and AST serializer comment
+  replay only; no grammar, AST public field, output CSS, or plugin API changes.
+- Separation/duplication: deletes root-map construction for a comment-only render
+  request. Legacy labeled logs stream one contiguous comment-bearing range at a
+  time; sparse selected-root indexes remain the sole owner of their complete ranges.
+- Cumulative node weight: reduced. The generic Parseman map, per-gap objects, and
+  entry-index arrays are no longer reached by the Bootstrap render; only the small
+  comment-range array and renderer's existing emitted-comment set remain.
+- New traversal: one parser-bound linear pass over the already-packed legacy root
+  trivia entries groups contiguous ranges and retains only comment-bearing ones;
+  one render-time binary search finds a comment range at a requested boundary. No
+  source scan, AST descendant walk, or general root-gap enumeration is added.
+- New node/materialization: none. The new `TriviaRange[]` is transient parse
+  provenance data, not an AST node or public collection; it replaces the much
+  larger generic root-gap object/map materialization.
+- Render path: direct comment lookup now binary-searches the cached source-ordered
+  comment runs. Leading comment emission reads the first run, so normal authored
+  content at offset zero cannot trigger a general root lookup.
+- Helper/API surface: two private helpers only—`labeledCommentRangesFromEntries`
+  and `commentTriviaAfter`; parser compatibility is structural and adds no public
+  Jess API.
+- Metadata mutations: unchanged. Existing canonical trivia ranges remain interned
+  by source range; no AST/source/parent metadata is added or mutated.
+- Review-flagged diff tokens: [loop/traversal] one packed-entry grouping loop and
+  one binary search replace generic all-gap construction; [materialized array/object]
+  the temporary selected-comment range array replaces maps, gap objects, and entry
+  index arrays for every whitespace run.
+- Evidence: provenance and imported-leading-comment tests passed 54/54 after a
+  fresh core build. On the exact 288,434-byte upstream PostCSS Bootstrap Less
+  workload, two 61-sample interleaved runs measured Jess at 38.32 ms and 37.74 ms
+  versus Less 4.8.1 at 26.85 ms and 26.68 ms; output assertions passed.
+- Verdict: accepted as a measured root-trivia cost cut. Jess remains behind Less,
+  so this is an active performance batch, not completion.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "Comment replay needs only ordered comment-bearing root ranges. Streaming those ranges from Parseman's packed labels and searching the cached sparse result removes generic whitespace-gap map construction without changing the canonical Stylesheet or emitted CSS contract.",
+    "dangerTokensJustification": "The entry pass reads each already-recorded root trivia item once and retains only ranges containing a labeled comment. The binary search reads that small cached range list; neither path walks AST descendants, scans source, creates nodes, or materializes a generic root-gap map.",
+    "behaviorEvidence": "Core provenance and imported-leading-comment tests passed 54/54, including labeled legacy fallback, sparse-index boundaries, and comment rendering at an import site.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passed before the exact upstream PostCSS eval-and-emit measurement.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  }
+]
+```
+
+- Latest pass: 2026-07-30 compiler source-fact ownership, function-dispatch,
+  and warning-event cost cut. The first slice removes eager
+  suppressed-function diagnostics, deletes the routine preserved-function
+  warning lane, gates scoped function lookup by registered name, and makes
+  surviving code frames file-indexed. The follow-up stores admitted
+  compiler-originated warnings as columnar scalar rows, deferring public
+  diagnostic materialization and line/frame reads to the display/result boundary.
+- Architecture surface: core evaluator/serializer/context/error diagnostic
+  paths, the compiler result/report boundary, benchmark evidence, and a PR gate.
+  No parser, AST shape, output CSS, import, or plugin ABI is changed.
+- Separation/duplication: removed duplicate lexical function resolution and
+  duplicate source derivation. One `scopedFunctionNames` owner admits a lexical
+  lookup; one file-owned line-start index owns offset and frame reads.
+- Cumulative node weight: unchanged. No AST node fields or node factories were
+  added; scoped-function facts remain optional render-frame state.
+- New traversal: bounded only. A scoped name may walk parent frames that own
+  registered functions; all other calls bypass it. Source replay searches are
+  bounded to their existing AST spans rather than a file prefix/suffix.
+- New node/materialization: none on the successful compile path. The line index
+  is an off-node, lazy per-file `WeakMap` fact; admitted warnings live as parallel
+  scalar arrays and construct public diagnostic objects only when reporting or
+  returning a result requires them.
+- Render path: ordinary function calls now dispatch directly to the flat
+  registry unless their name is registered lexically. A registered function
+  declining CSS-compatible arguments preserves authored bytes silently;
+  silenced/capped compiler warnings do no template or frame work, retained
+  warnings do no diagnostic-object work, and frame display slices indexed lines.
+- Helper/API surface: `ValueEvaluator.call()` accepts an optional
+  already-resolved scoped `Fn`, preserving the legacy `FnScope` input for direct
+  consumers without forcing the serializer to allocate it. The transitional
+  unresolved-function warning callback and code were deleted. `Context` keeps
+  the existing `warnings` array-facing result API while adding a count-only
+  internal reporting path and a node-attributed warning event entry point.
+- Metadata mutations: only render-local `scopedFunctionNames` and existing
+  frame nearest-function cache invalidation are updated during plugin loading;
+  no AST/provenance mutation is introduced.
+- Review-flagged diff tokens: [loop/traversal] the source-index build and
+  span-bounded searches replace repeated whole-file work; [side map/set] one
+  `WeakMap` caches immutable file facts and one name `Set` prevents scope walks;
+  [routine error control] none on the successful path; [array helper] indexed
+  frame output allocates only the returned one-to-three-line diagnostic record;
+  [array spread/materialization] call-site attribution remains exclusively on
+  genuine admitted diagnostic paths; [node construction] the
+  name `Set` is built when functions are registered, not per call; [parent/source
+  mutation] the detector matches location/source *reads*, while this pass mutates
+  neither AST parents nor source provenance; [materialized array/object] a
+  file-owned line-start array replaces every rejected-call whole-source line array;
+  [materialized array/object] the new column arrays replace the prior JessError →
+  WarningDiagnostic pair, while parser/plugin boundary objects are copied once;
+  [side map/set] no new map is introduced by the collector.
+- Behavior evidence: focused warning/function tests passed 29/29, including a
+  silenced or repeated `warnAtNode()` that performs no template work and a public
+  diagnostic array that remains unmaterialized until requested. The complete core
+  suite passes 206 files / 3,261 tests (9 skipped, 2 todo). Jess Less
+  `function-mode.test.ts` and `plugin-diagnostics.test.ts` pass 13/13, including
+  a preserved plugin failure that remains visibly diagnosed at the result boundary.
+- Build evidence: `pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit`
+  and `pnpm --filter @jesscss/core build` pass on this worktree.
+- Boundary evidence: `JessError` remains a plain diagnostic value (not an
+  `Error` subclass); parser/public output contracts are unchanged. The existing
+  `test/diagnostics.test.ts` `instanceof Error` assertion is inconsistent with
+  both HEAD and the unmodified `JessError` class, so it is recorded as a
+  pre-existing test-contract defect rather than fixed by adding stack capture.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "The serializer and value-evaluator changes preserve the established optional-CSS-call and scoped-function semantics while deleting the rejected-call warning lane. The separately recorded CPU profile is evidence for the active performance investigation, not a claim that this semantic-runtime record proves an A/B speed result.",
+    "dangerTokensJustification": "The source index and lexical name set are render-local facts with explicit ownership. They replace repeated rejected-call scans and scope probing; neither introduces AST materialization, parser replay, an alternate evaluator, or successful-path diagnostic allocation.",
+    "behaviorEvidence": "Focused core tests passed 30/30, including silent declined-call preservation, strict functionMode behavior, and direct scoped-function dispatch; the diagnostic integration test mismatch is documented separately as pre-existing.",
+    "buildEvidence": "pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit and pnpm --filter @jesscss/core build passed.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": ["Context-plugin-source-parser-dispatch", "emit-walk-context-output-option", "Ruleset-interpolated-selector-boundary", "selector-match-string-and-node-combinators", "extend-index-tagged-graft-atoms", "Sequence-subclass-preserving-evaluation", "callable-output-root-property-guard", "serializer-at-rule-and-selector-surface"],
+    "why": "Context warning admission now precedes diagnostic normalization without changing plugin/source/import behavior, selector behavior, or output policy. Declined registered calls no longer enter the warning collector at all; this semantic-runtime record does not assert a benchmark A/B result.",
+    "dangerTokensJustification": "The Context change keeps policy accounting ahead of normalization and removes one former producer. It adds no resolver, parser host, AST materialization route, output array path, traversal, or runtime validation and keeps ordinary emitted CSS untouched.",
+    "behaviorEvidence": "Focused warning-policy tests passed 30/30 and declined registered calls preserve bytes without warnings.",
+    "buildEvidence": "pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit and pnpm --filter @jesscss/core build passed.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  },
+  {
+    "id": "ast-evaluator-function-call-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["unresolved-optional-function-call", "registered-sync-call-failure", "registered-async-call-failure"],
+    "why": "The evaluator accepts an already-resolved scoped callable from the serializer so one lexical lookup is authoritative. Optional CSS calls still preserve authored bytes, and selected callable failures continue through the established synchronous/asynchronous recovery policy rather than becoming lookup misses.",
+    "dangerTokensJustification": "The added optional parameter removes a duplicate scope lookup from the selected-call path. It neither allocates an Error nor changes async recovery, registry lookup semantics, output serialization, or the normal optional-call miss result.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  },
+  {
+    "id": "legacy-tree-strict-contract-drain",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the sixteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, call, and extend owners listed by legacy-tree-strict-contract-drain",
+    "cases": ["declaration-sync-and-async-render-result", "declaration-merge-source-span-exclusion", "default-guard-owned-value", "bitset-inversion-and-disjointness", "string-and-node-combinator-recognition", "selector-list-singleton-collapse", "selector-list-array-or-node-inheritance", "parser-delivered-selector-array-ampersand", "selector-array-ruleset-callable-registration", "selector-array-key-set-analysis", "function-call-silent-preserve", "selector-compose-cache-node-boundary", "ordered-registration-context-restoration", "property-merge-container-scope", "mixin-invisible-sync-render-and-registration-result", "extend-record-selector-surface", "extend-root-composition-selector-surface", "extend-walk-composed-match-selector-surface"],
+    "why": "The retained legacy Call path now agrees with canonical AST-v2 function policy: a registered function that declines CSS-compatible arguments preserves the authored call silently, while explicit error mode still throws. It is a semantic compatibility correction during the tree drain, not a performance or neutrality claim.",
+    "dangerTokensJustification": "The change deletes a warning construction helper and its three calls. It adds no traversal, allocation, parser replay, alternate evaluator, output policy, or runtime validation; successful preserve output remains the existing fallback call syntax.",
+    "behaviorEvidence": "Focused core function-boundary and warning-policy tests passed 30/30; Jess Less function-mode fixtures passed with silent default preservation and strict error-mode failures.",
+    "buildEvidence": "pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit and pnpm --filter @jesscss/core build passed.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  }
+]
+```
+- Evidence: strict `pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit`,
+  `pnpm run verify:diagnostic-cold-path`, focused warning/function tests (29/29),
+  and the complete core suite (206 files / 3,261 tests) pass. `pnpm --filter
+  @jesscss/core build` and the targeted Jess plugin/function suite (13/13) pass.
+  Exact upstream PostCSS workload:
+  288,434-byte Less input, Bootstrap SHA
+  `4a50207b956a4ab943640ee993118b554a34e96a23261cfe58b9aa1807a7849b`,
+  paired post-collector run: Jess Less median 47.46 ms versus Less 4.8.1 at
+  29.02 ms (10 warmups/30 interleaved samples); the 7,181-sample CPU profile
+  has no line-location/frame-split bucket.
+- Verdict: accepted as a measured cost cut. The PostCSS workload still has
+  Jess Less behind Less and PostCSS, so this is one committed batch in the
+  active performance goal, not completion.

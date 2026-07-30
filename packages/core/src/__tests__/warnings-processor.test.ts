@@ -201,6 +201,18 @@ describe('context.warn verbose / limitRepetition:false', () => {
 });
 
 describe('context.warn accepts a JessError from WARN.*', () => {
+  it('does not extract code-frame lines for a surviving summary or line warning', () => {
+    const context = makeContext({ warnings: 'line' });
+    context.warn(WARN.parentlessAmpersand({
+      source: '.a {\n  & {}\n}',
+      line: 2,
+      column: 3,
+      meta: { selector: '&' }
+    }));
+
+    expect(context.warnings[0]?.lines).toBeUndefined();
+  });
+
   it('normalizes a JessError and dedups by site', () => {
     const context = makeContext();
     for (let i = 0; i < 3; i++) {
@@ -223,5 +235,52 @@ describe('context.warn accepts a JessError from WARN.*', () => {
     const dep = Deprecation.fromId('less-plugin')!;
     context.warnDeprecation(dep, diag('eval/deprecated'));
     expect(context.warnings.map(w => w.code)).toEqual(['deprecation/less-plugin']);
+  });
+});
+
+describe('context.warnAtNode columnar collection', () => {
+  it('does no template work for a silenced compiler-originated warning', () => {
+    const context = makeContext({ suppressWarnings: true });
+    const value = {
+      toString(): string {
+        throw new Error('silenced warning must not render its template');
+      }
+    };
+
+    context.warnAtNode('eval/unit-conversion', 'eval', {}, { value });
+
+    expect(context.warningCount).toBe(0);
+  });
+
+  it('does no template work for a repeated compiler-originated warning', () => {
+    const context = makeContext();
+    const node = {};
+    context.warnAtNode('eval/unit-conversion', 'eval', node, { value: '12px' });
+    const value = {
+      toString(): string {
+        throw new Error('capped warning must not render its template');
+      }
+    };
+
+    context.warnAtNode('eval/unit-conversion', 'eval', node, { value });
+
+    expect(context.warningCount).toBe(1);
+  });
+
+  it('retains scalar fields until the public diagnostic array is requested', () => {
+    const context = makeContext();
+
+    context.warnAtNode('eval/unit-conversion', 'eval', {}, { value: '12px' });
+
+    expect(context.warningCount).toBe(1);
+    const internal = context as unknown as { _warningsSnapshot?: WarningDiagnostic[] };
+    expect(internal._warningsSnapshot).toBeUndefined();
+    expect(context.warnings).toMatchObject([{
+      code: 'eval/unit-conversion',
+      phase: 'eval',
+      line: 1,
+      column: 1
+    }]);
+    expect(internal._warningsSnapshot).toHaveLength(1);
   });
 });

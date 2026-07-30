@@ -2297,6 +2297,29 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
+  it('keeps $[…] value-only while ${…} remains selector interpolation', () => {
+    const value = run(
+      jessGrammar.Stylesheet,
+      '.card { tone: $[theme]; }',
+      { trivia: jessGrammar.whitespace }
+    );
+    expect(value.ok).toBe(true);
+    expect(value.unconsumedFrom).toBeNull();
+
+    for (const selector of ['.card-$[theme] { tone: blue; }', '&-$[theme] { tone: blue; }']) {
+      const rejected = run(jessGrammar.Stylesheet, selector, { trivia: jessGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null, selector).toBe(false);
+    }
+
+    const interpolatedSelector = run(
+      jessGrammar.Stylesheet,
+      '.card-${theme} { tone: blue; }',
+      { trivia: jessGrammar.whitespace }
+    );
+    expect(interpolatedSelector.ok).toBe(true);
+    expect(interpolatedSelector.unconsumedFrom).toBeNull();
+  });
+
   it('fuses a parent selector with a glued `${...}` template into one selector atom', () => {
     /*
      * A split representation would resolve the bare `&` to `:is(parents)` first

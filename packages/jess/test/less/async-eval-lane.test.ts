@@ -75,6 +75,20 @@ describe('awaitable values in guard conditions', () => {
     expect(result.css).toContain('width: 2px');
   }, 20000);
 
+  it('locates an awaitable guard while descending a namespace ruleset', async () => {
+    const result = await render(
+      '@w: aslow();\n'
+      + '#outer when (@w = zed) { #inner { .m() { color: red; } } }\n'
+      + '.entry { #outer > #inner > .m(); }\n'
+    );
+    const failure = result.errors.find(error => error.code === 'eval/async-in-sync-position');
+
+    expect(failure).toMatchObject({
+      line: 2,
+      column: 1
+    });
+  }, 20000);
+
   it('iterates an each() list built from an awaitable value', async () => {
     const result = await render(
       '@item: aslow();\n'
