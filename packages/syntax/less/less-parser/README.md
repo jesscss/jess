@@ -9,11 +9,15 @@ The Less grammar, layered on the CSS base parser, with core-free CST entry point
 
 ## What it is
 
-The Less grammar is the shared CSS grammar plus a Less delta:
-`lessGrammar = compose([cssGrammar, <Less delta>])`. It adds `@variable` /
-`@{interpolation}`, mixins, and the rest of Less on top of the spec-aligned CSS
-base in [`@jesscss/css-parser`](https://www.npmjs.com/package/@jesscss/css-parser),
-built on [parseman](https://www.npmjs.com/package/parseman) — **the fastest
+The Less grammar extends the spec-aligned CSS base in
+[`@jesscss/css-parser`](https://www.npmjs.com/package/@jesscss/css-parser):
+unchanged CSS structure remains CSS-owned, and Less changes only the smallest
+child, value slot, or reference its syntax requires. It adds `@variable` /
+`@{interpolation}`, mixins, and the rest of Less. Parseman currently compiles
+the CSS and Less host factories from shared recognition artifacts rather than
+literally composing a terminal `cssGrammar` artifact; that macro boundary does
+not relax the ownership rule. It is built on
+[parseman](https://www.npmjs.com/package/parseman) — **the fastest
 general-purpose JavaScript parser** in its
 [published benchmarks](https://matthew-dean.github.io/parseman/guide/benchmarks)
 (see `@jesscss/css-parser` for figures and engineering details). It is the parser

@@ -178,9 +178,6 @@ type ScssRules = {
   InterpolatedSimple: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
   Attribute: Combinator<SimpleSelector>;
-  PseudoSelectorArgumentText: Combinator<string>;
-  PseudoSelectorArgumentTextItem: Combinator<string>;
-  PseudoSelectorArgumentTextTail: Combinator<string>;
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
   PseudoArgumentSquare: Combinator<string>;
@@ -4527,42 +4524,6 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * Selector-valued pseudo arguments are still text inside the containing
-   * SimpleSelector, but their top-level commas have the established canonical
-   * selector spelling (no following whitespace). Keep that grammar-owned
-   * normalization separate from generic functional pseudo arguments.
-   */
-  const staticSelectorPseudoChunk = regex(/(?:[^(),\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
-  const PseudoSelectorArgumentTextItem = node<string>(
-    'PseudoSelectorArgumentTextItem',
-    oneOrMore(choice(
-      g.PseudoArgumentGroup,
-      g.PseudoArgumentSquare,
-      plainQuotedValue,
-      g.BlockCommentToken,
-      staticSelectorPseudoChunk
-    )),
-    joinSourceText
-  );
-  const PseudoSelectorArgumentTextTail = node<string>(
-    'PseudoSelectorArgumentTextTail',
-    sequence(
-      literal(','),
-      optional(space),
-      g.PseudoSelectorArgumentTextItem
-    ),
-    children => `,${requireString(children.at(-1))}`
-  );
-  const PseudoSelectorArgumentText = node<string>(
-    'PseudoSelectorArgumentText',
-    sequence(
-      g.PseudoSelectorArgumentTextItem,
-      many(g.PseudoSelectorArgumentTextTail)
-    ),
-    joinSourceText
-  );
-
-  /*
    * Pseudos share a glued `:name` / `:name(` opener. Route it once, then let the
    * selected branch own that opener through `routed()` so the public
    * semantic pseudo CST labels keep their source span.
@@ -4686,10 +4647,9 @@ export const scssFactory = (g: ScssInputRules) => {
     /*
        * Parser = STRUCTURE + trivia only: keep the parsed `SelectorList` as `args`
        * and DO NOT join — core serialization owns the inline `:is(a, b)` rule
-       * (`pseudoCanonical`). The positive lookahead confirms the
-       * argument is a fully STATIC selector arg (the chunk grammar rejects `#{`)
-       * before the structural parse commits; an interpolated arg fails here and,
-       * with no text fallback for these names, rejects exactly as before.
+       * (`pseudoCanonical`). `SelectorOnlyPseudoArgument` is the one parse of
+       * the static argument; an interpolated argument fails there and, with no
+       * text fallback for these names, rejects exactly as before.
        * Insignificant whitespace surrounding the argument inside the parens
        * (`:not( .b )`) is consumed here; it is trivia, so the structured arg
        * normalizes it away (`:not(.b)`) via `pseudoCanonical`, matching the other
@@ -4698,14 +4658,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       routed(),
       optional(space),
-      expect(
-        peek(sequence(
-          g.PseudoSelectorArgumentText,
-          literal(')')
-        )),
-        'pseudo selector argument'
-      ),
-      SelectorOnlyPseudoArgument,
+      expect(SelectorOnlyPseudoArgument, 'pseudo selector argument'),
       optional(space),
       literal(')')
     ),
@@ -5195,9 +5148,6 @@ export const scssFactory = (g: ScssInputRules) => {
     InterpolatedSimple,
     Placeholder,
     Attribute,
-    PseudoSelectorArgumentText,
-    PseudoSelectorArgumentTextItem,
-    PseudoSelectorArgumentTextTail,
     PseudoArgument,
     PseudoArgumentGroup,
     PseudoArgumentSquare,

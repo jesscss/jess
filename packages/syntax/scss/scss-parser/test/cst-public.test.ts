@@ -83,10 +83,7 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(grammarTypes.get('PlainQuoted')).toBe(1);
     expect(grammarTypes.get('PlainQuotedValue')).toBeGreaterThan(0);
     expect(grammarTypes.get('PseudoArgument')).toBeGreaterThan(0);
-    expect(grammarTypes.get('PseudoArgumentGroup')).toBeGreaterThan(0);
-    expect(grammarTypes.get('PseudoArgumentSquare')).toBeGreaterThan(0);
-    expect(grammarTypes.get('PseudoSelectorArgumentText')).toBeGreaterThan(0);
-    expect(grammarTypes.get('PseudoSelectorArgumentTextItem')).toBeGreaterThan(0);
+    expect(grammarTypes.get('SelectorOnlyPseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('IfBodyRule')).toBeGreaterThan(0);
     expect(grammarTypes.get('IfBodyConditionalBlock')).toBe(1);
     expectNoModeLabels(result.tree);

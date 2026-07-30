@@ -12,9 +12,12 @@ An SCSS grammar for Jess, layered on the CSS base parser — **experimental, and
 
 ## What it is
 
-The SCSS grammar is the shared CSS grammar plus an SCSS delta:
-`scssGrammar = compose([cssFactory, <SCSS delta>])`, layered on the spec-aligned
-CSS base in `@jesscss/css-parser` and built on
+The SCSS grammar extends the spec-aligned CSS base in `@jesscss/css-parser`:
+unchanged CSS structure remains CSS-owned, and SCSS changes only the smallest
+child, value slot, or reference its syntax requires. Parseman currently compiles
+the CSS and SCSS host factories from shared recognition artifacts rather than
+literally composing a terminal CSS grammar artifact; that macro boundary does
+not relax the ownership rule. It is built on
 [parseman](https://www.npmjs.com/package/parseman) — **the fastest
 general-purpose JavaScript parser** in its
 [published benchmarks](https://matthew-dean.github.io/parseman/guide/benchmarks)
