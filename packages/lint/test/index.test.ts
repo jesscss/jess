@@ -32,6 +32,7 @@ describe('stable rule set', () => {
       LINT_CODES.customPropertyMissingVarFunction,
       LINT_CODES.keyframeDuplicateSelectors,
       LINT_CODES.keyframeDeclarationNoImportant,
+      LINT_CODES.invalidNamedGridAreas,
       LINT_CODES.fontFamilyDuplicateNames,
       LINT_CODES.fontFamilyMissingGeneric,
       LINT_CODES.invalidImportPosition,
@@ -59,6 +60,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.customPropertyMissingVarFunction,
       LINT_RULE_NAMES.keyframeDuplicateSelectors,
       LINT_RULE_NAMES.keyframeDeclarationNoImportant,
+      LINT_RULE_NAMES.invalidNamedGridAreas,
       LINT_RULE_NAMES.fontFamilyDuplicateNames,
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
       LINT_RULE_NAMES.invalidImportPosition,
@@ -74,7 +76,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(14);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(15);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -101,6 +103,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownTypeSelectors,
       LINT_RULE_NAMES.keyframeDeclarationNoImportant,
       LINT_RULE_NAMES.keyframeDuplicateSelectors,
+      LINT_RULE_NAMES.invalidNamedGridAreas,
       LINT_RULE_NAMES.unknownAtRules,
       LINT_RULE_NAMES.unknownAtRuleDescriptors,
       LINT_RULE_NAMES.unknownProperties,
@@ -250,6 +253,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.fontFamilyDuplicateNames, 'error']
+    ]);
+  });
+
+  it('applies policy to invalid named grid area diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { grid-template-areas: "a a" "b"; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.invalidNamedGridAreas]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.invalidNamedGridAreas, 'error']
     ]);
   });
 
