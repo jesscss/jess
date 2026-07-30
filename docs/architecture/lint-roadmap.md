@@ -133,6 +133,7 @@ enough.
 | `jess/no-leaky-scope-dependence` | `lint/no-leaky-scope-dependence` | Jess-only Less migration diagnostic |
 | `jess/no-ambiguous-mixin-call` | `lint/no-ambiguous-mixin-call` | Jess-only Less callable diagnostic |
 | `jess/no-impossible-guard` | `lint/no-impossible-guard` | Jess-only static guard diagnostic |
+| `jess/no-unused-default-branch` | `lint/no-unused-default-branch` | Jess-only Less default-branch diagnostic |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess-only module diagnostic |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess-only selector diagnostic |
 | `jess/no-dead-extend` | `lint/no-dead-extend` | Jess-only selector diagnostic |
@@ -330,6 +331,7 @@ Stylelint.
 | `jess/no-mixin-output-mismatch` | off | Call signatures | A mixin used as declarations emits nested rules, or a value callable emits declarations. |
 | `jess/no-unsafe-reference-compose` | warn | Module facts | Extending or reading through a protected boundary that cannot surface output. |
 | `jess/no-impossible-guard` | warn | Static guard facts now; semantic facts later | Initial Less/SCSS/Jess diagnostic flags literal false/null, same-unit numeric comparisons, keyword/string equality, and boolean not/and/or guard compositions that are definitely false; variables, `default()`, type predicates, and dynamic values stay unknown. |
+| `jess/no-unused-default-branch` | warn | Less CST now; callable facts later | Initial Less diagnostic flags one contradictory guard-branch subset: a single AND branch containing both bare `default()` and `not(default())`. Full Less default-branch selection still needs callable facts. |
 | `jess/no-duplicate-module-load` | warn | Module refs now; import graph/config later | Initial same-file static SCSS/Jess duplicate directive check landed; same resolved file through multiple specifiers still needs module graph facts. |
 | `jess/no-unbounded-extend` | warn | Static targets now; selector facts later | Initial Less/SCSS/Jess diagnostic flags static extend targets with no top-level class, id, placeholder, or parent selector anchor; selector graph facts can later catch broad resolved targets more precisely. |
 | `jess/no-dead-extend` | warn | Same-file exact targets now; selector graph later | Initial import-free Less/SCSS/Jess diagnostic flags exact static extend targets that match no same-file selector; accessible imported surfaces and partial extend submatching still need selector graph facts. |
@@ -363,7 +365,7 @@ Follow-on value/type diagnostics:
 | Invalid color channel | CSS validity/compiler | Initial CSS-authored rgb()/rgba()/hsl()/hsla() arity/type checks landed as `color-function-no-invalid-arguments`; broader color functions and semantic value facts remain future work. |
 | Invalid typed custom property registration/value | Diagnostics-core/type facts | Initial CSS `@property` descriptor checks landed as `jess/no-invalid-typed-custom-property-registration` for missing required descriptors and `jess/no-invalid-typed-custom-property-value` for simple static syntax/value pairs; future work is full CSS value-definition syntax and Jess constraints. |
 | Impossible guard | Lint preference | Initial static CST-backed guard diagnostic landed as `jess/no-impossible-guard`; richer callable/type facts can expand coverage without guessing. |
-| Unused default branch | Lint preference | Mixin `default()` branch that cannot be selected. |
+| Unused default branch | Lint preference | Initial Less contradictory-branch subset landed as `jess/no-unused-default-branch`; full mixin `default()` branch reachability still needs callable facts. |
 | Suspicious map key access | Lint preference | Initial same-file Less map, SCSS map, and Jess collection diagnostic landed as `jess/no-suspicious-map-key-access`; richer collection/list value facts remain future work. |
 
 Use TypeScript-adjacent names for callable/type facts:

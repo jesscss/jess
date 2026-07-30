@@ -82,6 +82,7 @@ export const LINT_CODES = {
   leakyScopeDependence: 'lint/no-leaky-scope-dependence',
   ambiguousMixinCalls: 'lint/no-ambiguous-mixin-call',
   impossibleGuards: 'lint/no-impossible-guard',
+  unusedDefaultBranches: 'lint/no-unused-default-branch',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
   suspiciousMapKeyAccess: 'lint/no-suspicious-map-key-access',
@@ -3034,6 +3035,86 @@ function staticGuardTruth(source: string, node: CssCstNode): boolean | null {
     : null;
 }
 
+function compactGuardText(text: string): string {
+  let compact = '';
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      compact += text[i]!.toLowerCase();
+    }
+  }
+  return compact;
+}
+
+function outerParensWrapWholeText(text: string): boolean {
+  if (text.length < 2 || text.charCodeAt(0) !== 40 /* ( */ || text.charCodeAt(text.length - 1) !== 41 /* ) */) {
+    return false;
+  }
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code === 40 /* ( */) {
+      depth++;
+    } else if (code === 41 /* ) */) {
+      depth--;
+      if (depth === 0 && i !== text.length - 1) {
+        return false;
+      }
+      if (depth < 0) {
+        return false;
+      }
+    }
+  }
+  return depth === 0;
+}
+
+function stripOuterGuardParens(text: string): string {
+  let current = text.trim();
+  while (outerParensWrapWholeText(current)) {
+    current = current.slice(1, -1).trim();
+  }
+  return current;
+}
+
+function defaultGuardTermPolarity(source: string, node: CssCstNode): 'positive' | 'negative' | null {
+  if (!hasDescendantNodeOf(node, 'MixinGuardDefaultOperand')) {
+    return null;
+  }
+  const negative = hasDirectLeaf(node, 'not');
+  let text = trimGuardText(source, node);
+  if (negative) {
+    text = text.trimStart().slice('not'.length);
+  }
+  return compactGuardText(stripOuterGuardParens(text)) === 'default()'
+    ? negative ? 'negative' : 'positive'
+    : null;
+}
+
+function contradictoryDefaultBranchSpan(source: string, node: CssCstNode): DiagnosticSpan | null {
+  if (node.grammarType === 'MixinGuardTopAnd') {
+    let hasPositive = false;
+    let hasNegative = false;
+    for (const term of childNodesOfType(node, 'MixinGuardTopTerm')) {
+      const polarity = defaultGuardTermPolarity(source, term);
+      if (polarity === 'positive') {
+        hasPositive = true;
+      } else if (polarity === 'negative') {
+        hasNegative = true;
+      }
+    }
+    if (hasPositive && hasNegative) {
+      return node.span;
+    }
+  }
+  for (const child of childNodesOf(node)) {
+    const span = contradictoryDefaultBranchSpan(source, child);
+    if (span !== null) {
+      return span;
+    }
+  }
+  return null;
+}
+
 function ownedMixinGuardNode(node: CssCstNode): CssCstNode | null {
   const direct = firstChildNodeOf(node, 'MixinGuard');
   if (direct !== undefined) {
@@ -5013,6 +5094,17 @@ export function cstLintDiagnostics(
             'Guard is statically false; this branch can never run',
             guard.span
           );
+        }
+        if (language === 'less' && guard !== null) {
+          const span = contradictoryDefaultBranchSpan(source, guard);
+          if (span !== null) {
+            push(
+              LINT_CODES.unusedDefaultBranches,
+              'warning',
+              'default() guard branch can never match because it also requires not(default())',
+              span
+            );
+          }
         }
       }
       if (gt === 'If' || gt === 'IfRule') {

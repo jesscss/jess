@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 58;
+export const STABLE_LINT_RULE_SET_VERSION = 59;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -73,6 +73,7 @@ export const LINT_RULE_NAMES = {
   leakyScopeDependence: 'jess/no-leaky-scope-dependence',
   ambiguousMixinCalls: 'jess/no-ambiguous-mixin-call',
   impossibleGuards: 'jess/no-impossible-guard',
+  unusedDefaultBranches: 'jess/no-unused-default-branch',
   duplicateModuleLoads: 'jess/no-duplicate-module-load',
   unboundedExtends: 'jess/no-unbounded-extend',
   deadExtends: 'jess/no-dead-extend',
@@ -159,6 +160,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.leakyScopeDependence]: LINT_CODES.leakyScopeDependence,
   [LINT_RULE_NAMES.ambiguousMixinCalls]: LINT_CODES.ambiguousMixinCalls,
   [LINT_RULE_NAMES.impossibleGuards]: LINT_CODES.impossibleGuards,
+  [LINT_RULE_NAMES.unusedDefaultBranches]: LINT_CODES.unusedDefaultBranches,
   [LINT_RULE_NAMES.duplicateModuleLoads]: LINT_CODES.duplicateModuleLoads,
   [LINT_RULE_NAMES.unboundedExtends]: LINT_CODES.unboundedExtends,
   [LINT_RULE_NAMES.deadExtends]: LINT_CODES.deadExtends,
@@ -232,6 +234,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.leakyScopeDependence]: LINT_RULE_NAMES.leakyScopeDependence,
   [LINT_CODES.ambiguousMixinCalls]: LINT_RULE_NAMES.ambiguousMixinCalls,
   [LINT_CODES.impossibleGuards]: LINT_RULE_NAMES.impossibleGuards,
+  [LINT_CODES.unusedDefaultBranches]: LINT_RULE_NAMES.unusedDefaultBranches,
   [LINT_CODES.duplicateModuleLoads]: LINT_RULE_NAMES.duplicateModuleLoads,
   [LINT_CODES.unboundedExtends]: LINT_RULE_NAMES.unboundedExtends,
   [LINT_CODES.deadExtends]: LINT_RULE_NAMES.deadExtends,
@@ -305,6 +308,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.leakyScopeDependence]: 'warn',
   [LINT_RULE_NAMES.ambiguousMixinCalls]: 'warn',
   [LINT_RULE_NAMES.impossibleGuards]: 'warn',
+  [LINT_RULE_NAMES.unusedDefaultBranches]: 'warn',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'warn',
   [LINT_RULE_NAMES.unboundedExtends]: 'warn',
   [LINT_RULE_NAMES.deadExtends]: 'warn',
@@ -381,6 +385,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.leakyScopeDependence]: 'off',
   [LINT_RULE_NAMES.ambiguousMixinCalls]: 'off',
   [LINT_RULE_NAMES.impossibleGuards]: 'off',
+  [LINT_RULE_NAMES.unusedDefaultBranches]: 'off',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'off',
   [LINT_RULE_NAMES.unboundedExtends]: 'off',
   [LINT_RULE_NAMES.deadExtends]: 'off',
@@ -1019,6 +1024,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'warn',
     comparison: 'jess-only',
     notes: 'Flags definite static Less, SCSS, and Jess guards that evaluate to false, including literal false, null, same-unit numeric comparisons, keyword/string equality, and boolean not/and/or composition; dynamic values, default(), type predicates, and variables stay unknown.'
+  },
+  {
+    diagnosticCode: LINT_CODES.unusedDefaultBranches,
+    ruleName: LINT_RULE_NAMES.unusedDefaultBranches,
+    title: 'Unused default() branches',
+    tier: 'maintainability',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags Less mixin guard AND branches that contain both a bare default() condition and not(default()); full default-branch selection needs callable facts and remains future work.'
   },
   {
     diagnosticCode: LINT_CODES.duplicateModuleLoads,

@@ -689,6 +689,26 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports contradictory Less default guard branches without flagging alternatives or comparisons', () => {
+    const impossible = '.m(@x) when (default()) and not(default()) { color: red; }';
+    const alternatives = '.m(@x) when (default()), not(default()) { color: blue; }';
+    const comparison = '.m(@x) when (@x = default()) and not(default()) { color: green; }';
+
+    expect(collectTolerantDiagnostics({ source: impossible, language: 'less' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedDefaultBranches)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'default() guard branch can never match because it also requires not(default())',
+        impossible.indexOf('(default()) and not(default())'),
+        impossible.indexOf('(default()) and not(default())') + '(default()) and not(default())'.length
+      ]
+    ]);
+    expect(collectTolerantDiagnostics({ source: alternatives, language: 'less' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedDefaultBranches)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: comparison, language: 'less' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedDefaultBranches)).toBe(false);
+  });
+
   it('reports numeric key access against same-file map-like variables', () => {
     const less = '@tokens: { tone: blue; gap: 1px; };\n.a { color: @tokens[0]; bg: @tokens[tone]; }';
     const scss = '$tokens: (tone: blue, gap: 1px);\n.a { color: map-get($tokens, 0); bg: map-get($tokens, tone); }';

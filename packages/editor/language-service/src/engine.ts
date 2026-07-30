@@ -976,6 +976,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.leakyScopeDependence]: DiagnosticSeverity.Warning,
     [LINT_CODES.ambiguousMixinCalls]: DiagnosticSeverity.Warning,
     [LINT_CODES.impossibleGuards]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unusedDefaultBranches]: DiagnosticSeverity.Warning,
     [LINT_CODES.duplicateModuleLoads]: DiagnosticSeverity.Warning,
     [LINT_CODES.unboundedExtends]: DiagnosticSeverity.Warning,
     [LINT_CODES.deadExtends]: DiagnosticSeverity.Warning,

@@ -250,6 +250,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `jess/no-leaky-scope-dependence` | `lint/no-leaky-scope-dependence` | Jess Less migration diagnostic |
 | `jess/no-ambiguous-mixin-call` | `lint/no-ambiguous-mixin-call` | Jess same-file Less callable diagnostic |
 | `jess/no-impossible-guard` | `lint/no-impossible-guard` | Jess static guard diagnostic |
+| `jess/no-unused-default-branch` | `lint/no-unused-default-branch` | Jess Less default-branch diagnostic |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess same-file module diagnostic |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess static extend target diagnostic |
 | `jess/no-dead-extend` | `lint/no-dead-extend` | Jess exact same-file extend diagnostic |

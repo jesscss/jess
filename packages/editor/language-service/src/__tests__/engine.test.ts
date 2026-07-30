@@ -1395,6 +1395,20 @@ describe('JessLanguageServiceEngine', () => {
         expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-impossible-guard');
       });
 
+      it('surfaces unused Less default-branch diagnostics by default and allows disable', () => {
+        const source = '.m(@x) when (default()) and not(default()) { color: red; }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('less', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-unused-default-branch');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-unused-default-branch', 'ignore'));
+        const disabledDoc = createDocument('less', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-unused-default-branch');
+      });
+
       it('surfaces leaky Less scope diagnostics by default and allows disable', () => {
         const source = '.theme() { @accent: red; }\n.a { .theme(); color: @accent; }';
         const enabled = createEngine();
