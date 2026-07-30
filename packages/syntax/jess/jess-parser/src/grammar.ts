@@ -112,7 +112,7 @@ type JessRules = {
   Parent: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
-  Attribute: Combinator<SimpleSelector>;
+  AttributeSelector: Combinator<SimpleSelector>;
   PseudoSelector: Combinator<SimpleToken>;
   PseudoSelectorArgument: Combinator<SelectorList | string>;
   GenericPseudoArgument: Combinator<SelectorList | string>;
@@ -1568,31 +1568,27 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const ExpressionDeclarationReference = node<ExpressionFact>(
     'ExpressionDeclarationReference',
-    noTrivia(choice(
-      sequence(
-        g.DeclarationReference,
-        literal('.'),
-        dollarName,
-        many(choice(
-          g.ExpressionReferenceCallTail,
-          g.ReferenceTail
-        ))
-      ),
-      sequence(
-        literal('.'),
-        dollarName,
-        many(choice(
-          g.ExpressionReferenceCallTail,
-          g.ReferenceTail
-        ))
-      )
+
+    /*
+     * The optional `$` is only the explicit declaration-root spelling. A
+     * leading `.` remains expression-only because this production is reachable
+     * only from ExpressionAtom, while `.1` stays on the Dimension path.
+     */
+    noTrivia(sequence(
+      optional(g.DeclarationReference),
+      literal('.'),
+      dollarName,
+      many(choice(
+        g.ExpressionReferenceCallTail,
+        g.ReferenceTail
+      ))
     )),
     (children, _fields, span) => {
-      const rooted = isValueNode(children[0]) && children[0].type === 'DeclarationReference';
-      const name = requireToken(children[rooted ? 2 : 1]).value;
+      const rooted = children.some(child => isValueNode(child) && child.type === 'DeclarationReference');
+      const name = requireToken(children.find((child): child is Token => isToken(child) && child.value !== '.')).value;
       const sourceRoot = rooted ? '$' : '';
       const base = withSourceSpan(declarationReference('$'), span);
-      const tails = children.slice(rooted ? 3 : 2).map(requireJessReferenceTail);
+      const tails = children.filter(isJessReferenceTail);
       const raw = `${sourceRoot}.${name}${tails.map(tail => tail.src).join('')}`;
       return { value: reference(
         base,
@@ -2511,8 +2507,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * CSS owns the attribute frame. Its quoted value is static selector syntax,
    * so the Jess-specific string override is the restricted LiteralQuoted slot.
    */
-  const Attribute = node<SimpleSelector>(
-    'Attribute',
+  const AttributeSelector = node<SimpleSelector>(
+    'AttributeSelector',
     sequence(
       literal('['),
       g.Identifier,
@@ -2710,7 +2706,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     noTrivia(oneOrMore(choice(
       parser(
         { trivia: whitespace },
-        g.Attribute
+        g.AttributeSelector
       ),
       g.PseudoSelector,
       g.Parent,
@@ -5416,7 +5412,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     noTrivia(oneOrMore(choice(
       parser(
         { trivia: whitespace },
-        g.Attribute
+        g.AttributeSelector
       ),
       g.PseudoSelector,
       g.InterpolatedParentSuffix,
@@ -5711,7 +5707,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     Parent,
     InterpolatedSimple,
     InterpolatedParentSuffix,
-    Attribute,
+    AttributeSelector,
     PseudoSelector,
     PseudoSelectorArgument,
     GenericPseudoArgument,

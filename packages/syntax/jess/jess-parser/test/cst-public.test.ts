@@ -93,7 +93,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     const { grammarTypes } = stats(result.tree);
-    expect(grammarTypes.get('Attribute')).toBe(1);
+    expect(grammarTypes.get('AttributeSelector')).toBe(1);
     expect(grammarTypes.get('Quoted')).toBe(1);
     expectNoModeLabels(result.tree);
   });

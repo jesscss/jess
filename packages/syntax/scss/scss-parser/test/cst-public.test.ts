@@ -81,6 +81,7 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
     const { grammarTypes } = stats(result.tree);
     expect(grammarTypes.get('Quoted')).toBeGreaterThan(1);
+    expect(grammarTypes.get('AttributeSelector')).toBeGreaterThan(1);
     expect(grammarTypes.get('PseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('SelectorOnlyPseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('IfBodyRule')).toBeGreaterThan(0);
