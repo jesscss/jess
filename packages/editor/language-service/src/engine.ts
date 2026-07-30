@@ -2117,40 +2117,37 @@ export function createEngine(): JessLanguageServiceEngine {
         });
       }
 
-      const tree = cstDoc.tree;
-      if (tree) {
-        const cstDiagnostics = cstLintDiagnostics(
-          tree,
-          text,
-          tracked.lang,
-          diagnosticsMetadata(),
-          undefined,
-          cstDoc.errors.length > 0 || cstDoc.unconsumedFrom !== null
-        );
-        for (const diagnostic of cstDiagnostics) {
-          if (diagnostic.code === LINT_CODES.emptyRules && hasDiagnosticQualifier(diagnostic, 'mixin-body')) {
-            continue;
-          }
-          if (suppressByDiagnosticOptions(diagnostic, text)) {
-            continue;
-          }
-          const configured = semanticDiagnosticSeverities[diagnostic.code];
-          if (typeof configured !== 'number') {
-            continue;
-          }
-          const effectiveSeverity = diagnostic.code === SEMANTIC_CODES.undefinedVariable
-            && diagnostic.defaultSeverity === 'error'
-            && configured === DiagnosticSeverity.Warning
-            ? DiagnosticSeverity.Error
-            : configured;
-          diagnostics.push({
-            code: diagnostic.code,
-            source: diagnostic.source,
-            message: diagnostic.message,
-            severity: effectiveSeverity,
-            range: diagnosticRange(diagnostic.start, diagnostic.end)
-          });
+      const cstDiagnostics = cstLintDiagnostics(
+        cstDoc.tree,
+        text,
+        tracked.lang,
+        diagnosticsMetadata(),
+        undefined,
+        cstDoc.errors.length > 0 || cstDoc.unconsumedFrom !== null
+      );
+      for (const diagnostic of cstDiagnostics) {
+        if (diagnostic.code === LINT_CODES.emptyRules && hasDiagnosticQualifier(diagnostic, 'mixin-body')) {
+          continue;
         }
+        if (suppressByDiagnosticOptions(diagnostic, text)) {
+          continue;
+        }
+        const configured = semanticDiagnosticSeverities[diagnostic.code];
+        if (typeof configured !== 'number') {
+          continue;
+        }
+        const effectiveSeverity = diagnostic.code === SEMANTIC_CODES.undefinedVariable
+          && diagnostic.defaultSeverity === 'error'
+          && configured === DiagnosticSeverity.Warning
+          ? DiagnosticSeverity.Error
+          : configured;
+        diagnostics.push({
+          code: diagnostic.code,
+          source: diagnostic.source,
+          message: diagnostic.message,
+          severity: effectiveSeverity,
+          range: diagnosticRange(diagnostic.start, diagnostic.end)
+        });
       }
 
       diagnostics.sort((a, b) => {

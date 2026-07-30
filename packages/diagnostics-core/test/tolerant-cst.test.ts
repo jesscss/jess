@@ -693,14 +693,41 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
-  it('reports same-file undefined Less mixin calls as shared semantic diagnostics', () => {
-    const source = '.used() { color: red; }\n.a { .used(); .missing(); }';
+  it('reports same-file undefined mixin calls as shared semantic diagnostics', () => {
+    const less = '.used() { color: red; }\n.a { .used(); .missing(); }';
+    const scss = '@mixin used() { color: red; }\n.a { @include used(); @include missing(); }';
+    const jess = 'used() { color: red; }\n.a { $ > used(); $ > missing(); }';
 
-    expect(collectTolerantDiagnostics({ source, language: 'less' }).diagnostics
+    expect(collectTolerantDiagnostics({ source: less, language: 'less' }).diagnostics
       .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)
       .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      ['eval', 'warning', 'Undefined mixin .missing', source.indexOf('.missing'), source.indexOf('.missing') + '.missing'.length]
+      ['eval', 'warning', 'Undefined mixin .missing', less.indexOf('.missing'), less.indexOf('.missing') + '.missing'.length]
     ]);
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)
+      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['eval', 'warning', 'Undefined mixin missing', scss.indexOf('missing'), scss.indexOf('missing') + 'missing'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .filter(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)
+      .map(diagnostic => [diagnostic.phase, diagnostic.defaultSeverity, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['eval', 'warning', 'Undefined mixin missing', jess.indexOf('missing'), jess.indexOf('missing') + 'missing'.length]
+    ]);
+  });
+
+  it('does not report same-file undefined mixin calls when imports or modules may provide them', () => {
+    const less = '@import "mixins.less";\n.a { .missing(); }';
+    const scss = '@use "mixins";\n.a { @include missing(); }';
+    const jess = '@-compose "mixins";\n.a { $ > missing(); }';
+
+    for (const [source, language] of [
+      [less, 'less'],
+      [scss, 'scss'],
+      [jess, 'jess']
+    ] as const) {
+      expect(collectTolerantDiagnostics({ source, language }).diagnostics
+        .some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)).toBe(false);
+    }
   });
 
   it('does not report Less mixin parameters as undefined variables inside their definition', () => {

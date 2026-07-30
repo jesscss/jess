@@ -78,6 +78,7 @@ const NAMESPACE_KEYWORD_TYPES = new Set([
  */
 const SCSS_CALLABLE_TYPES = new Set(['MixinDefinition', 'MixinCall', 'FunctionRule']);
 const LESS_SELECTOR_TYPES = new Set(['SelectorBranch', 'Compound']);
+const LESS_MIXIN_STATEMENT_TYPE = 'MixinStatement';
 
 function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
@@ -134,6 +135,18 @@ function previousLessSelectorName(
   return best === null ? '' : mixinIdentOf(source.slice(best.start, best.end));
 }
 
+function hasDescendantOfType(node: CssCstNode, grammarType: string): boolean {
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (child.grammarType === grammarType || hasDescendantOfType(child, grammarType)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Every declared variable and mixin (bare identifiers) in one document's CST.
  * Powers the "did you mean" quick-fix candidate pools without reparsing to the
@@ -150,6 +163,11 @@ export function cstDeclaredSymbols(root: CssCstNode, doc: TextDocument): { vars:
       const name = varNameOf(src.slice(start, end));
       if (name) {
         vars.add(name);
+      }
+    } else if (gt === LESS_MIXIN_STATEMENT_TYPE && hasDescendantOfType(node, 'MixinDefinition')) {
+      const name = previousLessSelectorName(index.nodes, src, start);
+      if (name) {
+        mixins.add(name);
       }
     } else if (gt === 'MixinDefinition') {
       const slice = src.slice(start, end);

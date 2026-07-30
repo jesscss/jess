@@ -169,10 +169,10 @@ Rules can also use a Stylelint-like tuple, `['warn', { ...options }]`, when a
 rule supports secondary options. Jess uses Stylelint rule names where the rule
 intent is familiar and Jess-native names for Jess-only diagnostics.
 
-Every stable lint rule has two names: a public `lint.rules` key and a shared
-Jess diagnostic `code`. Jess uses Stylelint rule names when that helps
+Every stable lint rule has two identifiers: a public `lint.rules` key and a
+shared Jess diagnostic `code`. Jess uses Stylelint rule names when that helps
 migration, while JSON output preserves both `ruleName` and `code`.
-`stylelint-near` in the rule table is comparison metadata only: the lint rule
+`stylelint-near` is comparison metadata only, not a third name: the lint rule
 name and diagnostic code stay stable, but detection may intentionally be a
 Jess-native or VSCode-data-backed subset.
 
@@ -180,7 +180,9 @@ Compiler-style diagnostics are configured by diagnostic code under
 `lint.diagnostics`. They are not lint rules and do not appear in
 `STABLE_LINT_RULES` unless Jess intentionally adds a lint rule alias for them,
 but `jess lint` can report them in the same compact and JSON outputs.
-`SEMANTIC_CODES` exports the current shared semantic diagnostic codes.
+`SEMANTIC_CODES` exports the current shared semantic diagnostic codes. The
+initial semantic set includes same-file undefined variables, same-file
+Less/SCSS/Jess undefined mixin calls, and simple Less unknown named arguments.
 
 `block-no-empty` warns on empty rulesets by default. Add
 `['warn', { include: ['mixins'] }]` when empty Less, SCSS, or Jess mixin bodies
@@ -202,7 +204,7 @@ covers a static authored-source subset.
 
 The current stable rule set is intentionally small and migration-friendly:
 
-| Rule name | Jess diagnostic code | Comparison |
+| Rule name | Jess diagnostic code | Comparison metadata |
 | --- | --- | --- |
 | `block-no-empty` | `lint/empty-rules` | `block-no-empty` |
 | `property-no-unknown` | `lint/unknown-property` | near `property-no-unknown` |

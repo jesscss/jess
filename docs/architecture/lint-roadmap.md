@@ -62,14 +62,15 @@ is the shared identity used by diagnostics-core, the language service, JSON
 output, and compatibility aliases. Lint JSON carries both names when a
 diagnostic maps to a stable lint rule.
 
-Comparison status is separate metadata. `stylelint-equivalent`,
+Comparison status is separate metadata, not a third public name.
+`stylelint-equivalent`,
 `stylelint-near`, `vscode-equivalent`, and `jess-only` describe evidence and
 benchmark eligibility; they never replace either name. A `stylelint-near` rule
 still has a stable lint rule name and a stable diagnostic code, but its detector
 may intentionally be a VSCode-data-backed or Jess-native subset and can stay out
 of matched benchmark mode until its behavior is comparable enough.
 
-| Rule | Diagnostic code | Kind |
+| Rule | Diagnostic code | Comparison metadata |
 | --- | --- | --- |
 | `block-no-empty` | `lint/empty-rules` | Stylelint-equivalent |
 | `property-no-unknown` | `lint/unknown-property` | Stylelint-near |
@@ -312,7 +313,7 @@ the language service because they are often the most useful author feedback.
 | --- | --- | --- |
 | Definite unresolved variable | Compiler/evaluator | Initial shared same-file CST diagnostic landed as `var/undefined` for Less/SCSS/Jess variable references; strict SCSS `@use` and Less/Jess `@from`/`@compose` syntax defaults to error. Resolver/import-aware certainty remains future work. |
 | Missing import or module cycle | Resolver/compiler | Report the path and config context. |
-| No matching mixin/function overload | Compiler/evaluator | Initial shared same-file Less mixin diagnostic landed as `mixin/undefined`; `CallSignature` and `OverloadSet` facts can later handle functions, namespaces, arguments, guards, imports, and richer overload messages. |
+| No matching mixin/function overload | Compiler/evaluator | Initial shared same-file mixin diagnostic landed as `mixin/undefined` for Less/SCSS/Jess calls; `CallSignature` and `OverloadSet` facts can later handle functions, namespaces, arguments, guards, imports, and richer overload messages. |
 | Unknown named argument | Compiler/evaluator | Initial shared same-file Less mixin diagnostic landed as `call/unknown-named-argument` for simple named calls whose static candidate signatures do not contain the authored parameter; rest/pattern overloads, imports, functions, namespaces, guards, and richer overload resolution remain future work. |
 | Private member access | Compiler later | Language rule, not style preference. |
 | Readonly assignment | Compiler later | Language rule, not style preference. |

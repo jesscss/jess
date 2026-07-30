@@ -84,11 +84,16 @@ export const LINT_RULE_NAMES = {
 export type LintRuleName = typeof LINT_RULE_NAMES[keyof typeof LINT_RULE_NAMES];
 
 export interface StableLintRule {
+  /** Shared diagnostics-core / language-service problem identity. */
   readonly diagnosticCode: string;
+
+  /** Public `lint.rules` policy key, often Stylelint-named for migration. */
   readonly ruleName: LintRuleName;
   readonly title: string;
   readonly tier: LintRuleTier;
   readonly defaultPolicy: LintSeverity;
+
+  /** Coverage and benchmark metadata; not a third public name. */
   readonly comparison: LintRuleComparisonKind;
   readonly stylelintRule?: string;
   readonly notes: string;

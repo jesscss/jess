@@ -477,13 +477,21 @@ describe('JessLanguageServiceEngine', () => {
       expect(varDiag?.severity).toBe(1); // DiagnosticSeverity.Error
     });
 
-    it('reports undefined Less mixin calls (semantic)', () => {
+    it('reports undefined dialect mixin calls (semantic)', () => {
       const engine = createEngine();
-      const doc = createDocument('less', '.a { .missing(); }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const codes = diagnostics.map(d => d.code);
-      expect(codes).toContain('mixin/undefined');
+      const docs = [
+        createDocument('less', '.a { .missing(); }'),
+        createDocument('scss', '.a { @include missing(); }'),
+        createDocument('jess', '.a { $ > missing(); }')
+      ];
+
+      for (const doc of docs) {
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diagnostics = engine.getDiagnostics(doc.uri);
+        const diag = diagnostics.find(d => d.code === 'mixin/undefined');
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(2); // DiagnosticSeverity.Warning
+      }
     });
 
     it('reports unknown Less named mixin arguments (semantic)', () => {

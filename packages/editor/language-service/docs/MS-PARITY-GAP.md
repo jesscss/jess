@@ -219,12 +219,12 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
   folding, def/refs/rename, variable completion) run straight off the CST
   without an AST reparse. Frame this as *performance/latency*, not as "we
   tolerate errors and they don't."
-- **True semantic analysis.** `var/undefined`, `mixin/undefined`, and
-  `call/unknown-named-argument` diagnostics
-  come from actually resolving symbols against a real evaluating engine
-  (jess/less/scss), with cross-file import resolution (`@jesscss/style-resolver`)
-  and severity escalation when modern features (`@use`/`@from`/`@compose`) are
-  present. MS does not do this depth of semantic validation.
+- **Shared semantic diagnostics.** `var/undefined`, `mixin/undefined`, and
+  `call/unknown-named-argument` currently come from same-file Jess diagnostic
+  facts shared with lint, including Less/SCSS/Jess undefined mixin calls and
+  severity escalation when modern features (`@use`/`@from`/`@compose`) are
+  present. Cross-file import resolution through `@jesscss/style-resolver` is the
+  next semantic-analysis step. MS does not do this depth of semantic validation.
 - **Semantic tokens** (`getSemanticTokens`) — not offered by
   `vscode-css-languageservice` at all (VS Code colors CSS via TextMate).
 - **Broader modern color coverage** in document colors / presentations

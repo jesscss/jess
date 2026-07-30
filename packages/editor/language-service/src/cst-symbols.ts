@@ -22,13 +22,14 @@
 import type { CssCstNode } from '@jesscss/css-parser';
 import type { Location, Range } from 'vscode-languageserver-types';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
-import { buildCstIndex, type CstIndexEntry } from './cst-analysis.js';
+import { buildCstIndex, cstChildrenOf, type CstIndexEntry } from './cst-analysis.js';
 
 const VAR_REF_TYPES = new Set(['Reference', 'VariableReference']);
 const VAR_DECL_TYPES = new Set(['VarDeclaration', 'VariableDeclaration']);
 
 // A mixin CALL site: Less/Jess selector + `MixinCall` / SCSS `@include foo`.
 const MIXIN_REF_TYPES = new Set(['MixinCall']);
+const MIXIN_STATEMENT_TYPE = 'MixinStatement';
 
 /*
  * A mixin/function DEFINITION: shared Less/Jess `MixinDefinition`, SCSS
@@ -96,6 +97,36 @@ function onlyTriviaBetween(source: string, start: number, end: number): boolean 
   return true;
 }
 
+function hasDescendantOfType(node: CssCstNode, grammarType: string): boolean {
+  for (const child of cstChildrenOf(node)) {
+    if (child._tag !== 'node') {
+      continue;
+    }
+    if (child.grammarType === grammarType || hasDescendantOfType(child, grammarType)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function mixinStatementRole(node: CssCstNode): 'definition' | 'reference' | null {
+  if (node.grammarType !== MIXIN_STATEMENT_TYPE) {
+    return null;
+  }
+  if (hasDescendantOfType(node, 'MixinDefinition')) {
+    return 'definition';
+  }
+  return hasDescendantOfType(node, 'MixinCall') ? 'reference' : null;
+}
+
+function isMixinReferenceEntry(entry: CstIndexEntry): boolean {
+  return MIXIN_REF_TYPES.has(entry.node.grammarType) || mixinStatementRole(entry.node) === 'reference';
+}
+
+function isMixinDefinitionEntry(entry: CstIndexEntry): boolean {
+  return MIXIN_DEF_TYPES.has(entry.node.grammarType) || mixinStatementRole(entry.node) === 'definition';
+}
+
 function previousMixinSelector(entries: readonly CstIndexEntry[], source: string, start: number): CstIndexEntry | null {
   let best: CstIndexEntry | null = null;
   for (const entry of entries) {
@@ -122,7 +153,7 @@ function followingMixinBody(entries: readonly CstIndexEntry[], source: string, s
   let best: CstIndexEntry | null = null;
   for (const entry of entries) {
     if (
-      (!MIXIN_REF_TYPES.has(entry.node.grammarType) && !MIXIN_DEF_TYPES.has(entry.node.grammarType))
+      (!isMixinReferenceEntry(entry) && !isMixinDefinitionEntry(entry))
       || entry.start < selector.end
       || !onlyTriviaBetween(source, selector.end, entry.start)
     ) {
@@ -208,7 +239,7 @@ export function cstSymbolAtOffset(root: CssCstNode, doc: TextDocument, offset: n
   for (const entry of index.nodes) {
     const gt = entry.node.grammarType;
     const isMixinSelector = MIXIN_SELECTOR_TYPES.has(gt) && followingMixinBody(index.nodes, src, entry) !== null;
-    const isSymbol = VAR_REF_TYPES.has(gt) || VAR_DECL_TYPES.has(gt) || MIXIN_REF_TYPES.has(gt) || MIXIN_DEF_TYPES.has(gt) || isMixinSelector;
+    const isSymbol = VAR_REF_TYPES.has(gt) || VAR_DECL_TYPES.has(gt) || isMixinReferenceEntry(entry) || isMixinDefinitionEntry(entry) || isMixinSelector;
     if (!isSymbol) {
       continue;
     }
@@ -237,10 +268,10 @@ export function cstSymbolAtOffset(root: CssCstNode, doc: TextDocument, offset: n
     ? src.slice(best.start, best.end).trim()
     : mixinNameForEntry(index.nodes, src, mixinEntry);
   const ident = mixinIdentOf(mn);
-  if (selectorBody !== null && MIXIN_REF_TYPES.has(selectorBody.node.grammarType)) {
+  if (selectorBody !== null && isMixinReferenceEntry(selectorBody)) {
     return { kind: 'mixin', role: 'reference', matchName: mn, refineIdent: ident };
   }
-  if (MIXIN_REF_TYPES.has(gt)) {
+  if (isMixinReferenceEntry(best)) {
     return { kind: 'mixin', role: 'reference', matchName: mn, refineIdent: ident };
   }
   return { kind: 'mixin', role: 'definition', matchName: mn, refineIdent: ident };
@@ -257,7 +288,7 @@ export function cstFindDefinitionInDoc(root: CssCstNode, doc: TextDocument, uri:
       if (VAR_DECL_TYPES.has(gt) && varNameOf(src.slice(entry.start, entry.end)) === target.matchName) {
         return { uri, range: toRange(doc, entry.start, entry.end) };
       }
-    } else if (MIXIN_DEF_TYPES.has(gt) && mixinNameForEntry(index.nodes, src, entry) === target.matchName) {
+    } else if (isMixinDefinitionEntry(entry) && mixinNameForEntry(index.nodes, src, entry) === target.matchName) {
       const rangeEntry = mixinRangeEntry(index.nodes, src, entry);
       return { uri, range: toRange(doc, rangeEntry.start, rangeEntry.end) };
     }
@@ -277,7 +308,7 @@ export function cstCollectReferencesInDoc(root: CssCstNode, doc: TextDocument, u
     if (target.kind === 'variable') {
       hit = (VAR_REF_TYPES.has(gt) || VAR_DECL_TYPES.has(gt)) && varNameOf(slice) === target.matchName;
     } else {
-      hit = (MIXIN_REF_TYPES.has(gt) || MIXIN_DEF_TYPES.has(gt)) && mixinNameForEntry(index.nodes, src, entry) === target.matchName;
+      hit = (isMixinReferenceEntry(entry) || isMixinDefinitionEntry(entry)) && mixinNameForEntry(index.nodes, src, entry) === target.matchName;
     }
     if (hit) {
       const rangeEntry = target.kind === 'mixin' ? mixinRangeEntry(index.nodes, src, entry) : entry;

@@ -116,6 +116,7 @@ const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBl
  * SCSS `MixinDefinitionRule` (`@mixin foo`) label.
  */
 const MIXIN_TYPES = new Set(['MixinDefinition', 'MixinDefinitionRule']);
+const MIXIN_STATEMENT_TYPE = 'MixinStatement';
 
 // Function DEFINITIONS: SCSS `@function`.
 const FUNC_TYPES = new Set(['FunctionRule']);
@@ -127,6 +128,23 @@ function firstSelectorChild(node: CssCstNode): CssCstNode | null {
     }
   }
   return null;
+}
+
+function hasDescendantOfType(node: CssCstNode, grammarType: string): boolean {
+  for (const child of cstChildrenOf(node)) {
+    if (child._tag !== 'node') {
+      continue;
+    }
+    if (child.grammarType === grammarType || hasDescendantOfType(child, grammarType)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isMixinDefinitionNode(node: CssCstNode): boolean {
+  return MIXIN_TYPES.has(node.grammarType)
+    || (node.grammarType === MIXIN_STATEMENT_TYPE && hasDescendantOfType(node, 'MixinDefinition'));
 }
 
 function onlyTriviaBetween(source: string, start: number, end: number): boolean {
@@ -237,9 +255,12 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
     } else if (gt === 'VarDeclaration' || gt === 'VariableDeclaration') {
       const name = sliceOf(node).split(':')[0]!.trim();
       add(name || 'variable', SymbolKind.Variable, node, null, false);
-    } else if (MIXIN_TYPES.has(gt)) {
+    } else if (isMixinDefinitionNode(node)) {
       const sel = previousLessSelector(index, src, node);
       const raw = sel ? sliceOf(sel) : sliceOf(node);
+      if (!sel && !raw.trim().startsWith('@')) {
+        continue;
+      }
       const name = raw.split(/[({]/)[0]!.trim();
       add(name || 'mixin', SymbolKind.Function, node, sel, true);
     } else if (FUNC_TYPES.has(gt)) {
@@ -256,11 +277,18 @@ const FOLD_TYPES = new Set(['Ruleset', 'NestedRuleset', ...ATRULE_TYPES, ...MIXI
  * folding set, sourced from the tolerant CST. */
 export function cstFoldingRanges(root: CssCstNode, doc: TextDocument): FoldingRange[] {
   const index = buildCstIndex(root);
+  const src = doc.getText();
   const out: FoldingRange[] = [];
   const seen = new Set<string>();
   for (const { node, start, end } of index.nodes) {
-    if (!FOLD_TYPES.has(node.grammarType)) {
+    if (!FOLD_TYPES.has(node.grammarType) && !isMixinDefinitionNode(node)) {
       continue;
+    }
+    if (MIXIN_TYPES.has(node.grammarType)) {
+      const spanText = src.slice(start, end).trim();
+      if (!spanText.startsWith('@') && previousLessSelector(index, src, node) === null) {
+        continue;
+      }
     }
     const s = doc.positionAt(start);
     const e = doc.positionAt(end);

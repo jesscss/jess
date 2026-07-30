@@ -632,6 +632,11 @@ type VariableReferenceFact = {
   readonly span: DiagnosticSpan;
 };
 
+type IgnoredReferenceSpan = {
+  readonly start: number;
+  readonly end: number;
+};
+
 type VariableParameterScopeFact = {
   readonly names: ReadonlySet<string>;
   readonly start: number;
@@ -3156,6 +3161,10 @@ function ownedMixinGuardNode(node: CssCstNode): CssCstNode | null {
   if (direct !== undefined) {
     return direct;
   }
+  const lessDefinition = lessMixinDefinitionChild(node);
+  if (lessDefinition !== undefined) {
+    return firstChildNodeOf(lessDefinition, 'MixinGuard') ?? null;
+  }
   const signature = firstChildNodeOf(node, 'MixinSignature');
   if (signature === undefined) {
     return null;
@@ -3275,11 +3284,22 @@ function scssNamedRuleName(source: string, node: CssCstNode, keyword: string): M
 }
 
 function scssMixinCallName(source: string, node: CssCstNode): string | null {
+  const fact = scssMixinCallFactOf(source, node);
+  return fact === null ? null : fact.name;
+}
+
+function scssMixinCallFactOf(source: string, node: CssCstNode): MixinReferenceFact | null {
   const start = absoluteStart(node);
   const end = absoluteEnd(node);
   const nameStart = start + '@include'.length;
   const name = firstIdentifierSpan(source, nameStart, end);
-  return name === null ? null : normalizedScssCallableName(name.value);
+  return name === null
+    ? null
+    : {
+        name: normalizedScssCallableName(name.value),
+        display: name.value,
+        span: spanFromNodeStart(node, name.start, name.end)
+      };
 }
 
 function normalizedScssCallableName(name: string): string {
@@ -3301,6 +3321,58 @@ function lessMixinNameFromSelector(source: string, selector: CssCstNode): MixinD
         display: selectorDisplay(source, start, end),
         span: selector.span
       };
+}
+
+function lessMixinStatementChild(node: CssCstNode): CssCstNode | undefined {
+  return node.grammarType === 'Statement' ? firstChildNodeOf(node, 'MixinStatement') : undefined;
+}
+
+function lessMixinDefinitionChild(node: CssCstNode): CssCstNode | undefined {
+  const statement = lessMixinStatementChild(node);
+  return statement === undefined
+    ? firstChildNodeOf(node, 'MixinDefinition')
+    : firstChildNodeOf(statement, 'MixinDefinition');
+}
+
+function lessMixinCallChild(node: CssCstNode): CssCstNode | undefined {
+  const statement = lessMixinStatementChild(node);
+  return statement === undefined
+    ? firstChildNodeOf(node, 'MixinCall')
+    : firstChildNodeOf(statement, 'MixinCall');
+}
+
+function lessMixinInteriorChild(node: CssCstNode): CssCstNode | undefined {
+  const statement = lessMixinStatementChild(node);
+  return statement === undefined ? undefined : firstChildNodeOf(statement, 'MixinInterior');
+}
+
+function lessMixinBindingNodes(node: CssCstNode): CssCstNode[] {
+  const interior = lessMixinInteriorChild(node);
+  return interior === undefined
+    ? []
+    : childNodesOf(interior).filter(child => child.grammarType === 'MixinBinding');
+}
+
+function lessMixinBindingHasValue(binding: CssCstNode): boolean {
+  return firstChildNodeOf(binding, 'CallArgumentValue') !== undefined
+    || firstChildNodeOf(binding, 'MixinParamValueTerm') !== undefined;
+}
+
+function lessMixinCurrentSignatureIsDynamic(source: string, node: CssCstNode): boolean {
+  const interior = lessMixinInteriorChild(node);
+  if (interior === undefined) {
+    return false;
+  }
+  if (childNodesOf(interior).some(child => child.grammarType === 'MixinArgument')) {
+    return true;
+  }
+  return lessMixinBindingNodes(node).some(binding =>
+    source.slice(absoluteStart(binding), absoluteEnd(binding)).includes('...')
+  );
+}
+
+function lessMixinCurrentSignatureHasDefault(node: CssCstNode): boolean {
+  return lessMixinBindingNodes(node).some(lessMixinBindingHasValue);
 }
 
 function lessSimpleMixinNameFromSelector(source: string, selector: CssCstNode): MixinDefinitionFact | null {
@@ -3332,18 +3404,22 @@ function lessFixedMixinDefinitionOf(source: string, node: CssCstNode): LessFixed
   if (node.grammarType !== 'Statement') {
     return null;
   }
-  const definition = firstChildNodeOf(node, 'MixinDefinition');
+  const definition = lessMixinDefinitionChild(node);
   if (definition === undefined) {
     return null;
   }
   const signature = firstChildNodeOf(definition, 'MixinSignature');
   if (
-    signature === undefined
-    || hasDescendantNodeOf(signature, 'MixinGuard')
-    || hasDescendantNodeOf(signature, 'MixinRestParam')
-    || hasDescendantNodeOf(signature, 'MixinAnonymousRestParam')
-    || hasDescendantNodeOf(signature, 'MixinPatternParam')
-    || hasDescendantNodeOf(signature, 'MixinParamValueTerm')
+    (signature !== undefined && (
+      hasDescendantNodeOf(signature, 'MixinGuard')
+      || hasDescendantNodeOf(signature, 'MixinRestParam')
+      || hasDescendantNodeOf(signature, 'MixinAnonymousRestParam')
+      || hasDescendantNodeOf(signature, 'MixinPatternParam')
+      || hasDescendantNodeOf(signature, 'MixinParamValueTerm')
+    ))
+    || hasDescendantNodeOf(definition, 'MixinGuard')
+    || lessMixinCurrentSignatureHasDefault(node)
+    || lessMixinCurrentSignatureIsDynamic(source, node)
   ) {
     return null;
   }
@@ -3354,7 +3430,9 @@ function lessFixedMixinDefinitionOf(source: string, node: CssCstNode): LessFixed
     : {
         name: name.name,
         display: name.display,
-        arity: countDescendantNodesOf(signature, 'MixinParamWithSignatureTrivia')
+        arity: signature === undefined
+          ? lessMixinBindingNodes(node).length
+          : countDescendantNodesOf(signature, 'MixinParamWithSignatureTrivia')
       };
 }
 
@@ -3374,7 +3452,7 @@ function lessMixinSignatureOf(source: string, node: CssCstNode): LessMixinSignat
   if (node.grammarType !== 'Statement') {
     return null;
   }
-  const definition = firstChildNodeOf(node, 'MixinDefinition');
+  const definition = lessMixinDefinitionChild(node);
   if (definition === undefined) {
     return null;
   }
@@ -3385,10 +3463,13 @@ function lessMixinSignatureOf(source: string, node: CssCstNode): LessMixinSignat
   }
   const signature = firstChildNodeOf(definition, 'MixinSignature');
   if (
-    signature === undefined
-    || hasDescendantNodeOf(signature, 'MixinRestParam')
-    || hasDescendantNodeOf(signature, 'MixinAnonymousRestParam')
-    || hasDescendantNodeOf(signature, 'MixinPatternParam')
+    (signature !== undefined && (
+      hasDescendantNodeOf(signature, 'MixinRestParam')
+      || hasDescendantNodeOf(signature, 'MixinAnonymousRestParam')
+      || hasDescendantNodeOf(signature, 'MixinPatternParam')
+    ))
+    || hasDescendantNodeOf(definition, 'MixinGuard')
+    || lessMixinCurrentSignatureIsDynamic(source, node)
   ) {
     return {
       name: name.name,
@@ -3396,8 +3477,10 @@ function lessMixinSignatureOf(source: string, node: CssCstNode): LessMixinSignat
       parameters: null
     };
   }
-  const boundParams: CssCstNode[] = [];
-  descendantNodesOfType(signature, 'MixinBoundParam', boundParams);
+  const boundParams: CssCstNode[] = signature === undefined ? lessMixinBindingNodes(node) : [];
+  if (signature !== undefined) {
+    descendantNodesOfType(signature, 'MixinBoundParam', boundParams);
+  }
   const parameters = new Set<string>();
   for (const parameter of boundParams) {
     const authored = authoredVariableNameOf(source, absoluteStart(parameter), absoluteEnd(parameter));
@@ -3422,7 +3505,7 @@ function lessMixinParameterScopeOf(source: string, node: CssCstNode): VariablePa
   if (signature === null || signature.parameters === null || signature.parameters.size === 0) {
     return null;
   }
-  const definition = firstChildNodeOf(node, 'MixinDefinition');
+  const definition = lessMixinDefinitionChild(node);
   return definition === undefined
     ? null
     : {
@@ -3436,7 +3519,7 @@ function lessFixedMixinCallOf(source: string, node: CssCstNode): LessFixedMixinC
   if (node.grammarType !== 'Statement') {
     return null;
   }
-  const call = firstChildNodeOf(node, 'MixinCall');
+  const call = lessMixinCallChild(node);
   if (call === undefined) {
     return null;
   }
@@ -3447,7 +3530,9 @@ function lessFixedMixinCallOf(source: string, node: CssCstNode): LessFixedMixinC
     : {
         name: name.name,
         display: name.display,
-        arity: countDescendantNodesOf(call, 'PositionalMixinArgument'),
+        arity: countDescendantNodesOf(call, 'PositionalMixinArgument')
+          + lessMixinBindingNodes(node).filter(binding => !lessMixinBindingHasValue(binding)).length
+          + childNodesOf(lessMixinInteriorChild(node) ?? call).filter(child => child.grammarType === 'MixinArgument').length,
         span: name.span
       };
 }
@@ -3464,11 +3549,18 @@ function lessNamedArgumentOf(source: string, node: CssCstNode): NamedArgumentFac
   };
 }
 
+function lessMixinBindingNameSpan(source: string, node: CssCstNode): IgnoredReferenceSpan | null {
+  const authored = authoredVariableNameOf(source, absoluteStart(node), absoluteEnd(node));
+  return authored === null || authored.name.charCodeAt(0) !== 64 /* @ */
+    ? null
+    : { start: authored.start, end: authored.end };
+}
+
 function lessMixinNamedArgumentCallOf(source: string, node: CssCstNode): MixinNamedArgumentCallFact | null {
   if (node.grammarType !== 'Statement') {
     return null;
   }
-  const call = firstChildNodeOf(node, 'MixinCall');
+  const call = lessMixinCallChild(node);
   if (call === undefined) {
     return null;
   }
@@ -3477,7 +3569,7 @@ function lessMixinNamedArgumentCallOf(source: string, node: CssCstNode): MixinNa
   if (name === null) {
     return null;
   }
-  const namedArgumentNodes: CssCstNode[] = [];
+  const namedArgumentNodes: CssCstNode[] = lessMixinBindingNodes(node).filter(lessMixinBindingHasValue);
   descendantNodesOfType(call, 'NamedMixinArgument', namedArgumentNodes);
   if (namedArgumentNodes.length === 0) {
     return null;
@@ -3528,6 +3620,11 @@ function jessMixinNameSpan(source: string, node: CssCstNode): MixinDefinitionFac
 }
 
 function jessMixinCallName(source: string, node: CssCstNode): string | null {
+  const fact = jessMixinCallFactOf(source, node);
+  return fact === null ? null : fact.name;
+}
+
+function jessMixinCallFactOf(source: string, node: CssCstNode): MixinReferenceFact | null {
   const start = absoluteStart(node);
   const end = absoluteEnd(node);
   const open = source.indexOf('(', start);
@@ -3539,7 +3636,12 @@ function jessMixinCallName(source: string, node: CssCstNode): string | null {
   if (trimmed.start >= trimmed.end) {
     return null;
   }
-  return source.slice(trimmed.start, trimmed.end);
+  const display = source.slice(trimmed.start, trimmed.end);
+  return {
+    name: display,
+    display,
+    span: spanFromNodeStart(node, trimmed.start, trimmed.end)
+  };
 }
 
 function mixinDefinitionOf(source: string, node: CssCstNode, language: JessLanguage): MixinDefinitionFact | null {
@@ -3547,7 +3649,7 @@ function mixinDefinitionOf(source: string, node: CssCstNode, language: JessLangu
     return null;
   }
   if (language === 'less') {
-    if (node.grammarType !== 'Statement' || firstChildNodeOf(node, 'MixinDefinition') === undefined) {
+    if (node.grammarType !== 'Statement' || lessMixinDefinitionChild(node) === undefined) {
       return null;
     }
     const selector = firstChildNodeOf(node, 'SelectorBranch');
@@ -3564,7 +3666,7 @@ function mixinCallNamesOf(source: string, node: CssCstNode, language: JessLangua
     return [];
   }
   if (language === 'less') {
-    if (node.grammarType !== 'Statement' || firstChildNodeOf(node, 'MixinCall') === undefined) {
+    if (node.grammarType !== 'Statement' || lessMixinCallChild(node) === undefined) {
       return [];
     }
     const selector = firstChildNodeOf(node, 'SelectorBranch');
@@ -3603,6 +3705,23 @@ function mixinCallNamesOf(source: string, node: CssCstNode, language: JessLangua
   }
   const name = node.grammarType === 'MixinCall' ? jessMixinCallName(source, node) : null;
   return name === null ? [] : [name];
+}
+
+function mixinCallFactsOf(source: string, node: CssCstNode, language: JessLanguage): readonly MixinReferenceFact[] {
+  if (language === 'css') {
+    return [];
+  }
+  if (language === 'less') {
+    const fact = lessSimpleMixinCallFactOf(source, node);
+    return fact === null ? [] : [fact];
+  }
+  if (node.grammarType !== 'MixinCall') {
+    return [];
+  }
+  const fact = language === 'scss'
+    ? scssMixinCallFactOf(source, node)
+    : jessMixinCallFactOf(source, node);
+  return fact === null ? [] : [fact];
 }
 
 function exactDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNode | null {
@@ -3917,7 +4036,7 @@ function collectLessLeakyScopeFacts(
 ): void {
   const mixin = mixinDefinitionOf(source, node, 'less');
   if (mixin !== null) {
-    const body = firstChildNodeOf(node, 'MixinDefinition');
+    const body = lessMixinDefinitionChild(node);
     if (body !== undefined) {
       const variables = new Map<string, MixinLeakedVariableFact>();
       collectLessMixinBodyVariables(source, body, variables, mixin);
@@ -4954,6 +5073,104 @@ function invalidImportPositionSpans(source: string): DiagnosticSpan[] {
   return spans;
 }
 
+type UnsupportedForwardSpan = {
+  readonly kind: 'prefix' | 'visibility';
+  readonly span: DiagnosticSpan;
+};
+
+function unsupportedScssForwardSpans(source: string): UnsupportedForwardSpan[] {
+  const spans: UnsupportedForwardSpan[] = [];
+  const scan = blankStringsAndComments(source);
+  const forwardRe = /@forward\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = forwardRe.exec(scan)) !== null) {
+    const start = match.index;
+    const nameEnd = start + '@forward'.length;
+    const construct = cssConstructEnd(source, nameEnd, source.length);
+    const rawPrelude = source.slice(nameEnd, construct.end).replace(/;+\s*$/, '');
+    const prelude = stripComments(rawPrelude).replace(/\s+/g, ' ').trim();
+    if (FORWARD_AS_PREFIX.test(prelude)) {
+      spans.push({ kind: 'prefix', span: sourceSpan(source, start, construct.end) });
+    }
+    if (FORWARD_VISIBILITY.test(prelude)) {
+      spans.push({ kind: 'visibility', span: sourceSpan(source, start, construct.end) });
+    }
+    forwardRe.lastIndex = Math.max(forwardRe.lastIndex, construct.end);
+  }
+  return spans;
+}
+
+function conditionEndBeforeBlock(source: string, start: number): number {
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  for (let i = start; i < source.length; i++) {
+    const code = source.charCodeAt(i);
+    if (code === 40 /* ( */) {
+      parenDepth++;
+    } else if (code === 41 /* ) */) {
+      parenDepth = Math.max(0, parenDepth - 1);
+    } else if (code === 91 /* [ */) {
+      bracketDepth++;
+    } else if (code === 93 /* ] */) {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+    } else if (code === 123 /* { */ && parenDepth === 0 && bracketDepth === 0) {
+      return i;
+    }
+  }
+  return start;
+}
+
+function staticGuardTextTruth(text: string): boolean | null {
+  const value = stripOuterGuardParens(text).trim();
+  const lower = value.toLowerCase();
+  if (lower === 'true') {
+    return true;
+  }
+  if (lower === 'false' || lower === 'null') {
+    return false;
+  }
+  if (lower.startsWith('not(') && lower.endsWith(')')) {
+    const truth = staticGuardTextTruth(value.slice(4, -1));
+    return truth === null ? null : !truth;
+  }
+  const numericComparison = /^([+-]?(?:\d*\.\d+|\d+))([a-z%]*)\s*(<=|>=|=<|=>|==|!=|=|<|>)\s*([+-]?(?:\d*\.\d+|\d+))([a-z%]*)$/i.exec(value);
+  if (numericComparison === null) {
+    return null;
+  }
+  const leftUnit = numericComparison[2]!.toLowerCase();
+  const rightUnit = numericComparison[5]!.toLowerCase();
+  if (leftUnit !== rightUnit) {
+    return null;
+  }
+  return compareStaticGuardValues(
+    { kind: 'number', value: Number(numericComparison[1]), unit: leftUnit },
+    numericComparison[3]!,
+    { kind: 'number', value: Number(numericComparison[4]), unit: rightUnit }
+  );
+}
+
+function impossibleScssIfConditionSpans(source: string): DiagnosticSpan[] {
+  const spans: DiagnosticSpan[] = [];
+  const scan = blankStringsAndComments(source);
+  const ifRe = /@(?:else\s+)?if\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = ifRe.exec(scan)) !== null) {
+    const rawStart = match.index + match[0]!.length;
+    const end = conditionEndBeforeBlock(scan, rawStart);
+    if (end <= rawStart) {
+      continue;
+    }
+    const trimmed = trimOffsets(source.slice(rawStart, end), rawStart);
+    if (trimmed.start >= trimmed.end) {
+      continue;
+    }
+    if (staticGuardTextTruth(source.slice(trimmed.start, trimmed.end)) === false) {
+      spans.push(sourceSpan(source, trimmed.start, trimmed.end));
+    }
+  }
+  return spans;
+}
+
 function diagnostic(
   code: string,
   defaultSeverity: DiagnosticSeverityName,
@@ -4982,6 +5199,87 @@ function diagnostic(
     endColumn: span.endColumn,
     qualifiers
   };
+}
+
+type SourceDiagnosticPusher = (
+  code: string,
+  severity: DiagnosticSeverityName,
+  message: string,
+  span: DiagnosticSpan,
+  qualifiers?: readonly string[]
+) => void;
+
+function pushTolerantSourceScanDiagnostics(
+  source: string,
+  language: JessLanguage,
+  push: SourceDiagnosticPusher
+): void {
+  if (language === 'css') {
+    for (const span of invalidImportPositionSpans(source)) {
+      push(
+        LINT_CODES.invalidImportPosition,
+        'warning',
+        'Invalid position for @import rule',
+        span
+      );
+    }
+  }
+  if (language === 'scss') {
+    for (const forward of unsupportedScssForwardSpans(source)) {
+      push(
+        LINT_CODES.unsupportedSassForm,
+        'warning',
+        forward.kind === 'prefix'
+          ? '@forward with "as <prefix>-*" prefixing is not supported in Jess and will never be. Use explicit namespacing instead.'
+          : '@forward with "show"/"hide" lists is not supported in Jess and will never be. Visibility control belongs to the module itself.',
+        forward.span
+      );
+    }
+    for (const span of impossibleScssIfConditionSpans(source)) {
+      push(
+        LINT_CODES.impossibleGuards,
+        'warning',
+        'Guard is statically false; this branch can never run',
+        span
+      );
+    }
+  }
+
+  const sourceForHexScan = blankStringsAndComments(source);
+  const sourceHexRe = /#([0-9a-fA-F]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = sourceHexRe.exec(sourceForHexScan)) !== null) {
+    const digits = match[1]!.length;
+    if (digits !== 3 && digits !== 4 && digits !== 6 && digits !== 8 && isDeclarationValueContext(sourceForHexScan, match.index)) {
+      push(
+        LINT_CODES.hexColorLength,
+        'error',
+        `Hex color '${match[0]}' does not have 3, 4, 6 or 8 digits`,
+        spanFromOffsets(match.index, match.index + match[0].length)
+      );
+    }
+  }
+}
+
+function tolerantSourceScanDiagnostics(
+  source: string,
+  language: JessLanguage,
+  filePath?: string
+): SourceDiagnostic[] {
+  const out: SourceDiagnostic[] = [];
+  const emitted = new Set<string>();
+  const push: SourceDiagnosticPusher = (code, severity, message, span, qualifiers) => {
+    const start = Number(span.start);
+    const end = Number(span.end);
+    const key = `${code}:${start}:${Math.max(start, end)}:${message}`;
+    if (emitted.has(key)) {
+      return;
+    }
+    emitted.add(key);
+    out.push(diagnostic(code, severity, message, span, filePath, qualifiers));
+  };
+  pushTolerantSourceScanDiagnostics(source, language, push);
+  return out;
 }
 
 function spanFromOffsets(start: number, end: number): DiagnosticSpan {
@@ -5136,13 +5434,16 @@ export function parseDiagnosticsForDoc(doc: ParseDiagnosticSource, filePath?: st
 }
 
 export function cstLintDiagnostics(
-  root: CssCstNode,
+  root: CssCstNode | null,
   source: string,
   language: JessLanguage,
   metadata?: Partial<CssDiagnosticMetadata>,
   filePath?: string,
   tolerantSourceScan = true
 ): SourceDiagnostic[] {
+  if (root === null) {
+    return tolerantSourceScan ? tolerantSourceScanDiagnostics(source, language, filePath) : [];
+  }
   const out: SourceDiagnostic[] = [];
   const emitted = new Set<string>();
   const seenImports = new Map<string, ImportKey>();
@@ -5155,10 +5456,11 @@ export function cstLintDiagnostics(
   const variableDeclarations: VariableDeclarationFact[] = [];
   const variableReferences = new Set<string>();
   const variableReferenceFacts: VariableReferenceFact[] = [];
+  const ignoredVariableReferenceSpans: IgnoredReferenceSpan[] = [];
   const variableParameterScopes: VariableParameterScopeFact[] = [];
   const mixinDefinitions: MixinDefinitionFact[] = [];
   const mixinReferences = new Set<string>();
-  const lessMixinReferenceFacts: MixinReferenceFact[] = [];
+  const mixinReferenceFacts: MixinReferenceFact[] = [];
   const lessMixinSignatureFacts: LessMixinSignatureFact[] = [];
   const lessMixinNamedArgumentCallFacts: MixinNamedArgumentCallFact[] = [];
   const functionDefinitions: FunctionDefinitionFact[] = [];
@@ -5363,6 +5665,15 @@ export function cstLintDiagnostics(
       }
     }
 
+    if (language === 'less') {
+      for (const binding of lessMixinBindingNodes(node)) {
+        const ignoredSpan = lessMixinBindingNameSpan(source, binding);
+        if (ignoredSpan !== null) {
+          ignoredVariableReferenceSpans.push(ignoredSpan);
+        }
+      }
+    }
+
     const variableReference = variableReferenceFactOf(source, node, language);
     if (variableReference !== null) {
       variableReferences.add(variableReference.name);
@@ -5377,9 +5688,8 @@ export function cstLintDiagnostics(
     for (const mixinReference of mixinCallNamesOf(source, node, language)) {
       mixinReferences.add(mixinReference);
     }
-    const lessMixinReference = language === 'less' ? lessSimpleMixinCallFactOf(source, node) : null;
-    if (lessMixinReference !== null) {
-      lessMixinReferenceFacts.push(lessMixinReference);
+    for (const mixinReference of mixinCallFactsOf(source, node, language)) {
+      mixinReferenceFacts.push(mixinReference);
     }
     const lessMixinSignature = language === 'less' ? lessMixinSignatureOf(source, node) : null;
     if (lessMixinSignature !== null) {
@@ -6370,7 +6680,10 @@ export function cstLintDiagnostics(
         && Number(reference.span.end) <= scope.end
         && scope.names.has(reference.name)
       );
-      if (!variableDeclarationNames.has(reference.name) && !inParameterScope) {
+      const ignoredReference = ignoredVariableReferenceSpans.some(span =>
+        Number(reference.span.start) === span.start && Number(reference.span.end) === span.end
+      );
+      if (!variableDeclarationNames.has(reference.name) && !inParameterScope && !ignoredReference) {
         pushDiagnostic(
           SEMANTIC_CODES.undefinedVariable,
           undefinedVariableSeverity,
@@ -6382,9 +6695,9 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (language === 'less') {
+    if (!hasExternalSources) {
       const mixinDefinitionNames = new Set(mixinDefinitions.map(definition => definition.name));
-      for (const reference of lessMixinReferenceFacts) {
+      for (const reference of mixinReferenceFacts) {
         if (!mixinDefinitionNames.has(reference.name)) {
           pushDiagnostic(
             SEMANTIC_CODES.undefinedMixin,
@@ -6397,7 +6710,7 @@ export function cstLintDiagnostics(
         }
       }
 
-      if (!hasExternalSources) {
+      if (language === 'less') {
         const signaturesByName = new Map<string, LessMixinSignatureFact[]>();
         for (const signature of lessMixinSignatureFacts) {
           const signatures = signaturesByName.get(signature.name);
@@ -6476,31 +6789,7 @@ export function cstLintDiagnostics(
   }
 
   if (tolerantSourceScan) {
-    if (language === 'css') {
-      for (const span of invalidImportPositionSpans(source)) {
-        push(
-          LINT_CODES.invalidImportPosition,
-          'warning',
-          'Invalid position for @import rule',
-          span
-        );
-      }
-    }
-
-    const sourceForHexScan = blankStringsAndComments(source);
-    const sourceHexRe = /#([0-9a-fA-F]+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = sourceHexRe.exec(sourceForHexScan)) !== null) {
-      const digits = match[1]!.length;
-      if (digits !== 3 && digits !== 4 && digits !== 6 && digits !== 8 && isDeclarationValueContext(sourceForHexScan, match.index)) {
-        push(
-          LINT_CODES.hexColorLength,
-          'error',
-          `Hex color '${match[0]}' does not have 3, 4, 6 or 8 digits`,
-          spanFromOffsets(match.index, match.index + match[0].length)
-        );
-      }
-    }
+    pushTolerantSourceScanDiagnostics(source, language, push);
   }
 
   return out;
@@ -6518,7 +6807,9 @@ export function collectTolerantDiagnostics(input: CollectDiagnosticsInput): Coll
         input.filePath,
         needsTolerantSourceScan
       )
-    : [];
+    : needsTolerantSourceScan
+      ? tolerantSourceScanDiagnostics(input.source, input.language, input.filePath)
+      : [];
   return {
     diagnostics: [
       ...parseDiagnosticsForDoc(result, input.filePath),

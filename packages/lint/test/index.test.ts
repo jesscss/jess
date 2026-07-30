@@ -481,6 +481,36 @@ describe('lintText', () => {
       [undefined, SEMANTIC_CODES.undefinedMixin, 'eval', 'warning', 'Undefined mixin .missing'],
       [undefined, SEMANTIC_CODES.unknownNamedArgument, 'eval', 'error', 'Unknown named argument @tone for mixin .theme']
     ]);
+
+    for (const dialectInput of [
+      {
+        source: '.a { @include missing(); }',
+        filePath: '/tmp/input.scss'
+      },
+      {
+        source: '.a { $ > missing(); }',
+        filePath: '/tmp/input.jess'
+      }
+    ]) {
+      const dialectResult = await lintText(dialectInput, {
+        stylesConfig: {
+          lint: {
+            diagnostics: {
+              [SEMANTIC_CODES.undefinedMixin]: 'warn'
+            }
+          }
+        }
+      });
+      expect(dialectResult.diagnostics.map(diagnostic => [
+        diagnostic.ruleName,
+        diagnostic.code,
+        diagnostic.phase,
+        diagnostic.severity,
+        diagnostic.message
+      ])).toEqual([
+        [undefined, SEMANTIC_CODES.undefinedMixin, 'eval', 'warning', 'Undefined mixin missing']
+      ]);
+    }
   });
 
   it('routes SCSS inputs through shared diagnostics policy', async () => {
