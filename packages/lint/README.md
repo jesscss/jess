@@ -182,8 +182,8 @@ Compiler-style diagnostics are configured by diagnostic code under
 but `jess lint` can report them in the same compact and JSON outputs.
 `SEMANTIC_CODES` exports the current shared semantic diagnostic codes. The
 initial semantic set includes same-file undefined variables, same-file
-Less/SCSS/Jess undefined mixin calls, and simple Less/SCSS unknown named mixin
-arguments.
+Less/SCSS/Jess undefined mixin calls, simple Less/SCSS unknown named mixin
+arguments, and conservative same-file Less fixed-arity mixin overload misses.
 
 `block-no-empty` warns on empty rulesets by default. Add
 `['warn', { include: ['mixins'] }]` when empty Less, SCSS, or Jess mixin bodies

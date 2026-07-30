@@ -922,6 +922,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [SEMANTIC_CODES.undefinedVariable]: DiagnosticSeverity.Warning,
     [SEMANTIC_CODES.undefinedMixin]: DiagnosticSeverity.Warning,
     [SEMANTIC_CODES.unknownNamedArgument]: DiagnosticSeverity.Error,
+    [SEMANTIC_CODES.noMatchingOverload]: DiagnosticSeverity.Error,
 
     /*
      * Shared diagnostics. Keys match diagnostics-core `LINT_CODES`, not the

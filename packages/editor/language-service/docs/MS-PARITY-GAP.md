@@ -90,7 +90,7 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `importStatement` | ✓ (mostly default-Ignore, opt-in) | ✓ shared diagnostics; opinionated rules remain opt-in | At parity for CSS source facts | — |
 | `ieHack` | ✓ (Ignore by default) | ✗ | Missing: current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule | P3 |
 | Configurable severities | ✓ per-rule | ✓ for semantic codes and shared lint diagnostic codes | Naming bridge from lint rule names into editor settings remains future polish | P2 |
-| **Semantic: undefined variable / mixin / named argument** | ✗ (MS does not resolve semantics this deeply) | ✓ `var/undefined`, `mixin/undefined`, `call/unknown-named-argument` + variable escalation when modern features present | **Jess AHEAD** | — |
+| **Semantic: undefined variable / mixin / overload / named argument** | ✗ (MS does not resolve semantics this deeply) | ✓ `var/undefined`, `mixin/undefined`, `call/no-matching-overload`, `call/unknown-named-argument` + variable escalation when modern features present | **Jess AHEAD** | — |
 
 MS lint rules with default levels (`src/services/lintRules.ts`):
 `compatibleVendorPrefixes`=Ignore, `vendorPrefix`=Warning, `duplicateProperties`=Ignore,
@@ -219,12 +219,14 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
   folding, def/refs/rename, variable completion) run straight off the CST
   without an AST reparse. Frame this as *performance/latency*, not as "we
   tolerate errors and they don't."
-- **Shared semantic diagnostics.** `var/undefined`, `mixin/undefined`, and
-  `call/unknown-named-argument` currently come from same-file Jess diagnostic
-  facts shared with lint, including Less/SCSS/Jess undefined mixin calls and
-  severity escalation when modern features (`@use`/`@from`/`@compose`) are
-  present. Cross-file import resolution through `@jesscss/style-resolver` is the
-  next semantic-analysis step. MS does not do this depth of semantic validation.
+- **Shared semantic diagnostics.** `var/undefined`, `mixin/undefined`,
+  `call/no-matching-overload`, and `call/unknown-named-argument` currently come
+  from same-file Jess diagnostic facts shared with lint, including
+  Less/SCSS/Jess undefined mixin calls, conservative Less fixed-arity overload
+  misses, and severity escalation when modern features (`@use`/`@from`/
+  `@compose`) are present. Cross-file import resolution through
+  `@jesscss/style-resolver` is the next semantic-analysis step. MS does not do
+  this depth of semantic validation.
 - **Semantic tokens** (`getSemanticTokens`) — not offered by
   `vscode-css-languageservice` at all (VS Code colors CSS via TextMate).
 - **Broader modern color coverage** in document colors / presentations

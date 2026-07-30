@@ -516,6 +516,18 @@ describe('JessLanguageServiceEngine', () => {
         expect(diag?.message).toBe(item.message);
       }
     });
+
+    it('reports same-file Less mixin calls with no matching fixed-arity overload (semantic)', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '.theme(@color) { color: @color; }\n.a { .theme(red, blue); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diag = diagnostics.find(diagnostic => diagnostic.code === 'call/no-matching-overload');
+
+      expect(diag).toBeDefined();
+      expect(diag?.severity).toBe(1); // DiagnosticSeverity.Error
+      expect(diag?.message).toBe('No matching overload for mixin ".theme": expected 1 argument, got 2 arguments');
+    });
   });
 
   describe('lint rules (MS css-languageservice parity)', () => {

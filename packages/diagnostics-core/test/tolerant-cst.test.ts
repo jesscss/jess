@@ -588,6 +588,45 @@ describe('collectTolerantDiagnostics', () => {
     }
   });
 
+  it('reports Less mixin calls with no matching same-file fixed-arity overload', () => {
+    const source = '.theme(@color) { color: @color; }\n.theme(@color, @bg) { color: @color; background: @bg; }\n.a { .theme(red, blue, green); }';
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const overloads = result.diagnostics.filter(diagnostic => diagnostic.code === SEMANTIC_CODES.noMatchingOverload);
+
+    expect(overloads.map(diagnostic => [diagnostic.message, diagnostic.phase, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'No matching overload for mixin ".theme": expected 1 argument or 2 arguments, got 3 arguments',
+        'eval',
+        source.lastIndexOf('.theme'),
+        source.lastIndexOf('.theme') + '.theme'.length
+      ]
+    ]);
+  });
+
+  it('keeps Less no-matching-overload diagnostics conservative around undefined, dynamic, and external callables', () => {
+    const matches = '.theme(@x) { color: @x; }\n.a { .theme(red); }';
+    const undefinedMixin = '.a { .theme(red); }';
+    const guarded = '.theme(@x) when (@x = red) { color: red; }\n.a { .theme(blue); }';
+    const defaults = '.theme(@x: red) { color: @x; }\n.a { .theme(); }';
+    const rest = '.theme(@x...) { color: red; }\n.a { .theme(red, blue); }';
+    const imported = '@import "mixins.less";\n.theme(@x) { color: @x; }\n.a { .theme(red, blue); }';
+    const scss = '@mixin theme($x) { color: $x; }\n.a { @include theme(red, blue); }';
+    const jess = 'theme($x) { color: $x; }\n.a { $ > theme(red, blue); }';
+
+    for (const result of [
+      collectTolerantDiagnostics({ source: matches, language: 'less' }),
+      collectTolerantDiagnostics({ source: undefinedMixin, language: 'less' }),
+      collectTolerantDiagnostics({ source: guarded, language: 'less' }),
+      collectTolerantDiagnostics({ source: defaults, language: 'less' }),
+      collectTolerantDiagnostics({ source: rest, language: 'less' }),
+      collectTolerantDiagnostics({ source: imported, language: 'less' }),
+      collectTolerantDiagnostics({ source: scss, language: 'scss' }),
+      collectTolerantDiagnostics({ source: jess, language: 'jess' })
+    ]) {
+      expect(result.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.noMatchingOverload)).toBe(false);
+    }
+  });
+
   it('reports same-file unused mixins in dialect stylesheets without external module sources', () => {
     const less = '.used() { color: red; }\n.unused() { color: blue; }\n.a { .used; }';
     const lessNamespaced = '#ns() { .inner() { c: red; } }\n.a { #ns > .inner(); }';

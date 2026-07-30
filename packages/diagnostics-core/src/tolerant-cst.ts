@@ -92,7 +92,8 @@ export const LINT_CODES = {
 export const SEMANTIC_CODES = {
   undefinedVariable: 'var/undefined',
   undefinedMixin: 'mixin/undefined',
-  unknownNamedArgument: 'call/unknown-named-argument'
+  unknownNamedArgument: 'call/unknown-named-argument',
+  noMatchingOverload: 'call/no-matching-overload'
 } as const;
 
 const LENGTH_UNITS = new Set([
@@ -606,6 +607,13 @@ type LessFixedMixinCallFact = {
   readonly display: string;
   readonly arity: number;
   readonly span: DiagnosticSpan;
+};
+
+type LessFixedMixinFacts = {
+  readonly definitionsByArity: Map<string, LessFixedMixinDefinitionFact[]>;
+  readonly definitionsByName: Map<string, LessFixedMixinDefinitionFact[]>;
+  readonly nonFixedDefinitionNames: Set<string>;
+  readonly calls: LessFixedMixinCallFact[];
 };
 
 type NamedArgumentFact = {
@@ -3518,6 +3526,14 @@ function lessFixedMixinDefinitionOf(source: string, node: CssCstNode): LessFixed
       };
 }
 
+function lessSimpleMixinDefinitionOf(source: string, node: CssCstNode): MixinDefinitionFact | null {
+  if (node.grammarType !== 'Statement' || lessMixinDefinitionChild(node) === undefined) {
+    return null;
+  }
+  const selector = firstChildNodeOf(node, 'SelectorBranch');
+  return selector === undefined ? null : lessSimpleMixinNameFromSelector(source, selector);
+}
+
 function descendantNodesOfType(node: CssCstNode, grammarType: string, out: CssCstNode[]): void {
   for (const child of cstChildrenOf(node)) {
     if (!isCstNode(child)) {
@@ -4212,61 +4228,117 @@ function lessLeakyScopeDiagnostics(
 function collectLessFixedMixinFacts(
   source: string,
   node: CssCstNode,
-  definitions: Map<string, LessFixedMixinDefinitionFact[]>,
-  calls: LessFixedMixinCallFact[]
+  facts: LessFixedMixinFacts
 ): void {
   const definition = lessFixedMixinDefinitionOf(source, node);
   if (definition !== null) {
     const key = `${definition.name}\0${definition.arity}`;
-    const existing = definitions.get(key);
-    if (existing === undefined) {
-      definitions.set(key, [definition]);
+    const arityDefinitions = facts.definitionsByArity.get(key);
+    if (arityDefinitions === undefined) {
+      facts.definitionsByArity.set(key, [definition]);
     } else {
-      existing.push(definition);
+      arityDefinitions.push(definition);
     }
+    const namedDefinitions = facts.definitionsByName.get(definition.name);
+    if (namedDefinitions === undefined) {
+      facts.definitionsByName.set(definition.name, [definition]);
+    } else {
+      namedDefinitions.push(definition);
+    }
+    return;
+  }
+
+  const simpleDefinition = lessSimpleMixinDefinitionOf(source, node);
+  if (simpleDefinition !== null) {
+    facts.nonFixedDefinitionNames.add(simpleDefinition.name);
     return;
   }
 
   const call = lessFixedMixinCallOf(source, node);
   if (call !== null) {
-    calls.push(call);
+    facts.calls.push(call);
     return;
   }
 
   for (const child of cstChildrenOf(node)) {
     if (isCstNode(child)) {
-      collectLessFixedMixinFacts(source, child, definitions, calls);
+      collectLessFixedMixinFacts(source, child, facts);
     }
   }
 }
 
+function lessFixedMixinFacts(source: string, root: CssCstNode): LessFixedMixinFacts {
+  const facts: LessFixedMixinFacts = {
+    definitionsByArity: new Map(),
+    definitionsByName: new Map(),
+    nonFixedDefinitionNames: new Set(),
+    calls: []
+  };
+  collectLessFixedMixinFacts(source, root, facts);
+  return facts;
+}
+
+function lessArityLabel(arity: number): string {
+  return `${arity} ${arity === 1 ? 'argument' : 'arguments'}`;
+}
+
+function lessExpectedArityLabel(definitions: readonly LessFixedMixinDefinitionFact[]): string {
+  const arities = Array.from(new Set(definitions.map(definition => definition.arity))).sort((a, b) => a - b);
+  if (arities.length === 1) {
+    return lessArityLabel(arities[0]!);
+  }
+  if (arities.length === 2) {
+    return `${lessArityLabel(arities[0]!)} or ${lessArityLabel(arities[1]!)}`;
+  }
+  return `${arities.slice(0, -1).map(lessArityLabel).join(', ')}, or ${lessArityLabel(arities[arities.length - 1]!)}`;
+}
+
 function lessAmbiguousMixinCallDiagnostics(
-  source: string,
-  root: CssCstNode,
-  hasExternalSources: boolean,
+  facts: LessFixedMixinFacts,
   push: (code: string, severity: DiagnosticSeverityName, message: string, span: DiagnosticSpan, qualifiers?: readonly string[]) => void
 ): void {
-  if (hasExternalSources) {
-    return;
-  }
-  const definitions = new Map<string, LessFixedMixinDefinitionFact[]>();
-  const calls: LessFixedMixinCallFact[] = [];
-  collectLessFixedMixinFacts(source, root, definitions, calls);
-  if (calls.length === 0 || definitions.size === 0) {
+  if (facts.calls.length === 0 || facts.definitionsByArity.size === 0) {
     return;
   }
 
-  for (const call of calls) {
-    const candidates = definitions.get(`${call.name}\0${call.arity}`);
+  for (const call of facts.calls) {
+    const candidates = facts.definitionsByArity.get(`${call.name}\0${call.arity}`);
     if (candidates === undefined || candidates.length < 2) {
       continue;
     }
-    const argumentLabel = call.arity === 1 ? 'argument' : 'arguments';
     push(
       LINT_CODES.ambiguousMixinCalls,
       'warning',
-      `Mixin call "${call.display}" matches ${candidates.length} same-file unguarded definitions with ${call.arity} ${argumentLabel}`,
+      `Mixin call "${call.display}" matches ${candidates.length} same-file unguarded definitions with ${lessArityLabel(call.arity)}`,
       call.span
+    );
+  }
+}
+
+function lessNoMatchingOverloadDiagnostics(
+  facts: LessFixedMixinFacts,
+  push: (code: string, severity: DiagnosticSeverityName, message: string, span: DiagnosticSpan, qualifiers?: readonly string[], phase?: Phase) => void
+): void {
+  if (facts.calls.length === 0 || facts.definitionsByName.size === 0) {
+    return;
+  }
+
+  for (const call of facts.calls) {
+    const definitions = facts.definitionsByName.get(call.name);
+    if (
+      definitions === undefined
+      || facts.nonFixedDefinitionNames.has(call.name)
+      || facts.definitionsByArity.has(`${call.name}\0${call.arity}`)
+    ) {
+      continue;
+    }
+    push(
+      SEMANTIC_CODES.noMatchingOverload,
+      'error',
+      `No matching overload for mixin "${call.display}": expected ${lessExpectedArityLabel(definitions)}, got ${lessArityLabel(call.arity)}`,
+      call.span,
+      undefined,
+      'eval'
     );
   }
 }
@@ -6710,7 +6782,11 @@ export function cstLintDiagnostics(
 
   if (language === 'less') {
     lessLeakyScopeDiagnostics(source, root, hasExternalSources, push);
-    lessAmbiguousMixinCallDiagnostics(source, root, hasExternalSources, push);
+    if (!hasExternalSources) {
+      const fixedMixinFacts = lessFixedMixinFacts(source, root);
+      lessAmbiguousMixinCallDiagnostics(fixedMixinFacts, push);
+      lessNoMatchingOverloadDiagnostics(fixedMixinFacts, pushDiagnostic);
+    }
   }
 
   for (const group of keyframesVendorGroups.values()) {

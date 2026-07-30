@@ -507,6 +507,31 @@ describe('lintText', () => {
       [undefined, SEMANTIC_CODES.unknownNamedArgument, 'eval', 'error', 'Unknown named argument $tone for mixin theme']
     ]);
 
+    const noMatchingOverload = await lintText(
+      {
+        source: '.theme(@color) { color: @color; }\n.a { .theme(red, blue); }',
+        filePath: '/tmp/input.less'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            diagnostics: {
+              [SEMANTIC_CODES.noMatchingOverload]: 'error'
+            }
+          }
+        }
+      }
+    );
+    expect(noMatchingOverload.diagnostics.map(diagnostic => [
+      diagnostic.ruleName,
+      diagnostic.code,
+      diagnostic.phase,
+      diagnostic.severity,
+      diagnostic.message
+    ])).toEqual([
+      [undefined, SEMANTIC_CODES.noMatchingOverload, 'eval', 'error', 'No matching overload for mixin ".theme": expected 1 argument, got 2 arguments']
+    ]);
+
     for (const dialectInput of [
       {
         source: '.a { @include missing(); }',
