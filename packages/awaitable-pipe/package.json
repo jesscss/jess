@@ -28,7 +28,7 @@
     "test": "vitest run",
     "test:types": "tsc -p tsconfig.json --noEmit",
     "test:watch": "vitest",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck"
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly"
   },
   "repository": {
     "type": "git",
