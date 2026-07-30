@@ -76,6 +76,7 @@ export const LINT_CODES = {
   invalidTypedCustomPropertyValue: 'lint/invalid-typed-custom-property-value',
   shadowedTokens: 'lint/no-shadowed-token',
   unusedVariables: 'lint/no-unused-variable',
+  unusedMixins: 'lint/no-unused-mixin',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
   suspiciousMapKeyAccess: 'lint/no-suspicious-map-key-access',
@@ -296,7 +297,7 @@ const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule']);
 const MODULE_LOAD_TYPES = new Set(['UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport']);
 const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'ImportTarget', 'Url']);
 const EXTEND_TARGET_TYPES = new Set(['ExtendTargetComplex', 'Selector', 'PseudoSelectorComplex']);
-const EXTERNAL_SELECTOR_SOURCE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
+const EXTERNAL_SOURCE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'Map', 'ValueBlock']);
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
@@ -554,6 +555,12 @@ type CustomPropertyReference = {
 };
 
 type VariableDeclarationFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+type MixinDefinitionFact = {
   readonly name: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
@@ -2719,6 +2726,166 @@ function variableDeclarationOf(source: string, node: CssCstNode, language: JessL
   };
 }
 
+function firstIdentifierSpan(source: string, start: number, end: number): { value: string; start: number; end: number } | null {
+  let cursor = start;
+  while (cursor < end && isCssWhitespace(source.charCodeAt(cursor))) {
+    cursor++;
+  }
+  if (cursor >= end || !isIdentStart(source.charCodeAt(cursor))) {
+    return null;
+  }
+  const nameStart = cursor;
+  cursor++;
+  while (cursor < end) {
+    const code = source.charCodeAt(cursor);
+    if (!isIdentChar(code)) {
+      break;
+    }
+    cursor++;
+  }
+  return { value: source.slice(nameStart, cursor), start: nameStart, end: cursor };
+}
+
+function scssNamedRuleName(source: string, node: CssCstNode, keyword: string): MixinDefinitionFact | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  const nameStart = start + keyword.length;
+  const name = firstIdentifierSpan(source, nameStart, end);
+  return name === null
+    ? null
+    : {
+        name: normalizedScssCallableName(name.value),
+        display: name.value,
+        span: spanFromNodeStart(node, name.start, name.end)
+      };
+}
+
+function scssMixinCallName(source: string, node: CssCstNode): string | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  const nameStart = start + '@include'.length;
+  const name = firstIdentifierSpan(source, nameStart, end);
+  return name === null ? null : normalizedScssCallableName(name.value);
+}
+
+function normalizedScssCallableName(name: string): string {
+  return name.replace(/_/g, '-');
+}
+
+function lessMixinNameFromSelector(source: string, selector: CssCstNode): MixinDefinitionFact | null {
+  const start = absoluteStart(selector);
+  const end = absoluteEnd(selector);
+  const raw = source.slice(start, end);
+  if (raw.includes('@{')) {
+    return null;
+  }
+  const normalized = normalizedSelectorText(source, start, end);
+  return normalized.length === 0
+    ? null
+    : {
+        name: normalized,
+        display: selectorDisplay(source, start, end),
+        span: selector.span
+      };
+}
+
+function jessMixinNameSpan(source: string, node: CssCstNode): MixinDefinitionFact | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  const open = source.indexOf('(', start);
+  if (open < 0 || open >= end) {
+    return null;
+  }
+  const trimmed = trimOffsets(source.slice(start, open), start);
+  if (trimmed.start >= trimmed.end || source.slice(trimmed.start, trimmed.end).includes('{')) {
+    return null;
+  }
+  const display = source.slice(trimmed.start, trimmed.end);
+  return {
+    name: display,
+    display,
+    span: spanFromNodeStart(node, trimmed.start, trimmed.end)
+  };
+}
+
+function jessMixinCallName(source: string, node: CssCstNode): string | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  const open = source.indexOf('(', start);
+  if (open < 0 || open >= end) {
+    return null;
+  }
+  const targetStart = source.lastIndexOf('>', open);
+  const trimmed = trimOffsets(source.slice(targetStart < start ? start : targetStart + 1, open), targetStart < start ? start : targetStart + 1);
+  if (trimmed.start >= trimmed.end) {
+    return null;
+  }
+  return source.slice(trimmed.start, trimmed.end);
+}
+
+function mixinDefinitionOf(source: string, node: CssCstNode, language: JessLanguage): MixinDefinitionFact | null {
+  if (language === 'css') {
+    return null;
+  }
+  if (language === 'less') {
+    if (node.grammarType !== 'Statement' || firstChildNodeOf(node, 'MixinDefinition') === undefined) {
+      return null;
+    }
+    const selector = firstChildNodeOf(node, 'SelectorBranch');
+    return selector === undefined ? null : lessMixinNameFromSelector(source, selector);
+  }
+  if (language === 'scss') {
+    return node.grammarType === 'MixinDefinition' ? scssNamedRuleName(source, node, '@mixin') : null;
+  }
+  return MIXIN_DEFINITION_TYPES.has(node.grammarType) ? jessMixinNameSpan(source, node) : null;
+}
+
+function mixinCallNamesOf(source: string, node: CssCstNode, language: JessLanguage): readonly string[] {
+  if (language === 'css') {
+    return [];
+  }
+  if (language === 'less') {
+    if (node.grammarType !== 'Statement' || firstChildNodeOf(node, 'MixinCall') === undefined) {
+      return [];
+    }
+    const selector = firstChildNodeOf(node, 'SelectorBranch');
+    if (selector === undefined) {
+      return [];
+    }
+    const start = absoluteStart(selector);
+    const end = absoluteEnd(selector);
+    const names = new Set<string>();
+    const full = normalizedSelectorText(source, start, end);
+    if (full.length > 0) {
+      names.add(full);
+    }
+    const text = source.slice(start, end);
+    let cursor = 0;
+    while (cursor < text.length) {
+      const marker = text.charCodeAt(cursor);
+      if (marker !== 35 && marker !== 46) {
+        cursor++;
+        continue;
+      }
+      let nameEnd = cursor + 1;
+      while (nameEnd < text.length && isIdentChar(text.charCodeAt(nameEnd))) {
+        nameEnd++;
+      }
+      if (nameEnd > cursor + 1) {
+        names.add(text.slice(cursor, nameEnd));
+      }
+      cursor = nameEnd;
+    }
+    return [...names];
+  }
+  if (language === 'scss') {
+    const name = node.grammarType === 'MixinCall' ? scssMixinCallName(source, node) : null;
+    return name === null ? [] : [name];
+  }
+  const name = node.grammarType === 'MixinCall' ? jessMixinCallName(source, node) : null;
+  return name === null ? [] : [name];
+}
+
 function createChildVariableScope(parent: VariableScope): VariableScope {
   return {
     declarations: new Map(),
@@ -3959,10 +4126,12 @@ export function cstLintDiagnostics(
   const customPropertyReferences: CustomPropertyReference[] = [];
   const variableDeclarations: VariableDeclarationFact[] = [];
   const variableReferences = new Set<string>();
+  const mixinDefinitions: MixinDefinitionFact[] = [];
+  const mixinReferences = new Set<string>();
   const mapLikeVariables = new Set<string>();
   const ruleSelectorKeys = new Set<string>();
   const exactExtendTargets: ExactExtendTargetFact[] = [];
-  let hasExternalSelectorSources = false;
+  let hasExternalSources = false;
   const cssData = metadataWithDefaults(metadata);
   const dialectAtRules = DIALECT_AT_RULES[language];
   const push = (
@@ -3989,7 +4158,7 @@ export function cstLintDiagnostics(
       return;
     }
     const gt = node.grammarType;
-    hasExternalSelectorSources ||= EXTERNAL_SELECTOR_SOURCE_TYPES.has(gt);
+    hasExternalSources ||= EXTERNAL_SOURCE_TYPES.has(gt);
     const declarationName = DECLARATION_TYPES.has(gt)
       ? propNameOf(source.slice(start, end)).toLowerCase()
       : null;
@@ -4107,6 +4276,15 @@ export function cstLintDiagnostics(
     const variableReference = variableReferenceNameOf(source, node, language);
     if (variableReference !== null) {
       variableReferences.add(variableReference);
+    }
+
+    const mixinDefinition = mixinDefinitionOf(source, node, language);
+    if (mixinDefinition !== null) {
+      mixinDefinitions.push(mixinDefinition);
+    }
+
+    for (const mixinReference of mixinCallNamesOf(source, node, language)) {
+      mixinReferences.add(mixinReference);
     }
 
     const suspiciousMapKeyAccess = suspiciousMapKeyAccessOf(source, node, language, mapLikeVariables);
@@ -5062,7 +5240,18 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (!hasExternalSelectorSources) {
+    if (!hasExternalSources) {
+      for (const definition of mixinDefinitions) {
+        if (!mixinReferences.has(definition.name)) {
+          push(
+            LINT_CODES.unusedMixins,
+            'warning',
+            `Unused mixin "${definition.display}"`,
+            definition.span
+          );
+        }
+      }
+
       for (const target of exactExtendTargets) {
         if (!ruleSelectorKeys.has(target.key)) {
           push(

@@ -509,6 +509,44 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports same-file unused mixins in dialect stylesheets without external module sources', () => {
+    const less = '.used() { color: red; }\n.unused() { color: blue; }\n.a { .used; }';
+    const lessNamespaced = '#ns() { .inner() { c: red; } }\n.a { #ns > .inner(); }';
+    const scss = '@mixin used() { color: red; }\n@mixin unused() { color: blue; }\n.a { @include used(); }';
+    const jess = 'used() { color: red; }\nunused() { color: blue; }\n.a { $ > used(); }';
+
+    expect(collectTolerantDiagnostics({ source: less, language: 'less' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused mixin ".unused"', less.indexOf('.unused'), less.indexOf('.unused') + '.unused'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: lessNamespaced, language: 'less' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused mixin "unused"', scss.indexOf('unused'), scss.indexOf('unused') + 'unused'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused mixin "unused"', jess.indexOf('unused'), jess.indexOf('unused') + 'unused'.length]
+    ]);
+  });
+
+  it('does not report same-file unused mixins when imports or modules can export them', () => {
+    const less = '@import "lib.less";\n.unused() { color: red; }';
+    const scss = '@use "lib";\n@mixin unused() { color: red; }';
+    const jess = '@-compose "lib";\nunused() { color: red; }';
+
+    expect(collectTolerantDiagnostics({ source: less, language: 'less' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)).toBe(false);
+  });
+
   it('reports numeric key access against same-file map-like variables', () => {
     const less = '@tokens: { tone: blue; gap: 1px; };\n.a { color: @tokens[0]; bg: @tokens[tone]; }';
     const scss = '$tokens: (tone: blue, gap: 1px);\n.a { color: map-get($tokens, 0); bg: map-get($tokens, tone); }';

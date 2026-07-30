@@ -127,6 +127,7 @@ enough.
 | `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess-only value diagnostic |
 | `jess/no-shadowed-token` | `lint/no-shadowed-token` | Jess-only symbol diagnostic, opt-in |
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Jess-only symbol diagnostic, opt-in |
+| `jess/no-unused-mixin` | `lint/no-unused-mixin` | Jess-only callable diagnostic, opt-in |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess-only module diagnostic |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess-only selector diagnostic |
 | `jess/no-dead-extend` | `lint/no-dead-extend` | Jess-only selector diagnostic |
@@ -304,6 +305,7 @@ Stylelint.
 | Rule | Default | Required facts | What it catches |
 | --- | --- | --- | --- |
 | `jess/no-unused-variable` | off, then warn when project facts land | Symbol refs | Initial opt-in same-file variable check landed; full token analysis still needs export/reference/import exceptions. |
+| `jess/no-unused-mixin` | off, then warn when project facts land | Callable refs | Initial opt-in same-file Less/SCSS/Jess mixin check landed; suppresses files with imports/modules/plugins and still needs project export/reference/import facts. |
 | `jess/no-shadowed-token` | off | Scope facts | Initial opt-in same-file nested variable shadowing diagnostic landed; imported/exported token shadowing still needs module graph facts. |
 | `jess/no-leaky-scope-dependence` | warn when allowed | Scope/effect facts, compile options | Less patterns that depend on mixin/detached-ruleset variable leakage. |
 | `jess/no-ambiguous-mixin-call` | warn | Callable facts | A call matches multiple overloads with incompatible bodies or signatures. |

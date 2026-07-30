@@ -1216,6 +1216,27 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('unusedMixins (lint/no-unused-mixin)', () => {
+      it('stays quiet by default until project callable facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '@mixin used() { color: red; }\n@mixin unused() { color: blue; }\n.a { @include used(); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/no-unused-mixin');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/no-unused-mixin', 'warning'));
+        const doc = createDocument('scss', '@mixin used() { color: red; }\n@mixin unused() { color: blue; }\n.a { @include used(); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/no-unused-mixin');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('unused');
+      });
+    });
+
     describe('shadowedTokens (lint/no-shadowed-token)', () => {
       it('stays quiet by default until project symbol facts exist', () => {
         const engine = createEngine();
