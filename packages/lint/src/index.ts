@@ -6,6 +6,7 @@ import {
   collectTolerantDiagnostics,
   type DiagnosticSeverityName,
   type JessLanguage,
+  LINT_CODES,
   type SourceDiagnostic
 } from '@jesscss/diagnostics-core';
 import {
@@ -14,6 +15,7 @@ import {
 } from '@jesscss/core';
 import type {
   LintConfig,
+  LintRuleOptions,
   LintRuleSetting,
   LintSeverity,
   StylesConfig
@@ -24,7 +26,7 @@ import {
   ruleNameForDiagnostic
 } from './rules.js';
 
-export type { LintConfig, LintRuleSetting, LintSeverity };
+export type { LintConfig, LintRuleOptions, LintRuleSetting, LintSeverity };
 export {
   LINT_RULE_NAMES,
   PARSE_SYNTAX_ERROR_CODE,
@@ -64,6 +66,7 @@ export interface LintTextInput {
 }
 
 export interface LintDiagnostic extends SourceDiagnostic {
+  readonly ruleName?: string;
   readonly severity: DiagnosticSeverityName;
 }
 
@@ -88,6 +91,7 @@ export interface LintFormatOptions {
 
 interface DisplayDiagnostic {
   readonly code: string;
+  readonly ruleName?: string;
   readonly severity: DiagnosticSeverityName;
   readonly message: string;
   readonly filePath?: string;
@@ -127,6 +131,80 @@ function rulesFromDiagnostics(diagnostics: Record<string, LintSeverity> | undefi
   return rules;
 }
 
+function settingSeverity(setting: LintRuleSetting | LintSeverity | undefined): LintSeverity | null | undefined {
+  return Array.isArray(setting) ? setting[0] : setting;
+}
+
+function settingOptions(setting: LintRuleSetting | undefined): LintRuleOptions | undefined {
+  return Array.isArray(setting) ? setting[1] : undefined;
+}
+
+function ignoresRuleOption(options: LintRuleOptions | undefined, value: string): boolean {
+  return options?.ignore?.includes(value) === true;
+}
+
+function includesRuleOption(options: LintRuleOptions | undefined, value: string): boolean {
+  return options?.include?.includes(value) === true;
+}
+
+function patternRuleTarget(diagnostic: SourceDiagnostic, source: string): string | null {
+  const raw = source.slice(diagnostic.start, diagnostic.end);
+  if (diagnostic.code === LINT_CODES.selectorClassPattern) {
+    return raw.startsWith('.') ? raw.slice(1) : raw;
+  }
+  if (
+    diagnostic.code === LINT_CODES.customPropertyPattern
+    || diagnostic.code === LINT_CODES.keyframesNamePattern
+  ) {
+    return raw;
+  }
+  return null;
+}
+
+function patternRuleOption(options: LintRuleOptions | undefined): RegExp | null {
+  const pattern = options?.pattern;
+  if (pattern instanceof RegExp) {
+    return pattern;
+  }
+  if (typeof pattern === 'string') {
+    try {
+      return new RegExp(pattern);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function hasQualifier(diagnostic: SourceDiagnostic, value: string): boolean {
+  return diagnostic.qualifiers?.includes(value) === true;
+}
+
+function shouldSuppressByRuleOptions(
+  diagnostic: SourceDiagnostic,
+  setting: LintRuleSetting | undefined,
+  source: string
+): boolean {
+  const options = settingOptions(setting);
+  if (diagnostic.code === LINT_CODES.duplicateProperties) {
+    return ignoresRuleOption(options, 'consecutive-duplicates')
+      && hasQualifier(diagnostic, 'consecutive-duplicate');
+  }
+  if (diagnostic.code === LINT_CODES.emptyRules && hasQualifier(diagnostic, 'mixin-body')) {
+    return !includesRuleOption(options, 'mixins');
+  }
+  const patternTarget = patternRuleTarget(diagnostic, source);
+  if (patternTarget !== null) {
+    const pattern = patternRuleOption(options);
+    if (pattern === null) {
+      return true;
+    }
+    pattern.lastIndex = 0;
+    return pattern.test(patternTarget);
+  }
+  return false;
+}
+
 async function resolveLintConfig(options: LintOptions): Promise<LintConfig> {
   const cwd = options.cwd ?? process.cwd();
   const loaded = options.stylesConfig
@@ -156,7 +234,12 @@ function languageFromPath(filePath: string | undefined, fallback: JessLanguage |
   return 'css';
 }
 
-function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfig, options: LintOptions): LintDiagnostic[] {
+function applyPolicy(
+  diagnostics: readonly SourceDiagnostic[],
+  source: string,
+  config: LintConfig,
+  options: LintOptions
+): LintDiagnostic[] {
   const out: LintDiagnostic[] = [];
   for (const diagnostic of diagnostics) {
     if (options.syntaxOnly === true && diagnostic.phase !== 'parse') {
@@ -168,17 +251,25 @@ function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfi
     const policy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
       ?? config.rules?.[diagnostic.code]
       ?? config.diagnostics?.[diagnostic.code];
-    if (policy === null || policy === 'off') {
+    const severityPolicy = settingSeverity(policy);
+    if (severityPolicy === null || severityPolicy === 'off') {
       continue;
     }
-    if (policy === undefined && diagnostic.phase !== 'parse') {
+    if (severityPolicy === undefined && diagnostic.phase !== 'parse') {
       continue;
     }
+    const rulePolicy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
+      ?? config.rules?.[diagnostic.code];
+    if (shouldSuppressByRuleOptions(diagnostic, rulePolicy, source)) {
+      continue;
+    }
+    const ruleName = ruleNameForDiagnostic(diagnostic.code);
     out.push({
       ...diagnostic,
-      severity: policy === 'error'
+      ruleName: ruleName === diagnostic.code ? undefined : ruleName,
+      severity: severityPolicy === 'error'
         ? 'error'
-        : policy === 'warn'
+        : severityPolicy === 'warn'
           ? 'warning'
           : diagnostic.defaultSeverity
     });
@@ -257,7 +348,7 @@ export async function lintText(input: LintTextInput, options: LintOptions = {}):
   });
   return toLintResult(
     input.filePath,
-    applyPolicy(collected.diagnostics, lintConfig, options),
+    applyPolicy(collected.diagnostics, input.source, lintConfig, options),
     options.includeLegacyDiagnostics === true
   );
 }
@@ -294,7 +385,7 @@ export async function lintFiles(patterns: string | readonly string[], options: L
     const collected = collectTolerantDiagnostics({ source, filePath, language });
     results.push(toLintResult(
       filePath,
-      applyPolicy(collected.diagnostics, lintConfig, options),
+      applyPolicy(collected.diagnostics, source, lintConfig, options),
       options.includeLegacyDiagnostics === true
     ));
   }
@@ -360,11 +451,11 @@ function formatLintRows(result: LintRunResult, options: Required<LintFormatOptio
 
     const locWidth = Math.max(...diagnostics.map(diagnostic => locOf(diagnostic).length));
     const severityWidth = Math.max(...diagnostics.map(diagnostic => diagnostic.severity.length));
-    const codeWidth = Math.max(...diagnostics.map(diagnostic => diagnostic.code.length));
+    const codeWidth = Math.max(...diagnostics.map(diagnostic => displayCode(diagnostic).length));
     for (const diagnostic of diagnostics) {
       const loc = locOf(diagnostic).padStart(locWidth);
       const severity = diagnostic.severity.padEnd(severityWidth);
-      const code = diagnostic.code.padEnd(codeWidth);
+      const code = displayCode(diagnostic).padEnd(codeWidth);
       rows.push({
         text: `  ${linkIfEnabled(options.colors, diagnostic.filePath, loc, diagnostic.line, diagnostic.column)}  ${severity}  ${code}  ${diagnostic.message}`,
         style: severityStyle(diagnostic.severity)
@@ -383,6 +474,18 @@ function formatLintRows(result: LintRunResult, options: Required<LintFormatOptio
 }
 
 function displayDiagnostics(file: LintResult): DisplayDiagnostic[] {
+  if (file.diagnostics.length > 0) {
+    return file.diagnostics.map(diagnostic => ({
+      code: diagnostic.code,
+      ruleName: diagnostic.ruleName,
+      severity: diagnostic.severity,
+      message: diagnostic.message,
+      filePath: diagnostic.filePath,
+      line: diagnostic.line ?? 0,
+      column: diagnostic.column ?? diagnostic.start
+    }));
+  }
+
   const diagnostics: DisplayDiagnostic[] = [
     ...file.errors.map(diagnostic => ({
       code: diagnostic.code,
@@ -404,14 +507,11 @@ function displayDiagnostics(file: LintResult): DisplayDiagnostic[] {
   if (diagnostics.length > 0) {
     return diagnostics;
   }
-  return file.diagnostics.map(diagnostic => ({
-    code: diagnostic.code,
-    severity: diagnostic.severity,
-    message: diagnostic.message,
-    filePath: diagnostic.filePath,
-    line: diagnostic.line ?? 0,
-    column: diagnostic.column ?? diagnostic.start
-  }));
+  return [];
+}
+
+function displayCode(diagnostic: DisplayDiagnostic): string {
+  return diagnostic.ruleName ?? diagnostic.code;
 }
 
 function locOf(diagnostic: DisplayDiagnostic): string {

@@ -68,10 +68,9 @@ describe('CST-grounded document symbols (Option B slice)', () => {
   });
 
   /*
-   * BUG 2: Less mixin definitions parse as `MixinOrQualifiedRule`, which the
-   * outline dropped (not `Ruleset`, not in MIXIN_TYPES). They must appear as
-   * Function symbols; a plain ruleset stays a Class; a bodyless mixin CALL is NOT
-   * a definition and is omitted.
+   * Less mixin definitions use the shared `MixinDefinition` CST label. They must
+   * appear as Function symbols; a plain ruleset stays a Class and a mixin call
+   * stays a `MixinCall` rather than being listed as a definition.
    */
   it('lists Less mixin definitions as Function symbols (plain rulesets stay Class)', () => {
     const syms = lessSymbolsOf('.e() { width: 1px; }\n.f(@x) { color: @x; }\n.g { color: red; }\n.h();');

@@ -43,16 +43,20 @@ function find(dir, pattern) {
 }
 
 const CASES = {
-  'css-corpus': findFlat('packages/css-parser/test/css', '*.css'),
+  'css-corpus': findFlat('packages/syntax/css/css-parser/test/css', '*.css'),
   'test-data-css': find('node_modules/@less/test-data/tests-unit', '*.css')
 };
 
 const label = process.argv[2] ?? 'run';
 const warmup = Number(process.argv[3] ?? 8);
 const timed = Number(process.argv[4] ?? 25);
+const only = process.env.BENCH_CASES ? new Set(process.env.BENCH_CASES.split(',')) : null;
 
 const out = {};
 for (const [name, files] of Object.entries(CASES)) {
+  if (only && !only.has(name)) {
+    continue;
+  }
   const sources = [];
   for (const f of files) {
     try {

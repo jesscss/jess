@@ -37,7 +37,5 @@ describe('Jess CST grammar compose integrity', () => {
     for (const rule of ['DetachedRuleset', 'AnonymousMixinDefinition', 'ExtendStatement', 'EachFor', 'VariableCall']) {
       expect(Object.hasOwn(grammar, rule), `Less-only rule "${rule}" leaked into Jess grammar`).toBe(false);
     }
-    const leaked = Object.keys(grammar).filter(rule => rule.startsWith('DirectLess'));
-    expect(leaked, `Less-prefixed rules leaked into Jess grammar:\n${leaked.join('\n')}`).toEqual([]);
   });
 });

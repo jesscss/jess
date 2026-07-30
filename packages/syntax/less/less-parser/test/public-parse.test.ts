@@ -336,11 +336,11 @@ describe('public Less parse()', () => {
     expect(thrown.message).toBe(
       'Unexpected Less syntax. Expected a Less value.'
     );
-    expect(thrown.message).not.toContain('CssSyntaxNumber');
-    expect(thrown.message).not.toContain('not(peek)');
+    expect(thrown.message).not.toContain('NumberToken');
+    expect(thrown.message).not.toContain('not(regex)');
     expect(thrown.message).not.toContain('/(?!');
-    expect(thrown.expected).toContain('CssSyntaxNumber');
-    expect(thrown.expected).toContain('not(peek)');
+    expect(thrown.expected).toContain('NumberToken');
+    expect(thrown.expected).toContain('not(regex)');
   });
 
   it('summarizes direct structural parse errors without hiding raw expected facts', () => {
@@ -2770,6 +2770,37 @@ describe('public Less parse()', () => {
     ).toBe(
       '.card {\n  color: red;\n}\n.important {\n  color: red !important;\n}\n'
     );
+  });
+
+  it('routes one parsed class/id prefix to its mixin or ruleset continuation', () => {
+    const document = parse([
+      '.simple() { color: red; }',
+      '#library { .tone() { color: blue; } }',
+      '.host { .simple(); #library > .tone(); #library .tone(); #library.tone(); }',
+      '.compound.selector { color: black; }',
+      '.descendant .selector { color: green; }',
+      '.child > .selector { color: white; }'
+    ].join('\n'));
+
+    expect(document).toMatchObject({
+      rules: [
+        { type: 'MixinDefinition', name: '.simple' },
+        { type: 'Ruleset', rules: [{ type: 'MixinDefinition', name: '.tone' }] },
+        {
+          type: 'Ruleset',
+          rules: [
+            { type: 'MixinCall', name: '.simple', path: [] },
+            { type: 'MixinCall', name: '.tone', path: [{ selector: '#library' }] },
+            { type: 'MixinCall', name: '.tone', path: [{ selector: '#library' }] },
+            { type: 'MixinCall', name: '.tone', path: [{ selector: '#library' }] }
+          ]
+        },
+        { type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector' }] } },
+        { type: 'Ruleset', selector: { selectors: [{ type: 'ComplexSelector' }] } },
+        { type: 'Ruleset', selector: { selectors: [{ type: 'ComplexSelector' }] } }
+      ]
+    });
+    expect(() => parse('.a.b() { color: red; }')).toThrow(SyntaxError);
   });
 
   it('returns static ruleset guards from the public Stylesheet route', () => {

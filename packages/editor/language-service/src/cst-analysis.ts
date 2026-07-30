@@ -99,11 +99,10 @@ const SELECTOR_TYPES = new Set(['Selector', 'SelectorList', 'ComplexSelector', '
 const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBlock', 'QueryAtRuleBlock']);
 
 /*
- * Mixin DEFINITIONS: Jess `MixinDefinition`, the Less `MixinOrQualifiedRule`
- * (a `.foo() { … }` def - a bodyless `.foo();` CALL is the SAME grammarType and
- * is filtered out below), and the SCSS `@mixin foo` def.
+ * Mixin DEFINITIONS: the shared `MixinDefinition` label in Less/Jess and the
+ * SCSS `MixinDefinitionRule` (`@mixin foo`) label.
  */
-const MIXIN_TYPES = new Set(['MixinDefinition', 'MixinDefinitionRule', 'MixinOrQualifiedRule']);
+const MIXIN_TYPES = new Set(['MixinDefinition', 'MixinDefinitionRule']);
 
 // Function DEFINITIONS: SCSS `@function`.
 const FUNC_TYPES = new Set(['FunctionRule']);
@@ -191,14 +190,6 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
       add(name || 'variable', SymbolKind.Variable, node, null, false);
     } else if (MIXIN_TYPES.has(gt)) {
       const raw = sliceOf(node);
-
-      /*
-       * A Less `MixinOrQualifiedRule` with no block is a mixin CALL (`.h();`),
-       * not a definition — the outline lists definitions only (matches the AST).
-       */
-      if (gt === 'MixinOrQualifiedRule' && !raw.includes('{')) {
-        continue;
-      }
       const name = raw.split(/[({]/)[0]!.trim();
       add(name || 'mixin', SymbolKind.Function, node, null, true);
     } else if (FUNC_TYPES.has(gt)) {

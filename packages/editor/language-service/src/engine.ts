@@ -14,7 +14,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import {
   cstLintDiagnostics,
-  LINT_CODES
+  LINT_CODES,
+  type SourceDiagnostic
 } from '@jesscss/diagnostics-core';
 import * as colorUtils from './color-utils.js';
 import { buildCstIndex, cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
@@ -130,6 +131,10 @@ function diffRange(oldText: string, newText: string): { from: number; to: number
  */
 function suggestWithJess(_text: string, _lang: JessLang, _offset: number): Array<{ nextTokenType: string }> {
   return [];
+}
+
+function hasDiagnosticQualifier(diagnostic: { readonly qualifiers?: readonly string[] }, value: string): boolean {
+  return diagnostic.qualifiers?.includes(value) === true;
 }
 
 function getCurrentWord(text: string, offset: number): string {
@@ -406,7 +411,7 @@ type MdnRef = { name: string; url: string };
 type Baseline = { status?: 'high' | 'low' | false; baseline_low_date?: string; baseline_high_date?: string };
 type Enrich = { syntax?: string; references?: MdnRef[]; baseline?: Baseline };
 type AtDirectiveEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
-type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }>; restrictions?: string[] } & Enrich;
+type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; status?: string; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }>; restrictions?: string[] } & Enrich;
 type PseudoEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
 type WebCssData = {
   atDirectives?: AtDirectiveEntry[];
@@ -761,16 +766,55 @@ export function createEngine(): JessLanguageServiceEngine {
     'mixin/undefined': DiagnosticSeverity.Warning,
 
     /*
-     * CST lint rules (MS vscode-css-languageservice parity). Keys match
-     * `LINT_CODES`; every rule's severity is settable via `configure()` and
-     * disabled with `ignore`/`off`.
+     * CST lint rules. Keys match `LINT_CODES`; every rule's severity is
+     * settable via `configure()` and disabled with `ignore`/`off`.
+     * Keep these aligned with @jesscss/lint recommended diagnostics, except
+     * rules that are intentionally opt-in such as `lint/box-model` and
+     * `lint/float`.
      */
     [LINT_CODES.emptyRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.deprecatedProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownPropertyValues]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownAtRules]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownAtRuleDescriptors]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownAtRuleDescriptorValues]: DiagnosticSeverity.Warning,
     [LINT_CODES.duplicateProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.shorthandPropertyOverrides]: DiagnosticSeverity.Warning,
+    [LINT_CODES.duplicateCustomProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.hexColorLength]: DiagnosticSeverity.Error,
     [LINT_CODES.zeroUnits]: DiagnosticSeverity.Hint,
+    [LINT_CODES.customPropertyMissingVarFunction]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownCustomProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.keyframeDuplicateSelectors]: DiagnosticSeverity.Warning,
+    [LINT_CODES.keyframeDeclarationNoImportant]: DiagnosticSeverity.Warning,
+    [LINT_CODES.declarationNoImportant]: DiagnosticSeverity.Warning,
+    [LINT_CODES.invalidNamedGridAreas]: DiagnosticSeverity.Warning,
+    [LINT_CODES.fontFamilyDuplicateNames]: DiagnosticSeverity.Warning,
+    [LINT_CODES.fontFamilyMissingGeneric]: DiagnosticSeverity.Warning,
+    [LINT_CODES.fontFaceMissingRequiredProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.propertyIgnoredDueToDisplay]: DiagnosticSeverity.Warning,
+    [LINT_CODES.vendorPrefix]: DiagnosticSeverity.Warning,
+    [LINT_CODES.invalidImportPosition]: DiagnosticSeverity.Warning,
+    [LINT_CODES.duplicateAtImportRules]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownAnimations]: DiagnosticSeverity.Warning,
+    [LINT_CODES.duplicateSelectors]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownUnits]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownFunctions]: DiagnosticSeverity.Warning,
+    [LINT_CODES.linearGradientNonstandardDirection]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownMediaFeatureNames]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownMediaFeatureValues]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownPseudoClasses]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownPseudoElements]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unmatchableAnbSelectors]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownTypeSelectors]: DiagnosticSeverity.Warning,
+    [LINT_CODES.incompatibleMathFunctionUnits]: DiagnosticSeverity.Warning,
+    [LINT_CODES.invalidColorFunctionChannels]: DiagnosticSeverity.Error,
+    [LINT_CODES.invalidTypedCustomPropertyValue]: DiagnosticSeverity.Warning,
+    [LINT_CODES.duplicateModuleLoads]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unboundedExtends]: DiagnosticSeverity.Warning,
+    [LINT_CODES.deadExtends]: DiagnosticSeverity.Warning,
+    [LINT_CODES.suspiciousMapKeyAccess]: DiagnosticSeverity.Warning,
 
     /*
      * Parsed-but-never-evaluated SCSS forms. The "Unsupported Sass Features"
@@ -779,6 +823,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.unsupportedSassForm]: DiagnosticSeverity.Warning
     /* eslint-enable @typescript-eslint/naming-convention */
   };
+  let semanticDiagnosticOptions: Record<string, { readonly pattern?: RegExp }> = {};
 
   function parseSeverity(value: unknown): DiagnosticSeverity | null {
     switch (value) {
@@ -797,6 +842,55 @@ export function createEngine(): JessLanguageServiceEngine {
       default:
         return null;
     }
+  }
+
+  function parsePatternOption(value: unknown): RegExp | undefined {
+    if (value instanceof RegExp) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      try {
+        return new RegExp(value);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  function readDiagnosticOptions(value: unknown): { readonly pattern?: RegExp } | undefined {
+    if (value === null || typeof value !== 'object' || !('pattern' in value)) {
+      return undefined;
+    }
+    const pattern = parsePatternOption(value.pattern);
+    return pattern === undefined ? undefined : { pattern };
+  }
+
+  function patternTarget(diagnostic: SourceDiagnostic, source: string): string | null {
+    const raw = source.slice(diagnostic.start, diagnostic.end);
+    if (diagnostic.code === LINT_CODES.selectorClassPattern) {
+      return raw.startsWith('.') ? raw.slice(1) : raw;
+    }
+    if (
+      diagnostic.code === LINT_CODES.customPropertyPattern
+      || diagnostic.code === LINT_CODES.keyframesNamePattern
+    ) {
+      return raw;
+    }
+    return null;
+  }
+
+  function suppressByDiagnosticOptions(diagnostic: SourceDiagnostic, source: string): boolean {
+    const target = patternTarget(diagnostic, source);
+    if (target === null) {
+      return false;
+    }
+    const pattern = semanticDiagnosticOptions[diagnostic.code]?.pattern;
+    if (pattern === undefined) {
+      return true;
+    }
+    pattern.lastIndex = 0;
+    return pattern.test(target);
   }
 
   /*
@@ -1076,7 +1170,8 @@ export function createEngine(): JessLanguageServiceEngine {
   return {
     configure(config) {
       /*
-       * Expected shape (from client settings): { diagnostics?: { severity?: Record<string, string> } }
+       * Expected shape (from client settings):
+       * { diagnostics?: { severity?: Record<string, string>, options?: Record<string, object> } }
        * Example: { diagnostics: { severity: { "var/undefined": "error" } } }
        */
       const diagnosticsObj = (config && typeof config === 'object' && 'diagnostics' in config)
@@ -1102,6 +1197,21 @@ export function createEngine(): JessLanguageServiceEngine {
           next[k] = parsed;
         }
         semanticDiagnosticSeverities = next;
+      }
+      const options = (diagnosticsObj && typeof diagnosticsObj === 'object' && 'options' in diagnosticsObj)
+        ? diagnosticsObj.options
+        : undefined;
+      if (options && typeof options === 'object') {
+        const next: Record<string, { readonly pattern?: RegExp }> = { ...semanticDiagnosticOptions };
+        for (const [k, v] of Object.entries(options)) {
+          const parsed = readDiagnosticOptions(v);
+          if (parsed === undefined) {
+            delete next[k];
+          } else {
+            next[k] = parsed;
+          }
+        }
+        semanticDiagnosticOptions = next;
       }
     },
 
@@ -1787,9 +1897,25 @@ export function createEngine(): JessLanguageServiceEngine {
       if (tree) {
         const cstDiagnostics = cstLintDiagnostics(tree, text, tracked.lang, {
           isKnownProperty: name => CSS_PROPERTY_SET.has(name) || PROPERTIES_MAP.has(name),
+          cssPropertyStatus: (name) => {
+            const status = PROPERTIES_MAP.get(name)?.status;
+            return status === 'standard'
+              || status === 'experimental'
+              || status === 'nonstandard'
+              || status === 'obsolete'
+              || status === 'deprecated'
+              ? status
+              : undefined;
+          },
           isKnownAtRule: name => AT_RULES_MAP.has(`@${name}`)
         }, undefined, cstDoc.errors.length > 0 || cstDoc.unconsumedFrom !== null);
         for (const diagnostic of cstDiagnostics) {
+          if (diagnostic.code === LINT_CODES.emptyRules && hasDiagnosticQualifier(diagnostic, 'mixin-body')) {
+            continue;
+          }
+          if (suppressByDiagnosticOptions(diagnostic, text)) {
+            continue;
+          }
           const configured = semanticDiagnosticSeverities[diagnostic.code];
           if (typeof configured !== 'number') {
             continue;

@@ -1,9 +1,22 @@
 import { createServer } from 'vite';
 import { parseCst } from '@jesscss/css-parser/cst';
-import { lessAstGrammar, lessCstGrammar, lessGrammar } from '../src/grammar.js';
+import { lessCstGrammar, lessGrammar } from '../src/grammar.js';
 
-test('canonical Less grammar is the AST artifact while CST remains explicit', () => {
-  expect(lessGrammar).toBe(lessAstGrammar);
+function hasGrammarNode(value: unknown, grammarType: string): boolean {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  if (record._tag !== 'node') {
+    return false;
+  }
+  if (record.grammarType === grammarType) {
+    return true;
+  }
+  return Array.isArray(record.rules) && record.rules.some(child => hasGrammarNode(child, grammarType));
+}
+
+test('canonical Less grammar is the default artifact while CST remains explicit', () => {
   expect(lessCstGrammar).not.toBe(lessGrammar);
   expect(lessGrammar.VarDeclaration).toBeDefined();
 });
@@ -15,7 +28,7 @@ test('Less factory compiles and runs in CST host mode', () => {
   expect(result.unconsumedFrom).toBeNull();
   expect(result.tree.grammarType).toBe('Stylesheet');
   expect(result.tree.rules.some(child => child._tag === 'node' && child.grammarType === 'VarDeclaration')).toBe(true);
-  expect(result.tree.rules.some(child => child._tag === 'node' && child.grammarType === 'Ruleset')).toBe(true);
+  expect(hasGrammarNode(result.tree, 'Ruleset')).toBe(true);
 });
 
 test('Less CST leaves detached binding semicolons at statement-list boundary', () => {

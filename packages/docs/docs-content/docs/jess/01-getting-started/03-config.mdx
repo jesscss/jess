@@ -41,6 +41,11 @@ export default {
     rules: {
       'property-no-unknown': 'error',
       'length-zero-no-unit': 'warn',
+      'vendor-prefix': 'warn',
+      'compatible-vendor-prefixes': 'off',
+      'unknown-vendor-specific-properties': 'off',
+      'float': 'off',
+      'jess/no-suspicious-map-key-access': 'warn',
       'jess/unsupported-sass-form': 'warn'
     }
   }
@@ -54,6 +59,8 @@ patterns. `ignoreFiles` excludes generated or vendored stylesheets.
 Per-rule values are `off`, `warn`, and `error`; `null` also disables a rule.
 Jess uses Stylelint rule names where the rule intent is familiar and Jess-owned
 namespaces for Jess-only checks.
+Those rule names are the lint configuration surface; shared diagnostic codes are
+still emitted in JSON for editor and tool integrations.
 
 Jess lint uses this policy on top of shared diagnostics. Detection itself lives
 below the lint package, so a diagnostic can be reused by the CLI and the

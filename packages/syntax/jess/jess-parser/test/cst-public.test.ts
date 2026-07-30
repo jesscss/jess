@@ -23,7 +23,7 @@ function stats(tree: CstNode) {
 }
 
 function isModeLabel(type: string): boolean {
-  return type.startsWith('Direct') || type.includes('Ast') || type.includes('Cst');
+  return type.startsWith('Direct') || type.startsWith('Static') || type.includes('Ast') || type.includes('Cst');
 }
 
 function expectNoModeLabels(tree: CstNode) {
@@ -71,6 +71,62 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(stats(result.tree).grammarTypes.get('InterpolatedSimple')).toBe(1);
     expect(stats(result.tree).grammarTypes.get('DollarBrace')).toBe(2);
+  });
+
+  it('uses semantic CST labels for quoted and pseudo-selector syntax', () => {
+    const result = parseJessCst('@charset "UTF-8"; .a:not(.b) { color: red; } .c:nth-child(2n of .d) { color: blue; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('Quoted')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorArgument')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorList')).toBeGreaterThan(0);
+    expect(grammarTypes.get('PseudoSelectorCompound')).toBeGreaterThan(0);
+    expect(grammarTypes.get('NthChildArgument')).toBe(1);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+  });
+
+  it('reuses the semantic Quoted slot for static attribute values', () => {
+    const result = parseJessCst('[data-kind="primary" i] { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AttributeSelector')).toBe(1);
+    expect(grammarTypes.get('Quoted')).toBe(1);
+    expectNoModeLabels(result.tree);
+  });
+
+  it('uses semantic CST labels for CSS at-rule preludes and headers', () => {
+    const result = parseJessCst('@media screen and (width >= 1px) { .a { color: red; } } @container card (width > 1px) { .b { color: blue; } } @unknown screen;');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AtRulePrelude')).toBeGreaterThan(0);
+    expect(grammarTypes.get('AtRulePreludeTerm')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryFeature')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryComparisonFeature')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryFeatureName')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryValue')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryClause')).toBe(1);
+    expect(grammarTypes.get('QueryPrelude')).toBeGreaterThan(0);
+    expect(grammarTypes.get('AtRuleStatementHeader')).toBe(1);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+  });
+
+  it('keeps constrained CSS-header value helpers private to the Jess grammar', () => {
+    const result = parseJessCst('@property --theme { syntax: fn(1px, "x"); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('ValueAtom')).toBeGreaterThan(0);
+    expect(grammarTypes.get('Value')).toBeGreaterThan(0);
+    expect(grammarTypes.get('CallArgument')).toBeGreaterThan(0);
+    expect(grammarTypes.get('Call')).toBeGreaterThan(0);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Plain'))).toEqual([]);
   });
 
   /*
@@ -125,19 +181,25 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(stats(plain.tree).grammarTypes.get('DollarBrace')).toBeUndefined();
   });
 
-  it('uses structural interpolation nodes in ordinary and @import url targets', () => {
-    const result = parseJessCst('@import url(${path}) print; .asset { image: url(images/${file}.svg); }');
+  it('keeps CSS import targets static while unquoted value URLs retain ${…} templates', () => {
+    const result = parseJessCst('@import url(theme.css) supports(display: grid); .asset { image: url(images/${file}.svg); }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(stats(result.tree).grammarTypes.get('ImportStatement')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('ImportPrelude')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('ImportTarget')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('InterpolatedUrl')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('Url')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('UrlInterpolatedValue')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('CssImport')).toBeUndefined();
-    expect(stats(result.tree).grammarTypes.get('CssImportPrelude')).toBeUndefined();
-    expect(stats(result.tree).grammarTypes.get('CssImportTarget')).toBeUndefined();
+  });
+
+  it('rejects runtime values in a bare CSS @import', () => {
+    for (const source of [
+      '@import url(${path});',
+      '@import "${path}.css";',
+      '@import "theme.css" $media;'
+    ]) {
+      const result = parseJessCst(source);
+      expect(result.errors.length + Number(result.unconsumedFrom !== null), source).toBeGreaterThan(0);
+    }
   });
 
   it('keeps documented expression arithmetic in the public CST route', () => {

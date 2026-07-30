@@ -26,19 +26,19 @@ describe('lossless at-rule prelude segments', () => {
     const trivia = triviaEntries(result.triviaLog);
     expect(Array.from({ length: trivia.length }, (_, index) => source.slice(trivia.start(index), trivia.end(index)))).toContain('/*note*/');
     expect(segmentText(result.tree)).toEqual([
-      ['AtPreludeWhitespace', ' '],
-      ['AtPreludeText', 'screen'],
-      ['AtPreludeComma', ','],
-      ['AtPreludeWhitespace', ' '],
-      ['AtPreludeText', 'func'],
-      ['AtPreludeGroup', '(") /* ] */")'],
-      ['AtPreludeWhitespace', ' '],
-      ['AtPreludeQuoted', '"x y"'],
-      ['AtPreludeWhitespace', ' '],
-      ['AtPreludeGroup', '[theme=") /* ] */"]'],
-      ['AtPreludeWhitespace', ' '],
-      ['AtPreludeText', 'foo\\ bar'],
-      ['AtPreludeWhitespace', ' ']
+      ['AtRulePreludeWhitespace', ' '],
+      ['AtRulePreludeText', 'screen'],
+      ['AtRulePreludeComma', ','],
+      ['AtRulePreludeWhitespace', ' '],
+      ['AtRulePreludeText', 'func'],
+      ['AtRulePreludeGroup', '(") /* ] */")'],
+      ['AtRulePreludeWhitespace', ' '],
+      ['AtRulePreludeQuoted', '"x y"'],
+      ['AtRulePreludeWhitespace', ' '],
+      ['AtRulePreludeGroup', '[theme=") /* ] */"]'],
+      ['AtRulePreludeWhitespace', ' '],
+      ['AtRulePreludeText', 'foo\\ bar'],
+      ['AtRulePreludeWhitespace', ' ']
     ]);
   });
 
@@ -47,6 +47,6 @@ describe('lossless at-rule prelude segments', () => {
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBe(1);
-    expect(segmentText(result.tree)).toEqual([['AtPreludeText', '@']]);
+    expect(segmentText(result.tree)).toEqual([['AtRulePreludeText', '@']]);
   });
 });

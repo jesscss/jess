@@ -55,30 +55,30 @@ import {
 import type {
   AtRuleBlock,
   OpaqueAtRuleBlock,
-  CompoundSelector as AstCompoundSelector,
-  Color as AstColor,
-  Declaration as AstDeclaration,
-  Dimension as AstDimension,
+  CompoundSelector,
+  Color,
+  Declaration,
+  Dimension,
   Interpolation,
   Keyword,
-  Quoted as AstQuoted,
-  Ruleset as AstRuleset,
-  SelectorBranch as AstSelectorBranch,
-  SelectorList as AstSelectorList,
-  SelectorTerm as AstSelectorTerm,
+  Quoted,
+  Ruleset,
+  SelectorBranch,
+  SelectorList,
+  SelectorTerm,
   SimpleSelector,
   SimpleToken,
   Statement,
   ValueNode,
   ValueSlot,
-  Url as AstUrl
+  Url
 } from '@jesscss/core/ast';
 
 type SourceSpan = { readonly start: number; readonly end: number };
 type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
 
 type CssGrammarRuleName =
-  | 'AtPrelude'
+  | 'AtRulePrelude'
   | 'AtRulePreludeSegments'
   | 'AtRuleStatement'
   | 'AttributeModifier'
@@ -100,48 +100,43 @@ type CssGrammarRuleName =
   | 'ContainerPrelude'
   | 'ContainerQueryClause'
   | 'ContainerQueryPrelude'
-  | 'CssSyntax'
-  | 'CssSyntaxAttributeModifier'
-  | 'CssSyntaxAttributeOperator'
-  | 'CssSyntaxConditionalAtKeyword'
-  | 'CssSyntaxContainerAtKeyword'
-  | 'CssSyntaxCustomProperty'
-  | 'CssSyntaxDescriptorAtKeyword'
-  | 'CssSyntaxDocumentAtKeyword'
-  | 'CssSyntaxDoubleQuotedText'
-  | 'CssSyntaxFontFeatureValueAtKeyword'
-  | 'CssSyntaxFontFeatureValuesAtKeyword'
-  | 'CssSyntaxGenericAtRuleName'
-  | 'CssSyntaxImportant'
-  | 'CssSyntaxKeyframesAtKeyword'
-  | 'CssSyntaxKeyword'
-  | 'CssSyntaxLayerAtKeyword'
-  | 'CssSyntaxMalformedPseudoNumericArgument'
-  | 'CssSyntaxMarginAtKeyword'
-  | 'CssSyntaxMediaAtKeyword'
-  | 'CssSyntaxNth'
-  | 'CssSyntaxNthChildName'
-  | 'CssSyntaxNthName'
-  | 'CssSyntaxNthTypeName'
-  | 'CssSyntaxOfKeyword'
-  | 'CssSyntaxPageAtKeyword'
-  | 'CssSyntaxProperty'
-  | 'CssSyntaxPseudoCloseAhead'
-  | 'CssSyntaxQueryAndOr'
-  | 'CssSyntaxQueryComparisonOperator'
-  | 'CssSyntaxQueryFunctionOpen'
-  | 'CssSyntaxQueryNot'
-  | 'CssSyntaxQueryOnly'
-  | 'CssSyntaxRoutedAtRuleKeyword'
-  | 'CssSyntaxScopeAtKeyword'
-  | 'CssSyntaxSelectorArgPseudoName'
-  | 'CssSyntaxSingleQuotedText'
-  | 'CssSyntaxStartingStyleAtKeyword'
-  | 'CssSyntaxStatementAtRuleName'
-  | 'CssSyntaxSupportsAtKeyword'
-  | 'CssSyntaxUnicodeRange'
-  | 'CssSyntaxUrlInner'
-  | 'CssSyntaxUrlOpen'
+  | 'ConditionalAtKeyword'
+  | 'ContainerAtKeyword'
+  | 'CustomPropertyName'
+  | 'DescriptorAtKeyword'
+  | 'DocumentAtKeyword'
+  | 'DoubleQuotedText'
+  | 'FontFeatureValueAtKeyword'
+  | 'FontFeatureValuesAtKeyword'
+  | 'GenericAtRuleName'
+  | 'ImportantToken'
+  | 'KeyframesAtKeyword'
+  | 'LayerAtKeyword'
+  | 'MalformedPseudoSelectorNumericArgument'
+  | 'MarginAtKeyword'
+  | 'MediaAtKeyword'
+  | 'NthExpression'
+  | 'NthChildPseudoSelectorName'
+  | 'NthPseudoSelectorName'
+  | 'NthTypePseudoSelectorName'
+  | 'NthOfKeyword'
+  | 'PageAtKeyword'
+  | 'PseudoSelectorCloseAhead'
+  | 'QueryAndOr'
+  | 'QueryComparisonOperator'
+  | 'QueryFunctionOpen'
+  | 'QueryNot'
+  | 'QueryOnly'
+  | 'RoutedAtRuleKeyword'
+  | 'ScopeAtKeyword'
+  | 'SelectorArgumentPseudoSelectorName'
+  | 'SingleQuotedText'
+  | 'StartingStyleAtKeyword'
+  | 'StatementAtRuleName'
+  | 'SupportsAtKeyword'
+  | 'UnicodeRangeToken'
+  | 'UrlInner'
+  | 'UrlOpen'
   | 'CustomProperty'
   | 'CustomValue'
   | 'Declaration'
@@ -166,6 +161,7 @@ type CssGrammarRuleName =
   | 'ImportUrl'
   | 'ImportUrlUnquoted'
   | 'Important'
+  | 'RoutedKeyword'
   | 'KeyframeBlock'
   | 'Keyframes'
   | 'Keyword'
@@ -380,39 +376,39 @@ function isSimpleToken(value: unknown): value is SimpleToken {
  */
 const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 
-function isCompound(value: unknown): value is AstCompoundSelector {
+function isCompound(value: unknown): value is CompoundSelector {
   return isNodeType(
     value,
     'CompoundSelector'
   );
 }
 
-function isSelectorTerm(value: unknown): value is AstSelectorTerm {
+function isSelectorTerm(value: unknown): value is SelectorTerm {
   return isSimpleToken(value) || isCompound(value);
 }
 
-const selectorTermFromTokens = (tokens: readonly SimpleToken[]): AstSelectorTerm =>
+const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
   selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
-function isComplex(value: unknown): value is Extract<AstSelectorBranch, { readonly type: 'ComplexSelector' }> {
+function isComplex(value: unknown): value is Extract<SelectorBranch, { readonly type: 'ComplexSelector' }> {
   return isNodeType(
     value,
     'ComplexSelector'
   );
 }
 
-function isRelative(value: unknown): value is Extract<AstSelectorBranch, { readonly type: 'RelativeSelector' }> {
+function isRelative(value: unknown): value is Extract<SelectorBranch, { readonly type: 'RelativeSelector' }> {
   return isNodeType(
     value,
     'RelativeSelector'
   );
 }
 
-function isSelectorBranch(value: unknown): value is AstSelectorBranch {
+function isSelectorBranch(value: unknown): value is SelectorBranch {
   return isSelectorTerm(value) || isComplex(value) || isRelative(value);
 }
 
-function isSelectorList(value: unknown): value is AstSelectorList {
+function isSelectorList(value: unknown): value is SelectorList {
   return isNodeType(
     value,
     'SelectorList'
@@ -433,14 +429,14 @@ function isInterpolation(value: unknown): value is Interpolation {
   );
 }
 
-function isDeclaration(value: unknown): value is AstDeclaration {
+function isDeclaration(value: unknown): value is Declaration {
   return isNodeType(
     value,
     'Declaration'
   );
 }
 
-function isRuleset(value: unknown): value is AstRuleset {
+function isRuleset(value: unknown): value is Ruleset {
   return isNodeType(
     value,
     'Ruleset'
@@ -532,7 +528,7 @@ function chainedQueryComparison(left: ValueNode, children: readonly unknown[]): 
   return result;
 }
 
-function isImportTarget(value: unknown): value is AstQuoted | { readonly type: 'Url'; readonly value: ValueNode } {
+function isImportTarget(value: unknown): value is Quoted | { readonly type: 'Url'; readonly value: ValueNode } {
   return isNodeType(
     value,
     'Quoted'
@@ -545,7 +541,7 @@ function isImportTarget(value: unknown): value is AstQuoted | { readonly type: '
 /** CSS `@import` is an ordinary statement at-rule. Its dedicated grammar only
  * validates the required target and retains its authored prelude; it does not
  * make import loading or resolution part of the AST. */
-function importPrelude(target: AstQuoted | { readonly type: 'Url'; readonly value: ValueNode }, tail: ValueNode | null): ValueNode {
+function importPrelude(target: Quoted | { readonly type: 'Url'; readonly value: ValueNode }, tail: ValueNode | null): ValueNode {
   const targetText = target.type === 'Url'
     ? `url(${sourceText(target.value)})`
     : target.src;
@@ -570,7 +566,7 @@ function isDocumentStatement(value: unknown): value is Statement {
     || isOpaqueAtRuleBlock(value);
 }
 
-const selectorBranches = (children: readonly unknown[]): AstSelectorBranch[] =>
+const selectorBranches = (children: readonly unknown[]): SelectorBranch[] =>
   children.filter(isSelectorBranch);
 
 function selectorArgumentText(value: unknown): string {
@@ -580,7 +576,7 @@ function selectorArgumentText(value: unknown): string {
   return tokenText(value);
 }
 
-type CssComplexSegment = { combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm };
+type CssComplexSegment = { combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: SelectorTerm };
 
 function cssCombinator(child: unknown): NonNullable<CssComplexSegment['combinator']> {
   const token = tokenText(child);
@@ -599,7 +595,7 @@ function cssRelativeCombinator(child: unknown): '>' | '+' | '~' {
 }
 
 function complexSegments(children: readonly unknown[]): [CssComplexSegment, ...CssComplexSegment[]] {
-  const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }> = [];
+  const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: SelectorTerm }> = [];
   let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   for (const child of children) {
     if (isSelectorTerm(child)) {
@@ -612,7 +608,7 @@ function complexSegments(children: readonly unknown[]): [CssComplexSegment, ...C
   return [segments[0]!, ...segments.slice(1)];
 }
 
-function branchSegments(branch: AstSelectorBranch): [CssComplexSegment, ...CssComplexSegment[]] {
+function branchSegments(branch: SelectorBranch): [CssComplexSegment, ...CssComplexSegment[]] {
   if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
     return [{ term: branch }];
   }
@@ -724,7 +720,7 @@ function blockStatements(children: readonly unknown[]): Statement[] {
   return children.filter(isDocumentStatement);
 }
 
-function keyframeSelectorList(children: readonly unknown[]): AstSelectorList {
+function keyframeSelectorList(children: readonly unknown[]): SelectorList {
   const selectors = children.filter(isSimple);
   return selist(...selectors);
 }
@@ -769,8 +765,8 @@ const customEscape = regex(/\\[^\n\r\f]/);
  * The two families diverge on the `of S` tail: `:nth-child`/`:nth-last-child`
  * accept it (Selectors-4 §6.6.2), `:nth-of-type`/`:nth-last-of-type` do not.
  * The `g`-free name recognitions live in the shared `cssPseudoSyntax`
- * artifact and are referenced as `g.CssSyntaxNthChildName` /
- * `g.CssSyntaxNthTypeName`.
+ * artifact and are referenced as `g.NthChildPseudoSelectorName` /
+ * `g.NthTypePseudoSelectorName`.
  * Public `anyValue` is intentionally permissive. The direct declaration
  * extension needs only its punctuation-run branch: identifier-shaped values
  * already lower through Keyword, and `#` stays reserved for the strict
@@ -854,7 +850,7 @@ const relativeSelectorCombinator = keywords(['>', '+', '~']);
 
 /*
  * A pseudo selector always opens with `:`/`::`. Spelling this leading colon as a
- * grammar-local recognizer (identical to the shared CssSyntaxPseudoColon) lets
+ * grammar-local recognizer (identical to the shared PseudoSelectorColon) lets
  * the compiler resolve the pseudo arm's first-set to `:` and first-char-gate it in
  * the compound-selector choice, instead of treating a cross-composition reference
  * as an `any` first-set and speculatively entering the pseudo node at every simple
@@ -873,7 +869,7 @@ const relativeSelectorCombinator = keywords(['>', '+', '~']);
 const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
 
 /*
- * Grammar-local copy of CssSyntaxSimple. As the fallback arm of the compound
+ * Grammar-local copy of SimpleSelectorToken. As the fallback arm of the compound
  * selector choice it must resolve a concrete first-set (`.`/`#`/`-`/letter/digit/
  * `*`) so the compiler first-char-gates the whole compound choice; a cross-
  * composition reference reads as `any`, entering the simple-selector node frame
@@ -883,8 +879,8 @@ const simpleSelectorToken = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9
 
 /*
  * Grammar-local copies of the leading hex-color and number recognizers (identical
- * to CssSyntaxHexColor / CssSyntaxNumber). Leading a component-value choice
- * arm with a cross-composition `g.CssSyntax*` reference leaves that arm's
+ * to HexColor / NumberToken). Leading a component-value choice
+ * arm with a cross-composition shared `g.*` reference leaves that arm's
  * first-set unresolved (`any`), so the compiler enters the Color / Dimension node
  * frame speculatively at every value atom. A local leading recognizer resolves the
  * arm's first-set (`#` / `[+-.0-9]`) so it is first-char-gated instead.
@@ -1029,37 +1025,16 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('(')
   ));
 
-  const pseudoRawDoubleQuoted = sequence(
-    literal('"'),
-    g.CssSyntaxDoubleQuotedText,
-    literal('"')
-  );
-  const pseudoRawSingleQuoted = sequence(
-    literal('\''),
-    g.CssSyntaxSingleQuotedText,
-    literal('\'')
-  );
   const pseudoIdentOrFunction = token(noTrivia(sequence(
-    g.CssSyntaxKeyword,
+    g.Identifier,
     optional(literal('('))
   )));
   const pseudoRawArgument = scanTo(
     literal(')'),
     {
       skip: [
-        balanced(
-          '(',
-          ')',
-          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
-        ),
-        balanced(
-          '[',
-          ']',
-          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
-        ),
-        pseudoRawDoubleQuoted,
-        pseudoRawSingleQuoted,
-        blockComment
+        balanced('(', ')'),
+        balanced('[', ']')
       ]
     }
   );
@@ -1115,13 +1090,13 @@ export const cssFactory = (g: CssGrammarSelf) => {
       sequence(
         noTrivia(sequence(
           literal('-'),
-          g.CssSyntaxNth
+          g.NthExpression
         )),
         optional(sequence(
-          g.CssSyntaxOfKeyword,
+          g.NthOfKeyword,
           g.SelectorList
         )),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       )
     ),
     (children) => {
@@ -1142,9 +1117,14 @@ export const cssFactory = (g: CssGrammarSelf) => {
     choice(
       sequence(
         literal('-'),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       ),
       noTrivia(sequence(
+
+        /* `- 2n` is malformed An+B, not a generic dash-led raw argument.
+         * The shared gate owns the full prefix before this branch can consume
+         * the dash and bypass the ordinary raw-argument guard below. */
+        not(g.MalformedPseudoSelectorNumericArgument),
         literal('-'),
         regex(/[ \t\n\r\f]+/),
         pseudoRawArgument
@@ -1176,12 +1156,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
     parser(
       { trivia: whitespace },
       sequence(
-        g.CssSyntaxNth,
+        g.NthExpression,
         optional(sequence(
-          g.CssSyntaxOfKeyword,
+          g.NthOfKeyword,
           g.SelectorList
         )),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       )
     ),
     (children) => {
@@ -1205,9 +1185,9 @@ export const cssFactory = (g: CssGrammarSelf) => {
       sequence(
         noTrivia(sequence(
           literal('-'),
-          g.CssSyntaxNth
+          g.NthExpression
         )),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       )
     ),
     children => `-${tokenText(children[1])}`
@@ -1217,8 +1197,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     parser(
       { trivia: whitespace },
       sequence(
-        g.CssSyntaxNth,
-        g.CssSyntaxPseudoCloseAhead
+        g.NthExpression,
+        g.PseudoSelectorCloseAhead
       )
     ),
     children => tokenText(children[0])
@@ -1234,7 +1214,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.SelectorList
       ),
       sequence(
-        not(g.CssSyntaxMalformedPseudoNumericArgument),
+        not(g.MalformedPseudoSelectorNumericArgument),
         pseudoRawArgument
       )
     ),
@@ -1262,8 +1242,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
         not(parser(
           { trivia: whitespace },
           sequence(
-            g.CssSyntaxNth,
-            g.CssSyntaxOfKeyword
+            g.NthExpression,
+            g.NthOfKeyword
           )
         )),
         choice(
@@ -1272,7 +1252,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
             g.SelectorList
           ),
           sequence(
-            not(g.CssSyntaxMalformedPseudoNumericArgument),
+            not(g.MalformedPseudoSelectorNumericArgument),
             pseudoRawArgument
           )
         )
@@ -1393,7 +1373,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
           )
         ),
         otherwise(sequence(
-          not(g.CssSyntaxNthName),
+          not(g.NthPseudoSelectorName),
           routed()
         ))
       )
@@ -1516,12 +1496,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const Property = node(
     'Property',
-    g.CssSyntaxProperty,
+    g.Identifier,
     children => tokenText(children[0])
   );
   const CustomProperty = node(
     'CustomProperty',
-    g.CssSyntaxCustomProperty,
+    g.CustomPropertyName,
     children => tokenText(children[0])
   );
   const CustomValue = node(
@@ -1531,7 +1511,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const Keyword = node(
     'Keyword',
-    g.CssSyntaxKeyword,
+    g.Identifier,
     children => keyword(tokenText(children[0]))
   );
 
@@ -1543,10 +1523,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
    */
   const CustomPropertyValue = node(
     'CustomPropertyValue',
-    g.CssSyntaxCustomProperty,
+    g.CustomPropertyName,
     children => keyword(tokenText(children[0]))
   );
-  const Color = node<AstColor>(
+  const Color = node<Color>(
     'Color',
     hexColor,
     children => color(tokenText(children[0]))
@@ -1559,10 +1539,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
    */
   const UnicodeRange = node(
     'UnicodeRange',
-    g.CssSyntaxUnicodeRange,
+    g.UnicodeRangeToken,
     children => any(tokenText(children[0]))
   );
-  const Percentage = node<AstDimension>(
+  const Percentage = node<Dimension>(
     'Percentage',
     noTrivia(sequence(
       numberValue,
@@ -1577,7 +1557,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const Dimension = node<AstDimension>(
+  const Dimension = node<Dimension>(
     'Dimension',
     noTrivia(sequence(
       numberNoPercentage,
@@ -1593,17 +1573,17 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const Quoted = node<AstQuoted>(
+  const Quoted = node<Quoted>(
     'Quoted',
     choice(
       noTrivia(sequence(
         literal('"'),
-        g.CssSyntaxDoubleQuotedText,
+        g.DoubleQuotedText,
         literal('"')
       )),
       noTrivia(sequence(
         literal('\''),
-        g.CssSyntaxSingleQuotedText,
+        g.SingleQuotedText,
         literal('\'')
       )),
 
@@ -1613,12 +1593,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
        */
       noTrivia(sequence(
         literal('~"'),
-        g.CssSyntaxDoubleQuotedText,
+        g.DoubleQuotedText,
         literal('"')
       )),
       noTrivia(sequence(
         literal('~\''),
-        g.CssSyntaxSingleQuotedText,
+        g.SingleQuotedText,
         literal('\'')
       ))
     ),
@@ -1637,10 +1617,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const UrlUnquoted = node(
     'UrlUnquoted',
-    g.CssSyntaxUrlInner,
+    g.UrlInner,
     children => any(tokenText(children[0]!))
   );
-  const Url = node<AstUrl>(
+  const Url = node<Url>(
     'Url',
     sequence(
       urlOpen,
@@ -1955,7 +1935,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       genericFunctionOpen,
       optional(sequence(
-        not(peek(literal(')'))),
+        not(literal(')')),
         oneOrMoreSep(
           g.VarFallbackItem,
           varFallbackComma
@@ -2089,7 +2069,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     regex(/[0-9]/),
     regex(/[ \t\n\r\f]/)
   ));
-  const atRuleKeyword = token(noTrivia(g.CssSyntaxRoutedAtRuleKeyword));
+  const atRuleKeyword = token(noTrivia(g.RoutedAtRuleKeyword));
   const identOrFunction = token(noTrivia(
     sequence(
       genericIdentifier,
@@ -2155,7 +2135,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const UrlFunction = node<AstUrl>(
+  const UrlFunction = node<Url>(
     'Url',
     sequence(
       routed(),
@@ -2209,7 +2189,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       children.filter(isValueSlotValue)
     )
   );
-  const Identifier = node(
+  const RoutedKeyword = node(
     'Keyword',
     routed(),
     children => keyword(tokenText(children[0]))
@@ -2239,7 +2219,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       endsWith('('),
       GenericFunction
     ),
-    otherwise(Identifier)
+    otherwise(RoutedKeyword)
   );
   const TypedGenericFunction = node(
     'Call',
@@ -2284,14 +2264,14 @@ export const cssFactory = (g: CssGrammarSelf) => {
       endsWith('('),
       TypedGenericFunction
     ),
-    otherwise(Identifier)
+    otherwise(RoutedKeyword)
   );
   const CalcIdentOrFunction = typedIdentOrFunction;
   const TypedIdentOrFunction = typedIdentOrFunction;
   const NonIdentifierPunctuationValue = node(
     'NonIdentifierPunctuationValue',
     sequence(
-      not(peek(identOrFunction)),
+      not(identOrFunction),
       g.PunctuationValue
     ),
     children => firstValue(children)
@@ -2442,7 +2422,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
      * concrete first-set and optional(Important) is first-char-gated instead of
      * entering the node frame at every declaration's value boundary.
      */
-    sequence(literal('!'), g.CssSyntaxImportant),
+    sequence(literal('!'), g.ImportantToken),
     () => true
   );
   const Declaration = node(
@@ -2509,7 +2489,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    */
   const ImportUrlUnquoted = node(
     'ImportUrlUnquoted',
-    g.CssSyntaxUrlInner,
+    g.UrlInner,
     children => any(tokenText(children[0]!))
   );
   const ImportUrl = node(
@@ -2593,7 +2573,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const AtRuleStatement = node(
     'AtRuleStatement',
     sequence(
-      g.CssSyntaxStatementAtRuleName,
+      g.StatementAtRuleName,
       g.StatementPrelude,
       literal(';')
     ),
@@ -2620,26 +2600,26 @@ export const cssFactory = (g: CssGrammarSelf) => {
       ), span);
     }
   );
-  const AtPreludeWhitespace = node(
-    'AtPreludeWhitespace',
+  const AtRulePreludeWhitespace = node(
+    'AtRulePreludeWhitespace',
     noTrivia(regex(/[ \t\n\r\f]+/)),
     children => authoredText(children)
   );
-  const AtPreludeComma = node(
-    'AtPreludeComma',
+  const AtRulePreludeComma = node(
+    'AtRulePreludeComma',
     noTrivia(literal(',')),
     children => authoredText(children)
   );
-  const AtPreludeGroup = node(
-    'AtPreludeGroup',
+  const AtRulePreludeGroup = node(
+    'AtRulePreludeGroup',
     noTrivia(choice(
       balanced('(', ')'),
       balanced('[', ']')
     )),
     children => authoredText(children)
   );
-  const AtPreludeQuoted = node(
-    'AtPreludeQuoted',
+  const AtRulePreludeQuoted = node(
+    'AtRulePreludeQuoted',
     noTrivia(choice(
       customSingleQuoted,
       customDoubleQuoted
@@ -2647,8 +2627,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     children => authoredText(children)
   );
   const atPreludeTextSegment = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]"'])+/);
-  const AtPreludeText = node(
-    'AtPreludeText',
+  const AtRulePreludeText = node(
+    'AtRulePreludeText',
     noTrivia(atPreludeTextSegment),
     children => authoredText(children)
   );
@@ -2657,11 +2637,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
     parser(
       { trivia: commentTrivia },
       many(choice(
-        AtPreludeWhitespace,
-        AtPreludeComma,
-        AtPreludeGroup,
-        AtPreludeQuoted,
-        AtPreludeText
+        AtRulePreludeWhitespace,
+        AtRulePreludeComma,
+        AtRulePreludeGroup,
+        AtRulePreludeQuoted,
+        AtRulePreludeText
       ))
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => semanticTextWithTriviaGaps(children, triviaLog)
@@ -2669,7 +2649,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const LayerStatement = node(
     'LayerStatement',
     sequence(
-      g.CssSyntaxLayerAtKeyword,
+      g.LayerAtKeyword,
       g.StatementPrelude,
       literal(';')
     ),
@@ -2679,8 +2659,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     )
   );
 
-  const AtPrelude = node(
-    'AtPrelude',
+  const AtRulePrelude = node(
+    'AtRulePrelude',
     g.AtRulePreludeSegments,
     (children) => {
       const text = children.length === 0 ? '' : tokenText(children[0]).trim();
@@ -2711,7 +2691,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const OpaqueAtRuleBlock = node(
     'OpaqueAtRuleBlock',
     sequence(
-      g.CssSyntaxGenericAtRuleName,
+      g.GenericAtRuleName,
       noTrivia(sequence(
         g.OpaqueAtPrelude,
         literal('{'),
@@ -2829,10 +2809,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       literal('('),
       g.Property,
-      g.CssSyntaxQueryComparisonOperator,
+      g.QueryComparisonOperator,
       QueryValue,
       optional(sequence(
-        g.CssSyntaxQueryComparisonOperator,
+        g.QueryComparisonOperator,
         QueryValue
       )),
       literal(')')
@@ -2854,10 +2834,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       literal('('),
       QueryValue,
-      g.CssSyntaxQueryComparisonOperator,
+      g.QueryComparisonOperator,
       g.Property,
       optional(sequence(
-        g.CssSyntaxQueryComparisonOperator,
+        g.QueryComparisonOperator,
         QueryValue
       )),
       literal(')')
@@ -2935,18 +2915,28 @@ export const cssFactory = (g: CssGrammarSelf) => {
     genericIdentifier,
     optional(literal('('))
   )));
+
+  /*
+   * A generic query function keeps its component payload opaque, but both the
+   * direct `QueryFunction` entry and the identifier/function dispatch consume
+   * the same CSS-owned tail. Only the opener differs: `routed()` preserves the
+   * token already consumed by the dispatch route.
+   */
+  const queryFunctionTail = sequence(
+    scanTo(
+      literal(')'),
+      { skip: [balancedParens] }
+    ),
+    expect(
+      literal(')'),
+      ')'
+    )
+  );
   const RoutedQueryFunction = node(
     'QueryFunction',
     sequence(
       routed(),
-      scanTo(
-        literal(')'),
-        { skip: [balancedParens] }
-      ),
-      expect(
-        literal(')'),
-        ')'
-      )
+      queryFunctionTail
     ),
     children => funcCall(
       functionOpenName(children[0]!),
@@ -2977,10 +2967,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const QueryOnlyClause = node(
     'QueryOnlyClause',
     sequence(
-      g.CssSyntaxQueryOnly,
+      g.QueryOnly,
       QueryNonOnlyKeyword,
       many(sequence(
-        g.CssSyntaxQueryAndOr,
+        g.QueryAndOr,
         QueryTerm
       ))
     ),
@@ -3025,7 +3015,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     }
   );
   const containerName = sequence(
-    not(g.CssSyntaxQueryFunctionOpen),
+    not(g.QueryFunctionOpen),
     not(containerNameReserved),
     g.Keyword
   );
@@ -3142,7 +3132,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'GeneralEnclosed',
     choice(
       noTrivia(sequence(
-        g.CssSyntaxQueryFunctionOpen,
+        g.QueryFunctionOpen,
         g.GeneralEnclosedContent,
         literal(')')
       )),
@@ -3178,14 +3168,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'QueryFunction',
     sequence(
       queryFunctionOpen,
-      scanTo(
-        literal(')'),
-        { skip: [balancedParens] }
-      ),
-      expect(
-        literal(')'),
-        ')'
-      )
+      queryFunctionTail
     ),
     children => funcCall(
       functionOpenName(children[0]!),
@@ -3212,13 +3195,13 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'SupportsCondition',
     choice(
       sequence(
-        g.CssSyntaxQueryNot,
+        g.QueryNot,
         g.SupportsInParens
       ),
       sequence(
         g.SupportsInParens,
         many(sequence(
-          g.CssSyntaxQueryAndOr,
+          g.QueryAndOr,
           g.SupportsInParens
         ))
       )
@@ -3284,7 +3267,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'LayerBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3297,7 +3280,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'NestedLayerBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3310,7 +3293,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'DescriptorBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3323,20 +3306,20 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'PageBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       pageBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
-      children.filter((value): value is AstDeclaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
+      children.filter((value): value is Declaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
     ), rawChildren)
   );
   const RoutedKeyframes = node(
     'Keyframes',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       keyframesBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3349,7 +3332,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'FontFeatureValuesBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       fontFeatureValuesBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3362,7 +3345,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'ScopeBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3375,7 +3358,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'StartingStyleBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3388,7 +3371,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'NestedStartingStyleBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3401,7 +3384,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'DocumentBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3606,8 +3589,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const LayerBlock = node(
     'LayerBlock',
     sequence(
-      g.CssSyntaxLayerAtKeyword,
-      g.AtPrelude,
+      g.LayerAtKeyword,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3619,8 +3602,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const NestedLayerBlock = node(
     'NestedLayerBlock',
     sequence(
-      g.CssSyntaxLayerAtKeyword,
-      g.AtPrelude,
+      g.LayerAtKeyword,
+      g.AtRulePrelude,
       declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3639,7 +3622,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const MarginAtRule = node(
     'MarginAtRule',
     sequence(
-      g.CssSyntaxMarginAtKeyword,
+      g.MarginAtKeyword,
       descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3651,14 +3634,14 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const PageBlock = node(
     'PageBlock',
     sequence(
-      g.CssSyntaxPageAtKeyword,
-      g.AtPrelude,
+      g.PageAtKeyword,
+      g.AtRulePrelude,
       pageBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
-      children.filter((value): value is AstDeclaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
+      children.filter((value): value is Declaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
     ), rawChildren)
   );
   const keyframeSelector = node(
@@ -3691,8 +3674,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const Keyframes = node(
     'Keyframes',
     sequence(
-      g.CssSyntaxKeyframesAtKeyword,
-      g.AtPrelude,
+      g.KeyframesAtKeyword,
+      g.AtRulePrelude,
       keyframesBodyBlock
     ),
     (children, _fields, _span, rawChildren) => {
@@ -3752,7 +3735,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'ConditionalBlock',
     choice(
       sequence(
-        g.CssSyntaxSupportsAtKeyword,
+        g.SupportsAtKeyword,
         parser(
           { trivia: interstitialTrivia },
           g.SupportsPrelude
@@ -3760,12 +3743,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
         conditionalGroupBodyBlock
       ),
       sequence(
-        g.CssSyntaxMediaAtKeyword,
+        g.MediaAtKeyword,
         g.QueryPrelude,
         conditionalGroupBodyBlock
       ),
       sequence(
-        g.CssSyntaxContainerAtKeyword,
+        g.ContainerAtKeyword,
         g.ContainerPrelude,
         conditionalGroupBodyBlock
       )
@@ -3782,7 +3765,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'NestedConditionalBlock',
     choice(
       sequence(
-        g.CssSyntaxSupportsAtKeyword,
+        g.SupportsAtKeyword,
         parser(
           { trivia: interstitialTrivia },
           g.SupportsPrelude
@@ -3790,12 +3773,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
         declarationListBlock
       ),
       sequence(
-        g.CssSyntaxMediaAtKeyword,
+        g.MediaAtKeyword,
         g.QueryPrelude,
         declarationListBlock
       ),
       sequence(
-        g.CssSyntaxContainerAtKeyword,
+        g.ContainerAtKeyword,
         g.ContainerPrelude,
         declarationListBlock
       )
@@ -3811,8 +3794,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const DescriptorBlock = node(
     'DescriptorBlock',
     sequence(
-      g.CssSyntaxDescriptorAtKeyword,
-      g.AtPrelude,
+      g.DescriptorAtKeyword,
+      g.AtRulePrelude,
       descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3830,7 +3813,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const FeatureValueBlock = node(
     'FeatureValueBlock',
     sequence(
-      g.CssSyntaxFontFeatureValueAtKeyword,
+      g.FontFeatureValueAtKeyword,
       descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3842,8 +3825,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const FontFeatureValuesBlock = node(
     'FontFeatureValuesBlock',
     sequence(
-      g.CssSyntaxFontFeatureValuesAtKeyword,
-      g.AtPrelude,
+      g.FontFeatureValuesAtKeyword,
+      g.AtRulePrelude,
       fontFeatureValuesBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3855,8 +3838,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const ScopeBlock = node(
     'ScopeBlock',
     sequence(
-      g.CssSyntaxScopeAtKeyword,
-      g.AtPrelude,
+      g.ScopeAtKeyword,
+      g.AtRulePrelude,
 
       /*
        * `@scope` has the public declaration-list body model, so a nested
@@ -3874,8 +3857,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const StartingStyleBlock = node(
     'StartingStyleBlock',
     sequence(
-      g.CssSyntaxStartingStyleAtKeyword,
-      g.AtPrelude,
+      g.StartingStyleAtKeyword,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3887,8 +3870,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const NestedStartingStyleBlock = node(
     'NestedStartingStyleBlock',
     sequence(
-      g.CssSyntaxStartingStyleAtKeyword,
-      g.AtPrelude,
+      g.StartingStyleAtKeyword,
+      g.AtRulePrelude,
       declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3900,8 +3883,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const DocumentBlock = node(
     'DocumentBlock',
     sequence(
-      g.CssSyntaxDocumentAtKeyword,
-      g.AtPrelude,
+      g.DocumentAtKeyword,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3942,6 +3925,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     CustomProperty,
     CustomValue,
     Keyword,
+    RoutedKeyword,
     Color,
     UnicodeRange,
     Percentage,
@@ -3983,14 +3967,14 @@ export const cssFactory = (g: CssGrammarSelf) => {
     ImportTailBody,
     ImportTail,
     AtRuleStatement,
-    AtPreludeWhitespace,
-    AtPreludeComma,
-    AtPreludeGroup,
-    AtPreludeQuoted,
-    AtPreludeText,
+    AtRulePreludeWhitespace,
+    AtRulePreludeComma,
+    AtRulePreludeGroup,
+    AtRulePreludeQuoted,
+    AtRulePreludeText,
     AtRulePreludeSegments,
     LayerStatement,
-    AtPrelude,
+    AtRulePrelude,
     StatementPrelude,
     OpaqueAtPrelude,
     OpaqueBody,
@@ -4042,14 +4026,10 @@ export const cssGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPs
   cssFactory
 )]);
 
-export const cssAstGrammar = cssGrammar;
-
 export const cssLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], trackLines: true },
   cssFactory
 )]);
-
-export const cssAstLineGrammar = cssLineGrammar;
 
 export const cssCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], hostMode: 'cst' },
@@ -4070,7 +4050,7 @@ export function cssGrammarFor(options: CssGrammarOptions = {}) {
   if (options.cst) {
     return options.trackLines ? cssDiagnosticCstGrammar : cssCstGrammar;
   }
-  return options.trackLines ? cssAstLineGrammar : cssAstGrammar;
+  return options.trackLines ? cssLineGrammar : cssGrammar;
 }
 export const {
   Stylesheet,

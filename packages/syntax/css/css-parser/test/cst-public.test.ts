@@ -59,7 +59,7 @@ function collect(tree: CstNode) {
 }
 
 function isModeLabel(type: string): boolean {
-  return type.startsWith('Direct') || type.includes('Ast') || type.includes('Cst');
+  return type.startsWith('Direct') || type.startsWith('Static') || type.includes('Ast') || type.includes('Cst');
 }
 
 function expectNoModeLabels(tree: CstNode) {
@@ -282,6 +282,9 @@ describe('@jesscss/css-parser/cst', () => {
     expect(namedOnly.errors).toHaveLength(0);
     expect(namedQuery.errors).toHaveLength(0);
     expect(functionQuery.errors).toHaveLength(0);
+    expect(nodesByGrammarType(namedQuery.tree, 'ContainerPrelude')).toHaveLength(1);
+    expect(nodesByGrammarType(namedQuery.tree, 'ContainerQueryPrelude')).toHaveLength(1);
+    expect(nodesByGrammarType(namedQuery.tree, 'ContainerQueryClause')).toHaveLength(1);
     expect(nodesByGrammarType(functionQuery.tree, 'QueryFunction')).toHaveLength(1);
     expect(reservedName.errors.length + (reservedName.unconsumedFrom === null ? 0 : 1)).toBeGreaterThan(0);
     expect(supportsWithContainerName.errors.length + (supportsWithContainerName.unconsumedFrom === null ? 0 : 1)).toBeGreaterThan(0);

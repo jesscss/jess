@@ -32,7 +32,7 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
 | **Property names** | Full, relevance-scored, in declaration context | ✓ names from `known-css-properties`, gated on `depth>0` brace count (naive) | Ranking + context precision | P1 |
-| **Property VALUES (per-property)** | Extensive: enum values, units, functions, color fns, timing fns, shapes, box keywords, image fns — driven by each property's `restrictions` | Enum value *names* only, from web-custom-data `values[]`, when a property is found before the `:` | No units, no functions, no restriction-driven value kinds, no CSS-wide keywords (`inherit`/`initial`/`unset`/`revert`) | **P0** |
+| **Property VALUES (per-property)** | Extensive: enum values, units, functions, color fns, timing fns, shapes, box keywords, image fns — driven by each property's `restrictions` | Completions use `values[]` plus restrictions; diagnostics validate simple static values against values/restrictions | Compound value grammar validation, richer function/value facts, ranking + context precision | P1 |
 | **`var()` / CSS-wide fns** | ✓ (`var()`, `calc()`, `env()` …) | ✗ | Missing | P1 |
 | **At-rule keywords** | ✓ context-aware (top-level vs nested) | ✓ every `@name` from web-custom-data, triggered only on leading `@` or empty suggest — no nesting context | No context; unfiltered list | P1 |
 | **At-rule bodies** (`@media` features/values, `@supports` conditions, `@font-face` descriptors, `@keyframes` `from/to`, `@page`) | ✓ media descriptors + discrete values, `@supports` conditions | ✗ | Missing entirely | P1 |
@@ -78,15 +78,18 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
 | Syntax / parse errors | ✓ | ✓ lexer + parser errors from the Jess parse result | At parity | — |
-| **Lint rules** | ✓ ~20 configurable rules (see below) | ✗ **none** | **Whole category missing** | **P0/P1** |
-| `unknownProperties` | ✓ (Warning) | ✗ | Missing | P1 |
-| `unknownAtRules` | ✓ (Warning) | ✗ | Missing | P1 |
-| `emptyRules` | ✓ (Warning) | ✗ | Missing | P1 |
-| `duplicateProperties` | ✓ | ✗ | Missing | P1 |
-| `hexColorLength` / `argumentsInColorFunction` | ✓ (Error) | ✗ | Missing | P1 |
-| `vendorPrefix` / `compatibleVendorPrefixes` / `unknownVendorSpecificProperties` | ✓ | ✗ | Missing | P2 |
-| `boxModel`, `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `ieHack`, `importStatement`, `propertyIgnoredDueToDisplay`, `fontFaceProperties` | ✓ (mostly default-Ignore, opt-in) | ✗ | Missing | P2 |
-| Configurable severities | ✓ per-rule | ✓ but only for the 2 semantic Jess codes (`var/undefined`, `mixin/undefined`) | Framework exists; needs rules to configure | P1 |
+| **Lint rules** | ✓ ~20 configurable rules (see below) | ✓ shared diagnostics surfaced through language-service severity config | Keep expanding parity and semantic facts | P1 |
+| `unknownProperties` | ✓ (Warning) | ✓ shared diagnostic default Warning | At parity | — |
+| `unknownAtRules` | ✓ (Warning) | ✓ shared diagnostic default Warning | At parity | — |
+| `emptyRules` | ✓ (Warning) | ✓ shared diagnostic default Warning | At parity | — |
+| `duplicateProperties` | ✓ | ✓ shared diagnostic default Warning | At parity plus Stylelint-compatible lint naming | — |
+| `hexColorLength` / `argumentsInColorFunction` | ✓ (Error) | ✓ shared diagnostics default to Error | At parity for hex length and rgb()/rgba()/hsl()/hsla() definite argument errors | — |
+| `vendorPrefix` / `compatibleVendorPrefixes` / `unknownVendorSpecificProperties` | ✓ | ✓ shared diagnostics; `compatibleVendorPrefixes` and `unknownVendorSpecificProperties` opt-in | At parity for CSS declarations/keyframes; dialect semantic facts remain future work | — |
+| `propertyIgnoredDueToDisplay`, `fontFaceProperties` | ✓ (Warning) | ✓ shared diagnostics default to Warning | At parity for CSS @font-face required descriptors and display/property interactions | — |
+| `boxModel` | ✓ (Ignore by default) | ✓ shared diagnostic, opt-in | At parity for definite CSS width/height plus padding/border size risks | — |
+| `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `importStatement` | ✓ (mostly default-Ignore, opt-in) | ✓ shared diagnostics; opinionated rules remain opt-in | At parity for CSS source facts | — |
+| `ieHack` | ✓ (Ignore by default) | ✗ | Missing: current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule | P3 |
+| Configurable severities | ✓ per-rule | ✓ for semantic codes and shared lint diagnostic codes | Naming bridge from lint rule names into editor settings remains future polish | P2 |
 | **Semantic: undefined variable / mixin** | ✗ (MS does not resolve semantics this deeply) | ✓ `var/undefined`, `mixin/undefined` + escalate-to-error when modern features present | **Jess AHEAD** | — |
 
 MS lint rules with default levels (`src/services/lintRules.ts`):
@@ -125,7 +128,7 @@ MS lint rules with default levels (`src/services/lintRules.ts`):
 
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
-| Property data | MDN-sourced `languageFacts` + `@vscode/web-custom-data`: descriptions, **`restrictions`**, `values`, `status`, **`browsers`/compat** | `known-css-properties` (names) + web-custom-data (descriptions, values) | **No `restrictions` (kills value-completion depth), no browser-compat, no status** | **P0** |
+| Property data | MDN-sourced `languageFacts` + `@vscode/web-custom-data`: descriptions, **`restrictions`**, `values`, `status`, **`browsers`/compat** | `known-css-properties` (names) + web-custom-data (descriptions, values, restrictions, status) | Browser-compat data remains missing | P2 |
 | At-rule data | ✓ rich | ✓ web-custom-data | Comparable | P2 |
 | Pseudo-class / pseudo-element data | ✓ (names + descriptions + compat) | ✗ (not loaded at all) | Missing dataset | **P0** |
 | Custom-data provider API (`setDataProviders`) | ✓ extensible | ✗ | Missing extensibility | P2 |
@@ -139,10 +142,11 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
 
 **P0 — completions & the data behind them**
 
-1. ✅ **DONE (dev f00b51fb2).** **Load `restrictions` + pseudo data from `@vscode/web-custom-data`.** The
-   property value-completion depth is entirely gated on data: currently only
-   `values[]` names are read. Also load pseudo-classes/elements (web-custom-data
-   ships `pseudoClasses`/`pseudoElements`) — Jess ignores them today.
+1. ✅ **DONE (dev f00b51fb2).** **Load `restrictions` + pseudo data from `@vscode/web-custom-data`.** Property
+   value completions and simple static value diagnostics now read the same
+   restriction/value data; deeper compound value grammar validation remains
+   future work. Pseudo-classes/elements also come from web-custom-data
+   `pseudoClasses`/`pseudoElements`.
 2. ✅ **DONE.** **Restriction-driven value completions.** Given the property before the `:`,
    read its `restrictions` (e.g. `color`, `length`, `enum`, `timing-function`)
    and emit the matching value kinds: enum names *plus* units (`px/em/rem/%/…`),
@@ -167,11 +171,14 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    web-custom-data at-rule `values`.
 8. ✅ **DONE (function completions insert as `name($1)` snippets).** **Snippet completions** — emit `InsertTextFormat.Snippet` for at-rules and
    function calls (`@media $1 { $0 }`), instead of plain `textEdit`.
-9. ✅ **DONE (6 configurable CST rules: empty-rules, unknown-property,
-    unknown-at-rule, duplicate-property, hex-color-length, zero-units).** **Lint rules** — port the high-value subset first: `emptyRules`,
-   `unknownProperties`, `unknownAtRules`, `duplicateProperties`,
-   `hexColorLength`, `argumentsInColorFunction`. Data + CST walk; wire into the
-   existing configurable-severity map (extend beyond the 2 semantic codes).
+9. ✅ **DONE (configurable shared diagnostics, including VSCode-data-backed
+   property/value warnings and recommended IDE defaults).** **Diagnostics / lint rules** — port the high-value
+   stylesheet-service subset first: `emptyRules`, `unknownProperties`,
+   `declaration-property-value-no-unknown`, `unknownAtRules`,
+   `duplicateProperties`, `hexColorLength`, `zeroUnits`, `fontFaceProperties`,
+   `propertyIgnoredDueToDisplay`, `boxModel`, and follow-on CSS validity diagnostics.
+   Detection lives in diagnostics-core; lint and the language service only
+   configure and surface the shared records.
 10. ✅ **DONE.** **Hover enrichment** — pseudo-class/element hover added; property +
     at-rule hover append formal `syntax`, Baseline status, and the MDN reference
     link (from web-custom-data `references`/`baseline`/`syntax`).
@@ -230,9 +237,9 @@ MDN data behind it + lint*.
 ## 4. Features that don't map cleanly
 
 - **MS lint rules that are style opinions** (`float`, `idSelector`,
-  `universalSelector`, `boxModel`, `ieHack`, `important`) default to *Ignore*
-  even in MS. Port the objective correctness rules first (unknown/duplicate/empty
-  /hex-color); treat the opinionated ones as opt-in P2, not parity-critical.
+  `universalSelector`, `ieHack`, `important`) default to *Ignore*
+  even in MS. Jess keeps the implemented opinion rules opt-in; `ieHack` waits
+  for real CST support for star-prefixed declarations.
 - **Jess-only language surface** — `.jess` control-flow (`$if`/`$for`/`${}`
   scope blocks), `@compose`/`@from`, cross-dialect function imports. MS has no
   concept of these; parity is one-directional (Jess must add its *own*

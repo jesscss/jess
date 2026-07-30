@@ -167,6 +167,25 @@ describe('@jesscss/scss-parser public parse API', () => {
     });
   });
 
+  it('parses and renders interpolated attribute values through the universal quoted override', () => {
+    const root = parse('$state: open; .card[data-state="#{$state}"] { color: blue; }');
+
+    expect(root).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'VariableDeclaration' }, {
+        type: 'Ruleset', selector: { selectors: [compoundComplex(
+          simpleSelector('.card'),
+          simpleSelector(null, { interp: { type: 'Interpolation', parts: [
+            { lit: '[data-state="' },
+            { ref: { type: 'VariableReference', name: 'state', lookup: 'live' }, unquote: true },
+            { lit: '"]' }
+          ] } })
+        )] }
+      }]
+    });
+    expect(serialize(root)).toEqual({ css: '.card[data-state="open"] {\n  color: blue;\n}\n' });
+  });
+
   it('parses and renders ordinary SCSS interpolated simple selectors through the public Stylesheet route', () => {
     const root = parse('$kind: card; .#{$kind}-header, #main-#{$kind} { color: blue; }');
 

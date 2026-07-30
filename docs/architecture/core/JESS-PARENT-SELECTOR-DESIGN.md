@@ -37,8 +37,9 @@ what the Jess selector slice deliberately excluded at that moment:
 > but explicitly rejected until their typed reductions exist.
 
 Every other item on that list has since landed in `.jess` — pseudo, attribute,
-percentage, compound, combinator, and `$[…]` selector interpolation all parse
-today. `&` is the last unretired entry from one commit's staging list, not a
+percentage, compound, combinator, and `${…}` selector interpolation all parse
+today. Direct `$[…]` is value-only lookup syntax and remains rejected in
+selectors. `&` is the last unretired entry from one commit's staging list, not a
 standing semantic objection.
 
 What the "dedicated semantic reduction" *is* was then defined by what Less did four
@@ -111,9 +112,9 @@ So the required `.jess` output is exactly the Less output:
 | `[foo]&` | compound `[ SimpleSelector{text:'[foo]'}, SimpleSelector{text:'&'} ]` |
 | `& + &` | complex with `&` head compound and a `+` tail compound |
 | `:not(&)` | `PseudoSelector { name: ':not', args: SelectorList([… text:'&' …]) }` |
-| `&$[name]` | `SimpleSelector { text: null, interp: Interpolation([{lit:'&'}, {ref}]) }` |
+| `&${name}` | `SimpleSelector { text: null, interp: Interpolation([{lit:'&'}, {ref}]) }` |
 
-The last row is the `.jess` spelling of Less's `DirectLessInterpolatedParentSuffix`
+The last row is the `.jess` spelling of Less's interpolated parent suffix
 (`grammar.ts:4308`), which fuses `&` + interpolation into ONE
 `interpolatedSimpleSelector`, not two compound members. `compoundHasAmpersand`'s
 `part.lit.includes('&')` branch already exists precisely to serve it.
@@ -138,7 +139,7 @@ The delta mirrors Less one-for-one:
 2. Add it as an arm to `DirectJessCompound` **and** `DirectJessStaticCompound`
    (a `&` inside `:not(…)` reaches the static family), leading with the concrete
    `&` first char so first-set gating is preserved.
-3. A `DirectJessInterpolatedParentSuffix` for `&$[name]…`, ordered before the plain
+3. An `InterpolatedParentSuffix` for `&${name}…`, ordered before the plain
    terminal, reducing to `interpolatedSimpleSelector`.
 4. Root-level `&` (`& { … }` at document level, which the fixture uses) needs the
    document statement route to admit a rule whose selector head is `&`. Less's
@@ -161,7 +162,7 @@ token. Both work with `resolveTokenAmp`, but the fused form is the better fit fo
 - `resolveTokenAmp`'s `first && text === '&'` subject test reads ONE token's text.
   Fusing keeps "is this compound's subject a bare `&`?" a single string compare
   instead of a token-run inspection.
-- `.jess` needs the fused form anyway for `&$[name]` (below), and Less's
+- `.jess` needs the fused form anyway for `&${name}` (below), and Less's
   `DirectLessInterpolatedParentSuffix` already leads with the fused terminal.
 
 No core change. No new node type. No new `Rule` field.

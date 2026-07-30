@@ -4,9 +4,10 @@ import { createTriviaMapFromParseman, triviaMapOf, valueLayoutOf, withSourceSpan
 import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
-import { cssAstGrammar } from '../src/grammar.js';
+import { cssGrammar } from '../src/grammar.js';
 import { parseCssCst } from '../src/cst-css.js';
 import { parse } from '../src/index.js';
+import { wptAnbParsing } from './wpt-syntax-vectors.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object'
@@ -17,7 +18,7 @@ function isStylesheet(value: unknown): value is Stylesheet {
 }
 
 function parseAst(input: string): Stylesheet {
-  const result = run(cssAstGrammar.Stylesheet, input, { trivia: cssAstGrammar.whitespace });
+  const result = run(cssGrammar.Stylesheet, input, { trivia: cssGrammar.whitespace });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     throw new Error(`CSS AST grammar did not consume the document: ${JSON.stringify(result)}`);
   }
@@ -177,6 +178,8 @@ describe('CSS canonical-AST grammar', () => {
       ':nth-child(2n+1 of .item) { color: red; }',
       ':nth-child(-n+2 of .item) { color: red; }',
       ':lang(en-US) { color: red; }',
+      ':lang(")") { color: red; }',
+      ':unknown([data-state=")"]) { color: red; }',
       '50% { color: red; }'
     ]) {
       const cst = parseCssCst(source);
@@ -276,7 +279,15 @@ describe('CSS canonical-AST grammar', () => {
       ':nth-child(2n +) { color: red; }',
       ':nth-child(1.5) { color: red; }',
       ':nth-child(2n+x) { color: red; }',
-      ':nth-child(2n+1x) { color: red; }'
+      ':nth-child(2n+1x) { color: red; }',
+
+      /* WPT css/css-syntax/anb-parsing.html @ a95401e4: token whitespace
+       * cannot split an An+B sign, coefficient, or `n` identifier. */
+      ':nth-child(+ n) { color: red; }',
+      ':nth-child(+ n-5) { color: red; }',
+      ':nth-child(1 - n) { color: red; }',
+      ':nth-child(2 n + 2) { color: red; }',
+      ':nth-child(- 2n) { color: red; }'
     ]) {
       const cst = parseCssCst(source);
       expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
@@ -288,6 +299,23 @@ describe('CSS canonical-AST grammar', () => {
       ':nth-child(2n+1 of .item) { color: red; }'
     ]) {
       expect(() => parseAst(source), source).not.toThrow();
+    }
+  });
+
+  it(`matches adapted WPT An+B selector acceptance at ${wptAnbParsing.source}`, () => {
+    for (const argument of wptAnbParsing.accepts) {
+      const source = `:nth-child(${argument}) { color: red; }`;
+      const cst = parseCssCst(source);
+      expect(cst.errors, source).toHaveLength(0);
+      expect(cst.unconsumedFrom, source).toBeNull();
+      expect(() => parseAst(source), source).not.toThrow();
+    }
+
+    for (const argument of wptAnbParsing.rejects) {
+      const source = `:nth-child(${argument}) { color: red; }`;
+      const cst = parseCssCst(source);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
+      expect(() => parseAst(source), source).toThrow();
     }
   });
 
@@ -520,7 +548,6 @@ describe('CSS canonical-AST grammar', () => {
       [':nth-child(2n + 1 of :is(.card, .tile)) { color: red; }', [':nth-child(2n + 1 of :is(.card, .tile))']],
       [':nth-child(-n+2 of .item) { color: red; }', [':nth-child(-n+2 of .item)']],
       [':nth-last-of-type(-5n) { color: red; }', [':nth-last-of-type(-5n)']],
-      [':nth-child(- n+2) { color: red; }', [':nth-child(- n+2)']],
       [':nth-child(-n+2/* preserve */ of .item) { color: red; }', [':nth-child(-n+2 of .item)']],
       [':nth-child(-) { color: red; }', [':nth-child(-)']],
       ['50% { color: red; }', ['50%']]
@@ -1481,7 +1508,7 @@ describe('CSS canonical-AST grammar', () => {
   });
 
   it('keeps @import outside the generic statement family and rejects malformed typed boundaries', () => {
-    const result = run(cssAstGrammar.AtRuleStatement, '@import "theme.css";', { trivia: cssAstGrammar.whitespace });
+    const result = run(cssGrammar.AtRuleStatement, '@import "theme.css";', { trivia: cssGrammar.whitespace });
 
     expect(result.ok).toBe(false);
     for (const input of [
@@ -1491,7 +1518,7 @@ describe('CSS canonical-AST grammar', () => {
     ]) {
       expect(() => parseAst(input)).toThrow();
     }
-    expect(run(cssAstGrammar.ImportStatement, '@imported "theme.css";', { trivia: cssAstGrammar.whitespace }).ok).toBe(false);
+    expect(run(cssGrammar.ImportStatement, '@imported "theme.css";', { trivia: cssGrammar.whitespace }).ok).toBe(false);
   });
 
   it('constructs quoted, url, and function values without a value re-parser', () => {
@@ -1618,7 +1645,7 @@ describe('CSS canonical-AST grammar', () => {
   });
 
   it('commits url() after its opener instead of falling back to a generic call', () => {
-    const result = run(cssAstGrammar.Value, 'url(foo bar)', { trivia: cssAstGrammar.whitespace });
+    const result = run(cssGrammar.Value, 'url(foo bar)', { trivia: cssGrammar.whitespace });
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({ expected: [')'] });
@@ -1711,7 +1738,7 @@ describe('CSS canonical-AST grammar', () => {
     const source = '.a { a: url(x) / cover; b: var(--x) solid; c: rgb(1,2,3) / .5; d: foo(bar) baz; e: calc(1px + var(--x)); f: calc(var(--x, 1px + 2px) + 2px); g: calc(var(--x, red blue) + 2px); h: 0 calc(-1 * var(--x)); }';
 
     expect(parseCssCst(source).errors).toHaveLength(0);
-    const directVar = run(cssAstGrammar.VarCall, 'var(--x, 1px + 2px)', { trivia: cssAstGrammar.whitespace });
+    const directVar = run(cssGrammar.VarCall, 'var(--x, 1px + 2px)', { trivia: cssGrammar.whitespace });
     expect(directVar.ok, JSON.stringify(directVar)).toBe(true);
     expect(directVar.unconsumedFrom).toBeNull();
     const document = parseAst(source);
@@ -1840,7 +1867,7 @@ describe('CSS canonical-AST grammar', () => {
       '.a { x: calc(var(--x, [(a)) + 2px); }',
       '.a { x: calc(var(--x, {[a]) + 2px); }'
     ]) {
-      const direct = run(cssAstGrammar.Stylesheet, invalid, { trivia: cssAstGrammar.whitespace });
+      const direct = run(cssGrammar.Stylesheet, invalid, { trivia: cssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow();
     }
@@ -1870,7 +1897,7 @@ describe('CSS canonical-AST grammar', () => {
       '.a { width: calc(1px -2px); }'
     ]) {
       try {
-        const result = run(cssAstGrammar.Stylesheet, input, { trivia: cssAstGrammar.whitespace });
+        const result = run(cssGrammar.Stylesheet, input, { trivia: cssGrammar.whitespace });
         expect(result.ok && result.unconsumedFrom === null).toBe(false);
       } catch (error) {
         throw new Error(`${input}: ${error instanceof Error ? error.message : String(error)}`);

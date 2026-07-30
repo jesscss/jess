@@ -56,6 +56,15 @@ routed bare identifier can reduce to a `Keyword` value, while the glued
 separate is what lets Less, SCSS, and Jess override interpolation in selector,
 property, or header positions without corrupting ordinary value keywords.
 
+Name productions for the syntax or emitted fact, not for a recognition route.
+`PseudoArgumentSelector`, `PseudoArgumentText`, and `PseudoSelector` name the
+same concepts in the grammar map and CST. A static route is not a production
+concept: it is simply the route that did not encounter interpolation. Reserve
+an `Interpolated...` production name for the real semantic distinction where
+the route produces an interpolation-backed AST fact. Do not introduce
+`Static...`, `Direct...`, dialect prefixes, or compatibility-history prefixes
+to explain parser implementation history.
+
 Math and comparison are also context-owned. Less may lower value-position math
 or comparison into expression structure, but only through the Less expression
 rules and their `mathMode` policy. Jess expression math, comparison, and
@@ -465,8 +474,10 @@ The rule:
 - **Private stricter helpers stay private.** A dialect may need a local helper
   for a truly narrower parse, but it should be lower-case/private and named by
   the constraint. Public node labels and shared rule references like
-  `StaticValueQuoted` or `StaticNthChildArgument` are findings unless they prove
-  a distinct language concept.
+  `StaticValueQuoted` or `StaticNthChildArgument` are findings: use the actual
+  semantic concept, such as `Quoted`, `NthChildArgument`, or
+  `PseudoSelectorArgument`. A private helper may carry a context name such as
+  `LiteralQuoted` only when that context changes recognition.
 - **`Ast` / `Cst` in a name is the same error one axis over.** That is a compile
   _mode_, not an identity; one grammar serves both modes, so the mode does not
   belong in the rule's name.
@@ -509,6 +520,10 @@ Observations, each re-checkable from the current grammar files:
   Jess `@import` is CSS, not a Jess-specific import syntax. The fix is CSS-owned
   or shared import composition with parameterized Jess holes, not a mechanical
   rename that leaves the duplicated parser body intact.
+- The same rule applies when an SCSS `Import*` family has a semantic name: Sass
+  interpolation may override the target leaf, but CSS `layer`, `supports`, and
+  media-tail structure still belongs upstream. A dialect-local copy requires a
+  concrete syntax difference and a plan to remove every unchanged child.
 - At-rule family names should converge on `AtRule` with concrete statement/block
   forms. Existing `StylesheetAtRule`, `DeclarationListAtRule`, and
   `CssAtRulePrelude` names are review prompts, not precedent.

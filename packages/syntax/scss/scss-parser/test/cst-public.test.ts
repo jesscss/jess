@@ -36,7 +36,7 @@ function stats(tree: CstNode) {
 }
 
 function isModeLabel(type: string): boolean {
-  return type.startsWith('Direct') || type.includes('Ast') || type.includes('Cst');
+  return type.startsWith('Direct') || type.startsWith('Static') || type.includes('Ast') || type.includes('Cst');
 }
 
 function expectNoModeLabels(tree: CstNode) {
@@ -74,15 +74,56 @@ describe('@jesscss/scss-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('uses contextual CST labels for quoted, pseudo-selector, and $if-body syntax', () => {
+    const result = parseScssCst('@use "theme"; $state: open; .a[data-label="#{$state}"]:not(:where([data-kind="open"])) { color: red; } .c:nth-child(2n) { color: blue; } @if true { .when-true { color: green; } @media screen { .nested { color: lime; } } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('Quoted')).toBeGreaterThan(1);
+    expect(grammarTypes.get('AttributeSelector')).toBeGreaterThan(1);
+    expect(grammarTypes.get('SassInterpolation')).toBeGreaterThan(0);
+    expect(grammarTypes.get('PseudoArgument')).toBeGreaterThan(0);
+    expect(grammarTypes.get('SelectorOnlyPseudoArgument')).toBeGreaterThan(0);
+    expect(grammarTypes.get('IfBodyRule')).toBeGreaterThan(0);
+    expect(grammarTypes.get('IfBodyConditionalBlock')).toBe(1);
+    expectNoModeLabels(result.tree);
+  });
+
   it('preserves direct import CST facts without a split CST-only route', () => {
     const source = '@import "theme.css" layer(tokens) supports((display: grid)) screen;';
     const result = parseScssCst(source);
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(stats(result.tree).grammarTypes.get('StaticImportRule')).toBe(1);
+    expect(stats(result.tree).grammarTypes.get('ImportAtRule')).toBe(1);
     expect(leafText(result.tree)).toContain('supports');
     expect(leafText(result.tree)).toContain('theme.css');
+    expectNoModeLabels(result.tree);
+  });
+
+  it('uses CSS-aligned CST labels for generic at-rule preludes', () => {
+    const result = parseScssCst('@layer base.utilities { .card { color: red; } } @charset "UTF-8";');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AtRulePrelude')).toBe(1);
+    expect(grammarTypes.get('AtRulePreludeAtom')).toBeGreaterThan(0);
+    expect(grammarTypes.get('StatementPrelude')).toBe(1);
+    expectNoModeLabels(result.tree);
+  });
+
+  it('uses cross-dialect semantic CST labels for mixin definitions and calls', () => {
+    const result = parseScssCst('@mixin spacing($size) { padding: $size; } .card { @include spacing(1rem); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('MixinDefinition')).toBe(1);
+    expect(grammarTypes.get('MixinCall')).toBe(1);
+    expect(grammarTypes.has('MixinDefinitionRule')).toBe(false);
+    expect(grammarTypes.has('MixinCallRule')).toBe(false);
     expectNoModeLabels(result.tree);
   });
 

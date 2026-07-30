@@ -26,14 +26,31 @@ const STYLELINT_RULES = {
   'block-no-empty': true,
   'property-no-unknown': true,
   'at-rule-no-unknown': true,
+  'at-rule-descriptor-no-unknown': true,
+  'declaration-block-no-duplicate-custom-properties': true,
   'declaration-block-no-duplicate-properties': true,
+  'declaration-block-no-shorthand-property-overrides': true,
   'color-no-invalid-hex': true,
   'length-zero-no-unit': true,
   'custom-property-no-missing-var-function': true,
   'keyframe-block-no-duplicate-selectors': true,
   'keyframe-declaration-no-important': true,
+  'declaration-no-important': true,
+  'named-grid-areas-no-invalid': true,
   'font-family-no-duplicate-names': true,
-  'font-family-no-missing-generic-family-keyword': true
+  'font-family-no-missing-generic-family-keyword': true,
+  'no-invalid-position-at-import-rule': true,
+  'no-duplicate-at-import-rules': true,
+  'no-unknown-animations': true,
+  'unit-no-unknown': true,
+  'function-no-unknown': true,
+  'function-linear-gradient-no-nonstandard-direction': true,
+  'media-feature-name-no-unknown': true,
+  'media-feature-name-value-no-unknown': true,
+  'selector-pseudo-class-no-unknown': true,
+  'selector-pseudo-element-no-unknown': true,
+  'selector-anb-no-unmatchable': true,
+  'selector-type-no-unknown': true
 };
 
 const STYLELINT_LESS_RULES = {
@@ -246,7 +263,7 @@ async function runBenchmark(source, filePath, language) {
   }
 
   const cases = [
-    { label: 'Jess lint stable rules', run: () => runJessLint(source, filePath, language), samples: [] },
+    { label: 'Jess lint comparison config', run: () => runJessLint(source, filePath, language), samples: [] },
     { label: 'Stylelint comparable rules', run: () => runStylelint(source, filePath, language), samples: [] }
   ];
 

@@ -49,7 +49,7 @@ function stats(tree: CstNode) {
 }
 
 function isModeLabel(type: string): boolean {
-  return type.startsWith('Direct') || type.includes('Ast') || type.includes('Cst');
+  return type.startsWith('Direct') || type.startsWith('Static') || type.includes('Ast') || type.includes('Cst');
 }
 
 function expectNoModeLabels(tree: CstNode) {
@@ -194,7 +194,7 @@ describe('Less statement-container CST facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(findNodes(result.tree, 'Ruleset')).toHaveLength(5);
     expect(findNodes(result.tree, 'For')).toHaveLength(2);
-    expect(findNodes(result.tree, 'MixinOrQualifiedRule')).toHaveLength(1);
+    expect(findNodes(result.tree, 'MixinDefinition')).toHaveLength(1);
     expectNoModeLabels(result.tree);
   });
 });
@@ -264,6 +264,25 @@ describe('Less custom-property interpolation CST facts', () => {
 });
 
 describe('Less quoted and URL interpolation CST facts', () => {
+  it('uses the semantic attribute and quoted owners for a CSS-compatible attribute selector', () => {
+    const result = parseLessCst('.card[svg|title="Save" i] { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    const attribute = findNode(result.tree, 'AttributeSelector');
+    expect(attribute).toBeDefined();
+    expect(findNode(attribute!, 'AttributeName')).toBeDefined();
+    expect(findNode(attribute!, 'AttributeMatch')).toBeDefined();
+    expect(findNode(attribute!, 'Quoted')).toBeDefined();
+    for (const legacyLabel of [
+      'StaticAttribute',
+      'StaticAttributeName',
+      'StaticAttributeMatch',
+      'StaticAttributeQuoted'
+    ]) {
+      expect(findNode(result.tree, legacyLabel)).toBeUndefined();
+    }
+  });
+
   it('keeps quoted-string literal chunks and the typed interpolation body in source order', () => {
     const result = parseLessCst('.a { content: "pre-@{theme[variant]}-post"; }');
     expect(result.errors).toHaveLength(0);
@@ -323,18 +342,18 @@ describe('Less direct-AST closure CST contract', () => {
     ['typed import fact', '@import (less) "theme.less" screen;', 'ImportAtRule'],
     ['at-rule statement', '@charset "utf-8";', 'AtRuleStatement'],
     ['ruleset', '.a { color: red; }', 'Ruleset'],
-    ['top-level mixin definition', '.m(@x) { color: @x; }', 'MixinOrQualifiedRule'],
+    ['top-level mixin definition', '.m(@x) { color: @x; }', 'MixinDefinition'],
     ['static mixin call', '.a { .m(1px, red); }', 'MixinCall'],
     ['important mixin call', '.a { .m(1px) !important; }', 'MixinCall'],
     ['namespaced mixin call', '.a { .library > .colors .tone(red); }', 'MixinCall'],
     ['named namespaced mixin call', '.a { .library > .colors .tone(@shade: red, @gap: 2px); }', 'MixinCall'],
-    ['pattern and variadic mixin definition', '.m(red, @gap, @rest...) { color: @gap; }', 'MixinOrQualifiedRule'],
-    ['static mixin guard', '.m(@width) when (@width >= 20px) { width: @width; }', 'MixinOrQualifiedRule'],
-    ['logical mixin guard', '.m(@value) when (not (@value < 2) and iscolor(red), default()) { color: red; }', 'MixinOrQualifiedRule'],
+    ['pattern and variadic mixin definition', '.m(red, @gap, @rest...) { color: @gap; }', 'MixinDefinition'],
+    ['static mixin guard', '.m(@width) when (@width >= 20px) { width: @width; }', 'MixinDefinition'],
+    ['logical mixin guard', '.m(@value) when (not (@value < 2) and iscolor(red), default()) { color: red; }', 'MixinDefinition'],
     ['each control statement', 'each(1, { color: red; });', 'For'],
     ['namespaced mixin-call each iterable', 'each(.library > .values(), { color: red; });', 'For'],
     ['bare function-call statement', 'e("x");', 'Call'],
-    ['nested mixin definition', '.a { .m(@x) { color: @x; } }', 'MixinOrQualifiedRule'],
+    ['nested mixin definition', '.a { .m(@x) { color: @x; } }', 'MixinDefinition'],
     ['nested mixin call', '.a { .m(1); }', 'MixinCall'],
     ['nested extend instruction', '.a { &:extend(.b); }', 'ExtendStatement'],
     ['static pseudo selector', '.a:hover, .b::before { color: red; }', 'Ruleset'],
@@ -363,6 +382,32 @@ describe('Less direct-AST closure CST contract', () => {
     expect(findNodes(result.tree, 'InlineExtendTail')).toHaveLength(0);
     expect(findNodes(result.tree, 'ExtendPseudo').map(leafValues)).toEqual([
       [':', 'extend', '(', '.target', 'all', ')']
+    ]);
+    expect(findNodes(result.tree, 'Compound').map(leafValues)).toContainEqual(['.first']);
+    expect(findNodes(result.tree, 'InlineExtendSubjectCompound').map(leafValues)).toEqual([
+      ['.inline'],
+      ['.sibling']
+    ]);
+    expect(findNodes(result.tree, 'ExtendTargetComplex').map(leafValues)).toEqual([
+      ['.target']
+    ]);
+  });
+
+  it('names typed generic at-rule headers by their prelude value role', () => {
+    const result = parseLessCstResult('@custom screen, print;');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(findNodes(result.tree, 'AtRulePreludeValue').map(leafValues)).toEqual([
+      ['screen', ', ', 'print']
+    ]);
+    expect(findNodes(result.tree, 'AtRulePreludeValueTerm').map(leafValues)).toEqual([
+      ['screen'],
+      ['print']
+    ]);
+    expect(findNodes(result.tree, 'AtRulePreludeValueAtom').map(leafValues)).toEqual([
+      ['screen'],
+      ['print']
     ]);
   });
 

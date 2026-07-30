@@ -169,13 +169,13 @@ function expectedValueSummary(
   }
   const expectedSet = new Set(expected);
   const looksLikeValueProduction =
-    hasExpected(expectedSet, 'CssSyntaxNumber')
-    && hasExpected(expectedSet, 'CssSyntaxDimensionUnit')
-    && hasExpected(expectedSet, 'not(peek)')
+    hasExpected(expectedSet, 'NumberToken')
+    && hasExpected(expectedSet, 'DimensionUnit')
+    && hasExpected(expectedSet, 'not(regex)')
     && (
       hasExpected(expectedSet, 'LessSyntaxKeyword')
       || hasExpected(expectedSet, 'LessSyntaxNamedColor')
-      || hasExpected(expectedSet, 'CssSyntaxHexColor')
+      || hasExpected(expectedSet, 'HexColor')
     );
   if (!looksLikeValueProduction) {
     return undefined;
@@ -383,9 +383,10 @@ function sourceSyntaxSummary(
   if (
     failure === undefined
     || (failure.code !== undefined && failure.code !== 'parse/syntax-error')
-    || failure.offset !== 0
-    || (failure.expected !== undefined && failure.expected.length > 0)
   ) {
+    return undefined;
+  }
+  if (expectedSyntaxSummary(dialect, failure.expected) !== undefined) {
     return undefined;
   }
   return delimiterConflictSummary(dialect, source);

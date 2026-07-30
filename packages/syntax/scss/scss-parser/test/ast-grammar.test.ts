@@ -4,7 +4,7 @@ import { valueLayoutOf } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize as serializeMaybeAsync, type SerializeResult } from '../../../../core/src/ast/serialize.js';
-import { scssAstGrammar } from '../src/grammar.js';
+import { scssGrammar } from '../src/grammar.js';
 import { parseScssCst } from '../src/cst.js';
 import { parse } from '../src/index.js';
 
@@ -57,9 +57,9 @@ const evaluator = buildEvaluator(makeLessRegistry());
 describe('SCSS canonical-AST grammar', () => {
   it('keeps ordinary adjacency as a raw value array and reserves List for explicit separators', () => {
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '$space: red blue; $comma: red, blue; $slash: 1 / 2;',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -77,7 +77,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('retains @supports general-enclosed bodies as structural interpolation templates', () => {
     const source = '@supports selector(.card-#{$tone}:has([data-x="#{$state}"])) { .card { color: blue; } }';
     const cst = parseScssCst(source);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(result.ok).toBe(true);
@@ -100,14 +100,14 @@ describe('SCSS canonical-AST grammar', () => {
     for (const source of [
       '@supports selector(#{}) { .card { color: blue; } }'
     ]) {
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(false);
     }
   });
 
   it('constructs the restricted static @if chain as canonical If/GuardNode facts', () => {
     const source = '@if not (false or false) and true { /* keep */ .yes { color: green; } @media screen { .inside { color: lime; } } } @else if false { .no { color: red; } } @else { .fallback { color: blue; } }';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -128,9 +128,9 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('renders only the selected static SCSS @if branch through the canonical serializer', () => {
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '@if false { .no { color: red; } } @else if not false { .yes { color: green; } } @else { .fallback { color: blue; } }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -140,7 +140,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('constructs and evaluates static SCSS comparison conditions through existing guard facts', () => {
     const source = '@if 1 == 2 { .wrong { color: red; } } @else if 2 != 3 and 4 >= 4 { .right { color: green; } }';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -161,7 +161,7 @@ describe('SCSS canonical-AST grammar', () => {
       ['3 <= 2', 'no'],
       ['(1 + 2) * 3 == 9 and not (2 > 3)', 'yes']
     ] as const) {
-      const result = run(scssAstGrammar.Stylesheet, `@if ${condition} { .yes { color: green; } } @else { .no { color: red; } }`, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, `@if ${condition} { .yes { color: green; } } @else { .no { color: red; } }`, { trivia: scssGrammar.whitespace });
       expect(result.ok, condition).toBe(true);
       expect(result.unconsumedFrom, condition).toBeNull();
       expect(isStylesheet(result.value), condition).toBe(true);
@@ -171,7 +171,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('uses existing statement facts in a selected SCSS @if body', () => {
     const source = '@if true { $accent: blue; @mixin paint { color: $accent; } .host { @include paint; } @each $tone in red { .each { color: $tone; } } @for $i from 1 through 1 { .step { width: $i; } } }';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -195,9 +195,9 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('recurses through the same restricted @if body grammar', () => {
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '@if true { @if false { .no { color: red; } } @else { .nested { color: green; } } }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -208,9 +208,9 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('constructs restricted @if blocks nested in direct static media bodies', () => {
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '@media screen { @if false { .no { color: red; } } @else { .inside { color: green; } } }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -228,7 +228,7 @@ describe('SCSS canonical-AST grammar', () => {
     ]) {
       let accepted = false;
       try {
-        const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+        const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
         accepted = result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
       } catch {
         accepted = false;
@@ -257,7 +257,7 @@ describe('SCSS canonical-AST grammar', () => {
       .from-mixin { @include imported; }
     `;
     const cst = parseScssCst(source);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -292,7 +292,7 @@ describe('SCSS canonical-AST grammar', () => {
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({ type: 'Stylesheet', rules: [{ type: 'ImportAtRule', name: '@import', options: null, target: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false }, alias: null, tail: null }] });
@@ -303,7 +303,7 @@ describe('SCSS canonical-AST grammar', () => {
       const cst = parseScssCst(source);
       expect(cst.errors, source).toHaveLength(0);
       expect(cst.unconsumedFrom, source).toBeNull();
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
       expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'ImportAtRule', target: { type: 'Url' } }] });
@@ -315,7 +315,7 @@ describe('SCSS canonical-AST grammar', () => {
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
@@ -332,7 +332,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('rejects Less-style import options in SCSS imports', () => {
     const source = '@import (css, once) "theme.css";';
     const cst = parseScssCst(source);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
     expect(result.ok && result.unconsumedFrom === null).toBe(false);
@@ -340,7 +340,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('constructs typed static CSS-import supports tails without raw authored text', () => {
     const source = '@import "theme.css" layer(tokens) supports((display: grid)) screen;';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -357,7 +357,7 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
 
-    const simple = run(scssAstGrammar.Stylesheet, '@import "theme.css" supports(display: grid);', { trivia: scssAstGrammar.whitespace });
+    const simple = run(scssGrammar.Stylesheet, '@import "theme.css" supports(display: grid);', { trivia: scssGrammar.whitespace });
     expect(simple.ok).toBe(true);
     expect(simple.unconsumedFrom).toBeNull();
     expect(simple.value).toMatchObject({
@@ -368,14 +368,14 @@ describe('SCSS canonical-AST grammar', () => {
     for (const unsupported of [
       '@import "theme.css" supports(#{$feature});'
     ]) {
-      const unsupportedResult = run(scssAstGrammar.Stylesheet, unsupported, { trivia: scssAstGrammar.whitespace });
+      const unsupportedResult = run(scssGrammar.Stylesheet, unsupported, { trivia: scssGrammar.whitespace });
       expect(unsupportedResult.ok && unsupportedResult.unconsumedFrom === null && isStylesheet(unsupportedResult.value), unsupported).toBe(false);
     }
   });
 
   it('constructs typed static CSS-import media-query tails and composes them after layer/supports', () => {
     const source = '@import "theme.css" layer(tokens) supports((display: grid)) only screen and (min-width: 1px), (color), not (color: red);';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -408,7 +408,7 @@ describe('SCSS canonical-AST grammar', () => {
       '@import "theme.css" not (color: red);',
       '@import "theme.css" (color) or (monochrome);'
     ]) {
-      const direct = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(true);
     }
 
@@ -421,7 +421,7 @@ describe('SCSS canonical-AST grammar', () => {
       '@import "theme.css" screen or (color);',
       '@import "theme.css" only screen or (color);'
     ]) {
-      const direct = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
     }
   });
@@ -431,7 +431,7 @@ describe('SCSS canonical-AST grammar', () => {
       const cst = parseScssCst(source);
       expect(cst.errors, source).toHaveLength(0);
       expect(cst.unconsumedFrom, source).toBeNull();
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
       expect(result.value).toMatchObject({
@@ -446,14 +446,14 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('rejects malformed interpolated SCSS import targets structurally', () => {
     for (const source of ['@import "theme-#{$mode.css";', '@import url("theme-#{$mode.css");', '@import "theme-#{}";', '@import "theme.css"', '@import url(foo bar);', '@import url();, "other.css";']) {
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
   });
 
   it('classifies static SCSS @use paths and lowers bare @forward to existing import facts', () => {
     const source = '@use "sass:math" as math; @use "./tokens.ts" as tokens; @use "./theme.scss" as theme; @use "./global.scss" as *; @forward "./public.scss";';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -483,7 +483,7 @@ describe('SCSS canonical-AST grammar', () => {
     ]) {
       let accepted = false;
       try {
-        const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+        const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
         accepted = result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
       } catch {
         accepted = false;
@@ -492,11 +492,42 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
+  it('uses the ambient quoted-span skipper in opaque SCSS scans', () => {
+    const forwardTail = run(
+      scssGrammar.ForwardTail,
+      ' as "theme;variant";',
+      { trivia: scssGrammar.whitespace }
+    );
+    expect(forwardTail.ok).toBe(true);
+    expect(forwardTail.unconsumedFrom).toBe(19);
+    expect(forwardTail.value).toEqual({ value: 'as "theme;variant"' });
+
+    const queryFunction = run(
+      scssGrammar.QueryFunction,
+      'selector([data-state=")"])',
+      { trivia: scssGrammar.whitespace }
+    );
+    expect(queryFunction.ok).toBe(true);
+    expect(queryFunction.unconsumedFrom).toBeNull();
+    expect(queryFunction.value).toMatchObject({
+      type: 'FunctionCall', name: 'selector', args: [{ type: 'Any', src: '[data-state=")"]' }]
+    });
+
+    for (const [rule, source, expected] of [
+      [scssGrammar.AtRootPrelude, ' "{" {', '"{"'],
+      [scssGrammar.AtRootFilterPrelude, '(with: ".scope {") {', '(with: ".scope {")']
+    ] as const) {
+      const result = run(rule, source, { trivia: scssGrammar.whitespace });
+      expect(result.ok, source).toBe(true);
+      expect(result.value, source).toMatchObject({ type: 'Any', src: expected });
+    }
+  });
+
   it('constructs canonical SCSS variable declarations and references directly', () => {
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '$base: blue; $theme: $base; $font: "Inter"; $escaped: r\\65d; $quoted: "a\\\\b"; $hash: "#foo"; $singleHash: \'#foo\'; $shadow: 0 1px #000,\n    0 2px #fff; $asset: url("font.woff2"); $gradient: linear-gradient(#000, rgb(1, 2, 3)); .card { color: #00f; margin: 1.5rem; opacity: .5; background: url(images/a#icon.svg); }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -559,7 +590,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('lowers local SCSS variable operations to the shared lookup/write facts', () => {
     const source = '$base: blue; $fallback: red !default; $global: green !global; .card { color: $base; }';
-    const direct = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -588,7 +619,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('constructs static custom-property tokens only as typed SCSS value leaves', () => {
     const source = '.card { direct: --theme; via-var: var(--theme, --fallback); via-env: env(--safe-area); via-calc: calc(--size + 1px); } @media (width: --viewport) { .media { color: red; } } @supports (display: --mode) { .support { color: blue; } }';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -615,7 +646,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { value: -- theme; }',
       '@media (width: --#{$value}) { .bad { color: red; } }'
     ]) {
-      const direct = run(scssAstGrammar.Stylesheet, malformed, { trivia: scssAstGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, malformed, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), malformed).toBe(false);
     }
   });
@@ -625,16 +656,16 @@ describe('SCSS canonical-AST grammar', () => {
       '$ba\\se: blue;', '$base: $ba\\se;',
       '.card { color: #fffff; }', '.card { color: #1234567; }'
     ]) {
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
   });
 
   it('constructs SCSS arithmetic precedence before assembling spaced and comma values', () => {
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '$base: 1 + 2 * 3; $nested: (1 + 2) * 3; $signed: -$base * 2; $spaced-signed: - $base * 2; $spaced-positive: + ($base); $minus-list: 1 -2; $legacy-plus: 1 +2; .card { compact: 17px-1px; sequence: 1 2 + 3; mixed: 1 + 2 red; ratio: 1 / 2; grouped-ratio: (1 / 2); calc-ratio: calc(1 / 2); mod: 7 % 3; }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -685,7 +716,7 @@ describe('SCSS canonical-AST grammar', () => {
       ['.card { color: blue }', { type: 'Ruleset' }]
     ] as const) {
       const cst = parseScssCst(source);
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(cst.errors, source).toHaveLength(0);
       expect(cst.unconsumedFrom, source).toBeNull();
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
@@ -699,7 +730,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { font+_: serif !important; }'
     ]) {
       const cst = parseScssCst(source);
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
       expect(result.ok && result.unconsumedFrom === null, source).toBe(false);
     }
@@ -708,7 +739,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('lowers static SCSS nested properties to ordered existing declarations', () => {
     const source = '.card { font: { family: fantasy; weight: bold; } font: 20px { size: 1rem; } }';
     const cst = parseScssCst(source);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -735,7 +766,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { font: { @if true { family: fantasy; } } }',
       '.card { font: { @extend .base; } }'
     ]) {
-      const direct = run(scssAstGrammar.Stylesheet, unsupported, { trivia: scssAstGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, unsupported, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), unsupported).toBe(false);
     }
   });
@@ -743,7 +774,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('lowers interpolated SCSS nested-property outer and leaf names directly', () => {
     const source = '$prefix: font; $part: weight; .card { #{$prefix}: { color: red; } font: { #{$part}: bold; } #{$prefix}: { #{$part}: 700; } }';
     const cst = parseScssCst(source);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -772,7 +803,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('keeps a nested-property own declaration priority after its block', () => {
     const source = '.card { font: 20px { size: 1rem; } !important; }';
     const cst = parseScssCst(source);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -793,7 +824,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('lowers an empty public-CST nested-property block to no declaration', () => {
     const source = '.empty { font: {}; }';
     const cst = parseScssCst(source);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -817,7 +848,7 @@ describe('SCSS canonical-AST grammar', () => {
     ];
     for (const source of unmodelled) {
       const cst = parseScssCst(source);
-      const direct = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
     }
@@ -834,7 +865,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('constructs structural interpolation in quoted strings and ordinary values directly', () => {
     const source = '$tone: blue; .card { content: "tone-#{$tone}"; color: shade-#{$tone}-strong; }';
     expect(parseScssCst(source).errors).toHaveLength(0);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -856,7 +887,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -870,7 +901,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('keeps repeated, custom-property, and descriptor interpolation names structural and rejects malformed forms', () => {
     const source = '$property: color; $side: left; $mode: dark; $value: blue; .card { #{$property}: #{$value}; margin-#{$side}-#{$mode}: $value; --theme-#{$mode}: red; } @font-face { font-#{$side}: 1rem; }';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -889,16 +920,16 @@ describe('SCSS canonical-AST grammar', () => {
       '.card {\n  color: blue;\n  margin-left-dark: blue;\n  --theme-dark: red;\n}\n@font-face {\n  font-left: 1rem;\n}\n'
     );
     for (const malformed of ['.card { #{}: red; }', '.card { margin-#{}: red; }', '.card { --theme-#{}: red; }']) {
-      const rejected = run(scssAstGrammar.Stylesheet, malformed, { trivia: scssAstGrammar.whitespace });
+      const rejected = run(scssGrammar.Stylesheet, malformed, { trivia: scssGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, malformed).toBe(false);
     }
   });
 
   it('constructs nested SCSS rules and scoped variables directly', () => {
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '.card { $accent: #00f; color: $accent; .title { color: blue; } }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -931,9 +962,9 @@ describe('SCSS canonical-AST grammar', () => {
     const source = '// root\n$theme: blue; /* between */ .card { // inside\n color: $theme; /* tail */ }';
     expect(parseScssCst(source).errors).toHaveLength(0);
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       source,
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -1026,7 +1057,7 @@ describe('SCSS canonical-AST grammar', () => {
       .card { @media (width: 1px) { $accent: red; color: $accent; } }
     `;
     expect(parseScssCst(source).errors).toHaveLength(0);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1059,7 +1090,7 @@ describe('SCSS canonical-AST grammar', () => {
       ['@media (aspect-ratio >= 16/9) { .card { color: red; } }', '>=']
     ] as const) {
       expect(parseScssCst(source).errors, source).toHaveLength(0);
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
       expect(parse(source).rules[0], source).toMatchObject({
         type: 'AtRuleBlock',
@@ -1150,7 +1181,7 @@ describe('SCSS canonical-AST grammar', () => {
       ['@media ($min < width) { .card { color: red; } }', { type: 'Operation', operator: '<', left: { type: 'VariableReference', name: 'min' }, right: width }]
     ] as const) {
       expect(parseScssCst(source).errors, source).toHaveLength(0);
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
       expect(parse(source).rules[0], source).toMatchObject({
         type: 'AtRuleBlock',
@@ -1176,7 +1207,7 @@ describe('SCSS canonical-AST grammar', () => {
       const cst = parseScssCst(source);
       expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
 
-      const direct = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
@@ -1194,7 +1225,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('keeps public @supports to typed static conditions, not query-function or dynamic raw payloads', () => {
     const source = '@supports not ((display: grid) and (color)) { .card { color: blue; } }';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -1213,9 +1244,9 @@ describe('SCSS canonical-AST grammar', () => {
     );
 
     const escapedQuoted = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '@supports (font-family: "A  \\"B\\"") { .card { color: blue; } }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
     expect(escapedQuoted.ok).toBe(true);
     expect(escapedQuoted.unconsumedFrom).toBeNull();
@@ -1231,14 +1262,14 @@ describe('SCSS canonical-AST grammar', () => {
       '@media selector(.card) { .card { color: blue; } }',
       '@container style(--theme: dark) { .card { color: blue; } }'
     ]) {
-      const query = run(scssAstGrammar.Stylesheet, querySource, { trivia: scssAstGrammar.whitespace });
+      const query = run(scssGrammar.Stylesheet, querySource, { trivia: scssGrammar.whitespace });
       expect(query.ok && query.unconsumedFrom === null && isStylesheet(query.value), querySource).toBe(true);
     }
 
     for (const invalid of [
       '@supports (display: grid), (color: blue) { .card { color: blue; } }'
     ]) {
-      const rejected = run(scssAstGrammar.Stylesheet, invalid, { trivia: scssAstGrammar.whitespace });
+      const rejected = run(scssGrammar.Stylesheet, invalid, { trivia: scssGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), invalid).toBe(false);
     }
   });
@@ -1248,7 +1279,7 @@ describe('SCSS canonical-AST grammar', () => {
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleBlock', name: '@font-face', prelude: null, rules: [
@@ -1259,7 +1290,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('rejects nested rules in @font-face', () => {
     for (const source of ['@font-face { .nested { color: red; } }']) {
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
   });
@@ -1269,7 +1300,7 @@ describe('SCSS canonical-AST grammar', () => {
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleBlock', name: '@counter-style', prelude: { type: 'Keyword', src: 'thumbs' }, rules: [{ type: 'Declaration', name: 'system' }, { type: 'Declaration', name: 'symbols' }] }] });
@@ -1277,7 +1308,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('rejects nested rules in @counter-style', () => {
     for (const source of ['@counter-style thumbs { .nested { color: red; } }']) {
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
   });
@@ -1293,7 +1324,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1317,16 +1348,16 @@ describe('SCSS canonical-AST grammar', () => {
       '@page #{$name} { size: A4; }'
     ]) {
       expect(parseScssCst(source).errors, source).toHaveLength(0);
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
   });
 
   it('keeps static @page facts reachable through the existing selected @if body', () => {
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '@if true { @page appendix { size: letter; } }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -1343,7 +1374,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1368,7 +1399,7 @@ describe('SCSS canonical-AST grammar', () => {
       '@page { @document url("screen") { .card { color: red; } } }',
       '@keyframes fade { @document url("screen") { .card { color: red; } } }'
     ]) {
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
   });
@@ -1379,7 +1410,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
@@ -1404,7 +1435,7 @@ describe('SCSS canonical-AST grammar', () => {
     ]) {
       const cst = parseScssCst(source);
       expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
   });
@@ -1420,11 +1451,11 @@ describe('SCSS canonical-AST grammar', () => {
     ]) {
       const cst = parseScssCst(source);
       expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
     const onlyContainer = '@container only screen { .bad { color: red; } }';
-    const onlyContainerResult = run(scssAstGrammar.Stylesheet, onlyContainer, { trivia: scssAstGrammar.whitespace });
+    const onlyContainerResult = run(scssGrammar.Stylesheet, onlyContainer, { trivia: scssGrammar.whitespace });
     expect(onlyContainerResult.ok && onlyContainerResult.unconsumedFrom === null && isStylesheet(onlyContainerResult.value), onlyContainer).toBe(false);
   });
 
@@ -1432,15 +1463,15 @@ describe('SCSS canonical-AST grammar', () => {
     const source = '.card { color: red; /* unterminated';
     const cst = parseScssCst(source);
     expect(cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
   });
 
   it('constructs static SCSS selector lists, compounds, pseudos, and nesting selectors directly', () => {
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '.card.featured:hover, #hero::before { color: blue; &.active { color: red; } > .child { color: green; } }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -1467,9 +1498,9 @@ describe('SCSS canonical-AST grammar', () => {
     });
 
     const rootRelative = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '> .child { color: green; }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
     expect(rootRelative.ok && rootRelative.unconsumedFrom === null && isStylesheet(rootRelative.value)).toBe(false);
   });
@@ -1479,7 +1510,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card : hover { color: red; }',
       '.card: hover { color: red; }'
     ]) {
-      const direct = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
     }
@@ -1490,7 +1521,7 @@ describe('SCSS canonical-AST grammar', () => {
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1517,7 +1548,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1529,12 +1560,38 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
+  it('uses the universal quoted override for interpolated attribute selectors', () => {
+    const source = '$state: open; .card[data-state="#{$state}"] { color: blue; }';
+    const cst = parseScssCst(source);
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet', rules: [{ type: 'VariableDeclaration' }, {
+        type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
+          { type: 'SimpleSelector', text: '.card' },
+          { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+            { lit: '[data-state="' },
+            { ref: { type: 'VariableReference', name: 'state', lookup: 'live' }, unquote: true },
+            { lit: '"]' }
+          ] } }
+        ] }] }
+      }]
+    });
+    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
+      '.card[data-state="open"] {\n  color: blue;\n}\n'
+    );
+  });
+
   it('rejects namespaced attribute selectors until their namespace fact has a canonical AST field', () => {
     const source = '.card[svg|href] { color: blue; }';
     const cst = parseScssCst(source);
     expect(cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
   });
 
@@ -1544,7 +1601,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
 
@@ -1577,7 +1634,7 @@ describe('SCSS canonical-AST grammar', () => {
      * with `, ` on one line, so `:is(.a,.b)` and `:is(.a, .b)` both round-trip to
      * the spaced canonical form.
      */
-    const structured = run(scssAstGrammar.Stylesheet, '.x:is(.a, .b) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    const structured = run(scssGrammar.Stylesheet, '.x:is(.a, .b) { color: red; }', { trivia: scssGrammar.whitespace });
     expect(structured.ok && structured.unconsumedFrom === null).toBe(true);
     expect(structured.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
@@ -1609,12 +1666,12 @@ describe('SCSS canonical-AST grammar', () => {
       ['.x:is(.a,.b) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n'],
       ['.x:is(.a, .b) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n']
     ] as const) {
-      const rt = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const rt = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(isStylesheet(rt.value) ? serialize(rt.value).css : undefined, source).toBe(expected);
     }
 
     // (2) `:where` structures too, but is SEALED (crossable:false).
-    const sealed = run(scssAstGrammar.Stylesheet, '.x:where(.a, .b) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    const sealed = run(scssGrammar.Stylesheet, '.x:where(.a, .b) { color: red; }', { trivia: scssGrammar.whitespace });
     expect(sealed.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.x' },
@@ -1628,9 +1685,9 @@ describe('SCSS canonical-AST grammar', () => {
      * (rejected today, still rejected). `:global` is not whitelisted, so it stays
      * opaque SimpleSelector text.
      */
-    const interp = run(scssAstGrammar.Stylesheet, '.x:is(#{$sel}) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    const interp = run(scssGrammar.Stylesheet, '.x:is(#{$sel}) { color: red; }', { trivia: scssGrammar.whitespace });
     expect(interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)).toBe(false);
-    const opaque = run(scssAstGrammar.Stylesheet, '.x:global(.a) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    const opaque = run(scssGrammar.Stylesheet, '.x:global(.a) { color: red; }', { trivia: scssGrammar.whitespace });
     expect(opaque.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.x' },
@@ -1641,7 +1698,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('restricts `of` to nth-child and rejects non-selector selector-pseudo args', () => {
     const accepted = (source: string): boolean => {
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       return result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
     };
 
@@ -1711,7 +1768,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1729,10 +1786,15 @@ describe('SCSS canonical-AST grammar', () => {
     for (const invalid of [
       '.card:nth-child(2n +) { color: blue; }',
       '.card:nth-child(1.5) { color: blue; }',
+      '.card:nth-child(+ n) { color: blue; }',
+      '.card:nth-child(+ n-5) { color: blue; }',
+      '.card:nth-child(1 - n) { color: blue; }',
+      '.card:nth-child(2 n + 2) { color: blue; }',
+      '.card:nth-child(- 2n) { color: blue; }',
       '.card:lang(#{$locale}) { color: blue; }',
       '.card:part(icon-#{$name}) { color: blue; }'
     ]) {
-      const direct = run(scssAstGrammar.Stylesheet, invalid, { trivia: scssAstGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, invalid, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
     }
   });
@@ -1761,7 +1823,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1787,7 +1849,7 @@ describe('SCSS canonical-AST grammar', () => {
     const cst = parseScssCst(source);
     expect(!cst.ok || cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
   });
 
@@ -1797,7 +1859,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1809,7 +1871,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('rejects interpolation-bearing placeholder names rather than flattening their source', () => {
     const source = '%#{$name} { color: blue; }';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
   });
 
@@ -1818,21 +1880,21 @@ describe('SCSS canonical-AST grammar', () => {
     const compoundCst = parseScssCst(compound);
     expect(compoundCst.errors).toHaveLength(0);
     expect(compoundCst.unconsumedFrom).toBeNull();
-    const compoundResult = run(scssAstGrammar.Stylesheet, compound, { trivia: scssAstGrammar.whitespace });
+    const compoundResult = run(scssGrammar.Stylesheet, compound, { trivia: scssGrammar.whitespace });
     expect(compoundResult.ok && compoundResult.unconsumedFrom === null && isStylesheet(compoundResult.value)).toBe(true);
 
     const list = '%notice, .card { color: blue; }';
     const listCst = parseScssCst(list);
     expect(listCst.unconsumedFrom).not.toBeNull();
-    const listResult = run(scssAstGrammar.Stylesheet, list, { trivia: scssAstGrammar.whitespace });
+    const listResult = run(scssGrammar.Stylesheet, list, { trivia: scssGrammar.whitespace });
     expect(listResult.ok && listResult.unconsumedFrom === null && isStylesheet(listResult.value)).toBe(false);
   });
 
   it('constructs a case-insensitive declaration priority directly', () => {
     const result = run(
-      scssAstGrammar.Stylesheet,
+      scssGrammar.Stylesheet,
       '.card { color: blue !IMPORTANT; }',
-      { trivia: scssAstGrammar.whitespace }
+      { trivia: scssGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -1856,7 +1918,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1881,7 +1943,7 @@ describe('SCSS canonical-AST grammar', () => {
     const cst = parseScssCst(source);
     expect(cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
   });
 
@@ -1899,7 +1961,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1942,7 +2004,7 @@ describe('SCSS canonical-AST grammar', () => {
       }
     `;
     expect(parseScssCst(source).errors).toHaveLength(0);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1963,7 +2025,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -1986,7 +2048,7 @@ describe('SCSS canonical-AST grammar', () => {
       expect(cst.errors).toHaveLength(0);
       expect(cst.unconsumedFrom).toBeNull();
 
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok).toBe(true);
       expect(result.unconsumedFrom).toBeNull();
       expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'For', binding }] });
@@ -2003,7 +2065,7 @@ describe('SCSS canonical-AST grammar', () => {
       expect(cst.errors, source).toHaveLength(0);
       expect(cst.unconsumedFrom, source).toBeNull();
 
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
       const first = stylesheet(result.value).rules[0];
       const loop = source.startsWith('.host')
@@ -2022,7 +2084,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
 
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -2048,7 +2110,7 @@ describe('SCSS canonical-AST grammar', () => {
       '@for $i from 1 through 3 - { .n { width: $i; } }',
       '@for $i from 1 2 through 3 { .n { width: $i; } }'
     ]) {
-      const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
   });
@@ -2056,7 +2118,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('constructs static CSS statement at-rules through the existing AtRuleStatement fact', () => {
     const source = '@charset "UTF-8"; @namespace svg url("https://example.test/svg"); @layer theme;';
     const cst = parseScssCst(source);
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -2071,7 +2133,7 @@ describe('SCSS canonical-AST grammar', () => {
       css: '@charset "UTF-8";\n@namespace svg url("https://example.test/svg");\n@layer theme;\n'
     });
 
-    const lineComment = run(scssAstGrammar.Stylesheet, '@layer theme // local note\n;', { trivia: scssAstGrammar.whitespace });
+    const lineComment = run(scssGrammar.Stylesheet, '@layer theme // local note\n;', { trivia: scssGrammar.whitespace });
     expect(lineComment.ok).toBe(true);
     expect(lineComment.unconsumedFrom).toBeNull();
     expect(serialize(stylesheet(lineComment.value))).toEqual({ css: '@layer theme;\n' });
@@ -2083,14 +2145,14 @@ describe('SCSS canonical-AST grammar', () => {
       '@namespace #{$prefix} url("https://example.test/svg");',
       '@layer #{$name};'
     ]) {
-      const direct = run(scssAstGrammar.Stylesheet, invalid, { trivia: scssAstGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, invalid, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
     }
   });
 
   it('constructs static CSS @scope blocks through the existing AtRuleBlock fact', () => {
     const source = '@scope (.card) to (.card > .title) { .item { color: red; } }';
-    const result = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{
@@ -2102,7 +2164,7 @@ describe('SCSS canonical-AST grammar', () => {
       '@scope #{scope} { .item { color: red; } }',
       '@scope (.card #{$part}) { .item { color: red; } }'
     ]) {
-      const direct = run(scssAstGrammar.Stylesheet, invalid, { trivia: scssAstGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, invalid, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
     }
   });

@@ -13,7 +13,8 @@ and rejected in the others — so a spelling always means the same thing:
 | Position | Use | Rejected there |
 | --- | --- | --- |
 | **interpolated identifiers** — selectors, property names, custom-property names, `&`-suffixes, mixin names, at-rule preludes | `${…}` | `$[…]`, `$(…)` |
-| **quoted strings**, `~"…"`, `url()` bodies | `${…}`, `$(…)` | `$[…]` |
+| **quoted strings**, `~"…"`, and quoted `url("…")` bodies | `${…}`, `$(…)` | `$[…]` |
+| **unquoted declaration-value `url(...)` bodies** | `${…}`; every other `$` is literal URL text | `$(…)` as an expression; `$[…]` never a lookup |
 | **value positions** | `$[…]` (lookup), `$(…)` (expression) | `${…}` |
 
 `${name}` means *the value of `$name`*, spliced in as text.
@@ -150,14 +151,18 @@ $type: *[.notice];
 }
 ```
 
-### 5. Plain CSS @imports
+### 5. URL paths
 ```scss
 $family: "modern";
-@import url("fonts/${family}.css");
+.fonts {
+  src: url("fonts/${family}.css");
+}
 ```
 →
 ```css
-@import url("fonts/modern.css");
+.fonts {
+  src: url("fonts/modern.css");
+}
 ```
 
 ### 7. Less and SCSS source conversion

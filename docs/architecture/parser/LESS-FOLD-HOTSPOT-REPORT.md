@@ -7,9 +7,9 @@ the remaining quality cleanup after the Less grammar collapsed to one host-mode
 source.
 
 Current parity note: Less now ships from the direct host-mode grammar. The old
-CST bridge body has been deleted from `src/grammar.ts`, `lessCstGrammar` points
-at the host-mode CST artifact, and `lessAstGrammar` remains an alias of the same
-grammar. The public CST oracle movement is intentional fold movement; a later
+CST bridge body has been deleted from `src/grammar.ts`, `lessGrammar` is the
+default artifact, and `lessCstGrammar` is the explicit host-mode CST artifact.
+The public CST oracle movement is intentional fold movement; a later
 strict CSS calc follow-up also moved the two invalid CSS calc error fixtures so
 `calc()` / `calc(+)` reject at recognition rather than falling back to a generic
 function. The committed oracle baseline now pins both named movements:
@@ -21,7 +21,7 @@ with 0 throws over 709 entries.
 The physical fold is done. In this report, "fold" now means deleting remaining
 duplicate private recognition families inside the single host-mode
 `src/grammar.ts`, not restoring a CST bridge or recreating a second grammar
-file. Use the active Parseman 0.41 surface (`dispatch(...)`, `makeWhen(...)`,
+file. Use the active Parseman 0.43 surface (`dispatch(...)`, `makeWhen(...)`,
 matcher cases, `routed()`, and `node(..., { project })`) where it removes
 repeated recognition.
 
@@ -101,7 +101,7 @@ Priority Less cleanup queue:
    Unknown at-rules can opportunistically parse structure, but comments should
    not be assembled into semantic prelude text.
 3. **General-enclosed raw comments are likely semantic debt.**
-   `GeneralEnclosedRaw` includes `g.CssSyntaxBlockComment` as raw text; preserve
+   `GeneralEnclosedRaw` includes `g.BlockCommentToken` as raw text; preserve
    balanced recognition, but do not make comments part of interpolation or
    general-enclosed payloads.
 
@@ -175,7 +175,7 @@ not reintroduce that namespace. Local const names should be the shortest stable
 spec-shaped concept unless the accepted language genuinely differs. Preserve or
 map public CST labels separately: `Declaration`, `CustomDeclaration`,
 `AtRuleBlock`, `AtRuleStatement`, `ImportAtRule`, `QueryAtRuleBlock`,
-`MixinCall`, `MixinOrQualifiedRule`, `VarCall`, selector node keys, and
+`MixinCall`, `MixinDefinition`, `VarCall`, selector node keys, and
 interpolation node keys are contract questions; local rule names are not.
 
 Preferred local vocabulary by region:
@@ -196,14 +196,16 @@ Preferred local vocabulary by region:
 - At-rules/queries: `SupportsValue`, `SupportsFeature`, `SupportsCondition`,
   `QueryValue`, `QueryFeature*`, `MediaQuery*`, `Container*`, `AtRuleBlock`,
   `AtRuleStatement`.
-- Selectors/extents: `StaticPseudo*`, `InterpolatedPseudo`,
-  `StaticAttribute*`, `InterpolatedAttribute*`, `CompoundSelector`,
-  `ComplexSelector`, `SelectorList`, `ExtendTarget`, `InlineExtendTail`,
-  `SelectorBranch`, `Ruleset`. If the inline-extend subject and extend target
-  really differ, name the context (`InlineExtendSubject`, `ExtendTarget`), not
-  the migration path.
+- Selectors/extents: `PseudoSelector`, `AttributeSelector`, `AttributeName`,
+  `AttributeMatch`, `NamespaceTypeSelector`, `InterpolatedAttributeSelector`,
+  `CompoundSelector`, `ComplexSelector`, `SelectorList`, `ExtendTarget`,
+  `InlineExtendTail`, `SelectorBranch`, `Ruleset`. A static spelling belongs in
+  the ordinary semantic owner; keep an interpolation-specific rule only when
+  it must construct a different interpolation-backed selector atom. If the
+  inline-extend subject and extend target really differ, name the context
+  (`InlineExtendSubject`, `ExtendTarget`), not the migration path.
 
-## Parseman 0.41 routing targets
+## Parseman 0.43 routing targets
 
 Apply these while folding each family, not as polish on duplicate bodies:
 
@@ -218,10 +220,13 @@ Apply these while folding each family, not as polish on duplicate bodies:
 - Selector list with inline extends: the ruleset fallback is paid. Preserve the
   context-aware selector-list route that parses each branch once, returns
   selector facts, and collects branch-local extend instructions.
-- Mixin statement router: the current broad `mixinStatementAhead`
-  skips repeated work but still leaves the same name/path family spread across
-  definition/call/bare-call arms. The fold target is one consumed mixin opener
-  with suffix routing.
+- Mixin statement router: the broad `mixinStatementAhead` scan has been
+  replaced by one typed class/id selector prefix and literal-led tails. The
+  prefix remains selector structure for rulesets and lowers to a namespace path
+  only for `(`/`;` mixin continuations. A narrow definition-versus-call attempt
+  remains after `(` because the current parameter and argument grammars differ;
+  it is a measurable reduction target, not permission to collapse one grammar
+  into the other. Do not reintroduce a prefix scan or a second selector parse.
 - Query feature parentheses: CSS/Less media features are a real left-factor or
   context-helper target, not an automatic dispatch target. The same inner
   identifier can begin colon, comparison, range, grouped, and negated features,
@@ -497,7 +502,7 @@ small. The important shape is the contract:
 - `extendTargetFlags: true` adds the terminal `all` / `!all` flag only in the
   `:extend(...)` target list. Do not let ordinary selector lists know about that
   flag.
-- `PseudoSelector` should use Parseman 0.41 `dispatch(...)` only where it routes
+- `PseudoSelector` should use Parseman 0.43 `dispatch(...)` only where it routes
   one already-consumed pseudo/function opener. Branch nodes that need the opener
   use `routed()`. The selector-list branch itself should not be an outer
   `attempt(...)` fallback.
@@ -521,7 +526,7 @@ should own the inline pseudo in both host modes; the direct selector branch
 facts are temporary reducer facts, not public owners.
 
 2026-07-27 update: the pseudo family now has the shared-opener dispatch shape.
-`Pseudo` / `StaticPseudo` parse one `:name` / glued `:name(` opener, then route
+`PseudoSelector` parses one `:name` / glued `:name(` opener, then routes
 selector-function, generic-function, interpolation-argument, and bare-pseudo
 branches with `routed()`. The focused Less parser set passed, `check:macro` and
 `verify:compose-integrity` passed, and the Less oracle stayed AST-neutral

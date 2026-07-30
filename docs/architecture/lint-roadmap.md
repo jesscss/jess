@@ -6,14 +6,17 @@ diagnostic output, JSON output, named rule config, PostCSS parser oracles,
 Stylelint comparison harnesses, and opt-in line-tracked diagnostic CST
 entrypoints are landed on `origin/dev`.
 
-This is the single tracking doc for Jess linting. It replaces the older
-`docs/design/JESS-LINT-PACKAGE-SPEC.md` design spec and the local
+This is the single tracking doc for Jess stylesheet diagnostics. It replaces
+the older `docs/design/JESS-LINT-PACKAGE-SPEC.md` design spec and the local
 `lint-roadmap.md` draft.
 
 ## Goal
 
-Jess lint should expose the problems Jess already understands, not grow a second
-detector stack. The lint package owns policy and presentation:
+Jess diagnostics should first target parity with VSCode's stylesheet language
+service for CSS/Less/SCSS author feedback, then use Stylelint as the migration
+and naming guide for CLI lint users. Jess lint should expose the problems Jess
+already understands, not grow a second detector stack. The lint package owns
+policy and presentation:
 
 - which diagnostics are enabled;
 - whether each diagnostic is a warning or error;
@@ -25,6 +28,11 @@ Problem detection belongs below lint: parsers, diagnostics-core, compiler facts,
 resolver facts, and the language service. A diagnostic that appears in
 `jess lint` should also be usable by the editor unless it is purely CLI policy,
 such as "no files matched".
+
+Normal parse, eval, and render paths must not pay for diagnostics. Diagnostic
+CST entrypoints may opt into line tracking and metadata checks; ordinary parser
+and compiler entrypoints should remain offset-only and diagnostics-free unless a
+caller explicitly asks for diagnostics.
 
 ## Current packages and commands
 
@@ -48,21 +56,76 @@ jess lint src/card.scss --format json
 
 `packages/lint/src/rules.ts` exposes these stable rule names. Rule names follow
 Stylelint when the behavior is close enough to be familiar; Jess-only checks use
-a `jess/` prefix.
+a `jess/` prefix. Each stable rule also maps to a shared Jess diagnostic code:
+the rule name is the user-facing `lint.rules` key, while the diagnostic code is
+the shared identity used by diagnostics-core, the language service, JSON output,
+and compatibility aliases. Lint JSON carries both names when a diagnostic maps
+to a stable lint rule. Comparison labels describe parity only. A
+`Stylelint-near` entry still has a stable lint rule name and a stable diagnostic
+code, but the implementation may be a VSCode-data-backed or Jess-native subset
+and can stay out of matched benchmark mode until its behavior is comparable
+enough.
 
 | Rule | Diagnostic code | Kind |
 | --- | --- | --- |
 | `block-no-empty` | `lint/empty-rules` | Stylelint-equivalent |
 | `property-no-unknown` | `lint/unknown-property` | Stylelint-near |
+| `property-no-deprecated` | `lint/property-no-deprecated` | Stylelint-near |
+| `declaration-property-value-no-unknown` | `lint/unknown-property-value` | Stylelint-near |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | Stylelint-near |
+| `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | Stylelint-near |
+| `at-rule-descriptor-value-no-unknown` | `lint/at-rule-descriptor-value-no-unknown` | Stylelint-near |
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | Stylelint-equivalent |
+| `declaration-block-no-shorthand-property-overrides` | `lint/declaration-block-no-shorthand-property-overrides` | Stylelint-near |
+| `declaration-block-no-duplicate-custom-properties` | `lint/declaration-block-no-duplicate-custom-properties` | Stylelint-equivalent |
 | `color-no-invalid-hex` | `lint/hex-color-length` | Stylelint-equivalent |
 | `length-zero-no-unit` | `lint/zero-units` | Stylelint-equivalent |
 | `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | Stylelint-equivalent |
+| `no-unknown-custom-properties` | `lint/no-unknown-custom-properties` | Stylelint-near |
+| `custom-property-pattern` | `lint/custom-property-pattern` | Stylelint-near, opt-in |
 | `keyframe-block-no-duplicate-selectors` | `lint/keyframe-block-no-duplicate-selectors` | Stylelint-equivalent |
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | Stylelint-equivalent |
+| `keyframes-name-pattern` | `lint/keyframes-name-pattern` | Stylelint-near, opt-in |
+| `declaration-no-important` | `lint/declaration-no-important` | Stylelint-near |
+| `named-grid-areas-no-invalid` | `lint/named-grid-areas-no-invalid` | Stylelint-equivalent |
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | Stylelint-near |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
+| `font-face-no-missing-required-properties` | `lint/font-face-missing-required-properties` | VSCode-equivalent |
+| `property-ignored-due-to-display` | `lint/property-ignored-due-to-display` | VSCode-equivalent |
+| `box-model` | `lint/box-model` | VSCode-equivalent, opt-in |
+| `float` | `lint/float` | VSCode-equivalent, opt-in |
+| `property-no-vendor-prefix` | `lint/property-no-vendor-prefix` | Stylelint-near, opt-in |
+| `at-rule-no-vendor-prefix` | `lint/at-rule-no-vendor-prefix` | Stylelint-near, opt-in |
+| `vendor-prefix` | `lint/vendor-prefix` | VSCode-equivalent |
+| `compatible-vendor-prefixes` | `lint/compatible-vendor-prefixes` | VSCode-equivalent, opt-in |
+| `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | VSCode-equivalent, opt-in |
+| `import-statement` | `lint/import-statement` | VSCode-equivalent, opt-in |
+| `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | Stylelint-equivalent |
+| `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
+| `no-unknown-animations` | `lint/no-unknown-animations` | Stylelint-near |
+| `no-duplicate-selectors` | `lint/no-duplicate-selectors` | Stylelint-near |
+| `unit-no-unknown` | `lint/unit-no-unknown` | Stylelint-near |
+| `function-no-unknown` | `lint/function-no-unknown` | Stylelint-near |
+| `function-linear-gradient-no-nonstandard-direction` | `lint/function-linear-gradient-no-nonstandard-direction` | Stylelint-equivalent |
+| `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | Stylelint-near |
+| `media-feature-name-no-vendor-prefix` | `lint/media-feature-name-no-vendor-prefix` | Stylelint-near, opt-in |
+| `media-feature-name-value-no-unknown` | `lint/media-feature-name-value-no-unknown` | Stylelint-near |
+| `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | Stylelint-near |
+| `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | Stylelint-near |
+| `selector-no-vendor-prefix` | `lint/selector-no-vendor-prefix` | Stylelint-near, opt-in |
+| `selector-class-pattern` | `lint/selector-class-pattern` | Stylelint-near, opt-in |
+| `selector-anb-no-unmatchable` | `lint/selector-anb-no-unmatchable` | Stylelint-equivalent |
+| `selector-type-no-unknown` | `lint/selector-type-no-unknown` | Stylelint-near |
+| `selector-max-id` | `lint/selector-max-id` | Stylelint-near, opt-in |
+| `selector-max-universal` | `lint/selector-max-universal` | Stylelint-near, opt-in |
+| `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess-only value diagnostic |
+| `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode-equivalent |
+| `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess-only value diagnostic |
+| `jess/no-unused-variable` | `lint/no-unused-variable` | Jess-only symbol diagnostic, opt-in |
+| `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess-only module diagnostic |
+| `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess-only selector diagnostic |
+| `jess/no-dead-extend` | `lint/no-dead-extend` | Jess-only selector diagnostic |
+| `jess/no-suspicious-map-key-access` | `lint/no-suspicious-map-key-access` | Jess-only value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -93,11 +156,20 @@ Diagnostics-core routes CSS, Less, SCSS, and Jess through diagnostic CST parser
 entrypoints compiled from the same grammar factories with `hostMode: 'cst'` and
 line tracking enabled. Normal AST/CST parser entrypoints remain offset-only.
 
+The diagnostics package is consumed by `@jesscss/lint` and
+`@jesscss/language-service`; it is not imported by core parse/eval/render
+packages. Keep that dependency boundary intact when adding diagnostics.
+
 The hot diagnostic record is neutral and LSP-free: code, severity, message,
 source offsets, and parser-captured line/column coordinates. The lint CLI turns
 that into compact per-file lines. The language service should adapt the same
 records to LSP ranges. Legacy Jess frame diagnostics are presentation objects
 and should stay opt-in.
+
+Language-service defaults should surface the same shared diagnostics as
+`@jesscss/lint` recommended policy unless a rule is explicitly opt-in. Opt-in
+rules still need shared detection and editor configuration support; they should
+not become IDE noise by accident.
 
 ## Stylelint story
 
@@ -120,18 +192,21 @@ pnpm --filter @jesscss/lint bench:stylelint
 ```
 
 Current CSS benchmark evidence on `packages/jess/benchmark/benchmark.css`
-using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 195-finding rule set:
+using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 251-finding
+comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint stable rules | `19.55 ms/op` |
-| Stylelint comparable rules | `12.00 ms/op` |
-| Normal CSS CST parse | `8.85 ms/op` |
-| Line-tracked CSS diagnostic CST parse | `10.60 ms/op` |
-| Diagnostics walk only | `3.70 ms/op` |
+| Jess lint comparison config | `23.96 ms/op` |
+| Stylelint comparable rules | `26.25 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
+
+`no-duplicate-selectors` is stable and recommended, but it is not part of the
+matched comparison config yet: Stylelint skips selectors containing `//` as
+non-standard syntax, while Jess treats valid CSS attribute selectors such as
+`a[href^="http://"]` as duplicate-selector candidates.
 
 ## Stylelint parity backlog
 
@@ -141,17 +216,44 @@ can detect over authored source.
 | Priority | Stylelint rule family | Jess rule name | Notes |
 | --- | --- | --- | --- |
 | P0 | Unknown CSS | existing `property-no-unknown`, `at-rule-no-unknown` | Keep metadata current and dialect-aware. |
-| P0 | Duplicates | existing `declaration-block-no-duplicate-properties` | Add ignore-consecutive and shorthand/longhand awareness. |
-| P0 | Empty blocks | existing `block-no-empty` | Extend to empty mixin bodies only when configured. Empty mixins can be API placeholders. |
-| Landed | Custom properties | `custom-property-no-missing-var-function` | Flags `color: --x`; suppresses inside custom-property declarations and `var()`. |
-| P1 | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement. Jess `@-import` is separate. |
-| P1 | Duplicate imports/selectors | `no-duplicate-at-import-rules`, `no-duplicate-selectors` | Needs source-level normalization and import awareness. |
+| Landed | Deprecated properties | `property-no-deprecated` | Flags CSS properties marked obsolete or deprecated in VSCode web custom data; nonstandard and vendor-prefixed properties stay out of this rule. |
+| Landed | Property values | `declaration-property-value-no-unknown` | Flags definite unknown simple CSS property values from VSCode web custom data values and restrictions; compound, dynamic, and dialect values stay unknown until richer value facts exist. |
+| Landed | Duplicates | existing `declaration-block-no-duplicate-properties` | `ignore: ["consecutive-duplicates"]` landed through Stylelint-like rule options; shorthand override coverage is tracked by the dedicated shorthand row. |
+| Landed | Empty blocks | `block-no-empty` | Flags empty rulesets by default; empty Less/SCSS/Jess mixin bodies use the same shared diagnostic code with a `mixin-body` qualifier and surface only with `include: ["mixins"]`. Empty mixins can be API placeholders. |
+| Landed | Custom properties | `custom-property-no-missing-var-function`, `no-unknown-custom-properties` | Flags `color: --x` and same-file unknown `var(--x)` references; reference files and import graph facts remain future work. |
+| Landed | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement after style rules or blocking at-rules. Jess `@-import` is separate. |
+| Landed | Duplicate imports | `no-duplicate-at-import-rules` | Flags repeated same-file imports with the same target/options/conditions; import-graph duplicate modules remain Jess-only semantic work. |
+| Landed | Unknown animations | `no-unknown-animations` | Flags definite CSS animation names without same-file `@keyframes`; imported reference roots and dialect animation facts remain semantic-facts work. |
+| Landed | Duplicate custom properties | `declaration-block-no-duplicate-custom-properties` | Flags repeated custom property declarations in one parsed block with exact name matching. |
+| Landed | Shorthand overrides | `declaration-block-no-shorthand-property-overrides` | Flags common CSS shorthands that override earlier longhands in the same parsed block; the static table covers physical, logical, layout, text, transition, animation, border, and font shorthand families. |
+| Landed | Duplicate selectors | `no-duplicate-selectors` | CSS selector-list duplicates are CST-owned: duplicate entries inside one list and duplicate whole lists among sibling rules. Dialect nested resolution still needs selector facts. |
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
-| Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Checks definite `font-family` values; dynamic values stay unknown. |
-| P2 | Selector validity | `selector-type-no-unknown`, `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Needs modern selector metadata and dialect escapes. |
-| P2 | Function/value validity | `function-no-unknown`, `media-feature-name-no-unknown`, `unit-no-unknown` | Better once value facts exist. |
+| Landed | Important declarations | `declaration-no-important` | Flags CSS `!important` declarations outside keyframes; keyframes use the dedicated keyframe rule to avoid duplicate default diagnostics. |
+| Landed | Named grid areas | `named-grid-areas-no-invalid` | Flags empty, ragged, or non-rectangular named grid area strings in CSS `grid`, `grid-template`, and `grid-template-areas` declarations. |
+| Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword`, `font-face-no-missing-required-properties` | Checks definite `font-family` values and CSS `@font-face` blocks missing `font-family`/`src`; dynamic values and dialect-injected descriptors stay unknown. |
+| Landed | Display/property interactions | `property-ignored-due-to-display` | Matches VSCode `propertyIgnoredDueToDisplay` for CSS `display: inline-block` with non-`none` `float`, and `display: block` with `vertical-align`; dynamic and dialect values stay unknown until semantic facts exist. |
+| Landed | Box model | `box-model` | Opt-in VSCode `boxModel` parity for definite CSS `width`/`height` with non-zero padding or border; `box-sizing` suppresses the rule, and dynamic/dialect values stay unknown until semantic facts exist. |
+| Landed | Float layout | `float` | Opt-in VSCode `float` parity for definite CSS `float` declarations whose value is not `none`; dynamic/dialect values stay unknown until semantic facts exist. |
+| Landed | Vendor prefixes | `vendor-prefix` | Matches VSCode `vendorPrefix` for CSS vendor-prefixed declarations and keyframe at-rules whose standard form is missing. |
+| Landed | Vendor-prefix style policy | `property-no-vendor-prefix`, `at-rule-no-vendor-prefix` | Opt-in Stylelint-named lint rules backed by Jess diagnostic codes for authored CSS vendor-prefixed property names and keyframe at-rules; distinct from recommended VSCode `vendor-prefix` missing-standard diagnostics. |
+| Landed | Compatible vendor prefixes | `compatible-vendor-prefixes` | Opt-in VSCode `compatibleVendorPrefixes` parity for CSS declarations and keyframe at-rules that use one known vendor-prefixed form but omit other known vendor-prefixed siblings. |
+| Landed | Unknown vendor-specific properties | `unknown-vendor-specific-properties` | Opt-in VSCode `unknownVendorSpecificProperties` parity for CSS single-hyphen prefixed declarations whose full property name is not known; custom validProperties support stays future work. |
+| Landed | Import statement warning | `import-statement` | Opt-in VSCode `importStatement` parity for CSS `@import` rules that may block parallel stylesheet loading. |
+| Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
+| Landed | Selector vendor prefixes | `selector-no-vendor-prefix` | Opt-in Stylelint-named lint rule backed by `lint/selector-no-vendor-prefix` for authored CSS vendor-prefixed pseudo-class and pseudo-element selectors. |
+| Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
+| Landed | Selector policy | `selector-max-id`, `selector-max-universal` | Opt-in VSCode `idSelector` and `universalSelector` parity surfaced under Stylelint names; the initial subset reports any static CSS ID or universal selector as max-0. |
+| Landed | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Opt-in Stylelint-named lint rules backed by static authored name diagnostics. CLI and language-service configuration require a secondary `pattern` option; matching names are suppressed by policy. |
+| Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
+| Landed | Gradient directions | `function-linear-gradient-no-nonstandard-direction` | Flags old side-or-corner direction syntax and unitless numeric directions in CSS `linear-gradient()` / `repeating-linear-gradient()` calls. |
+| Landed | Media feature names and values | `media-feature-name-no-unknown`, `media-feature-name-value-no-unknown` | Flags unknown CSS `@media` feature names and definite invalid static values; dialect media facts remain future work. |
+| Landed | Media feature vendor prefixes | `media-feature-name-no-vendor-prefix` | Opt-in Stylelint-named lint rule backed by `lint/media-feature-name-no-vendor-prefix` for authored CSS vendor-prefixed `@media` feature names. |
+| Landed | At-rule descriptors | `at-rule-descriptor-no-unknown` | Flags unknown descriptors in parsed CSS descriptor blocks, including `@page` page-context and margin-box descriptors. |
+| Landed | At-rule descriptor values | `at-rule-descriptor-value-no-unknown` | Flags definite invalid descriptor values in parsed CSS descriptor blocks; the first subset covers `@property` `syntax`/`inherits` and `@font-face` `font-display`. |
+| Landed | Color function arguments | `color-function-no-invalid-arguments` | Matches VSCode `argumentsInColorFunction` for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |
+| Landed | Typed custom properties | `jess/no-invalid-typed-custom-property-value` | Flags definite CSS `@property` `initial-value` mismatches for simple syntax descriptors; full CSS value-definition syntax and dialect value facts remain future work. |
+| P3 | Browser legacy hacks | `ie-hack` | VSCode has opt-in `ieHack`, but current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |
-| P2 | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Project-policy heavy; opt-in only. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |
 
 ## Semantic facts layer
@@ -196,15 +298,16 @@ Stylelint.
 
 | Rule | Default | Required facts | What it catches |
 | --- | --- | --- | --- |
-| `jess/no-unused-variable` | warn | Symbol refs | Tokens defined but never read, with export/reference/import exceptions. |
+| `jess/no-unused-variable` | off, then warn when project facts land | Symbol refs | Initial opt-in same-file variable check landed; full token analysis still needs export/reference/import exceptions. |
 | `jess/no-shadowed-token` | off | Scope facts | Local token shadows an imported/exported token unexpectedly. |
 | `jess/no-leaky-scope-dependence` | warn when allowed | Scope/effect facts, compile options | Less patterns that depend on mixin/detached-ruleset variable leakage. |
 | `jess/no-ambiguous-mixin-call` | warn | Callable facts | A call matches multiple overloads with incompatible bodies or signatures. |
 | `jess/no-mixin-output-mismatch` | off | Call signatures | A mixin used as declarations emits nested rules, or a value callable emits declarations. |
 | `jess/no-unsafe-reference-compose` | warn | Module facts | Extending or reading through a protected boundary that cannot surface output. |
-| `jess/no-duplicate-module-load` | warn | Import graph/config | Same file loaded through multiple specifiers or overload mode unintentionally. |
-| `jess/no-unbounded-extend` | warn | Selector facts | Broad `$extend` target likely to match more than intended. |
-| `jess/no-dead-extend` | warn | Selector facts | `$extend` target matches no selector in accessible surfaces. |
+| `jess/no-duplicate-module-load` | warn | Module refs now; import graph/config later | Initial same-file static SCSS/Jess duplicate directive check landed; same resolved file through multiple specifiers still needs module graph facts. |
+| `jess/no-unbounded-extend` | warn | Static targets now; selector facts later | Initial Less/SCSS/Jess diagnostic flags static extend targets with no top-level class, id, placeholder, or parent selector anchor; selector graph facts can later catch broad resolved targets more precisely. |
+| `jess/no-dead-extend` | warn | Same-file exact targets now; selector graph later | Initial import-free Less/SCSS/Jess diagnostic flags exact static extend targets that match no same-file selector; accessible imported surfaces and partial extend submatching still need selector graph facts. |
+| `jess/no-suspicious-map-key-access` | warn | Same-file map-like declarations now; value facts later | Initial Less/SCSS/Jess diagnostic flags numeric bracket or `map-get()` access against same-file map-like variables; real collection/list type facts can later catch reassignment and imported values precisely. |
 
 ## Type and value linting
 
@@ -221,16 +324,21 @@ The first value diagnostic should be math-function argument compatibility for
 - preserve unresolved variables/interpolation as unknown instead of guessing;
 - report only definite mismatches such as `min(1px, 2s)`.
 
+Status: landed as `jess/no-incompatible-math-function-units` for CSS-authored
+bare numeric arguments. It reports definite non-percentage kind mismatches and
+leaves dynamic, percentage, nested, or compound math expressions for future
+value facts.
+
 Follow-on value/type diagnostics:
 
 | Diagnostic | Likely owner | Notes |
 | --- | --- | --- |
 | Incompatible units | Compiler or strict lint | Arithmetic and comparisons with impossible unit families. If Jess rejects it, compiler owns it; if Jess can still emit useful CSS, lint owns it. |
-| Invalid color channel | CSS validity/compiler | Definite channel arity/type errors before color output. |
-| Invalid typed custom property value | Diagnostics-core/type facts | Validate `@property syntax` and future Jess constraints without guessing through dynamic values. |
+| Invalid color channel | CSS validity/compiler | Initial CSS-authored rgb()/rgba()/hsl()/hsla() arity/type checks landed as `color-function-no-invalid-arguments`; broader color functions and semantic value facts remain future work. |
+| Invalid typed custom property value | Diagnostics-core/type facts | Initial CSS `@property` descriptor check landed as `jess/no-invalid-typed-custom-property-value` for simple static syntax/value pairs; future work is full CSS value-definition syntax and Jess constraints. |
 | Impossible guard | Lint preference | Guard condition that is statically always false. |
 | Unused default branch | Lint preference | Mixin `default()` branch that cannot be selected. |
-| Suspicious map key access | Lint preference | Numeric bracket access against a collection when the author likely meant a value key. |
+| Suspicious map key access | Lint preference | Initial same-file Less map, SCSS map, and Jess collection diagnostic landed as `jess/no-suspicious-map-key-access`; richer collection/list value facts remain future work. |
 
 Use TypeScript-adjacent names for callable/type facts:
 
@@ -287,8 +395,9 @@ Custom type names should start with a capital letter:
    shared diagnostic.
 3. Add one CLI/API/IDE parity test with each new shared diagnostic.
 4. Expand Stylelint P1 rules where Jess has native source facts.
-5. Add symbol facts: variables, custom properties, mixins, functions, modules,
-   definitions, references, exports.
+5. Expand symbol facts beyond the initial same-file unused variable diagnostic:
+   variables, custom properties, mixins, functions, modules, definitions,
+   references, exports.
 6. Surface compiler diagnostics through lint and LSP without rebranding them as
    style rules.
 7. Add preference diagnostics: unused/shadowed symbols, broad/dead extends, and
