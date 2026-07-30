@@ -144,6 +144,14 @@ with SHA-256 `3ea6c1bdae41511923deece75676d453ff470cb447f531aae935b44eae6f5083`.
   fixed-shape inline or parser-owned indexed representation that removes the
   per-node WeakMap set/get without introducing polymorphic node shapes. Do this
   after P0 so warning-only span reads do not inflate the result.
+
+  Rejected implementation shape (2026-07-30): encoding `{ start, end }` in a
+  number-valued `WeakMap`, then decoding on every `sourceSpanOf()` read, made the
+  exact Node v24.11.1 eval+emit workload slower (45.29 ms versus 38.90 ms in a
+  reverse-order run). Caching the decoded objects was still slower (42.07 ms).
+  Do not merely move the same allocation from parse to render. The next audit
+  must identify which semantic/render facts actually require a span and remove
+  whole writes for facts that do not, while preserving the uniform AST shape.
 - **Parseman trivia indexing:** the Jess-side generic-map trigger is deleted in
   `bda41a0bb`: legacy labeled logs stream contiguous comment ranges directly,
   and comment-only emission uses an exact binary search over those sparse runs.
