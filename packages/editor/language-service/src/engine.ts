@@ -581,6 +581,17 @@ function cssHover(entry: HoverEntry, kind: 'property' | 'value' | 'at-rule' | 'p
   return `${signature}\n${label}${desc ? `\n\n${desc}` : ''}${hoverExtras(entry)}`;
 }
 
+function languageLabel(lang: JessLang): string {
+  return lang === 'scss' ? 'SCSS' : lang === 'less' ? 'Less' : lang === 'jess' ? 'Jess' : 'CSS';
+}
+
+function definitionSignature(source: string, start: number, end: number): string {
+  const raw = source.slice(start, end).trim();
+  const blockStart = raw.indexOf('{');
+  const signature = blockStart < 0 ? raw : `${raw.slice(0, blockStart).trim()} { ... }`;
+  return signature.replace(/\s+/g, ' ');
+}
+
 function scssDeclaredMixinNames(source: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -1413,6 +1424,36 @@ export function createEngine(): JessLanguageServiceEngine {
     return null;
   }
 
+  function symbolDefinitionHover(uri: string, offset: number): string | null {
+    const ref = cstDocRef(uri);
+    if (ref === null) {
+      return null;
+    }
+    const symbol = cstSymbolAtOffset(ref.tree, ref.doc, offset);
+    if (symbol === null) {
+      return null;
+    }
+    const definition = findDefinitionAcrossDocs(uri, symbol, new Set());
+    if (definition === null) {
+      return null;
+    }
+    const definitionDoc = docs.get(definition.uri) ?? importedDocs.get(definition.uri);
+    if (definitionDoc === undefined) {
+      return null;
+    }
+
+    const start = definitionDoc.document.offsetAt(definition.range.start);
+    const end = definitionDoc.document.offsetAt(definition.range.end);
+    const signature = definitionSignature(definitionDoc.document.getText(), start, end);
+    if (signature.length === 0) {
+      return null;
+    }
+
+    const kind = symbol.kind === 'variable' ? 'variable' : 'mixin';
+    const label = `**${languageLabel(definitionDoc.lang)} ${kind} definition** ${symbol.refineIdent}`;
+    return `\`\`\`${definitionDoc.lang}\n${signature}\n\`\`\`\n${label}`;
+  }
+
   /*
    * Helper: collect a symbol's references + declaration in a single document's
    * CST (the caller loops all open + imported docs with a shared `visited` set,
@@ -1951,6 +1992,16 @@ export function createEngine(): JessLanguageServiceEngine {
             }
           };
         }
+      }
+
+      const symbolHover = symbolDefinitionHover(uri, offset);
+      if (symbolHover !== null) {
+        return {
+          contents: {
+            kind: MarkupKind.Markdown,
+            value: symbolHover
+          }
+        };
       }
 
       // Check for property value hover (need to find the property name first).

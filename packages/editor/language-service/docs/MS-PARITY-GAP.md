@@ -64,7 +64,7 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | At-rule hover | ✓ | ✓ TypeScript-style at-rule hover from web-custom-data | Comparable | P2 |
 | Pseudo-class/element hover | ✓ | ✓ TypeScript-style selector hover from web-custom-data | Comparable | P1 |
 | Selector-specificity hover | ✓ (shows computed specificity for a selector) | ✓ static CSS selector branches | Dialect nested/interpolated selector specificity remains future work | P2 |
-| Variable / mixin hover (show value/definition) | partial (SCSS) | ✗ | Missing | P1 |
+| Variable / mixin hover (show value/definition) | partial (SCSS) | ✓ CST-grounded authored definition hover for variables and mixins | Shows definitions, not evaluated values/signatures; evaluator-backed richness remains future work | P1 |
 
 ### Navigation
 
@@ -191,6 +191,10 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
     show specificity from `postcss-selector-parser` + CSSTools specificity
     calculation. Dialect nested/interpolated selector specificity remains future
     work.
+10b. ✅ **DONE.** **Variable / mixin definition hover** — CST-grounded hover uses the
+    existing definition resolver and shows the authored definition/signature for
+    Less/SCSS/Jess variables and mixins without claiming evaluated values or
+    callable overload resolution.
 11. ✅ **DONE (highlights all occurrences of the symbol under the cursor).** **`findDocumentHighlights`** — add to the engine interface; reuse
     `collectReferenceSet` but scope to the current document only.
 12. ✅ **DONE (named colors w/ swatch + color functions; units on numeric prefix).** **Named-color + color-function value completions** in color contexts, with

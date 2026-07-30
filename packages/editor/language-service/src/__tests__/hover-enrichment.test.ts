@@ -60,6 +60,24 @@ describe('hover enrichment (MS-parity: MDN links, Baseline, syntax, pseudo hover
     expect(v).not.toContain('Selector specificity');
   });
 
+  it('variable hover shows the authored definition without evaluating it', () => {
+    const v = hoverAt('less', '@brand: #036;\n.a { color: @bra|nd; }');
+    expect(v).toContain('```less\n@brand: #036;\n```');
+    expect(v).toContain('**Less variable definition** brand');
+  });
+
+  it('mixin hover shows the authored definition signature', () => {
+    const v = hoverAt('scss', '@mixin tone($x) { color: $x; }\n.a { @include to|ne(red); }');
+    expect(v).toContain('```scss\n@mixin tone($x) { ... }\n```');
+    expect(v).toContain('**SCSS mixin definition** tone');
+  });
+
+  it('.jess variable hover also uses the authored definition', () => {
+    const v = hoverAt('jess', '$brand: #036;\n.a { color: $bra|nd; }');
+    expect(v).toContain('```jess\n$brand: #036;\n```');
+    expect(v).toContain('**Jess variable definition** brand');
+  });
+
   it('at-rule hover appends Baseline + MDN link', () => {
     const v = hoverAt('css', '@med|ia screen {}');
     expect(v).toContain('```css\n@media\n```');
