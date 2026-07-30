@@ -32,6 +32,7 @@ describe('stable rule set', () => {
       LINT_CODES.keyframeDeclarationNoImportant,
       LINT_CODES.fontFamilyDuplicateNames,
       LINT_CODES.fontFamilyMissingGeneric,
+      LINT_CODES.duplicateAtImportRules,
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
@@ -46,9 +47,10 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.keyframeDeclarationNoImportant,
       LINT_RULE_NAMES.fontFamilyDuplicateNames,
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
+      LINT_RULE_NAMES.duplicateAtImportRules,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(2);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(3);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -63,6 +65,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.customPropertyMissingVarFunction,
       LINT_RULE_NAMES.fontFamilyDuplicateNames,
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
+      LINT_RULE_NAMES.duplicateAtImportRules,
       LINT_RULE_NAMES.keyframeDeclarationNoImportant,
       LINT_RULE_NAMES.keyframeDuplicateSelectors,
       LINT_RULE_NAMES.unknownAtRules,
@@ -210,6 +213,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.fontFamilyDuplicateNames, 'error']
+    ]);
+  });
+
+  it('applies policy to duplicate @import diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '@import url("a.css");\n@import "a.css";',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.duplicateAtImportRules]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.duplicateAtImportRules, 'error']
     ]);
   });
 });

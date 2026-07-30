@@ -24,6 +24,7 @@ export const LINT_CODES = {
   keyframeDeclarationNoImportant: 'lint/keyframe-declaration-no-important',
   fontFamilyDuplicateNames: 'lint/font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
+  duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -70,6 +71,7 @@ const CUSTOM_PROPERTY_VALUE_TYPES = new Set(['CustomPropertyValue']);
 const KEYFRAMES_TYPES = new Set(['Keyframes']);
 const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
 const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
+const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'StaticImportRule']);
 const CSS_WIDE_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
 const GENERIC_FONT_FAMILIES = new Set([
   'serif',
@@ -137,6 +139,11 @@ type FontFamilyPart = {
   readonly isGeneric: boolean;
   readonly start: number;
   readonly end: number;
+};
+
+type ImportKey = {
+  readonly key: string;
+  readonly target: string;
 };
 
 const ROOT_VISIT_CONTEXT: VisitContext = {
@@ -238,6 +245,21 @@ function blankStringsAndComments(value: string): string {
   return value.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n\r]*|"[^"]*"|'[^']*'/g, m => ' '.repeat(m.length));
 }
 
+function stripComments(value: string): string {
+  return value.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n\r]*/g, ' ');
+}
+
+function stripBlockComments(value: string): string {
+  return value.replace(/\/\*[\s\S]*?\*\//g, ' ');
+}
+
+function normalizedCssWords(value: string): string {
+  return stripComments(value)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 function normalizedKeyframeSelectorKeys(source: string, node: CssCstNode): string[] {
   const raw = source.slice(absoluteStart(node), absoluteEnd(node));
   return blankStringsAndComments(raw)
@@ -292,6 +314,152 @@ function unquoteFontFamily(raw: string): { value: string; quoted: boolean } {
     }
   }
   return { value: trimmed, quoted: false };
+}
+
+function unquoteImportTarget(raw: string): string {
+  const trimmed = stripBlockComments(raw).trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed.charCodeAt(0);
+    if ((first === 34 || first === 39) && trimmed.charCodeAt(trimmed.length - 1) === first) {
+      return trimmed.slice(1, -1).replace(/\\(["'])/g, '$1');
+    }
+  }
+  return trimmed;
+}
+
+function skipWhitespace(source: string, start: number, end: number): number {
+  let i = start;
+  while (i < end) {
+    const code = source.charCodeAt(i);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      break;
+    }
+    i++;
+  }
+  return i;
+}
+
+function balancedEnd(source: string, start: number, end: number): number {
+  let quote = 0;
+  let depth = 0;
+  let inBlockComment = false;
+  for (let i = start; i < end; i++) {
+    const code = source.charCodeAt(i);
+    const next = i + 1 < end ? source.charCodeAt(i + 1) : 0;
+    if (inBlockComment) {
+      if (code === 42 && next === 47) {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (quote !== 0) {
+      if (code === 92) {
+        i++;
+        continue;
+      }
+      if (code === quote) {
+        quote = 0;
+      }
+      continue;
+    }
+    if (code === 47 && next === 42) {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (code === 34 || code === 39) {
+      quote = code;
+      continue;
+    }
+    if (code === 40) {
+      depth++;
+      continue;
+    }
+    if (code === 41) {
+      depth--;
+      if (depth === 0) {
+        return i + 1;
+      }
+    }
+  }
+  return end;
+}
+
+function quotedEnd(source: string, start: number, end: number): number {
+  const quote = source.charCodeAt(start);
+  for (let i = start + 1; i < end; i++) {
+    const code = source.charCodeAt(i);
+    if (code === 92) {
+      i++;
+      continue;
+    }
+    if (code === quote) {
+      return i + 1;
+    }
+  }
+  return end;
+}
+
+function importTargetStart(source: string, start: number, end: number): number {
+  let i = skipWhitespace(source, start, end);
+  while (i < end && source.charCodeAt(i) === 40) {
+    const optionsEnd = balancedEnd(source, i, end);
+    if (optionsEnd <= i || optionsEnd >= end) {
+      return i;
+    }
+    i = skipWhitespace(source, optionsEnd, end);
+  }
+  return i;
+}
+
+function normalizedImportKey(source: string, node: CssCstNode): ImportKey | null {
+  const start = absoluteStart(node);
+  let end = absoluteEnd(node);
+  if (source.charCodeAt(end - 1) === 59 /* ; */) {
+    end--;
+  }
+  const nameEnd = atRuleNameEnd(source, start, end);
+  const targetStart = importTargetStart(source, nameEnd, end);
+  if (targetStart >= end) {
+    return null;
+  }
+
+  let targetEnd: number;
+  const targetFirst = source.charCodeAt(targetStart);
+  const lowerTargetHead = source.slice(targetStart, Math.min(targetStart + 4, end)).toLowerCase();
+  if (targetFirst === 34 || targetFirst === 39) {
+    targetEnd = quotedEnd(source, targetStart, end);
+  } else if (lowerTargetHead === 'url(') {
+    targetEnd = balancedEnd(source, targetStart + 3, end);
+  } else {
+    return null;
+  }
+
+  const rawPrefix = source.slice(nameEnd, targetStart);
+  const rawTarget = source.slice(targetStart, targetEnd);
+  const rawTail = source.slice(targetEnd, end);
+  if (
+    rawPrefix.includes('@{') || rawPrefix.includes('#{') || rawPrefix.includes('${')
+    || rawTarget.includes('@{') || rawTarget.includes('#{') || rawTarget.includes('${')
+    || rawTail.includes('@{') || rawTail.includes('#{') || rawTail.includes('${')
+  ) {
+    return null;
+  }
+
+  let target = rawTarget;
+  if (lowerTargetHead === 'url(') {
+    target = rawTarget.slice(4, -1);
+  }
+  const normalizedTarget = unquoteImportTarget(target);
+  if (normalizedTarget === '') {
+    return null;
+  }
+
+  return {
+    key: `${normalizedCssWords(rawPrefix)}|${normalizedTarget}|${normalizedCssWords(rawTail)}`,
+    target: normalizedTarget
+  };
 }
 
 function splitFontFamilyValue(source: string, valueStart: number, valueEnd: number): FontFamilyPart[] {
@@ -628,6 +796,7 @@ export function cstLintDiagnostics(
 ): SourceDiagnostic[] {
   const out: SourceDiagnostic[] = [];
   const emitted = new Set<string>();
+  const seenImports = new Map<string, ImportKey>();
   const cssData = metadataWithDefaults(metadata);
   const dialectAtRules = DIALECT_AT_RULES[language];
   const push = (
@@ -707,6 +876,23 @@ export function cstLintDiagnostics(
           if (!cssData.isKnownAtRule(name) && !dialectAtRules.has(name)) {
             push(LINT_CODES.unknownAtRules, 'warning', `Unknown at-rule @${rawName}`, spanAtOrContaining(node, start, nameEnd));
           }
+        }
+      }
+    }
+
+    if (IMPORT_RULE_TYPES.has(gt)) {
+      const importKey = normalizedImportKey(source, node);
+      if (importKey !== null) {
+        const previous = seenImports.get(importKey.key);
+        if (previous !== undefined) {
+          push(
+            LINT_CODES.duplicateAtImportRules,
+            'warning',
+            `Duplicate @import rule ${importKey.target}`,
+            node.span
+          );
+        } else {
+          seenImports.set(importKey.key, importKey);
         }
       }
     }

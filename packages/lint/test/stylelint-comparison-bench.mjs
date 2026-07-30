@@ -33,7 +33,8 @@ const STYLELINT_RULES = {
   'keyframe-block-no-duplicate-selectors': true,
   'keyframe-declaration-no-important': true,
   'font-family-no-duplicate-names': true,
-  'font-family-no-missing-generic-family-keyword': true
+  'font-family-no-missing-generic-family-keyword': true,
+  'no-duplicate-at-import-rules': true
 };
 
 const STYLELINT_LESS_RULES = {

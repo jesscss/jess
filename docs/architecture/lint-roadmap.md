@@ -63,6 +63,7 @@ a `jess/` prefix.
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | Stylelint-equivalent |
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | Stylelint-near |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
+| `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -120,12 +121,12 @@ pnpm --filter @jesscss/lint bench:stylelint
 ```
 
 Current CSS benchmark evidence on `packages/jess/benchmark/benchmark.css`
-using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 195-finding rule set:
+using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 204-finding rule set:
 
 | Path | Median |
 | --- | --- |
-| Jess lint stable rules | `19.55 ms/op` |
-| Stylelint comparable rules | `12.00 ms/op` |
+| Jess lint stable rules | `22.12 ms/op` |
+| Stylelint comparable rules | `12.86 ms/op` |
 | Normal CSS CST parse | `8.85 ms/op` |
 | Line-tracked CSS diagnostic CST parse | `10.60 ms/op` |
 | Diagnostics walk only | `3.70 ms/op` |
@@ -145,7 +146,8 @@ can detect over authored source.
 | P0 | Empty blocks | existing `block-no-empty` | Extend to empty mixin bodies only when configured. Empty mixins can be API placeholders. |
 | Landed | Custom properties | `custom-property-no-missing-var-function` | Flags `color: --x`; suppresses inside custom-property declarations and `var()`. |
 | P1 | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement. Jess `@-import` is separate. |
-| P1 | Duplicate imports/selectors | `no-duplicate-at-import-rules`, `no-duplicate-selectors` | Needs source-level normalization and import awareness. |
+| Landed | Duplicate imports | `no-duplicate-at-import-rules` | Flags repeated same-file imports with the same target/options/conditions; import-graph duplicate modules remain Jess-only semantic work. |
+| P1 | Duplicate selectors | `no-duplicate-selectors` | Needs selector normalization over the canonical selector AST. |
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
 | Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Checks definite `font-family` values; dynamic values stay unknown. |
 | P2 | Selector validity | `selector-type-no-unknown`, `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Needs modern selector metadata and dialect escapes. |
