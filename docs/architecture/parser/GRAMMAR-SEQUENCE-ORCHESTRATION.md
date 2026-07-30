@@ -403,9 +403,9 @@ is a `Selector`, a quoted value is `Quoted`, and a pseudo selector is
 `PseudoSelector`, not bare `Pseudo` or a dialect/provenance-prefixed alias.
 `Css*` grammar rules and CST labels are findings by default for the same reason
 `Direct*`, `Ast*`, and `Core*` names are findings: they describe the current
-owner, not the language concept. Parser-shared `CssSyntax*` / `ScssSyntax*`
-style leaves are transition debt, not an architectural exception. The target is
-semantic slots such as `Keyword`, `Quoted`, `AttributeOperator`, `Nth`,
+owner, not the language concept. Provenance-prefixed parser-shared leaves are
+transition debt, not an architectural exception. The target is semantic slots
+such as `Keyword`, `Quoted`, `AttributeOperator`, `Nth`,
 `AtKeyword`, and `PseudoSelector` that CSS-owned structure calls through `g.*`;
 Less, SCSS, and Jess override those slots granularly when their syntax differs.
 Only split one of those slots when implementation pressure proves that contexts
@@ -5083,7 +5083,7 @@ diff --check`.
 Evidence slice, 2026-07-30: SCSS no longer carries grammar-local regex leaves
 for CSS-owned at-keywords whose structure it only specializes below the keyword:
 `@media`, `@container`, `@starting-style`, `@layer`, `@scope`, `@document`,
-`@page`, and `@font-feature-values` now use the shared `CssSyntax*AtKeyword`
+`@page`, and `@font-feature-values` now use the shared semantic at-keyword
 leaves from parser-shared. The SCSS grammar still owns the downstream prelude
 and body choices where Sass syntax changes the CSS shape. This is leaf reuse
 only, not the final at-rule dispatch route; the analyzer now reports the
