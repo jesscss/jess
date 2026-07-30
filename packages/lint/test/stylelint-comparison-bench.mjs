@@ -37,6 +37,7 @@ const STYLELINT_RULES = {
   'no-duplicate-at-import-rules': true,
   'unit-no-unknown': true,
   'function-no-unknown': true,
+  'media-feature-name-no-unknown': true,
   'selector-pseudo-class-no-unknown': true,
   'selector-pseudo-element-no-unknown': true
 };
