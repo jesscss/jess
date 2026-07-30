@@ -609,8 +609,19 @@ In that order, one conversion class at a time.
    differential. A grammar touching one surface should move neither — the
    untouched surface is the control.
 
-3. **Measure** if the change was motivated by cost. Do not claim a win you did
-   not measure.
+3. **Measure before committing, every time.** Capture a named before/after
+   parse benchmark for the affected dialect's built `lib/`, even when the
+   change was motivated by readability, reuse, naming, or correctness rather
+   than speed. Grammar routing, choice order, trivia ownership, and extra
+   productions can all change hot-path work by accident. Use the same fixture,
+   Node runtime, resolved dependency paths/versions, warm-up, and timed sample
+   count for both sides; report median and spread. The Less harness is
+   `packages/syntax/less/less-parser/test/parse-bench.mjs`; CSS uses the
+   parse-only case in `packages/syntax/css/css-parser/test/postcss-oracle.mjs
+   --bench`. Record the result with the change or in the active transient
+   handoff. A result inside the documented noise band is inconclusive, not a
+   performance claim. A material regression must be understood or explicitly
+   accepted by the owner before the grammar commit.
 4. **Keep** only what survives 2 and 3. Otherwise revert, or record it as
    `blocked` / `deliberate exception` with the reason.
 

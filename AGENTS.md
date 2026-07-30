@@ -406,6 +406,15 @@ instead.
 
 - Run the smallest relevant test first while iterating.
 - Before claiming completion, run the appropriate baseline or verification command for the affected area.
+- Before committing a parser-grammar change, run its parse-performance gate on
+  the built artifact. Capture a named before/after comparison using the same
+  fixture, Node runtime, warm-up, and timed samples; record the resolved parser
+  and Parseman paths/versions with the result. The gate is mandatory even for a
+  readability or cleanup change: grammar routing can change hot-path work
+  accidentally. Treat a difference inside the documented harness noise as
+  inconclusive, not a win or regression; investigate a material regression
+  before committing. The parser review standard names the dialect harnesses and
+  required correctness gates.
 - If package B depends on package A, build A first when the workspace layout requires built outputs.
 - When debugging, record what was tried, what happened, and the next step in the repo’s transient state files instead of expanding permanent guidance.
 
