@@ -5331,6 +5331,16 @@ dispatcher stays unlabeled; the CST continues to expose `AtRootFilter` and
 public-CST tests now cover both forms, including their route through the public
 stylesheet entry.
 
+SCSS `@at-root` prelude cleanup, 2026-07-30: the ordinary form has no prelude
+and the only supported non-empty continuation is its parenthesized filter. The
+grammar now gives `AtRootBlock` the literal `{` directly and gives
+`AtRootFilterPrelude` one `balanced('(', ')')` production. This deletes both
+raw `scanTo('{')` captures and their local nested-paren skip lists; ambient
+`scanSkip` still protects comments and quoted selector text inside the actual
+filter. The resulting continuation choice is first-set-disjoint (`(` filter or
+`{` bare block), and unsupported selector/text preludes reject at their real
+delimiter instead of being stored as `Any` bytes.
+
 SCSS Sass-directive routing, 2026-07-30: repeated `@include`, `@mixin`,
 `@function`, `@if`, `@each`, `@for`, and `@at-root` opener regexes no longer
 appear in every stylesheet/body choice. `SassDirective`, `SassNestedDirective`,
