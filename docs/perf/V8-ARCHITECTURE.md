@@ -33,10 +33,43 @@ misses. This was about half of the observed C++ time.
 
 **INCIDENT:** polymorphic AST node shapes across parsers/eval.
 
-**DETECTOR:** the construction-time shape-stability harness records each
-`type`'s field-key signature and fails on a second signature. ESLint also
-guards known reshape forms. Any new bypass must be fixed structurally, not
-waived by making the node loosely typed.
+**DETECTOR:** `pnpm verify:shape-stability` (`test/ast-shape/`), in two halves.
+`shape-stability.test.ts` parses a less/scss/jess corpus and records each AST
+node `type`'s ordered field-key signature, failing on any signature outside
+`SHAPE_DEBT_ALLOWLIST`. `cst-shape-stability.test.ts` does the same for the CST
+across all four dialects plus the diagnostic artifact, asserting NAMED signature
+sets for the node / leaf / span families — the diagnostic parse is included
+because it is the only mode that populates line/column, so it is the only mode
+in which the conditional-span builders' line branch runs at all. Both report
+members, never counts. `pnpm audit:shape-stability` prints the full inventory.
+
+Any new bypass must be fixed structurally, not waived by making the node
+loosely typed.
+
+*Status — read before trusting this:* the gate is **advisory**. It is green on
+clean `dev` and it is collected by the root vitest project, so `pnpm test` runs
+it; it is deliberately NOT wired into `prepush-dispatch.mjs` or `verify:pr`.
+There is **no ESLint reshape rule** — an earlier version of this line claimed
+one, and none exists (`no-node-keyed-side-map` is a side-table rule, not a
+reshape rule). Enabling it as a blocking gate is an owner decision:
+
+1. `pnpm verify:shape-stability` — confirm green on an untouched checkout.
+2. Decide the debt policy. Three AST types are allowlisted-polymorphic today
+   (`MixinDefinition`, `Ruleset`, `SpacedValue`). Blocking mode pins them; it
+   does not fix them. Monomorphizing is separate (Phase B).
+3. Add it to `scripts/prepush-dispatch.mjs` under the tier that already covers
+   `packages/core/src/ast/**` and `packages/syntax/**`.
+4. Note the corpus is the coverage boundary — see "what this does NOT catch".
+
+*What this does NOT catch.* The gate sees only shapes its corpus REALIZES, and
+six factories in `ast/nodes.ts` author arms the corpus never reaches: `decl`
+(`valueOnNewLine`), `collectionEntry` (same), `collection` (`base`), `block`
+(`escaped`) together with `boundaryBlock` (`boundary`) for three `Block` arms,
+`rawInline` (`media`), and `anonymousMixin` (`params`). Each shows as
+monomorphic here purely because no corpus source takes the other branch.
+`rule()` authors FOUR arms from two independent conditional spreads and the
+corpus realizes two. Widening the corpus narrows this gap; a green run is
+evidence about the corpus, not a proof about the factories.
 
 ## 2. Never re-derive structure or materialize it into bytes early
 

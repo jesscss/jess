@@ -19,26 +19,67 @@ const root = dirname(fileURLToPath(import.meta.url));
  * `.js` import specifiers (`Cannot find module core/src/tree/index.js`). An
  * alias is vitest-scoped, so those loaders keep resolving to built `lib`.
  * Exact-match (`^name$`) so only bare imports alias; subpaths fall through.
+ *
+ * The scan RECURSES into grouping directories. `e96d1035d` regrouped packages by
+ * syntax (`packages/less-parser` -> `packages/syntax/less/less-parser`), which put
+ * nine packages — including all four parsers — below the single directory level
+ * this loop used to scan. They silently stopped being aliased. Nothing failed
+ * loudly: consumers inside the workspace still resolved through their own
+ * `node_modules` symlink to built `lib`, so the only visible symptom was a
+ * root-level test importing a parser dying with ERR_MODULE_NOT_FOUND — which is
+ * exactly how `test/ast-shape/shape-stability.test.ts` (the invariant-1 gate)
+ * came to be dead-but-quiet. A grouping directory has no `package.json`, so
+ * "descend until a package is found" distinguishes the two cases without a
+ * hard-coded depth or a list of group names to keep in sync.
  */
 function workspaceSrcAliases() {
   const alias: { find: RegExp; replacement: string }[] = [];
-  for (const d of readdirSync(resolve(root, 'packages'))) {
-    const pj = resolve(root, 'packages', d, 'package.json');
-    const src = resolve(root, 'packages', d, 'src/index.ts');
-    if (!existsSync(pj) || !existsSync(src)) {
-      continue;
+
+  const visit = (dir: string, depth: number): void => {
+    /*
+     * Cycle guard only. Deliberately well ABOVE the current maximum nesting
+     * (`packages/syntax/css/css-parser` is depth 3): a bound set exactly at
+     * today's depth would silently drop the first package anyone nests one
+     * level deeper, which is the exact failure this whole function was just
+     * repaired for. Recursion already stops at the first `package.json` and
+     * skips `node_modules`, so this never walks a dependency tree.
+     */
+    if (depth > 6) {
+      return;
     }
-    let name: string | undefined;
+    const pj = resolve(dir, 'package.json');
+    if (existsSync(pj)) {
+      const src = resolve(dir, 'src/index.ts');
+      if (!existsSync(src)) {
+        return;
+      }
+      let name: string | undefined;
+      try {
+        name = JSON.parse(readFileSync(pj, 'utf8')).name;
+      } catch {
+        return;
+      }
+      if (!name) {
+        return;
+      }
+      alias.push({ find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), replacement: src });
+      return;
+    }
+    let entries: string[];
     try {
-      name = JSON.parse(readFileSync(pj, 'utf8')).name;
+      entries = readdirSync(dir);
     } catch {
-      continue;
+      return;
     }
-    if (!name) {
-      continue;
+    for (const entry of entries) {
+      if (entry === 'node_modules' || entry.startsWith('.')) {
+        continue;
+      }
+      visit(resolve(dir, entry), depth + 1);
     }
-    alias.push({ find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), replacement: src });
-  }
+  };
+
+  visit(resolve(root, 'packages'), 0);
 
   /*
    * CSS-parser subpaths used by source-aliased workspace parsers. Subpaths
@@ -47,13 +88,53 @@ function workspaceSrcAliases() {
    * These aliases preserve the same source-to-source graph that the built
    * package exports provide to production consumers.
   */
-  const cssJess = resolve(root, 'packages/syntax/css/css-parser/src/jess.ts');
-  if (existsSync(cssJess)) {
-    alias.push({ find: /^@jesscss\/css-parser\/jess$/, replacement: cssJess });
-  }
+  /*
+   * NOTE: a `@jesscss/css-parser/jess` alias used to sit here, guarded by
+   * existsSync against `src/jess.ts`. That file is gone, the package no longer
+   * exports `./jess`, and nothing imports it — so the guard made it a silent
+   * no-op rather than an error. Removed; re-add only alongside a real export.
+   */
   const cssGrammar = resolve(root, 'packages/syntax/css/css-parser/src/grammar.ts');
   if (existsSync(cssGrammar)) {
     alias.push({ find: /^@jesscss\/css-parser\/grammar$/, replacement: cssGrammar });
+  }
+
+  /*
+   * `./cst` for every dialect, for the same reason. This subpath matters more
+   * than the two above: `less-parser/src/cst.ts` imports
+   * `@jesscss/css-parser/cst`, so once the bare parser names resolve to `src`,
+   * leaving `/cst` on node resolution would build a HALF-source graph — a
+   * source-side less CST wrapping a lib-side css CST builder. The shape gate
+   * reads `buildCssCstNode`'s output, so that split would have it measuring the
+   * previously built `lib` while reporting on `src`.
+   */
+  /*
+   * css-parser's `./cst` public entry is `src/cst-css.ts` (the `parseCssCst`
+   * wrappers); its `src/cst.ts` is the shared builder those wrappers call, and
+   * is NOT the package's `./cst` export. The other three map straight across.
+   */
+  for (const [dialect, file] of [
+    ['css', 'cst-css.ts'],
+    ['less', 'cst.ts'],
+    ['scss', 'cst.ts'],
+    ['jess', 'cst.ts']
+  ]) {
+    const cst = resolve(root, `packages/syntax/${dialect}/${dialect}-parser/src/${file}`);
+
+    /*
+     * THROWS rather than existsSync-skipping. These four are expected to exist;
+     * degrading to a no-op would rebuild the half-source graph described above
+     * and report nothing — the same silent-miss that killed the shape gate, and
+     * the reason the dead `@jesscss/css-parser/jess` alias above was removed.
+     */
+    if (!existsSync(cst)) {
+      throw new Error(
+        `vitest.config.ts: expected ${dialect}-parser CST source at ${cst}. `
+        + 'If the file moved, update this alias — do not delete it, or workspace '
+        + 'tests will silently resolve @jesscss/' + dialect + '-parser/cst to built lib.'
+      );
+    }
+    alias.push({ find: new RegExp(`^@jesscss\\/${dialect}-parser\\/cst$`), replacement: cst });
   }
   return alias;
 }
@@ -146,7 +227,9 @@ export default defineConfig({
             'lib/**',
             '.claude/**',
             'tmp/**',
-            'packages/syntax/css/css-parser/test/perf.test.ts',
+
+            /* (a `css-parser/test/perf.test.ts` exclude used to sit here; no
+             * such file exists anywhere under packages/syntax any more) */
             '**/*bench*'
           ]
         }

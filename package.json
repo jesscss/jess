@@ -99,6 +99,8 @@
     "verify:hot-path": "node scripts/verify-hot-path-antipatterns.mjs",
     "verify:hot-path:clean": "node scripts/verify-hot-path-antipatterns.mjs --require-clean",
     "test:hot-path-rules": "node --test scripts/eslint-rules/__tests__/hot-path-rules.test.mjs",
+    "verify:shape-stability": "vitest run test/ast-shape",
+    "audit:shape-stability": "cross-env SHAPE_DISCOVER=true vitest run test/ast-shape",
     "bench:css:ref": "node scripts/bench-compare-ref.mjs --package @jesscss/css-parser",
     "perf:ab:verify": "node scripts/perf-ab/ab-worktree.mjs verify",
     "perf:ab:prepare": "node scripts/perf-ab/ab-worktree.mjs prepare",

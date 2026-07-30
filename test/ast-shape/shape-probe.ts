@@ -13,11 +13,19 @@ export type ShapeMap = Map<string, Set<string>>;
 export interface CorpusSource {
   readonly label: string;
   readonly text: string;
+  /**
+   * Parser options for this source. Some node types are only reachable under a
+   * non-default policy — `$apply` defaults to `allowApplySelectors: ['class']`,
+   * so an id/attribute/pseudo target is REJECTED unless the kinds are widened.
+   * Threading options keeps those shapes in the gate instead of quietly
+   * narrowing the corpus to whatever happens to parse under defaults.
+   */
+  readonly options?: Readonly<Record<string, unknown>>;
 }
 
 interface Corpus {
   readonly name: string;
-  readonly parse: (input: string) => object;
+  readonly parse: (input: string, options?: Readonly<Record<string, unknown>>) => object;
   readonly sources: readonly CorpusSource[];
 }
 
@@ -84,7 +92,7 @@ export function collectShapes(corpora: readonly Corpus[], tolerant = false): Col
     for (const source of corpus.sources) {
       let doc: object;
       try {
-        doc = corpus.parse(source.text);
+        doc = corpus.parse(source.text, source.options);
       } catch (error) {
         const message = (error as Error).message;
         if (tolerant) {
@@ -148,12 +156,26 @@ export const SHAPE_DEBT_ALLOWLIST: Readonly<Record<string, readonly string[]>> =
   // class. Do NOT fix here; this gate only prevents NEW divergence and any WORSE
   // (third) shape.
 
-  // TODO(shape-debt): MixinDef omits `guard` for unguarded definitions.
-  MixinDef: ['type,name,params,body', 'type,name,params,body,guard'],
+  // Signatures include the inline provenance slots (`_s`/`_e`, plus `_bs`/`_be`
+  // for block-bearing types) introduced by 39a9ca346. They are written
+  // unconditionally by every factory, so they are part of the signature but add
+  // no divergence — verified: each arm below carries the identical slot tail.
 
-  // TODO(shape-debt): Rule omits `extendInstructions` unless the rule carries an
-  // inline `:extend()` / `&:extend()`.
-  Rule: ['type,selector,body', 'type,selector,body,extendInstructions'],
+  // TODO(shape-debt): MixinDefinition omits `guard` for unguarded definitions.
+  MixinDefinition: [
+    'type,name,params,rules,_s,_e,_bs,_be',
+    'type,name,params,rules,guard,_s,_e,_bs,_be'
+  ],
+
+  // TODO(shape-debt): Ruleset omits `extendInstructions` unless the rule carries
+  // an inline `:extend()` / `&:extend()`. `rule()` in ast/nodes.ts has TWO
+  // independent conditional spreads (`extendInstructions`, `guard`), so it can
+  // author FOUR arms; this corpus realizes two. The other two are unreachable
+  // here only because no source combines a guard with a ruleset.
+  Ruleset: [
+    'type,selector,rules,_s,_e,_bs,_be',
+    'type,selector,rules,extendInstructions,_s,_e,_bs,_be'
+  ],
 
   // TODO(shape-debt): SpacedValue omits `separators` when no authored separator
   // layout is retained.

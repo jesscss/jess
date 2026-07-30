@@ -204,20 +204,61 @@ function publicGrammarType(grammarType: string, rawChildren: readonly unknown[])
   return grammarType;
 }
 
+/*
+ * A `Span` is either fully lined (start/end plus all four line/column fields) or
+ * bare (start/end). No parseman producer writes a subset, so branching on
+ * `startColumn` cannot drop a field that a partial span was carrying.
+ *
+ * Note what is NOT true: line-ness is not uniform within a parse. A line-tracked
+ * benchmark.css realizes ~67.6k lined spans AND ~3.7k bare ones, because raw and
+ * scan leaf captures (Property, the Quoted string body, UrlUnquoted, Important,
+ * …) emit bare spans even in diagnostic mode. So "the whole parse is lined"
+ * would be the wrong justification.
+ *
+ * What makes `joinedSpan` safe is its CALLER, not the mode: its only call site
+ * is the `Url` branch of `publicChildren`, which joins the two leaves of
+ * `urlOpen = noTrivia(sequence(identWord('url'), literal('(')))`. Both are
+ * literal/word captures, so they always share a family — the mixed join, where
+ * `first` is bare and `second` lined, is not reachable. If `publicChildren` ever
+ * joins two spans from different capture kinds, revisit this. `shiftedSpan`
+ * takes ONE span and so cannot mix by construction.
+ *
+ * Both builders below take the same treatment as `buildCssCstNode`: explicit
+ * arms rather than `...span` plus a conditional spread. Same three reasons —
+ * a spread drops the literal off V8's object-literal fast path onto a generic
+ * copy-properties runtime call, allocates a throwaway `{}` per conditional arm,
+ * and (uniquely here) could mint span shapes matching NEITHER input family. The
+ * old `joinedSpan` spread `...first` and then conditionally added `endLine` and
+ * `endColumn` from `second` INDEPENDENTLY, so a lineless `first` joined with a
+ * lined `second` produced `{start,end,endLine,endColumn}` — a shape no other
+ * site in the parser ever builds — for up to 4 shapes from one construction
+ * site. Field order in every arm is the canonical `Span` declaration order.
+ */
 function shiftedSpan(span: Span, start: number, columnDelta: number): Span {
+  if (span.startColumn === undefined) {
+    return { start, end: span.end };
+  }
   return {
-    ...span,
     start,
-    ...(span.startColumn === undefined ? {} : { startColumn: span.startColumn + columnDelta })
+    end: span.end,
+    startLine: span.startLine,
+    startColumn: span.startColumn + columnDelta,
+    endLine: span.endLine,
+    endColumn: span.endColumn
   };
 }
 
 function joinedSpan(first: Span, second: Span): Span {
+  if (first.startColumn === undefined) {
+    return { start: first.start, end: second.end };
+  }
   return {
-    ...first,
+    start: first.start,
     end: second.end,
-    ...(second.endLine === undefined ? {} : { endLine: second.endLine }),
-    ...(second.endColumn === undefined ? {} : { endColumn: second.endColumn })
+    startLine: first.startLine,
+    startColumn: first.startColumn,
+    endLine: second.endLine,
+    endColumn: second.endColumn
   };
 }
 
