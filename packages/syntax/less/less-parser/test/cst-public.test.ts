@@ -69,6 +69,16 @@ describe('@jesscss/less-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('uses one semantic custom-value group label for every balanced delimiter', () => {
+    const result = parseLessCst('.a { --x: fn([a {b:c}]); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('CustomGroup')).toBe(3);
+    expect(['CustomParen', 'CustomSquare', 'CustomCurly'].some(type => grammarTypes.has(type))).toBe(false);
+  });
+
   it('keeps unsupported Less variable names recoverable in CST mode', () => {
     for (const input of [
       '@1: red;',

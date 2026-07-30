@@ -94,9 +94,7 @@ type JessRules = {
   InterpolatedCustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<unknown>;
   CustomInnerPart: Combinator<unknown>;
-  CustomParen: Combinator<readonly unknown[]>;
-  CustomSquare: Combinator<readonly unknown[]>;
-  CustomCurly: Combinator<readonly unknown[]>;
+  CustomGroup: Combinator<readonly unknown[]>;
   CustomValue: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
@@ -4686,31 +4684,15 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * reference. Delimiters recurse as grammar children rather than being captured
    * as one opaque span, so an inner `;` or `}` cannot end the declaration.
    */
-  const CustomParen = node<readonly unknown[]>(
-    'CustomParen',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('('),
-      many(g.CustomInnerPart),
-      literal(')')
-    )),
-    children => children.slice()
-  );
-  const CustomSquare = node<readonly unknown[]>(
-    'CustomSquare',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('['),
-      many(g.CustomInnerPart),
-      literal(']')
-    )),
-    children => children.slice()
-  );
-  const CustomCurly = node<readonly unknown[]>(
-    'CustomCurly',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('{'),
-      many(g.CustomInnerPart),
-      literal('}')
-    )),
+  const CustomGroup = node<readonly unknown[]>(
+    'CustomGroup',
+    parser({ trivia: customValueCommentTrivia },
+      choice(
+        sequence(literal('('), many(g.CustomInnerPart), literal(')')),
+        sequence(literal('['), many(g.CustomInnerPart), literal(']')),
+        sequence(literal('{'), many(g.CustomInnerPart), literal('}'))
+      )
+    ),
     children => children.slice()
   );
   const CustomInnerPart: Combinator<unknown> = choice(
@@ -4718,18 +4700,14 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     g.CustomInnerContent,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly
+    g.CustomGroup
   );
   const CustomPart: Combinator<unknown> = choice(
     g.DollarBrace,
     g.CustomOuterContent,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly
+    g.CustomGroup
   );
   const CustomValue = node<ValueNode>(
     'CustomValue',
@@ -5754,9 +5732,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     InterpolatedCustomPropertyName,
     CustomPart,
     CustomInnerPart,
-    CustomParen,
-    CustomSquare,
-    CustomCurly,
+    CustomGroup,
     CustomValue,
     CustomDeclaration,
     Declaration,

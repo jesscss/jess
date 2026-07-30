@@ -156,9 +156,7 @@ type LessRules = {
   CustomAtKeywordText: Combinator<string>;
   CustomPart: Combinator<CustomValuePart>;
   CustomInnerPart: Combinator<CustomValuePart>;
-  CustomParen: Combinator<readonly CustomValuePart[]>;
-  CustomSquare: Combinator<readonly CustomValuePart[]>;
-  CustomCurly: Combinator<readonly CustomValuePart[]>;
+  CustomGroup: Combinator<readonly CustomValuePart[]>;
   CustomValue: Combinator<ValueNode>;
   CustomPropertyValue: Combinator<Keyword>;
   CustomDeclaration: Combinator<Declaration>;
@@ -3387,27 +3385,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return interpolation(interpolationPartsFrom(children, false));
     }
   );
-  const CustomParen = node<readonly CustomValuePart[]>(
-    'CustomParen',
+  const CustomGroup = node<readonly CustomValuePart[]>(
+    'CustomGroup',
     parser(
       { trivia: customValueCommentTrivia },
-      sequence(literal('('), many(g.CustomInnerPart), literal(')'))
-    ),
-    children => customPartsFromChildren(children)
-  );
-  const CustomSquare = node<readonly CustomValuePart[]>(
-    'CustomSquare',
-    parser(
-      { trivia: customValueCommentTrivia },
-      sequence(literal('['), many(g.CustomInnerPart), literal(']'))
-    ),
-    children => customPartsFromChildren(children)
-  );
-  const CustomCurly = node<readonly CustomValuePart[]>(
-    'CustomCurly',
-    parser(
-      { trivia: customValueCommentTrivia },
-      sequence(literal('{'), many(g.CustomInnerPart), literal('}'))
+      choice(
+        sequence(literal('('), many(g.CustomInnerPart), literal(')')),
+        sequence(literal('['), many(g.CustomInnerPart), literal(']')),
+        sequence(literal('{'), many(g.CustomInnerPart), literal('}'))
+      )
     ),
     children => customPartsFromChildren(children)
   );
@@ -3421,9 +3407,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueInnerContent,
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly,
+    g.CustomGroup,
     g.CustomAtKeywordText,
     g.VariableReference
   );
@@ -3432,9 +3416,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueOuterContent,
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly,
+    g.CustomGroup,
     g.CustomAtKeywordText,
     g.VariableReference
   );
@@ -6213,9 +6195,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CustomAtKeywordText,
     CustomPart,
     CustomInnerPart,
-    CustomParen,
-    CustomSquare,
-    CustomCurly,
+    CustomGroup,
     CustomValue,
     CustomPropertyValue,
     CustomDeclaration,

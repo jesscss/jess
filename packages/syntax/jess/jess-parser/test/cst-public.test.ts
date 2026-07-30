@@ -43,6 +43,16 @@ describe('@jesscss/jess-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('uses one semantic custom-value group label for every balanced delimiter', () => {
+    const result = parseJessCst('.a { --x: fn([a {b:c}]); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('CustomGroup')).toBe(3);
+    expect(['CustomParen', 'CustomSquare', 'CustomCurly'].some(type => grammarTypes.has(type))).toBe(false);
+  });
+
   it('keeps collapse mode from dropping leaves or inventing Unknown nodes', () => {
     /*
      * A bare `${side}` selector owns a structural interpolation boundary in the

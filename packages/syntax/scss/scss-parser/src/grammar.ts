@@ -74,9 +74,7 @@ type ScssRules = {
   CustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<unknown>;
   CustomInnerPart: Combinator<unknown>;
-  CustomParen: Combinator<readonly unknown[]>;
-  CustomSquare: Combinator<readonly unknown[]>;
-  CustomCurly: Combinator<readonly unknown[]>;
+  CustomGroup: Combinator<readonly unknown[]>;
   CustomValue: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
@@ -1874,31 +1872,15 @@ export const scssFactory = (g: ScssInputRules) => {
    * captured as one opaque span, so an inner `;` or `}` cannot end the
    * declaration and an inner `#{…}` still reduces to a typed segment.
    */
-  const CustomParen = node<readonly unknown[]>(
-    'CustomParen',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('('),
-      many(g.CustomInnerPart),
-      literal(')')
-    )),
-    children => children.slice()
-  );
-  const CustomSquare = node<readonly unknown[]>(
-    'CustomSquare',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('['),
-      many(g.CustomInnerPart),
-      literal(']')
-    )),
-    children => children.slice()
-  );
-  const CustomCurly = node<readonly unknown[]>(
-    'CustomCurly',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('{'),
-      many(g.CustomInnerPart),
-      literal('}')
-    )),
+  const CustomGroup = node<readonly unknown[]>(
+    'CustomGroup',
+    parser({ trivia: customValueCommentTrivia },
+      choice(
+        sequence(literal('('), many(g.CustomInnerPart), literal(')')),
+        sequence(literal('['), many(g.CustomInnerPart), literal(']')),
+        sequence(literal('{'), many(g.CustomInnerPart), literal('}'))
+      )
+    ),
     children => children.slice()
   );
   const CustomInnerPart: Combinator<unknown> = choice(
@@ -1906,18 +1888,14 @@ export const scssFactory = (g: ScssInputRules) => {
     g.CustomInnerContent,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly
+    g.CustomGroup
   );
   const CustomPart: Combinator<unknown> = choice(
     g.SassInterpolation,
     g.CustomOuterContent,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly
+    g.CustomGroup
   );
   const CustomValue = node<ValueNode>(
     'CustomValue',
@@ -4985,9 +4963,7 @@ export const scssFactory = (g: ScssInputRules) => {
     CustomPropertyName,
     CustomPart,
     CustomInnerPart,
-    CustomParen,
-    CustomSquare,
-    CustomCurly,
+    CustomGroup,
     CustomValue,
     CustomDeclaration,
     Declaration,

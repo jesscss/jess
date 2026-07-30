@@ -66,6 +66,16 @@ describe('@jesscss/scss-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('uses one semantic custom-value group label for every balanced delimiter', () => {
+    const result = parseScssCst('.a { --x: fn([a {b:c}]); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('CustomGroup')).toBe(3);
+    expect(['CustomParen', 'CustomSquare', 'CustomCurly'].some(type => grammarTypes.has(type))).toBe(false);
+  });
+
   it('accepts an ASCII-case-insensitive declaration priority through the public parser', () => {
     const result = parseScssCst('.card { color: blue !IMPORTANT; }');
 
