@@ -1230,7 +1230,13 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.unsupportedSassForm]: DiagnosticSeverity.Warning
     /* eslint-enable @typescript-eslint/naming-convention */
   };
-  let semanticDiagnosticOptions: Record<string, { readonly notation?: string; readonly pattern?: RegExp }> = {};
+  type SpecificityTuple = readonly [number, number, number];
+  type SemanticDiagnosticOptions = {
+    readonly notation?: string;
+    readonly pattern?: RegExp;
+    readonly maxSpecificity?: SpecificityTuple;
+  };
+  let semanticDiagnosticOptions: Record<string, SemanticDiagnosticOptions> = {};
 
   function parseSeverity(value: unknown): DiagnosticSeverity | null {
     switch (value) {
@@ -1265,21 +1271,43 @@ export function createEngine(): JessLanguageServiceEngine {
     return undefined;
   }
 
-  function readDiagnosticOptions(value: unknown): { readonly notation?: string; readonly pattern?: RegExp } | undefined {
+  function parseSpecificity(value: unknown): SpecificityTuple | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+    const parts = value.split(',');
+    if (parts.length !== 3) {
+      return undefined;
+    }
+    const numbers = parts.map(part => Number(part.trim()));
+    return numbers.every(number => Number.isInteger(number) && number >= 0)
+      ? [numbers[0]!, numbers[1]!, numbers[2]!]
+      : undefined;
+  }
+
+  function readDiagnosticOptions(value: unknown): SemanticDiagnosticOptions | undefined {
     if (value === null || typeof value !== 'object') {
       return undefined;
     }
     const pattern = 'pattern' in value ? parsePatternOption(value.pattern) : undefined;
     const notation = 'notation' in value && typeof value.notation === 'string' ? value.notation : undefined;
-    if (pattern === undefined && notation === undefined) {
+    const maxSpecificity = 'max' in value
+      ? parseSpecificity(value.max)
+      : 'maxSpecificity' in value
+        ? parseSpecificity(value.maxSpecificity)
+        : undefined;
+    if (pattern === undefined && notation === undefined && maxSpecificity === undefined) {
       return undefined;
     }
-    const options: { notation?: string; pattern?: RegExp } = {};
+    const options: { notation?: string; pattern?: RegExp; maxSpecificity?: SpecificityTuple } = {};
     if (notation !== undefined) {
       options.notation = notation;
     }
     if (pattern !== undefined) {
       options.pattern = pattern;
+    }
+    if (maxSpecificity !== undefined) {
+      options.maxSpecificity = maxSpecificity;
     }
     return options;
   }
@@ -1317,7 +1345,29 @@ export function createEngine(): JessLanguageServiceEngine {
       || lower.endsWith('turn');
   }
 
+  function specificityFromDiagnostic(diagnostic: SourceDiagnostic): SpecificityTuple | null {
+    for (const qualifier of diagnostic.qualifiers ?? []) {
+      if (qualifier.startsWith('specificity:')) {
+        return parseSpecificity(qualifier.slice('specificity:'.length)) ?? null;
+      }
+    }
+    return null;
+  }
+
+  function specificityAllowed(actual: SpecificityTuple, max: SpecificityTuple): boolean {
+    return actual[0] < max[0]
+      || (actual[0] === max[0] && (
+        actual[1] < max[1]
+        || (actual[1] === max[1] && actual[2] <= max[2])
+      ));
+  }
+
   function suppressByDiagnosticOptions(diagnostic: SourceDiagnostic, source: string): boolean {
+    if (diagnostic.code === LINT_CODES.selectorMaxSpecificity) {
+      const actual = specificityFromDiagnostic(diagnostic);
+      const max = semanticDiagnosticOptions[diagnostic.code]?.maxSpecificity;
+      return actual === null || max === undefined || specificityAllowed(actual, max);
+    }
     const target = patternTarget(diagnostic, source);
     if (target !== null) {
       const pattern = semanticDiagnosticOptions[diagnostic.code]?.pattern;
@@ -1701,7 +1751,7 @@ export function createEngine(): JessLanguageServiceEngine {
         ? diagnosticsObj.options
         : undefined;
       if (options && typeof options === 'object') {
-        const next: Record<string, { readonly notation?: string; readonly pattern?: RegExp }> = { ...semanticDiagnosticOptions };
+        const next: Record<string, SemanticDiagnosticOptions> = { ...semanticDiagnosticOptions };
         for (const [k, v] of Object.entries(options)) {
           const parsed = readDiagnosticOptions(v);
           if (parsed === undefined) {

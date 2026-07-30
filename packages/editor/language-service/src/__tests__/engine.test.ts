@@ -999,6 +999,47 @@ describe('JessLanguageServiceEngine', () => {
         expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('*');
       });
 
+      it('keeps selector specificity diagnostics opt-in and filters by configured max', () => {
+        const source = [
+          '#app .card[data-x]:hover > button { color: red; }',
+          '.card { color: blue; }'
+        ].join('\n');
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/selector-max-specificity');
+
+        const severityOnly = createEngine();
+        severityOnly.configure(sevCfg('lint/selector-max-specificity', 'warning'));
+        const severityOnlyDoc = createDocument('css', source);
+        severityOnly.open(severityOnlyDoc.uri, severityOnlyDoc.languageId, severityOnlyDoc.version, severityOnlyDoc.getText());
+        expect(codesOf(severityOnly, severityOnlyDoc.uri)).not.toContain('lint/selector-max-specificity');
+
+        const configured = createEngine();
+        configured.configure({
+          diagnostics: {
+            severity: {
+              ['lint/selector-max-specificity']: 'warning'
+            },
+            options: {
+              ['lint/selector-max-specificity']: { max: '0,2,0' }
+            }
+          }
+        });
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const diags = configured.getDiagnostics(configuredDoc.uri).filter(diagnostic =>
+          diagnostic.code === 'lint/selector-max-specificity'
+        );
+
+        expect(diags.map(diagnostic => [
+          diagnostic.severity,
+          configuredDoc.getText().slice(configuredDoc.offsetAt(diagnostic.range.start), configuredDoc.offsetAt(diagnostic.range.end))
+        ])).toEqual([
+          [2, '#app .card[data-x]:hover > button']
+        ]);
+      });
+
       it('keeps vendor-prefixed selector, media feature, and value diagnostics opt-in', () => {
         const source = [
           '.a::-webkit-scrollbar { color: red; }',
@@ -1149,7 +1190,11 @@ describe('JessLanguageServiceEngine', () => {
           diagnostics: {
             severity: {
               ['lint/selector-max-id']: 'warning',
-              ['lint/selector-max-universal']: 'warning'
+              ['lint/selector-max-universal']: 'warning',
+              ['lint/selector-max-specificity']: 'warning'
+            },
+            options: {
+              ['lint/selector-max-specificity']: { max: '0,0,0' }
             }
           }
         });
@@ -1159,6 +1204,7 @@ describe('JessLanguageServiceEngine', () => {
 
         expect(codes).not.toContain('lint/selector-max-id');
         expect(codes).not.toContain('lint/selector-max-universal');
+        expect(codes).not.toContain('lint/selector-max-specificity');
       });
     });
 

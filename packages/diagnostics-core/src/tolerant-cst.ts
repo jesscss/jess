@@ -69,6 +69,7 @@ export const LINT_CODES = {
   unknownTypeSelectors: 'lint/selector-type-no-unknown',
   selectorMaxId: 'lint/selector-max-id',
   selectorMaxUniversal: 'lint/selector-max-universal',
+  selectorMaxSpecificity: 'lint/selector-max-specificity',
   unmatchableAnbSelectors: 'lint/selector-anb-no-unmatchable',
   duplicateSelectors: 'lint/no-duplicate-selectors',
   incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
@@ -316,6 +317,7 @@ const ANB_PSEUDO_CLASSES = new Set([
 ]);
 const NTH_ARGUMENT_TYPES = new Set(['PseudoArgument', 'OfTypePseudoArgument']);
 const BASIC_SELECTOR_TYPES = new Set(['BasicSelector']);
+const ATTRIBUTE_SELECTOR_TYPES = new Set(['AttributeSelector']);
 const SELECTOR_LIST_TYPES = new Set(['SelectorList', 'TopLevelSelectorList']);
 const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector', 'RelativeSelector']);
 const RULE_SELECTOR_TYPES = new Set(['SelectorList', 'TopLevelSelectorList', 'SelectorListWithExtends', 'Selector']);
@@ -551,6 +553,13 @@ type SelectorBranchFact = {
   readonly key: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
+  readonly node?: CssCstNode;
+};
+
+type SelectorSpecificity = {
+  readonly a: number;
+  readonly b: number;
+  readonly c: number;
 };
 
 type AnimationNameReference = {
@@ -3783,7 +3792,8 @@ function selectorBranches(source: string, selectorList: CssCstNode): readonly Se
     branches.push({
       key,
       display: selectorDisplay(source, start, end),
-      span: child.span
+      span: child.span,
+      node: child
     });
   }
   return branches;
@@ -3804,7 +3814,8 @@ function collectRuleSelectorBranches(source: string, selector: CssCstNode): Sele
         branches.push({
           key,
           display: selectorDisplay(source, start, end),
-          span: node.span
+          span: node.span,
+          node
         });
       }
       return;
@@ -3817,6 +3828,92 @@ function collectRuleSelectorBranches(source: string, selector: CssCstNode): Sele
   };
   visit(selector);
   return branches;
+}
+
+function specificityLabel(specificity: SelectorSpecificity): string {
+  return `${specificity.a},${specificity.b},${specificity.c}`;
+}
+
+function staticSelectorSpecificity(source: string, branch: CssCstNode): SelectorSpecificity | null {
+  const start = absoluteStart(branch);
+  const end = absoluteEnd(branch);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return null;
+  }
+  const text = source.slice(start, end);
+  if (hasDynamicSyntax(text)) {
+    return null;
+  }
+
+  let a = 0;
+  let b = 0;
+  let c = 0;
+  let supported = true;
+  const visit = (node: CssCstNode) => {
+    if (!supported) {
+      return;
+    }
+    const nodeStart = absoluteStart(node);
+    const nodeEnd = absoluteEnd(node);
+    if (!Number.isFinite(nodeStart) || !Number.isFinite(nodeEnd) || nodeEnd <= nodeStart) {
+      supported = false;
+      return;
+    }
+    if (PSEUDO_SELECTOR_TYPES.has(node.grammarType)) {
+      const pseudoText = source.slice(nodeStart, nodeEnd);
+      const pseudo = pseudoNameSpan(source, nodeStart, nodeEnd);
+      if (pseudo === null) {
+        supported = false;
+        return;
+      }
+      if (pseudoText.includes('(')) {
+        supported = false;
+        return;
+      }
+      if (pseudo.colonCount === 2 || LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS.has(pseudo.bare.toLowerCase())) {
+        c++;
+      } else {
+        b++;
+      }
+      return;
+    }
+    if (ATTRIBUTE_SELECTOR_TYPES.has(node.grammarType)) {
+      b++;
+      return;
+    }
+    if (BASIC_SELECTOR_TYPES.has(node.grammarType)) {
+      const raw = basicSelectorText(source, node)?.trim();
+      if (raw === undefined || raw.length === 0) {
+        supported = false;
+        return;
+      }
+      if (raw === '*') {
+        return;
+      }
+      const first = raw.charCodeAt(0);
+      if (first === 35 /* # */) {
+        a++;
+        return;
+      }
+      if (first === 46 /* . */ || first === 91 /* [ */) {
+        b++;
+        return;
+      }
+      if (first === 38 /* & */) {
+        supported = false;
+        return;
+      }
+      c++;
+      return;
+    }
+    for (const child of cstChildrenOf(node)) {
+      if (isCstNode(child)) {
+        visit(child);
+      }
+    }
+  };
+  visit(branch);
+  return supported ? { a, b, c } : null;
 }
 
 function exactExtendTargetFact(source: string, target: CssCstNode): ExactExtendTargetFact | null {
@@ -4993,6 +5090,17 @@ export function cstLintDiagnostics(
         const branches = selectorBranches(source, selectorList);
         const seenBranches = new Map<string, SelectorSeen>();
         for (const branch of branches) {
+          const specificity = branch.node === undefined ? null : staticSelectorSpecificity(source, branch.node);
+          if (specificity !== null) {
+            const label = specificityLabel(specificity);
+            push(
+              LINT_CODES.selectorMaxSpecificity,
+              'warning',
+              `Selector specificity is "${label}"`,
+              branch.span,
+              [`specificity:${label}`]
+            );
+          }
           const previous = seenBranches.get(branch.key);
           if (previous !== undefined) {
             push(

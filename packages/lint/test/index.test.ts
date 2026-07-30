@@ -75,6 +75,7 @@ describe('stable rule set', () => {
       LINT_CODES.unknownTypeSelectors,
       LINT_CODES.selectorMaxId,
       LINT_CODES.selectorMaxUniversal,
+      LINT_CODES.selectorMaxSpecificity,
       LINT_CODES.incompatibleMathFunctionUnits,
       LINT_CODES.invalidColorFunctionChannels,
       LINT_CODES.invalidTypedCustomPropertyRegistration,
@@ -146,6 +147,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownTypeSelectors,
       LINT_RULE_NAMES.selectorMaxId,
       LINT_RULE_NAMES.selectorMaxUniversal,
+      LINT_RULE_NAMES.selectorMaxSpecificity,
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.invalidColorFunctionChannels,
       LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
@@ -162,7 +164,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(57);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(58);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]).toBe('warn');
@@ -178,6 +180,7 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.importStatement]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorMaxId]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.selectorMaxSpecificity]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorClassPattern]).toBe('off');
@@ -263,6 +266,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.shadowedTokens]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxId]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxSpecificity]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedMixins]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedFunctions]).toBe('off');
@@ -1525,6 +1529,59 @@ describe('lintText', () => {
 
     expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
       [LINT_CODES.selectorMaxUniversal, LINT_RULE_NAMES.selectorMaxUniversal, 'error']
+    ]);
+  });
+
+  it('keeps selector specificity policy opt-in and filters by max option', async () => {
+    const input = {
+      source: [
+        '#app .card[data-x]:hover > button { color: red; }',
+        '.card { color: blue; }'
+      ].join('\n'),
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.selectorMaxSpecificity
+    );
+
+    const configuredWithoutMax = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.selectorMaxSpecificity]: 'error'
+          }
+        }
+      }
+    });
+
+    expect(configuredWithoutMax.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.selectorMaxSpecificity
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.selectorMaxSpecificity]: ['error', { max: '0,2,0' }]
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [
+      diagnostic.code,
+      diagnostic.ruleName,
+      diagnostic.severity,
+      input.source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      [
+        LINT_CODES.selectorMaxSpecificity,
+        LINT_RULE_NAMES.selectorMaxSpecificity,
+        'error',
+        '#app .card[data-x]:hover > button'
+      ]
     ]);
   });
 

@@ -1655,6 +1655,28 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports static selector specificity facts for opt-in policy surfaces', () => {
+    const source = [
+      '#app .card[data-x]:hover > button::before { color: red; }',
+      ':not(#skipped) { color: blue; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const specificity = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.selectorMaxSpecificity
+    );
+
+    expect(specificity.map(diagnostic => [
+      diagnostic.message,
+      diagnostic.qualifiers ?? [],
+      source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      ['Selector specificity is "1,3,2"', ['specificity:1,3,2'], '#app .card[data-x]:hover > button::before']
+    ]);
+  });
+
   it('reports duplicate CSS selectors with Stylelint default scoping', () => {
     const source = '.a, .b, .a { color: red; }\n'
       + '.a, .b { color: red; }\n'
@@ -1700,6 +1722,8 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxId)).toBe(false);
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxUniversal)).toBe(false);
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxUniversal)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxSpecificity)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.selectorMaxSpecificity)).toBe(false);
   });
 
   it('reports unknown CSS declaration functions', () => {

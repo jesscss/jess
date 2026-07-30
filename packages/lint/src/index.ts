@@ -202,6 +202,43 @@ function notationRuleOption(options: LintRuleOptions | undefined): string | null
   return typeof options?.notation === 'string' ? options.notation : null;
 }
 
+type SpecificityTuple = readonly [number, number, number];
+
+function parseSpecificity(value: unknown): SpecificityTuple | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const parts = value.split(',');
+  if (parts.length !== 3) {
+    return null;
+  }
+  const numbers = parts.map(part => Number(part.trim()));
+  return numbers.every(number => Number.isInteger(number) && number >= 0)
+    ? [numbers[0]!, numbers[1]!, numbers[2]!]
+    : null;
+}
+
+function specificityFromDiagnostic(diagnostic: SourceDiagnostic): SpecificityTuple | null {
+  for (const qualifier of diagnostic.qualifiers ?? []) {
+    if (qualifier.startsWith('specificity:')) {
+      return parseSpecificity(qualifier.slice('specificity:'.length));
+    }
+  }
+  return null;
+}
+
+function maxSpecificityRuleOption(options: LintRuleOptions | undefined): SpecificityTuple | null {
+  return parseSpecificity(options?.max) ?? parseSpecificity(options?.maxSpecificity);
+}
+
+function specificityAllowed(actual: SpecificityTuple, max: SpecificityTuple): boolean {
+  return actual[0] < max[0]
+    || (actual[0] === max[0] && (
+      actual[1] < max[1]
+      || (actual[1] === max[1] && actual[2] <= max[2])
+    ));
+}
+
 function isAngleNotation(value: string): boolean {
   const lower = value.toLowerCase();
   return lower.endsWith('deg')
@@ -256,6 +293,11 @@ function shouldSuppressByRuleOptions(
   }
   if (diagnostic.code === LINT_CODES.emptyRules && hasQualifier(diagnostic, 'mixin-body')) {
     return !includesRuleOption(options, 'mixins');
+  }
+  if (diagnostic.code === LINT_CODES.selectorMaxSpecificity) {
+    const actual = specificityFromDiagnostic(diagnostic);
+    const max = maxSpecificityRuleOption(options);
+    return actual === null || max === null || specificityAllowed(actual, max);
   }
   const patternTarget = patternRuleTarget(diagnostic, source);
   if (patternTarget !== null) {

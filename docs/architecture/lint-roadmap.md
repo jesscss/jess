@@ -34,6 +34,24 @@ CST entrypoints may opt into line tracking and metadata checks; ordinary parser
 and compiler entrypoints should remain offset-only and diagnostics-free unless a
 caller explicitly asks for diagnostics.
 
+## Editor message categories
+
+Jess should cover the same kinds of stylesheet author messages that Microsoft's
+CSS/Less/SCSS extension surfaces, while allowing richer TypeScript-style
+presentation for hovers and completions:
+
+| Message family | Jess direction |
+| --- | --- |
+| CSS symbol information | Use `@vscode/web-custom-data` for properties, at-rules, descriptors, pseudos, functions, media features, browser notes, and syntax summaries. |
+| Validity diagnostics | Share diagnostics-core checks for unknown/deprecated properties, values, at-rules, descriptors, units, functions, pseudos, media features, color arguments, selectors, and typed custom properties. |
+| Browser/compatibility advice | Surface VSCode-equivalent vendor prefix, compatible prefix, unknown vendor property, `@import`, box-model, float, and display/property interaction messages through shared diagnostics. |
+| Document navigation | Keep CST-owned symbols, definitions, references, document highlights, folding, selection ranges, and links in the language service. |
+| Authoring help | Prefer TypeScript-like rich completion and hover details: concise labels, typed/syntax detail, Markdown docs, examples where useful, color swatches, selector specificity, and Jess symbol definitions. |
+
+Microsoft parity is a coverage floor, not a UX ceiling. If a VSCode message is
+weakly formatted, Jess should keep the same diagnostic category but present it
+with clearer wording, better metadata, and richer editor affordances.
+
 ## Current packages and commands
 
 | Surface | Current role |
@@ -126,6 +144,7 @@ of matched benchmark mode until its behavior is comparable enough.
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | Stylelint-near |
 | `selector-max-id` | `lint/selector-max-id` | Stylelint-near, opt-in |
 | `selector-max-universal` | `lint/selector-max-universal` | Stylelint-near, opt-in |
+| `selector-max-specificity` | `lint/selector-max-specificity` | Stylelint-near, opt-in |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess-only value diagnostic |
 | `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode-equivalent |
 | `jess/no-invalid-typed-custom-property-registration` | `lint/invalid-typed-custom-property-registration` | Jess-only CSS validity diagnostic |
@@ -268,7 +287,7 @@ can detect over authored source.
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
 | Landed | Selector vendor prefixes | `selector-no-vendor-prefix` | Opt-in Stylelint-named lint rule backed by `lint/selector-no-vendor-prefix` for authored CSS vendor-prefixed pseudo-class and pseudo-element selectors. |
 | Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
-| Landed | Selector policy | `selector-max-id`, `selector-max-universal` | Opt-in VSCode `idSelector` and `universalSelector` parity surfaced under Stylelint names; the initial subset reports any static CSS ID or universal selector as max-0. |
+| Landed | Selector policy | `selector-max-id`, `selector-max-universal`, `selector-max-specificity` | Opt-in VSCode `idSelector` and `universalSelector` parity plus Stylelint-named specificity policy. Specificity accepts `max` or `maxSpecificity` in `a,b,c` form and only reports static CSS selector branches; functional pseudo specificity remains future selector-facts work. |
 | Landed | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Opt-in Stylelint-named lint rules backed by static authored name diagnostics. CLI and language-service configuration require a secondary `pattern` option; matching names are suppressed by policy. |
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
 | Landed | Gradient directions | `function-linear-gradient-no-nonstandard-direction` | Flags old side-or-corner direction syntax and unitless numeric directions in CSS `linear-gradient()` / `repeating-linear-gradient()` calls. |
