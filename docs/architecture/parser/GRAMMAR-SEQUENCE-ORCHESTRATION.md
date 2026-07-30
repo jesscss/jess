@@ -5117,6 +5117,14 @@ for unchanged static syntax. Verify with the Jess AST/CST/macro/compose suite,
 then `pnpm --filter @jesscss/jess-parser build`, `pnpm run check:macro`, and
 `pnpm run verify:compose-integrity`.
 
+SCSS query-list separator cleanup, 2026-07-30: `QueryPrelude` now uses
+`oneOrMoreSep(QueryClause, ',')`, matching the CSS list shape. The deleted
+`QueryPreludeTail` was a temporary CST/AST wrapper that only threw away its
+comma; it was not a semantic production or a dialect extension. `QueryClause`
+and all SCSS-specific query terms remain unchanged. Verify with the SCSS
+AST/CST/public/macro/compose suite, then the parser build, `check:macro`, and
+`verify:compose-integrity`. No speed claim.
+
 SCSS selector-pseudo single-parse cleanup, 2026-07-29: the selector-argument
 pseudo route no longer scans a raw `PseudoSelectorArgumentText*` preflight and
 then reparses the same source as `SelectorOnlyPseudoArgument`. `StructuredPseudo`

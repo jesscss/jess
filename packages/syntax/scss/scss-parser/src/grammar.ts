@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, choice, composeLeaf, dispatch, endsWith, expect, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { balanced, choice, composeLeaf, dispatch, endsWith, expect, literal, makeWhen, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -122,7 +122,6 @@ type ScssRules = {
   QueryInParens: Combinator<ValueNode>;
   QueryCondition: Combinator<ValueNode>;
   QueryClause: Combinator<ValueNode>;
-  QueryPreludeTail: Combinator<ValueNode>;
   QueryPrelude: Combinator<ValueNode>;
   SupportsAtom: Combinator<ValueNode>;
   SupportsGeneralTemplate: Combinator<Interpolation>;
@@ -3400,22 +3399,13 @@ export const scssFactory = (g: ScssInputRules) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const QueryPreludeTail = node<ValueNode>(
-    'QueryPreludeTail',
-    sequence(
-      literal(','),
-      g.QueryClause
-    ),
-    children => requireValue(children[1])
-  );
+
+  /* CSS owns this unchanged comma-separated query-list frame. */
   const QueryPrelude = node<ValueNode>(
     'QueryPrelude',
-    sequence(
-      g.QueryClause,
-      many(g.QueryPreludeTail)
-    ),
+    oneOrMoreSep(g.QueryClause, literal(',')),
     (children) => {
-      const values = children.map(requireValue);
+      const values = children.filter(isValue);
       return values.length === 1
         ? values[0]!
         : list(
@@ -5062,7 +5052,6 @@ export const scssFactory = (g: ScssInputRules) => {
     QueryInParens,
     QueryCondition,
     QueryClause,
-    QueryPreludeTail,
     QueryPrelude,
     SupportsAtom,
     SupportsGeneralTemplate,
