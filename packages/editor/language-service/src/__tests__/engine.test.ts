@@ -1056,6 +1056,26 @@ describe('JessLanguageServiceEngine', () => {
         ]);
       });
 
+      it('keeps descending specificity diagnostics opt-in and accepts the lint rule name alias', () => {
+        const source = '.a .b { color: red; }\n.b { color: blue; }';
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/no-descending-specificity');
+
+        const configured = createEngine();
+        configured.configure(sevCfg(LINT_RULE_NAMES.noDescendingSpecificity, 'warning'));
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const diagnostic = configured.getDiagnostics(configuredDoc.uri).find(d =>
+          d.code === 'lint/no-descending-specificity'
+        );
+
+        expect(diagnostic?.severity).toBe(2);
+        expect(diagnostic?.message).toBe('Expected selector ".b" to come before selector ".a .b", at line 1');
+      });
+
       it('keeps vendor-prefixed selector, media feature, and value diagnostics opt-in', () => {
         const source = [
           '.a::-webkit-scrollbar { color: red; }',

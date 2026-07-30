@@ -254,6 +254,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `selector-max-id` | `lint/selector-max-id` | near `selector-max-id`, opt-in |
 | `selector-max-universal` | `lint/selector-max-universal` | near `selector-max-universal`, opt-in |
 | `selector-max-specificity` | `lint/selector-max-specificity` | near `selector-max-specificity`, opt-in |
+| `no-descending-specificity` | `lint/no-descending-specificity` | near `no-descending-specificity`, opt-in |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess value diagnostic |
 | `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode `argumentsInColorFunction` parity |
 | `jess/no-invalid-typed-custom-property-registration` | `lint/invalid-typed-custom-property-registration` | Jess CSS validity diagnostic |

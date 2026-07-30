@@ -147,6 +147,7 @@ of matched benchmark mode until its behavior is comparable enough.
 | `selector-max-id` | `lint/selector-max-id` | Stylelint-near, opt-in |
 | `selector-max-universal` | `lint/selector-max-universal` | Stylelint-near, opt-in |
 | `selector-max-specificity` | `lint/selector-max-specificity` | Stylelint-near, opt-in |
+| `no-descending-specificity` | `lint/no-descending-specificity` | Stylelint-near, opt-in |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess-only value diagnostic |
 | `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode-equivalent |
 | `jess/no-invalid-typed-custom-property-registration` | `lint/invalid-typed-custom-property-registration` | Jess-only CSS validity diagnostic |
@@ -291,6 +292,7 @@ can detect over authored source.
 | Landed | Selector vendor prefixes | `selector-no-vendor-prefix` | Opt-in Stylelint-named lint rule backed by `lint/selector-no-vendor-prefix` for authored CSS vendor-prefixed pseudo-class and pseudo-element selectors. |
 | Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
 | Landed | Selector policy | `selector-max-id`, `selector-max-universal`, `selector-max-specificity` | Opt-in VSCode `idSelector` and `universalSelector` parity plus Stylelint-named specificity policy. Specificity accepts `max` or `maxSpecificity` in `a,b,c` form and reports static CSS selector branches, including structural selector arguments for `:is()`, `:not()`, `:has()`, `:where()`, and `:nth-* of ...`. |
+| Landed | Selector ordering | `no-descending-specificity` | Opt-in Stylelint-named rule for static CSS selector branches that target the same final compound selector in one parent context. Nested dialect selector resolution remains future selector-facts work. |
 | Landed | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Opt-in Stylelint-named lint rules backed by static authored name diagnostics. CLI and language-service configuration require a secondary `pattern` option; matching names are suppressed by policy. |
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
 | Landed | Gradient directions | `function-linear-gradient-no-nonstandard-direction` | Flags old side-or-corner direction syntax and unitless numeric directions in CSS `linear-gradient()` / `repeating-linear-gradient()` calls. |

@@ -77,6 +77,7 @@ describe('stable rule set', () => {
       LINT_CODES.selectorMaxId,
       LINT_CODES.selectorMaxUniversal,
       LINT_CODES.selectorMaxSpecificity,
+      LINT_CODES.noDescendingSpecificity,
       LINT_CODES.incompatibleMathFunctionUnits,
       LINT_CODES.invalidColorFunctionChannels,
       LINT_CODES.invalidTypedCustomPropertyRegistration,
@@ -150,6 +151,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.selectorMaxId,
       LINT_RULE_NAMES.selectorMaxUniversal,
       LINT_RULE_NAMES.selectorMaxSpecificity,
+      LINT_RULE_NAMES.noDescendingSpecificity,
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.invalidColorFunctionChannels,
       LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
@@ -166,7 +168,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(59);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(60);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]).toBe('warn');
@@ -184,6 +186,7 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.selectorMaxId]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorMaxSpecificity]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.noDescendingSpecificity]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorClassPattern]).toBe('off');
@@ -271,6 +274,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxId]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxSpecificity]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.noDescendingSpecificity]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedMixins]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedFunctions]).toBe('off');
@@ -1654,6 +1658,42 @@ describe('lintText', () => {
         LINT_RULE_NAMES.selectorMaxSpecificity,
         'error',
         ':is(.card, #hero) .item'
+      ]
+    ]);
+  });
+
+  it('keeps descending specificity policy opt-in by lint rule name', async () => {
+    const input = {
+      source: '.a .b { color: red; }\n.b { color: blue; }',
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.noDescendingSpecificity
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.noDescendingSpecificity]: 'error'
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [
+      diagnostic.code,
+      diagnostic.ruleName,
+      diagnostic.severity,
+      input.source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      [
+        LINT_CODES.noDescendingSpecificity,
+        LINT_RULE_NAMES.noDescendingSpecificity,
+        'error',
+        '.b'
       ]
     ]);
   });

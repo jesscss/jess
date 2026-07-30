@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 59;
+export const STABLE_LINT_RULE_SET_VERSION = 60;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -64,6 +64,7 @@ export const LINT_RULE_NAMES = {
   selectorMaxId: 'selector-max-id',
   selectorMaxUniversal: 'selector-max-universal',
   selectorMaxSpecificity: 'selector-max-specificity',
+  noDescendingSpecificity: 'no-descending-specificity',
   incompatibleMathFunctionUnits: 'jess/no-incompatible-math-function-units',
   invalidColorFunctionChannels: 'color-function-no-invalid-arguments',
   invalidTypedCustomPropertyRegistration: 'jess/no-invalid-typed-custom-property-registration',
@@ -156,6 +157,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.selectorMaxId]: LINT_CODES.selectorMaxId,
   [LINT_RULE_NAMES.selectorMaxUniversal]: LINT_CODES.selectorMaxUniversal,
   [LINT_RULE_NAMES.selectorMaxSpecificity]: LINT_CODES.selectorMaxSpecificity,
+  [LINT_RULE_NAMES.noDescendingSpecificity]: LINT_CODES.noDescendingSpecificity,
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: LINT_CODES.incompatibleMathFunctionUnits,
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: LINT_CODES.invalidColorFunctionChannels,
   [LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]: LINT_CODES.invalidTypedCustomPropertyRegistration,
@@ -230,6 +232,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.selectorMaxId]: LINT_RULE_NAMES.selectorMaxId,
   [LINT_CODES.selectorMaxUniversal]: LINT_RULE_NAMES.selectorMaxUniversal,
   [LINT_CODES.selectorMaxSpecificity]: LINT_RULE_NAMES.selectorMaxSpecificity,
+  [LINT_CODES.noDescendingSpecificity]: LINT_RULE_NAMES.noDescendingSpecificity,
   [LINT_CODES.incompatibleMathFunctionUnits]: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
   [LINT_CODES.invalidColorFunctionChannels]: LINT_RULE_NAMES.invalidColorFunctionChannels,
   [LINT_CODES.invalidTypedCustomPropertyRegistration]: LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration,
@@ -304,6 +307,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.selectorMaxId]: 'off',
   [LINT_RULE_NAMES.selectorMaxUniversal]: 'off',
   [LINT_RULE_NAMES.selectorMaxSpecificity]: 'off',
+  [LINT_RULE_NAMES.noDescendingSpecificity]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'warn',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'error',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]: 'warn',
@@ -386,6 +390,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.selectorMaxId]: 'off',
   [LINT_RULE_NAMES.selectorMaxUniversal]: 'off',
   [LINT_RULE_NAMES.selectorMaxSpecificity]: 'off',
+  [LINT_RULE_NAMES.noDescendingSpecificity]: 'off',
   [LINT_RULE_NAMES.unusedVariables]: 'off',
   [LINT_RULE_NAMES.unusedMixins]: 'off',
   [LINT_RULE_NAMES.unusedFunctions]: 'off',
@@ -948,7 +953,17 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'off',
     comparison: 'stylelint-near',
     stylelintRule: 'selector-max-specificity',
-    notes: 'Opt-in Stylelint-named rule for static CSS selector branches. Configure with max: "a,b,c" or maxSpecificity: "a,b,c"; functional pseudo specificity stays future selector-facts work.'
+    notes: 'Opt-in Stylelint-named rule for static CSS selector branches. Configure with max: "a,b,c" or maxSpecificity: "a,b,c"; functional pseudo specificity is included where the diagnostic CST exposes selector arguments.'
+  },
+  {
+    diagnosticCode: LINT_CODES.noDescendingSpecificity,
+    ruleName: LINT_RULE_NAMES.noDescendingSpecificity,
+    title: 'Descending selector specificity',
+    tier: 'maintainability',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'no-descending-specificity',
+    notes: 'Opt-in Stylelint-named rule for static CSS selector branches that target the same final compound selector in the same parent context. Dialect nested selector resolution remains future selector-facts work.'
   },
   {
     diagnosticCode: LINT_CODES.incompatibleMathFunctionUnits,

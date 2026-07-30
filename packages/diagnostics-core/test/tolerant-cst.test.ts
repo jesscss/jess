@@ -1725,6 +1725,41 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports descending specificity for static CSS selectors in the same parent context', () => {
+    const source = [
+      '.a .b { color: red; }',
+      '.b { color: blue; }',
+      '.c .b:hover { color: green; }',
+      '.b::before { color: purple; }',
+      '.container .card { }',
+      '.card { color: orange; }',
+      '@media screen { #x .item { color: red; } .item { color: blue; } }',
+      '@supports (display: grid) { .item { color: green; } }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const descending = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.noDescendingSpecificity
+    );
+    const plainBStart = source.indexOf('.b { color: blue');
+    const mediaItemStart = source.indexOf('.item { color: blue');
+
+    expect(descending.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Expected selector ".b" to come before selector ".a .b", at line 1',
+        plainBStart,
+        plainBStart + '.b'.length
+      ],
+      [
+        'Expected selector ".item" to come before selector "#x .item", at line 7',
+        mediaItemStart,
+        mediaItemStart + '.item'.length
+      ]
+    ]);
+  });
+
   it('reports duplicate CSS selectors with Stylelint default scoping', () => {
     const source = '.a, .b, .a { color: red; }\n'
       + '.a, .b { color: red; }\n'

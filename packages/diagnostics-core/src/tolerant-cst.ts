@@ -71,6 +71,7 @@ export const LINT_CODES = {
   selectorMaxId: 'lint/selector-max-id',
   selectorMaxUniversal: 'lint/selector-max-universal',
   selectorMaxSpecificity: 'lint/selector-max-specificity',
+  noDescendingSpecificity: 'lint/no-descending-specificity',
   unmatchableAnbSelectors: 'lint/selector-anb-no-unmatchable',
   duplicateSelectors: 'lint/no-duplicate-selectors',
   incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
@@ -438,6 +439,7 @@ type VisitContext = {
   readonly inIgnoredTypeSelectorPseudo: boolean;
   readonly allowResolutionXUnit: boolean;
   readonly selectorLists: Map<string, SelectorSeen>;
+  readonly descendingSpecificity: Map<string, DescendingSpecificitySeen[]>;
   readonly variableScope: VariableScope;
 };
 
@@ -565,6 +567,12 @@ type SelectorSpecificity = {
   readonly a: number;
   readonly b: number;
   readonly c: number;
+};
+
+type DescendingSpecificitySeen = {
+  readonly display: string;
+  readonly specificity: SelectorSpecificity;
+  readonly line: number;
 };
 
 type AnimationNameReference = {
@@ -3851,6 +3859,21 @@ function selectorListKey(branches: readonly SelectorBranchFact[]): string {
   return branches.map(branch => branch.key).sort().join('\n');
 }
 
+function rulesetContainsCascadeDeclaration(node: CssCstNode): boolean {
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (DECLARATION_TYPES.has(child.grammarType) || CUSTOM_DECLARATION_TYPES.has(child.grammarType)) {
+      return true;
+    }
+    if (ATRULE_TYPES.has(child.grammarType) && rulesetContainsCascadeDeclaration(child)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function collectRuleSelectorBranches(source: string, selector: CssCstNode): SelectorBranchFact[] {
   const branches: SelectorBranchFact[] = [];
   const visit = (node: CssCstNode) => {
@@ -3878,8 +3901,59 @@ function collectRuleSelectorBranches(source: string, selector: CssCstNode): Sele
   return branches;
 }
 
+function lastCompoundSelectorNode(node: CssCstNode): CssCstNode | null {
+  let found: CssCstNode | null = node.grammarType === 'CompoundSelector' ? node : null;
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    const nested = lastCompoundSelectorNode(child);
+    if (nested !== null) {
+      found = nested;
+    }
+  }
+  return found;
+}
+
+function noDescendingSpecificityReferenceKey(source: string, branch: CssCstNode): string | null {
+  const compound = lastCompoundSelectorNode(branch);
+  if (compound === null) {
+    return null;
+  }
+  let reference = '';
+  for (const child of cstChildrenOf(compound)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (PSEUDO_SELECTOR_TYPES.has(child.grammarType)) {
+      const start = absoluteStart(child);
+      const end = absoluteEnd(child);
+      const pseudo = pseudoNameSpan(source, start, end);
+      if (pseudo === null) {
+        return null;
+      }
+      const bare = pseudo.bare.toLowerCase();
+      if (pseudo.colonCount !== 2 && !LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS.has(bare)) {
+        continue;
+      }
+    }
+    reference += normalizedSelectorText(source, absoluteStart(child), absoluteEnd(child));
+  }
+  return reference.length === 0 ? null : reference;
+}
+
 function specificityLabel(specificity: SelectorSpecificity): string {
   return `${specificity.a},${specificity.b},${specificity.c}`;
+}
+
+function compareSpecificity(left: SelectorSpecificity, right: SelectorSpecificity): number {
+  if (left.a !== right.a) {
+    return left.a - right.a;
+  }
+  if (left.b !== right.b) {
+    return left.b - right.b;
+  }
+  return left.c - right.c;
 }
 
 function addSpecificity(left: SelectorSpecificity, right: SelectorSpecificity): SelectorSpecificity {
@@ -5202,6 +5276,7 @@ export function cstLintDiagnostics(
       inIgnoredTypeSelectorPseudo: context.inIgnoredTypeSelectorPseudo || (gt === 'PseudoSelector' && ignoresTypeSelectorsInPseudo(source, start, end)),
       allowResolutionXUnit: context.allowResolutionXUnit || isImageSetFunction || declarationName === 'image-resolution',
       selectorLists: context.selectorLists,
+      descendingSpecificity: context.descendingSpecificity,
       variableScope: context.variableScope
     };
 
@@ -5210,6 +5285,7 @@ export function cstLintDiagnostics(
       if (selectorList !== undefined) {
         const branches = selectorBranches(source, selectorList);
         const seenBranches = new Map<string, SelectorSeen>();
+        const canCompareDescendingSpecificity = rulesetContainsCascadeDeclaration(node);
         for (const branch of branches) {
           const specificity = branch.node === undefined ? null : staticSelectorSpecificity(source, branch.node);
           if (specificity !== null) {
@@ -5221,6 +5297,36 @@ export function cstLintDiagnostics(
               branch.span,
               [`specificity:${label}`]
             );
+            const referenceKey = canCompareDescendingSpecificity
+              ? noDescendingSpecificityReferenceKey(source, branch.node)
+              : null;
+            if (referenceKey !== null) {
+              const priorSelectors = nodeContext.descendingSpecificity.get(referenceKey);
+              if (priorSelectors === undefined) {
+                nodeContext.descendingSpecificity.set(referenceKey, [{
+                  display: branch.display,
+                  specificity,
+                  line: branch.span.startLine ?? 1
+                }]);
+              } else {
+                for (const prior of priorSelectors) {
+                  if (compareSpecificity(specificity, prior.specificity) < 0) {
+                    push(
+                      LINT_CODES.noDescendingSpecificity,
+                      'warning',
+                      `Expected selector "${branch.display}" to come before selector "${prior.display}", at line ${prior.line}`,
+                      branch.span
+                    );
+                    break;
+                  }
+                }
+                priorSelectors.push({
+                  display: branch.display,
+                  specificity,
+                  line: branch.span.startLine ?? 1
+                });
+              }
+            }
           }
           const previous = seenBranches.get(branch.key);
           if (previous !== undefined) {
@@ -6042,6 +6148,7 @@ export function cstLintDiagnostics(
       ? {
           ...nodeContext,
           selectorLists: new Map(),
+          descendingSpecificity: new Map(),
           variableScope: createChildVariableScope(context.variableScope)
         }
       : nodeContext;
@@ -6270,6 +6377,7 @@ export function cstLintDiagnostics(
   visit(root, {
     ...ROOT_VISIT_CONTEXT_BASE,
     selectorLists: new Map(),
+    descendingSpecificity: new Map(),
     variableScope: {
       declarations: new Map(),
       parent: null
