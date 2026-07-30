@@ -743,71 +743,58 @@ other three dialects. A `css-parser` change is partly covered by the Less oracle
 because Less composes on the CSS base; say plainly which surfaces you actually
 hashed rather than implying full coverage.
 
-### The drift gate
+### The drift gate — the CSS implementation
 
-Step 3 above is relative: it compares a commit to the commit before it. That is
-structurally blind to gradual decay. `+2%` is inside the noise band, gets
-labelled inconclusive, lands, and becomes the new reference; eight of those is
-`+17%` that nobody ever gated. Relative gating cannot catch this, because every
-individual step is honestly inconclusive.
+The shape required above exists for CSS. It is not yet wired into CI or a hook;
+that is the owner's call.
 
-The fix is an **absolute committed baseline expressed as a ratio against an
-in-run comparator**. Absolute milliseconds are not portable — they encode the
-machine. A ratio measured in the same process against a fixed comparator
-cancels machine speed, so one committed number is meaningful on a laptop and on
-CI alike.
-
-The comparator is **PostCSS**, on the corpus from its own upstream stylesheet
-parsing benchmark, `postcss/benchmark`'s `parsers.js`.
-
-- harness: `packages/syntax/css/css-parser/test/postcss-parse-bar.mjs`
-  (`pnpm --filter @jesscss/css-parser bar:postcss`)
+- harness and gate: `packages/syntax/css/css-parser/test/postcss-parse-bar.mjs`
+  (`pnpm --filter @jesscss/css-parser bar:postcss`, `bar:postcss:gate`)
 - committed baseline: `postcss-parse-bar.baseline.json` beside it
-- gate: the same script with `--gate`; exit `1` = breach, `3` = the run's own
-  measured noise floor was too high for the result to mean anything (re-run —
-  that is not a pass and not a failure of the change)
+- exit codes: `0` pass, `1` breach, `2` usage, `3` the run's own measured noise
+  floor was too high for the result to mean anything — re-run; that is neither
+  a pass nor a failure of the change
 
-**One process is not a measurement.** Gate and baseline runs fold the median
-across five independent processes (`--runs`). This is not belt-and-braces: the
-identical-case noise floor inside a single process measures 1.5–5.2%, but the
-same case's ratio moved 12.9% *across* clean processes with no source change,
-and a single-process gate went red on an unmodified tree. Gating one process
-needs a ~13% ceiling, which is loose enough to swallow a real regression; the
-fold buys an 8% ceiling back. Two consecutive folded gate runs on an unmodified
-tree landed within −5.8%…+2.2% of the recorded ratios.
+The comparator is PostCSS as `parsers.js` calls it,
+`postcss.parse(source, { from }).toResult()`, loaded from a `postcss/benchmark`
+checkout so the comparator version is tied to that lockfile. The corpus is the
+same benchmark's `cache/bootstrap.css`, pinned in the baseline by SHA-256; a
+changed corpus fails the gate rather than silently rebasing the ratios. An
+in-repo fixture is a second case so the bar still runs without the upstream
+checkout.
 
-The run also measures its own noise floor, by sampling two *identical* PostCSS
-cases as separate interleaved cases. Their disagreement is this machine's floor
-right now, rather than a number quoted from an older investigation. A run that
-exceeds the floor limit cannot pass the gate and cannot be written as a
-baseline — a contaminated run once inflated every median by ~1.8×, and it is the
-self-measured floor that caught it.
-
-**PostCSS parses much less structure than Jess does, and Jess should aim to beat
-it regardless.** Describe that structural difference so the number is
-interpretable — never adjust the score by it. There is no structure-adjusted
-figure, no handicap, no asterisk. The reported ratio is wall-clock on identical
-bytes. If Jess is slower, the ratio is above 1 and that is the target to close.
-
-Where the bar stands, measured at `d0439382d` (Node v24.11.1, darwin-arm64,
-`parseman@0.43.0`, `postcss@8.5.25`, corpus `postcss/benchmark@ddc1a86`):
-`jess-ast` is **1.35× PostCSS** on bootstrap and **1.65×** on the in-repo
-fixture; `jess-cst` is **3.10×** and **3.94×**. Jess loses on every case. It
-loses while producing 3.1× the typed nodes on the AST surface and roughly 24×
-the tree objects plus a full trivia log on the CST surface — that is context for
-why, not a defence, and not a discount applied to the number.
-
-Both Jess surfaces are named cases, per fixture, and are never collapsed into
-one. The recurring regression signature in this repo is "AST slower while CST is
+Named cases are fixture × surface, and the two Jess surfaces are never
+collapsed. The recurring regression signature here is "AST slower while CST is
 neutral or faster"; averaging the surfaces hides exactly the failure the gate
 exists to catch.
 
-**Rebaselining requires owner sign-off.** Raising a ceiling because the gate is
-red is not a fix, and it is not an agent's call — without that rule an agent
-rebaselines the drift away and the ratchet is theatre. The harness refuses to
-write a baseline without a verbatim sign-off recorded in the file, so an
-unauthorised loosening is visible in review. Lowering a ceiling after a real win
-needs no permission.
+**One process is not a measurement.** Gate and baseline runs fold the median
+across five independent processes (`--runs`). The identical-case noise floor
+inside a single process measures 1.5–5.2%, but the same case's ratio moved
+12.9% *across* clean processes with no source change, and a single-process gate
+went red on an unmodified tree. Gating one process needs a ~13% ceiling, loose
+enough to swallow a real regression; the fold buys an 8% ceiling back. Two
+consecutive folded gate runs on an unmodified tree landed within −5.8%…+2.2%.
+
+The run measures its own noise floor rather than quoting an older
+investigation's: two *identical* PostCSS cases are sampled as separate
+interleaved cases, and their disagreement is this machine's floor right now. A
+run that exceeds the floor limit can neither pass the gate nor be written as a
+baseline — one contaminated run inflated every median by ~1.8×, and the
+self-measured floor is what caught it.
+
+The harness refuses to write a baseline without a verbatim owner sign-off
+recorded in the file, so an unauthorised loosening is visible in review.
+Lowering a ceiling after a real win needs no permission.
+
+**Where the bar stands** (Node v24.11.1, darwin-arm64, `parseman@0.43.0`,
+`postcss@8.5.25`, corpus `postcss/benchmark@ddc1a86`): `jess-ast` is **1.35×
+PostCSS** on bootstrap and **1.65×** on the in-repo fixture; `jess-cst` is
+**3.10×** and **3.94×**. Jess loses every case. It loses while producing 3.1×
+the typed nodes on the AST surface and roughly 24× the tree objects plus a full
+trivia log on the CST surface — measured counts are in the report under
+`fixtures[].produced`. That is context for reading the number, not a defence,
+and not a discount applied to it.
 
 ---
 
