@@ -4,12 +4,14 @@
  * CSS base: ../../../css/css-parser/src/grammar.ts
  *
  * Less adds and overrides:
- * - @variables, property variables, detached rulesets, mixins, guards, loops,
- *   plugin/import options, escaped strings, and dynamic selectors.
- * - Less-specific block and at-rule placement, including documented deviations
- *   from CSS ordering/nesting rules.
- * - Inline :extend(...) collection during selector parsing; selectors must not
- *   be reparsed to discover extends.
+ * - Language-specific features: @variables, property variables, detached
+ *   rulesets, mixins, guards, loops, plugin/import options, escaped strings,
+ *   and inline :extend(...). Extends are collected while parsing selectors
+ *   because reparsing selectors to discover them loses source ownership.
+ * - Expanded CSS shapes: dynamic/interpolated values, selectors, property
+ *   names, imports, and media/query terms where Less permits runtime data.
+ * - Less-specific placement: block and at-rule ordering/nesting deviations
+ *   that are documented Less behavior rather than generic CSS structure.
  *
  * Its structural `node(parser)` entries are consumed by the CST runner or by
  * parser-local AST reductions; core supplies neither a parse host nor a

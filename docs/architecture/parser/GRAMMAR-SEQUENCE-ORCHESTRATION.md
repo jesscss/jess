@@ -4152,8 +4152,10 @@ follow-up grammar-shape debt.
 Jess static-family name cleanup, 2026-07-29: the folded Jess grammar's static
 CSS subgrammar now uses semantic rule keys matching its public CST labels:
 `StaticQuoted`, `StaticValueAtom`, `StaticValue`, `StaticCallArgument`,
-`StaticCall`, `StaticAtQuery`, `StaticAtPrelude`, `StaticAtRuleHeader`,
-`StaticPropertyDescriptor`, `StaticPseudoArgument`, `StaticCompound`,
+`StaticCall`, `StaticAtQuery`, `StaticAtPrelude`, `StaticContainerName`,
+`StaticContainerQueryClause`, `StaticContainerQueryPrelude`,
+`StaticContainerPrelude`, `StaticAtRuleHeader`, `StaticPropertyDescriptor`,
+`StaticPseudoArgument`, `StaticCompound`,
 `StaticComplex`, and `StaticSelector` instead of `DirectJessStatic*`. `Static`
 is the real language boundary here: these productions admit the CSS-only static
 forms used inside Jess headers, captures, descriptors, and selectors, while

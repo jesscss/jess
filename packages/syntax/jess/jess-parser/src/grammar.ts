@@ -4,11 +4,15 @@
  * CSS base: ../../../css/css-parser/src/grammar.ts
  *
  * Jess adds and overrides:
- * - $variables, modules, apply/mixin constructs, guards, ranges, collections,
- *   boundary blocks, and Jess interpolation forms.
- * - Jess-specific expression and selector capture syntax.
+ * - Language-specific features: $variables, modules, apply/mixin constructs,
+ *   guards, ranges, collections, boundary blocks, declaration lookups, and
+ *   Jess interpolation forms.
+ * - Expanded CSS shapes: expression-bearing values, selector captures, static
+ *   CSS headers/descriptors that deliberately reject Jess runtime forms, and
+ *   the narrow dynamic at-rule/header leaves Jess actually supports.
  * - Jess is a sibling grammar over CSS/shared syntax; shared preprocessor
- *   constructs belong in parser-shared only after they prove real reuse.
+ *   constructs belong in parser-shared only after they prove real reuse, and
+ *   CSS structure stays CSS-owned unless Jess changes one specific subshape.
  *
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
@@ -150,6 +154,10 @@ type JessRules = {
   StaticAtDashedIdent: Combinator<Keyword>;
   StaticAtPreludeTerm: Combinator<ValueNode>;
   StaticAtPrelude: Combinator<ValueNode | null>;
+  StaticContainerName: Combinator<Keyword>;
+  StaticContainerQueryClause: Combinator<ValueNode>;
+  StaticContainerQueryPrelude: Combinator<ValueNode>;
+  StaticContainerPrelude: Combinator<ValueNode>;
   MediaPrelude: Combinator<ValueNode | null>;
   StaticAtRuleHeader: Combinator<AtRuleHeaderFact>;
   AtRuleHeader: Combinator<AtRuleHeaderFact>;
@@ -3695,6 +3703,70 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     }
   );
 
+  const containerNameReserved = keywords(
+    ['none'],
+    { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
+  );
+  const StaticContainerName = node<Keyword>(
+    'StaticContainerName',
+    sequence(
+      not(containerNameReserved),
+      g.Keyword
+    ),
+    children => requireKeyword(children.at(-1))
+  );
+  const StaticContainerQueryClause = node<ValueNode>(
+    'StaticContainerQueryClause',
+    sequence(
+      g.StaticAtQuery,
+      many(sequence(
+        g.CssSyntaxQueryAndOr,
+        g.StaticAtQuery
+      ))
+    ),
+    (children) => {
+      const values = children
+        .filter((child): child is Token | ValueNode => isToken(child) || isValueNode(child))
+        .map(child => isToken(child) ? keyword(child.value) : child);
+      return values.length === 1
+        ? values[0]!
+        : spaced(values);
+    }
+  );
+  const StaticContainerQueryPrelude = node<ValueNode>(
+    'StaticContainerQueryPrelude',
+    sequence(
+      g.StaticContainerQueryClause,
+      many(sequence(
+        literal(','),
+        g.StaticContainerQueryClause
+      ))
+    ),
+    (children) => {
+      const values = children.filter(isValueNode);
+      return values.length === 1
+        ? values[0]!
+        : list(
+            values,
+            ','
+          );
+    }
+  );
+  const StaticContainerPrelude = node<ValueNode>(
+    'StaticContainerPrelude',
+    choice(
+      sequence(
+        g.StaticContainerName,
+        optional(g.StaticContainerQueryPrelude)
+      ),
+      g.StaticContainerQueryPrelude
+    ),
+    (children) => {
+      const values = children.filter(isValueNode);
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
+  );
+
   /*
    * An at-rule prelude is an IDENTIFIER position, so its dynamic form is the
    * same `${…}` every other name position takes — no prelude-local spelling.
@@ -3717,11 +3789,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Every arm leads with a concrete `@`-first recognizer (no leading `not(...)`),
    * so the whole header — and the `AtRuleStatement`/`AtRuleBlock` that
    * wrap it — keeps a `{@}` first-set. That lets parseman fast-reject non-`@`
-   * statements at the leading char instead of entering this node frame and
-   * running the media/container lookaheads at every rule. The former arm-2
-   * `not(@media)` / `not(@container only)` guards are folded into the dedicated
-   * media/container arms plus the `media`/`container` exclusion in
-   * `genericAtRuleName`, preserving the exact accept/reject set.
+   * statements at the leading char instead of entering this node frame. Known
+   * block-only conditional at-rules stay out of the generic statement route;
+   * their block headers are owned by `AtRuleHeader`.
    */
   const StaticAtRuleHeader = node<AtRuleHeaderFact>(
     'StaticAtRuleHeader',
@@ -3732,11 +3802,6 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           literal('{'),
           literal(';')
         )),
-        g.StaticAtPrelude
-      ),
-      sequence(
-        g.CssSyntaxContainerAtKeyword,
-        not(g.CssSyntaxQueryOnly),
         g.StaticAtPrelude
       ),
       sequence(
@@ -3763,6 +3828,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.CssSyntaxMediaAtKeyword,
         not(literal('{')),
         g.MediaPrelude
+      ),
+      sequence(
+        g.CssSyntaxContainerAtKeyword,
+        g.StaticContainerPrelude
       ),
       g.StaticAtRuleHeader
     ),
@@ -5599,6 +5668,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     StaticAtDashedIdent,
     StaticAtPreludeTerm,
     StaticAtPrelude,
+    StaticContainerName,
+    StaticContainerQueryClause,
+    StaticContainerQueryPrelude,
+    StaticContainerPrelude,
     MediaPrelude,
     StaticAtRuleHeader,
     AtRuleHeader,

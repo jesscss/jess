@@ -1417,6 +1417,30 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
+  it('uses `only` as a container name only in block-form container rules', () => {
+    expect(parse('@container only { .card { color: red; } }').children[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      name: '@container',
+      prelude: { type: 'Keyword', src: 'only' }
+    });
+    expect(parse('@container only (width > 10px) { .card { color: red; } }').children[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      name: '@container',
+      prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Block' }] }
+    });
+    expect(serialize(parse('@container only { .card { color: red; } }'))).toEqual({
+      css: '@container only {\n  .card {\n    color: red;\n  }\n}\n'
+    });
+
+    for (const rejected of [
+      '@container only;',
+      '@container none { .card { color: red; } }',
+      '@container only screen { .card { color: red; } }'
+    ]) {
+      expect(() => parse(rejected), rejected).toThrow(SyntaxError);
+    }
+  });
+
   it('constructs and renders static CSS media/container comparison queries without widening dynamic or function headers', () => {
     for (const [source, operator] of [
       ['@media (width > 30rem) { .card { color: blue; } }', '>'],
