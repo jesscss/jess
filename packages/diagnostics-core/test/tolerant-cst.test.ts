@@ -520,38 +520,6 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
-  it('reports Less variable reads that depend on mixin scope leakage', () => {
-    const source = '.theme() { @accent: red; }\n.a { .theme(); color: @accent; }';
-    const result = collectTolerantDiagnostics({ source, language: 'less' });
-    const leaked = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.leakyScopeDependence);
-
-    expect(leaked.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
-      [
-        'Variable "@accent" depends on Less mixin scope leakage from ".theme"',
-        source.lastIndexOf('@accent'),
-        source.lastIndexOf('@accent') + '@accent'.length
-      ]
-    ]);
-  });
-
-  it('keeps leaky-scope diagnostics conservative around ordinary variables and external sources', () => {
-    const declared = '@accent: blue;\n.theme() { @accent: red; }\n.a { .theme(); color: @accent; }';
-    const local = '.theme() { @accent: red; }\n.a { .theme(); @accent: blue; color: @accent; }';
-    const imported = '@import "vars.less";\n.theme() { @accent: red; }\n.a { .theme(); color: @accent; }';
-    const scss = '@mixin theme() { $accent: red; }\n.a { @include theme(); color: $accent; }';
-    const jess = 'theme() { $accent: red; }\n.a { $ > theme(); color: $accent; }';
-
-    for (const result of [
-      collectTolerantDiagnostics({ source: declared, language: 'less' }),
-      collectTolerantDiagnostics({ source: local, language: 'less' }),
-      collectTolerantDiagnostics({ source: imported, language: 'less' }),
-      collectTolerantDiagnostics({ source: scss, language: 'scss' }),
-      collectTolerantDiagnostics({ source: jess, language: 'jess' })
-    ]) {
-      expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.leakyScopeDependence)).toBe(false);
-    }
-  });
-
   it('reports same-file unused mixins in dialect stylesheets without external module sources', () => {
     const less = '.used() { color: red; }\n.unused() { color: blue; }\n.a { .used; }';
     const lessNamespaced = '#ns() { .inner() { c: red; } }\n.a { #ns > .inner(); }';

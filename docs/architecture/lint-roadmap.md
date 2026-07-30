@@ -134,7 +134,6 @@ of matched benchmark mode until its behavior is comparable enough.
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Jess-only symbol diagnostic, opt-in |
 | `jess/no-unused-mixin` | `lint/no-unused-mixin` | Jess-only callable diagnostic, opt-in |
 | `jess/no-unused-function` | `lint/no-unused-function` | Jess-only callable diagnostic, opt-in |
-| `jess/no-leaky-scope-dependence` | `lint/no-leaky-scope-dependence` | Jess-only Less migration diagnostic |
 | `jess/no-impossible-guard` | `lint/no-impossible-guard` | Jess-only static guard diagnostic |
 | `jess/no-unused-default-branch` | `lint/no-unused-default-branch` | Jess-only Less default-branch diagnostic |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess-only module diagnostic |
@@ -329,8 +328,8 @@ Stylelint.
 | `jess/no-unused-mixin` | off, then warn when project facts land | Callable refs | Initial opt-in same-file Less/SCSS/Jess mixin check landed; suppresses files with imports/modules/plugins and still needs project export/reference/import facts. |
 | `jess/no-unused-function` | off, then warn when project facts land | Callable refs | Initial opt-in same-file SCSS `@function` and Jess yielding function-value check landed; suppresses files with imports/modules/plugins and still needs project export/reference/import facts. |
 | `jess/no-shadowed-token` | off | Scope facts | Initial opt-in same-file nested variable shadowing diagnostic landed; imported/exported token shadowing still needs module graph facts. |
-| `jess/no-leaky-scope-dependence` | warn when allowed | Same-file Less mixin variables now; effect facts later | Initial conservative Less diagnostic flags rulesets that call a same-file mixin and then read a variable declared inside that mixin; files with imports/modules/plugins, ordinary declarations, detached rulesets, and richer flow stay unknown until semantic facts land. |
 | Callable resolution conflicts | future | Evaluator-backed callable facts | A call resolves to an actually conflicting overload set after imports, guards, plugins, and ambient definitions are known. Ordinary Less/Jess overloads are valid and must not be reported merely because multiple definitions match. |
+| Less scope leakage | future | Evaluator-backed scope/effect facts | Less patterns that actually depend on mixin or detached-ruleset variable leakage after evaluation. CST-only suspicion is not enough. |
 | `jess/no-mixin-output-mismatch` | off | Call signatures | A mixin used as declarations emits nested rules, or a value callable emits declarations. |
 | `jess/no-unsafe-reference-compose` | warn | Module facts | Extending or reading through a protected boundary that cannot surface output. |
 | `jess/no-impossible-guard` | warn | Static guard facts now; semantic facts later | Initial Less/SCSS/Jess diagnostic flags literal false/null, same-unit numeric comparisons, keyword/string equality, and boolean not/and/or guard compositions that are definitely false; variables, `default()`, type predicates, and dynamic values stay unknown. |
