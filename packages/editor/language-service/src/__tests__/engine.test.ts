@@ -531,6 +531,20 @@ describe('JessLanguageServiceEngine', () => {
         expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-property');
       });
 
+      it('accepts VSCode-style validProperties in diagnostics config', () => {
+        const engine = createEngine();
+        engine.configure({
+          diagnostics: {
+            validProperties: ['project-tone']
+          }
+        });
+        const doc = createDocument('css', '.a { project-tone: brand; colr: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/unknown-property');
+
+        expect(diags.map(d => d.message)).toEqual(['Unknown property: \'colr\'']);
+      });
+
       it('accepts lint rule names as severity aliases', () => {
         const disabled = createEngine();
         disabled.configure(sevCfg(LINT_RULE_NAMES.unknownProperties, 'ignore'));

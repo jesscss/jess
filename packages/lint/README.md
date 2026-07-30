@@ -115,6 +115,7 @@ export default {
     files: ['src/**/*.{css,less,scss,jess}'],
     ignoreFiles: ['dist/**'],
     reportSyntax: true,
+    validProperties: ['project-tone'],
     rules: {
       'block-no-empty': ['warn', { include: ['mixins'] }],
       'property-no-unknown': 'error',
@@ -284,6 +285,12 @@ they do not rename a rule or diagnostic.
 Parser syntax failures are not lint rules. `jess lint` can surface them as
 diagnostics when `reportSyntax` is enabled, but they are controlled separately
 from rule preferences.
+
+`validProperties` mirrors VSCode's stylesheet setting for project-owned CSS
+properties that should be treated as known by unknown-property diagnostics. For
+richer editor hovers, completions, descriptor data, and property-value checks,
+prefer passing CSS custom data through the shared diagnostics metadata/data
+provider path.
 
 ## Stylelint Comparison
 

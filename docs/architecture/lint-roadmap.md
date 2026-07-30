@@ -44,7 +44,8 @@ presentation for hovers and completions:
 | --- | --- |
 | CSS symbol information | Use `@vscode/web-custom-data` for properties, at-rules, descriptors, pseudos, functions, media features, browser notes, and syntax summaries. |
 | Validity diagnostics | Share diagnostics-core checks for unknown/deprecated properties, values, at-rules, descriptors, units, functions, pseudos, media features, color arguments, selectors, and typed custom properties. |
-| Browser/compatibility advice | Surface VSCode-equivalent vendor prefix, compatible prefix, unknown vendor property, `@import`, box-model, float, and display/property interaction messages through shared diagnostics. |
+| Browser/compatibility advice | Surface VSCode-equivalent vendor prefix, compatible prefix, unknown vendor property, `@import`, box-model, float, ID/universal selector, display/property interaction, and IE-hack message families through shared diagnostics where the parser exposes the authored shape. |
+| Project CSS data | Accept VSCode-style `validProperties` as a lightweight unknown-property escape hatch, and prefer custom data providers for richer property, descriptor, value, hover, and completion metadata. |
 | Document navigation | Keep CST-owned symbols, definitions, references, document highlights, folding, selection ranges, and links in the language service. |
 | Authoring help | Prefer TypeScript-like rich completion and hover details: concise labels, typed/syntax detail, Markdown docs, examples where useful, color swatches, selector specificity, and Jess symbol definitions. |
 
@@ -283,7 +284,7 @@ can detect over authored source.
 | Landed | Vendor prefixes | `vendor-prefix` | Matches VSCode `vendorPrefix` for CSS vendor-prefixed declarations and keyframe at-rules whose standard form is missing. |
 | Landed | Vendor-prefix style policy | `property-no-vendor-prefix`, `at-rule-no-vendor-prefix`, `value-no-vendor-prefix` | Opt-in Stylelint-named lint rules backed by Jess diagnostic codes for authored CSS vendor-prefixed property names, keyframe at-rules, and removable value keywords/functions; distinct from recommended VSCode `vendor-prefix` missing-standard diagnostics. |
 | Landed | Compatible vendor prefixes | `compatible-vendor-prefixes` | Opt-in VSCode `compatibleVendorPrefixes` parity for CSS declarations and keyframe at-rules that use one known vendor-prefixed form but omit other known vendor-prefixed siblings. |
-| Landed | Unknown vendor-specific properties | `unknown-vendor-specific-properties` | Opt-in VSCode `unknownVendorSpecificProperties` parity for CSS single-hyphen prefixed declarations whose full property name is not known; custom validProperties support stays future work. |
+| Landed | Unknown vendor-specific properties | `unknown-vendor-specific-properties` | Opt-in VSCode `unknownVendorSpecificProperties` parity for CSS single-hyphen prefixed declarations whose full property name is not known; `lint.validProperties` and language-service `diagnostics.validProperties` can whitelist project properties for unknown-property checks. |
 | Landed | Import statement warning | `import-statement` | Opt-in VSCode `importStatement` parity for CSS `@import` rules that may block parallel stylesheet loading. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
 | Landed | Selector vendor prefixes | `selector-no-vendor-prefix` | Opt-in Stylelint-named lint rule backed by `lint/selector-no-vendor-prefix` for authored CSS vendor-prefixed pseudo-class and pseudo-element selectors. |

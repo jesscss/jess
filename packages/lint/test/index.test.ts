@@ -361,6 +361,28 @@ describe('lintText', () => {
     ]);
   });
 
+  it('accepts VSCode-style validProperties from lint config', async () => {
+    const result = await lintText(
+      {
+        source: '.a { project-tone: brand; colr: red; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            validProperties: ['project-tone']
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)
+      .map(diagnostic => diagnostic.message)).toEqual([
+      'Unknown property: \'colr\''
+    ]);
+  });
+
   it('applies policy to deprecated property diagnostics by lint rule name', async () => {
     const result = await lintText(
       {

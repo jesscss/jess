@@ -1093,13 +1093,17 @@ export function createEngine(): JessLanguageServiceEngine {
   let customAtRuleMap = new Map<string, AtDirectiveEntry>();
   let customPseudoClassMap = new Map<string, PseudoEntry>();
   let customPseudoElementMap = new Map<string, PseudoEntry>();
+  let configuredValidProperties = new Set<string>();
   const customProperties = () => customData.flatMap(d => d.properties ?? []);
   const customAtRules = () => customData.flatMap(d => d.atDirectives ?? []);
 
   const diagnosticsMetadata = (): Partial<CssDiagnosticMetadata> => ({
     isKnownProperty(name) {
       const lower = lowerName(name);
-      return CSS_PROPERTY_SET.has(lower) || PROPERTIES_MAP.has(lower) || customPropertyMap.has(lower);
+      return configuredValidProperties.has(lower)
+        || CSS_PROPERTY_SET.has(lower)
+        || PROPERTIES_MAP.has(lower)
+        || customPropertyMap.has(lower);
     },
     cssPropertyStatus(name) {
       const status = customPropertyMap.get(lowerName(name))?.status ?? PROPERTIES_MAP.get(lowerName(name))?.status;
@@ -1334,6 +1338,23 @@ export function createEngine(): JessLanguageServiceEngine {
       options.maxSpecificity = maxSpecificity;
     }
     return options;
+  }
+
+  function readValidProperties(value: unknown): Set<string> | null {
+    if (!Array.isArray(value)) {
+      return null;
+    }
+    const names = new Set<string>();
+    for (const item of value) {
+      if (typeof item !== 'string') {
+        continue;
+      }
+      const name = lowerName(item.trim());
+      if (name.length > 0) {
+        names.add(name);
+      }
+    }
+    return names;
   }
 
   function patternTarget(diagnostic: SourceDiagnostic, source: string): string | null {
@@ -1785,6 +1806,13 @@ export function createEngine(): JessLanguageServiceEngine {
           }
         }
         semanticDiagnosticOptions = next;
+      }
+      const validProperties = (diagnosticsObj && typeof diagnosticsObj === 'object' && 'validProperties' in diagnosticsObj)
+        ? diagnosticsObj.validProperties
+        : undefined;
+      const parsedValidProperties = readValidProperties(validProperties);
+      if (parsedValidProperties !== null) {
+        configuredValidProperties = parsedValidProperties;
       }
     },
 

@@ -446,6 +446,12 @@ export interface LintConfig {
   reportSyntax?: boolean;
 
   /**
+   * Additional CSS property names accepted by unknown-property diagnostics.
+   * Mirrors VSCode's `validProperties` stylesheet setting.
+   */
+  validProperties?: readonly string[];
+
+  /**
    * Per-rule policy. Jess uses Stylelint-familiar rule names where the rule
    * intent matches, and names Jess-only diagnostics under Jess-owned namespaces.
    * `null` and `off` suppress a rule; `warn` and `error` set its severity.

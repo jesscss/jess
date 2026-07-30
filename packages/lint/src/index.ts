@@ -5,6 +5,7 @@ import { Region, type LineContent, type TextStyle } from 'linecraft';
 import {
   collectTolerantDiagnostics,
   type CssDiagnosticMetadata,
+  defaultCssDiagnosticMetadata,
   type DiagnosticSeverityName,
   type JessLanguage,
   LINT_CODES,
@@ -148,6 +149,40 @@ function settingSeverity(setting: LintRuleSetting | LintSeverity | undefined): L
 
 function settingOptions(setting: LintRuleSetting | undefined): LintRuleOptions | undefined {
   return Array.isArray(setting) ? setting[1] : undefined;
+}
+
+function normalizedValidProperties(config: LintConfig): Set<string> | null {
+  const validProperties = config.validProperties;
+  if (validProperties === undefined || validProperties.length === 0) {
+    return null;
+  }
+  const names = new Set<string>();
+  for (const property of validProperties) {
+    const name = property.trim().toLowerCase();
+    if (name.length > 0) {
+      names.add(name);
+    }
+  }
+  return names.size === 0 ? null : names;
+}
+
+function metadataForLintConfig(
+  metadata: Partial<CssDiagnosticMetadata> | undefined,
+  config: LintConfig
+): Partial<CssDiagnosticMetadata> | undefined {
+  const validProperties = normalizedValidProperties(config);
+  if (validProperties === null) {
+    return metadata;
+  }
+  return {
+    ...metadata,
+    isKnownProperty(name) {
+      if (validProperties.has(name.toLowerCase())) {
+        return true;
+      }
+      return metadata?.isKnownProperty?.(name) ?? defaultCssDiagnosticMetadata.isKnownProperty(name);
+    }
+  };
 }
 
 function ignoresRuleOption(options: LintRuleOptions | undefined, value: string): boolean {
@@ -448,11 +483,12 @@ function toLintResult(
 export async function lintText(input: LintTextInput, options: LintOptions = {}): Promise<LintResult> {
   const lintConfig = await resolveLintConfig(options);
   const language = languageFromPath(input.filePath, input.language ?? options.language);
+  const metadata = metadataForLintConfig(options.metadata, lintConfig);
   const collected = collectTolerantDiagnostics({
     source: input.source,
     filePath: input.filePath,
     language,
-    metadata: options.metadata
+    metadata
   });
   return toLintResult(
     input.filePath,
@@ -487,10 +523,11 @@ export async function lintFiles(patterns: string | readonly string[], options: L
   files.sort();
 
   const results: LintResult[] = [];
+  const metadata = metadataForLintConfig(options.metadata, lintConfig);
   for (const filePath of files) {
     const source = await readFile(filePath, 'utf8');
     const language = languageFromPath(filePath, options.language);
-    const collected = collectTolerantDiagnostics({ source, filePath, language, metadata: options.metadata });
+    const collected = collectTolerantDiagnostics({ source, filePath, language, metadata });
     results.push(toLintResult(
       filePath,
       applyPolicy(collected.diagnostics, source, lintConfig, options),
