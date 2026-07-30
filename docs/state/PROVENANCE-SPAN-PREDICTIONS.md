@@ -56,3 +56,38 @@ trivia placement and statement boundaries on every render. Expect reads to be
 concentrated in a few structural node kinds (rule, declaration, at-rule) and
 expect value-level kinds (dimension, keyword, color, operation operands) to be
 the write-heavy/read-light population.
+
+---
+
+# RESULTS (measured after the above was committed)
+
+Fixture: 288,937 bytes, exact profile match. `scripts/probe-provenance-counts.mjs`.
+
+Per render: **18,628 writes, 48,555 reads, 67,183 total calls.**
+Reads outnumber writes 2.6:1 — writes are ~5.5x more expensive per call
+(181 self samples / 17,344 span writes vs 105 / 47,732 span reads).
+
+Q1 — **denominator inflation confirmed; absolute writes fell.** `Dimension` is
+absent from the write table entirely (0 writes) and `sourceSpan Ruleset` is 6,
+matching the two elisions exactly. Pre-batch sourceSpan writes were therefore
+14,282 + 3,050 + 2,969 = **20,301, versus 14,282 at HEAD — a 29.6% reduction.**
+The family did not grow; the process shrank around it.
+
+Q3 — prediction was **wrong in its headline**. Reads dominate, and the renderer
+(`serialize.ts`), not diagnostics, is the consumer. `Declaration` alone is
+30,100 reads (62% of all provenance calls) at 6.5 reads per node.
+The apparent write-never-read population (FunctionCall 1,264, Operation 144,
+Block 117, VariableReference 100) is **not licence to elide**: this fixture is a
+successful render with `suppressWarnings`, so every diagnostic read path is cold
+by construction. `Operation` spans in particular are read by the strict-unit
+diagnostic that `032fb0848` deliberately folded them for.
+
+Q4 — prediction **3 > 2 > 4 > 1 does not survive contact with the node shape.**
+`nodes.ts` factories already return conditionally-shaped objects (`decl` alone
+has two hidden classes by design; 7 factories do this). More importantly the
+columnar port has no key: Parseman's trivia had an ambient integer index at the
+read site, but span reads are keyed by **object identity with no ambient index**
+(`sourceSpanOf(node.left)`, `node.selectors.map(sourceSpanOf)`). A dense
+`Int32Array` therefore still needs a node -> index map, which reinstates the
+hash it was meant to remove. Option 3 is blocked on an owner decision, not on
+engineering effort.
