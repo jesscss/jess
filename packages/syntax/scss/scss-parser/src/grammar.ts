@@ -137,15 +137,15 @@ type ScssRules = {
   SupportsAndOrKeyword: Combinator<Keyword>;
   SupportsCondition: Combinator<ValueNode>;
   SupportsPrelude: Combinator<ValueNode>;
-  StaticMediaPrelude: Combinator<ValueNode>;
+  MediaPrelude: Combinator<ValueNode>;
 
-  /** Static-only generic CSS header capture for known passthrough blocks. */
-  StaticAtPrelude: Combinator<ValueNode | null>;
-  StaticAtPreludeAtom: Combinator<Token>;
-  StaticAtPreludeParen: Combinator<Token>;
-  StaticAtPreludeSquare: Combinator<Token>;
-  StaticAtPreludeDoubleQuoted: Combinator<Token>;
-  StaticAtPreludeSingleQuoted: Combinator<Token>;
+  /** CSS-compatible generic header capture for known passthrough blocks. */
+  AtRulePrelude: Combinator<ValueNode | null>;
+  AtRulePreludeAtom: Combinator<Token>;
+  AtRulePreludeParen: Combinator<Token>;
+  AtRulePreludeSquare: Combinator<Token>;
+  AtRulePreludeDoubleQuoted: Combinator<Token>;
+  AtRulePreludeSingleQuoted: Combinator<Token>;
   AtRuleStatement: Combinator<AtRuleStatement>;
   AtRootPrelude: Combinator<ValueNode | null>;
   AtRootFilterPrelude: Combinator<ValueNode>;
@@ -157,7 +157,7 @@ type ScssRules = {
   StartingStyleBlock: Combinator<AtRuleBlock>;
   LayerBlock: Combinator<AtRuleBlock>;
 
-  /** Static `@document` / `@-moz-document` with a frame-one stylesheet body. */
+  /** CSS-compatible `@document` / `@-moz-document` with a frame-one stylesheet body. */
   DocumentBlock: Combinator<AtRuleBlock>;
   PageMarginBox: Combinator<AtRuleBlock>;
   PageBlock: Combinator<AtRuleBlock>;
@@ -3145,17 +3145,17 @@ export const scssFactory = (g: ScssInputRules) => {
             not(g.QueryOnly)
           )
         ),
-        g.StaticMediaPrelude,
+        g.MediaPrelude,
         g.IfBody
       ),
       sequence(
         g.StartingStyleAtKeyword,
-        g.StaticAtPrelude,
+        g.AtRulePrelude,
         g.IfBody
       ),
       sequence(
         g.LayerAtKeyword,
-        g.StaticAtPrelude,
+        g.AtRulePrelude,
         g.IfBody
       )
     ),
@@ -3215,7 +3215,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * Static conditional-group preludes are structured in the grammar. The public
+   * Non-interpolated conditional-group preludes are structured in the grammar. The public
    * SCSS CST also accepts `#{...}` query preludes for language-service recovery,
    * but public `parse() -> Stylesheet` intentionally rejects that CST-only form
    * until the AST owns typed query-prelude interpolation. Never lower it to raw
@@ -3645,23 +3645,23 @@ export const scssFactory = (g: ScssInputRules) => {
     g.SupportsCondition,
     children => requireValue(children[0])
   );
-  const StaticMediaPrelude = node<ValueNode>(
-    'StaticMediaPrelude',
+  const MediaPrelude = node<ValueNode>(
+    'MediaPrelude',
     noTrivia(oneOrMore(g.ScssSyntaxStaticMediaModifier)),
     children => any(children.map(requireToken).map(token => token.value).join('').trim())
   );
 
   /*
-   * CSS's host-mode grammar retains a known block at-rule's static header as a
+   * CSS's host-mode grammar retains a known block at-rule header as a
    * grammar-owned `Any` when no more specific value model applies. SCSS needs
    * the same lossless fact for `@layer` and `@starting-style`, but must not
    * flatten its `#{…}` form: every atom below reserves that opener, including
    * inside quotes and nested paren/square groups. Dynamic headers remain held
    * until they have an interpolation-bearing prelude model.
    */
-  const staticAtPreludeText = regex(/(?:[^#()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?!\*))+/);
-  const StaticAtPreludeDoubleQuoted = node<Token>(
-    'StaticAtPreludeDoubleQuoted',
+  const atRulePreludeText = regex(/(?:[^#()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?!\*))+/);
+  const AtRulePreludeDoubleQuoted = node<Token>(
+    'AtRulePreludeDoubleQuoted',
     sequence(
       literal('"'),
       doubleQuotedText,
@@ -3669,8 +3669,8 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     joinTokenValue
   );
-  const StaticAtPreludeSingleQuoted = node<Token>(
-    'StaticAtPreludeSingleQuoted',
+  const AtRulePreludeSingleQuoted = node<Token>(
+    'AtRulePreludeSingleQuoted',
     sequence(
       literal('\''),
       singleQuotedText,
@@ -3678,40 +3678,40 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     joinTokenValue
   );
-  const StaticAtPreludeParen = node<Token>(
-    'StaticAtPreludeParen',
+  const AtRulePreludeParen = node<Token>(
+    'AtRulePreludeParen',
     sequence(
       literal('('),
-      many(g.StaticAtPreludeAtom),
+      many(g.AtRulePreludeAtom),
       literal(')')
     ),
     joinTokenValue
   );
-  const StaticAtPreludeSquare = node<Token>(
-    'StaticAtPreludeSquare',
+  const AtRulePreludeSquare = node<Token>(
+    'AtRulePreludeSquare',
     sequence(
       literal('['),
-      many(g.StaticAtPreludeAtom),
+      many(g.AtRulePreludeAtom),
       literal(']')
     ),
     joinTokenValue
   );
-  const StaticAtPreludeAtom = node<Token>(
-    'StaticAtPreludeAtom',
+  const AtRulePreludeAtom = node<Token>(
+    'AtRulePreludeAtom',
     choice(
-      g.StaticAtPreludeParen,
-      g.StaticAtPreludeSquare,
-      g.StaticAtPreludeDoubleQuoted,
-      g.StaticAtPreludeSingleQuoted,
+      g.AtRulePreludeParen,
+      g.AtRulePreludeSquare,
+      g.AtRulePreludeDoubleQuoted,
+      g.AtRulePreludeSingleQuoted,
       g.BlockCommentToken,
       g.ScssSyntaxLineComment,
-      staticAtPreludeText
+      atRulePreludeText
     ),
     children => ({ value: requireToken(children[0]).value })
   );
-  const StaticAtPrelude = node<ValueNode | null>(
-    'StaticAtPrelude',
-    noTrivia(many(g.StaticAtPreludeAtom)),
+  const AtRulePrelude = node<ValueNode | null>(
+    'AtRulePrelude',
+    noTrivia(many(g.AtRulePreludeAtom)),
     (children) => {
       const text = children.map(requireToken).map(token => token.value).join('').trim();
       return text.length === 0 ? null : any(text);
@@ -3719,20 +3719,20 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * Statement headers need the same static nested syntax as block headers but
+   * Statement headers need the same nested syntax as block headers but
    * must leave their top-level semicolon to the statement production.
    */
-  const staticStatementPreludeText = regex(/(?:[^#;()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?![/*]))+/);
-  const StaticStatementPrelude = node<ValueNode | null>(
-    'StaticStatementPrelude',
+  const statementPreludeText = regex(/(?:[^#;()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?![/*]))+/);
+  const StatementPrelude = node<ValueNode | null>(
+    'StatementPrelude',
     noTrivia(many(choice(
-      g.StaticAtPreludeParen,
-      g.StaticAtPreludeSquare,
-      g.StaticAtPreludeDoubleQuoted,
-      g.StaticAtPreludeSingleQuoted,
+      g.AtRulePreludeParen,
+      g.AtRulePreludeSquare,
+      g.AtRulePreludeDoubleQuoted,
+      g.AtRulePreludeSingleQuoted,
       g.BlockCommentToken,
       g.ScssSyntaxLineComment,
-      staticStatementPreludeText
+      statementPreludeText
     ))),
     (children) => {
       /*
@@ -3753,7 +3753,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'AtRuleStatement',
     sequence(
       regex(/@(?:charset|namespace|layer)(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      StaticStatementPrelude,
+      StatementPrelude,
       literal(';')
     ),
     children => atRuleStatement(
@@ -3829,13 +3829,13 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * `@scope` is an existing CSS at-rule fact: its static header remains a
    * grammar-owned prelude and its SCSS body remains typed statements. Dynamic
-   * interpolation is intentionally outside StaticAtPrelude.
+   * interpolation is intentionally outside AtRulePrelude.
    */
   const ScopeBlock = node<AtRuleBlock>(
     'ScopeBlock',
     sequence(
       g.ScopeAtKeyword,
-      g.StaticAtPrelude,
+      g.AtRulePrelude,
       literal('{'),
       many(choice(
         g.Comment,
@@ -3881,7 +3881,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'NestedScopeBlock',
     sequence(
       g.ScopeAtKeyword,
-      g.StaticAtPrelude,
+      g.AtRulePrelude,
       literal('{'),
       nestedBody,
       literal('}')
@@ -3929,7 +3929,7 @@ export const scssFactory = (g: ScssInputRules) => {
             not(g.QueryOnly)
           )
         ),
-        g.StaticMediaPrelude,
+        g.MediaPrelude,
         literal('{'),
         conditionalBlockBody,
         literal('}')
@@ -3948,7 +3948,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'StartingStyleBlock',
     sequence(
       g.StartingStyleAtKeyword,
-      g.StaticAtPrelude,
+      g.AtRulePrelude,
       literal('{'),
       startingLayerBlockBody,
       literal('}')
@@ -3966,7 +3966,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'LayerBlock',
     sequence(
       g.LayerAtKeyword,
-      g.StaticAtPrelude,
+      g.AtRulePrelude,
       literal('{'),
       startingLayerBlockBody,
       literal('}')
@@ -3992,7 +3992,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DocumentBlock',
     sequence(
       g.DocumentAtKeyword,
-      g.StaticAtPrelude,
+      g.AtRulePrelude,
       literal('{'),
       many(choice(
         g.Comment,
@@ -4059,13 +4059,13 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * The shared AST deliberately retains a static page selector as an existing
    * grammar-owned Any, just as the CSS route does. `#{...}` remains
-   * excluded by StaticAtPrelude rather than being flattened.
+   * excluded by AtRulePrelude rather than being flattened.
    */
   const PageBlock = node<AtRuleBlock>(
     'PageBlock',
     sequence(
       g.PageAtKeyword,
-      g.StaticAtPrelude,
+      g.AtRulePrelude,
       literal('{'),
       many(choice(
         g.Comment,
@@ -4119,7 +4119,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'FontFeatureValuesBlock',
     sequence(
       g.FontFeatureValuesAtKeyword,
-      g.StaticAtPrelude,
+      g.AtRulePrelude,
       literal('{'),
       many(choice(
         g.Comment,
@@ -4167,7 +4167,7 @@ export const scssFactory = (g: ScssInputRules) => {
             not(g.QueryOnly)
           )
         ),
-        g.StaticMediaPrelude,
+        g.MediaPrelude,
         literal('{'),
         nestedKeyframesBody,
         literal('}')
@@ -4189,7 +4189,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'NestedStartingStyleBlock',
     sequence(
       g.StartingStyleAtKeyword,
-      g.StaticAtPrelude,
+      g.AtRulePrelude,
       literal('{'),
       nestedKeyframesBody,
       literal('}')
@@ -4210,7 +4210,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'NestedLayerBlock',
     sequence(
       g.LayerAtKeyword,
-      g.StaticAtPrelude,
+      g.AtRulePrelude,
       literal('{'),
       nestedKeyframesBody,
       literal('}')
@@ -5169,13 +5169,13 @@ export const scssFactory = (g: ScssInputRules) => {
     SupportsAndOrKeyword,
     SupportsCondition,
     SupportsPrelude,
-    StaticMediaPrelude,
-    StaticAtPrelude,
-    StaticAtPreludeAtom,
-    StaticAtPreludeParen,
-    StaticAtPreludeSquare,
-    StaticAtPreludeDoubleQuoted,
-    StaticAtPreludeSingleQuoted,
+    MediaPrelude,
+    AtRulePrelude,
+    AtRulePreludeAtom,
+    AtRulePreludeParen,
+    AtRulePreludeSquare,
+    AtRulePreludeDoubleQuoted,
+    AtRulePreludeSingleQuoted,
     AtRuleStatement,
     AtRootPrelude,
     AtRootFilterPrelude,

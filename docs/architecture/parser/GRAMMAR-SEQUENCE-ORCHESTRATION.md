@@ -1819,7 +1819,7 @@ rule keys only: the import URL and tail helpers are now `ImportUrl*` /
 `ImportTail*`, but they remain import-local and explicitly covered by
 macro/focused tests. A later verified follow-up did rename the prelude and
 opaque block helpers to
-`AtPrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`, and
+`AtRulePrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`, and
 `OpaqueAtRuleBlock`; do not use this older statement-key slice as evidence that
 those names must remain prefixed.
 
@@ -2569,7 +2569,7 @@ AST threw 120, CST threw 0).
 
 Latest CSS direct-AST at-rule prelude / opaque helper-key follow-up: the direct
 CSS AST grammar now uses concept keys for grammar-owned at-rule prelude and
-opaque block helpers: `CssAstAtPrelude` became `AtPrelude`,
+opaque block helpers: `CssAstAtPrelude` became `AtRulePrelude`,
 `CssAstStatementPrelude` became `StatementPrelude`, `CssAstOpaqueAtPrelude`
 became `OpaqueAtPrelude`, `CssAstOpaqueBody` became `OpaqueBody`, and
 `CssAstOpaqueAtRuleBlock` became `OpaqueAtRuleBlock`. This matches the core AST
@@ -4738,7 +4738,7 @@ fallbacks; and `pnpm run verify:compose-integrity` passed. The previous
 `ScssMixinCallArg` gating warning now reports under semantic
 `MixinCallArgument`.
 
-CSS at-rule prelude scanner-skip cleanup, 2026-07-29: CSS `AtPreludeGroup`
+CSS at-rule prelude scanner-skip cleanup, 2026-07-29: CSS `AtRulePreludeGroup`
 now relies on the grammar-level ambient `scanSkip` / trivia policy for balanced
 paren and square groups instead of restating local
 `balanced(..., { skip: [...] })` lists. This keeps the structured unknown
@@ -4747,6 +4747,18 @@ semantic prelude children, but they also do not terminate a balanced group. The
 touched `choice(...)` remains a delimiter-family choice between `(...)` and
 `[...]`; it is not a dispatch candidate because no routed known/generic token
 family is involved.
+
+At-rule prelude semantic-name alignment, 2026-07-29: CSS now calls the shared
+generic header family `AtRulePrelude*` (`AtRulePreludeWhitespace`,
+`AtRulePreludeComma`, `AtRulePreludeGroup`, `AtRulePreludeQuoted`,
+`AtRulePreludeText`, `AtRulePreludeSegments`, and `AtRulePrelude`), matching
+Less, Jess, and SCSS. SCSS likewise replaced its mode-labelled
+`StaticAtPrelude*` / `StaticMediaPrelude` / `StaticStatementPrelude` CST keys
+with `AtRulePrelude*` / `MediaPrelude` / `StatementPrelude`. This changes
+grammar and public CST names only: `AtRulePreludeSegments` remains a
+delimiter-and-segment `choice(...)` family, while `StatementPrelude` remains
+the distinct semicolon-bounded statement-header capture. Neither is a
+single-consumed-opener route, so `dispatch(...)` would be the wrong structure.
 
 Evidence for the CSS at-rule prelude scanner-skip cleanup: `pnpm --filter
 @jesscss/css-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts

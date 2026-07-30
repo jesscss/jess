@@ -99,6 +99,18 @@ describe('@jesscss/scss-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('uses CSS-aligned CST labels for generic at-rule preludes', () => {
+    const result = parseScssCst('@layer base.utilities { .card { color: red; } } @charset "UTF-8";');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AtRulePrelude')).toBe(1);
+    expect(grammarTypes.get('AtRulePreludeAtom')).toBeGreaterThan(0);
+    expect(grammarTypes.get('StatementPrelude')).toBe(1);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+  });
+
   it('collapses transparent CST wrappers without dropping leaves', () => {
     const expanded = parseScssCst('$color: red; .x { color: $color; }');
     const collapsed = parseScssCst('$color: red; .x { color: $color; }', 'Stylesheet', { collapse: true });

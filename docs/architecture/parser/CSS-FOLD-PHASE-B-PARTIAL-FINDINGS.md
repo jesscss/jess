@@ -54,7 +54,7 @@ owned under public shared names:
 `VarFallback*` family, `Value`, `ValueSequence`, `ValueList`, `TypedValue*`,
 `Important`,
 `Declaration`, `ImportStatement`, `AtRuleStatement`,
-`AtPrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`,
+`AtRulePrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`,
 `OpaqueAtRuleBlock`,
 `QueryBareFeature`/`RangeFeature`/`Comparison`/`Prelude`/`Clause`/`Term`,
 `GeneralEnclosed*`, `SupportsCondition`/`InParens`/`Prelude`,
@@ -1136,7 +1136,7 @@ AST threw 120, CST threw 0).
 
 Follow-up CSS direct-AST at-rule prelude / opaque helper-key cleanup: direct
 AST at-rule prelude and opaque block helpers now use concept names:
-`AtPrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`, and
+`AtRulePrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`, and
 `OpaqueAtRuleBlock`. This changes rule keys and diagnostics only; the
 grammar-owned scans still reduce to the same nullable `Any` preludes or
 canonical `OpaqueAtRuleBlock` AST node.

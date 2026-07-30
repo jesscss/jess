@@ -78,7 +78,7 @@ type SourceSpan = { readonly start: number; readonly end: number };
 type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
 
 type CssGrammarRuleName =
-  | 'AtPrelude'
+  | 'AtRulePrelude'
   | 'AtRulePreludeSegments'
   | 'AtRuleStatement'
   | 'AttributeModifier'
@@ -2621,26 +2621,26 @@ export const cssFactory = (g: CssGrammarSelf) => {
       ), span);
     }
   );
-  const AtPreludeWhitespace = node(
-    'AtPreludeWhitespace',
+  const AtRulePreludeWhitespace = node(
+    'AtRulePreludeWhitespace',
     noTrivia(regex(/[ \t\n\r\f]+/)),
     children => authoredText(children)
   );
-  const AtPreludeComma = node(
-    'AtPreludeComma',
+  const AtRulePreludeComma = node(
+    'AtRulePreludeComma',
     noTrivia(literal(',')),
     children => authoredText(children)
   );
-  const AtPreludeGroup = node(
-    'AtPreludeGroup',
+  const AtRulePreludeGroup = node(
+    'AtRulePreludeGroup',
     noTrivia(choice(
       balanced('(', ')'),
       balanced('[', ']')
     )),
     children => authoredText(children)
   );
-  const AtPreludeQuoted = node(
-    'AtPreludeQuoted',
+  const AtRulePreludeQuoted = node(
+    'AtRulePreludeQuoted',
     noTrivia(choice(
       customSingleQuoted,
       customDoubleQuoted
@@ -2648,8 +2648,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     children => authoredText(children)
   );
   const atPreludeTextSegment = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]"'])+/);
-  const AtPreludeText = node(
-    'AtPreludeText',
+  const AtRulePreludeText = node(
+    'AtRulePreludeText',
     noTrivia(atPreludeTextSegment),
     children => authoredText(children)
   );
@@ -2658,11 +2658,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
     parser(
       { trivia: commentTrivia },
       many(choice(
-        AtPreludeWhitespace,
-        AtPreludeComma,
-        AtPreludeGroup,
-        AtPreludeQuoted,
-        AtPreludeText
+        AtRulePreludeWhitespace,
+        AtRulePreludeComma,
+        AtRulePreludeGroup,
+        AtRulePreludeQuoted,
+        AtRulePreludeText
       ))
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => semanticTextWithTriviaGaps(children, triviaLog)
@@ -2680,8 +2680,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     )
   );
 
-  const AtPrelude = node(
-    'AtPrelude',
+  const AtRulePrelude = node(
+    'AtRulePrelude',
     g.AtRulePreludeSegments,
     (children) => {
       const text = children.length === 0 ? '' : tokenText(children[0]).trim();
@@ -3288,7 +3288,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'LayerBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3301,7 +3301,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'NestedLayerBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3314,7 +3314,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'DescriptorBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3327,7 +3327,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'PageBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       pageBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3340,7 +3340,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'Keyframes',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       keyframesBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3353,7 +3353,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'FontFeatureValuesBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       fontFeatureValuesBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3366,7 +3366,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'ScopeBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3379,7 +3379,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'StartingStyleBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3392,7 +3392,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'NestedStartingStyleBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3405,7 +3405,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'DocumentBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3611,7 +3611,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'LayerBlock',
     sequence(
       g.LayerAtKeyword,
-      g.AtPrelude,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3624,7 +3624,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'NestedLayerBlock',
     sequence(
       g.LayerAtKeyword,
-      g.AtPrelude,
+      g.AtRulePrelude,
       declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3656,7 +3656,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'PageBlock',
     sequence(
       g.PageAtKeyword,
-      g.AtPrelude,
+      g.AtRulePrelude,
       pageBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3696,7 +3696,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'Keyframes',
     sequence(
       g.KeyframesAtKeyword,
-      g.AtPrelude,
+      g.AtRulePrelude,
       keyframesBodyBlock
     ),
     (children, _fields, _span, rawChildren) => {
@@ -3816,7 +3816,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'DescriptorBlock',
     sequence(
       g.DescriptorAtKeyword,
-      g.AtPrelude,
+      g.AtRulePrelude,
       descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3847,7 +3847,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'FontFeatureValuesBlock',
     sequence(
       g.FontFeatureValuesAtKeyword,
-      g.AtPrelude,
+      g.AtRulePrelude,
       fontFeatureValuesBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3860,7 +3860,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'ScopeBlock',
     sequence(
       g.ScopeAtKeyword,
-      g.AtPrelude,
+      g.AtRulePrelude,
 
       /*
        * `@scope` has the public declaration-list body model, so a nested
@@ -3879,7 +3879,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'StartingStyleBlock',
     sequence(
       g.StartingStyleAtKeyword,
-      g.AtPrelude,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3892,7 +3892,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'NestedStartingStyleBlock',
     sequence(
       g.StartingStyleAtKeyword,
-      g.AtPrelude,
+      g.AtRulePrelude,
       declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3905,7 +3905,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'DocumentBlock',
     sequence(
       g.DocumentAtKeyword,
-      g.AtPrelude,
+      g.AtRulePrelude,
       stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3988,14 +3988,14 @@ export const cssFactory = (g: CssGrammarSelf) => {
     ImportTailBody,
     ImportTail,
     AtRuleStatement,
-    AtPreludeWhitespace,
-    AtPreludeComma,
-    AtPreludeGroup,
-    AtPreludeQuoted,
-    AtPreludeText,
+    AtRulePreludeWhitespace,
+    AtRulePreludeComma,
+    AtRulePreludeGroup,
+    AtRulePreludeQuoted,
+    AtRulePreludeText,
     AtRulePreludeSegments,
     LayerStatement,
-    AtPrelude,
+    AtRulePrelude,
     StatementPrelude,
     OpaqueAtPrelude,
     OpaqueBody,
