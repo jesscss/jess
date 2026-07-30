@@ -25,13 +25,26 @@ export const LINT_CODES = {
   fontFamilyDuplicateNames: 'lint/font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
+  unknownUnits: 'lint/unit-no-unknown',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
 const LENGTH_UNITS = new Set([
-  'px', 'em', 'rem', 'ex', 'ch', 'cap', 'ic', 'lh', 'rlh',
-  'vw', 'vh', 'vi', 'vb', 'vmin', 'vmax',
-  'cm', 'mm', 'q', 'in', 'pt', 'pc'
+  'cap', 'ch', 'em', 'ex', 'ic', 'lh', 'rcap', 'rch', 'rem', 'rex', 'ric', 'rlh',
+  'dvb', 'dvh', 'dvi', 'dvmax', 'dvmin', 'dvw',
+  'lvb', 'lvh', 'lvi', 'lvmax', 'lvmin', 'lvw',
+  'svb', 'svh', 'svi', 'svmax', 'svmin', 'svw',
+  'vb', 'vh', 'vi', 'vw', 'vmin', 'vmax', 'vm',
+  'px', 'mm', 'cm', 'in', 'pt', 'pc', 'q', 'mozmm',
+  'fr',
+  'cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax'
+]);
+const KNOWN_CSS_UNITS = new Set([
+  ...LENGTH_UNITS,
+  's', 'ms',
+  'deg', 'grad', 'turn', 'rad',
+  'hz', 'khz',
+  'dpi', 'dpcm', 'dppx'
 ]);
 
 const DIALECT_AT_RULES: Record<JessLanguage, Set<string>> = {
@@ -72,6 +85,7 @@ const KEYFRAMES_TYPES = new Set(['Keyframes']);
 const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
 const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
 const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'StaticImportRule']);
+const FUNCTION_TYPES = new Set(['Call', 'StaticCall', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const CSS_WIDE_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
 const GENERIC_FONT_FAMILIES = new Set([
   'serif',
@@ -131,6 +145,8 @@ type VisitContext = {
   readonly inCustomDeclaration: boolean;
   readonly inFontFaceAtRule: boolean;
   readonly inKeyframeBlock: boolean;
+  readonly inUrlFunction: boolean;
+  readonly allowResolutionXUnit: boolean;
 };
 
 type FontFamilyPart = {
@@ -150,7 +166,9 @@ const ROOT_VISIT_CONTEXT: VisitContext = {
   inVarCall: false,
   inCustomDeclaration: false,
   inFontFaceAtRule: false,
-  inKeyframeBlock: false
+  inKeyframeBlock: false,
+  inUrlFunction: false,
+  allowResolutionXUnit: false
 };
 
 function isCstNode(c: CssCstChild): c is CssCstNode {
@@ -237,6 +255,55 @@ function atRuleNameEnd(source: string, start: number, end: number): number {
   return i;
 }
 
+function isIdentStart(code: number): boolean {
+  return (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || code === 45
+    || code === 95;
+}
+
+function isIdentChar(code: number): boolean {
+  return isIdentStart(code) || (code >= 48 && code <= 57);
+}
+
+function functionNameOf(source: string, start: number, end: number): string | null {
+  let i = start;
+  while (i < end && isIdentChar(source.charCodeAt(i))) {
+    i++;
+  }
+  if (i === start) {
+    return null;
+  }
+  let open = i;
+  while (open < end) {
+    const code = source.charCodeAt(open);
+    if (code === 40 /* ( */) {
+      return source.slice(start, i).toLowerCase();
+    }
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      return null;
+    }
+    open++;
+  }
+  return null;
+}
+
+function unprefixedName(name: string): string {
+  if (name.startsWith('-webkit-')) {
+    return name.slice(8);
+  }
+  if (name.startsWith('-moz-')) {
+    return name.slice(5);
+  }
+  if (name.startsWith('-ms-')) {
+    return name.slice(4);
+  }
+  if (name.startsWith('-o-')) {
+    return name.slice(3);
+  }
+  return name;
+}
+
 function blankStrings(value: string): string {
   return value.replace(/"[^"]*"|'[^']*'/g, m => ' '.repeat(m.length));
 }
@@ -271,6 +338,90 @@ function normalizedKeyframeSelectorKeys(source: string, node: CssCstNode): strin
       : part === 'to'
         ? '100%'
         : part);
+}
+
+function dimensionUnitSpan(source: string, start: number, end: number): { unit: string; start: number; end: number } | null {
+  let i = start;
+  if (i < end) {
+    const first = source.charCodeAt(i);
+    if (first === 43 || first === 45) {
+      i++;
+    }
+  }
+  let sawDigit = false;
+  while (i < end) {
+    const code = source.charCodeAt(i);
+    if (code < 48 || code > 57) {
+      break;
+    }
+    sawDigit = true;
+    i++;
+  }
+  if (i < end && source.charCodeAt(i) === 46) {
+    i++;
+    while (i < end) {
+      const code = source.charCodeAt(i);
+      if (code < 48 || code > 57) {
+        break;
+      }
+      sawDigit = true;
+      i++;
+    }
+  }
+  if (!sawDigit || i >= end) {
+    return null;
+  }
+  if (source.charCodeAt(i) === 69 || source.charCodeAt(i) === 101) {
+    const exponentStart = i;
+    i++;
+    if (i < end) {
+      const sign = source.charCodeAt(i);
+      if (sign === 43 || sign === 45) {
+        i++;
+      }
+    }
+    let sawExponentDigit = false;
+    while (i < end) {
+      const code = source.charCodeAt(i);
+      if (code < 48 || code > 57) {
+        break;
+      }
+      sawExponentDigit = true;
+      i++;
+    }
+    if (!sawExponentDigit) {
+      i = exponentStart;
+    }
+  }
+  if (i >= end) {
+    return null;
+  }
+  const unitStart = i;
+  const firstUnit = source.charCodeAt(i);
+  if (firstUnit === 37 /* % */) {
+    return i + 1 === end ? { unit: '%', start: unitStart, end } : null;
+  }
+  if (!isIdentStart(firstUnit)) {
+    return null;
+  }
+  i++;
+  while (i < end && isIdentChar(source.charCodeAt(i))) {
+    i++;
+  }
+  return i === end ? { unit: source.slice(unitStart, end), start: unitStart, end } : null;
+}
+
+function isResolutionMediaFeatureDimension(source: string, dimensionStart: number): boolean {
+  const open = source.lastIndexOf('(', dimensionStart);
+  if (open < 0) {
+    return false;
+  }
+  const lastClose = source.lastIndexOf(')', dimensionStart);
+  if (lastClose > open) {
+    return false;
+  }
+  const prelude = source.slice(open + 1, dimensionStart).toLowerCase();
+  return /(?:^|[^-_a-z0-9])(?:min-|max-)?resolution\s*:/i.test(prelude);
 }
 
 function firstChildNodeOf(node: CssCstNode, grammarType: string): CssCstNode | undefined {
@@ -822,6 +973,12 @@ export function cstLintDiagnostics(
       return;
     }
     const gt = node.grammarType;
+    const declarationName = DECLARATION_TYPES.has(gt)
+      ? propNameOf(source.slice(start, end)).toLowerCase()
+      : null;
+    const functionName = FUNCTION_TYPES.has(gt) ? functionNameOf(source, start, end) : null;
+    const isUrlFunction = gt === 'Url' || functionName === 'url';
+    const isImageSetFunction = functionName !== null && unprefixedName(functionName) === 'image-set';
     const isFontFaceAtRule = (gt === 'DescriptorBlock' || ATRULE_TYPES.has(gt))
       && source.charCodeAt(start) === 64
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'font-face';
@@ -829,7 +986,9 @@ export function cstLintDiagnostics(
       inVarCall: context.inVarCall || gt === 'VarCall',
       inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
       inFontFaceAtRule: context.inFontFaceAtRule || isFontFaceAtRule,
-      inKeyframeBlock: context.inKeyframeBlock || KEYFRAME_BLOCK_TYPES.has(gt)
+      inKeyframeBlock: context.inKeyframeBlock || KEYFRAME_BLOCK_TYPES.has(gt),
+      inUrlFunction: context.inUrlFunction || isUrlFunction,
+      allowResolutionXUnit: context.allowResolutionXUnit || isImageSetFunction || declarationName === 'image-resolution'
     };
 
     if (RULESET_TYPES.has(gt)) {
@@ -921,6 +1080,20 @@ export function cstLintDiagnostics(
       const m = /^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]+)$/i.exec(slice);
       if (m && Number(m[1]) === 0 && LENGTH_UNITS.has(m[2]!.toLowerCase())) {
         push(LINT_CODES.zeroUnits, 'hint', `The unit "${m[2]}" is unnecessary for a zero value`, node.span);
+      }
+      const unitSpan = dimensionUnitSpan(source, start, end);
+      if (unitSpan !== null && unitSpan.unit !== '%') {
+        const lowerUnit = unitSpan.unit.toLowerCase();
+        const allowXUnit = lowerUnit === 'x'
+          && (nodeContext.allowResolutionXUnit || isResolutionMediaFeatureDimension(source, start));
+        if (!nodeContext.inUrlFunction && !allowXUnit && !KNOWN_CSS_UNITS.has(lowerUnit)) {
+          push(
+            LINT_CODES.unknownUnits,
+            'warning',
+            `Unknown unit "${unitSpan.unit}"`,
+            spanAtOrContaining(node, unitSpan.start, unitSpan.end)
+          );
+        }
       }
     }
 
