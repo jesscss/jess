@@ -2065,6 +2065,19 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
     frame,
     e
   ));
+
+  /*
+   * [lambda-fn] A var bound to a CALLABLE lambda — one carrying `params` or
+   * yielding a `result:` — is what the SCSS grammar lowers `@function f` to, and
+   * it makes a bare `f(…)` call site mean "invoke this binding" rather than
+   * "dispatch a builtin". Recording the name here is the whole recognition step:
+   * an ordinary detached ruleset has neither params nor `result:`, so a Less
+   * `@dr: { … }` never registers and its call path is untouched.
+   */
+  if (!isValueSlotArray(node.value) && node.value.type === 'AnonymousMixin'
+    && (node.value.params !== undefined || lambdaResultValue(node.value.rules) !== undefined)) {
+    (e.lambdaFunctionNames ??= new Set()).add(node.name);
+  }
   if (node.write.mode === 'if-absent') {
     const found = node.write.lookup === 'live'
       ? lookupLiveCell(frame, node.name)
@@ -2400,6 +2413,16 @@ interface EvalCtx {
    * allocation and no frame walk. The set is absent when no functions registered.
    */
   scopedFunctionNames?: Set<string>;
+
+  /*
+   * [lambda-fn] Names bound to a callable value lambda by this render — the
+   * lowered SCSS user `@function`. A call whose name is absent is an ordinary
+   * builtin/CSS call and skips the variable lookup entirely, so the set is the
+   * same render-local gate `scopedFunctionNames` is for plugin functions. It is
+   * ONLY a gate: whether the name is actually in scope at the call site is
+   * decided by the ordinary lexical walk, never by membership here.
+   */
+  lambdaFunctionNames?: Set<string>;
 
   /** Render-local invalidation token for cached scoped-function parent links. */
   fnScopeVersion?: number;
@@ -4398,12 +4421,51 @@ function needsPluginRawArguments(args: readonly ValueSlot[], frame: Frame | null
   return false;
 }
 
+/**
+ * [lambda-fn] A bare `f(args)` naming a var bound to a callable lambda (the
+ * lowered SCSS user `@function`) IS an invoke of that binding, and shadows any
+ * builtin of the same name. Resolution is the ordinary lexical walk, so a
+ * function called outside the block that defined it simply does not resolve —
+ * this returns `undefined` and the call falls through to normal dispatch,
+ * emitting its authored bytes like any other unknown function.
+ */
+function evalLambdaCall(
+  node: FunctionCall,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<EvalValue> | undefined {
+  const hit = resolveVarRef(frame, node.name, 'live', e);
+  if (!hit || isValueSlotArray(hit.value) || hit.value.type !== 'AnonymousMixin') {
+    return undefined;
+  }
+  const lambda = hit.value;
+  if (lambda.params === undefined && lambdaResultValue(lambda.rules) === undefined) {
+    return undefined;
+  }
+  const invoked = invokeValueLambda(lambda, node.args.map(value => ({ value })), hit.frame, frame, e);
+  return invoked === null ? undefined : evalValueSlot(invoked.value, invoked.frame, e);
+}
+
 function evalCall(
   node: FunctionCall,
   frame: Frame | null,
   e: EvalCtx,
   demanded = false
 ): MaybePromise<EvalValue> {
+  /*
+   * [lambda-fn] Checked before every other dispatch policy so a user `@function`
+   * shadows builtins, CSS-authored-call preservation, and the introspection
+   * forms alike — the same precedence the parse-time call-site rewrite had.
+   * Gated on the render-local name set, so a document defining no user function
+   * pays one `Set.has` and never walks a frame.
+   */
+  if (e.lambdaFunctionNames?.has(node.name)) {
+    const invoked = evalLambdaCall(node, frame, e);
+    if (invoked !== undefined) {
+      return invoked;
+    }
+  }
+
   /*
    * [default-fn] `default()` inside a guard operand (`when (@x = default())`) folds to
    * the dispatch decision. Only when a `defaultFn` is in scope (a guard-operand typed
@@ -5358,6 +5420,7 @@ function scratchEmit(e: EvalCtx): Emit {
     optional: e.optional,
     calcDepth: e.calcDepth,
     scopedFunctionNames: e.scopedFunctionNames, // [plugin/P1] preserve the registered-name gate
+    lambdaFunctionNames: e.lambdaFunctionNames, // [lambda-fn] preserve the user-`@function` gate
     fnScopeVersion: e.fnScopeVersion,
     pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
     io: e.io, // [io] preserve the file-read capability
@@ -6967,6 +7030,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     hoistedCssImports: null,
     emittedBlockTrivia: new Set(),
     scopedFunctionNames: scopedFunctionNames(rootFns),
+    lambdaFunctionNames: new Set(),
     fnScopeVersion: 0,
     pluginHost,
     io: options?.io
@@ -7041,6 +7105,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     hoistedCssImports: null,
     emittedBlockTrivia: new Set(),
     scopedFunctionNames: scopedFunctionNames(rootFns), // absent idle ⇒ fn-dispatch walk skipped
+    lambdaFunctionNames: new Set(), // [lambda-fn] empty idle ⇒ user-`@function` lookup skipped
     fnScopeVersion: 0,
     pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
     io: options?.io // [io] per-render file-read capability for the IO built-ins

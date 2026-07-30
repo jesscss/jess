@@ -7,7 +7,6 @@ import {
   type Stylesheet
 } from '@jesscss/core/ast';
 import { grammarFor } from './grammar.js';
-import { lowerUserFunctionCalls } from './ast/lower-user-function-calls.js';
 
 export type ScssParseOptions = {
   readonly trackLines?: boolean;
@@ -93,14 +92,8 @@ export function parse(input: string, options: ScssParseOptions = {}): Stylesheet
     );
   }
 
-  /*
-   * Rewrite user-`@function` call sites to `$f(args)` lambda invokes. The pass
-   * no-ops when the parsed document defines no user function; recognition stays
-   * in the grammar rather than checking source text here.
-   */
-  const document = lowerUserFunctionCalls(result.value);
   return withTriviaMap(
-    withSourceSpan(document, result.span),
+    withSourceSpan(result.value, result.span),
     createTriviaMapFromParseman(input, result.triviaMap)
   );
 }

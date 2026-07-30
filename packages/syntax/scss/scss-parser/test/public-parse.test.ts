@@ -74,9 +74,11 @@ describe('@jesscss/scss-parser public parse API', () => {
 
     expect(sourceSpanOf(root)).toEqual({ start: 0, end: source.length });
     expect(trivia?.lookup(12, 'after')).toMatchObject({ start: 12, end: 13 });
+    // A call site is left exactly as authored: whether `double` names a user
+    // `@function` or a builtin is a scope question, decided at eval, not here.
     expect(root.rules.find(child => child.type === 'Ruleset')).toMatchObject({
       type: 'Ruleset',
-      rules: [{ type: 'Declaration', value: { type: 'Reference' } }]
+      rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'double' } }]
     });
   });
 

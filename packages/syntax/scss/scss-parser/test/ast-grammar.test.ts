@@ -2294,11 +2294,15 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
-  it('lowers a user SCSS @function call site to a $var-bound lambda invoke', () => {
+  it('leaves a user SCSS @function call site as an ordinary FunctionCall', () => {
     /*
-     * `double(2)` => `$double(2)`: a Reference invoke on the bound variable, so it
-     * reaches the general call-a-value-lambda evaluator path. A builtin call
-     * (`darken(...)`) is left as a FunctionCall for `fns` routing.
+     * A call to a user `@function` and a call to a builtin are the SAME shape —
+     * `double(2)` and `darken(...)` are indistinguishable at the leaf, and which
+     * one a name denotes depends on what is in scope where it is called. That is
+     * a semantic question, so the parser answers neither: it records the call as
+     * authored and the evaluator resolves the name against the binding it made
+     * for `@function double`. Deciding it here would mean re-deriving scope from
+     * a whole-tree scan the parse already had no need to perform.
      */
     const doc = parse('@function double($n) { @return $n * 2; } .a { w: double(2); c: darken(#fff, 10%); }');
     const ruleNode = doc.rules.find(child => child.type === 'Ruleset');
@@ -2306,9 +2310,9 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Ruleset',
       rules: [
         { type: 'Declaration', name: 'w', value: {
-          type: 'Reference',
-          base: { type: 'VariableReference', name: 'double', lookup: 'live' },
-          steps: [{ type: 'Call', args: [{ value: { type: 'Dimension', number: 2, unit: '', src: '2' } }] }]
+          type: 'FunctionCall',
+          name: 'double',
+          args: [{ type: 'Dimension', number: 2, unit: '', src: '2' }]
         } },
         { type: 'Declaration', name: 'c', value: { type: 'FunctionCall', name: 'darken' } }
       ]
