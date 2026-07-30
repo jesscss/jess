@@ -2813,7 +2813,7 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('constructs documented $[…] declaration-name interpolation through public parse', () => {
+  it('constructs documented ${…} declaration-name interpolation through public parse', () => {
     const source = '$radius: top-right; $property: accent; .card { border-${radius}-radius: 12px; ${property}: blue; }';
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
