@@ -58,6 +58,9 @@ a `jess/` prefix.
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | Stylelint-equivalent |
 | `color-no-invalid-hex` | `lint/hex-color-length` | Stylelint-equivalent |
 | `length-zero-no-unit` | `lint/zero-units` | Stylelint-equivalent |
+| `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | Stylelint-equivalent |
+| `keyframe-block-no-duplicate-selectors` | `lint/keyframe-block-no-duplicate-selectors` | Stylelint-equivalent |
+| `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | Stylelint-equivalent |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -138,10 +141,10 @@ can detect over authored source.
 | P0 | Unknown CSS | existing `property-no-unknown`, `at-rule-no-unknown` | Keep metadata current and dialect-aware. |
 | P0 | Duplicates | existing `declaration-block-no-duplicate-properties` | Add ignore-consecutive and shorthand/longhand awareness. |
 | P0 | Empty blocks | existing `block-no-empty` | Extend to empty mixin bodies only when configured. Empty mixins can be API placeholders. |
-| P1 | Custom properties | `custom-property-no-missing-var-function` | Flag `color: --x`; suppress inside custom-property declarations and Jess interpolation. |
+| Landed | Custom properties | `custom-property-no-missing-var-function` | Flags `color: --x`; suppresses inside custom-property declarations and `var()`. |
 | P1 | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement. Jess `@-import` is separate. |
 | P1 | Duplicate imports/selectors | `no-duplicate-at-import-rules`, `no-duplicate-selectors` | Needs source-level normalization and import awareness. |
-| P1 | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Low Jess-specific risk. |
+| Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
 | P1 | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Watch variable/interpolation false positives. |
 | P2 | Selector validity | `selector-type-no-unknown`, `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Needs modern selector metadata and dialect escapes. |
 | P2 | Function/value validity | `function-no-unknown`, `media-feature-name-no-unknown`, `unit-no-unknown` | Better once value facts exist. |

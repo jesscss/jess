@@ -59,4 +59,33 @@ describe('collectTolerantDiagnostics', () => {
     expect(hexDiagnostics).toHaveLength(1);
     expect(hexDiagnostics[0]?.start).toBe('#abcde { color: red; }\n.a { color: '.length);
   });
+
+  it('reports bare custom property reads without flagging var() calls or custom declarations', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { color: --brand; background: var(--ok); --local: --allowed; }',
+      language: 'css'
+    });
+    const customPropertyReads = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.customPropertyMissingVarFunction
+    );
+
+    expect(customPropertyReads).toHaveLength(1);
+    expect(customPropertyReads[0]).toMatchObject({
+      message: 'Use var(--brand) when reading a custom property',
+      start: '.a { color: '.length
+    });
+  });
+
+  it('reports duplicate keyframe selectors and important keyframe declarations', () => {
+    const result = collectTolerantDiagnostics({
+      source: '@keyframes spin { from { opacity: 1 !important; } 0% { opacity: .5; } 50% { color: red; } 50% { color: blue; } }',
+      language: 'css'
+    });
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.keyframeDeclarationNoImportant);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.keyframeDuplicateSelectors);
+    expect(result.diagnostics.find(diagnostic => diagnostic.code === LINT_CODES.keyframeDuplicateSelectors)).toMatchObject({
+      message: 'Duplicate keyframe selector \'0%\''
+    });
+  });
 });

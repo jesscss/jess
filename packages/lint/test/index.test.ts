@@ -26,6 +26,9 @@ describe('stable rule set', () => {
       LINT_CODES.duplicateProperties,
       LINT_CODES.hexColorLength,
       LINT_CODES.zeroUnits,
+      LINT_CODES.customPropertyMissingVarFunction,
+      LINT_CODES.keyframeDuplicateSelectors,
+      LINT_CODES.keyframeDeclarationNoImportant,
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
@@ -35,6 +38,9 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.duplicateProperties,
       LINT_RULE_NAMES.hexColorLength,
       LINT_RULE_NAMES.zeroUnits,
+      LINT_RULE_NAMES.customPropertyMissingVarFunction,
+      LINT_RULE_NAMES.keyframeDuplicateSelectors,
+      LINT_RULE_NAMES.keyframeDeclarationNoImportant,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
@@ -48,6 +54,9 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.duplicateProperties,
       LINT_RULE_NAMES.emptyRules,
       LINT_RULE_NAMES.hexColorLength,
+      LINT_RULE_NAMES.customPropertyMissingVarFunction,
+      LINT_RULE_NAMES.keyframeDeclarationNoImportant,
+      LINT_RULE_NAMES.keyframeDuplicateSelectors,
       LINT_RULE_NAMES.unknownAtRules,
       LINT_RULE_NAMES.unknownProperties,
       LINT_RULE_NAMES.zeroUnits
@@ -147,6 +156,30 @@ describe('lintText', () => {
     );
 
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([LINT_CODES.zeroUnits]);
+  });
+
+  it('applies policy to new Stylelint-comparable source diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '@keyframes spin { from { opacity: 1 !important; } 0% { opacity: .5; } }\n.a { color: --brand; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.customPropertyMissingVarFunction]: 'error',
+              [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'off'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.keyframeDuplicateSelectors, 'warning'],
+      [LINT_CODES.customPropertyMissingVarFunction, 'error']
+    ]);
   });
 });
 

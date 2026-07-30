@@ -19,6 +19,9 @@ export const LINT_CODES = {
   duplicateProperties: 'lint/duplicate-property',
   hexColorLength: 'lint/hex-color-length',
   zeroUnits: 'lint/zero-units',
+  customPropertyMissingVarFunction: 'lint/custom-property-no-missing-var-function',
+  keyframeDuplicateSelectors: 'lint/keyframe-block-no-duplicate-selectors',
+  keyframeDeclarationNoImportant: 'lint/keyframe-declaration-no-important',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -59,7 +62,12 @@ const ATRULE_TYPES = new Set([
   'OpaqueAtRuleBlock'
 ]);
 const DECLARATION_TYPES = new Set(['Declaration', 'DirectScssDeclaration', 'DirectJessDeclaration']);
+const CUSTOM_DECLARATION_TYPES = new Set(['CustomDeclaration']);
 const DIMENSION_TYPES = new Set(['Dimension', 'DirectScssDimension', 'DirectJessDimension']);
+const CUSTOM_PROPERTY_VALUE_TYPES = new Set(['CustomPropertyValue']);
+const KEYFRAMES_TYPES = new Set(['Keyframes']);
+const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
+const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
 const FORWARD_AS_PREFIX = /\bas\s+\S+-\*/;
 const FORWARD_VISIBILITY = /\b(show|hide)\b/;
 
@@ -76,6 +84,18 @@ type ParseDiagnosticSource = {
   readonly errors: readonly { readonly span: DiagnosticSpan }[];
   readonly unconsumedFrom: number | null;
   readonly tree: CssCstNode | null;
+};
+
+type VisitContext = {
+  readonly inVarCall: boolean;
+  readonly inCustomDeclaration: boolean;
+  readonly inKeyframeBlock: boolean;
+};
+
+const ROOT_VISIT_CONTEXT: VisitContext = {
+  inVarCall: false,
+  inCustomDeclaration: false,
+  inKeyframeBlock: false
 };
 
 function isCstNode(c: CssCstChild): c is CssCstNode {
@@ -168,6 +188,28 @@ function blankStrings(value: string): string {
 
 function blankStringsAndComments(value: string): string {
   return value.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n\r]*|"[^"]*"|'[^']*'/g, m => ' '.repeat(m.length));
+}
+
+function normalizedKeyframeSelectorKeys(source: string, node: CssCstNode): string[] {
+  const raw = source.slice(absoluteStart(node), absoluteEnd(node));
+  return blankStringsAndComments(raw)
+    .split(',')
+    .map(part => part.replace(/\s+/g, '').toLowerCase())
+    .filter(Boolean)
+    .map(part => part === 'from'
+      ? '0%'
+      : part === 'to'
+        ? '100%'
+        : part);
+}
+
+function firstChildNodeOf(node: CssCstNode, grammarType: string): CssCstNode | undefined {
+  for (const child of cstChildrenOf(node)) {
+    if (isCstNode(child) && child.grammarType === grammarType) {
+      return child;
+    }
+  }
+  return undefined;
 }
 
 function isDeclarationValueContext(source: string, offset: number): boolean {
@@ -339,13 +381,18 @@ export function cstLintDiagnostics(
     out.push(diagnostic(code, severity, message, span, filePath));
   };
 
-  const visit = (node: CssCstNode) => {
+  const visit = (node: CssCstNode, context: VisitContext = ROOT_VISIT_CONTEXT) => {
     const start = absoluteStart(node);
     const end = absoluteEnd(node);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
       return;
     }
     const gt = node.grammarType;
+    const nodeContext: VisitContext = {
+      inVarCall: context.inVarCall || gt === 'VarCall',
+      inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
+      inKeyframeBlock: context.inKeyframeBlock || KEYFRAME_BLOCK_TYPES.has(gt)
+    };
 
     if (RULESET_TYPES.has(gt)) {
       const open = source.indexOf('{', start);
@@ -395,6 +442,25 @@ export function cstLintDiagnostics(
       }
     }
 
+    if (CUSTOM_PROPERTY_VALUE_TYPES.has(gt) && !nodeContext.inVarCall && !nodeContext.inCustomDeclaration) {
+      const name = source.slice(start, end).trim();
+      push(
+        LINT_CODES.customPropertyMissingVarFunction,
+        'warning',
+        `Use var(${name}) when reading a custom property`,
+        node.span
+      );
+    }
+
+    if (nodeContext.inKeyframeBlock && IMPORTANT_TYPES.has(gt)) {
+      push(
+        LINT_CODES.keyframeDeclarationNoImportant,
+        'warning',
+        'Do not use !important inside keyframes',
+        node.span
+      );
+    }
+
     if (DIMENSION_TYPES.has(gt)) {
       const slice = source.slice(start, end).trim();
       const m = /^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]+)$/i.exec(slice);
@@ -438,6 +504,31 @@ export function cstLintDiagnostics(
       }
     }
 
+    if (KEYFRAMES_TYPES.has(gt)) {
+      const seenSelectors = new Set<string>();
+      for (const child of cstChildrenOf(node)) {
+        if (!isCstNode(child) || !KEYFRAME_BLOCK_TYPES.has(child.grammarType)) {
+          continue;
+        }
+        const selector = firstChildNodeOf(child, 'keyframeSelector');
+        if (!selector) {
+          continue;
+        }
+        for (const key of normalizedKeyframeSelectorKeys(source, selector)) {
+          if (seenSelectors.has(key)) {
+            push(
+              LINT_CODES.keyframeDuplicateSelectors,
+              'warning',
+              `Duplicate keyframe selector '${source.slice(absoluteStart(selector), absoluteEnd(selector)).trim()}'`,
+              selector.span
+            );
+            break;
+          }
+          seenSelectors.add(key);
+        }
+      }
+    }
+
     let seenProps: Map<string, boolean> | undefined;
     for (const child of cstChildrenOf(node)) {
       if (!isCstNode(child)) {
@@ -457,7 +548,7 @@ export function cstLintDiagnostics(
           }
         }
       }
-      visit(child);
+      visit(child, nodeContext);
     }
   };
 

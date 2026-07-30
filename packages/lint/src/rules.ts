@@ -14,6 +14,9 @@ export const LINT_RULE_NAMES = {
   duplicateProperties: 'declaration-block-no-duplicate-properties',
   hexColorLength: 'color-no-invalid-hex',
   zeroUnits: 'length-zero-no-unit',
+  customPropertyMissingVarFunction: 'custom-property-no-missing-var-function',
+  keyframeDuplicateSelectors: 'keyframe-block-no-duplicate-selectors',
+  keyframeDeclarationNoImportant: 'keyframe-declaration-no-important',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
 
@@ -37,6 +40,9 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.duplicateProperties]: LINT_CODES.duplicateProperties,
   [LINT_RULE_NAMES.hexColorLength]: LINT_CODES.hexColorLength,
   [LINT_RULE_NAMES.zeroUnits]: LINT_CODES.zeroUnits,
+  [LINT_RULE_NAMES.customPropertyMissingVarFunction]: LINT_CODES.customPropertyMissingVarFunction,
+  [LINT_RULE_NAMES.keyframeDuplicateSelectors]: LINT_CODES.keyframeDuplicateSelectors,
+  [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: LINT_CODES.keyframeDeclarationNoImportant,
   [LINT_RULE_NAMES.unsupportedSassForm]: LINT_CODES.unsupportedSassForm
 };
 
@@ -47,6 +53,9 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.duplicateProperties]: LINT_RULE_NAMES.duplicateProperties,
   [LINT_CODES.hexColorLength]: LINT_RULE_NAMES.hexColorLength,
   [LINT_CODES.zeroUnits]: LINT_RULE_NAMES.zeroUnits,
+  [LINT_CODES.customPropertyMissingVarFunction]: LINT_RULE_NAMES.customPropertyMissingVarFunction,
+  [LINT_CODES.keyframeDuplicateSelectors]: LINT_RULE_NAMES.keyframeDuplicateSelectors,
+  [LINT_CODES.keyframeDeclarationNoImportant]: LINT_RULE_NAMES.keyframeDeclarationNoImportant,
   [LINT_CODES.unsupportedSassForm]: LINT_RULE_NAMES.unsupportedSassForm
 };
 
@@ -57,6 +66,9 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateProperties]: 'warn',
   [LINT_RULE_NAMES.hexColorLength]: 'error',
   [LINT_RULE_NAMES.zeroUnits]: 'warn',
+  [LINT_RULE_NAMES.customPropertyMissingVarFunction]: 'warn',
+  [LINT_RULE_NAMES.keyframeDuplicateSelectors]: 'warn',
+  [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
 };
 
@@ -66,7 +78,10 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownAtRules]: 'warn',
   [LINT_RULE_NAMES.duplicateProperties]: 'warn',
   [LINT_RULE_NAMES.hexColorLength]: 'error',
-  [LINT_RULE_NAMES.zeroUnits]: 'warn'
+  [LINT_RULE_NAMES.zeroUnits]: 'warn',
+  [LINT_RULE_NAMES.customPropertyMissingVarFunction]: 'warn',
+  [LINT_RULE_NAMES.keyframeDuplicateSelectors]: 'warn',
+  [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'warn'
 };
 
 export const STABLE_LINT_RULES: readonly StableLintRule[] = [
@@ -129,6 +144,36 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-equivalent',
     stylelintRule: 'length-zero-no-unit',
     notes: 'Flags zero values with length units; non-length units such as percentages and time are left alone.'
+  },
+  {
+    code: LINT_CODES.customPropertyMissingVarFunction,
+    ruleName: LINT_RULE_NAMES.customPropertyMissingVarFunction,
+    title: 'Bare custom property references',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-equivalent',
+    stylelintRule: 'custom-property-no-missing-var-function',
+    notes: 'Flags custom property names used as ordinary values without wrapping them in var(...).'
+  },
+  {
+    code: LINT_CODES.keyframeDuplicateSelectors,
+    ruleName: LINT_RULE_NAMES.keyframeDuplicateSelectors,
+    title: 'Duplicate keyframe selectors',
+    tier: 'maintainability',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-equivalent',
+    stylelintRule: 'keyframe-block-no-duplicate-selectors',
+    notes: 'Flags duplicate selectors in one @keyframes block, normalizing from/to to 0%/100%.'
+  },
+  {
+    code: LINT_CODES.keyframeDeclarationNoImportant,
+    ruleName: LINT_RULE_NAMES.keyframeDeclarationNoImportant,
+    title: 'Important keyframe declarations',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-equivalent',
+    stylelintRule: 'keyframe-declaration-no-important',
+    notes: 'Flags !important declarations inside @keyframes blocks.'
   },
   {
     code: LINT_CODES.unsupportedSassForm,
