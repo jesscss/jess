@@ -81,6 +81,7 @@ a `jess/` prefix.
 | `selector-anb-no-unmatchable` | `lint/selector-anb-no-unmatchable` | Stylelint-equivalent |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | Stylelint-near |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess-only value diagnostic |
+| `jess/no-invalid-color-function-channels` | `lint/invalid-color-function-channels` | Jess-only value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -181,6 +182,7 @@ can detect over authored source.
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
 | Landed | Media feature names and values | `media-feature-name-no-unknown`, `media-feature-name-value-no-unknown` | Flags unknown CSS `@media` feature names and definite invalid static values; dialect media facts remain future work. |
 | Landed | At-rule descriptors | `at-rule-descriptor-no-unknown` | Flags unknown descriptors in parsed CSS descriptor blocks, including `@page` page-context and margin-box descriptors. |
+| Landed | Color function channels | `jess/no-invalid-color-function-channels` | Flags definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |
 | P2 | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Project-policy heavy; opt-in only. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |
@@ -262,7 +264,7 @@ Follow-on value/type diagnostics:
 | Diagnostic | Likely owner | Notes |
 | --- | --- | --- |
 | Incompatible units | Compiler or strict lint | Arithmetic and comparisons with impossible unit families. If Jess rejects it, compiler owns it; if Jess can still emit useful CSS, lint owns it. |
-| Invalid color channel | CSS validity/compiler | Definite channel arity/type errors before color output. |
+| Invalid color channel | CSS validity/compiler | Initial CSS-authored rgb()/rgba()/hsl()/hsla() arity/type checks landed as `jess/no-invalid-color-function-channels`; broader color functions and semantic value facts remain future work. |
 | Invalid typed custom property value | Diagnostics-core/type facts | Validate `@property syntax` and future Jess constraints without guessing through dynamic values. |
 | Impossible guard | Lint preference | Guard condition that is statically always false. |
 | Unused default branch | Lint preference | Mixin `default()` branch that cannot be selected. |

@@ -141,6 +141,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `selector-anb-no-unmatchable` | `lint/selector-anb-no-unmatchable` | `selector-anb-no-unmatchable` |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | near `selector-type-no-unknown` |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess value diagnostic |
+| `jess/no-invalid-color-function-channels` | `lint/invalid-color-function-channels` | Jess value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
 
 Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
