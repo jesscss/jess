@@ -19,6 +19,7 @@ export interface SourceDiagnostic {
   readonly column?: number;
   readonly endLine?: number;
   readonly endColumn?: number;
+  readonly qualifiers?: readonly string[];
 }
 
 export type CssMediaFeatureValueKind =
@@ -40,12 +41,23 @@ export interface CssMediaFeatureValueFact {
   readonly functionName?: string;
 }
 
-export type CssPropertyValueKind = 'keyword' | 'unknown';
+export type CssPropertyValueKind =
+  | 'keyword'
+  | 'integer'
+  | 'number'
+  | 'dimension'
+  | 'percentage'
+  | 'function'
+  | 'color'
+  | 'unknown';
 
 export interface CssPropertyValueFact {
   readonly raw: string;
   readonly normalized: string;
   readonly kind: CssPropertyValueKind;
+  readonly numericValue?: number;
+  readonly unit?: string;
+  readonly functionName?: string;
 }
 
 export interface CssDiagnosticMetadata {

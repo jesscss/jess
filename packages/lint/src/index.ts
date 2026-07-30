@@ -6,6 +6,7 @@ import {
   collectTolerantDiagnostics,
   type DiagnosticSeverityName,
   type JessLanguage,
+  LINT_CODES,
   type SourceDiagnostic
 } from '@jesscss/diagnostics-core';
 import {
@@ -14,6 +15,7 @@ import {
 } from '@jesscss/core';
 import type {
   LintConfig,
+  LintRuleOptions,
   LintRuleSetting,
   LintSeverity,
   StylesConfig
@@ -24,7 +26,7 @@ import {
   ruleNameForDiagnostic
 } from './rules.js';
 
-export type { LintConfig, LintRuleSetting, LintSeverity };
+export type { LintConfig, LintRuleOptions, LintRuleSetting, LintSeverity };
 export {
   LINT_RULE_NAMES,
   PARSE_SYNTAX_ERROR_CODE,
@@ -127,6 +129,30 @@ function rulesFromDiagnostics(diagnostics: Record<string, LintSeverity> | undefi
   return rules;
 }
 
+function settingSeverity(setting: LintRuleSetting | LintSeverity | undefined): LintSeverity | null | undefined {
+  return Array.isArray(setting) ? setting[0] : setting;
+}
+
+function settingOptions(setting: LintRuleSetting | undefined): LintRuleOptions | undefined {
+  return Array.isArray(setting) ? setting[1] : undefined;
+}
+
+function ignoresRuleOption(options: LintRuleOptions | undefined, value: string): boolean {
+  return options?.ignore?.includes(value) === true;
+}
+
+function hasQualifier(diagnostic: SourceDiagnostic, value: string): boolean {
+  return diagnostic.qualifiers?.includes(value) === true;
+}
+
+function shouldSuppressByRuleOptions(diagnostic: SourceDiagnostic, setting: LintRuleSetting | undefined): boolean {
+  if (diagnostic.code !== LINT_CODES.duplicateProperties) {
+    return false;
+  }
+  return ignoresRuleOption(settingOptions(setting), 'consecutive-duplicates')
+    && hasQualifier(diagnostic, 'consecutive-duplicate');
+}
+
 async function resolveLintConfig(options: LintOptions): Promise<LintConfig> {
   const cwd = options.cwd ?? process.cwd();
   const loaded = options.stylesConfig
@@ -168,17 +194,23 @@ function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfi
     const policy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
       ?? config.rules?.[diagnostic.code]
       ?? config.diagnostics?.[diagnostic.code];
-    if (policy === null || policy === 'off') {
+    const severityPolicy = settingSeverity(policy);
+    if (severityPolicy === null || severityPolicy === 'off') {
       continue;
     }
-    if (policy === undefined && diagnostic.phase !== 'parse') {
+    if (severityPolicy === undefined && diagnostic.phase !== 'parse') {
+      continue;
+    }
+    const rulePolicy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
+      ?? config.rules?.[diagnostic.code];
+    if (shouldSuppressByRuleOptions(diagnostic, rulePolicy)) {
       continue;
     }
     out.push({
       ...diagnostic,
-      severity: policy === 'error'
+      severity: severityPolicy === 'error'
         ? 'error'
-        : policy === 'warn'
+        : severityPolicy === 'warn'
           ? 'warning'
           : diagnostic.defaultSeverity
     });

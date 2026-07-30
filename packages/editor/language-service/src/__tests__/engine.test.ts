@@ -571,7 +571,7 @@ describe('JessLanguageServiceEngine', () => {
     });
 
     describe('unknownPropertyValues (lint/unknown-property-value)', () => {
-      it('fires on a definite unknown CSS property keyword value', () => {
+      it('fires on a definite unknown CSS property value', () => {
         const engine = createEngine();
         const doc = createDocument('css', '.a { display: flxe; }');
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
@@ -583,9 +583,23 @@ describe('JessLanguageServiceEngine', () => {
         expect(slice).toBe('flxe');
       });
 
-      it('does not fire on dynamic values, color names, or dialect files before value facts exist', () => {
+      it('uses web custom data restrictions for simple static CSS values', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: grue; width: wide; opacity: 2; width: 12px; color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/unknown-property-value');
+
+        expect(diags).toHaveLength(3);
+        expect(diags.map(diag => doc.getText().slice(doc.offsetAt(diag.range.start), doc.offsetAt(diag.range.end)))).toEqual([
+          'grue',
+          'wide',
+          '2'
+        ]);
+      });
+
+      it('does not fire on dynamic values or dialect files before value facts exist', () => {
         const css = createEngine();
-        const cssDoc = createDocument('css', '.a { display: var(--kind); color: grue; }');
+        const cssDoc = createDocument('css', '.a { display: var(--kind); color: rgb(var(--rgb)); }');
         css.open(cssDoc.uri, cssDoc.languageId, cssDoc.version, cssDoc.getText());
         expect(codesOf(css, cssDoc.uri)).not.toContain('lint/unknown-property-value');
 

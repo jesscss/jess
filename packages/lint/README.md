@@ -96,6 +96,7 @@ export default {
     rules: {
       'property-no-unknown': 'error',
       'declaration-property-value-no-unknown': 'warn',
+      'declaration-block-no-duplicate-properties': ['warn', { ignore: ['consecutive-duplicates'] }],
       'at-rule-descriptor-value-no-unknown': 'warn',
       'no-unknown-custom-properties': 'warn',
       'length-zero-no-unit': 'warn',
@@ -112,8 +113,9 @@ export default {
 ```
 
 Severity values are `off`, `warn`, and `error`; `null` also disables a rule.
-Jess uses Stylelint rule names where the rule intent is familiar and
-Jess-native names for Jess-only diagnostics.
+Rules can also use a Stylelint-like tuple, `['warn', { ...options }]`, when a
+rule supports secondary options. Jess uses Stylelint rule names where the rule
+intent is familiar and Jess-native names for Jess-only diagnostics.
 
 ## Stable Rules
 
@@ -190,7 +192,7 @@ source:
 - Diagnostics that can be shared with the language service instead of
   reimplemented as CLI-only checks.
 - CSS metadata checks from VSCode web custom data that know about properties,
-  enum keyword values, dialect variables, interpolation, custom properties,
+  simple static values, dialect variables, interpolation, custom properties,
   vendor prefixes, and Jess support boundaries.
 - Source diagnostics that run before rendering, so they point at the authored
   stylesheet rather than a PostCSS approximation or emitted CSS.

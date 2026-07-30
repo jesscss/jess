@@ -22,6 +22,19 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('marks consecutive duplicate properties as a shared diagnostic qualifier', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { color: red; color: blue; margin: 0; color: green; }',
+      language: 'css'
+    });
+    const duplicates = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.duplicateProperties);
+
+    expect(duplicates.map(diagnostic => [diagnostic.message, diagnostic.qualifiers ?? []])).toEqual([
+      ['Duplicate property \'color\'', ['consecutive-duplicate']],
+      ['Duplicate property \'color\'', []]
+    ]);
+  });
+
   it('uses caller-provided CSS metadata for known properties', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { colr: red; }',
@@ -180,7 +193,7 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownCustomProperties)).toBe(false);
   });
 
-  it('reports definite unknown CSS property keyword values from metadata', () => {
+  it('reports definite unknown CSS property values from metadata', () => {
     const source = '.a { display: flxe; position: abolute; visibility: collapse; color: grue; display: var(--kind); }';
     const result = collectTolerantDiagnostics({
       source,
@@ -192,7 +205,40 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(unknownPropertyValues.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
       ['Unknown value "flxe" for property "display"', source.indexOf('flxe'), source.indexOf('flxe') + 'flxe'.length],
-      ['Unknown value "abolute" for property "position"', source.indexOf('abolute'), source.indexOf('abolute') + 'abolute'.length]
+      ['Unknown value "abolute" for property "position"', source.indexOf('abolute'), source.indexOf('abolute') + 'abolute'.length],
+      ['Unknown value "grue" for property "color"', source.indexOf('grue'), source.indexOf('grue') + 'grue'.length]
+    ]);
+  });
+
+  it('checks simple property value restrictions while leaving compound values unknown', () => {
+    const source = [
+      '.a {',
+      '  width: wide;',
+      '  width: 12px;',
+      '  width: 50%;',
+      '  width: 0;',
+      '  width: calc(100% - 1rem);',
+      '  opacity: 2;',
+      '  opacity: 0.5;',
+      '  opacity: var(--alpha);',
+      '  animation-duration: 1px;',
+      '  animation-duration: 200ms;',
+      '  background-color: #fff;',
+      '  background-color: rgb(1 2 3);',
+      '  background-color: linear-gradient(red, blue);',
+      '  font-family: system-ui, sans-serif;',
+      '}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'css' });
+    const unknownPropertyValues = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues
+    );
+
+    expect(unknownPropertyValues.map(diagnostic => diagnostic.message)).toEqual([
+      'Unknown value "wide" for property "width"',
+      'Unknown value "2" for property "opacity"',
+      'Unknown value "1px" for property "animation-duration"',
+      'Unknown value "linear-gradient(red, blue)" for property "background-color"'
     ]);
   });
 
