@@ -402,6 +402,12 @@ export interface LintRuleOptions {
    */
   ignore?: readonly string[];
 
+  /**
+   * Opt-in subfamilies for rules whose default policy intentionally stays
+   * narrower than their shared detector.
+   */
+  include?: readonly string[];
+
   /** Allow rule-specific options without forcing every rule into a shared shape. */
   [key: string]: unknown;
 }

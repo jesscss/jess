@@ -143,16 +143,24 @@ function ignoresRuleOption(options: LintRuleOptions | undefined, value: string):
   return options?.ignore?.includes(value) === true;
 }
 
+function includesRuleOption(options: LintRuleOptions | undefined, value: string): boolean {
+  return options?.include?.includes(value) === true;
+}
+
 function hasQualifier(diagnostic: SourceDiagnostic, value: string): boolean {
   return diagnostic.qualifiers?.includes(value) === true;
 }
 
 function shouldSuppressByRuleOptions(diagnostic: SourceDiagnostic, setting: LintRuleSetting | undefined): boolean {
-  if (diagnostic.code !== LINT_CODES.duplicateProperties) {
-    return false;
+  const options = settingOptions(setting);
+  if (diagnostic.code === LINT_CODES.duplicateProperties) {
+    return ignoresRuleOption(options, 'consecutive-duplicates')
+      && hasQualifier(diagnostic, 'consecutive-duplicate');
   }
-  return ignoresRuleOption(settingOptions(setting), 'consecutive-duplicates')
-    && hasQualifier(diagnostic, 'consecutive-duplicate');
+  if (diagnostic.code === LINT_CODES.emptyRules && hasQualifier(diagnostic, 'mixin-body')) {
+    return !includesRuleOption(options, 'mixins');
+  }
+  return false;
 }
 
 async function resolveLintConfig(options: LintOptions): Promise<LintConfig> {

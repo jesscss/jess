@@ -35,6 +35,23 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('marks empty mixin bodies as an opt-in empty block subfamily', () => {
+    const cases = [
+      collectTolerantDiagnostics({ source: '.mixin() { }\n.a { }', language: 'less' }),
+      collectTolerantDiagnostics({ source: '@mixin box() { }\n.a { }', language: 'scss' }),
+      collectTolerantDiagnostics({ source: 'box() { }\n.a { }', language: 'jess' })
+    ];
+
+    for (const result of cases) {
+      expect(result.diagnostics
+        .filter(diagnostic => diagnostic.code === LINT_CODES.emptyRules)
+        .map(diagnostic => [diagnostic.message, diagnostic.qualifiers ?? []])).toEqual([
+        ['Do not use empty mixin bodies', ['mixin-body']],
+        ['Do not use empty rulesets', []]
+      ]);
+    }
+  });
+
   it('uses caller-provided CSS metadata for known properties', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { colr: red; }',

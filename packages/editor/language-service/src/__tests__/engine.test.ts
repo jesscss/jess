@@ -518,6 +518,16 @@ describe('JessLanguageServiceEngine', () => {
         expect(diags).toHaveLength(1);
       });
 
+      it('keeps empty mixin bodies quiet by default', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '@mixin box() { }\n.a { }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/empty-rules');
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.message).toBe('Do not use empty rulesets');
+      });
+
       it('does not fire on a non-empty ruleset', () => {
         const engine = createEngine();
         const doc = createDocument('css', '.a { color: red; }');
