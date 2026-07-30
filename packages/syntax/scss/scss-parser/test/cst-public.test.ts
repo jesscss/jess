@@ -75,13 +75,14 @@ describe('@jesscss/scss-parser/cst', () => {
   });
 
   it('uses contextual CST labels for quoted, pseudo-selector, and $if-body syntax', () => {
-    const result = parseScssCst('@use "theme"; .a[data-label="open"]:not(:where([data-kind="open"])) { color: red; } .c:nth-child(2n) { color: blue; } @if true { .when-true { color: green; } @media screen { .nested { color: lime; } } }');
+    const result = parseScssCst('@use "theme"; $state: open; .a[data-label="#{$state}"]:not(:where([data-kind="open"])) { color: red; } .c:nth-child(2n) { color: blue; } @if true { .when-true { color: green; } @media screen { .nested { color: lime; } } }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     const { grammarTypes } = stats(result.tree);
     expect(grammarTypes.get('Quoted')).toBeGreaterThan(1);
     expect(grammarTypes.get('AttributeSelector')).toBeGreaterThan(1);
+    expect(grammarTypes.get('SassInterpolation')).toBeGreaterThan(0);
     expect(grammarTypes.get('PseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('SelectorOnlyPseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('IfBodyRule')).toBeGreaterThan(0);

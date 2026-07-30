@@ -1560,6 +1560,32 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
+  it('uses the universal quoted override for interpolated attribute selectors', () => {
+    const source = '$state: open; .card[data-state="#{$state}"] { color: blue; }';
+    const cst = parseScssCst(source);
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet', rules: [{ type: 'VariableDeclaration' }, {
+        type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
+          { type: 'SimpleSelector', text: '.card' },
+          { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+            { lit: '[data-state="' },
+            { ref: { type: 'VariableReference', name: 'state', lookup: 'live' }, unquote: true },
+            { lit: '"]' }
+          ] } }
+        ] }] }
+      }]
+    });
+    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
+      '.card[data-state="open"] {\n  color: blue;\n}\n'
+    );
+  });
+
   it('rejects namespaced attribute selectors until their namespace fact has a canonical AST field', () => {
     const source = '.card[svg|href] { color: blue; }';
     const cst = parseScssCst(source);

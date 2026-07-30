@@ -4416,11 +4416,11 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * This is the static CSS-compatible attribute-selector family. The canonical
-   * selector tree represents an attribute as one source-faithful SimpleSelector, just
-   * as the CSS grammar does. Namespaced and interpolation-bearing
-   * attributes stay outside this closed slice because their segments need
-   * their own typed representation rather than text flattening.
+   * CSS owns the attribute frame. SCSS overrides only its universal `Quoted`
+   * slot, so `[data="#{$state}"]` becomes the existing interpolation-backed
+   * SimpleSelector rather than inventing an attribute-specific string rule.
+   * Namespaced attributes remain outside this slice because their namespace
+   * segments still need a dedicated canonical representation.
    */
   const AttributeSelector = node<SimpleSelector>(
     'AttributeSelector',
@@ -4430,14 +4430,16 @@ export const scssFactory = (g: ScssInputRules) => {
       optional(sequence(
         g.AttributeOperator,
         choice(
-          g.LiteralQuoted,
+          g.Quoted,
           g.Identifier
         ),
         optional(g.AttributeModifier)
       )),
       literal(']')
     ),
-    children => simpleSelector(joinSourceText(children))
+    children => children.some(isInterpolation)
+      ? interpolatedSimpleSelector(interpolationFromTemplateChildren(children))
+      : simpleSelector(joinSourceText(children))
   );
 
   /*
