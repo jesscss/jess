@@ -53,6 +53,7 @@ const SEMANTIC_TOKEN_TYPE_INDEX = new Map<SemanticTokenType, number>(SEMANTIC_TO
 const NUMBER_TYPES = new Set(['Num', 'Dimension', 'Color']);
 const VARIABLE_REFERENCE_TYPES = new Set(['Reference', 'VariableReference']);
 const VARIABLE_DECLARATION_TYPES = new Set(['VarDeclaration', 'VariableDeclaration']);
+const STATIC_SIMPLE_SELECTOR_TYPES = new Set(['BasicSelector', 'Simple']);
 
 /*
  * Genuine at-rule grammarTypes whose leading `@keyword` is a `namespace` token.
@@ -147,6 +148,29 @@ function hasDescendantOfType(node: CssCstNode, grammarType: string): boolean {
   return false;
 }
 
+function isIdentStart(code: number): boolean {
+  return (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || code === 95
+    || code >= 128;
+}
+
+function isIdentChar(code: number): boolean {
+  return isIdentStart(code) || (code >= 48 && code <= 57) || code === 45;
+}
+
+function classSelectorNameOf(slice: string): string | null {
+  if (slice.length <= 1 || slice.charCodeAt(0) !== 46 || !isIdentStart(slice.charCodeAt(1))) {
+    return null;
+  }
+  for (let i = 2; i < slice.length; i++) {
+    if (!isIdentChar(slice.charCodeAt(i))) {
+      return null;
+    }
+  }
+  return slice.slice(1);
+}
+
 /**
  * Every declared variable and mixin (bare identifiers) in one document's CST.
  * Powers the "did you mean" quick-fix candidate pools without reparsing to the
@@ -199,6 +223,29 @@ export function cstVariableNames(root: CssCstNode, doc: TextDocument): string[] 
     }
     const name = varNameOf(src.slice(start, end));
     if (name && !seen.has(name)) {
+      seen.add(name);
+      out.push(name);
+    }
+  }
+  return out;
+}
+
+/**
+ * Static class selector names in source order, mined from `BasicSelector` CST
+ * nodes. This intentionally ignores compound text, interpolation, attributes,
+ * and pseudo arguments until richer selector facts exist.
+ */
+export function cstClassSelectorNames(root: CssCstNode, doc: TextDocument): string[] {
+  const index = buildCstIndex(root);
+  const src = doc.getText();
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const { node, start, end } of index.nodes) {
+    if (!STATIC_SIMPLE_SELECTOR_TYPES.has(node.grammarType)) {
+      continue;
+    }
+    const name = classSelectorNameOf(src.slice(start, end));
+    if (name !== null && !seen.has(name)) {
       seen.add(name);
       out.push(name);
     }

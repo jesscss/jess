@@ -366,20 +366,28 @@ const EXPERIMENTAL_HTML_TYPE_SELECTORS = [
 const EXTRA_SVG_TYPE_SELECTORS = ['hatch', 'hatchpath', 'hatchPath'];
 const htmlTagList = ownValue(htmlTags, 'default');
 const mathmlTagList = ownValue(mathmlTagNames, 'mathmlTagNames');
-const HTML_TYPE_SELECTOR_SET = new Set([
+const HTML_TYPE_SELECTOR_NAMES = [
   ...(Array.isArray(htmlTagList) ? htmlTagList : []),
   ...DEPRECATED_HTML_TYPE_SELECTORS,
   ...EXPERIMENTAL_HTML_TYPE_SELECTORS
-].filter((name): name is string => typeof name === 'string' && name.length > 0).map(name => name.toLowerCase()));
-const SVG_TYPE_SELECTOR_SET = new Set([
+].filter((name): name is string => typeof name === 'string' && name.length > 0).map(name => name.toLowerCase());
+const SVG_TYPE_SELECTOR_NAMES = [
   ...(Array.isArray(svgTags) ? svgTags : []),
   ...EXTRA_SVG_TYPE_SELECTORS
-].filter((name): name is string => typeof name === 'string' && name.length > 0));
-const MATHML_TYPE_SELECTOR_SET = new Set(
-  (Array.isArray(mathmlTagList) ? mathmlTagList : [])
-    .filter((name): name is string => typeof name === 'string' && name.length > 0)
-    .map(name => name.toLowerCase())
-);
+].filter((name): name is string => typeof name === 'string' && name.length > 0);
+const MATHML_TYPE_SELECTOR_NAMES = (Array.isArray(mathmlTagList) ? mathmlTagList : [])
+  .filter((name): name is string => typeof name === 'string' && name.length > 0)
+  .map(name => name.toLowerCase());
+export const cssTypeSelectorNames: readonly string[] = Object.freeze([
+  ...new Set([
+    ...HTML_TYPE_SELECTOR_NAMES,
+    ...SVG_TYPE_SELECTOR_NAMES,
+    ...MATHML_TYPE_SELECTOR_NAMES
+  ])
+].sort((left, right) => left.localeCompare(right)));
+const HTML_TYPE_SELECTOR_SET = new Set(HTML_TYPE_SELECTOR_NAMES);
+const SVG_TYPE_SELECTOR_SET = new Set(SVG_TYPE_SELECTOR_NAMES);
+const MATHML_TYPE_SELECTOR_SET = new Set(MATHML_TYPE_SELECTOR_NAMES);
 const PSEUDO_CLASS_SET = new Set(
   arrayField(webCssData, 'pseudoClasses')
     .map(pseudo => stringField(pseudo, 'name')?.toLowerCase())

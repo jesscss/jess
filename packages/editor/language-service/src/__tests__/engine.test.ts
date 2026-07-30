@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { Position, SymbolKind } from 'vscode-languageserver-types';
+import { CompletionItemKind, Position, SymbolKind } from 'vscode-languageserver-types';
 import { LINT_RULE_NAMES } from '@jesscss/diagnostics-core';
 import { createEngine } from '../engine.js';
 
@@ -21,6 +21,56 @@ describe('JessLanguageServiceEngine', () => {
       const completions = engine.getCompletions(doc.uri, Position.create(0, 5));
       const labels = completions.items.map(i => i.label);
       expect(labels).toContain('color');
+      expect(labels).not.toContain('col');
+    });
+
+    it('suggests CSS type selectors at stylesheet root', () => {
+      const engine = createEngine();
+      const doc = createDocument('css', 'ma');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const completions = engine.getCompletions(doc.uri, Position.create(0, 2));
+      const main = completions.items.find(item => item.label === 'main');
+
+      expect(main).toMatchObject({
+        kind: CompletionItemKind.Class,
+        detail: 'CSS type selector'
+      });
+    });
+
+    it('suggests document-local class selectors in selector context', () => {
+      const engine = createEngine();
+      const doc = createDocument('css', '.card { color: red; }\n.ca');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const completions = engine.getCompletions(doc.uri, Position.create(1, 3));
+      const card = completions.items.find(item => item.label === '.card');
+
+      expect(card).toMatchObject({
+        kind: CompletionItemKind.Class,
+        detail: 'CSS class selector'
+      });
+    });
+
+    it('keeps selector completions out of declaration property context', () => {
+      const engine = createEngine();
+      const doc = createDocument('css', 'a { ma }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const completions = engine.getCompletions(doc.uri, Position.create(0, 6));
+      const labels = completions.items.map(i => i.label);
+      expect(labels).toContain('margin');
+      expect(labels).not.toContain('main');
+    });
+
+    it('suggests document-local class selectors for nested SCSS selectors', () => {
+      const engine = createEngine();
+      const doc = createDocument('scss', '.card { color: red; .ca { } }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const completions = engine.getCompletions(doc.uri, Position.create(0, 23));
+      const labels = completions.items.map(i => i.label);
+      expect(labels).toContain('.card');
     });
 
     it('suggests at-rules when typing @', () => {

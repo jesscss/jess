@@ -16,6 +16,7 @@ import { selectorSpecificity, type Specificity } from '@csstools/selector-specif
 import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import {
   cstLintDiagnostics,
+  cssTypeSelectorNames,
   type CssDiagnosticMetadata,
   type CssPropertyValueFact,
   diagnosticCodeForRuleName,
@@ -25,7 +26,7 @@ import {
 import * as colorUtils from './color-utils.js';
 import { buildCstIndex, cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
 import { cstSymbolAtOffset, cstFindDefinitionInDoc, cstCollectReferencesInDoc, type CstSymbol } from './cst-symbols.js';
-import { cstSemanticTokens, cstVariableNames, cstDeclaredSymbols } from './cst-syntactic.js';
+import { cstSemanticTokens, cstVariableNames, cstDeclaredSymbols, cstClassSelectorNames } from './cst-syntactic.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   CompletionItem,
@@ -201,6 +202,8 @@ function findPropertyNameBeforeColon(text: string, offset: number): string | nul
       if (depth < 0) {
         break; // exited block
       }
+    } else if (ch === 59 && depth === 0) {
+      break; // previous declaration ended before this completion site
     } else if (ch === 58 && depth === 0) {
       // Found `:` at block depth 0 (inside a ruleset block).
       colonPos = i;
@@ -296,6 +299,26 @@ function enclosingBlockIsStyleRule(text: string, offset: number): boolean {
     return false; // stylesheet root
   }
   return !NESTABLE_GROUP_AT.test(prelude);
+}
+
+function selectorCompletionContext(text: string, offset: number, lang: JessLang): boolean {
+  if (findPropertyNameBeforeColon(text, offset) !== null) {
+    return false;
+  }
+  const depth = braceDepthBefore(text, offset);
+  const statementStart = Math.max(
+    text.lastIndexOf('{', offset - 1),
+    text.lastIndexOf('}', offset - 1),
+    text.lastIndexOf(';', offset - 1)
+  );
+  const statement = text.slice(statementStart + 1, offset).trimStart();
+  if (statement.startsWith('@') || statement.startsWith('$')) {
+    return false;
+  }
+  if (depth === 0) {
+    return true;
+  }
+  return lang !== 'css' && enclosingBlockIsStyleRule(text, offset);
 }
 
 /** Folding ranges from `/* #region *​/` … `/* #endregion *​/` marker comments
@@ -870,6 +893,57 @@ function buildSupportsPreludeCompletions(prefix: string, replaceRange: Range): C
       keyword,
       'Allowed inside an `@supports` condition.'
     ));
+  }
+  return items;
+}
+
+function buildSelectorCompletions(
+  cstTree: CssCstNode | null | undefined,
+  document: TextDocument,
+  prefix: string,
+  replaceRange: Range
+): CompletionItem[] {
+  const items: CompletionItem[] = [];
+  const seen = new Set<string>();
+  const add = (label: string, kind: CompletionItemKind, info: CompletionInfo) => {
+    const lower = label.toLowerCase();
+    if (seen.has(lower) || (prefix && !lower.startsWith(prefix))) {
+      return;
+    }
+    seen.add(lower);
+    items.push({
+      label,
+      kind,
+      detail: info.detail,
+      documentation: info.documentation,
+      textEdit: TextEdit.replace(replaceRange, label)
+    });
+  };
+
+  if (prefix.startsWith('.')) {
+    if (cstTree === null || cstTree === undefined) {
+      return items;
+    }
+    for (const name of cstClassSelectorNames(cstTree, document)) {
+      add(
+        `.${name}`,
+        CompletionItemKind.Class,
+        languageCompletionInfo(`.${name}`, 'CSS class selector', 'css', 'A class selector used in this document.')
+      );
+    }
+    return items;
+  }
+
+  if (prefix.startsWith('#') || prefix.startsWith(':') || prefix.startsWith('[') || prefix.startsWith('&')) {
+    return items;
+  }
+
+  for (const name of cssTypeSelectorNames) {
+    add(
+      name,
+      CompletionItemKind.Class,
+      markdownCompletionInfo('CSS type selector', name, 'Selects elements by tag name.')
+    );
   }
   return items;
 }
@@ -2264,7 +2338,15 @@ export function createEngine(): JessLanguageServiceEngine {
           }
         }
 
-        // 7) Property names (inside a block).
+        // 7) Selector element/class names at root, plus nested selector contexts in dialect files.
+        if (selectorCompletionContext(text, offset, tracked.lang)) {
+          const selectorItems = buildSelectorCompletions(cstTree, document, prefix, replaceRange);
+          if (selectorItems.length > 0 || prefix.startsWith('.')) {
+            return { isIncomplete: false, items: selectorItems };
+          }
+        }
+
+        // 8) Property names (inside a block).
         let depth = 0;
         for (let i = 0; i < Math.min(offset, text.length); i++) {
           const ch = text.charCodeAt(i);

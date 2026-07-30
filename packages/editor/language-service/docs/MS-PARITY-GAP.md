@@ -40,7 +40,7 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | **Pseudo-classes** (`:hover`, `:nth-child(...)`) | ✓ incl. argument snippets | ✓ with TypeScript-style detail/docs | At parity; argument-specific docs/signatures remain polish | **P0** |
 | **Pseudo-elements** (`::before`, single+double colon) | ✓ | ✓ with TypeScript-style detail/docs | At parity | **P0** |
 | **`!important`** | ✓ | ✓ with rich detail/docs | At parity | P1 |
-| **Selectors / combinators / element tags** | ✓ HTML5+SVG tags at top level, class selectors mined from document | ✗ | Missing | P2 |
+| **Selectors / combinators / element tags** | ✓ HTML5+SVG tags at top level, class selectors mined from document | Partial: known HTML/SVG/MathML type-selector completions plus document-local class selectors at root and nested dialect selector sites | Combinator-specific snippets remain polish | P2 |
 | **Named colors + color fns as values** | ✓ named colors + `rgb()/hsl()/…` in color contexts, with color swatch | ✓ named colors with swatches plus modern color functions with rich detail/docs | Function parameter snippets/docs remain future polish | P1 |
 | **`url()` path completion** | ✓ (via completion participants / `doComplete2`) | ✓ filesystem path completion | At parity | P2 |
 | **@import path completion** | ✓ (participant-based) | ✓ filesystem path completion for `@import` / `@use` | At parity | P2 |
@@ -202,6 +202,11 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
     hidden whenever nested; `@font-face`/`@keyframes`/… hidden inside a style rule
     but kept in conditional-group at-rules; `@media`/`@supports`/… stay offered
     inside style rules.
+13a. ✅ **DONE.** **Selector completions** — known HTML/SVG/MathML type selectors
+     use the same metadata as `selector-type-no-unknown`; static class selectors
+     are mined from CST simple selector nodes and completed at root selector
+     sites plus nested Less/SCSS/Jess selector contexts. Combinator-specific
+     snippets remain future polish.
 
 **P2 — polish / niche**
 

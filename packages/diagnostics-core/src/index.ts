@@ -16,6 +16,7 @@ export {
   type CstIndexEntry
 } from './cst-analysis.js';
 export {
+  cssTypeSelectorNames,
   defaultCssDiagnosticMetadata
 } from './metadata.js';
 export type {
