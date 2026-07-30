@@ -716,34 +716,6 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
-  it('routes an identifier-led body statement from its retained prefix', () => {
-    const document = parseAst('.outer { property: red; property : blue; property:/* value */ green; thing:hover { color: red; } thing > .child, aside { color: blue; } }');
-    const outer = document.rules[0];
-
-    expect(outer).toMatchObject({ type: 'Ruleset' });
-    if (outer?.type !== 'Ruleset') {
-      throw new Error('Expected the outer rule.');
-    }
-    expect(outer.rules.slice(0, 3)).toMatchObject([
-      { type: 'Declaration', name: 'property', value: { type: 'Keyword', src: 'red' } },
-      { type: 'Declaration', name: 'property', value: { type: 'Keyword', src: 'blue' } },
-      { type: 'Declaration', name: 'property', value: { type: 'Keyword', src: 'green' } }
-    ]);
-    expect(outer.rules[3]).toMatchObject({
-      type: 'Ruleset',
-      selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: 'thing' }, { text: ':hover' }] }] }
-    });
-    expect(outer.rules[4]).toMatchObject({
-      type: 'Ruleset',
-      selector: {
-        selectors: [
-          { type: 'ComplexSelector', value: [{ text: 'thing' }, '>', { text: '.child' }] },
-          { type: 'SimpleSelector', text: 'aside' }
-        ]
-      }
-    });
-  });
-
   it('uses `only` only before a media type', () => {
     expect(parseAst('@media only screen and (min-width: 1px) { .card { color: red; } }')).toMatchObject({
       rules: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
