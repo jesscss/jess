@@ -14,7 +14,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import {
   cstLintDiagnostics,
-  LINT_CODES
+  LINT_CODES,
+  type SourceDiagnostic
 } from '@jesscss/diagnostics-core';
 import * as colorUtils from './color-utils.js';
 import { buildCstIndex, cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
@@ -822,6 +823,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.unsupportedSassForm]: DiagnosticSeverity.Warning
     /* eslint-enable @typescript-eslint/naming-convention */
   };
+  let semanticDiagnosticOptions: Record<string, { readonly pattern?: RegExp }> = {};
 
   function parseSeverity(value: unknown): DiagnosticSeverity | null {
     switch (value) {
@@ -840,6 +842,55 @@ export function createEngine(): JessLanguageServiceEngine {
       default:
         return null;
     }
+  }
+
+  function parsePatternOption(value: unknown): RegExp | undefined {
+    if (value instanceof RegExp) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      try {
+        return new RegExp(value);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  function readDiagnosticOptions(value: unknown): { readonly pattern?: RegExp } | undefined {
+    if (value === null || typeof value !== 'object' || !('pattern' in value)) {
+      return undefined;
+    }
+    const pattern = parsePatternOption(value.pattern);
+    return pattern === undefined ? undefined : { pattern };
+  }
+
+  function patternTarget(diagnostic: SourceDiagnostic, source: string): string | null {
+    const raw = source.slice(diagnostic.start, diagnostic.end);
+    if (diagnostic.code === LINT_CODES.selectorClassPattern) {
+      return raw.startsWith('.') ? raw.slice(1) : raw;
+    }
+    if (
+      diagnostic.code === LINT_CODES.customPropertyPattern
+      || diagnostic.code === LINT_CODES.keyframesNamePattern
+    ) {
+      return raw;
+    }
+    return null;
+  }
+
+  function suppressByDiagnosticOptions(diagnostic: SourceDiagnostic, source: string): boolean {
+    const target = patternTarget(diagnostic, source);
+    if (target === null) {
+      return false;
+    }
+    const pattern = semanticDiagnosticOptions[diagnostic.code]?.pattern;
+    if (pattern === undefined) {
+      return true;
+    }
+    pattern.lastIndex = 0;
+    return pattern.test(target);
   }
 
   /*
@@ -1119,7 +1170,8 @@ export function createEngine(): JessLanguageServiceEngine {
   return {
     configure(config) {
       /*
-       * Expected shape (from client settings): { diagnostics?: { severity?: Record<string, string> } }
+       * Expected shape (from client settings):
+       * { diagnostics?: { severity?: Record<string, string>, options?: Record<string, object> } }
        * Example: { diagnostics: { severity: { "var/undefined": "error" } } }
        */
       const diagnosticsObj = (config && typeof config === 'object' && 'diagnostics' in config)
@@ -1145,6 +1197,21 @@ export function createEngine(): JessLanguageServiceEngine {
           next[k] = parsed;
         }
         semanticDiagnosticSeverities = next;
+      }
+      const options = (diagnosticsObj && typeof diagnosticsObj === 'object' && 'options' in diagnosticsObj)
+        ? diagnosticsObj.options
+        : undefined;
+      if (options && typeof options === 'object') {
+        const next: Record<string, { readonly pattern?: RegExp }> = { ...semanticDiagnosticOptions };
+        for (const [k, v] of Object.entries(options)) {
+          const parsed = readDiagnosticOptions(v);
+          if (parsed === undefined) {
+            delete next[k];
+          } else {
+            next[k] = parsed;
+          }
+        }
+        semanticDiagnosticOptions = next;
       }
     },
 
@@ -1844,6 +1911,9 @@ export function createEngine(): JessLanguageServiceEngine {
         }, undefined, cstDoc.errors.length > 0 || cstDoc.unconsumedFrom !== null);
         for (const diagnostic of cstDiagnostics) {
           if (diagnostic.code === LINT_CODES.emptyRules && hasDiagnosticQualifier(diagnostic, 'mixin-body')) {
+            continue;
+          }
+          if (suppressByDiagnosticOptions(diagnostic, text)) {
             continue;
           }
           const configured = semanticDiagnosticSeverities[diagnostic.code];

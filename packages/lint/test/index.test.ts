@@ -35,8 +35,10 @@ describe('stable rule set', () => {
       LINT_CODES.zeroUnits,
       LINT_CODES.customPropertyMissingVarFunction,
       LINT_CODES.unknownCustomProperties,
+      LINT_CODES.customPropertyPattern,
       LINT_CODES.keyframeDuplicateSelectors,
       LINT_CODES.keyframeDeclarationNoImportant,
+      LINT_CODES.keyframesNamePattern,
       LINT_CODES.declarationNoImportant,
       LINT_CODES.invalidNamedGridAreas,
       LINT_CODES.fontFamilyDuplicateNames,
@@ -64,6 +66,7 @@ describe('stable rule set', () => {
       LINT_CODES.unknownPseudoClasses,
       LINT_CODES.unknownPseudoElements,
       LINT_CODES.selectorNoVendorPrefix,
+      LINT_CODES.selectorClassPattern,
       LINT_CODES.unmatchableAnbSelectors,
       LINT_CODES.unknownTypeSelectors,
       LINT_CODES.selectorMaxId,
@@ -93,8 +96,10 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.zeroUnits,
       LINT_RULE_NAMES.customPropertyMissingVarFunction,
       LINT_RULE_NAMES.unknownCustomProperties,
+      LINT_RULE_NAMES.customPropertyPattern,
       LINT_RULE_NAMES.keyframeDuplicateSelectors,
       LINT_RULE_NAMES.keyframeDeclarationNoImportant,
+      LINT_RULE_NAMES.keyframesNamePattern,
       LINT_RULE_NAMES.declarationNoImportant,
       LINT_RULE_NAMES.invalidNamedGridAreas,
       LINT_RULE_NAMES.fontFamilyDuplicateNames,
@@ -122,6 +127,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownPseudoClasses,
       LINT_RULE_NAMES.unknownPseudoElements,
       LINT_RULE_NAMES.selectorNoVendorPrefix,
+      LINT_RULE_NAMES.selectorClassPattern,
       LINT_RULE_NAMES.unmatchableAnbSelectors,
       LINT_RULE_NAMES.unknownTypeSelectors,
       LINT_RULE_NAMES.selectorMaxId,
@@ -136,7 +142,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(48);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(49);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -152,6 +158,9 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.selectorNoVendorPrefix]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.selectorClassPattern]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.customPropertyPattern]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.keyframesNamePattern]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
@@ -210,6 +219,9 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownCustomProperties]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorNoVendorPrefix]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorClassPattern]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.customPropertyPattern]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.keyframesNamePattern]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyValue]).toBe('off');
@@ -1170,6 +1182,61 @@ describe('lintText', () => {
 
     expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
       [LINT_CODES.mediaFeatureNameNoVendorPrefix, LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix, 'error']
+    ]);
+  });
+
+  it('keeps naming pattern policies opt-in and filters by configured pattern', async () => {
+    const input = {
+      source: [
+        '@property --BadToken { syntax: "<color>"; inherits: false; initial-value: red; }',
+        '@property --good-token { syntax: "<color>"; inherits: false; initial-value: red; }',
+        '.BadClass, .good-class { --BadLocal: red; --good-local: blue; }',
+        '@keyframes BadSpin { from { opacity: 0; } }',
+        '@keyframes good-spin { to { opacity: 1; } }'
+      ].join('\n'),
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.selectorClassPattern);
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.customPropertyPattern);
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.keyframesNamePattern);
+
+    const configuredWithoutPattern = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.selectorClassPattern]: 'warn'
+          }
+        }
+      }
+    });
+
+    expect(configuredWithoutPattern.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.selectorClassPattern
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.selectorClassPattern]: ['warn', { pattern: '^[a-z][a-z0-9-]*$' }],
+            [LINT_RULE_NAMES.customPropertyPattern]: ['warn', { pattern: '^--[a-z][a-z0-9-]*$' }],
+            [LINT_RULE_NAMES.keyframesNamePattern]: ['warn', { pattern: '^[a-z][a-z0-9-]*$' }]
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [
+      diagnostic.code,
+      diagnostic.ruleName,
+      input.source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      [LINT_CODES.customPropertyPattern, LINT_RULE_NAMES.customPropertyPattern, '--BadToken'],
+      [LINT_CODES.selectorClassPattern, LINT_RULE_NAMES.selectorClassPattern, '.BadClass'],
+      [LINT_CODES.customPropertyPattern, LINT_RULE_NAMES.customPropertyPattern, '--BadLocal'],
+      [LINT_CODES.keyframesNamePattern, LINT_RULE_NAMES.keyframesNamePattern, 'BadSpin']
     ]);
   });
 

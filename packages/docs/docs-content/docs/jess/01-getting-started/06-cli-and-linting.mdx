@@ -98,6 +98,9 @@ export default {
       'vendor-prefix': 'warn',
       'compatible-vendor-prefixes': 'off',
       'unknown-vendor-specific-properties': 'off',
+      'selector-class-pattern': ['off', { pattern: '^[a-z][a-z0-9-]*$' }],
+      'custom-property-pattern': ['off', { pattern: '^--[a-z][a-z0-9-]*$' }],
+      'keyframes-name-pattern': ['off', { pattern: '^[a-z][a-z0-9-]*$' }],
       'float': 'off',
       'jess/unsupported-sass-form': 'warn'
     }
@@ -112,6 +115,10 @@ rule. Rules that support secondary options can use a Stylelint-like tuple:
 `block-no-empty` reports empty rulesets by default. Use
 `['warn', { include: ['mixins'] }]` to also report empty Less, SCSS, and Jess
 mixin bodies.
+
+Naming convention rules such as `selector-class-pattern`,
+`custom-property-pattern`, and `keyframes-name-pattern` are opt-in and require a
+secondary `pattern` option.
 
 ## What Jess Checks Today
 
@@ -134,6 +141,8 @@ Jess's stable lint set is deliberately small:
 | `vendor-prefix` | `lint/vendor-prefix` | CSS vendor-prefixed declarations/keyframes without the standard form |
 | `property-no-vendor-prefix` | `lint/property-no-vendor-prefix` | Opt-in authored CSS vendor-prefixed property names |
 | `at-rule-no-vendor-prefix` | `lint/at-rule-no-vendor-prefix` | Opt-in authored CSS vendor-prefixed keyframe at-rules |
+| `custom-property-pattern` | `lint/custom-property-pattern` | Opt-in static custom property naming convention |
+| `keyframes-name-pattern` | `lint/keyframes-name-pattern` | Opt-in static keyframes naming convention |
 | `compatible-vendor-prefixes` | `lint/compatible-vendor-prefixes` | Opt-in incomplete CSS vendor-prefixed declaration/keyframe sets |
 | `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | Opt-in unknown CSS vendor-prefixed declarations |
 | `import-statement` | `lint/import-statement` | Opt-in CSS `@import` loading warnings |
@@ -141,6 +150,7 @@ Jess's stable lint set is deliberately small:
 | `selector-max-id` | `lint/selector-max-id` | Opt-in CSS ID selector warnings |
 | `selector-max-universal` | `lint/selector-max-universal` | Opt-in CSS universal selector warnings |
 | `selector-no-vendor-prefix` | `lint/selector-no-vendor-prefix` | Opt-in authored CSS vendor-prefixed pseudo selectors |
+| `selector-class-pattern` | `lint/selector-class-pattern` | Opt-in static class selector naming convention |
 | `media-feature-name-no-vendor-prefix` | `lint/media-feature-name-no-vendor-prefix` | Opt-in authored CSS vendor-prefixed media feature names |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | SCSS forms Jess recognizes but does not support yet |
 

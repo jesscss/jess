@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 48;
+export const STABLE_LINT_RULE_SET_VERSION = 49;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -51,6 +51,9 @@ export const LINT_RULE_NAMES = {
   unknownPseudoClasses: 'selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'selector-pseudo-element-no-unknown',
   selectorNoVendorPrefix: 'selector-no-vendor-prefix',
+  selectorClassPattern: 'selector-class-pattern',
+  customPropertyPattern: 'custom-property-pattern',
+  keyframesNamePattern: 'keyframes-name-pattern',
   unmatchableAnbSelectors: 'selector-anb-no-unmatchable',
   unknownTypeSelectors: 'selector-type-no-unknown',
   selectorMaxId: 'selector-max-id',
@@ -123,6 +126,9 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unknownPseudoClasses]: LINT_CODES.unknownPseudoClasses,
   [LINT_RULE_NAMES.unknownPseudoElements]: LINT_CODES.unknownPseudoElements,
   [LINT_RULE_NAMES.selectorNoVendorPrefix]: LINT_CODES.selectorNoVendorPrefix,
+  [LINT_RULE_NAMES.selectorClassPattern]: LINT_CODES.selectorClassPattern,
+  [LINT_RULE_NAMES.customPropertyPattern]: LINT_CODES.customPropertyPattern,
+  [LINT_RULE_NAMES.keyframesNamePattern]: LINT_CODES.keyframesNamePattern,
   [LINT_RULE_NAMES.unmatchableAnbSelectors]: LINT_CODES.unmatchableAnbSelectors,
   [LINT_RULE_NAMES.unknownTypeSelectors]: LINT_CODES.unknownTypeSelectors,
   [LINT_RULE_NAMES.selectorMaxId]: LINT_CODES.selectorMaxId,
@@ -182,6 +188,9 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.unknownPseudoClasses]: LINT_RULE_NAMES.unknownPseudoClasses,
   [LINT_CODES.unknownPseudoElements]: LINT_RULE_NAMES.unknownPseudoElements,
   [LINT_CODES.selectorNoVendorPrefix]: LINT_RULE_NAMES.selectorNoVendorPrefix,
+  [LINT_CODES.selectorClassPattern]: LINT_RULE_NAMES.selectorClassPattern,
+  [LINT_CODES.customPropertyPattern]: LINT_RULE_NAMES.customPropertyPattern,
+  [LINT_CODES.keyframesNamePattern]: LINT_RULE_NAMES.keyframesNamePattern,
   [LINT_CODES.unmatchableAnbSelectors]: LINT_RULE_NAMES.unmatchableAnbSelectors,
   [LINT_CODES.unknownTypeSelectors]: LINT_RULE_NAMES.unknownTypeSelectors,
   [LINT_CODES.selectorMaxId]: LINT_RULE_NAMES.selectorMaxId,
@@ -241,6 +250,9 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownPseudoClasses]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoElements]: 'warn',
   [LINT_RULE_NAMES.selectorNoVendorPrefix]: 'off',
+  [LINT_RULE_NAMES.selectorClassPattern]: 'off',
+  [LINT_RULE_NAMES.customPropertyPattern]: 'off',
+  [LINT_RULE_NAMES.keyframesNamePattern]: 'off',
   [LINT_RULE_NAMES.unmatchableAnbSelectors]: 'warn',
   [LINT_RULE_NAMES.unknownTypeSelectors]: 'warn',
   [LINT_RULE_NAMES.selectorMaxId]: 'off',
@@ -305,6 +317,9 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownCustomProperties]: 'off',
   [LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.selectorNoVendorPrefix]: 'off',
+  [LINT_RULE_NAMES.selectorClassPattern]: 'off',
+  [LINT_RULE_NAMES.customPropertyPattern]: 'off',
+  [LINT_RULE_NAMES.keyframesNamePattern]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'off',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'off',
@@ -460,6 +475,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags var() references without a same-file custom property declaration or @property registration; project reference files and import graph facts remain future work.'
   },
   {
+    diagnosticCode: LINT_CODES.customPropertyPattern,
+    ruleName: LINT_RULE_NAMES.customPropertyPattern,
+    title: 'Custom property names',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'custom-property-pattern',
+    notes: 'Opt-in Stylelint-named rule for static custom property declarations and @property registration names; configure with pattern: "..." in secondary options.'
+  },
+  {
     diagnosticCode: LINT_CODES.keyframeDuplicateSelectors,
     ruleName: LINT_RULE_NAMES.keyframeDuplicateSelectors,
     title: 'Duplicate keyframe selectors',
@@ -478,6 +503,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-equivalent',
     stylelintRule: 'keyframe-declaration-no-important',
     notes: 'Flags !important declarations inside @keyframes blocks.'
+  },
+  {
+    diagnosticCode: LINT_CODES.keyframesNamePattern,
+    ruleName: LINT_RULE_NAMES.keyframesNamePattern,
+    title: 'Keyframes names',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'keyframes-name-pattern',
+    notes: 'Opt-in Stylelint-named rule for static @keyframes names; configure with pattern: "..." in secondary options.'
   },
   {
     diagnosticCode: LINT_CODES.declarationNoImportant,
@@ -740,6 +775,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'selector-no-vendor-prefix',
     notes: 'Opt-in Stylelint migration rule that flags authored CSS vendor-prefixed pseudo-class and pseudo-element selectors; dialect selector facts remain future work.'
+  },
+  {
+    diagnosticCode: LINT_CODES.selectorClassPattern,
+    ruleName: LINT_RULE_NAMES.selectorClassPattern,
+    title: 'Class selector names',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'selector-class-pattern',
+    notes: 'Opt-in Stylelint-named rule for static class selectors; configure with pattern: "..." in secondary options.'
   },
   {
     diagnosticCode: LINT_CODES.unmatchableAnbSelectors,

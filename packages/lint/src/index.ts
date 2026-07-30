@@ -147,11 +147,44 @@ function includesRuleOption(options: LintRuleOptions | undefined, value: string)
   return options?.include?.includes(value) === true;
 }
 
+function patternRuleTarget(diagnostic: SourceDiagnostic, source: string): string | null {
+  const raw = source.slice(diagnostic.start, diagnostic.end);
+  if (diagnostic.code === LINT_CODES.selectorClassPattern) {
+    return raw.startsWith('.') ? raw.slice(1) : raw;
+  }
+  if (
+    diagnostic.code === LINT_CODES.customPropertyPattern
+    || diagnostic.code === LINT_CODES.keyframesNamePattern
+  ) {
+    return raw;
+  }
+  return null;
+}
+
+function patternRuleOption(options: LintRuleOptions | undefined): RegExp | null {
+  const pattern = options?.pattern;
+  if (pattern instanceof RegExp) {
+    return pattern;
+  }
+  if (typeof pattern === 'string') {
+    try {
+      return new RegExp(pattern);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 function hasQualifier(diagnostic: SourceDiagnostic, value: string): boolean {
   return diagnostic.qualifiers?.includes(value) === true;
 }
 
-function shouldSuppressByRuleOptions(diagnostic: SourceDiagnostic, setting: LintRuleSetting | undefined): boolean {
+function shouldSuppressByRuleOptions(
+  diagnostic: SourceDiagnostic,
+  setting: LintRuleSetting | undefined,
+  source: string
+): boolean {
   const options = settingOptions(setting);
   if (diagnostic.code === LINT_CODES.duplicateProperties) {
     return ignoresRuleOption(options, 'consecutive-duplicates')
@@ -159,6 +192,15 @@ function shouldSuppressByRuleOptions(diagnostic: SourceDiagnostic, setting: Lint
   }
   if (diagnostic.code === LINT_CODES.emptyRules && hasQualifier(diagnostic, 'mixin-body')) {
     return !includesRuleOption(options, 'mixins');
+  }
+  const patternTarget = patternRuleTarget(diagnostic, source);
+  if (patternTarget !== null) {
+    const pattern = patternRuleOption(options);
+    if (pattern === null) {
+      return true;
+    }
+    pattern.lastIndex = 0;
+    return pattern.test(patternTarget);
   }
   return false;
 }
@@ -192,7 +234,12 @@ function languageFromPath(filePath: string | undefined, fallback: JessLanguage |
   return 'css';
 }
 
-function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfig, options: LintOptions): LintDiagnostic[] {
+function applyPolicy(
+  diagnostics: readonly SourceDiagnostic[],
+  source: string,
+  config: LintConfig,
+  options: LintOptions
+): LintDiagnostic[] {
   const out: LintDiagnostic[] = [];
   for (const diagnostic of diagnostics) {
     if (options.syntaxOnly === true && diagnostic.phase !== 'parse') {
@@ -213,7 +260,7 @@ function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfi
     }
     const rulePolicy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
       ?? config.rules?.[diagnostic.code];
-    if (shouldSuppressByRuleOptions(diagnostic, rulePolicy)) {
+    if (shouldSuppressByRuleOptions(diagnostic, rulePolicy, source)) {
       continue;
     }
     const ruleName = ruleNameForDiagnostic(diagnostic.code);
@@ -301,7 +348,7 @@ export async function lintText(input: LintTextInput, options: LintOptions = {}):
   });
   return toLintResult(
     input.filePath,
-    applyPolicy(collected.diagnostics, lintConfig, options),
+    applyPolicy(collected.diagnostics, input.source, lintConfig, options),
     options.includeLegacyDiagnostics === true
   );
 }
@@ -338,7 +385,7 @@ export async function lintFiles(patterns: string | readonly string[], options: L
     const collected = collectTolerantDiagnostics({ source, filePath, language });
     results.push(toLintResult(
       filePath,
-      applyPolicy(collected.diagnostics, lintConfig, options),
+      applyPolicy(collected.diagnostics, source, lintConfig, options),
       options.includeLegacyDiagnostics === true
     ));
   }

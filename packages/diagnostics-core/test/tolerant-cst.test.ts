@@ -74,7 +74,9 @@ describe('collectTolerantDiagnostics', () => {
       }
     });
 
-    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.message])).toEqual([
+    expect(result.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.deprecatedProperties)
+      .map(diagnostic => [diagnostic.code, diagnostic.message])).toEqual([
       [LINT_CODES.deprecatedProperties, 'Deprecated property: \'project-old\'']
     ]);
   });
@@ -213,6 +215,25 @@ describe('collectTolerantDiagnostics', () => {
     expect(unknownCustomProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
       ['Unknown custom property "--missing"', source.indexOf('--missing'), source.indexOf('--missing') + '--missing'.length],
       ['Unknown custom property "--fallback"', source.indexOf('--fallback'), source.indexOf('--fallback') + '--fallback'.length]
+    ]);
+  });
+
+  it('reports opt-in custom property pattern facts for static definitions', () => {
+    const source = [
+      '@property --BadToken { syntax: "<color>"; inherits: false; initial-value: red; }',
+      '.a { --BadLocal: blue; color: var(--BadLocal); }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const customProperties = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.customPropertyPattern
+    );
+
+    expect(customProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Custom property "--BadToken" does not match the configured pattern', source.indexOf('--BadToken'), source.indexOf('--BadToken') + '--BadToken'.length],
+      ['Custom property "--BadLocal" does not match the configured pattern', source.indexOf('--BadLocal'), source.indexOf('--BadLocal') + '--BadLocal'.length]
     ]);
   });
 
@@ -933,6 +954,22 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('reports opt-in keyframes name pattern facts for static keyframes', () => {
+    const source = '@keyframes BadSpin { from { opacity: 0; } }\n@keyframes good-spin { to { opacity: 1; } }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const keyframesNames = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.keyframesNamePattern
+    );
+
+    expect(keyframesNames.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Keyframes name "BadSpin" does not match the configured pattern', source.indexOf('BadSpin'), source.indexOf('BadSpin') + 'BadSpin'.length],
+      ['Keyframes name "good-spin" does not match the configured pattern', source.indexOf('good-spin'), source.indexOf('good-spin') + 'good-spin'.length]
+    ]);
+  });
+
   it('reports important declarations outside keyframes', () => {
     const source = '.a { color: red !important; }\n@keyframes spin { from { opacity: 1 !important; } }';
     const result = collectTolerantDiagnostics({
@@ -1309,6 +1346,20 @@ describe('collectTolerantDiagnostics', () => {
     expect(vendorSelectors.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
       ['Unexpected vendor-prefixed selector "::-webkit-scrollbar"', webkitStart, webkitStart + '::-webkit-scrollbar'.length],
       ['Unexpected vendor-prefixed selector ":-moz-placeholder"', mozStart, mozStart + ':-moz-placeholder'.length]
+    ]);
+  });
+
+  it('reports opt-in selector class pattern facts for static class names', () => {
+    const source = '.GoodName, .bad-name:hover, #id { color: red; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const classes = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.selectorClassPattern);
+
+    expect(classes.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Class selector "GoodName" does not match the configured pattern', source.indexOf('.GoodName'), source.indexOf('.GoodName') + '.GoodName'.length],
+      ['Class selector "bad-name" does not match the configured pattern', source.indexOf('.bad-name'), source.indexOf('.bad-name') + '.bad-name'.length]
     ]);
   });
 

@@ -108,6 +108,9 @@ export default {
       'vendor-prefix': 'warn',
       'compatible-vendor-prefixes': 'off',
       'unknown-vendor-specific-properties': 'off',
+      'selector-class-pattern': ['off', { pattern: '^[a-z][a-z0-9-]*$' }],
+      'custom-property-pattern': ['off', { pattern: '^--[a-z][a-z0-9-]*$' }],
+      'keyframes-name-pattern': ['off', { pattern: '^[a-z][a-z0-9-]*$' }],
       'box-model': 'off',
       'float': 'off',
       'color-function-no-invalid-arguments': 'error',
@@ -133,6 +136,11 @@ intent is familiar and Jess-native names for Jess-only diagnostics.
 should also be reported; they stay quiet by default because empty mixins can be
 intentional API placeholders.
 
+Naming convention rules such as `selector-class-pattern`,
+`custom-property-pattern`, and `keyframes-name-pattern` are opt-in and require a
+secondary `pattern` option. Jess uses that regex against the authored static
+name and reports only names that do not match.
+
 ## Stable Rules
 
 The current stable rule set is intentionally small and migration-friendly:
@@ -153,8 +161,10 @@ The current stable rule set is intentionally small and migration-friendly:
 | `length-zero-no-unit` | `lint/zero-units` | `length-zero-no-unit` |
 | `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | `custom-property-no-missing-var-function` |
 | `no-unknown-custom-properties` | `lint/no-unknown-custom-properties` | near `no-unknown-custom-properties` |
+| `custom-property-pattern` | `lint/custom-property-pattern` | near `custom-property-pattern`, opt-in |
 | `keyframe-block-no-duplicate-selectors` | `lint/keyframe-block-no-duplicate-selectors` | `keyframe-block-no-duplicate-selectors` |
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | `keyframe-declaration-no-important` |
+| `keyframes-name-pattern` | `lint/keyframes-name-pattern` | near `keyframes-name-pattern`, opt-in |
 | `declaration-no-important` | `lint/declaration-no-important` | near `declaration-no-important` |
 | `named-grid-areas-no-invalid` | `lint/named-grid-areas-no-invalid` | `named-grid-areas-no-invalid` |
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | near `font-family-no-duplicate-names` |
@@ -182,6 +192,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | near `selector-pseudo-class-no-unknown` |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | near `selector-pseudo-element-no-unknown` |
 | `selector-no-vendor-prefix` | `lint/selector-no-vendor-prefix` | near `selector-no-vendor-prefix`, opt-in |
+| `selector-class-pattern` | `lint/selector-class-pattern` | near `selector-class-pattern`, opt-in |
 | `selector-anb-no-unmatchable` | `lint/selector-anb-no-unmatchable` | `selector-anb-no-unmatchable` |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | near `selector-type-no-unknown` |
 | `selector-max-id` | `lint/selector-max-id` | near `selector-max-id`, opt-in |

@@ -408,6 +408,12 @@ export interface LintRuleOptions {
    */
   include?: readonly string[];
 
+  /**
+   * Regular expression for opt-in naming rules such as selector-class-pattern,
+   * custom-property-pattern, and keyframes-name-pattern.
+   */
+  pattern?: string | RegExp;
+
   /** Allow rule-specific options without forcing every rule into a shared shape. */
   [key: string]: unknown;
 }

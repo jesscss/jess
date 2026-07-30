@@ -59,6 +59,9 @@ export const LINT_CODES = {
   unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
   selectorNoVendorPrefix: 'lint/selector-no-vendor-prefix',
+  selectorClassPattern: 'lint/selector-class-pattern',
+  customPropertyPattern: 'lint/custom-property-pattern',
+  keyframesNamePattern: 'lint/keyframes-name-pattern',
   unknownTypeSelectors: 'lint/selector-type-no-unknown',
   selectorMaxId: 'lint/selector-max-id',
   selectorMaxUniversal: 'lint/selector-max-universal',
@@ -861,6 +864,29 @@ function typeSelectorNameSpan(source: string, node: CssCstNode): { name: string;
   return { name, start, end };
 }
 
+function classSelectorNameSpan(source: string, node: CssCstNode): { name: string; start: number; end: number } | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start + 1) {
+    return null;
+  }
+  if (source.charCodeAt(start) !== 46 /* . */) {
+    return null;
+  }
+  let i = start + 1;
+  if (!isIdentStart(source.charCodeAt(i))) {
+    return null;
+  }
+  i++;
+  while (i < end && isIdentChar(source.charCodeAt(i))) {
+    i++;
+  }
+  if (i !== end) {
+    return null;
+  }
+  return { name: source.slice(start + 1, end), start: start + 1, end };
+}
+
 function basicSelectorText(source: string, node: CssCstNode): string | null {
   const start = absoluteStart(node);
   const end = absoluteEnd(node);
@@ -1111,16 +1137,19 @@ function isStaticCustomPropertyName(value: string): boolean {
     && isCssIdentifier(value);
 }
 
-function customPropertyRegistrationName(source: string, node: CssCstNode): string | null {
+function customPropertyRegistrationName(source: string, node: CssCstNode): { name: string; span: DiagnosticSpan } | null {
   const prelude = firstChildNodeOf(node, 'AtRulePrelude');
   if (prelude === undefined) {
     return null;
   }
   const start = absoluteStart(prelude);
   const end = absoluteEnd(prelude);
-  const raw = stripComments(source.slice(start, end));
-  const trimmed = raw.trim();
-  return isStaticCustomPropertyName(trimmed) ? trimmed : null;
+  const nameStart = skipCssTrivia(source, start, end);
+  const trimmed = trimOffsets(source.slice(nameStart, end), nameStart);
+  const name = source.slice(trimmed.start, trimmed.end);
+  return isStaticCustomPropertyName(name)
+    ? { name, span: spanAtOrContaining(prelude, trimmed.start, trimmed.end) }
+    : null;
 }
 
 function customPropertyReferenceOfVarCall(source: string, node: CssCstNode): CustomPropertyReference | null {
@@ -1160,7 +1189,12 @@ function staticAnimationName(raw: string): string | null {
 function keyframesAtRuleFact(
   source: string,
   node: CssCstNode
-): { readonly animationName: string; readonly atRuleName: string; readonly keywordSpan: DiagnosticSpan } | null {
+): {
+  readonly animationName: string;
+  readonly animationNameSpan: DiagnosticSpan;
+  readonly atRuleName: string;
+  readonly keywordSpan: DiagnosticSpan;
+} | null {
   const start = absoluteStart(node);
   const end = absoluteEnd(node);
   const atRuleName = atRuleNameOf(source, start, end);
@@ -1172,12 +1206,22 @@ function keyframesAtRuleFact(
   if (blockStart < 0 || blockStart > end) {
     return null;
   }
-  const animationName = staticAnimationName(stripComments(source.slice(nameEnd, blockStart)));
+  let animationNameStart = skipCssTrivia(source, nameEnd, blockStart);
+  let animationNameEnd = blockStart;
+  while (animationNameEnd > animationNameStart && isCssWhitespace(source.charCodeAt(animationNameEnd - 1))) {
+    animationNameEnd--;
+  }
+  const animationName = staticAnimationName(source.slice(animationNameStart, animationNameEnd));
   if (animationName === null) {
     return null;
   }
+  if (source.charCodeAt(animationNameStart) === 34 || source.charCodeAt(animationNameStart) === 39) {
+    animationNameStart++;
+    animationNameEnd--;
+  }
   return {
     animationName,
+    animationNameSpan: spanAtOrContaining(node, animationNameStart, animationNameEnd),
     atRuleName: `@${atRuleName}`,
     keywordSpan: spanAtOrContaining(node, start, nameEnd)
   };
@@ -3940,7 +3984,13 @@ export function cstLintDiagnostics(
     if (language === 'css' && gt === 'DescriptorBlock' && descriptorAtRuleName === 'property') {
       const registeredName = customPropertyRegistrationName(source, node);
       if (registeredName !== null) {
-        declaredCustomProperties.add(registeredName);
+        declaredCustomProperties.add(registeredName.name);
+        push(
+          LINT_CODES.customPropertyPattern,
+          'warning',
+          `Custom property "${registeredName.name}" does not match the configured pattern`,
+          registeredName.span
+        );
       }
       const problem = typedCustomPropertyValueProblem(source, node);
       if (problem !== null) {
@@ -4130,6 +4180,18 @@ export function cstLintDiagnostics(
           'warning',
           'Avoid ID selectors',
           node.span
+        );
+      }
+    }
+
+    if (BASIC_SELECTOR_TYPES.has(gt)) {
+      const classSelector = classSelectorNameSpan(source, node);
+      if (classSelector !== null) {
+        push(
+          LINT_CODES.selectorClassPattern,
+          'warning',
+          `Class selector "${classSelector.name}" does not match the configured pattern`,
+          spanAtOrContaining(node, classSelector.start, classSelector.end)
         );
       }
     }
@@ -4461,6 +4523,12 @@ export function cstLintDiagnostics(
         const keyframesFact = keyframesAtRuleFact(source, node);
         if (keyframesFact !== null) {
           declaredAnimations.add(keyframesFact.animationName);
+          push(
+            LINT_CODES.keyframesNamePattern,
+            'warning',
+            `Keyframes name "${keyframesFact.animationName}" does not match the configured pattern`,
+            keyframesFact.animationNameSpan
+          );
           let group = keyframesVendorGroups.get(keyframesFact.animationName);
           if (group === undefined) {
             group = {
@@ -4622,6 +4690,13 @@ export function cstLintDiagnostics(
         const childEnd = absoluteEnd(child);
         const name = propNameOf(source.slice(childStart, childEnd));
         if (isStaticCustomPropertyName(name)) {
+          const nameStart = childStart + source.slice(childStart, childEnd).indexOf(name);
+          push(
+            LINT_CODES.customPropertyPattern,
+            'warning',
+            `Custom property "${name}" does not match the configured pattern`,
+            spanAtOrContaining(child, nameStart, nameStart + name.length)
+          );
           if (language === 'css') {
             declaredCustomProperties.add(name);
           }

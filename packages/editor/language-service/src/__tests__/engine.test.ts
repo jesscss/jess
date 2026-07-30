@@ -1061,6 +1061,62 @@ describe('JessLanguageServiceEngine', () => {
         expect(codes).toContain('lint/media-feature-name-no-vendor-prefix');
       });
 
+      it('keeps naming pattern diagnostics opt-in and filters by configured pattern', () => {
+        const source = [
+          '@property --BadToken { syntax: "<color>"; inherits: false; initial-value: red; }',
+          '@property --good-token { syntax: "<color>"; inherits: false; initial-value: red; }',
+          '.BadClass, .good-class { --BadLocal: red; --good-local: blue; }',
+          '@keyframes BadSpin { from { opacity: 0; } }',
+          '@keyframes good-spin { to { opacity: 1; } }'
+        ].join('\n');
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/selector-class-pattern');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/custom-property-pattern');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/keyframes-name-pattern');
+
+        const severityOnly = createEngine();
+        severityOnly.configure(sevCfg('lint/selector-class-pattern', 'warning'));
+        const severityOnlyDoc = createDocument('css', source);
+        severityOnly.open(severityOnlyDoc.uri, severityOnlyDoc.languageId, severityOnlyDoc.version, severityOnlyDoc.getText());
+        expect(codesOf(severityOnly, severityOnlyDoc.uri)).not.toContain('lint/selector-class-pattern');
+
+        const configured = createEngine();
+        configured.configure({
+          diagnostics: {
+            severity: {
+              ['lint/selector-class-pattern']: 'warning',
+              ['lint/custom-property-pattern']: 'warning',
+              ['lint/keyframes-name-pattern']: 'warning'
+            },
+            options: {
+              ['lint/selector-class-pattern']: { pattern: '^[a-z][a-z0-9-]*$' },
+              ['lint/custom-property-pattern']: { pattern: '^--[a-z][a-z0-9-]*$' },
+              ['lint/keyframes-name-pattern']: { pattern: '^[a-z][a-z0-9-]*$' }
+            }
+          }
+        });
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const diags = configured.getDiagnostics(configuredDoc.uri).filter(diagnostic =>
+          diagnostic.code === 'lint/selector-class-pattern'
+          || diagnostic.code === 'lint/custom-property-pattern'
+          || diagnostic.code === 'lint/keyframes-name-pattern'
+        );
+
+        expect(diags.map(diagnostic => [
+          diagnostic.code,
+          configuredDoc.getText().slice(configuredDoc.offsetAt(diagnostic.range.start), configuredDoc.offsetAt(diagnostic.range.end))
+        ])).toEqual([
+          ['lint/custom-property-pattern', '--BadToken'],
+          ['lint/selector-class-pattern', '.BadClass'],
+          ['lint/custom-property-pattern', '--BadLocal'],
+          ['lint/keyframes-name-pattern', 'BadSpin']
+        ]);
+      });
+
       it('does not fire in dialect files before selector facts exist', () => {
         const engine = createEngine();
         engine.configure({
