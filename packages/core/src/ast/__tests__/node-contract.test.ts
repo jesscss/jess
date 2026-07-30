@@ -51,7 +51,7 @@ describe('AST node contract', () => {
       interpolation([{ lit: '.card' }])
     );
 
-    expect(enclosed).toEqual({
+    expect(bare(enclosed)).toEqual({
       type: 'GeneralEnclosed',
       form: 'function',
       name: 'selector',

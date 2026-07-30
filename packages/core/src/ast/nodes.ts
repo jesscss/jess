@@ -76,7 +76,7 @@ export interface Quoted {
 /** Arbitrary / opaque value bytes (raw prelude fragment, computed/joined
  *  fragment, `url(...)`, list piece, mixin-arg bytes). The ONLY leaf that sniffs
  *  its `src` to a typed value, and only when forced (operated). */
-export interface Any {
+export interface Any extends SpanSlots {
   readonly type: 'Any';
   readonly src: string;
 }
@@ -159,7 +159,7 @@ export interface VariableReference extends SpanSlots {
  * resolve a member name against both CSS property declarations and variable
  * declarations; a same-name hit in both namespaces is ambiguous.
  */
-export interface DeclarationReference {
+export interface DeclarationReference extends SpanSlots {
   readonly type: 'DeclarationReference';
   readonly raw: string;
 }
@@ -288,7 +288,7 @@ export type InterpPart = { lit: string } | { ref: ValueNode; unquote: boolean };
  * `Sequence` because a `ref` may be unquoted (`@{c}` strips quotes; `@c` does not)
  * and the literals carry their own (possibly quote) bytes.
  */
-export interface Interpolation {
+export interface Interpolation extends SpanSlots {
   readonly type: 'Interpolation';
   readonly parts: InterpPart[];
 }
@@ -312,7 +312,7 @@ export interface GeneralEnclosed {
  * of another value node (`@name: var; x: @@name` → the value of `@var`). Two-step
  * `VariableReference` — no braces, no quote-strip.
  */
-export interface VarIndirect {
+export interface VarIndirect extends SpanSlots {
   readonly type: 'VarIndirect';
   readonly nameRef: ValueNode;
 
@@ -818,7 +818,7 @@ export interface VariableDeclaration extends SpanSlots {
 }
 
 /** A comment carried structurally in source order (block or line text as-is). */
-export interface Comment {
+export interface Comment extends SpanSlots {
   readonly type: 'Comment';
   readonly text: string;
 }
@@ -1069,7 +1069,7 @@ export type Statement =
 /* ------------------------------------------------------------ constructors */
 
 export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
-export const any = (src: string): Any => ({ type: 'Any', src });
+export const any = (src: string): Any => ({ type: 'Any', src, _s: NO_SPAN, _e: NO_SPAN });
 export const url = (value: ValueNode): Url => ({ type: 'Url', value });
 export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>
   ({ type: 'SelectorCapture', branches, src });
@@ -1122,13 +1122,13 @@ export const pseudoSelector = (
   text: string | null = null,
   interp: Interpolation | null = null
 ): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
-export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts });
+export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts, _s: NO_SPAN, _e: NO_SPAN });
 export const generalEnclosed = (
   form: GeneralEnclosed['form'],
   name: string | null,
   content: Interpolation
 ): GeneralEnclosed => ({ type: 'GeneralEnclosed', form, name, content });
-export const varIndirect = (nameRef: ValueNode, lookup: VariableLookup): VarIndirect => ({ type: 'VarIndirect', nameRef, lookup });
+export const varIndirect = (nameRef: ValueNode, lookup: VariableLookup): VarIndirect => ({ type: 'VarIndirect', nameRef, lookup, _s: NO_SPAN, _e: NO_SPAN });
 export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
   params === undefined ? { type: 'AnonymousMixin', rules } : { type: 'AnonymousMixin', rules, params };
 
@@ -1252,7 +1252,7 @@ export const collectionEntry = (
  * value (`20px` in `font: 20px { … }`). See {@link Collection}. */
 export const collection = (entries: CollectionEntry[], base?: ValueSlot): Collection =>
   base === undefined ? { type: 'Collection', entries } : { type: 'Collection', entries, base };
-export const comment = (text: string): Comment => ({ type: 'Comment', text });
+export const comment = (text: string): Comment => ({ type: 'Comment', text, _s: NO_SPAN, _e: NO_SPAN });
 
 /** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice).
  * `media` (optional) wraps the splice in an `@media <media> { … }` block. */
@@ -1260,7 +1260,7 @@ export const rawInline = (text: string, media?: string | null): RawInline =>
   media != null ? { type: 'RawInline', text, media } : { type: 'RawInline', text };
 export const variableReference = (name: string, lookup: VariableLookup): VariableReference =>
   ({ type: 'VariableReference', name, lookup, _s: NO_SPAN, _e: NO_SPAN });
-export const declarationReference = (raw: string = '$'): DeclarationReference => ({ type: 'DeclarationReference', raw });
+export const declarationReference = (raw: string = '$'): DeclarationReference => ({ type: 'DeclarationReference', raw, _s: NO_SPAN, _e: NO_SPAN });
 export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
 export const important = (value: ValueSlot): Important => ({ type: 'Important', value });
 

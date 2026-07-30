@@ -28,6 +28,31 @@ export type AstSourceSpan = Readonly<{ start: number; end: number }>;
  * integer directly. {@link sourceSpanOf} keeps the historical object-returning
  * signature for cold diagnostic callers and MATERIALIZES a `{ start, end }`
  * object per call, so it must not be used per-node in the renderer.
+ *
+ * The readers take `node: object`, which looks like it would force a
+ * megamorphic load. It does not, on the workload measured: a throwaway
+ * instrumented build over the 288,937-byte PostCSS/bootstrap document recorded
+ * the key signature of every node reaching a reader and saw 58,586 calls with
+ * **no site above 4 distinct signatures**. Read that as a LOWER BOUND and with
+ * no margin: a key-list signature cannot see field-representation or
+ * elements-kind splits, the build was minified so several source readers can
+ * fold into one frame, and 4 is exactly V8's polymorphic-IC limit. It is
+ * evidence that the load sites are not megamorphic today, not a guarantee.
+ *
+ * That measurement is why the slots stop where they do. `Dimension`, `Keyword`,
+ * `Color`, `Quoted`, `List`, `SpacedValue`, and `Url` — 6,088 nodes, 95.1 KiB
+ * per document at 16 B/node — NEVER receive a span: no path in any of the four
+ * grammars passes one to `withSourceSpan`/`withBodySpan`, so slotting them
+ * would buy no shape and cost real memory. Do not add them "for symmetry";
+ * re-measure first.
+ *
+ * They are not, however, unreachable by a reader. `Operation` operands are
+ * routinely `Dimension`/`Color`/`Keyword`/`Quoted`, and the operand readers in
+ * `serialize.ts` (`sourceEndOf(node.left)` / `sourceStartOf(node.right)`) and
+ * in the Less grammar's arithmetic fallback do load the slot off them — and
+ * take an absent-property miss. Those paths are cold (an error site and a
+ * non-AST-mode fallback), which is why the census never saw them, but the
+ * `?? NO_SPAN` in each reader is load-bearing, not defensive.
  */
 export const NO_SPAN = -1;
 
