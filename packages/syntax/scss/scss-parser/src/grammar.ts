@@ -151,7 +151,10 @@ type ScssRules = {
   AtRootFilterPrelude: Combinator<ValueNode>;
   AtRootBlock: Combinator<AtRuleBlock>;
   AtRootFilter: Combinator<AtRuleBlock>;
-  AtRootDirective: Combinator<AtRuleBlock>;
+  AtRootContinuation: Combinator<AtRuleBlock>;
+  SassDirective: Combinator<AtRuleBlock | For | If | MixinCall | MixinDefinition | VariableDeclaration>;
+  SassNestedDirective: Combinator<AtRuleBlock | For | If | MixinCall | MixinDefinition>;
+  SassControlDirective: Combinator<For | If>;
   ScopeBlock: Combinator<AtRuleBlock>;
   NestedScopeBlock: Combinator<AtRuleBlock>;
   ConditionalBlock: Combinator<AtRuleBlock>;
@@ -2574,7 +2577,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const MixinCallRule = node<MixinCall>(
     'MixinCall',
     sequence(
-      regex(/@include(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      routed(),
       mixinNameToken,
       optional(sequence(
         literal('('),
@@ -2608,26 +2611,17 @@ export const scssFactory = (g: ScssInputRules) => {
    * and lets parseman first-set-gate the whole cluster behind a single `@`
    * check. The `@import` arm stays ahead of the cluster because its authored
    * order there predates the cluster; keeping it out preserves precedence.
-   * Cluster arms are ordered most-frequent-first. Every arm opens with a
-   * distinct, word-boundaried `@` at-keyword (`@include`/`@mixin`/`@function`/
-   * `@if`/`@each`/`@for`/`@supports`/`@media`/`@container`/`@starting-style`/
-   * `@layer`/`@scope`/`@document`/`@page`/`@font-feature-values`), so no input
-   * matches two arms — firstMatch order is immaterial to WHICH arm wins and any
-   * permutation is byte-identical. `@include` (mixin call) is by far the most
-   * common nested at-statement, followed by the control-flow forms, so placing
-   * them ahead of the rarely-nested CSS bubbling blocks lets the common case win
-   * on its first recognizer instead of failing the block recognizers first.
+   * The Sass-owned directive cluster consumes one shared at-keyword and routes
+   * it to a selected continuation; CSS block families remain individual body
+   * constructs because their structural body policy differs by caller context.
+   * `@include` (mixin call) is the common Sass directive, followed by the
+   * control-flow forms, and routing keeps every one from re-parsing its keyword
+   * before the CSS bubbling-block arms are considered.
    * The opaque arm is last in every cluster: its name recognizer already excludes
    * every name the typed arms own, so it can only win where nothing else could.
    */
   const nestedAtStatement = choice(
-    g.MixinCallRule,
-    g.IfRule,
-    g.EachRule,
-    g.ForRule,
-    g.MixinDefinitionRule,
-    g.FunctionRule,
-    g.AtRootDirective,
+    g.SassDirective,
     g.NestedConditionalBlock,
     g.NestedStartingStyleBlock,
     g.NestedLayerBlock,
@@ -2713,12 +2707,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const conditionalBlockBody = many(choice(
     g.Comment,
     g.ImportAtRule,
-    g.MixinDefinitionRule,
-    g.MixinCallRule,
-    g.EachRule,
-    g.ForRule,
-    g.IfRule,
-    g.AtRootDirective,
+    g.SassNestedDirective,
     g.ConditionalBlock,
     g.StartingStyleBlock,
     g.LayerBlock,
@@ -2734,12 +2723,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const startingLayerBlockBody = many(choice(
     g.Comment,
     g.ImportAtRule,
-    g.MixinDefinitionRule,
-    g.MixinCallRule,
-    g.EachRule,
-    g.ForRule,
-    g.IfRule,
-    g.AtRootDirective,
+    g.SassNestedDirective,
     g.ConditionalBlock,
     g.StartingStyleBlock,
     g.LayerBlock,
@@ -2754,7 +2738,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const MixinDefinitionRule = node<MixinDefinition>(
     'MixinDefinition',
     sequence(
-      regex(/@mixin(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      routed(),
       mixinNameToken,
       optional(g.MixinParameters),
       literal('{'),
@@ -2800,7 +2784,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const FunctionRule = node<VariableDeclaration>(
     'FunctionRule',
     sequence(
-      regex(/@function(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      routed(),
       mixinNameToken,
       optional(g.MixinParameters),
       literal('{'),
@@ -2808,9 +2792,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.Comment,
         g.VariableDeclaration,
         g.ReturnRule,
-        g.IfRule,
-        g.EachRule,
-        g.ForRule
+        g.SassControlDirective
       )),
       literal('}')
     ),
@@ -2863,7 +2845,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const EachRule = node<For>(
     'EachRule',
     sequence(
-      regex(/@each(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      routed(),
       g.EachBinding,
       regex(/\bin\b/),
       g.Value,
@@ -2895,7 +2877,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const ForRule = node<For>(
     'ForRule',
     sequence(
-      regex(/@for(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      routed(),
       g.EachVariableName,
 
       /*
@@ -3050,12 +3032,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.DocumentBlock,
         g.PageBlock,
         g.FontFeatureValuesBlock,
-        g.MixinDefinitionRule,
-        g.MixinCallRule,
-        g.EachRule,
-        g.ForRule,
-        g.IfRule,
-        g.AtRootDirective,
+        g.SassNestedDirective,
         g.IfBodyRule
       )),
       literal('}')
@@ -3135,7 +3112,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const IfRule = node<If>(
     'IfRule',
     sequence(
-      regex(/@if(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      routed(),
       g.IfCondition,
       g.IfBody,
       many(sequence(
@@ -3785,12 +3762,42 @@ export const scssFactory = (g: ScssInputRules) => {
    * as a choice, and keep the existing semantic `AtRootFilter`/`AtRootBlock`
    * CST nodes as the selected continuations.
    */
-  const AtRootDirective = dispatch(
+  const AtRootContinuation = choice(
+    AtRootFilter,
+    AtRootBlock
+  );
+
+  /*
+   * Sass directive contexts differ by the directives they allow, not by the
+   * spelling or AST/CST shape of a directive. Each dispatcher consumes the
+   * shared at-keyword once and routes to the existing `routed()` tail. The
+   * full and nested contexts intentionally differ only by `@function`; a
+   * function body accepts control directives but not a nested function/mixin.
+   */
+  const SassDirective = dispatch(
     atRuleKeyword,
-    caseInsensitive('@at-root', choice(
-      AtRootFilter,
-      AtRootBlock
-    ))
+    caseInsensitive('@include', g.MixinCallRule),
+    caseInsensitive('@mixin', g.MixinDefinitionRule),
+    caseInsensitive('@function', g.FunctionRule),
+    caseInsensitive('@if', g.IfRule),
+    caseInsensitive('@each', g.EachRule),
+    caseInsensitive('@for', g.ForRule),
+    caseInsensitive('@at-root', AtRootContinuation)
+  );
+  const SassNestedDirective = dispatch(
+    atRuleKeyword,
+    caseInsensitive('@include', g.MixinCallRule),
+    caseInsensitive('@mixin', g.MixinDefinitionRule),
+    caseInsensitive('@if', g.IfRule),
+    caseInsensitive('@each', g.EachRule),
+    caseInsensitive('@for', g.ForRule),
+    caseInsensitive('@at-root', AtRootContinuation)
+  );
+  const SassControlDirective = dispatch(
+    atRuleKeyword,
+    caseInsensitive('@if', g.IfRule),
+    caseInsensitive('@each', g.EachRule),
+    caseInsensitive('@for', g.ForRule)
   );
 
   /*
@@ -3808,12 +3815,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.Comment,
         g.ImportAtRule,
         g.VariableDeclaration,
-        g.MixinDefinitionRule,
-        g.MixinCallRule,
-        g.EachRule,
-        g.ForRule,
-        g.IfRule,
-        g.AtRootDirective,
+        g.SassNestedDirective,
         g.ConditionalBlock,
         g.StartingStyleBlock,
         g.LayerBlock,
@@ -3962,12 +3964,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.Comment,
-        g.MixinDefinitionRule,
-        g.MixinCallRule,
-        g.EachRule,
-        g.ForRule,
-        g.IfRule,
-        g.AtRootDirective,
+        g.SassNestedDirective,
         g.ConditionalBlock,
         g.StartingStyleBlock,
         g.LayerBlock,
@@ -4949,13 +4946,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.ImportAtRule,
         g.AtRuleStatement,
         g.VariableDeclaration,
-        g.MixinDefinitionRule,
-        g.FunctionRule,
-        g.MixinCallRule,
-        g.EachRule,
-        g.ForRule,
-        g.IfRule,
-        g.AtRootDirective,
+        g.SassDirective,
         g.ConditionalBlock,
         g.StartingStyleBlock,
         g.LayerBlock,
@@ -5085,7 +5076,10 @@ export const scssFactory = (g: ScssInputRules) => {
     AtRootFilterPrelude,
     AtRootBlock,
     AtRootFilter,
-    AtRootDirective,
+    AtRootContinuation,
+    SassDirective,
+    SassNestedDirective,
+    SassControlDirective,
     ScopeBlock,
     NestedScopeBlock,
     ConditionalBlock,

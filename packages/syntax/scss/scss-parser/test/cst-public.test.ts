@@ -115,6 +115,24 @@ describe('@jesscss/scss-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('routes Sass directive keywords without exposing dispatcher CST nodes', () => {
+    const source = '@mixin tone($value) { color: $value; } @include tone(red); @function identity($value) { @return $value; } @each $name in red { .#{$name} { color: red; } } @for $i from 1 through 2 { .n-#{$i} { color: red; } } @if true { .yes { color: red; } } @at-root { .top { color: red; } }';
+    const result = parseScssCst(source);
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('MixinDefinition')).toBe(1);
+    expect(grammarTypes.get('MixinCall')).toBe(1);
+    expect(grammarTypes.get('FunctionRule')).toBe(1);
+    expect(grammarTypes.get('EachRule')).toBe(1);
+    expect(grammarTypes.get('ForRule')).toBe(1);
+    expect(grammarTypes.get('IfRule')).toBe(1);
+    expect(grammarTypes.get('AtRootBlock')).toBe(1);
+    expect(grammarTypes.has('SassDirective')).toBe(false);
+    expectNoModeLabels(result.tree);
+  });
+
   it('uses CSS-aligned CST labels for generic at-rule preludes', () => {
     const result = parseScssCst('@layer base.utilities { .card { color: red; } } @charset "UTF-8";');
 

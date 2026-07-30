@@ -5322,3 +5322,16 @@ dispatcher stays unlabeled; the CST continues to expose `AtRootFilter` and
 `AtRootBlock`, which are the semantic AST/CST-aligned shapes. Focused AST and
 public-CST tests now cover both forms, including their route through the public
 stylesheet entry.
+
+SCSS Sass-directive routing, 2026-07-30: repeated `@include`, `@mixin`,
+`@function`, `@if`, `@each`, `@for`, and `@at-root` opener regexes no longer
+appear in every stylesheet/body choice. `SassDirective`, `SassNestedDirective`,
+and `SassControlDirective` consume one shared at-keyword and route to the
+existing semantic `routed()` tails. They are deliberately context-specific:
+the full family admits `@function`, restricted nested bodies do not, and a
+function body admits only the control forms. CSS at-rule blocks remain outside
+these dispatchers because their body structure is CSS-owned and varies by
+context. The router nodes are unlabeled; the public CST exposes the existing
+`MixinDefinition`, `MixinCall`, `FunctionRule`, `EachRule`, `ForRule`, `IfRule`,
+and `AtRootBlock`/`AtRootFilter` labels. A public mixed-directive CST fixture
+pins that contract and verifies no `SassDirective` label leaks into the tree.
