@@ -208,7 +208,7 @@ type JessRules = {
 type SharedCssSyntax = {
   AttributeModifier: Combinator<string>;
   AttributeOperator: Combinator<string>;
-  CssSyntaxDoubleQuotedText: Combinator<string>;
+  DoubleQuotedText: Combinator<string>;
   CssSyntaxHexColor: Combinator<string>;
   CssSyntaxImportant: Combinator<string>;
   CssSyntaxKeyframesAtKeyword: Combinator<string>;
@@ -236,7 +236,7 @@ type SharedCssSyntax = {
   CssSyntaxQueryComparisonOperator: Combinator<string>;
   CssSyntaxContainerAtKeyword: Combinator<string>;
   CssSyntaxSupportsAtKeyword: Combinator<string>;
-  CssSyntaxSingleQuotedText: Combinator<string>;
+  SingleQuotedText: Combinator<string>;
   CssSyntaxDimensionUnit: Combinator<string>;
   CssSyntaxUrlOpen: Combinator<string>;
   CssSyntaxUrlInner: Combinator<string>;
@@ -2514,12 +2514,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const attributeDoubleQuoted = noTrivia(sequence(
     literal('"'),
-    g.CssSyntaxDoubleQuotedText,
+    g.DoubleQuotedText,
     literal('"')
   ));
   const attributeSingleQuoted = noTrivia(sequence(
     literal('\''),
-    g.CssSyntaxSingleQuotedText,
+    g.SingleQuotedText,
     literal('\'')
   ));
   const Attribute = node<SimpleSelector>(

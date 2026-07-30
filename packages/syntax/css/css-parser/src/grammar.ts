@@ -106,7 +106,7 @@ type CssGrammarRuleName =
   | 'CssSyntaxCustomProperty'
   | 'CssSyntaxDescriptorAtKeyword'
   | 'CssSyntaxDocumentAtKeyword'
-  | 'CssSyntaxDoubleQuotedText'
+  | 'DoubleQuotedText'
   | 'CssSyntaxFontFeatureValueAtKeyword'
   | 'CssSyntaxFontFeatureValuesAtKeyword'
   | 'CssSyntaxGenericAtRuleName'
@@ -133,7 +133,7 @@ type CssGrammarRuleName =
   | 'CssSyntaxRoutedAtRuleKeyword'
   | 'CssSyntaxScopeAtKeyword'
   | 'CssSyntaxSelectorArgPseudoName'
-  | 'CssSyntaxSingleQuotedText'
+  | 'SingleQuotedText'
   | 'CssSyntaxStartingStyleAtKeyword'
   | 'CssSyntaxStatementAtRuleName'
   | 'CssSyntaxSupportsAtKeyword'
@@ -1029,12 +1029,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
 
   const pseudoRawDoubleQuoted = sequence(
     literal('"'),
-    g.CssSyntaxDoubleQuotedText,
+    g.DoubleQuotedText,
     literal('"')
   );
   const pseudoRawSingleQuoted = sequence(
     literal('\''),
-    g.CssSyntaxSingleQuotedText,
+    g.SingleQuotedText,
     literal('\'')
   );
   const pseudoIdentOrFunction = token(noTrivia(sequence(
@@ -1596,12 +1596,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
     choice(
       noTrivia(sequence(
         literal('"'),
-        g.CssSyntaxDoubleQuotedText,
+        g.DoubleQuotedText,
         literal('"')
       )),
       noTrivia(sequence(
         literal('\''),
-        g.CssSyntaxSingleQuotedText,
+        g.SingleQuotedText,
         literal('\'')
       )),
 
@@ -1611,12 +1611,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
        */
       noTrivia(sequence(
         literal('~"'),
-        g.CssSyntaxDoubleQuotedText,
+        g.DoubleQuotedText,
         literal('"')
       )),
       noTrivia(sequence(
         literal('~\''),
-        g.CssSyntaxSingleQuotedText,
+        g.SingleQuotedText,
         literal('\'')
       ))
     ),
