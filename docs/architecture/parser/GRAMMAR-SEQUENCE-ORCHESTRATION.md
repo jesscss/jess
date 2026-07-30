@@ -426,14 +426,12 @@ highest-priority non-Parseman grammar surfaces:
 
 - Jess CSS `@import` is the clearest remaining composition cleanup. Jess
   `@import` is CSS only; Jess extends CSS and its module/script imports are the
-  `@-...` family. The first Jess-local cleanup removed the public
-  `CssImportTarget` / `CssImportPrelude` / `CssImport` labels in favor of
-  `ImportTarget`, `ImportPrelude`, and `ImportStatement`, and the import tail now
-  routes glued `supports(` / `layer(` openers instead of using `not(not(...))`.
-  The larger follow-up is still to make the import skeleton CSS-owned or shared,
-  with only real Jess holes parameterized (`$`-reserved URL handling,
-  `UrlInterpolatedValue`, and typed `supports()` / `layer()` tails). Do not tune
-  this as a Jess-local CSS import parser.
+  `@-...` family. The local `ImportTarget` and `ImportPrelude` wrappers were
+  removed: one `ImportStatement` now owns the CSS-shaped statement frame, with
+  only the real Jess delta visible in its static quoted/URL target leaves. The
+  larger follow-up is still to make that shared frame CSS-owned, with only real
+  Jess holes parameterized (`$`-reserved URL handling and interpolation policy).
+  Do not grow this back into a Jess-local CSS import parser.
 - Custom-property values in Less, SCSS, and Jess repeat the same CSS
   declaration-value balanced-group frame. Replace that with a shared skeleton
   parameterized by dialect interpolation/reference leaves; comments remain
@@ -4419,16 +4417,16 @@ at-rule, supports, import, registered-property, keyframe, scope, and opaque
 grammar keys now use semantic AST/CST-aligned labels (`MediaPrelude`,
 `AtRuleHeader`, `SupportsAtom`, `SupportsNot`, `SupportsLogical`,
 `SupportsFeature`, `SupportsInParens`, `SupportsCondition`,
-`ImportTailFunction`, `ImportPrelude`, `Charset`, `ImportStatement`,
+`Charset`, `ImportStatement`,
 `SupportsAtRuleBlock`, `PropertyName`, `PropertyAtRule`, `KeyframeSelector`,
 `KeyframeBlock`, `Keyframes`, `OpaqueAtPrelude`, `OpaqueBody`,
 `OpaqueAtRuleBlock`, `ScopeBlock`, `AtRuleBlock`, and `AtRuleStatement`)
 instead of `DirectJess*` mode labels. The shared body helpers were renamed to
 `atBlockStatement` and `nestedBodyStatement`. This is a naming-only alignment:
 statement/body arms remain construct-family `choice(...)` clusters, while the
-CSS import tail keeps its existing `dispatch(...)` over the `supports`/`layer`
-function-name family. The `GeneralTemplate` / `GeneralQuotedTemplate` chains
-remain a separate, documented strict-vs-permissive cleanup surface.
+CSS-only import is one semantic `ImportStatement` with static target leaves.
+The `GeneralTemplate` / `GeneralQuotedTemplate` chains remain a separate,
+documented strict-vs-permissive cleanup surface.
 
 Evidence for the Jess at-rule/keyframe name cleanup: `pnpm --filter
 @jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts

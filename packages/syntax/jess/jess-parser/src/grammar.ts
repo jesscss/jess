@@ -183,8 +183,6 @@ type JessRules = {
   SupportsFeature: Combinator<ValueNode>;
   SupportsInParens: Combinator<ValueNode>;
   SupportsCondition: Combinator<ValueNode>;
-  ImportTarget: Combinator<Quoted | Url>;
-  ImportPrelude: Combinator<ValueNode>;
   Charset: Combinator<AtRuleStatement>;
   ImportStatement: Combinator<AtRuleStatement>;
   SupportsAtRuleBlock: Combinator<AtRuleBlock>;
@@ -4163,59 +4161,40 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       requirePlainQuoted(children[1])
     )
   );
-  const ImportTarget = node<Quoted | Url>(
-    'ImportTarget',
-    choice(
-      g.PlainQuoted,
-      g.Url
-    ),
-    (children) => {
-      const target = children[0];
-      if (!isQuoted(target) && !isUrl(target)) {
-        throw new TypeError('Jess CSS import lost its static target.');
-      }
-      return target;
-    }
-  );
-
   /*
    * A bare Jess `@import` is CSS only. The target is the existing static CSS
-   * quoted/URL family and its tail is the existing CSS-shaped opaque prelude;
-   * top-level `$` remains a sentinel, so compiler values cannot be flattened
+   * quoted/URL family and its tail is the existing CSS-shaped opaque prelude.
+   * Top-level `$` remains a sentinel, so compiler values cannot be flattened
    * into an authored import. Compiler loading is explicitly `@-import`.
    */
-  const ImportPrelude = node<ValueNode>(
-    'ImportPrelude',
+  const ImportStatement = node<AtRuleStatement>(
+    'ImportStatement',
     sequence(
-      g.ImportTarget,
-      g.OpaqueAtPrelude
+      importAtRuleName,
+      choice(
+        g.PlainQuoted,
+        g.Url
+      ),
+      g.OpaqueAtPrelude,
+      literal(';')
     ),
     (children) => {
-      const target = children[0];
+      const target = children[1];
       if (!isQuoted(target) && !isUrl(target)) {
         throw new TypeError('Jess CSS import lost its static target.');
       }
-      const tail = children[1];
+      const tail = children[2];
       if (tail !== null && typeof tail !== 'string') {
         throw new TypeError('Jess CSS import lost its opaque tail.');
       }
       const targetText = target.type === 'Quoted'
         ? target.src
         : `url(${expressionSource(target.value)})`;
-      return any(tail === null ? targetText : `${targetText} ${tail}`);
+      return atRuleStatement(
+        requireToken(children[0]).value,
+        any(tail === null ? targetText : `${targetText} ${tail}`)
+      );
     }
-  );
-  const ImportStatement = node<AtRuleStatement>(
-    'ImportStatement',
-    sequence(
-      importAtRuleName,
-      g.ImportPrelude,
-      literal(';')
-    ),
-    children => atRuleStatement(
-      requireToken(children[0]).value,
-      requireValueNode(children[1])
-    )
   );
 
   /*
@@ -5638,8 +5617,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     SupportsFeature,
     SupportsInParens,
     SupportsCondition,
-    ImportTarget,
-    ImportPrelude,
     UrlInterpolatedValue,
     PlainUrlInner: plainUrlInner,
     UnquotedUrlText: unquotedUrlText,
