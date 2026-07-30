@@ -1,6 +1,6 @@
-export { cssCstGrammar, cssGrammar } from './grammar.js';
+export { cssCstGrammar, cssDiagnosticCstGrammar, cssGrammar } from './grammar.js';
 export {
-  cssCstBuildHost, parseCst, parseDocCst, parseCssCst, parseCssDoc,
+  cssCstBuildHost, parseCst, parseDocCst, parseCssCst, parseCssDiagnosticCst, parseCssDiagnosticDoc, parseCssDoc,
   type CssCstChild, type CssCstError, type CssCstLeaf, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type CssCstType, type ParseDoc
 } from './cst-css.js';
 import { run } from 'parseman';

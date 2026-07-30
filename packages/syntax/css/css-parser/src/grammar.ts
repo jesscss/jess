@@ -4046,6 +4046,11 @@ export const cssCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cs
   cssFactory
 )]);
 
+export const cssDiagnosticCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+  { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], hostMode: 'cst', trackLines: true },
+  cssFactory
+)]);
+
 export const {
   Stylesheet,
   Ruleset,

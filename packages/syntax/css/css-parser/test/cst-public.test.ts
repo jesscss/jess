@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { absolutizeCST } from 'parseman';
-import { parseCssCst, parseCssDoc } from '../src/cst-css.js';
+import { parseCssCst, parseCssDiagnosticCst, parseCssDoc } from '../src/cst-css.js';
 import type { CssCstChild } from '../src/cst-css.js';
 
 /**
@@ -77,6 +77,25 @@ describe('@jesscss/css-parser/cst', () => {
     expect(result.tree.type).toBe('StyleSheet');
     expect(result.tree.rules.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
     expectNoModeLabels(result.tree);
+  });
+
+  it('keeps line tracking isolated to the diagnostic CST artifact', () => {
+    const source = '.entry {\n  width: 0px;\n}\n';
+    const normal = parseCssCst(source);
+    const diagnostic = parseCssDiagnosticCst(source);
+    const normalDimension = nodesByGrammarType(normal.tree, 'Dimension')[0];
+    const diagnosticDimension = nodesByGrammarType(diagnostic.tree, 'Dimension')[0];
+
+    expect(normalDimension?.span).toMatchObject({ start: 18, end: 21 });
+    expect(normalDimension?.span.startLine).toBeUndefined();
+    expect(diagnosticDimension?.span).toMatchObject({
+      start: 18,
+      end: 21,
+      startLine: 2,
+      startColumn: 10,
+      endLine: 2,
+      endColumn: 13
+    });
   });
 
   it('ignores trailing CSS trivia but reports a non-trivia tail', () => {

@@ -1,8 +1,7 @@
-import { parse as parseCssAst, parseCssDoc, type CssCstChild, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
-import { parseJessDoc } from '@jesscss/jess-parser/cst';
-import { parseLessDoc } from '@jesscss/less-parser/cst';
-import { parseScssDoc } from '@jesscss/scss-parser/cst';
-import { bodySpanOf, sourceSpanOf, walkAuthoredValue, type AstSourceSpan, type ValueSlot } from '@jesscss/core/ast';
+import { parseCssDiagnosticCst, parseCssDiagnosticDoc, type CssCstChild, type CssCstNode, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser';
+import { parseJessDiagnosticCst, parseJessDiagnosticDoc } from '@jesscss/jess-parser/cst';
+import { parseLessDiagnosticCst, parseLessDiagnosticDoc } from '@jesscss/less-parser/cst';
+import { parseScssDiagnosticCst, parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst';
 import { defaultCssDiagnosticMetadata } from './metadata.js';
 import type {
   CollectDiagnosticsInput,
@@ -44,7 +43,14 @@ const DIALECT_AT_RULES: Record<JessLanguage, Set<string>> = {
   ])
 };
 
-const RULESET_TYPES = new Set(['Ruleset', 'DirectScssRule', 'DirectJessRule']);
+const RULESET_TYPES = new Set([
+  'Ruleset',
+  'NestedRuleset',
+  'RulesetWithExtends',
+  'NestedRulesetWithExtends',
+  'DirectScssRule',
+  'DirectJessRule'
+]);
 const ATRULE_TYPES = new Set([
   'AtRuleBlock',
   'AtRuleStatement',
@@ -57,16 +63,19 @@ const DIMENSION_TYPES = new Set(['Dimension', 'DirectScssDimension', 'DirectJess
 const FORWARD_AS_PREFIX = /\bas\s+\S+-\*/;
 const FORWARD_VISIBILITY = /\b(show|hide)\b/;
 
-type AstRecord = {
-  readonly type?: unknown;
-  readonly children?: unknown;
-  readonly body?: unknown;
-  readonly rules?: unknown;
-  readonly name?: unknown;
-  readonly value?: unknown;
-  readonly number?: unknown;
-  readonly unit?: unknown;
-  readonly src?: unknown;
+type DiagnosticSpan = {
+  readonly start: number;
+  readonly end: number;
+  readonly startLine?: number;
+  readonly startColumn?: number;
+  readonly endLine?: number;
+  readonly endColumn?: number;
+};
+
+type ParseDiagnosticSource = {
+  readonly errors: readonly { readonly span: DiagnosticSpan }[];
+  readonly unconsumedFrom: number | null;
+  readonly tree: CssCstNode | null;
 };
 
 function isCstNode(c: CssCstChild): c is CssCstNode {
@@ -75,22 +84,6 @@ function isCstNode(c: CssCstChild): c is CssCstNode {
 
 function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
   return node.rules;
-}
-
-function isAstRecord(value: unknown): value is AstRecord & object {
-  return typeof value === 'object' && value !== null;
-}
-
-function isValueSlot(value: unknown): value is ValueSlot {
-  return Array.isArray(value) || (isAstRecord(value) && typeof value.type === 'string');
-}
-
-function astChildrenOf(value: unknown, key: 'children' | 'body' | 'rules'): readonly unknown[] {
-  if (!isAstRecord(value)) {
-    return [];
-  }
-  const child = value[key];
-  return Array.isArray(child) ? child : [];
 }
 
 function forwardPreludeOf(node: CssCstNode, src: string): string | null {
@@ -169,63 +162,6 @@ function atRuleNameEnd(source: string, start: number, end: number): number {
   return i;
 }
 
-function lineCommentStartBetween(source: string, start: number, end: number): number {
-  for (let i = start; i < end - 1; i++) {
-    if (source.charCodeAt(i) === 47 /* / */ && source.charCodeAt(i + 1) === 47 /* / */) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-function declarationEnd(source: string, start: number, blockEnd: number): number {
-  const semi = source.indexOf(';', start);
-  if (semi < 0 || semi > blockEnd) {
-    return blockEnd;
-  }
-  return semi + 1;
-}
-
-function locateDeclaration(
-  source: string,
-  name: string,
-  cursor: number,
-  blockEnd: number
-): { nameStart: number; declarationEnd: number; valueStart: number } | null {
-  let search = cursor;
-  while (search < blockEnd) {
-    const nameStart = source.indexOf(name, search);
-    if (nameStart < 0 || nameStart >= blockEnd) {
-      return null;
-    }
-    const colon = source.indexOf(':', nameStart + name.length);
-    if (colon < 0 || colon >= blockEnd) {
-      return null;
-    }
-    const lineComment = lineCommentStartBetween(source, nameStart + name.length, colon);
-    if (lineComment < 0) {
-      return {
-        nameStart,
-        declarationEnd: declarationEnd(source, colon + 1, blockEnd),
-        valueStart: colon + 1
-      };
-    }
-    search = lineComment + 2;
-  }
-  return null;
-}
-
-function findValueSource(source: string, src: string, start: number, end: number): AstSourceSpan | undefined {
-  if (src.length === 0) {
-    return undefined;
-  }
-  const valueStart = source.indexOf(src, start);
-  if (valueStart < 0 || valueStart >= end) {
-    return undefined;
-  }
-  return { start: valueStart, end: valueStart + src.length };
-}
-
 function blankStrings(value: string): string {
   return value.replace(/"[^"]*"|'[^']*'/g, m => ' '.repeat(m.length));
 }
@@ -250,10 +186,11 @@ function diagnostic(
   code: string,
   defaultSeverity: DiagnosticSeverityName,
   message: string,
-  start: number,
-  end: number,
+  span: DiagnosticSpan,
   filePath?: string
 ): SourceDiagnostic {
+  const start = Number(span.start);
+  const end = Number(span.end);
   return {
     code,
     phase: code.startsWith('parse/') ? 'parse' : 'lint',
@@ -264,8 +201,41 @@ function diagnostic(
     defaultSeverity,
     filePath,
     start,
-    end: Math.max(start, end)
+    end: Math.max(start, end),
+    line: span.startLine,
+    column: span.startColumn,
+    endLine: span.endLine,
+    endColumn: span.endColumn
   };
+}
+
+function spanFromOffsets(start: number, end: number): DiagnosticSpan {
+  return { start, end: Math.max(start, end) };
+}
+
+function spanAtOrContaining(node: CssCstNode, start: number, end: number): DiagnosticSpan {
+  let enclosing: DiagnosticSpan | undefined;
+  const visit = (child: CssCstChild) => {
+    const childStart = Number(child.span.start);
+    const childEnd = Number(child.span.end);
+    if (childStart > start || childEnd < end) {
+      return;
+    }
+    if (childStart === start && childEnd === end) {
+      enclosing = child.span;
+      return;
+    }
+    if (enclosing === undefined || childEnd - childStart < enclosing.end - enclosing.start) {
+      enclosing = child.span;
+    }
+    if (child._tag === 'node') {
+      for (const nested of child.rules) {
+        visit(nested);
+      }
+    }
+  };
+  visit(node);
+  return enclosing ?? spanFromOffsets(start, end);
 }
 
 function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDiagnosticMetadata {
@@ -281,38 +251,62 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
 
 export function parseDocForLanguage(source: string, language: JessLanguage): ParseDoc<CssCstNode> {
   if (language === 'less') {
-    return parseLessDoc(source);
+    return parseLessDiagnosticDoc(source);
   }
   if (language === 'scss') {
-    return parseScssDoc(source);
+    return parseScssDiagnosticDoc(source);
   }
   if (language === 'jess') {
-    return parseJessDoc(source);
+    return parseJessDiagnosticDoc(source);
   }
-  return parseCssDoc(source);
+  return parseCssDiagnosticDoc(source);
 }
 
-export function parseDiagnosticsForDoc(doc: ParseDoc<CssCstNode>, filePath?: string): SourceDiagnostic[] {
+function parseResultForLanguage(source: string, language: JessLanguage): CssCstParseResult {
+  if (language === 'less') {
+    return parseLessDiagnosticCst(source);
+  }
+  if (language === 'scss') {
+    return parseScssDiagnosticCst(source);
+  }
+  if (language === 'jess') {
+    return parseJessDiagnosticCst(source);
+  }
+  return parseCssDiagnosticCst(source);
+}
+
+export function parseDiagnosticsForDoc(doc: ParseDiagnosticSource, filePath?: string): SourceDiagnostic[] {
   const diagnostics: SourceDiagnostic[] = [];
-  for (const error of doc.errors) {
+  const emitted = new Set<string>();
+  const push = (span: DiagnosticSpan, message: string) => {
+    const key = `parse/syntax-error:${span.start}`;
+    if (emitted.has(key)) {
+      return;
+    }
+    emitted.add(key);
     diagnostics.push(diagnostic(
       'parse/syntax-error',
       'error',
-      'Unexpected syntax',
-      Number(error.span.start),
-      Number(error.span.end),
+      message,
+      span,
       filePath
     ));
+  };
+  for (const error of doc.errors) {
+    push(error.span, 'Unexpected syntax');
   }
   if (doc.unconsumedFrom !== null) {
-    diagnostics.push(diagnostic(
-      'parse/syntax-error',
-      'error',
-      'Unexpected input',
-      doc.unconsumedFrom,
-      doc.unconsumedFrom + 1,
-      filePath
-    ));
+    const rootSpan = doc.tree?.span;
+    const unconsumedSpan = rootSpan !== undefined && Number(rootSpan.end) === doc.unconsumedFrom
+      ? {
+          ...rootSpan,
+          start: doc.unconsumedFrom,
+          end: doc.unconsumedFrom + 1,
+          startLine: rootSpan.endLine,
+          startColumn: rootSpan.endColumn
+        }
+      : spanFromOffsets(doc.unconsumedFrom, doc.unconsumedFrom + 1);
+    push(unconsumedSpan, 'Unexpected input');
   }
   return diagnostics;
 }
@@ -333,15 +327,16 @@ export function cstLintDiagnostics(
     code: string,
     severity: DiagnosticSeverityName,
     message: string,
-    start: number,
-    end: number
+    span: DiagnosticSpan
   ) => {
+    const start = Number(span.start);
+    const end = Number(span.end);
     const key = `${code}:${start}:${Math.max(start, end)}`;
     if (emitted.has(key)) {
       return;
     }
     emitted.add(key);
-    out.push(diagnostic(code, severity, message, start, end, filePath));
+    out.push(diagnostic(code, severity, message, span, filePath));
   };
 
   const visit = (node: CssCstNode) => {
@@ -356,7 +351,7 @@ export function cstLintDiagnostics(
       const open = source.indexOf('{', start);
       const close = source.lastIndexOf('}', end - 1);
       if (open >= start && close > open && isWhitespaceOnly(source, open + 1, close)) {
-        push(LINT_CODES.emptyRules, 'warning', 'Do not use empty rulesets', start, end);
+        push(LINT_CODES.emptyRules, 'warning', 'Do not use empty rulesets', node.span);
       }
     }
 
@@ -364,7 +359,7 @@ export function cstLintDiagnostics(
       push(
         LINT_CODES.unsupportedSassForm, 'warning',
         '@at-root prelude/filter forms are not yet supported in Jess. Write the hoisted rules directly instead.',
-        start, end
+        node.span
       );
     }
     if (gt === 'ForwardRule') {
@@ -374,14 +369,14 @@ export function cstLintDiagnostics(
           push(
             LINT_CODES.unsupportedSassForm, 'warning',
             '@forward with "as <prefix>-*" prefixing is not supported in Jess and will never be. Use explicit namespacing instead.',
-            start, end
+            node.span
           );
         }
         if (FORWARD_VISIBILITY.test(prelude)) {
           push(
             LINT_CODES.unsupportedSassForm, 'warning',
             '@forward with "show"/"hide" lists is not supported in Jess and will never be. Visibility control belongs to the module itself.',
-            start, end
+            node.span
           );
         }
       }
@@ -394,7 +389,7 @@ export function cstLintDiagnostics(
           const rawName = source.slice(start + 1, nameEnd);
           const name = rawName.toLowerCase();
           if (!cssData.isKnownAtRule(name) && !dialectAtRules.has(name)) {
-            push(LINT_CODES.unknownAtRules, 'warning', `Unknown at-rule @${rawName}`, start, nameEnd);
+            push(LINT_CODES.unknownAtRules, 'warning', `Unknown at-rule @${rawName}`, spanAtOrContaining(node, start, nameEnd));
           }
         }
       }
@@ -404,7 +399,7 @@ export function cstLintDiagnostics(
       const slice = source.slice(start, end).trim();
       const m = /^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]+)$/i.exec(slice);
       if (m && Number(m[1]) === 0 && LENGTH_UNITS.has(m[2]!.toLowerCase())) {
-        push(LINT_CODES.zeroUnits, 'hint', `The unit "${m[2]}" is unnecessary for a zero value`, start, end);
+        push(LINT_CODES.zeroUnits, 'hint', `The unit "${m[2]}" is unnecessary for a zero value`, node.span);
       }
     }
 
@@ -424,7 +419,7 @@ export function cstLintDiagnostics(
           || lower.includes('${');
         if (!skip && !cssData.isKnownProperty(lower)) {
           const nameStart = start + slice.indexOf(name);
-          push(LINT_CODES.unknownProperties, 'warning', `Unknown property: '${name}'`, nameStart, nameStart + name.length);
+          push(LINT_CODES.unknownProperties, 'warning', `Unknown property: '${name}'`, spanAtOrContaining(node, nameStart, nameStart + name.length));
         }
       }
 
@@ -437,7 +432,7 @@ export function cstLintDiagnostics(
           const digits = hm[1]!.length;
           if (digits !== 3 && digits !== 4 && digits !== 6 && digits !== 8) {
             const hexStart = start + valueStart + hm.index;
-            push(LINT_CODES.hexColorLength, 'error', `Hex color '${hm[0]}' does not have 3, 4, 6 or 8 digits`, hexStart, hexStart + hm[0].length);
+            push(LINT_CODES.hexColorLength, 'error', `Hex color '${hm[0]}' does not have 3, 4, 6 or 8 digits`, spanAtOrContaining(node, hexStart, hexStart + hm[0].length));
           }
         }
       }
@@ -456,7 +451,7 @@ export function cstLintDiagnostics(
           const key = name.toLowerCase();
           seenProps ??= new Map();
           if (seenProps.has(key)) {
-            push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${name}'`, childStart, childEnd);
+            push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${name}'`, child.span);
           } else {
             seenProps.set(key, true);
           }
@@ -479,8 +474,7 @@ export function cstLintDiagnostics(
           LINT_CODES.hexColorLength,
           'error',
           `Hex color '${match[0]}' does not have 3, 4, 6 or 8 digits`,
-          match.index,
-          match.index + match[0].length
+          spanFromOffsets(match.index, match.index + match[0].length)
         );
       }
     }
@@ -489,141 +483,12 @@ export function cstLintDiagnostics(
   return out;
 }
 
-function visitValueDimensions(
-  value: unknown,
-  source: string,
-  start: number,
-  end: number,
-  visit: (src: string, unit: string, span: AstSourceSpan | undefined) => void
-): void {
-  if (!isValueSlot(value)) {
-    return;
-  }
-  walkAuthoredValue(value, {
-    enterNode(node) {
-      if (node.type === 'Dimension' && node.number === 0) {
-        visit(node.src, node.unit, findValueSource(source, node.src, start, end));
-      }
-    }
-  });
-}
-
-function cssAstLintDiagnostics(
-  source: string,
-  metadata?: Partial<CssDiagnosticMetadata>,
-  filePath?: string
-): SourceDiagnostic[] | null {
-  let root: unknown;
-  try {
-    root = parseCssAst(source);
-  } catch {
-    return null;
-  }
-
-  const out: SourceDiagnostic[] = [];
-  const cssData = metadataWithDefaults(metadata);
-  const push = (
-    code: string,
-    severity: DiagnosticSeverityName,
-    message: string,
-    start: number,
-    end: number
-  ) => {
-    out.push(diagnostic(code, severity, message, start, end, filePath));
-  };
-
-  const visitBody = (children: readonly unknown[], bodySpan: AstSourceSpan | undefined) => {
-    const seenProps = new Map<string, boolean>();
-    let cursor = bodySpan?.start ?? 0;
-    const bodyEnd = bodySpan?.end ?? source.length;
-
-    for (const child of children) {
-      if (!isAstRecord(child)) {
-        continue;
-      }
-      if (child.type === 'Declaration' && typeof child.name === 'string') {
-        const located = locateDeclaration(source, child.name, cursor, bodyEnd);
-        const nameStart = located?.nameStart ?? cursor;
-        const declarationEndValue = located?.declarationEnd ?? nameStart + child.name.length;
-        const key = child.name.toLowerCase();
-        const skip = key.startsWith('--') || key.startsWith('-');
-        if (!skip && !cssData.isKnownProperty(key)) {
-          push(LINT_CODES.unknownProperties, 'warning', `Unknown property: '${child.name}'`, nameStart, nameStart + child.name.length);
-        }
-        if (seenProps.has(key)) {
-          push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${child.name}'`, nameStart, declarationEndValue);
-        } else {
-          seenProps.set(key, true);
-        }
-        visitValueDimensions(child.value, source, located?.valueStart ?? nameStart, declarationEndValue, (src, unit, span) => {
-          if (LENGTH_UNITS.has(unit.toLowerCase())) {
-            push(
-              LINT_CODES.zeroUnits,
-              'hint',
-              `The unit "${unit}" is unnecessary for a zero value`,
-              span?.start ?? nameStart,
-              span?.end ?? nameStart + src.length
-            );
-          }
-        });
-        cursor = declarationEndValue;
-      } else {
-        visitAstNode(child);
-        const span = sourceSpanOf(child) ?? bodySpanOf(child);
-        if (span && span.end > cursor) {
-          cursor = span.end;
-        }
-      }
-    }
-  };
-
-  const visitAstNode = (node: unknown): void => {
-    if (!isAstRecord(node)) {
-      return;
-    }
-    const type = typeof node.type === 'string' ? node.type : '';
-    if (RULESET_TYPES.has(type)) {
-      const bodySpan = bodySpanOf(node);
-      const body = astChildrenOf(node, 'rules');
-      if (body.length === 0 && bodySpan && isWhitespaceOnly(source, bodySpan.start, bodySpan.end)) {
-        const span = sourceSpanOf(node) ?? bodySpan;
-        push(LINT_CODES.emptyRules, 'warning', 'Do not use empty rulesets', span.start, span.end);
-      }
-      visitBody(body, bodySpan);
-      return;
-    }
-    if ((node.type === 'AtRuleStatement' || node.type === 'AtRuleBlock') && typeof node.name === 'string') {
-      const rawName = node.name.startsWith('@') ? node.name.slice(1) : node.name;
-      const lower = rawName.toLowerCase();
-      const span = sourceSpanOf(node);
-      if (span && !cssData.isKnownAtRule(lower)) {
-        push(LINT_CODES.unknownAtRules, 'warning', `Unknown at-rule @${rawName}`, span.start, span.start + rawName.length + 1);
-      }
-      if (node.type === 'AtRuleBlock') {
-        visitBody(astChildrenOf(node, 'rules'), bodySpanOf(node));
-      }
-      return;
-    }
-    visitBody(astChildrenOf(node, 'rules'), undefined);
-  };
-
-  visitAstNode(root);
-  return out;
-}
-
 export function collectTolerantDiagnostics(input: CollectDiagnosticsInput): CollectDiagnosticsResult {
-  if (input.language === 'css') {
-    const cssAstDiagnostics = cssAstLintDiagnostics(input.source, input.metadata, input.filePath);
-    if (cssAstDiagnostics !== null) {
-      return { diagnostics: cssAstDiagnostics };
-    }
-  }
-
-  const doc = parseDocForLanguage(input.source, input.language);
-  const needsTolerantSourceScan = doc.errors.length > 0 || doc.unconsumedFrom !== null;
-  const lintDiagnostics = doc.tree
+  const result = parseResultForLanguage(input.source, input.language);
+  const needsTolerantSourceScan = result.errors.length > 0 || result.unconsumedFrom !== null || !result.ok;
+  const lintDiagnostics = result.tree
     ? cstLintDiagnostics(
-        doc.tree,
+        result.tree,
         input.source,
         input.language,
         input.metadata,
@@ -633,7 +498,7 @@ export function collectTolerantDiagnostics(input: CollectDiagnosticsInput): Coll
     : [];
   return {
     diagnostics: [
-      ...parseDiagnosticsForDoc(doc, input.filePath),
+      ...parseDiagnosticsForDoc(result, input.filePath),
       ...lintDiagnostics
     ]
   };

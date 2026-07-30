@@ -6101,3 +6101,6 @@ export const lessAstGrammar = lessGrammar;
 
 /** Public Less CST artifact: the same grammar factory compiled in CST mode. */
 export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst' }, lessGrammarFactory)]);
+
+/** Diagnostic Less CST artifact: CST mode with Parseman line tracking enabled. */
+export const lessDiagnosticCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst', trackLines: true }, lessGrammarFactory)]);

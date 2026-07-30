@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { collectTolerantDiagnostics, LINT_CODES } from '../src/index.js';
 
 describe('collectTolerantDiagnostics', () => {
-  it('reports CST-grounded lint findings with source offsets', () => {
+  it('reports CST-grounded lint findings with parser-captured source positions', () => {
     const result = collectTolerantDiagnostics({
-      source: '.a { colr: red; width: 0px; }',
+      source: '.a {\n  colr: red;\n  width: 0px;\n}',
       language: 'css',
       filePath: '/tmp/input.css'
     });
@@ -12,6 +12,14 @@ describe('collectTolerantDiagnostics', () => {
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.unknownProperties);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.zeroUnits);
     expect(result.diagnostics.every(diagnostic => diagnostic.filePath === '/tmp/input.css')).toBe(true);
+    expect(result.diagnostics.find(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toMatchObject({
+      line: 2,
+      column: 3
+    });
+    expect(result.diagnostics.find(diagnostic => diagnostic.code === LINT_CODES.zeroUnits)).toMatchObject({
+      line: 3,
+      column: 10
+    });
   });
 
   it('uses caller-provided CSS metadata for known properties', () => {

@@ -86,11 +86,6 @@ export interface LintFormatOptions {
   readonly cwd?: string;
 }
 
-interface LinePosition {
-  readonly line: number;
-  readonly column: number;
-}
-
 interface DisplayDiagnostic {
   readonly code: string;
   readonly severity: DiagnosticSeverityName;
@@ -98,57 +93,6 @@ interface DisplayDiagnostic {
   readonly filePath?: string;
   readonly line: number;
   readonly column: number;
-}
-
-class SourceLineIndex {
-  readonly #source: string;
-  readonly #lineStarts: number[];
-  readonly #lines: string[];
-
-  constructor(source: string) {
-    this.#source = source;
-    this.#lineStarts = [0];
-    for (let i = 0; i < source.length; i++) {
-      if (source.charCodeAt(i) === 10 /* \n */) {
-        this.#lineStarts.push(i + 1);
-      }
-    }
-    this.#lines = source.split(/\r?\n/);
-  }
-
-  lineColAt(offset: number): LinePosition {
-    const end = Math.min(Math.max(0, offset), this.#source.length);
-    let low = 0;
-    let high = this.#lineStarts.length - 1;
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2);
-      const start = this.#lineStarts[mid] ?? 0;
-      if (start <= end) {
-        low = mid + 1;
-      } else {
-        high = mid - 1;
-      }
-    }
-    const lineIndex = Math.max(0, high);
-    return {
-      line: lineIndex + 1,
-      column: end - (this.#lineStarts[lineIndex] ?? 0) + 1
-    };
-  }
-
-  extractRelevantLines(line: number, contextLines = 1): Record<number, string> | undefined {
-    if (this.#source.length === 0) {
-      return undefined;
-    }
-    const target = Math.max(1, Math.min(line, this.#lines.length));
-    const start = Math.max(1, target - contextLines);
-    const end = Math.min(this.#lines.length, target + contextLines);
-    const result: Record<number, string> = {};
-    for (let i = start; i <= end; i++) {
-      result[i] = this.#lines[i - 1] ?? '';
-    }
-    return result;
-  }
 }
 
 function lintConfigFromStylesConfig(config: StylesConfig | null | undefined): LintConfig | undefined {
@@ -242,9 +186,7 @@ function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfi
   return out;
 }
 
-function toErrorDiagnostic(diagnostic: LintDiagnostic, lines: SourceLineIndex): ErrorDiagnostic {
-  const start = lines.lineColAt(diagnostic.start);
-  const end = lines.lineColAt(diagnostic.end);
+function toErrorDiagnostic(diagnostic: LintDiagnostic): ErrorDiagnostic {
   return {
     code: diagnostic.code,
     phase: diagnostic.phase,
@@ -252,17 +194,14 @@ function toErrorDiagnostic(diagnostic: LintDiagnostic, lines: SourceLineIndex): 
     reason: diagnostic.reason,
     fix: diagnostic.fix,
     filePath: diagnostic.filePath,
-    line: start.line,
-    column: start.column,
-    endLine: end.line,
-    endColumn: end.column,
-    lines: lines.extractRelevantLines(start.line)
+    line: diagnostic.line ?? 1,
+    column: diagnostic.column ?? 1,
+    endLine: diagnostic.endLine,
+    endColumn: diagnostic.endColumn
   };
 }
 
-function toWarningDiagnostic(diagnostic: LintDiagnostic, lines: SourceLineIndex): WarningDiagnostic {
-  const start = lines.lineColAt(diagnostic.start);
-  const end = lines.lineColAt(diagnostic.end);
+function toWarningDiagnostic(diagnostic: LintDiagnostic): WarningDiagnostic {
   return {
     code: diagnostic.code,
     phase: diagnostic.phase,
@@ -270,16 +209,14 @@ function toWarningDiagnostic(diagnostic: LintDiagnostic, lines: SourceLineIndex)
     reason: diagnostic.reason,
     fix: diagnostic.fix,
     filePath: diagnostic.filePath,
-    line: start.line,
-    column: start.column,
-    endLine: end.line,
-    endColumn: end.column,
-    lines: lines.extractRelevantLines(start.line)
+    line: diagnostic.line ?? 1,
+    column: diagnostic.column ?? 1,
+    endLine: diagnostic.endLine,
+    endColumn: diagnostic.endColumn
   };
 }
 
 function toLintResult(
-  source: string,
   filePath: string | undefined,
   diagnostics: readonly LintDiagnostic[],
   includeLegacyDiagnostics: boolean
@@ -293,14 +230,13 @@ function toLintResult(
     };
   }
 
-  const lines = new SourceLineIndex(source);
   const errors: ErrorDiagnostic[] = [];
   const warnings: WarningDiagnostic[] = [];
   for (const diagnostic of diagnostics) {
     if (diagnostic.severity === 'error') {
-      errors.push(toErrorDiagnostic(diagnostic, lines));
+      errors.push(toErrorDiagnostic(diagnostic));
     } else {
-      warnings.push(toWarningDiagnostic(diagnostic, lines));
+      warnings.push(toWarningDiagnostic(diagnostic));
     }
   }
   return {
@@ -320,7 +256,6 @@ export async function lintText(input: LintTextInput, options: LintOptions = {}):
     language
   });
   return toLintResult(
-    input.source,
     input.filePath,
     applyPolicy(collected.diagnostics, lintConfig, options),
     options.includeLegacyDiagnostics === true
@@ -358,7 +293,6 @@ export async function lintFiles(patterns: string | readonly string[], options: L
     const language = languageFromPath(filePath, options.language);
     const collected = collectTolerantDiagnostics({ source, filePath, language });
     results.push(toLintResult(
-      source,
       filePath,
       applyPolicy(collected.diagnostics, lintConfig, options),
       options.includeLegacyDiagnostics === true
@@ -475,8 +409,8 @@ function displayDiagnostics(file: LintResult): DisplayDiagnostic[] {
     severity: diagnostic.severity,
     message: diagnostic.message,
     filePath: diagnostic.filePath,
-    line: 0,
-    column: diagnostic.start
+    line: diagnostic.line ?? 0,
+    column: diagnostic.column ?? diagnostic.start
   }));
 }
 

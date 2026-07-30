@@ -176,11 +176,28 @@ function publicGrammarType(grammarType: string, rawChildren: readonly unknown[])
   return grammarType;
 }
 
+function shiftedSpan(span: Span, start: number, columnDelta: number): Span {
+  return {
+    ...span,
+    start,
+    ...(span.startColumn === undefined ? {} : { startColumn: span.startColumn + columnDelta })
+  };
+}
+
+function joinedSpan(first: Span, second: Span): Span {
+  return {
+    ...first,
+    end: second.end,
+    ...(second.endLine === undefined ? {} : { endLine: second.endLine }),
+    ...(second.endColumn === undefined ? {} : { endColumn: second.endColumn })
+  };
+}
+
 function shiftedLeaf(leaf: CssCstLeaf, value: string, start: number): CssCstLeaf {
   return {
     _tag: 'leaf',
     value,
-    span: { start, end: leaf.span.end }
+    span: shiftedSpan(leaf.span, start, 1)
   };
 }
 
@@ -207,7 +224,7 @@ function publicChildren(grammarType: string, rawChildren: readonly unknown[]): C
         {
           _tag: 'leaf',
           value: `${first.value}(`,
-          span: { start: first.span.start, end: second.span.end }
+          span: joinedSpan(first.span, second.span)
         },
         ...children.slice(2)
       ];
@@ -220,10 +237,10 @@ function publicSpan(grammarType: string, span: Span, rawChildren: readonly unkno
   if (grammarType === 'Quoted') {
     const first = rawChildren.find(isCssCstLeaf);
     if (first?.value.startsWith('~')) {
-      return { start: span.start + 1, end: span.end };
+      return shiftedSpan(span, span.start + 1, 1);
     }
   }
-  return { start: span.start, end: span.end };
+  return span;
 }
 
 function buildCssCstNode(args: BuildHostArgs): CssCstNode {

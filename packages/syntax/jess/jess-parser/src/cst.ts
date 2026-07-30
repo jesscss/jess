@@ -1,5 +1,5 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
-import { jessCstGrammar } from './grammar.js';
+import { jessCstGrammar, jessDiagnosticCstGrammar } from './grammar.js';
 
 export function parseJessCst(
   input: string,
@@ -14,10 +14,31 @@ export function parseJessCst(
   );
 }
 
+export function parseJessDiagnosticCst(
+  input: string,
+  startRule = 'Stylesheet',
+  options?: CssCstParseOptions
+): CssCstParseResult {
+  return parseCst(
+    jessDiagnosticCstGrammar as Record<string, unknown>,
+    input,
+    startRule,
+    options
+  );
+}
+
 /** Incremental (`.edit()`-able) Jess document — mirrors `parseLessDoc`/`parseScssDoc`. */
 export function parseJessDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
   return parseDocCst(
     jessCstGrammar as Record<string, unknown>,
+    input,
+    startRule
+  );
+}
+
+export function parseJessDiagnosticDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
+  return parseDocCst(
+    jessDiagnosticCstGrammar as Record<string, unknown>,
     input,
     startRule
   );

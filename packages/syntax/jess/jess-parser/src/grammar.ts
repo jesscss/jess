@@ -5794,3 +5794,8 @@ export const jessCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, c
   { trivia: whitespace, hostMode: 'cst' },
   jessFactory
 )]);
+
+export const jessDiagnosticCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+  { trivia: whitespace, hostMode: 'cst', trackLines: true },
+  jessFactory
+)]);

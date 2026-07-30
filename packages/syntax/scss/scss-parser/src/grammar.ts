@@ -5267,3 +5267,8 @@ export const scssCstGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([c
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], hostMode: 'cst' },
   scssFactory
 )]);
+
+export const scssDiagnosticCstGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+  { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], hostMode: 'cst', trackLines: true },
+  scssFactory
+)]);
