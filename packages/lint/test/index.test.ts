@@ -588,6 +588,17 @@ describe('lintText', () => {
     ]);
   });
 
+  it('applies vendor-prefix policy to keyframe diagnostics by lint rule name', async () => {
+    const result = await lintText({
+      source: '@-webkit-keyframes spin { from { opacity: 0; } }',
+      filePath: '/tmp/input.css'
+    });
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
+      [LINT_CODES.vendorPrefix, LINT_RULE_NAMES.vendorPrefix, 'warning']
+    ]);
+  });
+
   it('keeps unknown vendor-specific properties opt-in by lint rule name', async () => {
     const input = {
       source: '.a { -webkit-made-up: x; }',
@@ -617,6 +628,32 @@ describe('lintText', () => {
   it('keeps compatible vendor prefixes opt-in by lint rule name', async () => {
     const input = {
       source: '.a { -webkit-user-select: none; user-select: none; }',
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.compatibleVendorPrefixes
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.compatibleVendorPrefixes]: 'error'
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
+      [LINT_CODES.compatibleVendorPrefixes, LINT_RULE_NAMES.compatibleVendorPrefixes, 'error']
+    ]);
+  });
+
+  it('keeps compatible vendor keyframes opt-in by lint rule name', async () => {
+    const input = {
+      source: '@keyframes spin { from { opacity: 0; } }\n@-webkit-keyframes spin { from { opacity: 0; } }',
       filePath: '/tmp/input.css'
     };
     const defaultResult = await lintText(input);

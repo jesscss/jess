@@ -512,7 +512,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     tier: 'css-validity',
     defaultPolicy: 'warn',
     comparison: 'vscode-equivalent',
-    notes: 'Matches VSCode stylesheet-service vendorPrefix for CSS vendor-prefixed declarations whose standard property is known but missing from the same ruleset; dialect semantic facts remain future work.'
+    notes: 'Matches VSCode stylesheet-service vendorPrefix for CSS vendor-prefixed declarations and keyframe at-rules whose standard form is missing; dialect semantic facts remain future work.'
   },
   {
     diagnosticCode: LINT_CODES.compatibleVendorPrefixes,
@@ -521,7 +521,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     tier: 'css-validity',
     defaultPolicy: 'off',
     comparison: 'vscode-equivalent',
-    notes: 'Matches VSCode stylesheet-service compatibleVendorPrefixes for CSS declarations that use one known vendor-prefixed property but omit other known vendor-prefixed siblings for the same standard property.'
+    notes: 'Matches VSCode stylesheet-service compatibleVendorPrefixes for CSS declarations and keyframe at-rules that use one known vendor-prefixed form but omit other known vendor-prefixed siblings.'
   },
   {
     diagnosticCode: LINT_CODES.unknownVendorSpecificProperties,

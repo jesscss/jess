@@ -544,6 +544,11 @@ type VendorPrefixGroup = {
   readonly spans: DiagnosticSpan[];
 };
 
+type KeyframesVendorGroup = {
+  readonly actual: Set<string>;
+  readonly vendorSpans: DiagnosticSpan[];
+};
+
 type ExactExtendTargetFact = {
   readonly key: string;
   readonly display: string;
@@ -719,6 +724,7 @@ function unprefixedName(name: string): string {
 }
 
 const VENDOR_PREFIXES = ['-webkit-', '-moz-', '-ms-', '-o-'] as const;
+const KEYFRAMES_VENDOR_RULES = ['@-webkit-keyframes', '@-moz-keyframes', '@-o-keyframes'] as const;
 
 function vendorPrefixOfName(name: string): string {
   for (const prefix of VENDOR_PREFIXES) {
@@ -739,6 +745,16 @@ function missingVendorPrefixedProperties(
     const prefixed = `${prefix}${suffix}`;
     if (metadata.isKnownProperty(prefixed) && !actual.has(prefixed)) {
       missing.push(prefixed);
+    }
+  }
+  return missing;
+}
+
+function missingKeyframesVendorRules(actual: ReadonlySet<string>): string[] {
+  const missing: string[] = [];
+  for (const expected of KEYFRAMES_VENDOR_RULES) {
+    if (!actual.has(expected)) {
+      missing.push(expected);
     }
   }
   return missing;
@@ -1124,19 +1140,30 @@ function staticAnimationName(raw: string): string | null {
   return isCssIdentifier(trimmed) ? trimmed : null;
 }
 
-function keyframesAnimationName(source: string, node: CssCstNode): string | null {
+function keyframesAtRuleFact(
+  source: string,
+  node: CssCstNode
+): { readonly animationName: string; readonly atRuleName: string; readonly keywordSpan: DiagnosticSpan } | null {
   const start = absoluteStart(node);
   const end = absoluteEnd(node);
   const atRuleName = atRuleNameOf(source, start, end);
   if (atRuleName === null || !isKeyframesAtRuleName(atRuleName)) {
     return null;
   }
-  const nameStart = atRuleNameEnd(source, start, end);
-  const blockStart = topLevelBlockStart(source, nameStart, end);
+  const nameEnd = atRuleNameEnd(source, start, end);
+  const blockStart = topLevelBlockStart(source, nameEnd, end);
   if (blockStart < 0 || blockStart > end) {
     return null;
   }
-  return staticAnimationName(stripComments(source.slice(nameStart, blockStart)));
+  const animationName = staticAnimationName(stripComments(source.slice(nameEnd, blockStart)));
+  if (animationName === null) {
+    return null;
+  }
+  return {
+    animationName,
+    atRuleName: `@${atRuleName}`,
+    keywordSpan: spanAtOrContaining(node, start, nameEnd)
+  };
 }
 
 function topLevelBlockStart(source: string, start: number, end: number): number {
@@ -3735,6 +3762,7 @@ export function cstLintDiagnostics(
   const seenImports = new Map<string, ImportKey>();
   const seenModuleLoads = new Map<string, ModuleLoadKey>();
   const declaredAnimations = new Set<string>();
+  const keyframesVendorGroups = new Map<string, KeyframesVendorGroup>();
   const animationReferences: AnimationNameReference[] = [];
   const declaredCustomProperties = new Set<string>();
   const customPropertyReferences: CustomPropertyReference[] = [];
@@ -4355,9 +4383,21 @@ export function cstLintDiagnostics(
 
     if (KEYFRAMES_TYPES.has(gt)) {
       if (language === 'css') {
-        const animationName = keyframesAnimationName(source, node);
-        if (animationName !== null) {
-          declaredAnimations.add(animationName);
+        const keyframesFact = keyframesAtRuleFact(source, node);
+        if (keyframesFact !== null) {
+          declaredAnimations.add(keyframesFact.animationName);
+          let group = keyframesVendorGroups.get(keyframesFact.animationName);
+          if (group === undefined) {
+            group = {
+              actual: new Set(),
+              vendorSpans: []
+            };
+            keyframesVendorGroups.set(keyframesFact.animationName, group);
+          }
+          group.actual.add(keyframesFact.atRuleName);
+          if (keyframesFact.atRuleName !== '@keyframes') {
+            group.vendorSpans.push(keyframesFact.keywordSpan);
+          }
         }
       }
       const seenSelectors = new Set<string>();
@@ -4602,6 +4642,32 @@ export function cstLintDiagnostics(
     ...ROOT_VISIT_CONTEXT_BASE,
     selectorLists: new Map()
   });
+
+  for (const group of keyframesVendorGroups.values()) {
+    if (group.vendorSpans.length === 0) {
+      continue;
+    }
+    const missesStandard = !group.actual.has('@keyframes');
+    const missingVendorRules = missingKeyframesVendorRules(group.actual);
+    for (const span of group.vendorSpans) {
+      if (missesStandard) {
+        push(
+          LINT_CODES.vendorPrefix,
+          'warning',
+          'Always define standard rule "@keyframes" when defining keyframes',
+          span
+        );
+      }
+      if (missingVendorRules.length > 0) {
+        push(
+          LINT_CODES.compatibleVendorPrefixes,
+          'warning',
+          `Always include all vendor-specific rules: Missing: ${missingVendorRules.join(', ')}`,
+          span
+        );
+      }
+    }
+  }
 
   for (const animation of animationReferences) {
     if (!declaredAnimations.has(animation.name)) {

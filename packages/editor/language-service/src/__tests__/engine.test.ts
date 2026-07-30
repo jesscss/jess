@@ -736,9 +736,22 @@ describe('JessLanguageServiceEngine', () => {
         expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('-webkit-transform');
       });
 
+      it('fires on CSS vendor-prefixed keyframes missing the standard at-rule', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '@-webkit-keyframes spin { from { opacity: 0; } }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/vendor-prefix');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe(
+          '@-webkit-keyframes'
+        );
+      });
+
       it('does not fire in dialect files before property facts exist', () => {
         const engine = createEngine();
-        const doc = createDocument('scss', '.a { -webkit-transform: rotate(0); }');
+        const doc = createDocument('scss', '.a { -webkit-transform: rotate(0); }\n@-webkit-keyframes spin { from { opacity: 0; } }');
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         expect(codesOf(engine, doc.uri)).not.toContain('lint/vendor-prefix');
       });
@@ -801,10 +814,24 @@ describe('JessLanguageServiceEngine', () => {
         expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('-webkit-user-select');
       });
 
+      it('fires on keyframes when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/compatible-vendor-prefixes', 'warning'));
+        const doc = createDocument('css', '@keyframes spin { from { opacity: 0; } }\n@-webkit-keyframes spin { from { opacity: 0; } }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/compatible-vendor-prefixes');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe(
+          '@-webkit-keyframes'
+        );
+      });
+
       it('does not fire in dialect files before property facts exist', () => {
         const engine = createEngine();
         engine.configure(sevCfg('lint/compatible-vendor-prefixes', 'warning'));
-        const doc = createDocument('scss', '.a { -webkit-user-select: none; user-select: none; }');
+        const doc = createDocument('scss', '.a { -webkit-user-select: none; user-select: none; }\n@keyframes spin { from { opacity: 0; } }\n@-webkit-keyframes spin { from { opacity: 0; } }');
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         expect(codesOf(engine, doc.uri)).not.toContain('lint/compatible-vendor-prefixes');
       });

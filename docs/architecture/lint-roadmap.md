@@ -60,10 +60,11 @@ a `jess/` prefix. Each stable rule also maps to a shared Jess diagnostic code:
 the rule name is the user-facing `lint.rules` key, while the diagnostic code is
 the shared identity used by diagnostics-core, the language service, JSON output,
 and compatibility aliases. Lint JSON carries both names when a diagnostic maps
-to a stable lint rule. Comparison labels describe parity only: `Stylelint-near`
-still uses the familiar lint rule name, but the implementation may be a
-VSCode-data-backed or Jess-native subset and can stay out of matched benchmark
-mode until its behavior is comparable enough.
+to a stable lint rule. Comparison labels describe parity only. A
+`Stylelint-near` entry still has a stable lint rule name and a stable diagnostic
+code, but the implementation may be a VSCode-data-backed or Jess-native subset
+and can stay out of matched benchmark mode until its behavior is comparable
+enough.
 
 | Rule | Diagnostic code | Kind |
 | --- | --- | --- |
@@ -221,8 +222,8 @@ can detect over authored source.
 | Landed | Display/property interactions | `property-ignored-due-to-display` | Matches VSCode `propertyIgnoredDueToDisplay` for CSS `display: inline-block` with non-`none` `float`, and `display: block` with `vertical-align`; dynamic and dialect values stay unknown until semantic facts exist. |
 | Landed | Box model | `box-model` | Opt-in VSCode `boxModel` parity for definite CSS `width`/`height` with non-zero padding or border; `box-sizing` suppresses the rule, and dynamic/dialect values stay unknown until semantic facts exist. |
 | Landed | Float layout | `float` | Opt-in VSCode `float` parity for definite CSS `float` declarations whose value is not `none`; dynamic/dialect values stay unknown until semantic facts exist. |
-| Landed | Vendor prefixes | `vendor-prefix` | Matches VSCode `vendorPrefix` for CSS vendor-prefixed declarations whose standard property is missing from the same ruleset; keyframe prefix parity stays future work. |
-| Landed | Compatible vendor prefixes | `compatible-vendor-prefixes` | Opt-in VSCode `compatibleVendorPrefixes` parity for CSS declarations that use one known vendor-prefixed property but omit other known vendor-prefixed siblings for the same standard property; keyframe prefix parity stays future work. |
+| Landed | Vendor prefixes | `vendor-prefix` | Matches VSCode `vendorPrefix` for CSS vendor-prefixed declarations and keyframe at-rules whose standard form is missing. |
+| Landed | Compatible vendor prefixes | `compatible-vendor-prefixes` | Opt-in VSCode `compatibleVendorPrefixes` parity for CSS declarations and keyframe at-rules that use one known vendor-prefixed form but omit other known vendor-prefixed siblings. |
 | Landed | Unknown vendor-specific properties | `unknown-vendor-specific-properties` | Opt-in VSCode `unknownVendorSpecificProperties` parity for CSS single-hyphen prefixed declarations whose full property name is not known; custom validProperties support stays future work. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
 | Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |

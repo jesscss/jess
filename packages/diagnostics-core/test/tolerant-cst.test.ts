@@ -640,6 +640,48 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports vendor-prefixed CSS keyframes missing standard and compatible siblings', () => {
+    const source = [
+      '@-webkit-keyframes spin { from { opacity: 0; } }',
+      '@keyframes pulse { from { opacity: 0; } }',
+      '@-webkit-keyframes pulse { from { opacity: 0; } }',
+      '@keyframes slide { from { opacity: 0; } }',
+      '@-webkit-keyframes slide { from { opacity: 0; } }',
+      '@-moz-keyframes slide { from { opacity: 0; } }',
+      '@-o-keyframes slide { from { opacity: 0; } }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const vendorPrefix = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.vendorPrefix);
+    const compatibleVendorPrefixes = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.compatibleVendorPrefixes
+    );
+    const spinStart = source.indexOf('@-webkit-keyframes spin');
+    const pulseStart = source.indexOf('@-webkit-keyframes pulse');
+
+    expect(vendorPrefix.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Always define standard rule "@keyframes" when defining keyframes',
+        spinStart,
+        spinStart + '@-webkit-keyframes'.length
+      ]
+    ]);
+    expect(compatibleVendorPrefixes.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        'Always include all vendor-specific rules: Missing: @-moz-keyframes, @-o-keyframes',
+        spinStart,
+        spinStart + '@-webkit-keyframes'.length
+      ],
+      [
+        'Always include all vendor-specific rules: Missing: @-moz-keyframes, @-o-keyframes',
+        pulseStart,
+        pulseStart + '@-webkit-keyframes'.length
+      ]
+    ]);
+  });
+
   it('reports unknown CSS vendor-specific properties', () => {
     const source = [
       '.unknown { -webkit-made-up: x; -foo-thing: y; -webkit-transform: rotate(0); }',
@@ -694,7 +736,10 @@ describe('collectTolerantDiagnostics', () => {
   });
 
   it('does not report vendor-prefix diagnostics in dialect files before property facts exist', () => {
-    const source = '.a { -webkit-transform: rotate(0); }';
+    const source = [
+      '.a { -webkit-transform: rotate(0); }',
+      '@-webkit-keyframes spin { from { opacity: 0; } }'
+    ].join('\n');
     const scss = collectTolerantDiagnostics({
       source,
       language: 'scss'
@@ -724,7 +769,11 @@ describe('collectTolerantDiagnostics', () => {
   });
 
   it('does not report compatible vendor-prefix diagnostics in dialect files before property facts exist', () => {
-    const source = '.a { -webkit-user-select: none; user-select: none; }';
+    const source = [
+      '.a { -webkit-user-select: none; user-select: none; }',
+      '@keyframes spin { from { opacity: 0; } }',
+      '@-webkit-keyframes spin { from { opacity: 0; } }'
+    ].join('\n');
     const scss = collectTolerantDiagnostics({
       source,
       language: 'scss'
