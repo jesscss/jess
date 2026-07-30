@@ -510,6 +510,10 @@ Observations, each re-checkable from the current grammar files:
   Jess `@import` is CSS, not a Jess-specific import syntax. The fix is CSS-owned
   or shared import composition with parameterized Jess holes, not a mechanical
   rename that leaves the duplicated parser body intact.
+- The same rule applies when an SCSS `Import*` family has a semantic name: Sass
+  interpolation may override the target leaf, but CSS `layer`, `supports`, and
+  media-tail structure still belongs upstream. A dialect-local copy requires a
+  concrete syntax difference and a plan to remove every unchanged child.
 - At-rule family names should converge on `AtRule` with concrete statement/block
   forms. Existing `StylesheetAtRule`, `DeclarationListAtRule`, and
   `CssAtRulePrelude` names are review prompts, not precedent.
