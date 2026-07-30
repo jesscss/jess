@@ -10,7 +10,7 @@
  *   - the node's KEY ORDER (a conditional spread is exactly the construct that
  *     could silently reorder fields, so key order is part of the contract)
  *   - leaf `value` / `span`
- *   - the parse `ok` flag and the full triviaLog
+ *   - the parse `ok` flag and the selected root-trivia rows
  *
  * Do NOT JSON.stringify these trees: `rules` and `children` are the SAME array
  * under two names, so a naive serializer duplicates every subtree at every
@@ -69,7 +69,7 @@ function digest(label, parse, file) {
       for (let i = n.rules.length - 1; i >= 0; i--) { stack.push(n.rules[i]); }
     }
   }
-  h.update(`TRIVIA|${r.triviaLog.join(',')}\n`);
+  h.update(`TRIVIA|${(r.rootTrivia?.rows ?? []).join(',')}\n`);
   h.update(`OK|${r.ok}|UNCONSUMED|${String(r.unconsumedFrom)}\n`);
 
   return [
@@ -80,7 +80,7 @@ function digest(label, parse, file) {
     `errors=${errors}`,
     `tagged=${tagged}`,
     `aliased=${aliased}`,
-    `trivia=${r.triviaLog.length}`,
+    `trivia=${(r.rootTrivia?.rows ?? []).length}`,
     `keyOrders=${[...keyOrders].map(k => `{${k}}`).join(' ')}`
   ].join('\t');
 }

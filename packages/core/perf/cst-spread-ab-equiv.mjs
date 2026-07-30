@@ -50,5 +50,7 @@ console.log(`walked       : ${nodes.toLocaleString()} nodes, ${leaves.toLocaleSt
 console.log(`value diffs  : ${diffs}`);
 console.log(`key-order    : ${orderDiffs} differing (0 = patch preserves field order exactly)`);
 console.log(`rules===children on both sides: ${aliasOk.toLocaleString()} / ${nodes.toLocaleString()} nodes`);
-console.log(`triviaLog    : ${a.triviaLog.length === b.triviaLog.length && a.triviaLog.every((v, i) => v === b.triviaLog[i]) ? 'IDENTICAL' : 'DIFFERENT'} (${a.triviaLog.length.toLocaleString()} entries)`);
+const aRows = a.rootTrivia?.rows ?? [];
+const bRows = b.rootTrivia?.rows ?? [];
+console.log(`rootTrivia   : ${aRows.length === bRows.length && aRows.every((v, i) => v === bRows[i]) ? 'IDENTICAL' : 'DIFFERENT'} (${aRows.length.toLocaleString()} row entries)`);
 console.log(`RESULT       : ${diffs === 0 && orderDiffs === 0 ? 'EQUIVALENT' : 'NOT equivalent'}`);
