@@ -56,6 +56,7 @@ a `jess/` prefix.
 | `property-no-unknown` | `lint/unknown-property` | Stylelint-near |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | Stylelint-near |
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | Stylelint-equivalent |
+| `declaration-block-no-duplicate-custom-properties` | `lint/declaration-block-no-duplicate-custom-properties` | Stylelint-equivalent |
 | `color-no-invalid-hex` | `lint/hex-color-length` | Stylelint-equivalent |
 | `length-zero-no-unit` | `lint/zero-units` | Stylelint-equivalent |
 | `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | Stylelint-equivalent |
@@ -136,8 +137,8 @@ comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint comparison config | `21.63 ms/op` |
-| Stylelint comparable rules | `28.52 ms/op` |
+| Jess lint comparison config | `22.60 ms/op` |
+| Stylelint comparable rules | `31.31 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -160,6 +161,7 @@ can detect over authored source.
 | Landed | Custom properties | `custom-property-no-missing-var-function` | Flags `color: --x`; suppresses inside custom-property declarations and `var()`. |
 | Landed | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement after style rules or blocking at-rules. Jess `@-import` is separate. |
 | Landed | Duplicate imports | `no-duplicate-at-import-rules` | Flags repeated same-file imports with the same target/options/conditions; import-graph duplicate modules remain Jess-only semantic work. |
+| Landed | Duplicate custom properties | `declaration-block-no-duplicate-custom-properties` | Flags repeated custom property declarations in one parsed block with exact name matching. |
 | Landed | Duplicate selectors | `no-duplicate-selectors` | CSS selector-list duplicates are CST-owned: duplicate entries inside one list and duplicate whole lists among sibling rules. Dialect nested resolution still needs selector facts. |
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
 | Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Checks definite `font-family` values; dynamic values stay unknown. |

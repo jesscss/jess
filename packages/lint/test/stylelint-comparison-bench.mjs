@@ -26,6 +26,7 @@ const STYLELINT_RULES = {
   'block-no-empty': true,
   'property-no-unknown': true,
   'at-rule-no-unknown': true,
+  'declaration-block-no-duplicate-custom-properties': true,
   'declaration-block-no-duplicate-properties': true,
   'color-no-invalid-hex': true,
   'length-zero-no-unit': true,

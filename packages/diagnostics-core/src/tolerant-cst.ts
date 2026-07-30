@@ -18,6 +18,7 @@ export const LINT_CODES = {
   unknownProperties: 'lint/unknown-property',
   unknownAtRules: 'lint/unknown-at-rule',
   duplicateProperties: 'lint/duplicate-property',
+  duplicateCustomProperties: 'lint/declaration-block-no-duplicate-custom-properties',
   hexColorLength: 'lint/hex-color-length',
   zeroUnits: 'lint/zero-units',
   customPropertyMissingVarFunction: 'lint/custom-property-no-missing-var-function',
@@ -2173,22 +2174,37 @@ export function cstLintDiagnostics(
           selectorLists: new Map()
         }
       : nodeContext;
-    let seenProps: Map<string, boolean> | undefined;
+    let seenProps: Set<string> | undefined;
+    let seenCustomProps: Set<string> | undefined;
     for (const child of cstChildrenOf(node)) {
       if (!isCstNode(child)) {
         continue;
       }
-      if (DECLARATION_TYPES.has(child.grammarType)) {
+      const childGrammarType = child.grammarType;
+      if (DECLARATION_TYPES.has(childGrammarType)) {
         const childStart = absoluteStart(child);
         const childEnd = absoluteEnd(child);
         const name = propNameOf(source.slice(childStart, childEnd));
         if (name.length > 0 && !name.includes('#{') && !name.includes('@{') && !name.includes('${')) {
           const key = name.toLowerCase();
-          seenProps ??= new Map();
+          seenProps ??= new Set();
           if (seenProps.has(key)) {
             push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${name}'`, child.span);
           } else {
-            seenProps.set(key, true);
+            seenProps.add(key);
+          }
+        }
+      }
+      if (CUSTOM_DECLARATION_TYPES.has(childGrammarType)) {
+        const childStart = absoluteStart(child);
+        const childEnd = absoluteEnd(child);
+        const name = propNameOf(source.slice(childStart, childEnd));
+        if (name.startsWith('--') && !name.includes('#{') && !name.includes('@{') && !name.includes('${')) {
+          seenCustomProps ??= new Set();
+          if (seenCustomProps.has(name)) {
+            push(LINT_CODES.duplicateCustomProperties, 'warning', `Duplicate custom property "${name}"`, child.span);
+          } else {
+            seenCustomProps.add(name);
           }
         }
       }

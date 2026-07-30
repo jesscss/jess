@@ -126,6 +126,21 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('reports duplicate custom properties in one declaration block', () => {
+    const source = '.a { --brand: red; --Brand: blue; --brand: green; color: red; color: blue; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const duplicateCustomProperties = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.duplicateCustomProperties
+    );
+
+    expect(duplicateCustomProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Duplicate custom property "--brand"', source.lastIndexOf('--brand'), source.indexOf('; color')]
+    ]);
+  });
+
   it('reports duplicate keyframe selectors and important keyframe declarations', () => {
     const result = collectTolerantDiagnostics({
       source: '@keyframes spin { from { opacity: 1 !important; } 0% { opacity: .5; } 50% { color: red; } 50% { color: blue; } }',

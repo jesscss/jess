@@ -25,6 +25,7 @@ describe('stable rule set', () => {
       LINT_CODES.unknownProperties,
       LINT_CODES.unknownAtRules,
       LINT_CODES.duplicateProperties,
+      LINT_CODES.duplicateCustomProperties,
       LINT_CODES.hexColorLength,
       LINT_CODES.zeroUnits,
       LINT_CODES.customPropertyMissingVarFunction,
@@ -50,6 +51,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownProperties,
       LINT_RULE_NAMES.unknownAtRules,
       LINT_RULE_NAMES.duplicateProperties,
+      LINT_RULE_NAMES.duplicateCustomProperties,
       LINT_RULE_NAMES.hexColorLength,
       LINT_RULE_NAMES.zeroUnits,
       LINT_RULE_NAMES.customPropertyMissingVarFunction,
@@ -70,7 +72,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(12);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(13);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -80,6 +82,7 @@ describe('stable rule set', () => {
 
     expect(Object.keys(comparison).sort()).toEqual([
       LINT_RULE_NAMES.duplicateProperties,
+      LINT_RULE_NAMES.duplicateCustomProperties,
       LINT_RULE_NAMES.emptyRules,
       LINT_RULE_NAMES.hexColorLength,
       LINT_RULE_NAMES.customPropertyMissingVarFunction,
@@ -266,6 +269,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.duplicateAtImportRules, 'error']
+    ]);
+  });
+
+  it('applies policy to duplicate custom property diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { --brand: red; --brand: blue; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.duplicateCustomProperties]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.duplicateCustomProperties, 'error']
     ]);
   });
 
