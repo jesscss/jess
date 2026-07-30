@@ -133,7 +133,7 @@ type LessRules = {
   CustomSquare: Combinator<readonly CustomValuePart[]>;
   CustomCurly: Combinator<readonly CustomValuePart[]>;
   CustomValue: Combinator<ValueNode>;
-  CssCustomPropertyValue: Combinator<Keyword>;
+  CustomPropertyValue: Combinator<Keyword>;
   CustomDeclaration: Combinator<Declaration>;
   PunctuationMapDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
@@ -2903,7 +2903,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       g.IndirectVariableReference,
       g.VariableReferenceChain,
       g.PropertyReference,
-      g.CssCustomPropertyValue,
+      g.CustomPropertyValue,
       g.Dimension,
       g.Color,
       g.NamedColor,
@@ -3254,8 +3254,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // It reduces to the same Keyword the css/scss/jess grammars produce, and the
   // same one StaticAtRuleCustomProperty already produces for the
   // identical token in an at-rule header.
-  const CssCustomPropertyValue = node<Keyword>(
-    'CssCustomPropertyValue',
+  const CustomPropertyValue = node<Keyword>(
+    'CustomPropertyValue',
     g.LessSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
@@ -5892,7 +5892,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     CustomSquare,
     CustomCurly,
     CustomValue,
-    CssCustomPropertyValue,
+    CustomPropertyValue,
     CustomDeclaration,
     PunctuationMapDeclaration,
     Declaration,
