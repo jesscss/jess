@@ -1047,9 +1047,9 @@ const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
 
 /*
- * Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: a scan
- * with no per-call skip treats a string as one atomic unit, so a sentinel hidden
- * inside it (an arg terminator, `with(`, etc.) is never matched. Consumes
+ * Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: every
+ * non-raw scan sees these before any local structural skip, so a sentinel hidden
+ * inside a string (an arg terminator, `with(`, etc.) is never matched. Consumes
  * quote-to-quote including escapes; used only as a scan hole (builds nothing).
  */
 const scssScanSkipDoubleString = noTrivia(sequence(
@@ -2512,7 +2512,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'ForwardTail',
     optional(scanTo(
       literal(';'),
-      { skip: [balanced('(', ')'), g.LiteralQuoted] }
+      { skip: [balanced('(', ')')] }
     )),
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
@@ -3335,7 +3335,7 @@ export const scssFactory = (g: ScssInputRules) => {
         { skip: [balanced(
           '(',
           ')'
-        ), g.Quoted] }
+        )] }
       ),
       expect(
         literal(')'),
@@ -3757,7 +3757,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'AtRootPrelude',
     optional(scanTo(
       literal('{'),
-      { skip: [balanced('(', ')'), g.LiteralQuoted] }
+      { skip: [balanced('(', ')')] }
     )),
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
@@ -3770,7 +3770,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('('),
       scanTo(
         literal('{'),
-        { skip: [balanced('(', ')'), g.LiteralQuoted] }
+        { skip: [balanced('(', ')')] }
       )
     ),
     children => any(children.map(requireToken).map(token => token.value).join('').trim())

@@ -492,6 +492,37 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
+  it('uses the ambient quoted-span skipper in opaque SCSS scans', () => {
+    const forwardTail = run(
+      scssAstGrammar.ForwardTail,
+      ' as "theme;variant";',
+      { trivia: scssAstGrammar.whitespace }
+    );
+    expect(forwardTail.ok).toBe(true);
+    expect(forwardTail.unconsumedFrom).toBe(19);
+    expect(forwardTail.value).toEqual({ value: 'as "theme;variant"' });
+
+    const queryFunction = run(
+      scssAstGrammar.QueryFunction,
+      'selector([data-state=")"])',
+      { trivia: scssAstGrammar.whitespace }
+    );
+    expect(queryFunction.ok).toBe(true);
+    expect(queryFunction.unconsumedFrom).toBeNull();
+    expect(queryFunction.value).toMatchObject({
+      type: 'FunctionCall', name: 'selector', args: [{ type: 'Any', src: '[data-state=")"]' }]
+    });
+
+    for (const [rule, source, expected] of [
+      [scssAstGrammar.AtRootPrelude, ' "{" {', '"{"'],
+      [scssAstGrammar.AtRootFilterPrelude, '(with: ".scope {") {', '(with: ".scope {")']
+    ] as const) {
+      const result = run(rule, source, { trivia: scssAstGrammar.whitespace });
+      expect(result.ok, source).toBe(true);
+      expect(result.value, source).toMatchObject({ type: 'Any', src: expected });
+    }
+  });
+
   it('constructs canonical SCSS variable declarations and references directly', () => {
     const result = run(
       scssAstGrammar.Stylesheet,
