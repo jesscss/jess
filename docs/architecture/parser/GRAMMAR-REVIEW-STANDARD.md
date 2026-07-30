@@ -56,6 +56,15 @@ routed bare identifier can reduce to a `Keyword` value, while the glued
 separate is what lets Less, SCSS, and Jess override interpolation in selector,
 property, or header positions without corrupting ordinary value keywords.
 
+Name productions for the syntax or emitted fact, not for a recognition route.
+`PseudoArgumentSelector`, `PseudoArgumentText`, and `PseudoSelector` name the
+same concepts in the grammar map and CST. A static route is not a production
+concept: it is simply the route that did not encounter interpolation. Reserve
+an `Interpolated...` production name for the real semantic distinction where
+the route produces an interpolation-backed AST fact. Do not introduce
+`Static...`, `Direct...`, dialect prefixes, or compatibility-history prefixes
+to explain parser implementation history.
+
 Math and comparison are also context-owned. Less may lower value-position math
 or comparison into expression structure, but only through the Less expression
 rules and their `mathMode` policy. Jess expression math, comparison, and
