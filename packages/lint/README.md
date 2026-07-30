@@ -141,6 +141,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | --- | --- | --- |
 | `block-no-empty` | `lint/empty-rules` | `block-no-empty` |
 | `property-no-unknown` | `lint/unknown-property` | near `property-no-unknown` |
+| `property-no-deprecated` | `lint/property-no-deprecated` | near `property-no-deprecated` |
 | `declaration-property-value-no-unknown` | `lint/unknown-property-value` | near `declaration-property-value-no-unknown` |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | near `at-rule-no-unknown` |
 | `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | near `at-rule-descriptor-no-unknown` |

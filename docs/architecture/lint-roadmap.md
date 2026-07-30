@@ -70,6 +70,7 @@ enough.
 | --- | --- | --- |
 | `block-no-empty` | `lint/empty-rules` | Stylelint-equivalent |
 | `property-no-unknown` | `lint/unknown-property` | Stylelint-near |
+| `property-no-deprecated` | `lint/property-no-deprecated` | Stylelint-near |
 | `declaration-property-value-no-unknown` | `lint/unknown-property-value` | Stylelint-near |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | Stylelint-near |
 | `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | Stylelint-near |
@@ -208,6 +209,7 @@ can detect over authored source.
 | Priority | Stylelint rule family | Jess rule name | Notes |
 | --- | --- | --- | --- |
 | P0 | Unknown CSS | existing `property-no-unknown`, `at-rule-no-unknown` | Keep metadata current and dialect-aware. |
+| Landed | Deprecated properties | `property-no-deprecated` | Flags CSS properties marked obsolete or deprecated in VSCode web custom data; nonstandard and vendor-prefixed properties stay out of this rule. |
 | Landed | Property values | `declaration-property-value-no-unknown` | Flags definite unknown simple CSS property values from VSCode web custom data values and restrictions; compound, dynamic, and dialect values stay unknown until richer value facts exist. |
 | Landed | Duplicates | existing `declaration-block-no-duplicate-properties` | `ignore: ["consecutive-duplicates"]` landed through Stylelint-like rule options; shorthand override coverage is tracked by the dedicated shorthand row. |
 | Landed | Empty blocks | `block-no-empty` | Flags empty rulesets by default; empty Less/SCSS/Jess mixin bodies use the same shared diagnostic code with a `mixin-body` qualifier and surface only with `include: ["mixins"]`. Empty mixins can be API placeholders. |

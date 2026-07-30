@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import type { CssDiagnosticMetadata } from './types.js';
+import type { CssDiagnosticMetadata, CssFeatureStatus } from './types.js';
 
 const require = createRequire(import.meta.url);
 const webCssData: unknown = require('@vscode/web-custom-data/data/browsers.css-data.json');
@@ -26,13 +26,34 @@ function stringField(value: unknown, key: string): string | undefined {
   return typeof field === 'string' ? field : undefined;
 }
 
+function cssFeatureStatus(value: unknown): CssFeatureStatus | undefined {
+  if (value === 'standard'
+    || value === 'experimental'
+    || value === 'nonstandard'
+    || value === 'obsolete'
+    || value === 'deprecated') {
+    return value;
+  }
+  return undefined;
+}
+
 const cssProperties = arrayField(knownCssProperties, 'all')
   .filter((value): value is string => typeof value === 'string');
 
 const CSS_PROPERTY_SET = new Set(cssProperties.map(property => property.toLowerCase()));
+const CSS_PROPERTY_STATUS = new Map<string, CssFeatureStatus>();
 const WEB_PROPERTY_SET = new Set(
   arrayField(webCssData, 'properties')
-    .map(property => stringField(property, 'name')?.toLowerCase())
+    .map((property) => {
+      const name = stringField(property, 'name')?.toLowerCase();
+      if (name !== undefined && name.length > 0) {
+        const status = cssFeatureStatus(stringField(property, 'status'));
+        if (status !== undefined) {
+          CSS_PROPERTY_STATUS.set(name, status);
+        }
+      }
+      return name;
+    })
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
 );
 const CSS_WIDE_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
@@ -371,6 +392,9 @@ export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
   isKnownProperty(name) {
     const lower = name.toLowerCase();
     return CSS_PROPERTY_SET.has(lower) || WEB_PROPERTY_SET.has(lower);
+  },
+  cssPropertyStatus(name) {
+    return CSS_PROPERTY_STATUS.get(name.toLowerCase());
   },
   isKnownPropertyValue(name, value) {
     const data = PROPERTY_VALUE_DATA.get(name.toLowerCase());

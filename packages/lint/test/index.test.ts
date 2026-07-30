@@ -23,6 +23,7 @@ describe('stable rule set', () => {
     expect(STABLE_LINT_RULES.map(rule => rule.diagnosticCode)).toEqual([
       LINT_CODES.emptyRules,
       LINT_CODES.unknownProperties,
+      LINT_CODES.deprecatedProperties,
       LINT_CODES.unknownPropertyValues,
       LINT_CODES.unknownAtRules,
       LINT_CODES.unknownAtRuleDescriptors,
@@ -76,6 +77,7 @@ describe('stable rule set', () => {
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
       LINT_RULE_NAMES.emptyRules,
       LINT_RULE_NAMES.unknownProperties,
+      LINT_RULE_NAMES.deprecatedProperties,
       LINT_RULE_NAMES.unknownPropertyValues,
       LINT_RULE_NAMES.unknownAtRules,
       LINT_RULE_NAMES.unknownAtRuleDescriptors,
@@ -126,7 +128,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(45);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(46);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -180,6 +182,7 @@ describe('stable rule set', () => {
     ].sort());
     expect(STYLELINT_COMPARISON_LINT_CONFIG.reportSyntax).toBe(false);
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateSelectors]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.deprecatedProperties]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownPropertyValues]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.fontFaceMissingRequiredProperties]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.propertyIgnoredDueToDisplay]).toBe('off');
@@ -251,6 +254,28 @@ describe('lintText', () => {
     ]);
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownPropertyValues, 'error']
+    ]);
+  });
+
+  it('applies policy to deprecated property diagnostics by lint rule name', async () => {
+    const result = await lintText(
+      {
+        source: '.a { clip: auto; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.deprecatedProperties]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.deprecatedProperties, LINT_CODES.deprecatedProperties, 'error']
     ]);
   });
 
