@@ -421,6 +421,40 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports unknown CSS media feature values', () => {
+    const source = '@media (orientation: sideways) and (hover: maybe) and (grid: 2) and (resolution: infinite) and (width: 10px) and (aspect-ratio: 16/9) and (min-width: 0) { .a { color: red; } }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownMediaFeatureValues = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureValues);
+
+    expect(unknownMediaFeatureValues.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown media feature value "sideways" for name "orientation"', source.indexOf('sideways'), source.indexOf('sideways') + 'sideways'.length],
+      ['Unknown media feature value "maybe" for name "hover"', source.indexOf('maybe'), source.indexOf('maybe') + 'maybe'.length],
+      ['Unknown media feature value "2" for name "grid"', source.indexOf('2)'), source.indexOf('2)') + '2'.length]
+    ]);
+  });
+
+  it('does not report unknown media feature values for dynamic or non-CSS media queries', () => {
+    const css = collectTolerantDiagnostics({
+      source: '@media (orientation: var(--orientation)) and (future-feature: sideways) { .a { color: red; } }',
+      language: 'css'
+    });
+    const scss = collectTolerantDiagnostics({
+      source: '@media (orientation: $direction) { .a { color: red; } }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '@media (orientation: @direction) { .a { color: red; } }',
+      language: 'less'
+    });
+
+    expect(css.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureValues)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureValues)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureValues)).toBe(false);
+  });
+
   it('does not report unknown media feature names in dialect files before media facts exist', () => {
     const scss = collectTolerantDiagnostics({
       source: '@media (project-feature: $value) { .a { color: red; } }',

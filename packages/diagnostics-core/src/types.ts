@@ -21,11 +21,31 @@ export interface SourceDiagnostic {
   readonly endColumn?: number;
 }
 
+export type CssMediaFeatureValueKind =
+  | 'keyword'
+  | 'integer'
+  | 'number'
+  | 'dimension'
+  | 'percentage'
+  | 'ratio'
+  | 'function'
+  | 'unknown';
+
+export interface CssMediaFeatureValueFact {
+  readonly raw: string;
+  readonly normalized: string;
+  readonly kind: CssMediaFeatureValueKind;
+  readonly numericValue?: number;
+  readonly unit?: string;
+  readonly functionName?: string;
+}
+
 export interface CssDiagnosticMetadata {
   isKnownProperty(name: string): boolean;
   isKnownAtRule(name: string): boolean;
   isKnownFunction(name: string): boolean;
   isKnownMediaFeatureName(name: string): boolean;
+  isKnownMediaFeatureValue(name: string, value: CssMediaFeatureValueFact): boolean | undefined;
   isKnownPseudoClass(name: string): boolean;
   isKnownPseudoElement(name: string): boolean;
   isKnownTypeSelector(name: string): boolean;

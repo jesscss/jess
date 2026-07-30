@@ -7,6 +7,7 @@ import type {
   CollectDiagnosticsInput,
   CollectDiagnosticsResult,
   CssDiagnosticMetadata,
+  CssMediaFeatureValueFact,
   DiagnosticSeverityName,
   JessLanguage,
   SourceDiagnostic
@@ -29,6 +30,7 @@ export const LINT_CODES = {
   unknownUnits: 'lint/unit-no-unknown',
   unknownFunctions: 'lint/function-no-unknown',
   unknownMediaFeatureNames: 'lint/media-feature-name-no-unknown',
+  unknownMediaFeatureValues: 'lint/media-feature-name-value-no-unknown',
   unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
   unknownTypeSelectors: 'lint/selector-type-no-unknown',
@@ -474,6 +476,218 @@ function mediaFeatureNameSpan(source: string, node: CssCstNode): { name: string;
     }
   }
   return null;
+}
+
+function mediaFeatureValue(source: string, node: CssCstNode): { fact: CssMediaFeatureValueFact; span: DiagnosticSpan } | null {
+  for (const child of node.rules) {
+    if (child._tag !== 'node' || child.grammarType !== 'QueryValue') {
+      continue;
+    }
+    let start = absoluteStart(child);
+    let end = absoluteEnd(child);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      return null;
+    }
+    while (start < end && isCssWhitespace(source.charCodeAt(start))) {
+      start++;
+    }
+    while (end > start && isCssWhitespace(source.charCodeAt(end - 1))) {
+      end--;
+    }
+    if (end <= start) {
+      return null;
+    }
+    const raw = source.slice(start, end);
+    return {
+      fact: mediaFeatureValueFact(source, start, end, raw),
+      span: spanAtOrContaining(child, start, end)
+    };
+  }
+  return null;
+}
+
+function mediaFeatureValueFact(source: string, start: number, end: number, raw: string): CssMediaFeatureValueFact {
+  const normalized = raw.toLowerCase();
+  if (hasDynamicSyntax(raw)) {
+    return { raw, normalized, kind: 'unknown' };
+  }
+  const functionName = functionNameOf(source, start, end);
+  if (functionName !== null) {
+    return { raw, normalized, kind: 'function', functionName };
+  }
+  if (isCssRatio(raw)) {
+    return { raw, normalized, kind: 'ratio' };
+  }
+  const numberValue = cssNumberValue(raw);
+  if (numberValue !== null) {
+    return {
+      raw,
+      normalized,
+      kind: isIntegerNumber(raw) ? 'integer' : 'number',
+      numericValue: numberValue
+    };
+  }
+  const percentageValue = cssPercentageValue(raw);
+  if (percentageValue !== null) {
+    return { raw, normalized, kind: 'percentage', numericValue: percentageValue };
+  }
+  const unit = cssDimensionUnit(raw);
+  if (unit !== null) {
+    return { raw, normalized, kind: 'dimension', unit };
+  }
+  if (isCssIdentifier(raw)) {
+    return { raw, normalized, kind: 'keyword' };
+  }
+  return { raw, normalized, kind: 'unknown' };
+}
+
+function isCssWhitespace(code: number): boolean {
+  return code === 9 || code === 10 || code === 12 || code === 13 || code === 32;
+}
+
+function hasDynamicSyntax(value: string): boolean {
+  return value.toLowerCase().includes('var(')
+    || value.includes('@{')
+    || value.includes('#{')
+    || value.includes('${')
+    || value.includes('$');
+}
+
+function isCssIdentifier(value: string): boolean {
+  if (value.length === 0 || !isIdentStart(value.charCodeAt(0))) {
+    return false;
+  }
+  for (let i = 1; i < value.length; i++) {
+    if (!isIdentChar(value.charCodeAt(i))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function cssNumberValue(value: string): number | null {
+  if (value.length === 0) {
+    return null;
+  }
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) {
+    return null;
+  }
+  let hasDigit = false;
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code >= 48 && code <= 57) {
+      hasDigit = true;
+      continue;
+    }
+    if (code === 43 || code === 45 || code === 46 || code === 69 || code === 101) {
+      continue;
+    }
+    return null;
+  }
+  return hasDigit ? numberValue : null;
+}
+
+function isIntegerNumber(value: string): boolean {
+  let start = 0;
+  if (value.charCodeAt(0) === 43 || value.charCodeAt(0) === 45) {
+    start = 1;
+  }
+  if (start >= value.length) {
+    return false;
+  }
+  for (let i = start; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code < 48 || code > 57) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function cssPercentageValue(value: string): number | null {
+  if (value.length < 2 || value.charCodeAt(value.length - 1) !== 37 /* % */) {
+    return null;
+  }
+  return cssNumberValue(value.slice(0, -1));
+}
+
+function cssDimensionUnit(value: string): string | null {
+  const numberEnd = cssNumberPrefixEnd(value);
+  if (numberEnd === 0 || numberEnd >= value.length || cssNumberValue(value.slice(0, numberEnd)) === null) {
+    return null;
+  }
+  const unit = value.slice(numberEnd).toLowerCase();
+  return isCssIdentifier(unit) ? unit : null;
+}
+
+function cssNumberPrefixEnd(value: string): number {
+  let i = 0;
+  if (i < value.length) {
+    const first = value.charCodeAt(i);
+    if (first === 43 || first === 45) {
+      i++;
+    }
+  }
+  let digitsBeforeDot = 0;
+  while (i < value.length) {
+    const code = value.charCodeAt(i);
+    if (code < 48 || code > 57) {
+      break;
+    }
+    digitsBeforeDot++;
+    i++;
+  }
+  let digitsAfterDot = 0;
+  if (i < value.length && value.charCodeAt(i) === 46 /* . */) {
+    i++;
+    while (i < value.length) {
+      const code = value.charCodeAt(i);
+      if (code < 48 || code > 57) {
+        break;
+      }
+      digitsAfterDot++;
+      i++;
+    }
+  }
+  if (digitsBeforeDot === 0 && digitsAfterDot === 0) {
+    return 0;
+  }
+  const exponentStart = i;
+  if (i < value.length) {
+    const code = value.charCodeAt(i);
+    if (code === 69 || code === 101) {
+      i++;
+      if (i < value.length) {
+        const sign = value.charCodeAt(i);
+        if (sign === 43 || sign === 45) {
+          i++;
+        }
+      }
+      let exponentDigits = 0;
+      while (i < value.length) {
+        const exponentCode = value.charCodeAt(i);
+        if (exponentCode < 48 || exponentCode > 57) {
+          break;
+        }
+        exponentDigits++;
+        i++;
+      }
+      if (exponentDigits === 0) {
+        return exponentStart;
+      }
+    }
+  }
+  return i;
+}
+
+function isCssRatio(value: string): boolean {
+  const slash = value.indexOf('/');
+  if (slash <= 0 || slash !== value.lastIndexOf('/')) {
+    return false;
+  }
+  return cssNumberValue(value.slice(0, slash).trim()) !== null
+    && cssNumberValue(value.slice(slash + 1).trim()) !== null;
 }
 
 function blankStrings(value: string): string {
@@ -1471,6 +1685,9 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
     isKnownMediaFeatureName(name) {
       return metadata?.isKnownMediaFeatureName?.(name) ?? defaultCssDiagnosticMetadata.isKnownMediaFeatureName(name);
     },
+    isKnownMediaFeatureValue(name, value) {
+      return metadata?.isKnownMediaFeatureValue?.(name, value) ?? defaultCssDiagnosticMetadata.isKnownMediaFeatureValue(name, value);
+    },
     isKnownPseudoClass(name) {
       return metadata?.isKnownPseudoClass?.(name) ?? defaultCssDiagnosticMetadata.isKnownPseudoClass(name);
     },
@@ -1761,13 +1978,25 @@ export function cstLintDiagnostics(
       const feature = mediaFeatureNameSpan(source, node);
       if (feature !== null) {
         const lower = feature.name.toLowerCase();
-        if (!lower.startsWith('--') && !isVendorPrefixedName(lower) && !cssData.isKnownMediaFeatureName(lower)) {
+        const shouldCheckFeature = !lower.startsWith('--') && !isVendorPrefixedName(lower);
+        if (shouldCheckFeature && !cssData.isKnownMediaFeatureName(lower)) {
           push(
             LINT_CODES.unknownMediaFeatureNames,
             'warning',
             `Unknown media feature name "${feature.name}"`,
             spanAtOrContaining(node, feature.start, feature.end)
           );
+        }
+        if (shouldCheckFeature && cssData.isKnownMediaFeatureName(lower)) {
+          const value = mediaFeatureValue(source, node);
+          if (value !== null && cssData.isKnownMediaFeatureValue(lower, value.fact) === false) {
+            push(
+              LINT_CODES.unknownMediaFeatureValues,
+              'warning',
+              `Unknown media feature value "${value.fact.raw}" for name "${feature.name}"`,
+              value.span
+            );
+          }
         }
       }
     }
