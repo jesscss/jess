@@ -5294,3 +5294,15 @@ value or comma list. The CST test exercises two media and container clauses and
 asserts the shared semantic clause counts. Parser-shared then Jess builds and
 the focused AST/CST/public/macro/compose suite passed. No performance claim was
 made.
+
+SCSS module-prefix routing, 2026-07-30: the document-prefix module family now
+parses one shared `RoutedAtRuleKeyword` token and dispatches it to the existing
+`UseRule` or `ForwardRule` tail. This is a real routed family: the prefix allows
+only those two Sass module directives, their keyword decides the continuation,
+and each continuation owns the consumed keyword through `routed()` so its
+semantic CST node and source span stay intact. `@import` is intentionally not a
+third arm because it is ordinary stylesheet syntax, not prefix-only module
+syntax. The dispatcher itself remains unlabeled routing machinery; public CST
+continues to expose `UseRule` and `ForwardRule`. The wider stylesheet/body
+at-rule choices remain a separate context-sensitive dispatch design task, not a
+reason to reintroduce individual `@use` / `@forward` opener regexes.

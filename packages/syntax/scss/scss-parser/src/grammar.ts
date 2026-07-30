@@ -87,6 +87,7 @@ type ScssRules = {
   UseRule: Combinator<StyleImport | ModuleImport>;
   ForwardTail: Combinator<Token | null>;
   ForwardRule: Combinator<StyleImport>;
+  ModuleDirective: Combinator<StyleImport | ModuleImport>;
   ImportUrl: Combinator<Url>;
   ImportLayer: Combinator<ValueNode>;
   ImportDeclaration: Combinator<ValueNode>;
@@ -1088,6 +1089,7 @@ const scssGenericAtRuleName = regex(/@(?!(?:use|forward|import|mixin|include|fun
 
 export const scssFactory = (g: ScssInputRules) => {
   const caseInsensitive = makeWhen({ caseInsensitive: true });
+  const atRuleKeyword = token(noTrivia(g.RoutedAtRuleKeyword));
 
   /*
    * CSS owns the ordinary property identifier. SCSS adds only the legacy `*`
@@ -2424,7 +2426,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const UseRule = node<StyleImport | ModuleImport>(
     'UseRule',
     sequence(
-      regex(/@use(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      routed(),
       ModulePathQuoted,
       optional(g.UseNamespace),
       literal(';')
@@ -2465,7 +2467,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const ForwardRule = node<StyleImport>(
     'ForwardRule',
     sequence(
-      regex(/@forward(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      routed(),
       ModulePathQuoted,
       g.ForwardTail,
       literal(';')
@@ -2484,6 +2486,18 @@ export const scssFactory = (g: ScssInputRules) => {
         true
       );
     }
+  );
+
+  /*
+   * The document prefix admits only the two Sass module directives. Parse their
+   * shared at-keyword once, then route to the existing semantic CST/AST tails.
+   * `@import` is deliberately absent: it belongs to the ordinary stylesheet
+   * sequence below, not this prefix-only module family.
+   */
+  const ModuleDirective = dispatch(
+    atRuleKeyword,
+    caseInsensitive('@use', UseRule),
+    caseInsensitive('@forward', ForwardRule)
   );
   const ForwardTail = node<Token | null>(
     'ForwardTail',
@@ -4937,8 +4951,7 @@ export const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.Comment,
         g.VariableDeclaration,
-        g.UseRule,
-        g.ForwardRule
+        g.ModuleDirective
       )),
       many(choice(
         g.Comment,
@@ -5020,6 +5033,7 @@ export const scssFactory = (g: ScssInputRules) => {
     UseRule,
     ForwardTail,
     ForwardRule,
+    ModuleDirective,
     ImportUrl,
     ImportLayer,
     ImportDeclaration,
