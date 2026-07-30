@@ -272,7 +272,7 @@ function isToken(value: unknown): value is Token {
 /** Macro-fused shared recognition plus this file's recursively defined outputs. */
 type LessInputRules = LessRules & typeof lessSyntax;
 
-type SharedCssSyntax = {
+type SharedSyntax = {
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;
@@ -2101,7 +2101,7 @@ const lessDashVariableName = leaf(
 );
 const lessVariableName = choice(lessUnsupportedNumericVariableName, lessSupportedVariableName, lessDashVariableName);
 
-const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
+const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const caseOf = makeWhen({ caseInsensitive: true });
   const lessWord = makeWord('-_0-9A-Za-z');
   const lessCaseWord = makeWord('-_0-9A-Za-z', { caseInsensitive: true });
@@ -2140,7 +2140,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const PropertyReference = node<ValueNode>(
     'Reference',
-    noTrivia(sequence(literal('$'), g.LessSyntaxIdentifier)),
+    noTrivia(sequence(literal('$'), g.LessIdentifier)),
     (children, _fields, span) => withSourceSpan(propertyReference(requireToken(children[1]).value), span)
   );
   const InterpolationAccessor = choice(
@@ -2155,7 +2155,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     node<InterpolationAccessorFact>(
       'InterpolationIndexAccessor',
-      noTrivia(sequence(literal('['), g.LessSyntaxInterpIndexKey, literal(']'))),
+      noTrivia(sequence(literal('['), g.InterpolationIndex, literal(']'))),
       (children) => {
         const text = requireToken(children[1]).value;
         return { key: Number(text), keyKind: 'index', src: text };
@@ -2178,7 +2178,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     node<InterpolationAccessorFact>(
       'InterpolationReferenceAccessor',
-      noTrivia(sequence(literal('['), choice(g.IndirectVariableReference, g.VariableReference, g.PropertyReference, g.LessSyntaxInterpBareKey), literal(']'))),
+      noTrivia(sequence(literal('['), choice(g.IndirectVariableReference, g.VariableReference, g.PropertyReference, g.InterpolationKey), literal(']'))),
       (children) => {
         const key = children[1];
         if (isVarIndirect(key)) {
@@ -2243,7 +2243,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const PropertyInterpolation = node<InterpolationFact>(
     'PropertyInterpolation',
-    noTrivia(sequence(literal('${'), g.LessSyntaxInterpHead, many(g.InterpolationAccessor), literal('}'))),
+    noTrivia(sequence(literal('${'), g.InterpolationHead, many(g.InterpolationAccessor), literal('}'))),
     (children, _fields, span) => interpolationFactFromChildren(children, span)
   );
   const Interpolation = node<InterpolationFact>(
@@ -2262,7 +2262,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       return interpolation([{ ref: fact.ref, unquote: true }]);
     }
   );
-  const interpolatedValueTail = choice(g.LessSyntaxInterpolatedValueTail, g.Interpolation);
+  const interpolatedValueTail = choice(g.InterpolatedValueTail, g.Interpolation);
   const InterpolatedValue = node<Interpolation>(
     'InterpolatedValue',
     noTrivia(sequence(
@@ -2274,8 +2274,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const Quoted = node<Quoted | Interpolation>(
     'Quoted',
     choice(
-      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.LessSyntaxQuotedDoubleChunk, literal('@'), literal('$'))), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.LessSyntaxQuotedSingleChunk, literal('@'), literal('$'))), literal('\'')))
+      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedDoubleText, literal('@'), literal('$'))), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedSingleText, literal('@'), literal('$'))), literal('\'')))
     ),
     (children) => {
       const open = requireToken(children[0]);
@@ -2291,8 +2291,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // Plain (interpolation-free) single/double-quoted body shared by the quoted
   // value, functional-pseudo, and attribute-selector static grammars.
   const staticQuotedBody = choice(
-    noTrivia(sequence(literal('"'), many(choice(g.LessSyntaxQuotedDoubleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
-    noTrivia(sequence(literal('\''), many(choice(g.LessSyntaxQuotedSingleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
+    noTrivia(sequence(literal('"'), many(choice(g.QuotedDoubleText, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
+    noTrivia(sequence(literal('\''), many(choice(g.QuotedSingleText, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
   );
   const plainQuoted = node<Quoted>(
     'Quoted',
@@ -2309,8 +2309,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const EscapedQuoted = node<Quoted | Interpolation>(
     'Quoted',
     choice(
-      noTrivia(sequence(literal('~"'), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.LessSyntaxQuotedDoubleChunk, literal('@'), literal('$'))), literal('"'))),
-      noTrivia(sequence(literal('~\''), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.LessSyntaxQuotedSingleChunk, literal('@'), literal('$'))), literal('\'')))
+      noTrivia(sequence(literal('~"'), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedDoubleText, literal('@'), literal('$'))), literal('"'))),
+      noTrivia(sequence(literal('~\''), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedSingleText, literal('@'), literal('$'))), literal('\'')))
     ),
     (children) => {
       const opener = requireToken(children[0]).value;
@@ -2558,12 +2558,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const Keyword = node<ValueNode>(
     'Keyword',
-    g.LessSyntaxKeyword,
+    g.ValueIdentifier,
     children => keyword(requireToken(children[0]).value)
   );
   const NamedColor = node<ValueNode>(
     'NamedColor',
-    g.LessSyntaxNamedColor,
+    g.NamedColorToken,
     children => color(requireToken(children[0]).value)
   );
   const Color = node<ValueNode>(
@@ -2601,14 +2601,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const PercentEscape = node<Any>(
     'PercentEscape',
-    g.LessSyntaxPercentEscape,
+    g.PercentEscapeToken,
     children => any(requireToken(children[0]).value)
   );
   // `@page` pseudo-pages are header atoms, not selector syntax in a value
   // position. Preserve their one-token spelling without widening generic values.
   const PagePseudo = node<Any>(
     'PagePseudo',
-    sequence(literal(':'), g.LessSyntaxKeyword),
+    sequence(literal(':'), g.ValueIdentifier),
     children => any(`:${requireToken(children[1]).value}`)
   );
   // Unknown at-rule functions are intentionally permissive.  This legacy Less
@@ -2763,10 +2763,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // nodes own `routed()` so the consumed opener remains inside the selected CST
   // node, and `foo (` still stays keyword + paren because the `(` is not glued
   // into the opener.
-  const identOrFunction = token(noTrivia(sequence(g.LessSyntaxInterpolatedValueStart, optional(literal('(')))));
+  const identOrFunction = token(noTrivia(sequence(g.InterpolatedValueStart, optional(literal('(')))));
   const genericFunctionOpen = token(noTrivia(sequence(
     not(keywords(['url(', 'calc('], { caseInsensitive: true })),
-    g.LessSyntaxInterpolatedValueStart,
+    g.InterpolatedValueStart,
     literal('(')
   )));
   const GenericFunction = node<FunctionCall>(
@@ -3186,11 +3186,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     choice(
       noTrivia(sequence(
         literal('--'),
-        optional(choice(g.LessSyntaxInterpolatedCustomPropertyStart, g.LessSyntaxInterpolatedCustomPropertyDash)),
+        optional(choice(g.InterpolatedCustomPropertyStart, g.InterpolatedCustomPropertyDash)),
         g.Interpolation,
-        many(choice(g.LessSyntaxInterpolatedCustomPropertyTail, g.Interpolation))
+        many(choice(g.InterpolatedCustomPropertyTail, g.Interpolation))
       )),
-      g.LessSyntaxCustomProperty
+      g.CustomPropertyToken
     ),
     (children) => {
       if (!children.some(isInterpolationFact)) {
@@ -3230,9 +3230,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const CustomInnerPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
-    g.LessSyntaxCustomInnerContent,
-    g.LessSyntaxCustomSingleQuoted,
-    g.LessSyntaxCustomDoubleQuoted,
+    g.CustomValueInnerContent,
+    g.CustomValueSingleQuoted,
+    g.CustomValueDoubleQuoted,
     g.CustomParen,
     g.CustomSquare,
     g.CustomCurly,
@@ -3241,9 +3241,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const CustomPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
-    g.LessSyntaxCustomOuterContent,
-    g.LessSyntaxCustomSingleQuoted,
-    g.LessSyntaxCustomDoubleQuoted,
+    g.CustomValueOuterContent,
+    g.CustomValueSingleQuoted,
+    g.CustomValueDoubleQuoted,
     g.CustomParen,
     g.CustomSquare,
     g.CustomCurly,
@@ -3268,7 +3268,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // identical token in an at-rule header.
   const CustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
-    g.LessSyntaxCustomProperty,
+    g.CustomPropertyToken,
     children => keyword(requireToken(children[0]).value)
   );
   const CustomDeclaration = node<Declaration>(
@@ -3305,7 +3305,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'InterpolatedProperty',
     choice(
       noTrivia(sequence(optional(literal('*')), optional(literal('-')), optional(g.InterpolatedPropertyStart), g.Interpolation, many(choice(g.InterpolatedPropertyTail, g.Interpolation)))),
-      noTrivia(sequence(literal('--'), optional(choice(g.LessSyntaxInterpolatedCustomPropertyStart, g.LessSyntaxInterpolatedCustomPropertyDash)), g.Interpolation, many(choice(g.LessSyntaxInterpolatedCustomPropertyTail, g.Interpolation))))
+      noTrivia(sequence(literal('--'), optional(choice(g.InterpolatedCustomPropertyStart, g.InterpolatedCustomPropertyDash)), g.Interpolation, many(choice(g.InterpolatedCustomPropertyTail, g.Interpolation))))
     ),
     children => interpolation(interpolationPartsFrom(children, false))
   );
@@ -3338,8 +3338,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DeclarationHead = parser({ trivia: whitespace }, sequence(
     choice(
       gatedInterpolatedProperty,
-      g.LessSyntaxNumericMapKey,
-      g.LessSyntaxDeclarationProperty
+      g.NumericMapKeyToken,
+      g.DeclarationPropertyToken
     ),
     optional(sequence(choice(literal('+_'), literal('+')))),
     literal(':')
@@ -3402,7 +3402,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const PunctuationMapDeclaration = node<Declaration>(
     'PunctuationMapDeclaration',
     sequence(
-      g.LessSyntaxPunctuationMapKey,
+      g.PunctuationMapKeyToken,
       literal(':'),
       optional(g.ValueListWithPriority)
     ),
@@ -3580,7 +3580,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     node<ReferenceTailFact>(
       'ReferenceDotTail',
-      sequence(literal('.'), g.LessSyntaxVariableName),
+      sequence(literal('.'), g.VariableNameToken),
       (children) => {
         const name = requireToken(children[1]).value;
         return { step: { type: 'DotLookup', name }, src: `.${name}` };
@@ -3602,7 +3602,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const InterpolationIndexAccessorFromRouted = node<InterpolationAccessorFact>(
     'InterpolationIndexAccessor',
-    noTrivia(sequence(routed(), g.LessSyntaxInterpIndexKey, literal(']'))),
+    noTrivia(sequence(routed(), g.InterpolationIndex, literal(']'))),
     (children) => {
       const text = requireToken(children[1]).value;
       return { key: Number(text), keyKind: 'index', src: text };
@@ -3655,7 +3655,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     node<InterpolationAccessorFact>(
       'InterpolationReferenceAccessor',
-      noTrivia(sequence(routed(), g.LessSyntaxInterpBareKey, literal(']'))),
+      noTrivia(sequence(routed(), g.InterpolationKey, literal(']'))),
       (children) => {
         const text = requireToken(children[1]).value;
         return { key: keyword(text), keyKind: 'prop', src: text };
@@ -3684,7 +3684,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const ReferenceDotTailFromRouted = node<ReferenceTailFact>(
     'ReferenceDotTail',
-    sequence(routed(), g.LessSyntaxVariableName),
+    sequence(routed(), g.VariableNameToken),
     (children) => {
       const name = requireToken(children[1]).value;
       return { step: { type: 'DotLookup', name }, src: `.${name}` };
@@ -4705,7 +4705,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   ), literal('('))));
   const ContainerStyleQuery = node<FunctionCall>(
     'ContainerStyleQuery',
-    sequence(styleFunctionOpener, g.LessSyntaxCustomProperty, literal(':'), g.QueryValue, literal(')')),
+    sequence(styleFunctionOpener, g.CustomPropertyToken, literal(':'), g.QueryValue, literal(')')),
     children => funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))])
   );
   const ContainerScrollStateQuery = node<FunctionCall>(
@@ -4904,7 +4904,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const atRulePreludeCustomProperty = node<ValueNode>(
     'AtRulePreludeValueCustomProperty',
-    g.LessSyntaxCustomProperty,
+    g.CustomPropertyToken,
     children => keyword(requireToken(children[0]).value)
   );
   const atRulePreludeIdentOrFunction = token(noTrivia(sequence(staticIdentifier, optional(literal('(')))));
@@ -5245,7 +5245,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       token(noTrivia(sequence(
         pseudoDelimiter,
         not(extendPseudoNameOpen),
-        g.LessSyntaxIdentifier,
+        g.LessIdentifier,
         literal('(')
       ))),
       many(staticPseudoChunk),
@@ -5360,7 +5360,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     regex(/::?(?![ \t\n\r\f])/),
     not(extendPseudoNameOpen),
     not(g.NthPseudoSelectorName),
-    g.LessSyntaxIdentifier,
+    g.LessIdentifier,
     optional(literal('('))
   )));
   const pseudoSelectorRouted = node<SimpleToken>(
@@ -5482,7 +5482,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // differ only by whether each reference part is unquoted (name) or kept quoted
   // (value, so `[data=@{value}]` retains its source spelling).
   const attributeInterpolationTokenBody = noTrivia(sequence(
-    optional(choice(g.LessSyntaxInterpolatedValueStart, g.LessSyntaxInterpolatedValueDash)),
+    optional(choice(g.InterpolatedValueStart, g.InterpolatedValueDash)),
     g.Interpolation,
     many(interpolatedValueTail)
   ));
@@ -5499,8 +5499,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const InterpolatedAttributeQuoted = node<Interpolation>(
     'InterpolatedAttributeQuoted',
     choice(
-      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.LessSyntaxQuotedDoubleChunk, literal('@'), literal('$'))), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.LessSyntaxQuotedSingleChunk, literal('@'), literal('$'))), literal('\'')))
+      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.QuotedDoubleText, literal('@'), literal('$'))), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.QuotedSingleText, literal('@'), literal('$'))), literal('\'')))
     ),
     children => interpolation(interpolationPartsFrom(children, true))
   );
@@ -5543,7 +5543,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
           g.InterpolatedAttributeToken,
           optional(sequence(
             g.AttributeOperator,
-            choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessSyntaxIdentifier, plainQuoted),
+            choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessIdentifier, plainQuoted),
             optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
           ))
         ),

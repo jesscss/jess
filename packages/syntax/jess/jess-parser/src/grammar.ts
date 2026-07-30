@@ -205,7 +205,7 @@ type JessRules = {
   whitespace: Combinator<unknown>;
 };
 
-type SharedCssSyntax = {
+type SharedSyntax = {
   AttributeModifier: Combinator<string>;
   AttributeOperator: Combinator<string>;
   DoubleQuotedText: Combinator<string>;
@@ -1433,7 +1433,7 @@ const keyframeEndpoint = keywords(
 );
 const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 
-export const jessFactory = (g: JessRules & SharedCssSyntax) => {
+export const jessFactory = (g: JessRules & SharedSyntax) => {
   const caseInsensitiveWhen = makeWhen({ caseInsensitive: true });
   const syntaxWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF');
 

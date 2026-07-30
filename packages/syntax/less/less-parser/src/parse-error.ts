@@ -14,8 +14,8 @@ function expectedMessage(expected: readonly string[]): string {
   const looksLikeValueProduction =
     hasValueCore
     && (
-      expectedIncludes(expectedSet, 'LessSyntaxKeyword')
-      || expectedIncludes(expectedSet, 'LessSyntaxNamedColor')
+      expectedIncludes(expectedSet, 'ValueIdentifier')
+      || expectedIncludes(expectedSet, 'NamedColorToken')
       || expectedIncludes(expectedSet, 'HexColor')
     );
   if (looksLikeValueProduction) {
