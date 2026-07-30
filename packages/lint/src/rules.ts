@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 49;
+export const STABLE_LINT_RULE_SET_VERSION = 50;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -45,6 +45,9 @@ export const LINT_RULE_NAMES = {
   unknownUnits: 'unit-no-unknown',
   unknownFunctions: 'function-no-unknown',
   linearGradientNonstandardDirection: 'function-linear-gradient-no-nonstandard-direction',
+  colorFunctionNotation: 'color-function-notation',
+  alphaValueNotation: 'alpha-value-notation',
+  hueDegreeNotation: 'hue-degree-notation',
   unknownMediaFeatureNames: 'media-feature-name-no-unknown',
   mediaFeatureNameNoVendorPrefix: 'media-feature-name-no-vendor-prefix',
   unknownMediaFeatureValues: 'media-feature-name-value-no-unknown',
@@ -120,6 +123,9 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unknownUnits]: LINT_CODES.unknownUnits,
   [LINT_RULE_NAMES.unknownFunctions]: LINT_CODES.unknownFunctions,
   [LINT_RULE_NAMES.linearGradientNonstandardDirection]: LINT_CODES.linearGradientNonstandardDirection,
+  [LINT_RULE_NAMES.colorFunctionNotation]: LINT_CODES.colorFunctionNotation,
+  [LINT_RULE_NAMES.alphaValueNotation]: LINT_CODES.alphaValueNotation,
+  [LINT_RULE_NAMES.hueDegreeNotation]: LINT_CODES.hueDegreeNotation,
   [LINT_RULE_NAMES.unknownMediaFeatureNames]: LINT_CODES.unknownMediaFeatureNames,
   [LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]: LINT_CODES.mediaFeatureNameNoVendorPrefix,
   [LINT_RULE_NAMES.unknownMediaFeatureValues]: LINT_CODES.unknownMediaFeatureValues,
@@ -182,6 +188,9 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.unknownUnits]: LINT_RULE_NAMES.unknownUnits,
   [LINT_CODES.unknownFunctions]: LINT_RULE_NAMES.unknownFunctions,
   [LINT_CODES.linearGradientNonstandardDirection]: LINT_RULE_NAMES.linearGradientNonstandardDirection,
+  [LINT_CODES.colorFunctionNotation]: LINT_RULE_NAMES.colorFunctionNotation,
+  [LINT_CODES.alphaValueNotation]: LINT_RULE_NAMES.alphaValueNotation,
+  [LINT_CODES.hueDegreeNotation]: LINT_RULE_NAMES.hueDegreeNotation,
   [LINT_CODES.unknownMediaFeatureNames]: LINT_RULE_NAMES.unknownMediaFeatureNames,
   [LINT_CODES.mediaFeatureNameNoVendorPrefix]: LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix,
   [LINT_CODES.unknownMediaFeatureValues]: LINT_RULE_NAMES.unknownMediaFeatureValues,
@@ -244,6 +253,9 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownUnits]: 'warn',
   [LINT_RULE_NAMES.unknownFunctions]: 'warn',
   [LINT_RULE_NAMES.linearGradientNonstandardDirection]: 'warn',
+  [LINT_RULE_NAMES.colorFunctionNotation]: 'off',
+  [LINT_RULE_NAMES.alphaValueNotation]: 'off',
+  [LINT_RULE_NAMES.hueDegreeNotation]: 'off',
   [LINT_RULE_NAMES.unknownMediaFeatureNames]: 'warn',
   [LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix]: 'off',
   [LINT_RULE_NAMES.unknownMediaFeatureValues]: 'warn',
@@ -320,6 +332,9 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.selectorClassPattern]: 'off',
   [LINT_RULE_NAMES.customPropertyPattern]: 'off',
   [LINT_RULE_NAMES.keyframesNamePattern]: 'off',
+  [LINT_RULE_NAMES.colorFunctionNotation]: 'off',
+  [LINT_RULE_NAMES.alphaValueNotation]: 'off',
+  [LINT_RULE_NAMES.hueDegreeNotation]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'off',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'off',
@@ -715,6 +730,36 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-equivalent',
     stylelintRule: 'function-linear-gradient-no-nonstandard-direction',
     notes: 'Flags old side-or-corner direction syntax and unitless numeric directions in CSS linear-gradient() and repeating-linear-gradient() calls.'
+  },
+  {
+    diagnosticCode: LINT_CODES.colorFunctionNotation,
+    ruleName: LINT_RULE_NAMES.colorFunctionNotation,
+    title: 'Color function notation',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'color-function-notation',
+    notes: 'Opt-in Stylelint-named rule for legacy comma-separated rgb()/rgba()/hsl()/hsla() calls; configure with notation: "modern".'
+  },
+  {
+    diagnosticCode: LINT_CODES.alphaValueNotation,
+    ruleName: LINT_RULE_NAMES.alphaValueNotation,
+    title: 'Alpha value notation',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'alpha-value-notation',
+    notes: 'Opt-in Stylelint-named rule for static color alpha channels and opacity-like properties; configure with notation: "number" or "percentage".'
+  },
+  {
+    diagnosticCode: LINT_CODES.hueDegreeNotation,
+    ruleName: LINT_RULE_NAMES.hueDegreeNotation,
+    title: 'Hue degree notation',
+    tier: 'style-suggestion',
+    defaultPolicy: 'off',
+    comparison: 'stylelint-near',
+    stylelintRule: 'hue-degree-notation',
+    notes: 'Opt-in Stylelint-named rule for static hsl()/hsla() hue channels; configure with notation: "number" or "angle".'
   },
   {
     diagnosticCode: LINT_CODES.unknownMediaFeatureNames,

@@ -107,6 +107,9 @@ enough.
 | `unit-no-unknown` | `lint/unit-no-unknown` | Stylelint-near |
 | `function-no-unknown` | `lint/function-no-unknown` | Stylelint-near |
 | `function-linear-gradient-no-nonstandard-direction` | `lint/function-linear-gradient-no-nonstandard-direction` | Stylelint-equivalent |
+| `color-function-notation` | `lint/color-function-notation` | Stylelint-near, opt-in |
+| `alpha-value-notation` | `lint/alpha-value-notation` | Stylelint-near, opt-in |
+| `hue-degree-notation` | `lint/hue-degree-notation` | Stylelint-near, opt-in |
 | `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | Stylelint-near |
 | `media-feature-name-no-vendor-prefix` | `lint/media-feature-name-no-vendor-prefix` | Stylelint-near, opt-in |
 | `media-feature-name-value-no-unknown` | `lint/media-feature-name-value-no-unknown` | Stylelint-near |
@@ -253,7 +256,7 @@ can detect over authored source.
 | Landed | Color function arguments | `color-function-no-invalid-arguments` | Matches VSCode `argumentsInColorFunction` for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |
 | Landed | Typed custom properties | `jess/no-invalid-typed-custom-property-value` | Flags definite CSS `@property` `initial-value` mismatches for simple syntax descriptors; full CSS value-definition syntax and dialect value facts remain future work. |
 | P3 | Browser legacy hacks | `ie-hack` | VSCode has opt-in `ieHack`, but current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule. |
-| P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |
+| Landed | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Opt-in Stylelint-named convention rules for static color function notation, alpha values, and HSL hue units. CLI and language-service configuration require a secondary `notation` option; comparison remains Stylelint-near until the option surface is broader. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |
 
 ## Semantic facts layer

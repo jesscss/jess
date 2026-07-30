@@ -176,6 +176,59 @@ function patternRuleOption(options: LintRuleOptions | undefined): RegExp | null 
   return null;
 }
 
+function notationRuleTarget(diagnostic: SourceDiagnostic, source: string): string | null {
+  if (
+    diagnostic.code === LINT_CODES.colorFunctionNotation
+    || diagnostic.code === LINT_CODES.alphaValueNotation
+    || diagnostic.code === LINT_CODES.hueDegreeNotation
+  ) {
+    return source.slice(diagnostic.start, diagnostic.end);
+  }
+  return null;
+}
+
+function notationRuleOption(options: LintRuleOptions | undefined): string | null {
+  return typeof options?.notation === 'string' ? options.notation : null;
+}
+
+function isAngleNotation(value: string): boolean {
+  const lower = value.toLowerCase();
+  return lower.endsWith('deg')
+    || lower.endsWith('grad')
+    || lower.endsWith('rad')
+    || lower.endsWith('turn');
+}
+
+function shouldSuppressByNotation(diagnostic: SourceDiagnostic, source: string, options: LintRuleOptions | undefined): boolean {
+  const target = notationRuleTarget(diagnostic, source);
+  if (target === null) {
+    return false;
+  }
+  const notation = notationRuleOption(options);
+  if (diagnostic.code === LINT_CODES.colorFunctionNotation) {
+    return notation !== 'modern';
+  }
+  if (diagnostic.code === LINT_CODES.alphaValueNotation) {
+    if (notation === 'percentage') {
+      return target.endsWith('%');
+    }
+    if (notation === 'number') {
+      return !target.endsWith('%');
+    }
+    return true;
+  }
+  if (diagnostic.code === LINT_CODES.hueDegreeNotation) {
+    if (notation === 'angle') {
+      return isAngleNotation(target);
+    }
+    if (notation === 'number') {
+      return !isAngleNotation(target);
+    }
+    return true;
+  }
+  return false;
+}
+
 function hasQualifier(diagnostic: SourceDiagnostic, value: string): boolean {
   return diagnostic.qualifiers?.includes(value) === true;
 }
@@ -201,6 +254,9 @@ function shouldSuppressByRuleOptions(
     }
     pattern.lastIndex = 0;
     return pattern.test(patternTarget);
+  }
+  if (shouldSuppressByNotation(diagnostic, source, options)) {
+    return true;
   }
   return false;
 }

@@ -414,6 +414,12 @@ export interface LintRuleOptions {
    */
   pattern?: string | RegExp;
 
+  /**
+   * Preferred notation for opt-in convention rules such as
+   * color-function-notation, alpha-value-notation, and hue-degree-notation.
+   */
+  notation?: string;
+
   /** Allow rule-specific options without forcing every rule into a shared shape. */
   [key: string]: unknown;
 }

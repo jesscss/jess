@@ -1117,6 +1117,61 @@ describe('JessLanguageServiceEngine', () => {
         ]);
       });
 
+      it('keeps notation diagnostics opt-in and filters by configured notation', () => {
+        const source = [
+          '.a { color: rgb(1, 2, 3); background: rgb(1 2 3 / .5); }',
+          '.b { opacity: 50%; }',
+          '.c { color: hsl(120 50% 50% / 25%); }',
+          '.d { color: hsl(120deg 50% 50% / .25); }'
+        ].join('\n');
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/color-function-notation');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/alpha-value-notation');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/hue-degree-notation');
+
+        const severityOnly = createEngine();
+        severityOnly.configure(sevCfg('lint/alpha-value-notation', 'warning'));
+        const severityOnlyDoc = createDocument('css', source);
+        severityOnly.open(severityOnlyDoc.uri, severityOnlyDoc.languageId, severityOnlyDoc.version, severityOnlyDoc.getText());
+        expect(codesOf(severityOnly, severityOnlyDoc.uri)).not.toContain('lint/alpha-value-notation');
+
+        const configured = createEngine();
+        configured.configure({
+          diagnostics: {
+            severity: {
+              ['lint/color-function-notation']: 'warning',
+              ['lint/alpha-value-notation']: 'warning',
+              ['lint/hue-degree-notation']: 'warning'
+            },
+            options: {
+              ['lint/color-function-notation']: { notation: 'modern' },
+              ['lint/alpha-value-notation']: { notation: 'percentage' },
+              ['lint/hue-degree-notation']: { notation: 'angle' }
+            }
+          }
+        });
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const diags = configured.getDiagnostics(configuredDoc.uri).filter(diagnostic =>
+          diagnostic.code === 'lint/color-function-notation'
+          || diagnostic.code === 'lint/alpha-value-notation'
+          || diagnostic.code === 'lint/hue-degree-notation'
+        );
+
+        expect(diags.map(diagnostic => [
+          diagnostic.code,
+          configuredDoc.getText().slice(configuredDoc.offsetAt(diagnostic.range.start), configuredDoc.offsetAt(diagnostic.range.end))
+        ])).toEqual([
+          ['lint/color-function-notation', 'rgb('],
+          ['lint/alpha-value-notation', '.5'],
+          ['lint/hue-degree-notation', '120'],
+          ['lint/alpha-value-notation', '.25']
+        ]);
+      });
+
       it('does not fire in dialect files before selector facts exist', () => {
         const engine = createEngine();
         engine.configure({

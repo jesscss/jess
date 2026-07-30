@@ -823,7 +823,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.unsupportedSassForm]: DiagnosticSeverity.Warning
     /* eslint-enable @typescript-eslint/naming-convention */
   };
-  let semanticDiagnosticOptions: Record<string, { readonly pattern?: RegExp }> = {};
+  let semanticDiagnosticOptions: Record<string, { readonly notation?: string; readonly pattern?: RegExp }> = {};
 
   function parseSeverity(value: unknown): DiagnosticSeverity | null {
     switch (value) {
@@ -858,12 +858,23 @@ export function createEngine(): JessLanguageServiceEngine {
     return undefined;
   }
 
-  function readDiagnosticOptions(value: unknown): { readonly pattern?: RegExp } | undefined {
-    if (value === null || typeof value !== 'object' || !('pattern' in value)) {
+  function readDiagnosticOptions(value: unknown): { readonly notation?: string; readonly pattern?: RegExp } | undefined {
+    if (value === null || typeof value !== 'object') {
       return undefined;
     }
-    const pattern = parsePatternOption(value.pattern);
-    return pattern === undefined ? undefined : { pattern };
+    const pattern = 'pattern' in value ? parsePatternOption(value.pattern) : undefined;
+    const notation = 'notation' in value && typeof value.notation === 'string' ? value.notation : undefined;
+    if (pattern === undefined && notation === undefined) {
+      return undefined;
+    }
+    const options: { notation?: string; pattern?: RegExp } = {};
+    if (notation !== undefined) {
+      options.notation = notation;
+    }
+    if (pattern !== undefined) {
+      options.pattern = pattern;
+    }
+    return options;
   }
 
   function patternTarget(diagnostic: SourceDiagnostic, source: string): string | null {
@@ -880,17 +891,62 @@ export function createEngine(): JessLanguageServiceEngine {
     return null;
   }
 
+  function notationTarget(diagnostic: SourceDiagnostic, source: string): string | null {
+    if (
+      diagnostic.code === LINT_CODES.colorFunctionNotation
+      || diagnostic.code === LINT_CODES.alphaValueNotation
+      || diagnostic.code === LINT_CODES.hueDegreeNotation
+    ) {
+      return source.slice(diagnostic.start, diagnostic.end);
+    }
+    return null;
+  }
+
+  function isAngleNotation(value: string): boolean {
+    const lower = value.toLowerCase();
+    return lower.endsWith('deg')
+      || lower.endsWith('grad')
+      || lower.endsWith('rad')
+      || lower.endsWith('turn');
+  }
+
   function suppressByDiagnosticOptions(diagnostic: SourceDiagnostic, source: string): boolean {
     const target = patternTarget(diagnostic, source);
-    if (target === null) {
+    if (target !== null) {
+      const pattern = semanticDiagnosticOptions[diagnostic.code]?.pattern;
+      if (pattern === undefined) {
+        return true;
+      }
+      pattern.lastIndex = 0;
+      return pattern.test(target);
+    }
+    const notationTargetText = notationTarget(diagnostic, source);
+    if (notationTargetText === null) {
       return false;
     }
-    const pattern = semanticDiagnosticOptions[diagnostic.code]?.pattern;
-    if (pattern === undefined) {
+    const notation = semanticDiagnosticOptions[diagnostic.code]?.notation;
+    if (diagnostic.code === LINT_CODES.colorFunctionNotation) {
+      return notation !== 'modern';
+    }
+    if (diagnostic.code === LINT_CODES.alphaValueNotation) {
+      if (notation === 'percentage') {
+        return notationTargetText.endsWith('%');
+      }
+      if (notation === 'number') {
+        return !notationTargetText.endsWith('%');
+      }
       return true;
     }
-    pattern.lastIndex = 0;
-    return pattern.test(target);
+    if (diagnostic.code === LINT_CODES.hueDegreeNotation) {
+      if (notation === 'angle') {
+        return isAngleNotation(notationTargetText);
+      }
+      if (notation === 'number') {
+        return !isAngleNotation(notationTargetText);
+      }
+      return true;
+    }
+    return false;
   }
 
   /*
@@ -1202,7 +1258,7 @@ export function createEngine(): JessLanguageServiceEngine {
         ? diagnosticsObj.options
         : undefined;
       if (options && typeof options === 'object') {
-        const next: Record<string, { readonly pattern?: RegExp }> = { ...semanticDiagnosticOptions };
+        const next: Record<string, { readonly notation?: string; readonly pattern?: RegExp }> = { ...semanticDiagnosticOptions };
         for (const [k, v] of Object.entries(options)) {
           const parsed = readDiagnosticOptions(v);
           if (parsed === undefined) {

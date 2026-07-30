@@ -1546,6 +1546,36 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownFunctions)).toBe(false);
   });
 
+  it('reports opt-in modern color notation facts from static CSS values', () => {
+    const source = [
+      '.a { color: rgb(1, 2, 3); }',
+      '.b { color: rgb(1 2 3 / .5); }',
+      '.c { opacity: 50%; }',
+      '.d { color: hsl(120 50% 50% / 25%); }',
+      '.e { color: hsl(120deg 50% 50% / .25); }',
+      '.f { color: rgb(var(--brand)); opacity: var(--alpha); }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const notation = result.diagnostics.filter(diagnostic =>
+      diagnostic.code === LINT_CODES.colorFunctionNotation
+      || diagnostic.code === LINT_CODES.alphaValueNotation
+      || diagnostic.code === LINT_CODES.hueDegreeNotation
+    );
+
+    expect(notation.map(diagnostic => [diagnostic.code, diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [LINT_CODES.colorFunctionNotation, 'Expected modern color-function notation in rgb()', source.indexOf('rgb(1, 2, 3)'), source.indexOf('rgb(1, 2, 3)') + 'rgb('.length],
+      [LINT_CODES.alphaValueNotation, 'Alpha value ".5" does not match the configured notation', source.indexOf('.5'), source.indexOf('.5') + '.5'.length],
+      [LINT_CODES.alphaValueNotation, 'Alpha value "50%" does not match the configured notation', source.indexOf('50%'), source.indexOf('50%') + '50%'.length],
+      [LINT_CODES.alphaValueNotation, 'Alpha value "25%" does not match the configured notation', source.indexOf('25%'), source.indexOf('25%') + '25%'.length],
+      [LINT_CODES.hueDegreeNotation, 'Hue value "120" does not match the configured notation', source.indexOf('120 50%'), source.indexOf('120 50%') + '120'.length],
+      [LINT_CODES.alphaValueNotation, 'Alpha value ".25" does not match the configured notation', source.indexOf('.25'), source.indexOf('.25') + '.25'.length],
+      [LINT_CODES.hueDegreeNotation, 'Hue value "120deg" does not match the configured notation', source.indexOf('120deg'), source.indexOf('120deg') + '120deg'.length]
+    ]);
+  });
+
   it('reports definite invalid CSS color function channels', () => {
     const source = '.a { color: rgb(1px 0 0); background: hsl(120 50 50%); border-color: rgb(0 0); outline-color: rgb(var(--brand)); }';
     const result = collectTolerantDiagnostics({

@@ -111,6 +111,9 @@ export default {
       'selector-class-pattern': ['off', { pattern: '^[a-z][a-z0-9-]*$' }],
       'custom-property-pattern': ['off', { pattern: '^--[a-z][a-z0-9-]*$' }],
       'keyframes-name-pattern': ['off', { pattern: '^[a-z][a-z0-9-]*$' }],
+      'color-function-notation': ['off', { notation: 'modern' }],
+      'alpha-value-notation': ['off', { notation: 'percentage' }],
+      'hue-degree-notation': ['off', { notation: 'angle' }],
       'box-model': 'off',
       'float': 'off',
       'color-function-no-invalid-arguments': 'error',
@@ -140,6 +143,12 @@ Naming convention rules such as `selector-class-pattern`,
 `custom-property-pattern`, and `keyframes-name-pattern` are opt-in and require a
 secondary `pattern` option. Jess uses that regex against the authored static
 name and reports only names that do not match.
+
+Notation convention rules such as `color-function-notation`,
+`alpha-value-notation`, and `hue-degree-notation` are also opt-in and require a
+secondary `notation` option. The rule names match Stylelint for migration
+familiarity, while detection uses Jess's shared CSS diagnostics and currently
+covers a static authored-source subset.
 
 ## Stable Rules
 
@@ -186,6 +195,9 @@ The current stable rule set is intentionally small and migration-friendly:
 | `unit-no-unknown` | `lint/unit-no-unknown` | near `unit-no-unknown` |
 | `function-no-unknown` | `lint/function-no-unknown` | near `function-no-unknown` |
 | `function-linear-gradient-no-nonstandard-direction` | `lint/function-linear-gradient-no-nonstandard-direction` | `function-linear-gradient-no-nonstandard-direction` |
+| `color-function-notation` | `lint/color-function-notation` | near `color-function-notation`, opt-in |
+| `alpha-value-notation` | `lint/alpha-value-notation` | near `alpha-value-notation`, opt-in |
+| `hue-degree-notation` | `lint/hue-degree-notation` | near `hue-degree-notation`, opt-in |
 | `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | near `media-feature-name-no-unknown` |
 | `media-feature-name-no-vendor-prefix` | `lint/media-feature-name-no-vendor-prefix` | near `media-feature-name-no-vendor-prefix`, opt-in |
 | `media-feature-name-value-no-unknown` | `lint/media-feature-name-value-no-unknown` | near `media-feature-name-value-no-unknown` |

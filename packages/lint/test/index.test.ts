@@ -60,6 +60,9 @@ describe('stable rule set', () => {
       LINT_CODES.unknownUnits,
       LINT_CODES.unknownFunctions,
       LINT_CODES.linearGradientNonstandardDirection,
+      LINT_CODES.colorFunctionNotation,
+      LINT_CODES.alphaValueNotation,
+      LINT_CODES.hueDegreeNotation,
       LINT_CODES.unknownMediaFeatureNames,
       LINT_CODES.mediaFeatureNameNoVendorPrefix,
       LINT_CODES.unknownMediaFeatureValues,
@@ -121,6 +124,9 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownUnits,
       LINT_RULE_NAMES.unknownFunctions,
       LINT_RULE_NAMES.linearGradientNonstandardDirection,
+      LINT_RULE_NAMES.colorFunctionNotation,
+      LINT_RULE_NAMES.alphaValueNotation,
+      LINT_RULE_NAMES.hueDegreeNotation,
       LINT_RULE_NAMES.unknownMediaFeatureNames,
       LINT_RULE_NAMES.mediaFeatureNameNoVendorPrefix,
       LINT_RULE_NAMES.unknownMediaFeatureValues,
@@ -142,7 +148,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(49);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(50);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -161,6 +167,9 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.selectorClassPattern]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.customPropertyPattern]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.keyframesNamePattern]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.colorFunctionNotation]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.alphaValueNotation]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.hueDegreeNotation]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
@@ -222,6 +231,9 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorClassPattern]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.customPropertyPattern]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.keyframesNamePattern]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.colorFunctionNotation]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.alphaValueNotation]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.hueDegreeNotation]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyValue]).toBe('off');
@@ -1112,6 +1124,91 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.linearGradientNonstandardDirection, 'error']
+    ]);
+  });
+
+  it('keeps modern notation policies opt-in and filters by configured notation', async () => {
+    const input = {
+      source: [
+        '.a { color: rgb(1, 2, 3); background: rgb(1 2 3 / .5); }',
+        '.b { opacity: 50%; }',
+        '.c { color: hsl(120 50% 50% / 25%); }',
+        '.d { color: hsl(120deg 50% 50% / .25); }'
+      ].join('\n'),
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.colorFunctionNotation);
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.alphaValueNotation);
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.hueDegreeNotation);
+
+    const configuredWithoutNotation = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.alphaValueNotation]: 'warn'
+          }
+        }
+      }
+    });
+
+    expect(configuredWithoutNotation.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.alphaValueNotation
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.colorFunctionNotation]: ['warn', { notation: 'modern' }],
+            [LINT_RULE_NAMES.alphaValueNotation]: ['warn', { notation: 'percentage' }],
+            [LINT_RULE_NAMES.hueDegreeNotation]: ['warn', { notation: 'angle' }]
+          }
+        }
+      }
+    });
+
+    const configuredNotation = configured.diagnostics.filter(diagnostic =>
+      diagnostic.code === LINT_CODES.colorFunctionNotation
+      || diagnostic.code === LINT_CODES.alphaValueNotation
+      || diagnostic.code === LINT_CODES.hueDegreeNotation
+    );
+
+    expect(configuredNotation.map(diagnostic => [
+      diagnostic.code,
+      diagnostic.ruleName,
+      input.source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      [LINT_CODES.colorFunctionNotation, LINT_RULE_NAMES.colorFunctionNotation, 'rgb('],
+      [LINT_CODES.alphaValueNotation, LINT_RULE_NAMES.alphaValueNotation, '.5'],
+      [LINT_CODES.hueDegreeNotation, LINT_RULE_NAMES.hueDegreeNotation, '120'],
+      [LINT_CODES.alphaValueNotation, LINT_RULE_NAMES.alphaValueNotation, '.25']
+    ]);
+
+    const numberNotation = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.alphaValueNotation]: ['warn', { notation: 'number' }],
+            [LINT_RULE_NAMES.hueDegreeNotation]: ['warn', { notation: 'number' }]
+          }
+        }
+      }
+    });
+
+    const numberNotationDiagnostics = numberNotation.diagnostics.filter(diagnostic =>
+      diagnostic.code === LINT_CODES.alphaValueNotation
+      || diagnostic.code === LINT_CODES.hueDegreeNotation
+    );
+
+    expect(numberNotationDiagnostics.map(diagnostic => [
+      diagnostic.code,
+      input.source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      [LINT_CODES.alphaValueNotation, '50%'],
+      [LINT_CODES.alphaValueNotation, '25%'],
+      [LINT_CODES.hueDegreeNotation, '120deg']
     ]);
   });
 

@@ -53,6 +53,9 @@ export const LINT_CODES = {
   unknownUnits: 'lint/unit-no-unknown',
   unknownFunctions: 'lint/function-no-unknown',
   linearGradientNonstandardDirection: 'lint/function-linear-gradient-no-nonstandard-direction',
+  colorFunctionNotation: 'lint/color-function-notation',
+  alphaValueNotation: 'lint/alpha-value-notation',
+  hueDegreeNotation: 'lint/hue-degree-notation',
   unknownMediaFeatureNames: 'lint/media-feature-name-no-unknown',
   mediaFeatureNameNoVendorPrefix: 'lint/media-feature-name-no-vendor-prefix',
   unknownMediaFeatureValues: 'lint/media-feature-name-value-no-unknown',
@@ -102,6 +105,13 @@ const VERTICAL_GRADIENT_SIDES = new Set(['top', 'bottom']);
 const HORIZONTAL_GRADIENT_SIDES = new Set(['left', 'right']);
 const MATH_FUNCTION_NAMES = new Set(['min', 'max', 'clamp']);
 const COLOR_FUNCTION_NAMES = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+const OPACITY_PROPERTY_NAMES = new Set([
+  'opacity',
+  'fill-opacity',
+  'flood-opacity',
+  'stop-opacity',
+  'stroke-opacity'
+]);
 const LINEAR_GRADIENT_FUNCTION_NAMES = new Set(['linear-gradient', 'repeating-linear-gradient']);
 const FONT_DISPLAY_VALUES = new Set(['auto', 'block', 'swap', 'fallback', 'optional']);
 const PROPERTY_SYNTAX_TYPES = new Set([
@@ -465,6 +475,12 @@ type ColorChannelFact = {
 type ColorFunctionChannelProblem = {
   readonly message: string;
   readonly span: DiagnosticSpan;
+};
+
+type ColorNotationFacts = {
+  readonly channels: readonly ColorChannelFact[];
+  readonly alphaIndex: number | null;
+  readonly legacyCommaSyntax: boolean;
 };
 
 type AtRuleDescriptorValueProblem = {
@@ -1912,7 +1928,7 @@ function colorChannelFact(source: string, node: CssCstNode): ColorChannelFact {
   return { kind: 'unknown', text, span };
 }
 
-function colorFunctionChannels(source: string, node: CssCstNode): { readonly channels: readonly ColorChannelFact[]; readonly alphaIndex: number | null } | null {
+function colorFunctionChannels(source: string, node: CssCstNode): ColorNotationFacts | null {
   const argumentSequences: CssCstNode[] = [];
   for (const child of cstChildrenOf(node)) {
     if (isCstNode(child) && child.grammarType === 'ValueSequence') {
@@ -1920,12 +1936,13 @@ function colorFunctionChannels(source: string, node: CssCstNode): { readonly cha
     }
   }
   if (argumentSequences.length === 0) {
-    return { channels: [], alphaIndex: null };
+    return { channels: [], alphaIndex: null, legacyCommaSyntax: false };
   }
   if (argumentSequences.length > 1) {
     return {
       channels: argumentSequences.map(sequence => colorChannelFact(source, sequence)),
-      alphaIndex: argumentSequences.length === 4 ? 3 : null
+      alphaIndex: argumentSequences.length === 4 ? 3 : null,
+      legacyCommaSyntax: true
     };
   }
 
@@ -1944,7 +1961,7 @@ function colorFunctionChannels(source: string, node: CssCstNode): { readonly cha
     }
     channels.push(colorChannelFact(source, child));
   }
-  return { channels, alphaIndex };
+  return { channels, alphaIndex, legacyCommaSyntax: false };
 }
 
 function isRgbChannel(channel: ColorChannelFact): boolean {
@@ -2013,6 +2030,59 @@ function invalidColorFunctionChannels(source: string, node: CssCstNode, function
     }
   }
   return null;
+}
+
+function colorFunctionNotationProblem(source: string, node: CssCstNode, functionName: string): DiagnosticSpan | null {
+  const lowerName = functionName.toLowerCase();
+  if (!COLOR_FUNCTION_NAMES.has(lowerName)) {
+    return null;
+  }
+  const argsText = source.slice(absoluteStart(node), absoluteEnd(node));
+  if (hasDynamicSyntax(argsText)) {
+    return null;
+  }
+  const parsed = colorFunctionChannels(source, node);
+  return parsed?.legacyCommaSyntax === true
+    ? spanAtOrContaining(node, absoluteStart(node), absoluteStart(node) + functionName.length)
+    : null;
+}
+
+function alphaValueNotationProblems(source: string, node: CssCstNode, functionName: string): readonly ColorChannelFact[] {
+  const lowerName = functionName.toLowerCase();
+  if (!COLOR_FUNCTION_NAMES.has(lowerName)) {
+    return [];
+  }
+  const argsText = source.slice(absoluteStart(node), absoluteEnd(node));
+  if (hasDynamicSyntax(argsText)) {
+    return [];
+  }
+  const parsed = colorFunctionChannels(source, node);
+  if (parsed === null || parsed.alphaIndex === null) {
+    return [];
+  }
+  const alpha = parsed.channels[parsed.alphaIndex];
+  return alpha !== undefined && (alpha.kind === 'number' || alpha.kind === 'percentage')
+    ? [alpha]
+    : [];
+}
+
+function hueDegreeNotationProblems(source: string, node: CssCstNode, functionName: string): readonly ColorChannelFact[] {
+  const lowerName = functionName.toLowerCase();
+  if (lowerName !== 'hsl' && lowerName !== 'hsla') {
+    return [];
+  }
+  const argsText = source.slice(absoluteStart(node), absoluteEnd(node));
+  if (hasDynamicSyntax(argsText)) {
+    return [];
+  }
+  const parsed = colorFunctionChannels(source, node);
+  if (parsed === null) {
+    return [];
+  }
+  const hue = parsed.channels[0];
+  return hue !== undefined && (hue.kind === 'number' || hue.kind === 'angle')
+    ? [hue]
+    : [];
 }
 
 function declarationValueNode(node: CssCstNode): CssCstNode | null {
@@ -4282,6 +4352,31 @@ export function cstLintDiagnostics(
           gradientDirection
         );
       }
+      const colorNotation = colorFunctionNotationProblem(source, node, functionName);
+      if (colorNotation !== null) {
+        push(
+          LINT_CODES.colorFunctionNotation,
+          'warning',
+          `Expected modern color-function notation in ${functionName}()`,
+          colorNotation
+        );
+      }
+      for (const alpha of alphaValueNotationProblems(source, node, functionName)) {
+        push(
+          LINT_CODES.alphaValueNotation,
+          'warning',
+          `Alpha value "${alpha.text}" does not match the configured notation`,
+          alpha.span
+        );
+      }
+      for (const hue of hueDegreeNotationProblems(source, node, functionName)) {
+        push(
+          LINT_CODES.hueDegreeNotation,
+          'warning',
+          `Hue value "${hue.text}" does not match the configured notation`,
+          hue.span
+        );
+      }
       const colorProblem = invalidColorFunctionChannels(source, node, functionName);
       if (colorProblem !== null) {
         push(
@@ -4440,6 +4535,20 @@ export function cstLintDiagnostics(
         }
         if (language === 'css' && (lowerName === 'animation' || lowerName === 'animation-name')) {
           animationReferences.push(...animationNameReferences(source, node, name, absoluteValueStart, absoluteValueEnd));
+        }
+        if (language === 'css' && OPACITY_PROPERTY_NAMES.has(lowerName)) {
+          const propertyValue = declarationPropertyValue(source, node);
+          if (
+            propertyValue !== null
+            && (propertyValue.fact.kind === 'number' || propertyValue.fact.kind === 'percentage')
+          ) {
+            push(
+              LINT_CODES.alphaValueNotation,
+              'warning',
+              `Alpha value "${propertyValue.fact.raw}" does not match the configured notation`,
+              propertyValue.span
+            );
+          }
         }
         const fontFamilyStart = lowerName === 'font-family'
           ? absoluteValueStart
