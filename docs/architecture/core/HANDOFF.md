@@ -42,6 +42,79 @@
 These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
 Delete a row the moment it lands or is abandoned.
 
+### 2026-07-30 handoff — grammar statement routing and ordinary-path backtracking
+
+The active grammar goal remains: CSS is the structural base and Less, SCSS, and
+Jess are lean overlays that describe only their precise additions or overrides.
+The next parser work is **not** a generic performance rewrite. It is the
+statement-start railroad: remove ordinary declaration/ruleset/mixin
+speculation without introducing new grammar concepts, AST facts, or CST wrapper
+nodes.
+
+Two commits on `dev` are the current guardrails:
+
+- `1517e97c5` requires a rebuilt-artifact before/after parser benchmark before
+  every grammar commit. Record resolved versions, fixed corpus/surface, warmup,
+  samples, and errors; treat noise as inconclusive.
+- `3bb2b4225` explicitly prohibits an `IdentifierStart` fact, generic
+  `Statement` node, or similar carrier wrapper. A selected existing semantic
+  node (`Declaration`, `Ruleset`, `MixinCall`, or `MixinDefinition`) must own
+  the retained/replayed prefix and reduce directly.
+
+`66bebbc03` tried to route CSS identifier-led statements by adding exactly that
+forbidden `IdentifierStartFact`/`Statement` layer. The whole change was
+reverted by `914caa6f0`; do not resurrect or partially replay it. A valid
+full-build interleaved A/B against the immediately preceding state measured the
+candidate slower on the CSS corpus (AST about +15.6%, CST about +10.5%; three
+alternating rounds, zero parse errors). This proves the candidate regressed but
+does **not** attribute the regression to a particular allocation or branch
+without a CPU profile. After the revert, CSS CST was faster than the July 28
+baseline while CSS AST retained an unresolved small +7.5% signal; Less
+comparable successful workloads were not slower. Treat that signal as a
+profiling target, not a grammar conclusion.
+
+The required no-backtracking design is:
+
+1. A broad statement-family `choice(...)` may remain when its starts are
+   first-set gated. Skipping an inapplicable arm is not rollback.
+2. For Less class/id starts, parse the concrete `mixinName` prefix once into
+   sibling **semantic** arms so Parseman's `sharedPrefix` replays it into the
+   winning node. `(` enters the one mixin interior; after `)`, `when`/`{`
+   chooses definition and `!important`/`;` chooses call. Bare `;`/
+   `!important` is the bare-call arm. Selector continuations (`.a.b`,
+   `.a:hover`, combinators, comma, `{`, guard) go directly to the ruleset arm.
+   `.a.b()` must never enter a mixin-definition route. This removes the current
+   `attempt(MixinDefinitionContinuation)` once the shared `)` is factored.
+3. For identifier/interpolation starts across all dialects: no colon means
+   qualified rule; colon plus trivia means declaration; only a colon glued to a
+   pseudo name is ambiguous. That rare path must prove the structural route to
+   its `{` before choosing qualified rule; it must never parse a declaration
+   value and retry it as a selector. The old Less
+   `rulesetNotDeclaration` regex preflight is debt to delete through this
+   shared CSS-owned shape.
+4. `dispatch(...)` is only for a consumed opener whose returned value chooses
+   the family. Use `choice(...)` for a later-delimiter decision. `routed()` is
+   for a selected branch to replay its already-consumed opener, not a reason to
+   dispatch a bare non-decisive prefix. `attempt(...)` is exceptional and must
+   stay out of ordinary valid declaration/ruleset/mixin traffic.
+
+Current code evidence: Less still has the older `ClassIdSelectorPrefix` /
+`SelectorBranchFact` / `ClassIdStatement` shape and the broad
+`rulesetNotDeclaration` preflight in
+`packages/syntax/less/less-parser/src/grammar.ts`; both are targets, not models.
+The Less file currently has concurrent uncommitted signature-trivia work. Do
+not amend, reset, or fold a routing change into that worktree state. Use a clean
+worktree from `origin/dev` for the next routing implementation, then integrate
+only after the owner has reviewed the interaction.
+
+Post-revert proof already run on `914caa6f0`: CSS build; focused CSS AST/public
+tests (4 files / 236 tests); `pnpm run check:macro`; and
+`pnpm run verify:compose-integrity` all passed, with the macro/compose gates
+showing zero interpreter fallbacks. Before a new grammar commit, rebuild in
+dependency order, run the focused semantic/CST tests, macro/compose gates, and
+the required interleaved A/B. Do not claim speed until both the route and its
+profile evidence are real.
+
 ### 2026-07-27 update — grammar fold complete; Less alpha guard green on parseman 0.41.0
 
 The four parser dialects now ship from one host-mode `src/grammar.ts` each; the
