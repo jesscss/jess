@@ -1033,26 +1033,6 @@ const scssScanSkipSingleString = noTrivia(sequence(
 ));
 
 /*
- * Grammar-local CSS bubbling-at-rule keyword recognizers (byte-identical to the
- * shared CssSyntax*AtKeyword leaves). Every nested at-statement arm must have
- * a resolvable first-set for the whole `@`-cluster choice to first-char-gate: the
- * mixin/control-flow arms already lead with local `@…` regexes, so spelling these
- * CSS block keywords locally too resolves the cluster's first-set to `@` and lets
- * the compiler skip the entire cluster on any non-`@` statement (ordinary rules,
- * and every block-close where the cluster is otherwise entered speculatively).
- * `@supports` uses the shared CSS supports at-keyword; it is not a
- * dialect-local leaf.
- */
-const mediaAtKeyword = regex(/@media(?![-\w])/i);
-const containerAtKeyword = regex(/@container(?![-\w])/i);
-const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
-const layerAtKeyword = regex(/@layer(?![-\w])/i);
-const scopeAtKeyword = regex(/@scope(?![-\w])/i);
-const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
-const pageAtKeyword = regex(/@page(?![-\w])/i);
-const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
-
-/*
  * An at-rule this grammar has no typed production for is still well-formed CSS:
  * which at-rules exist is a language-service fact, not a parse decision, so an
  * unknown block (`@view-transition`, `@position-try`, anything newer than this
@@ -3070,9 +3050,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -3081,9 +3061,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -3091,12 +3071,12 @@ export const scssFactory = (g: ScssInputRules) => {
         g.IfBody
       ),
       sequence(
-        startingStyleAtKeyword,
+        g.CssSyntaxStartingStyleAtKeyword,
         g.StaticAtPrelude,
         g.IfBody
       ),
       sequence(
-        layerAtKeyword,
+        g.CssSyntaxLayerAtKeyword,
         g.StaticAtPrelude,
         g.IfBody
       )
@@ -3712,7 +3692,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const ScopeBlock = node<AtRuleBlock>(
     'ScopeBlock',
     sequence(
-      scopeAtKeyword,
+      g.CssSyntaxScopeAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
@@ -3756,7 +3736,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const NestedScopeBlock = node<AtRuleBlock>(
     'NestedScopeBlock',
     sequence(
-      scopeAtKeyword,
+      g.CssSyntaxScopeAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       nestedBody,
@@ -3786,9 +3766,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -3799,9 +3779,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -3823,7 +3803,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const StartingStyleBlock = node<AtRuleBlock>(
     'StartingStyleBlock',
     sequence(
-      startingStyleAtKeyword,
+      g.CssSyntaxStartingStyleAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       startingLayerBlockBody,
@@ -3841,7 +3821,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const LayerBlock = node<AtRuleBlock>(
     'LayerBlock',
     sequence(
-      layerAtKeyword,
+      g.CssSyntaxLayerAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       startingLayerBlockBody,
@@ -3867,7 +3847,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const DocumentBlock = node<AtRuleBlock>(
     'DocumentBlock',
     sequence(
-      documentAtKeyword,
+      g.CssSyntaxDocumentAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
@@ -3938,7 +3918,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const PageBlock = node<AtRuleBlock>(
     'PageBlock',
     sequence(
-      pageAtKeyword,
+      g.CssSyntaxPageAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
@@ -3992,7 +3972,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const FontFeatureValuesBlock = node<AtRuleBlock>(
     'FontFeatureValuesBlock',
     sequence(
-      fontFeatureValuesAtKeyword,
+      g.CssSyntaxFontFeatureValuesAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
@@ -4022,9 +4002,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -4035,9 +4015,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -4062,7 +4042,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const NestedStartingStyleBlock = node<AtRuleBlock>(
     'NestedStartingStyleBlock',
     sequence(
-      startingStyleAtKeyword,
+      g.CssSyntaxStartingStyleAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       nestedKeyframesBody,
@@ -4083,7 +4063,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const NestedLayerBlock = node<AtRuleBlock>(
     'NestedLayerBlock',
     sequence(
-      layerAtKeyword,
+      g.CssSyntaxLayerAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       nestedKeyframesBody,

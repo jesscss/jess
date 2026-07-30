@@ -4939,3 +4939,20 @@ test/compose-integrity.test.ts --reporter=dot`; parser builds for CSS, SCSS,
 and Jess; `pnpm run check:macro` with 0 interpreter fallbacks across
 parser-shared/CSS/Less/SCSS/Jess; `pnpm run verify:compose-integrity`; and `git
 diff --check`.
+
+Evidence slice, 2026-07-30: SCSS no longer carries grammar-local regex leaves
+for CSS-owned at-keywords whose structure it only specializes below the keyword:
+`@media`, `@container`, `@starting-style`, `@layer`, `@scope`, `@document`,
+`@page`, and `@font-feature-values` now use the shared `CssSyntax*AtKeyword`
+leaves from parser-shared. The SCSS grammar still owns the downstream prelude
+and body choices where Sass syntax changes the CSS shape. This is leaf reuse
+only, not the final at-rule dispatch route; the analyzer now reports the
+remaining same-`@` `IfStaticConditionalBlock`, `ConditionalBlock`, and
+`NestedConditionalBlock` choices as the next routed-family work. Verification:
+`pnpm --filter @jesscss/parser-shared build`; `pnpm --filter
+@jesscss/scss-parser test -- test/conditional-at-rule-value.test.ts
+test/ast-grammar.test.ts test/public-parse.test.ts test/cst-public.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`;
+`pnpm --filter @jesscss/scss-parser build`; `pnpm run check:macro` with 0
+interpreter fallbacks across parser-shared/CSS/Less/SCSS/Jess; `pnpm run
+verify:compose-integrity`; and `git diff --check`. No speed claim.
