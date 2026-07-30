@@ -38,12 +38,22 @@ Parseman grammar: parse shared structure outside the dispatcher, consume the
 smallest decisive combinator once, and let the branch table decide what tail
 owns that routed value. The generic case belongs inside the same
 `dispatch(...)` through `otherwise(...)`; do not keep a separate outer generic
-`choice(...)` arm for the same token family. A matched `when(...)` commits to its
-tail, so malformed known syntax does not fall through to generic syntax.
+`choice(...)` arm for the same token family. Before landing an at-rule
+dispatcher, prove the routed value shape and surrounding fallbacks preserve the
+known-syntax commitment: malformed known CSS at-rules must report their own
+error and must not be consumed by a generic/opaque statement or block path.
 This is the scannerless Parseman story: the grammar does not need a separate
 tokenizer to get token-like routing. It can route at the meaningful grammar
 boundary after a shared prefix has been consumed, so overlapping lexical shapes
 do not automatically imply broad backtracking.
+
+CSS-derived grammar rule, 2026-07-29: Less, SCSS, and Jess are overlays on CSS,
+not parallel grammars. Each derived grammar should be as lean as possible and
+describe only syntax it adds or the exact CSS substructure it changes. A changed
+value form, interpolated leaf, guard, or nested body language does not justify
+copying an entire CSS production; compose the CSS rule and override the smallest
+changed child/reference. If that small override is not expressible yet, record
+the specific blocker rather than restating the whole CSS shape locally.
 
 Current integration warning: the physical fold blocker is paid: CSS, Less, SCSS,
 and Jess now each ship AST and CST from one host-mode grammar source. Older
@@ -113,6 +123,17 @@ combinator shape. SCSS `QueryFunction` and Jess generic pseudo raw arguments are
 separate follow-ups: SCSS has ambient scan skips but also routes through
 composed quoted syntax, while Jess currently lacks a root `scanSkip` policy and
 must decide that grammar shape before shrinking the pseudo scanner.
+
+SCSS conditional-at-rule dispatch probe, 2026-07-29: do not mechanically replace
+the repeated local `choice(@media, @container + not(only))` arms with a tiny
+`dispatch(...)` helper unless the branch shape preserves the known-rule
+rejection tests. A local probe accepted `@container only; screen { ... }`
+instead of rejecting it as a malformed known CSS conditional rule. The
+accepted-language contract is that `@container` is CSS-owned known syntax, so a
+malformed header cannot be rescued as an at-rule statement followed by a
+ruleset. The next attempt should either compose the CSS conditional/container
+structure directly or introduce a committed known-at-rule dispatcher that proves
+public CST and AST rejection remain unchanged.
 Less mixin-reference routing, 2026-07-29: the value-position
 `mixinReferenceAhead` probe was replaced by a typed shared mixin-reference base
 plus `dispatch(...)` on the first accessor delimiter (`[]`, `[`, `.`, or `(`).

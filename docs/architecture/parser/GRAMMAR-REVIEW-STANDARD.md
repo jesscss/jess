@@ -76,7 +76,10 @@ Every written rule must answer:
    it. `less-parser` carried a byte-identical copy of a shared rule; the shared
    rule's docstring even named the local copy. Less, SCSS, and Jess should be
    lean overlays that describe only the syntax they add or the specific CSS
-   substructure they change.
+   substructure they change. A different nested value grammar, interpolated
+   leaf, body item set, or syntactic guard is a reason to parameterize or replace
+   that child, not to fork the parent production unless the parent shape itself
+   is different.
 
 2. **Is it readable and well formatted?** In practice this splits into items 3
    and 4, which fail differently — see _the floor and the bar_ below.
