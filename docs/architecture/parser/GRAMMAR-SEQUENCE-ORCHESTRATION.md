@@ -3389,9 +3389,13 @@ shared-opener work this way:
    `.a.b`, `.a .b`, and `.a > .b` retain their compound/complex selector facts
    until `(`/`;` selects a namespace call or the ruleset continuation selects
    `:extend`, `,`, `when`, or `{`. A definition is permitted only for one
-   class/id name, so `.a.b() {}` remains rejected. The remaining review is
-   performance evidence and error-path parity, not another prefix scanner or
-   a route that reparses the selector.
+   class/id name, so `.a.b() {}` remains rejected. The router still has one
+   narrow `attempt(MixinDefinitionTail)` after an already-consumed `(`: Less
+   parameter and call-argument grammars are not interchangeable, so do not
+   erase it by parsing one as the other. The next reduction must retain a
+   truly shared parenthesized fact with separator and value semantics intact,
+   then prove the mixin/qualified-rule backtracking rate. Do not reintroduce a
+   prefix scanner or a route that reparses the selector.
 5. Less query feature parentheses: several `(`-led query arms decide only after
    entering the parentheses. This may become a dispatch/left-factor target, but
    public `QueryAtRuleBlock` CST children and media/container query AST shapes

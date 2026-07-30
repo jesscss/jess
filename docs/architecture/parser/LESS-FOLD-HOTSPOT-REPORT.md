@@ -223,8 +223,10 @@ Apply these while folding each family, not as polish on duplicate bodies:
 - Mixin statement router: the broad `mixinStatementAhead` scan has been
   replaced by one typed class/id selector prefix and literal-led tails. The
   prefix remains selector structure for rulesets and lowers to a namespace path
-  only for `(`/`;` mixin continuations. Keep measuring it; do not reintroduce a
-  prefix scan or a second selector parse.
+  only for `(`/`;` mixin continuations. A narrow definition-versus-call attempt
+  remains after `(` because the current parameter and argument grammars differ;
+  it is a measurable reduction target, not permission to collapse one grammar
+  into the other. Do not reintroduce a prefix scan or a second selector parse.
 - Query feature parentheses: CSS/Less media features are a real left-factor or
   context-helper target, not an automatic dispatch target. The same inner
   identifier can begin colon, comparison, range, grouped, and negated features,
