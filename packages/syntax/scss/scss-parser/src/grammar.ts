@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, choice, composeLeaf, dispatch, endsWith, expect, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { balanced, choice, composeLeaf, dispatch, endsWith, expect, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -1063,25 +1063,8 @@ const scssScanSkipSingleString = noTrivia(sequence(
   literal('\'')
 ));
 
-/*
- * Grammar-local CSS bubbling-at-rule keyword recognizers (byte-identical to the
- * shared CSS at-keyword leaves). Every nested at-statement arm must have
- * a resolvable first-set for the whole `@`-cluster choice to first-char-gate: the
- * mixin/control-flow arms already lead with local `@…` regexes, so spelling these
- * CSS block keywords locally too resolves the cluster's first-set to `@` and lets
- * the compiler skip the entire cluster on any non-`@` statement (ordinary rules,
- * and every block-close where the cluster is otherwise entered speculatively).
- */
-const supportsAtKeyword = regex(/@supports(?![-\w])/i);
-const mediaAtKeyword = regex(/@media(?![-\w])/i);
-const containerAtKeyword = regex(/@container(?![-\w])/i);
-const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
-const layerAtKeyword = regex(/@layer(?![-\w])/i);
-const scopeAtKeyword = regex(/@scope(?![-\w])/i);
+/* SCSS adds the evaluated `@at-root` directive; CSS owns the other at-keywords. */
 const atRootAtKeyword = regex(/@at-root(?![-\w])/i);
-const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
-const pageAtKeyword = regex(/@page(?![-\w])/i);
-const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
 
 /*
  * An at-rule this grammar has no typed production for is still well-formed CSS:
@@ -1230,7 +1213,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * comment. Both arms are closed regex/literal, so disabling trivia here
    * cannot propagate into a shared rule.
    */
-  const LiteralQuoted = node<Quoted>(
+  const ModulePathQuoted = node<Quoted>(
     'Quoted',
     choice(
       noTrivia(sequence(
@@ -1256,7 +1239,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * condition's string is literal bytes, not a place the `//` trivia arm may
    * reach. Closed regex/literal arms, so nothing shared is affected.
    */
-  const plainQuotedValue = node<Quoted>(
+  const LiteralQuoted = node<Quoted>(
     'Quoted',
     choice(
       noTrivia(sequence(
@@ -2448,7 +2431,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'UseRule',
     sequence(
       regex(/@use(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.LiteralQuoted,
+      ModulePathQuoted,
       optional(g.UseNamespace),
       literal(';')
     ),
@@ -2489,7 +2472,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'ForwardRule',
     sequence(
       regex(/@forward(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.LiteralQuoted,
+      ModulePathQuoted,
       g.ForwardTail,
       literal(';')
     ),
@@ -3459,7 +3442,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const SupportsAtom = node<ValueNode>(
     'SupportsAtom',
     choice(
-      plainQuotedValue,
+      g.LiteralQuoted,
       g.Color,
       g.Dimension,
       g.CustomPropertyValue,
@@ -4360,7 +4343,7 @@ export const scssFactory = (g: ScssInputRules) => {
 
   /*
    * Keyframe names do not participate in the module-path classification that
-   * deliberately keeps `LiteralQuoted` escape-free. They are ordinary
+   * deliberately keeps `ModulePathQuoted` escape-free. They are ordinary
    * static quoted values, so they reuse the escape-preserving static-value
    * string helper while still leaving a real `#{` opener for the rejected
    * dynamic path.
@@ -4371,7 +4354,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.KeyframesAtKeyword,
       choice(
         g.Keyword,
-        plainQuotedValue
+        g.LiteralQuoted
       ),
       literal('{'),
       many(choice(
@@ -4455,8 +4438,7 @@ export const scssFactory = (g: ScssInputRules) => {
       optional(sequence(
         g.AttributeOperator,
         choice(
-
-          plainQuotedValue,
+          g.LiteralQuoted,
           g.Identifier
         ),
         optional(g.AttributeModifier)
@@ -4482,7 +4464,7 @@ export const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.PseudoArgumentGroup,
         g.PseudoArgumentSquare,
-        plainQuotedValue,
+        g.LiteralQuoted,
         g.BlockCommentToken,
         staticPseudoChunk
       )),
@@ -4497,7 +4479,7 @@ export const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.PseudoArgumentGroup,
         g.PseudoArgumentSquare,
-        plainQuotedValue,
+        g.LiteralQuoted,
         g.BlockCommentToken,
         staticPseudoChunk
       )),
@@ -4510,7 +4492,7 @@ export const scssFactory = (g: ScssInputRules) => {
     oneOrMore(choice(
       g.PseudoArgumentGroup,
       g.PseudoArgumentSquare,
-      plainQuotedValue,
+      g.LiteralQuoted,
       g.BlockCommentToken,
       staticPseudoChunk
     )),
