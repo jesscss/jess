@@ -764,13 +764,38 @@ parsing benchmark, `postcss/benchmark`'s `parsers.js`.
   (`pnpm --filter @jesscss/css-parser bar:postcss`)
 - committed baseline: `postcss-parse-bar.baseline.json` beside it
 - gate: the same script with `--gate`; exit `1` = breach, `3` = the run's own
-  measured noise floor was too high for the result to mean anything
+  measured noise floor was too high for the result to mean anything (re-run —
+  that is not a pass and not a failure of the change)
+
+**One process is not a measurement.** Gate and baseline runs fold the median
+across five independent processes (`--runs`). This is not belt-and-braces: the
+identical-case noise floor inside a single process measures 1.5–5.2%, but the
+same case's ratio moved 12.9% *across* clean processes with no source change,
+and a single-process gate went red on an unmodified tree. Gating one process
+needs a ~13% ceiling, which is loose enough to swallow a real regression; the
+fold buys an 8% ceiling back. Two consecutive folded gate runs on an unmodified
+tree landed within −5.8%…+2.2% of the recorded ratios.
+
+The run also measures its own noise floor, by sampling two *identical* PostCSS
+cases as separate interleaved cases. Their disagreement is this machine's floor
+right now, rather than a number quoted from an older investigation. A run that
+exceeds the floor limit cannot pass the gate and cannot be written as a
+baseline — a contaminated run once inflated every median by ~1.8×, and it is the
+self-measured floor that caught it.
 
 **PostCSS parses much less structure than Jess does, and Jess should aim to beat
 it regardless.** Describe that structural difference so the number is
 interpretable — never adjust the score by it. There is no structure-adjusted
 figure, no handicap, no asterisk. The reported ratio is wall-clock on identical
 bytes. If Jess is slower, the ratio is above 1 and that is the target to close.
+
+Where the bar stands, measured at `d0439382d` (Node v24.11.1, darwin-arm64,
+`parseman@0.43.0`, `postcss@8.5.25`, corpus `postcss/benchmark@ddc1a86`):
+`jess-ast` is **1.35× PostCSS** on bootstrap and **1.65×** on the in-repo
+fixture; `jess-cst` is **3.10×** and **3.94×**. Jess loses on every case. It
+loses while producing 3.1× the typed nodes on the AST surface and roughly 24×
+the tree objects plus a full trivia log on the CST surface — that is context for
+why, not a defence, and not a discount applied to the number.
 
 Both Jess surfaces are named cases, per fixture, and are never collapsed into
 one. The recurring regression signature in this repo is "AST slower while CST is
