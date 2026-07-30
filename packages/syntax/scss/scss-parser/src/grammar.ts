@@ -177,7 +177,7 @@ type ScssRules = {
   Simple: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
-  Attribute: Combinator<SimpleSelector>;
+  AttributeSelector: Combinator<SimpleSelector>;
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
   PseudoArgumentSquare: Combinator<string>;
@@ -4422,8 +4422,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * attributes stay outside this closed slice because their segments need
    * their own typed representation rather than text flattening.
    */
-  const Attribute = node<SimpleSelector>(
-    'Attribute',
+  const AttributeSelector = node<SimpleSelector>(
+    'AttributeSelector',
     sequence(
       literal('['),
       g.Identifier,
@@ -4706,7 +4706,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.NestingSelector,
         parser(
           { trivia: whitespace },
-          g.Attribute
+          g.AttributeSelector
         ),
         g.PseudoSelector,
         g.Placeholder,
@@ -5115,7 +5115,7 @@ export const scssFactory = (g: ScssInputRules) => {
     Simple,
     InterpolatedSimple,
     Placeholder,
-    Attribute,
+    AttributeSelector,
     PseudoArgument,
     PseudoArgumentGroup,
     PseudoArgumentSquare,
