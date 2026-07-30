@@ -36,7 +36,10 @@
     "@jesscss/scss-parser": "workspace:*",
     "@vscode/web-custom-data": "^0.6.2",
     "css-functions-list": "~3.3.3",
-    "known-css-properties": "~0.37.0"
+    "html-tags": "^5.1.0",
+    "known-css-properties": "~0.37.0",
+    "mathml-tag-names": "^4.0.0",
+    "svg-tags": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

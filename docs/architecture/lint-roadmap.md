@@ -70,6 +70,7 @@ a `jess/` prefix.
 | `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | Stylelint-near |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | Stylelint-near |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | Stylelint-near |
+| `selector-type-no-unknown` | `lint/selector-type-no-unknown` | Stylelint-near |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -131,8 +132,8 @@ using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 236-finding rule set:
 
 | Path | Median |
 | --- | --- |
-| Jess lint stable rules | `23.40 ms/op` |
-| Stylelint comparable rules | `23.06 ms/op` |
+| Jess lint stable rules | `23.17 ms/op` |
+| Stylelint comparable rules | `28.03 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -154,7 +155,7 @@ can detect over authored source.
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
 | Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Checks definite `font-family` values; dynamic values stay unknown. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
-| P2 | Selector validity | `selector-type-no-unknown` | Needs element/custom-element metadata and dialect escapes. |
+| Landed | Selector validity | `selector-type-no-unknown` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
 | Landed | Units | `unit-no-unknown` | Flags unknown Dimension units; URL values and resolution `x` contexts are suppressed. |
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
 | Landed | Media feature names | `media-feature-name-no-unknown` | Flags unknown CSS `@media` feature names; dialect media facts and value validation remain future work. |

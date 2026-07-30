@@ -72,6 +72,18 @@ describe('collectTolerantDiagnostics', () => {
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureNames)).toBe(false);
   });
 
+  it('uses caller-provided CSS metadata for known type selectors', () => {
+    const result = collectTolerantDiagnostics({
+      source: 'projectpanel { color: red; }',
+      language: 'css',
+      metadata: {
+        isKnownTypeSelector: name => name === 'projectpanel'
+      }
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownTypeSelectors)).toBe(false);
+  });
+
   it('recognizes lint-relevant nodes from direct SCSS and Jess grammars', () => {
     const scss = collectTolerantDiagnostics({
       source: '.a { .b {} }',
@@ -279,6 +291,35 @@ describe('collectTolerantDiagnostics', () => {
     expect(scss.diagnostics.some(
       diagnostic => diagnostic.code === LINT_CODES.unknownPseudoClasses || diagnostic.code === LINT_CODES.unknownPseudoElements
     )).toBe(false);
+  });
+
+  it('reports unknown CSS type selectors', () => {
+    const source = 'main, foo, x-thing, svg|circle, *|unknown, :not(bar), ::highlight(baz), foreignObject { color: red; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownTypes = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownTypeSelectors);
+
+    expect(unknownTypes.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown type selector "foo"', source.indexOf('foo'), source.indexOf('foo') + 'foo'.length],
+      ['Unknown type selector "unknown"', source.indexOf('unknown'), source.indexOf('unknown') + 'unknown'.length],
+      ['Unknown type selector "bar"', source.indexOf('bar'), source.indexOf('bar') + 'bar'.length]
+    ]);
+  });
+
+  it('does not report unknown type selectors in dialect files before selector facts exist', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '$root foo { color: red; }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '@root foo { color: red; }',
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownTypeSelectors)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownTypeSelectors)).toBe(false);
   });
 
   it('reports unknown CSS declaration functions', () => {
