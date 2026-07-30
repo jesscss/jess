@@ -73,13 +73,13 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(stats(result.tree).grammarTypes.get('DollarBrace')).toBe(2);
   });
 
-  it('uses contextual CST labels for plain quoted and pseudo-selector syntax', () => {
+  it('uses semantic CST labels for quoted and pseudo-selector syntax', () => {
     const result = parseJessCst('@charset "UTF-8"; .a:not(.b) { color: red; } .c:nth-child(2n of .d) { color: blue; }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     const { grammarTypes } = stats(result.tree);
-    expect(grammarTypes.get('PlainQuoted')).toBe(1);
+    expect(grammarTypes.get('Quoted')).toBe(1);
     expect(grammarTypes.get('PseudoSelectorArgument')).toBe(1);
     expect(grammarTypes.get('PseudoSelectorList')).toBeGreaterThan(0);
     expect(grammarTypes.get('PseudoSelectorCompound')).toBeGreaterThan(0);

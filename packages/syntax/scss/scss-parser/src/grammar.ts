@@ -1231,7 +1231,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * cannot propagate into a shared rule.
    */
   const PlainQuoted = node<Quoted>(
-    'PlainQuoted',
+    'Quoted',
     choice(
       noTrivia(sequence(
         literal('"'),
@@ -1257,7 +1257,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * reach. Closed regex/literal arms, so nothing shared is affected.
    */
   const plainQuotedValue = node<Quoted>(
-    'PlainQuotedValue',
+    'Quoted',
     choice(
       noTrivia(sequence(
         literal('"'),

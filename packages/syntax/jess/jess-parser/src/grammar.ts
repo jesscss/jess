@@ -2066,7 +2066,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * non-SyntaxError from the public parse path.
    */
   const PlainQuoted = node<Quoted>(
-    'PlainQuoted',
+    'Quoted',
     choice(
       escapedPlainQuoted,
       plainDoubleQuoted,
