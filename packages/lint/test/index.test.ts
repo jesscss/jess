@@ -40,6 +40,7 @@ describe('stable rule set', () => {
       LINT_CODES.invalidNamedGridAreas,
       LINT_CODES.fontFamilyDuplicateNames,
       LINT_CODES.fontFamilyMissingGeneric,
+      LINT_CODES.fontFaceMissingRequiredProperties,
       LINT_CODES.invalidImportPosition,
       LINT_CODES.duplicateAtImportRules,
       LINT_CODES.unknownAnimations,
@@ -78,6 +79,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidNamedGridAreas,
       LINT_RULE_NAMES.fontFamilyDuplicateNames,
       LINT_RULE_NAMES.fontFamilyMissingGeneric,
+      LINT_RULE_NAMES.fontFaceMissingRequiredProperties,
       LINT_RULE_NAMES.invalidImportPosition,
       LINT_RULE_NAMES.duplicateAtImportRules,
       LINT_RULE_NAMES.unknownAnimations,
@@ -96,7 +98,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(25);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(26);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -137,6 +139,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.reportSyntax).toBe(false);
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateSelectors]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownPropertyValues]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.fontFaceMissingRequiredProperties]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownAtRuleDescriptorValues]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unknownCustomProperties]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
@@ -352,6 +355,28 @@ describe('lintText', () => {
     ]);
   });
 
+  it('applies policy to missing @font-face required property diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '@font-face { font-family: Inter; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.fontFaceMissingRequiredProperties, 'error']
+    ]);
+  });
+
   it('applies policy to invalid named grid area diagnostics', async () => {
     const result = await lintText(
       {
@@ -443,7 +468,7 @@ describe('lintText', () => {
   it('applies policy to unknown at-rule descriptor diagnostics', async () => {
     const result = await lintText(
       {
-        source: '@font-face { made-up: nope; }',
+        source: '@font-face { font-family: Inter; src: url(inter.woff2); made-up: nope; }',
         filePath: '/tmp/input.css'
       },
       {

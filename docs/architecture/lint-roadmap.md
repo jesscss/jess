@@ -79,6 +79,7 @@ a `jess/` prefix.
 | `named-grid-areas-no-invalid` | `lint/named-grid-areas-no-invalid` | Stylelint-equivalent |
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | Stylelint-near |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
+| `font-face-no-missing-required-properties` | `lint/font-face-missing-required-properties` | VSCode-equivalent |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | Stylelint-equivalent |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
 | `no-unknown-animations` | `lint/no-unknown-animations` | Stylelint-near |
@@ -193,7 +194,7 @@ can detect over authored source.
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
 | Landed | Important declarations | `declaration-no-important` | Flags CSS `!important` declarations outside keyframes; keyframes use the dedicated keyframe rule to avoid duplicate default diagnostics. |
 | Landed | Named grid areas | `named-grid-areas-no-invalid` | Flags empty, ragged, or non-rectangular named grid area strings in CSS `grid`, `grid-template`, and `grid-template-areas` declarations. |
-| Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Checks definite `font-family` values; dynamic values stay unknown. |
+| Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword`, `font-face-no-missing-required-properties` | Checks definite `font-family` values and CSS `@font-face` blocks missing `font-family`/`src`; dynamic values and dialect-injected descriptors stay unknown. |
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
 | Landed | Selector validity | `selector-type-no-unknown`, `selector-anb-no-unmatchable` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata, plus nth-selector An+B expressions that can never match; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
 | Landed | Units | `unit-no-unknown` | Flags unknown Dimension units; URL values and resolution `x` contexts are suppressed. |

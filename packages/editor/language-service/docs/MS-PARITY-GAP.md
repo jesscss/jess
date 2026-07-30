@@ -171,8 +171,8 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    property/value warnings).** **Diagnostics / lint rules** — port the high-value
    stylesheet-service subset first: `emptyRules`, `unknownProperties`,
    `declaration-property-value-no-unknown`, `unknownAtRules`,
-   `duplicateProperties`, `hexColorLength`, `zeroUnits`, and follow-on CSS
-   validity diagnostics. Detection lives in diagnostics-core; lint and the
+   `duplicateProperties`, `hexColorLength`, `zeroUnits`, `fontFaceProperties`,
+   and follow-on CSS validity diagnostics. Detection lives in diagnostics-core; lint and the
    language service only configure and surface the shared records.
 10. ✅ **DONE.** **Hover enrichment** — pseudo-class/element hover added; property +
     at-rule hover append formal `syntax`, Baseline status, and the MDN reference

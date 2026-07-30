@@ -305,6 +305,43 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownAtRuleDescriptorValues)).toBe(false);
   });
 
+  it('reports @font-face rules missing required CSS descriptors', () => {
+    const source = [
+      '@font-face { }',
+      '@font-face { font-family: Inter; }',
+      '@font-face { src: url(inter.woff2); }',
+      '@font-face { font-family: Inter; src: url(inter.woff2); }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const missing = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.fontFaceMissingRequiredProperties);
+    const first = source.indexOf('@font-face');
+    const second = source.indexOf('@font-face', first + 1);
+    const third = source.indexOf('@font-face', second + 1);
+
+    expect(missing.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['@font-face rule must define "font-family" and "src"', first, first + '@font-face'.length],
+      ['@font-face rule must define "src"', second, second + '@font-face'.length],
+      ['@font-face rule must define "font-family"', third, third + '@font-face'.length]
+    ]);
+  });
+
+  it('does not report missing @font-face descriptors in dialect files before semantic facts exist', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '@font-face { font-family: Inter; }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '@font-face { src: url(inter.woff2); }',
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.fontFaceMissingRequiredProperties)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.fontFaceMissingRequiredProperties)).toBe(false);
+  });
+
   it('reports duplicate keyframe selectors and important keyframe declarations', () => {
     const result = collectTolerantDiagnostics({
       source: '@keyframes spin { from { opacity: 1 !important; } 0% { opacity: .5; } 50% { color: red; } 50% { color: blue; } }',

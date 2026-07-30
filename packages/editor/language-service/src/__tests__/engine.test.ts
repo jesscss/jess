@@ -637,6 +637,40 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('fontFaceMissingRequiredProperties (lint/font-face-missing-required-properties)', () => {
+      it('fires on a CSS @font-face block missing required descriptors', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '@font-face { font-family: Inter; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/font-face-missing-required-properties');
+
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(2); // Warning
+        const slice = doc.getText().slice(doc.offsetAt(diag!.range.start), doc.offsetAt(diag!.range.end));
+        expect(slice).toBe('@font-face');
+      });
+
+      it('does not fire on complete CSS @font-face blocks or dialect files before semantic facts exist', () => {
+        const css = createEngine();
+        const cssDoc = createDocument('css', '@font-face { font-family: Inter; src: url(inter.woff2); }');
+        css.open(cssDoc.uri, cssDoc.languageId, cssDoc.version, cssDoc.getText());
+        expect(codesOf(css, cssDoc.uri)).not.toContain('lint/font-face-missing-required-properties');
+
+        const scss = createEngine();
+        const scssDoc = createDocument('scss', '@font-face { font-family: Inter; }');
+        scss.open(scssDoc.uri, scssDoc.languageId, scssDoc.version, scssDoc.getText());
+        expect(codesOf(scss, scssDoc.uri)).not.toContain('lint/font-face-missing-required-properties');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/font-face-missing-required-properties', 'ignore'));
+        const doc = createDocument('css', '@font-face { font-family: Inter; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/font-face-missing-required-properties');
+      });
+    });
+
     describe('duplicateProperties (lint/duplicate-property)', () => {
       it('fires when a property is declared twice in one block', () => {
         const engine = createEngine();

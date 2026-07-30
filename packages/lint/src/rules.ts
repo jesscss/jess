@@ -2,9 +2,9 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 25;
+export const STABLE_LINT_RULE_SET_VERSION = 26;
 
-export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
+export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
 
 export const LINT_RULE_NAMES = {
@@ -27,6 +27,7 @@ export const LINT_RULE_NAMES = {
   invalidNamedGridAreas: 'named-grid-areas-no-invalid',
   fontFamilyDuplicateNames: 'font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'font-family-no-missing-generic-family-keyword',
+  fontFaceMissingRequiredProperties: 'font-face-no-missing-required-properties',
   invalidImportPosition: 'no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'no-duplicate-at-import-rules',
   unknownAnimations: 'no-unknown-animations',
@@ -79,6 +80,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.invalidNamedGridAreas]: LINT_CODES.invalidNamedGridAreas,
   [LINT_RULE_NAMES.fontFamilyDuplicateNames]: LINT_CODES.fontFamilyDuplicateNames,
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: LINT_CODES.fontFamilyMissingGeneric,
+  [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: LINT_CODES.fontFaceMissingRequiredProperties,
   [LINT_RULE_NAMES.invalidImportPosition]: LINT_CODES.invalidImportPosition,
   [LINT_RULE_NAMES.duplicateAtImportRules]: LINT_CODES.duplicateAtImportRules,
   [LINT_RULE_NAMES.unknownAnimations]: LINT_CODES.unknownAnimations,
@@ -118,6 +120,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.invalidNamedGridAreas]: LINT_RULE_NAMES.invalidNamedGridAreas,
   [LINT_CODES.fontFamilyDuplicateNames]: LINT_RULE_NAMES.fontFamilyDuplicateNames,
   [LINT_CODES.fontFamilyMissingGeneric]: LINT_RULE_NAMES.fontFamilyMissingGeneric,
+  [LINT_CODES.fontFaceMissingRequiredProperties]: LINT_RULE_NAMES.fontFaceMissingRequiredProperties,
   [LINT_CODES.invalidImportPosition]: LINT_RULE_NAMES.invalidImportPosition,
   [LINT_CODES.duplicateAtImportRules]: LINT_RULE_NAMES.duplicateAtImportRules,
   [LINT_CODES.unknownAnimations]: LINT_RULE_NAMES.unknownAnimations,
@@ -157,6 +160,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.invalidNamedGridAreas]: 'warn',
   [LINT_RULE_NAMES.fontFamilyDuplicateNames]: 'warn',
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
+  [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: 'warn',
   [LINT_RULE_NAMES.invalidImportPosition]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
   [LINT_RULE_NAMES.unknownAnimations]: 'warn',
@@ -210,6 +214,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
 const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateSelectors]: 'off',
   [LINT_RULE_NAMES.unknownPropertyValues]: 'off',
+  [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: 'off',
   [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'off',
   [LINT_RULE_NAMES.unknownCustomProperties]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
@@ -408,6 +413,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'font-family-no-missing-generic-family-keyword',
     notes: 'Flags definite font-family declarations that omit a generic family keyword.'
+  },
+  {
+    code: LINT_CODES.fontFaceMissingRequiredProperties,
+    ruleName: LINT_RULE_NAMES.fontFaceMissingRequiredProperties,
+    title: 'Missing @font-face required properties',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'vscode-equivalent',
+    notes: 'Matches VSCode stylesheet-service fontFaceProperties: CSS @font-face blocks must define both font-family and src; dialect semantic facts remain future work.'
   },
   {
     code: LINT_CODES.invalidImportPosition,

@@ -35,6 +35,7 @@ export const LINT_CODES = {
   invalidNamedGridAreas: 'lint/named-grid-areas-no-invalid',
   fontFamilyDuplicateNames: 'lint/font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
+  fontFaceMissingRequiredProperties: 'lint/font-face-missing-required-properties',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   unknownAnimations: 'lint/no-unknown-animations',
@@ -1781,6 +1782,23 @@ function declarationValueText(source: string, node: CssCstNode): { readonly text
   };
 }
 
+function fontFaceMissingRequiredProperties(source: string, node: CssCstNode): readonly string[] {
+  const required = new Set(['font-family', 'src']);
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child) || !DECLARATION_TYPES.has(child.grammarType)) {
+      continue;
+    }
+    const start = absoluteStart(child);
+    const end = absoluteEnd(child);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      continue;
+    }
+    const name = propNameOf(source.slice(start, end)).toLowerCase();
+    required.delete(name);
+  }
+  return [...required];
+}
+
 function quotedStringInnerText(value: string): string | null {
   if (value.length < 2) {
     return null;
@@ -3022,6 +3040,19 @@ export function cstLintDiagnostics(
           'warning',
           `Initial value "${problem.value.text}" does not match @property syntax "${problem.syntax.raw}"`,
           problem.value.span
+        );
+      }
+    }
+
+    if (language === 'css' && gt === 'DescriptorBlock' && descriptorAtRuleName === 'font-face') {
+      const missing = fontFaceMissingRequiredProperties(source, node);
+      if (missing.length > 0) {
+        const requirement = missing.map(name => `"${name}"`).join(' and ');
+        push(
+          LINT_CODES.fontFaceMissingRequiredProperties,
+          'warning',
+          `@font-face rule must define ${requirement}`,
+          spanAtOrContaining(node, start, atRuleNameEnd(source, start, end))
         );
       }
     }

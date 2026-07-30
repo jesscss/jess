@@ -100,6 +100,7 @@ export default {
       'no-unknown-custom-properties': 'warn',
       'length-zero-no-unit': 'warn',
       'function-linear-gradient-no-nonstandard-direction': 'warn',
+      'font-face-no-missing-required-properties': 'warn',
       'jess/no-invalid-typed-custom-property-value': 'warn',
       'jess/unsupported-sass-form': 'warn'
     }
@@ -136,6 +137,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `named-grid-areas-no-invalid` | `lint/named-grid-areas-no-invalid` | `named-grid-areas-no-invalid` |
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | near `font-family-no-duplicate-names` |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | near `font-family-no-missing-generic-family-keyword` |
+| `font-face-no-missing-required-properties` | `lint/font-face-missing-required-properties` | VSCode `fontFaceProperties` parity |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | `no-invalid-position-at-import-rule` |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | `no-duplicate-at-import-rules` |
 | `no-unknown-animations` | `lint/no-unknown-animations` | near `no-unknown-animations` |
