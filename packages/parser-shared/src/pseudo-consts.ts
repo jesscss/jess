@@ -12,8 +12,8 @@
  * mechanism.
  *
  * These consolidate the previously divergent nth-name boundaries and the
- * `of`/close lookaheads. The An+B leaf `CssSyntaxNth` and the
- * `CssSyntaxMalformedPseudoNumericArgument` gate live in `recognition.ts`
+ * `of`/close lookaheads. The An+B leaf `NthExpression` and the
+ * `MalformedPseudoSelectorNumericArgument` gate live in `recognition.ts`
  * and are reused from there — they are not duplicated here.
  */
 import { regex, rules, word } from 'parseman' with { type: 'macro' };
@@ -54,10 +54,10 @@ const pseudoOfKeyword = word(
 const pseudoCloseAhead = regex(/(?=[ \t\n\r\f]*\))/i);
 
 export const cssPseudoSyntax = rules(_g => ({
-  CssSyntaxNthChildName: nthChildNameWithArg,
-  CssSyntaxNthTypeName: nthTypeNameWithArg,
-  CssSyntaxNthName: nthNameBoundary,
-  CssSyntaxSelectorArgPseudoName: selectorArgPseudoName,
-  CssSyntaxOfKeyword: pseudoOfKeyword,
-  CssSyntaxPseudoCloseAhead: pseudoCloseAhead
+  NthChildPseudoSelectorName: nthChildNameWithArg,
+  NthTypePseudoSelectorName: nthTypeNameWithArg,
+  NthPseudoSelectorName: nthNameBoundary,
+  SelectorArgumentPseudoSelectorName: selectorArgPseudoName,
+  NthOfKeyword: pseudoOfKeyword,
+  PseudoSelectorCloseAhead: pseudoCloseAhead
 }));

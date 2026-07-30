@@ -114,17 +114,17 @@ type CssGrammarRuleName =
   | 'CssSyntaxKeyframesAtKeyword'
   | 'CssSyntaxKeyword'
   | 'CssSyntaxLayerAtKeyword'
-  | 'CssSyntaxMalformedPseudoNumericArgument'
+  | 'MalformedPseudoSelectorNumericArgument'
   | 'CssSyntaxMarginAtKeyword'
   | 'CssSyntaxMediaAtKeyword'
-  | 'CssSyntaxNth'
-  | 'CssSyntaxNthChildName'
-  | 'CssSyntaxNthName'
-  | 'CssSyntaxNthTypeName'
-  | 'CssSyntaxOfKeyword'
+  | 'NthExpression'
+  | 'NthChildPseudoSelectorName'
+  | 'NthPseudoSelectorName'
+  | 'NthTypePseudoSelectorName'
+  | 'NthOfKeyword'
   | 'CssSyntaxPageAtKeyword'
   | 'CssSyntaxProperty'
-  | 'CssSyntaxPseudoCloseAhead'
+  | 'PseudoSelectorCloseAhead'
   | 'CssSyntaxQueryAndOr'
   | 'CssSyntaxQueryComparisonOperator'
   | 'CssSyntaxQueryFunctionOpen'
@@ -132,7 +132,7 @@ type CssGrammarRuleName =
   | 'CssSyntaxQueryOnly'
   | 'CssSyntaxRoutedAtRuleKeyword'
   | 'CssSyntaxScopeAtKeyword'
-  | 'CssSyntaxSelectorArgPseudoName'
+  | 'SelectorArgumentPseudoSelectorName'
   | 'SingleQuotedText'
   | 'CssSyntaxStartingStyleAtKeyword'
   | 'CssSyntaxStatementAtRuleName'
@@ -767,8 +767,8 @@ const customEscape = regex(/\\[^\n\r\f]/);
  * The two families diverge on the `of S` tail: `:nth-child`/`:nth-last-child`
  * accept it (Selectors-4 §6.6.2), `:nth-of-type`/`:nth-last-of-type` do not.
  * The `g`-free name recognitions live in the shared `cssPseudoSyntax`
- * artifact and are referenced as `g.CssSyntaxNthChildName` /
- * `g.CssSyntaxNthTypeName`.
+ * artifact and are referenced as `g.NthChildPseudoSelectorName` /
+ * `g.NthTypePseudoSelectorName`.
  * Public `anyValue` is intentionally permissive. The direct declaration
  * extension needs only its punctuation-run branch: identifier-shaped values
  * already lower through Keyword, and `#` stays reserved for the strict
@@ -852,7 +852,7 @@ const relativeSelectorCombinator = keywords(['>', '+', '~']);
 
 /*
  * A pseudo selector always opens with `:`/`::`. Spelling this leading colon as a
- * grammar-local recognizer (identical to the shared CssSyntaxPseudoColon) lets
+ * grammar-local recognizer (identical to the shared PseudoSelectorColon) lets
  * the compiler resolve the pseudo arm's first-set to `:` and first-char-gate it in
  * the compound-selector choice, instead of treating a cross-composition reference
  * as an `any` first-set and speculatively entering the pseudo node at every simple
@@ -1113,13 +1113,13 @@ export const cssFactory = (g: CssGrammarSelf) => {
       sequence(
         noTrivia(sequence(
           literal('-'),
-          g.CssSyntaxNth
+          g.NthExpression
         )),
         optional(sequence(
-          g.CssSyntaxOfKeyword,
+          g.NthOfKeyword,
           g.SelectorList
         )),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       )
     ),
     (children) => {
@@ -1140,7 +1140,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     choice(
       sequence(
         literal('-'),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       ),
       noTrivia(sequence(
         literal('-'),
@@ -1174,12 +1174,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
     parser(
       { trivia: whitespace },
       sequence(
-        g.CssSyntaxNth,
+        g.NthExpression,
         optional(sequence(
-          g.CssSyntaxOfKeyword,
+          g.NthOfKeyword,
           g.SelectorList
         )),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       )
     ),
     (children) => {
@@ -1203,9 +1203,9 @@ export const cssFactory = (g: CssGrammarSelf) => {
       sequence(
         noTrivia(sequence(
           literal('-'),
-          g.CssSyntaxNth
+          g.NthExpression
         )),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       )
     ),
     children => `-${tokenText(children[1])}`
@@ -1215,8 +1215,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     parser(
       { trivia: whitespace },
       sequence(
-        g.CssSyntaxNth,
-        g.CssSyntaxPseudoCloseAhead
+        g.NthExpression,
+        g.PseudoSelectorCloseAhead
       )
     ),
     children => tokenText(children[0])
@@ -1232,7 +1232,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.SelectorList
       ),
       sequence(
-        not(g.CssSyntaxMalformedPseudoNumericArgument),
+        not(g.MalformedPseudoSelectorNumericArgument),
         pseudoRawArgument
       )
     ),
@@ -1260,8 +1260,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
         not(parser(
           { trivia: whitespace },
           sequence(
-            g.CssSyntaxNth,
-            g.CssSyntaxOfKeyword
+            g.NthExpression,
+            g.NthOfKeyword
           )
         )),
         choice(
@@ -1270,7 +1270,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
             g.SelectorList
           ),
           sequence(
-            not(g.CssSyntaxMalformedPseudoNumericArgument),
+            not(g.MalformedPseudoSelectorNumericArgument),
             pseudoRawArgument
           )
         )
@@ -1391,7 +1391,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
           )
         ),
         otherwise(sequence(
-          not(g.CssSyntaxNthName),
+          not(g.NthPseudoSelectorName),
           routed()
         ))
       )

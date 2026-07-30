@@ -278,11 +278,11 @@ type SharedCssSyntax = {
   AttributeOperator: Combinator<unknown>;
   CssSyntaxHexColor: Combinator<string>;
   CssSyntaxUnicodeRange: Combinator<string>;
-  CssSyntaxNth: Combinator<unknown>;
-  CssSyntaxNthChildName: Combinator<string>;
-  CssSyntaxNthTypeName: Combinator<string>;
-  CssSyntaxNthName: Combinator<string>;
-  CssSyntaxOfKeyword: Combinator<string>;
+  NthExpression: Combinator<unknown>;
+  NthChildPseudoSelectorName: Combinator<string>;
+  NthTypePseudoSelectorName: Combinator<string>;
+  NthPseudoSelectorName: Combinator<string>;
+  NthOfKeyword: Combinator<string>;
   CssSyntaxNumber: Combinator<string>;
   CssSyntaxDimensionUnit: Combinator<string>;
   CssSyntaxInterpolatedPropertyStart: Combinator<unknown>;
@@ -5171,8 +5171,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const StaticNthArgument = node<string>(
     'StaticNthArgument',
     sequence(
-      g.CssSyntaxNth,
-      optional(sequence(g.CssSyntaxOfKeyword, parser({ trivia: staticSelectorTrivia }, g.StaticPseudoSelector)))
+      g.NthExpression,
+      optional(sequence(g.NthOfKeyword, parser({ trivia: staticSelectorTrivia }, g.StaticPseudoSelector)))
     ),
     (children) => {
       const nth = requireToken(children[0]).value;
@@ -5184,7 +5184,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     node<SimpleSelector>(
       'StaticNthChildPseudo',
       parser({ trivia: staticSelectorTrivia }, sequence(
-        token(noTrivia(sequence(pseudoDelimiter, g.CssSyntaxNthChildName, literal('(')))),
+        token(noTrivia(sequence(pseudoDelimiter, g.NthChildPseudoSelectorName, literal('(')))),
         g.StaticNthArgument,
         literal(')')
       )),
@@ -5193,8 +5193,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     node<SimpleSelector>(
       'StaticNthTypePseudo',
       parser({ trivia: staticSelectorTrivia }, sequence(
-        token(noTrivia(sequence(pseudoDelimiter, g.CssSyntaxNthTypeName, literal('(')))),
-        g.CssSyntaxNth,
+        token(noTrivia(sequence(pseudoDelimiter, g.NthTypePseudoSelectorName, literal('(')))),
+        g.NthExpression,
         literal(')')
       )),
       children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value})`)
@@ -5207,7 +5207,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const InterpolatedNthPseudo = node<SimpleSelector>(
     'InterpolatedNthPseudo',
     parser({ trivia: staticSelectorTrivia }, sequence(
-      token(noTrivia(sequence(pseudoDelimiter, choice(g.CssSyntaxNthChildName, g.CssSyntaxNthTypeName), literal('(')))),
+      token(noTrivia(sequence(pseudoDelimiter, choice(g.NthChildPseudoSelectorName, g.NthTypePseudoSelectorName), literal('(')))),
       g.VariableInterpolation,
       literal(')')
     )),
@@ -5358,7 +5358,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const pseudoOpen = token(noTrivia(sequence(
     regex(/::?(?![ \t\n\r\f])/),
     not(extendPseudoNameOpen),
-    not(g.CssSyntaxNthName),
+    not(g.NthPseudoSelectorName),
     g.LessSyntaxIdentifier,
     optional(literal('('))
   )));
