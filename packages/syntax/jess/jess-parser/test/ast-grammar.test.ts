@@ -413,6 +413,38 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
+  it('routes normal-value dollar references without consuming expression and index heads', () => {
+    const source = '.card { live: $tone; scoped: $^tone; rooted: $.theme.colors; expression: $(.w + 1); indexed: $[key]; }';
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+    const cst = parseJessCst(source);
+
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(hasCstGrammar(cst.tree, 'DollarValue')).toBe(true);
+    expect(hasCstGrammar(cst.tree, 'VariableReference')).toBe(true);
+    expect(hasCstGrammar(cst.tree, 'DeclarationReference')).toBe(true);
+    expect(parse(source)).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { name: 'live', value: { type: 'VariableReference', name: 'tone', lookup: 'live' } },
+        { name: 'scoped', value: { type: 'VariableReference', name: 'tone', lookup: 'scoped' } },
+        {
+          name: 'rooted', value: {
+            type: 'Reference',
+            base: { type: 'DeclarationReference', raw: '$' },
+            steps: [{ type: 'DotLookup', name: 'theme' }, { type: 'DotLookup', name: 'colors' }],
+            raw: '$.theme.colors'
+          }
+        },
+        { name: 'expression', value: { type: 'Interpolation' } },
+        { name: 'indexed', value: { type: 'Interpolation' } }
+      ] }]
+    });
+
+    expect(() => parse('.card { invalid: $tone + 1; }')).toThrow(SyntaxError);
+  });
+
   it('parses declaration-member lookups without treating them as property-only accessors', () => {
     const source = '$tokens: { tone: blue; }; .card { value: $(.type.isnumber(.math.e)); namespaced: $tokens.tone; normal: $.tokens.tone; decimal: $(.1); }';
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
