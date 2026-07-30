@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 1;
+export const STABLE_LINT_RULE_SET_VERSION = 2;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -17,6 +17,8 @@ export const LINT_RULE_NAMES = {
   customPropertyMissingVarFunction: 'custom-property-no-missing-var-function',
   keyframeDuplicateSelectors: 'keyframe-block-no-duplicate-selectors',
   keyframeDeclarationNoImportant: 'keyframe-declaration-no-important',
+  fontFamilyDuplicateNames: 'font-family-no-duplicate-names',
+  fontFamilyMissingGeneric: 'font-family-no-missing-generic-family-keyword',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
 
@@ -43,6 +45,8 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.customPropertyMissingVarFunction]: LINT_CODES.customPropertyMissingVarFunction,
   [LINT_RULE_NAMES.keyframeDuplicateSelectors]: LINT_CODES.keyframeDuplicateSelectors,
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: LINT_CODES.keyframeDeclarationNoImportant,
+  [LINT_RULE_NAMES.fontFamilyDuplicateNames]: LINT_CODES.fontFamilyDuplicateNames,
+  [LINT_RULE_NAMES.fontFamilyMissingGeneric]: LINT_CODES.fontFamilyMissingGeneric,
   [LINT_RULE_NAMES.unsupportedSassForm]: LINT_CODES.unsupportedSassForm
 };
 
@@ -56,6 +60,8 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.customPropertyMissingVarFunction]: LINT_RULE_NAMES.customPropertyMissingVarFunction,
   [LINT_CODES.keyframeDuplicateSelectors]: LINT_RULE_NAMES.keyframeDuplicateSelectors,
   [LINT_CODES.keyframeDeclarationNoImportant]: LINT_RULE_NAMES.keyframeDeclarationNoImportant,
+  [LINT_CODES.fontFamilyDuplicateNames]: LINT_RULE_NAMES.fontFamilyDuplicateNames,
+  [LINT_CODES.fontFamilyMissingGeneric]: LINT_RULE_NAMES.fontFamilyMissingGeneric,
   [LINT_CODES.unsupportedSassForm]: LINT_RULE_NAMES.unsupportedSassForm
 };
 
@@ -69,6 +75,8 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.customPropertyMissingVarFunction]: 'warn',
   [LINT_RULE_NAMES.keyframeDuplicateSelectors]: 'warn',
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'warn',
+  [LINT_RULE_NAMES.fontFamilyDuplicateNames]: 'warn',
+  [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
 };
 
@@ -81,7 +89,9 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.zeroUnits]: 'warn',
   [LINT_RULE_NAMES.customPropertyMissingVarFunction]: 'warn',
   [LINT_RULE_NAMES.keyframeDuplicateSelectors]: 'warn',
-  [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'warn'
+  [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'warn',
+  [LINT_RULE_NAMES.fontFamilyDuplicateNames]: 'warn',
+  [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn'
 };
 
 export const STABLE_LINT_RULES: readonly StableLintRule[] = [
@@ -174,6 +184,26 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-equivalent',
     stylelintRule: 'keyframe-declaration-no-important',
     notes: 'Flags !important declarations inside @keyframes blocks.'
+  },
+  {
+    code: LINT_CODES.fontFamilyDuplicateNames,
+    ruleName: LINT_RULE_NAMES.fontFamilyDuplicateNames,
+    title: 'Duplicate font family names',
+    tier: 'maintainability',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'font-family-no-duplicate-names',
+    notes: 'Flags duplicate names in font-family declarations while leaving dynamic values alone.'
+  },
+  {
+    code: LINT_CODES.fontFamilyMissingGeneric,
+    ruleName: LINT_RULE_NAMES.fontFamilyMissingGeneric,
+    title: 'Missing generic font family',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'font-family-no-missing-generic-family-keyword',
+    notes: 'Flags definite font-family declarations that omit a generic family keyword.'
   },
   {
     code: LINT_CODES.unsupportedSassForm,

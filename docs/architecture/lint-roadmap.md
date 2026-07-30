@@ -61,6 +61,8 @@ a `jess/` prefix.
 | `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | Stylelint-equivalent |
 | `keyframe-block-no-duplicate-selectors` | `lint/keyframe-block-no-duplicate-selectors` | Stylelint-equivalent |
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | Stylelint-equivalent |
+| `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | Stylelint-near |
+| `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -145,7 +147,7 @@ can detect over authored source.
 | P1 | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement. Jess `@-import` is separate. |
 | P1 | Duplicate imports/selectors | `no-duplicate-at-import-rules`, `no-duplicate-selectors` | Needs source-level normalization and import awareness. |
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
-| P1 | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Watch variable/interpolation false positives. |
+| Landed | Fonts | `font-family-no-duplicate-names`, `font-family-no-missing-generic-family-keyword` | Checks definite `font-family` values; dynamic values stay unknown. |
 | P2 | Selector validity | `selector-type-no-unknown`, `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Needs modern selector metadata and dialect escapes. |
 | P2 | Function/value validity | `function-no-unknown`, `media-feature-name-no-unknown`, `unit-no-unknown` | Better once value facts exist. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |

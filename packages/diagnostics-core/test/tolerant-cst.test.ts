@@ -88,4 +88,27 @@ describe('collectTolerantDiagnostics', () => {
       message: 'Duplicate keyframe selector \'0%\''
     });
   });
+
+  it('reports duplicate font families and missing generic family keywords', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { font-family: Inter, "Open Sans", inter; }\n.b { font-family: Arial, sans-serif; }\n.c { font: 12px/16px Arial; }',
+      language: 'css'
+    });
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.fontFamilyDuplicateNames);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.fontFamilyMissingGeneric);
+    expect(result.diagnostics.find(diagnostic => diagnostic.code === LINT_CODES.fontFamilyDuplicateNames)).toMatchObject({
+      message: 'Duplicate font family \'inter\''
+    });
+    expect(result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.fontFamilyMissingGeneric)).toHaveLength(2);
+  });
+
+  it('does not report missing generic font families for CSS-wide, dynamic, or @font-face values', () => {
+    const result = collectTolerantDiagnostics({
+      source: '@font-face { font-family: Headline; src: url(headline.woff2); }\n.a { font-family: inherit; }\n.b { font-family: var(--family); }\n.c { font-family: $family; }',
+      language: 'css'
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.fontFamilyMissingGeneric)).toBe(false);
+  });
 });

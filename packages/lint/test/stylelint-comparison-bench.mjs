@@ -31,7 +31,9 @@ const STYLELINT_RULES = {
   'length-zero-no-unit': true,
   'custom-property-no-missing-var-function': true,
   'keyframe-block-no-duplicate-selectors': true,
-  'keyframe-declaration-no-important': true
+  'keyframe-declaration-no-important': true,
+  'font-family-no-duplicate-names': true,
+  'font-family-no-missing-generic-family-keyword': true
 };
 
 const STYLELINT_LESS_RULES = {
