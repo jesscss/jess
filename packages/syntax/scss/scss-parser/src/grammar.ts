@@ -1085,7 +1085,6 @@ const scssGenericAtRuleName = regex(/@(?!(?:use|forward|import|mixin|include|fun
 
 export const scssFactory = (g: ScssInputRules) => {
   const caseInsensitive = makeWhen({ caseInsensitive: true });
-  const atRuleKeyword = token(noTrivia(g.RoutedAtRuleKeyword));
 
   /*
    * CSS owns the ordinary property identifier. SCSS adds only the legacy `*`
@@ -2487,7 +2486,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * sequence below, not this prefix-only module family.
    */
   const ModuleDirective = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     caseInsensitive('@use', UseRule),
     caseInsensitive('@forward', ForwardRule)
   );
@@ -3760,7 +3759,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * function body accepts control directives but not a nested function/mixin.
    */
   const SassDirective = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     caseInsensitive('@include', g.MixinCallRule),
     caseInsensitive('@mixin', g.MixinDefinitionRule),
     caseInsensitive('@function', g.FunctionRule),
@@ -3770,7 +3769,7 @@ export const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('@at-root', AtRootContinuation)
   );
   const SassNestedDirective = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     caseInsensitive('@include', g.MixinCallRule),
     caseInsensitive('@mixin', g.MixinDefinitionRule),
     caseInsensitive('@if', g.IfRule),
@@ -3779,7 +3778,7 @@ export const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('@at-root', AtRootContinuation)
   );
   const SassControlDirective = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     caseInsensitive('@if', g.IfRule),
     caseInsensitive('@each', g.EachRule),
     caseInsensitive('@for', g.ForRule)

@@ -127,7 +127,7 @@ type GrammarRuleName =
   | 'QueryFunctionOpen'
   | 'QueryNot'
   | 'QueryOnly'
-  | 'RoutedAtRuleKeyword'
+  | 'AtRuleKeyword'
   | 'ScopeAtKeyword'
   | 'SelectorArgumentPseudoSelectorName'
   | 'SingleQuotedText'
@@ -2069,7 +2069,6 @@ export const cssFactory = (g: GrammarSelf) => {
     regex(/[0-9]/),
     regex(/[ \t\n\r\f]/)
   ));
-  const atRuleKeyword = token(noTrivia(g.RoutedAtRuleKeyword));
   const identOrFunction = token(noTrivia(
     sequence(
       genericIdentifier,
@@ -3395,7 +3394,7 @@ export const cssFactory = (g: GrammarSelf) => {
     '@-ms-keyframes'
   ];
   const StylesheetAtRule = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     cssCase(
       '@layer',
       choice(
@@ -3466,7 +3465,7 @@ export const cssFactory = (g: GrammarSelf) => {
     ))
   );
   const DeclarationListAtRule = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     cssCase(
       '@layer',
       choice(
@@ -3537,7 +3536,7 @@ export const cssFactory = (g: GrammarSelf) => {
     ))
   );
   const ConditionalGroupAtRule = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     cssCase(
       '@layer',
       RoutedLayerBlock

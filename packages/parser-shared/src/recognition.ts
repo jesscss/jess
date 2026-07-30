@@ -214,7 +214,7 @@ const genericAtRuleName = regex(/@(?!(?:import|media|container|supports|starting
  * conditional groups have already been handled. Keep this as one shared leaf:
  * splitting it into same-`@` keyword choices only adds pre-dispatch fan-out.
  */
-const routedAtRuleKeyword = regex(/@(?:(?:starting-style|font-feature-values|font-face|counter-style|color-profile|font-palette-values|position-try|view-transition|property|page|scope|layer|-moz-document|document)(?=[^-_0-9A-Za-z]|$)|(?:-[a-z]+-)?keyframes(?![-\w])|(?!(?:import|media|container|supports)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)/i);
+const atRuleKeyword = token(noTrivia(regex(/@(?:(?:starting-style|font-feature-values|font-face|counter-style|color-profile|font-palette-values|position-try|view-transition|property|page|scope|layer|-moz-document|document)(?=[^-_0-9A-Za-z]|$)|(?:-[a-z]+-)?keyframes(?![-\w])|(?!(?:import|media|container|supports)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)/i)));
 
 /*
  * Preserve the public CSS grammar's legacy ASCII boundary. In particular,
@@ -457,7 +457,7 @@ export const cssSyntax = rules(_g => ({
   KeyframesAtKeyword: keyframesAtKeyword,
   StatementAtRuleName: statementAtRuleName,
   GenericAtRuleName: genericAtRuleName,
-  RoutedAtRuleKeyword: routedAtRuleKeyword,
+  AtRuleKeyword: atRuleKeyword,
   FontFeatureValuesAtKeyword: fontFeatureValuesAtKeyword,
   FontFeatureValueAtKeyword: fontFeatureValueAtKeyword,
   NumberToken: number,
