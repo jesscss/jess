@@ -241,18 +241,7 @@ function braceDepthBefore(text: string, offset: number): number {
   return depth;
 }
 
-/*
- * Conditional-group at-rules whose body may hold nested at-rules AND style rules,
- * so at-rules valid at stylesheet root stay valid inside them (`@font-face` inside
- * `@media` is fine; `@font-face` inside `.a { … }` is not).
- */
-const NESTABLE_GROUP_AT = /@(?:media|supports|container|layer|scope|document|-moz-document)\b/i;
-
-/** Is the block enclosing `offset` a STYLE-RULE body (`selector { … }`) rather than
- * the stylesheet root or a conditional-group at-rule body (`@media { … }`)? Used to
- * hide top-level-only at-rules (`@import`, `@font-face`, …) inside style rules. */
-function enclosingBlockIsStyleRule(text: string, offset: number): boolean {
-  // Walk back to the nearest unclosed `{`.
+function enclosingBlockHeader(text: string, offset: number): string | null {
   let depth = 0;
   let openAt = -1;
   for (let i = Math.min(offset, text.length) - 1; i >= 0; i--) {
@@ -268,10 +257,9 @@ function enclosingBlockIsStyleRule(text: string, offset: number): boolean {
     }
   }
   if (openAt < 0) {
-    return false; // stylesheet root
+    return null;
   }
 
-  // The block's header runs back to the previous `{` / `}` / `;`.
   let start = openAt - 1;
   while (start >= 0) {
     const ch = text.charCodeAt(start);
@@ -280,7 +268,33 @@ function enclosingBlockIsStyleRule(text: string, offset: number): boolean {
     }
     start--;
   }
-  const prelude = text.slice(start + 1, openAt);
+  return text.slice(start + 1, openAt).trim();
+}
+
+function enclosingAtRuleName(text: string, offset: number): string | null {
+  const header = enclosingBlockHeader(text, offset);
+  const match = header === null ? null : /^@[-\w]+/i.exec(header);
+  if (match === null) {
+    return null;
+  }
+  return lowerAtRuleName(match[0]);
+}
+
+/*
+ * Conditional-group at-rules whose body may hold nested at-rules AND style rules,
+ * so at-rules valid at stylesheet root stay valid inside them (`@font-face` inside
+ * `@media` is fine; `@font-face` inside `.a { … }` is not).
+ */
+const NESTABLE_GROUP_AT = /@(?:media|supports|container|layer|scope|document|-moz-document)\b/i;
+
+/** Is the block enclosing `offset` a STYLE-RULE body (`selector { … }`) rather than
+ * the stylesheet root or a conditional-group at-rule body (`@media { … }`)? Used to
+ * hide top-level-only at-rules (`@import`, `@font-face`, …) inside style rules. */
+function enclosingBlockIsStyleRule(text: string, offset: number): boolean {
+  const prelude = enclosingBlockHeader(text, offset);
+  if (prelude === null) {
+    return false; // stylesheet root
+  }
   return !NESTABLE_GROUP_AT.test(prelude);
 }
 
@@ -411,7 +425,7 @@ type MdnRef = { name: string; url: string };
 type Baseline = { status?: 'high' | 'low' | false; baseline_low_date?: string; baseline_high_date?: string };
 type Enrich = { syntax?: string; references?: MdnRef[]; baseline?: Baseline; browsers?: readonly string[] };
 type AtDirectiveEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
-type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; status?: string; values?: Array<{ name: string; description?: string | { value: string; kind?: string } } & Enrich>; restrictions?: string[] } & Enrich;
+type PropertyEntry = { name: string; atRule?: string; description?: string | { value: string; kind?: string }; status?: string; values?: Array<{ name: string; description?: string | { value: string; kind?: string } } & Enrich>; restrictions?: string[] } & Enrich;
 type PseudoEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
 type HoverEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
 type CompletionInfo = Pick<CompletionItem, 'detail' | 'documentation'>;
@@ -471,6 +485,7 @@ const CSS_PROPERTY_SET = new Set<string>(CSS_PROPERTIES.map(p => p.toLowerCase()
 // Build property name -> property data map for hover/completions.
 const PROPERTIES_MAP = new Map<string, PropertyEntry>();
 const PROPERTY_VALUE_ENTRIES = new Map<string, NonNullable<PropertyEntry['values']>>();
+const AT_RULE_DESCRIPTOR_ENTRIES = new Map<string, PropertyEntry[]>();
 
 /*
  * `restrictions` is the value-KIND hint (color/length/timing-function/…) that
@@ -481,6 +496,12 @@ for (const prop of webCssData.properties ?? []) {
   if (prop.name) {
     const key = prop.name.toLowerCase();
     PROPERTIES_MAP.set(key, prop);
+    if (prop.atRule) {
+      const atRuleKey = lowerAtRuleName(prop.atRule);
+      const entries = AT_RULE_DESCRIPTOR_ENTRIES.get(atRuleKey) ?? [];
+      entries.push(prop);
+      AT_RULE_DESCRIPTOR_ENTRIES.set(atRuleKey, entries);
+    }
     if (prop.values) {
       const values = prop.values.filter(v => Boolean(v.name));
       PROPERTY_VALUE_ENTRIES.set(key, values);
@@ -621,6 +642,18 @@ function languageCompletionInfo(label: string, detail: string, language: string,
   };
 }
 
+function descriptorCompletionInfo(entry: PropertyEntry, atRuleName: string): CompletionInfo {
+  const detail = `CSS ${atRuleName} descriptor`;
+  const desc = descriptionText(entry);
+  return {
+    detail,
+    documentation: {
+      kind: MarkupKind.Markdown,
+      value: `\`\`\`css\n${entry.name}:\n\`\`\`\n**${detail}**${desc ? `\n\n${desc}` : ''}${hoverExtras(entry)}`
+    }
+  };
+}
+
 function languageLabel(lang: JessLang): string {
   return lang === 'scss' ? 'SCSS' : lang === 'less' ? 'Less' : lang === 'jess' ? 'Jess' : 'CSS';
 }
@@ -658,6 +691,7 @@ const COLOR_FUNCTION_NAMES = new Set(COLOR_FUNCTIONS.map(name => name.slice(0, -
 // @media prelude vocabulary (feature names + types + logical operators).
 const MEDIA_FEATURES = ['width', 'min-width', 'max-width', 'height', 'min-height', 'max-height', 'aspect-ratio', 'orientation', 'resolution', 'min-resolution', 'max-resolution', 'prefers-color-scheme', 'prefers-reduced-motion', 'prefers-contrast', 'hover', 'any-hover', 'pointer', 'any-pointer', 'display-mode', 'color', 'color-gamut', 'forced-colors', 'scripting'];
 const MEDIA_PRELUDE = [...MEDIA_FEATURES, 'screen', 'print', 'all', 'speech', 'and', 'or', 'not', 'only'];
+const SUPPORTS_PRELUDE = ['and', 'or', 'not', 'selector()', 'font-tech()', 'font-format()'];
 
 // Built-in Sass modules (scss/jess) and their members — for `math.<x>` completions.
 const SASS_MODULES: Record<string, string[]> = {
@@ -764,7 +798,79 @@ function buildValueCompletions(propName: string, prefix: string, replaceRange: R
     add(k, CompletionItemKind.Keyword, markdownCompletionInfo('CSS-wide keyword', k, 'Applies a global cascade keyword to this property.'));
   }
   add('var()', CompletionItemKind.Function, markdownCompletionInfo('CSS function', 'var()', 'References a custom property, with an optional fallback value.'));
+  add('env()', CompletionItemKind.Function, markdownCompletionInfo('CSS function', 'env()', 'References a user-agent-defined environment variable, with an optional fallback value.'));
   add('calc()', CompletionItemKind.Function, markdownCompletionInfo('CSS function', 'calc()', 'Computes a numeric CSS value from an expression.'));
+  return items;
+}
+
+function buildDescriptorCompletions(
+  atRuleName: string,
+  prefix: string,
+  replaceRange: Range,
+  customEntries: readonly PropertyEntry[]
+): CompletionItem[] {
+  const entries = [...(AT_RULE_DESCRIPTOR_ENTRIES.get(atRuleName) ?? []), ...customEntries];
+  const seen = new Set<string>();
+  const items: CompletionItem[] = [];
+  for (const entry of entries) {
+    const label = entry.name;
+    const lower = label.toLowerCase();
+    if (seen.has(lower) || (prefix && !lower.startsWith(prefix))) {
+      continue;
+    }
+    seen.add(lower);
+    const info = descriptorCompletionInfo(entry, atRuleName);
+    items.push({
+      label,
+      kind: CompletionItemKind.Property,
+      detail: info.detail,
+      documentation: info.documentation,
+      textEdit: TextEdit.replace(replaceRange, label)
+    });
+  }
+  return items;
+}
+
+function buildSupportsPreludeCompletions(prefix: string, replaceRange: Range): CompletionItem[] {
+  const items: CompletionItem[] = [];
+  const seen = new Set<string>();
+  const add = (label: string, kind: CompletionItemKind, info: CompletionInfo) => {
+    const lower = label.toLowerCase();
+    if (seen.has(lower) || (prefix && !lower.startsWith(prefix))) {
+      return;
+    }
+    seen.add(lower);
+    const item: CompletionItem = {
+      label,
+      kind,
+      detail: info.detail,
+      documentation: info.documentation,
+      textEdit: TextEdit.replace(replaceRange, label)
+    };
+    if (label.endsWith('()')) {
+      item.textEdit = TextEdit.replace(replaceRange, `${label.slice(0, -1)}$1)`);
+      item.insertTextFormat = InsertTextFormat.Snippet;
+    }
+    items.push(item);
+  };
+
+  for (const property of CSS_PROPERTIES) {
+    const entry = PROPERTIES_MAP.get(property.toLowerCase());
+    add(
+      property,
+      CompletionItemKind.Property,
+      entry === undefined
+        ? markdownCompletionInfo('CSS property', property, 'A CSS property usable in an `@supports` declaration condition.')
+        : cssCompletionInfo(entry, 'property')
+    );
+  }
+  for (const keyword of SUPPORTS_PRELUDE) {
+    add(keyword, keyword.endsWith('()') ? CompletionItemKind.Function : CompletionItemKind.Keyword, markdownCompletionInfo(
+      keyword.endsWith('()') ? 'CSS supports function' : 'CSS supports keyword',
+      keyword,
+      'Allowed inside an `@supports` condition.'
+    ));
+  }
   return items;
 }
 
@@ -1917,6 +2023,21 @@ export function createEngine(): JessLanguageServiceEngine {
         }
       }
 
+      // 2c0) @supports prelude: declaration condition names/values + logical helpers.
+      if (/@supports\b[^{}]*$/i.test(before)) {
+        const propName = findPropertyNameBeforeColon(text, offset);
+        if (propName !== null) {
+          const valueItems = buildValueCompletions(propName, prefix, replaceRange);
+          if (valueItems.length > 0) {
+            return { isIncomplete: false, items: valueItems };
+          }
+        }
+        const supportsItems = buildSupportsPreludeCompletions(prefix, replaceRange);
+        if (supportsItems.length > 0) {
+          return { isIncomplete: false, items: supportsItems };
+        }
+      }
+
       // 2c) @media prelude: feature names / media types / logical operators.
       if (/@media\b[^{}]*$/.test(before)) {
         for (const f of MEDIA_PRELUDE) {
@@ -2029,7 +2150,19 @@ export function createEngine(): JessLanguageServiceEngine {
           }
         }
 
-        // 6) Property names (inside a block).
+        // 6) At-rule descriptor names (inside descriptor blocks).
+        const descriptorAtRule = tracked.lang === 'css' ? enclosingAtRuleName(text, offset) : null;
+        if (descriptorAtRule !== null) {
+          const customDescriptors = customProperties().filter(property => property.atRule !== undefined && lowerAtRuleName(property.atRule) === descriptorAtRule);
+          if (AT_RULE_DESCRIPTOR_ENTRIES.has(descriptorAtRule) || customDescriptors.length > 0) {
+            const descriptorItems = buildDescriptorCompletions(descriptorAtRule, prefix, replaceRange, customDescriptors);
+            if (descriptorItems.length > 0) {
+              return { isIncomplete: false, items: descriptorItems };
+            }
+          }
+        }
+
+        // 7) Property names (inside a block).
         let depth = 0;
         for (let i = 0; i < Math.min(offset, text.length); i++) {
           const ch = text.charCodeAt(i);

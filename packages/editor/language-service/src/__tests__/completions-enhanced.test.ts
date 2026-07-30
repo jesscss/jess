@@ -32,6 +32,7 @@ describe('enhanced completions (MS-parity: values / pseudo / mixin / !important)
     const labels = completeAt('css', '.a { width: | }');
     expect(labels).toContain('inherit');
     expect(labels).toContain('var()');
+    expect(labels).toContain('env()');
   });
 
   it('!important is offered at the end of a value', () => {
@@ -147,6 +148,44 @@ describe('enhanced completions (MS-parity: values / pseudo / mixin / !important)
   it('@media prelude completes feature names + types + operators', () => {
     const labels = completeAt('css', '@media (min-w|');
     expect(labels).toContain('min-width');
+  });
+
+  it('@supports prelude completes properties, values, and condition helpers', () => {
+    const property = completeItemsAt('css', '@supports (disp|)')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'display');
+    expect(property?.detail).toBe('CSS property');
+
+    const value = completeItemsAt('css', '@supports (display: gr|)')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'grid');
+    expect(value?.detail).toBe('CSS value');
+
+    const selector = completeItemsAt('css', '@supports sel|')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'selector()');
+    expect(selector?.detail).toBe('CSS supports function');
+    expect(selector?.insertTextFormat).toBe(InsertTextFormat.Snippet);
+  });
+
+  it('descriptor blocks complete descriptor names and values from CSS metadata', () => {
+    const fontFaceDescriptor = completeItemsAt('css', '@font-face { fo| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'font-display');
+    expect(fontFaceDescriptor?.detail).toBe('CSS @font-face descriptor');
+    expect(JSON.stringify(fontFaceDescriptor?.documentation)).toContain('font-display:');
+
+    const fontFaceValue = completeItemsAt('css', '@font-face { font-display: sw| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'swap');
+    expect(fontFaceValue?.detail).toBe('CSS value');
+
+    const propertyDescriptor = completeItemsAt('css', '@property --brand { inh| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'inherits');
+    expect(propertyDescriptor?.detail).toBe('CSS @property descriptor');
+
+    const counterDescriptor = completeItemsAt('css', '@counter-style thumbs { sys| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'system');
+    expect(counterDescriptor?.detail).toBe('CSS @counter-style descriptor');
+
+    const pageDescriptor = completeItemsAt('css', '@page { siz| }')
+      .find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'size');
+    expect(pageDescriptor?.detail).toBe('CSS @page descriptor');
   });
 
   it('@keyframes body completes from / to', () => {
