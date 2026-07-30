@@ -42,6 +42,26 @@
 These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
 Delete a row the moment it lands or is abandoned.
 
+### 2026-07-30 update — lint/diagnostics wrap-up for dev
+
+The dedicated lint package and shared diagnostics lane are active but not a core
+eval/render blocker. The canonical tracker is
+[`../lint-roadmap.md`](../lint-roadmap.md). Current stable work from the
+`codex/ast-v2-dx-fns` worktree is ready to be on `dev`: CSS CST selector atom
+classification/tag surfacing (`d7e3f19a0`) plus shared `@supports`
+declaration-condition diagnostics (`30b70b21b`). The latter reuses
+`lint/unknown-property` and `lint/unknown-property-value` through
+diagnostics-core, `@jesscss/lint`, and the language service; it also separates
+`@media` feature diagnostics from nested `@supports` declaration diagnostics.
+
+Verification run before this wrap-up: diagnostics-core tolerant CST focused
+test, lint package index test, language-service engine focused test,
+diagnostics-core/lint/language-service builds, `verify:diagnostic-cold-path`,
+`verify:package-exports`, and `git diff --check`. No new parser grammar changes
+or normal parse/eval/render hooks were added for the diagnostics batch. Next
+diagnostic work should continue from the lint roadmap and avoid evaluator-backed
+Less/Sass facts until the semantic facts layer exists.
+
 ### 2026-07-27 update — grammar fold complete; Less alpha guard green on parseman 0.41.0
 
 The four parser dialects now ship from one host-mode `src/grammar.ts` each; the
