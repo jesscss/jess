@@ -1555,7 +1555,7 @@ describe('lintText', () => {
 
   it('keeps unused variables opt-in until project symbol facts exist', async () => {
     const input = {
-      source: '$used: red; $unused: blue; .a { color: $used; }',
+      source: '$used: red; $public: white !default; $unused: blue; .a { color: $used; }',
       filePath: '/tmp/input.scss'
     };
 
@@ -1573,8 +1573,8 @@ describe('lintText', () => {
         }
       }
     });
-    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
-      [LINT_CODES.unusedVariables, 'warning']
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.message, diagnostic.severity])).toEqual([
+      [LINT_CODES.unusedVariables, 'Unused variable "$unused"', 'warning']
     ]);
   });
 

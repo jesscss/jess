@@ -198,8 +198,11 @@ custom formatters. Jess should not clone that whole surface.
 Jess should use Stylelint as a feature guide and migration reference:
 
 - choose high-value rules with native Jess facts;
-- use Stylelint rule names when the behavior is genuinely equivalent;
-- document near matches honestly;
+- use Stylelint rule names for migration-familiar lint configuration when the
+  intent is recognizable;
+- keep Jess diagnostic codes as the shared problem identity for diagnostics-core
+  and the language service;
+- document equivalence, near matches, and VSCode-data-backed subsets honestly;
 - do not depend on Stylelint, PostCSS, rendered CSS, or a Jess-to-PostCSS
   adapter for native detection.
 
@@ -317,7 +320,7 @@ Stylelint.
 
 | Rule | Default | Required facts | What it catches |
 | --- | --- | --- | --- |
-| `jess/no-unused-variable` | off, then warn when project facts land | Symbol refs | Initial opt-in same-file variable check landed; full token analysis still needs export/reference/import exceptions. |
+| `jess/no-unused-variable` | off, then warn when project facts land | Symbol refs | Initial opt-in same-file variable check landed and suppresses SCSS `!default` configuration variables; full token analysis still needs export/reference/import exceptions. |
 | `jess/no-unused-mixin` | off, then warn when project facts land | Callable refs | Initial opt-in same-file Less/SCSS/Jess mixin check landed; suppresses files with imports/modules/plugins and still needs project export/reference/import facts. |
 | `jess/no-unused-function` | off, then warn when project facts land | Callable refs | Initial opt-in same-file SCSS `@function` and Jess yielding function-value check landed; suppresses files with imports/modules/plugins and still needs project export/reference/import facts. |
 | `jess/no-shadowed-token` | off | Scope facts | Initial opt-in same-file nested variable shadowing diagnostic landed; imported/exported token shadowing still needs module graph facts. |

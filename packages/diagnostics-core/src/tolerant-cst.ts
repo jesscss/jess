@@ -562,6 +562,7 @@ type VariableDeclarationFact = {
   readonly name: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
+  readonly configurable: boolean;
 };
 
 type MixinDefinitionFact = {
@@ -3050,7 +3051,8 @@ function variableDeclarationOf(source: string, node: CssCstNode, language: JessL
   return {
     name: normalizedVariableName(authored.name, language),
     display: authored.name,
-    span: nameNode !== undefined ? nameNode.span : spanFromNodeStart(node, authored.start, authored.end)
+    span: nameNode !== undefined ? nameNode.span : spanFromNodeStart(node, authored.start, authored.end),
+    configurable: language === 'scss' && directLeafValues(node).includes('!default')
   };
 }
 
@@ -5970,7 +5972,7 @@ export function cstLintDiagnostics(
 
   if (language !== 'css') {
     for (const declaration of variableDeclarations) {
-      if (!functionDefinitionNames.has(declaration.name) && !variableReferences.has(declaration.name)) {
+      if (!declaration.configurable && !functionDefinitionNames.has(declaration.name) && !variableReferences.has(declaration.name)) {
         push(
           LINT_CODES.unusedVariables,
           'warning',

@@ -483,6 +483,17 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('does not report SCSS !default variables as unused locals', () => {
+    const source = '$brand: red !default;\n$local: blue;\n.a { color: white; }';
+    const result = collectTolerantDiagnostics({ source, language: 'scss' });
+
+    expect(result.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedVariables)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused variable "$local"', source.indexOf('$local'), source.indexOf('$local') + '$local'.length]
+    ]);
+  });
+
   it('reports same-file shadowed variables in nested dialect scopes', () => {
     const less = '@tone: red; .theme { @tone: blue; color: @tone; } .root { color: @tone; }';
     const scss = '$tone: red; .theme { $tone: blue; color: $tone; } .root { color: $tone; }';
