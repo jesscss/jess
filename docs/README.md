@@ -24,8 +24,13 @@ Start here:
 - [`perf/V8-ARCHITECTURE.md`](./perf/V8-ARCHITECTURE.md) — the 9 hot-path
   invariants and the regression-fixture catalogue.
 - [`architecture/parser/GRAMMAR-REVIEW-STANDARD.md`](./architecture/parser/GRAMMAR-REVIEW-STANDARD.md)
-  — the standing brief for the eight grammar files: the per-`const` checklist,
-  the hard constraints, and the definition of done.
+  — the standing brief for the four grammar files (one host-mode `src/grammar.ts`
+  per dialect since the eight-to-four fold): the per-`const` checklist, the hard
+  constraints, and the definition of done. `HANDOFF.md`'s grammar-cleanup Router
+  covers the rest of `architecture/parser/`.
+- [`architecture/core/README.md`](./architecture/core/README.md) — index of the
+  62 files in `architecture/core/`, classified by last-touched date and inbound
+  references, with the archive candidates named.
 
 The one rule that keeps this directory useful: **a document that describes
 machinery the repo does not have belongs in `design/` or in git history, never in

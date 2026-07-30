@@ -214,9 +214,10 @@ Less/Sass facts until the semantic facts layer exists.
 ### 2026-07-27 update — grammar fold complete; Less alpha guard green on parseman 0.41.0
 
 The four parser dialects now ship from one host-mode `src/grammar.ts` each; the
-old `src/ast/grammar.ts` files are deleted. The active grammar/parser floor is
-registry `parseman@0.41.0`, resolved through `^0.41.0` ranges in the root,
-`@jesscss/parser-shared`, and the four parser packages. Current evidence:
+old `src/ast/grammar.ts` files are deleted. The grammar/parser floor was registry
+`parseman@0.41.0` on this date, resolved through `^0.41.0` ranges in the root,
+`@jesscss/parser-shared`, and the four parser packages. **It has since moved: the floor at
+`991b315e0` is `^0.43.0` in all 10 declarations.** Evidence as of 2026-07-27:
 dependency-order parser/plugin/jess builds pass, `pnpm run check:macro` and
 `pnpm run verify:compose-integrity` pass with 0 interpreter fallbacks, `pnpm run
 verify:less-alpha` passes, `all-less.test.ts` is 108 / 108, and
@@ -334,7 +335,9 @@ tree or a named commit on this pass; a row with no evidence pointer was deleted 
 carried forward. Rows marked *unverified* state the date they were last known true.
 
 **Process mandate:** every item is fixed via an adversarially-reviewed DESIGN change —
-reviewed against `INVARIANTS.md`, the extend design, and the "parser owns structure"
+reviewed against [`../../perf/V8-ARCHITECTURE.md`](../../perf/V8-ARCHITECTURE.md) (the canonical
+9 invariants; this row previously cited an `INVARIANTS.md` that does not exist in the repo),
+the extend design, and the "parser owns structure"
 keystone — BEFORE implementation. The review must score *structure, dispatch cost,
 tree-walks, byte-re-derivation, duplication*, and "did this ignore an existing tuned
 engine/design doc?" Those dimensions were added because the earlier correctness +
@@ -351,12 +354,12 @@ byte-identity + minimal-diff gates let all of P1 through.
 
 ### P1 — EVAL/RENDER (see [[eval-render-perf-roadmap]])
 
-- [ ] **1. `selectorAtoms` regex round-trip — STILL OPEN.** Verified 2026-07-24:
-      `packages/core/src/ast/serialize.ts:1268` still serializes a *structured* compound to
-      text and regex-tokenizes it back into atoms, un-memoized, at six call sites
-      (`:1287/1291/1303/1307/1345/1379`). `packages/core/src/tree/extend/spine-extend.ts:1241`
-      carries the legacy twin. Direct "parser owns structure" violation; read atoms off the
-      parsed node.
+- [ ] **1. `selectorAtoms` regex round-trip — STILL OPEN.** Re-verified 2026-07-30 on
+      `991b315e0`: `packages/core/src/ast/serialize.ts:1511` still serializes a *structured*
+      compound to text and regex-tokenizes it back into atoms, un-memoized, at five call sites
+      (`:1605/1617/1621/1659/1697`). `packages/core/src/tree/extend/spine-extend.ts:1330`
+      carries the legacy twin (called at `:1400/1444/1452`). Direct "parser owns structure"
+      violation; read atoms off the parsed node. Full row in OPEN DEFECTS (P1.1) below.
 - [x] **2. `documentHasExtend` full-tree walk — symbol is gone from `packages/core/src`**
       (verified 2026-07-24 by workspace grep). Whether a parse-time flag replaced it, or the
       detection simply moved, is *unverified*.
@@ -403,43 +406,60 @@ Root cause: the scannerless port re-expanded the Chevrotain 7-arm grouped `rule`
       remove `[...spread]` in hot reducers, single-value fast paths.
 - [x] **First-set gating swept all four parsers** (2026-07-23 perf run, ~30 commits from
       `3aa12414d` to `44eb1237f`), and `5cc69d791` retired the local first-set regex copies
-      once parseman `0.32.0` gated them natively. Workspace is on parseman `0.32.0`
-      (`3b9e5a237`; re-verified 2026-07-24 in `packages/*/package.json`). The `0.34.0` bump is
-      in flight — see WORK IN FLIGHT. **Version-lock invariant: compiled parser artifacts must
-      never cross parseman versions**; regenerate every one in the same change as the bump.
+      once parseman `0.32.0` gated them natively. **Current floor is `^0.43.0`**, declared in
+      10 places — the root `package.json:39`, `packages/parser-shared/package.json:31`, and the
+      four `packages/syntax/*/​*-parser/package.json` (re-verified 2026-07-30 on `991b315e0`;
+      the `0.32.0` / "`0.34.0` bump in flight" text here was two floors out of date). Parseman
+      0.44 is cut but unpublished — see the 2026-07-30 handoff at the top.
+      **Version-lock invariant: compiled parser artifacts must never cross parseman versions**;
+      regenerate every one in the same change as the bump.
 
-### OPEN DEFECTS — each row is directly actionable (verified 2026-07-24 on `e34bb24b3`)
+### OPEN DEFECTS — each row is directly actionable (re-verified 2026-07-30 on `991b315e0`)
 
 Durable code defects, as distinct from the transient test reds in
-`docs/state/PROJECT_STATE.md`. Every file:line below was re-checked on this pass. Delete a row
-when it goes green; do not let one rot into folklore.
+`docs/state/PROJECT_STATE.md`. Delete a row when it goes green; do not let one rot into
+folklore.
 
-- **Arity checking is dead on the evaluator route.** `packages/core/src/ast/value-dispatch.ts:212`
-  builds the positional argument array with `definition.params.map(...)`, so any input beyond
-  the declared parameter count is silently dropped before `bindDirect` ever sees it. The
-  `too many arguments` throw at `:171` therefore cannot fire from an evaluator call:
+**Line numbers rot faster than the defects do.** On the 2026-07-30 pass *every* file:line
+here from the 2026-07-24 `e34bb24b3` pass had drifted, one row pointed at a file that had
+since been split into another package, and one row was already fixed. Anchor a row on the
+symbol name and re-locate it with `grep`; treat the line number as a hint with a date on it.
+
+- **Arity checking is dead on the evaluator route.** `packages/core/src/ast/value-dispatch.ts`
+  builds the positional argument array with `definition.params.map(...)` (`:262`), so any input
+  beyond the declared parameter count is silently dropped before `bindDirect` ever sees it. The
+  `too many arguments` throw (`:210`) therefore cannot fire from an evaluator call:
   `length(a,b,c)` returns `1` instead of an arity error. Affects every fn in every dialect.
-- **P1.1 — serialize-then-reparse of structure.** `packages/core/src/ast/serialize.ts:1268`
-  (`selectorAtoms`) serializes a structured compound to text and regex-tokenizes it back,
-  un-memoized, at six call sites. Direct "parser owns structure" (C2) violation. The legacy
-  twin lives at `packages/core/src/tree/extend/spine-extend.ts:1241`.
+- **P1.1 — serialize-then-reparse of structure.** `packages/core/src/ast/serialize.ts`
+  `selectorAtoms` (`:1511`) serializes a structured compound to text and regex-tokenizes it
+  back, un-memoized, at five call sites (`:1605/1617/1621/1659/1697`). Direct "parser owns
+  structure" (C2) violation. The legacy twin is `selectorAtoms` in
+  `packages/core/src/tree/extend/spine-extend.ts` (`:1330`, called at `:1400/1444/1452`).
+  *(The 2026-07-24 row said "six call sites" on the ast/ side; it is five at `991b315e0`.
+  Whether one was removed or the count was wrong is unverified.)*
 - **Extend bitset fast-reject never landed.** `packages/core/src/ast/extend/` contains
-  `compose/conflict/emit/ir/match/plan/solve` and no bitset of any spelling.
+  `compose/conflict/emit/ir/match/plan/solve` and no bitset of any spelling. *(Re-confirmed
+  2026-07-30: a case-insensitive `bitset` grep over that directory returns nothing.)*
 - **`jess-parser` still text-joins selector-bearing pseudo arguments.** The
   folded grammar still has `staticSelectorText`
-  (`packages/syntax/jess/jess-parser/src/grammar.ts:394`, used by nth-`of` and
-  generic pseudo arguments). This is the remaining gap to always-structured
+  (`packages/syntax/jess/jess-parser/src/grammar.ts:385`, used by nth-`of` at `:2585` and
+  generic pseudo arguments at `:2715`). This is the remaining gap to always-structured
   pseudo arguments.
-- **`literal-tag.ts:104`** applies the old 8-dp floor to un-operated SOURCE literals
-  (`dimensionFromFields` does `round(number, 8)` before the verbatim-spelling logic), so
-  `0.00000000123456789` denoises to `0`. Contradicts ruling V1.
-- **`packages/core/src/ast/color.ts` retains five `round(x, 8)` calls** at `:118` (alpha
-  percent), `:137` (`%` channels), `:149` (hue), `:150`/`:151` (S/L) — the last 8-dp holdouts.
+- ~~**`literal-tag.ts:104`** applies the old 8-dp floor to un-operated SOURCE literals.~~
+  **FIXED — and the row was already wrong when it was written.** `literal-tag.ts` contains no
+  `round` call at all; `dimensionFromFields` (`:115`) does no rounding, and the comment at
+  `:109-111` records the removal of exactly the denoising rewrite this row describes. The fix
+  landed in `f0f005a27` (2026-07-17), a week *before* the 2026-07-24 pass asserted it was
+  still open. Ruling V1 is satisfied here.
+- **`packages/core/src/ast/color.ts` retains five `round(x, 8)` calls** at `:122` (alpha
+  percent), `:141` (`%` channels), `:153` (hue), `:154`/`:155` (S/L) — the last 8-dp holdouts.
   (The coordinator's inventory said "4 sites"; it is 4 *concepts*, 5 calls.)
-- **`evalBytesInterp` never validates units.** `packages/core/src/ast/serialize.ts:3717`
-  has no `validateValueGroupUnits` call, while the ordinary value path calls it at `:3706`. A
-  unit error that is fatal in a declaration value is silently accepted inside an interpolation.
-  Undecided which way it should go — it deserves its own commit and an owner ruling.
+- **`evalBytesInterp` never validates units.** `evalBytesInterp`
+  (`packages/core/src/ast/serialize.ts:4642`) has no `validateValueGroupUnits` call, while the
+  ordinary value path calls it at `:4622`. A unit error that is fatal in a declaration value is
+  silently accepted inside an interpolation. Undecided which way it should go — it deserves its
+  own commit and an owner ruling. The divergence is now also documented in code at `:4638`,
+  which makes it a known-and-accepted state rather than an oversight; that does not settle it.
 - **`--x: foo(] bar`** (arbitrary token stream in a custom property) fails in all four parsers.
   That is the current limit of the shared-surface permissiveness ruling P2.
 - ~~**`packages/fns/src/less/index.ts:31` exports the wrong function.**~~ **FIXED** with the
@@ -456,15 +476,21 @@ when it goes green; do not let one rot into folklore.
   zero dormant value-domain fns (92 definitions on disk, 100 registered entries — the 8
   `shared/` fns register in both dialects).
 - **`extend-exact.less` flake is real cross-compile state contamination**, not test flakiness.
-  Two sharing channels: the per-`Compiler` plugin instance caches
-  (`packages/jess/src/index.ts:482-485`, plus the `jessPluginInstance` / `scssPluginInstance`
-  singletons at `:491`/`:492`) and the module-scope dialect evaluators registered by
-  `@jesscss/plugin-less` / `@jesscss/plugin-scss`. The evaluators hold only an immutable
-  dispatch table, so they carry no per-render state to leak; the plugin caches remain the
-  live suspect. Diagnostic: a fresh `Compiler`
-  per file isolates which channel. **Constraint on any fix:** a `Compiler` must stay reusable
-  across many files. "New Compiler each time" is not an acceptable fix, and neither is a
-  `reset()` that callers have to remember. A separate session is on this.
+  **This row's pointers moved packages.** `packages/jess/src/index.ts` is now 24 lines and only
+  subclasses `DefaultCompiler`; the plugin stack was extracted to `@jesscss/compiler-preset`
+  (rename `09bcc9b2e`), with the reusable render engine in `@jesscss/compiler`. The two sharing
+  channels at `991b315e0` are the per-stack plugin instance caches
+  (`packages/compiler-preset/src/index.ts:22-23` — `jessPluginInstance` / `scssPluginInstance`,
+  populated at `:39-42` / `:48-51`, plus `lessPluginResolver`) and the module-scope dialect
+  evaluators registered by `@jesscss/plugin-less` / `@jesscss/plugin-scss`. The evaluators hold
+  only an immutable dispatch table, so they carry no per-render state to leak; the plugin caches
+  remain the live suspect. Diagnostic: a fresh `Compiler` per file isolates which channel.
+  **Constraint on any fix:** a `Compiler` must stay reusable across many files. "New Compiler
+  each time" is not an acceptable fix, and neither is a `reset()` that callers have to remember.
+  Note that `DefaultCompilerStackImpl.dispose()` (`:64-76`) already clears both caches — whether
+  it is a fix, a partial fix, or exactly the remember-to-call-it shape the constraint rejects is
+  **unverified** and is an owner question, not an assumption to build on. A separate session is
+  on this.
 
 ### Parked / stale branches — do not merge as-is
 
@@ -555,7 +581,8 @@ Recorded so the next reader does not re-derive it from the log:
   CHANGE: `@plugin` values now travel the awaitable lane and a value reaching a position that
   cannot suspend fails loudly with `eval/async-in-sync-position`.
 - **Sass+ support matrix published** (`3202ff246`,
-  `packages/docs-content/docs/shared/04-guides/02-coming-from-sass/00-support-matrix.mdx`), and
+  `packages/docs/docs-content/docs/shared/04-guides/02-coming-from-sass/00-support-matrix.mdx`
+  — path updated for the `e96d1035d` packages regroup), and
   `c06dd4d7a` stopped advertising a `jess convert` command that does not exist.
 - **Bootstrap Sass corpus ratchet + SCSS construct inventory** (`bde2e982e`);
   **conversion construct-support inventory + equivalence-harness design** (`c028a7c76`,
@@ -864,6 +891,11 @@ flow.
 | The per-`const` grammar review checklist and the naming law (item 14) | [`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md) |
 | Patch-shape review | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) |
 | Owner semantic/architecture questions and rulings | [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md) — the canonical OPEN/SETTLED decision ledger |
+| Named benchmark-corpus AST failures | [`BENCHMARK-AST-FAILURE-INVENTORY.md`](./BENCHMARK-AST-FAILURE-INVENTORY.md) |
+| Non-engine surface carrying size/complexity cost | [`NON-ENGINE-BLOAT-INVENTORY.md`](./NON-ENGINE-BLOAT-INVENTORY.md) |
+| Lazy value materialization / memoization | [`VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md`](./VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md) |
+| Static-import preparation | [`STATIC-IMPORT-PREP-DESIGN.md`](./STATIC-IMPORT-PREP-DESIGN.md) |
+| **"What is this file in `architecture/core/` and does anyone still use it?"** | [`README.md`](./README.md) — the 62-file index, classified by last-touched and inbound references |
 
 ### Router — grammar cleanup (`docs/architecture/parser/`)
 
