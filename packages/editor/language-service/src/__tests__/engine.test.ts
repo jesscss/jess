@@ -803,6 +803,20 @@ describe('JessLanguageServiceEngine', () => {
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         expect(codesOf(engine, doc.uri)).not.toContain('lint/no-unknown-animations');
       });
+
+      it('surfaces duplicate module-load diagnostics by default and allows disable', () => {
+        const source = '@use "theme";\n@use "theme";';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-duplicate-module-load');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-duplicate-module-load', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-duplicate-module-load');
+      });
     });
 
     describe('duplicateProperties (lint/duplicate-property)', () => {

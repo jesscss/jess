@@ -779,6 +779,31 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('reports duplicate static module loads in SCSS and Jess', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '@use "theme";\n@use "theme" as tokens;\n@use "theme";\n@forward "shared";\n@forward "shared";',
+      language: 'scss'
+    });
+    const jess = collectTolerantDiagnostics({
+      source: '@-use "theme";\n@-use "theme" as tokens;\n@-use "theme";\n@-from "tokens" import color;\n@-from "tokens" import size;\n@-from "tokens" import color;\n@-compose "base" as base;\n@-compose "base" as base;',
+      language: 'jess'
+    });
+
+    expect(scss.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.duplicateModuleLoads)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Duplicate @use module load theme', 3, 1],
+      ['Duplicate @forward module load shared', 5, 1]
+    ]);
+    expect(jess.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.duplicateModuleLoads)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Duplicate @-use module load theme', 3, 1],
+      ['Duplicate @-from module load tokens', 6, 1],
+      ['Duplicate @-compose module load base', 8, 1]
+    ]);
+  });
+
   it('reports unknown units while accepting modern CSS units', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { width: 1pixels; height: 1e3px; min-width: 1e3foo; gap: 1cqi; flex: 1fr; rotate: 1turn; transition-duration: 1ms; }',

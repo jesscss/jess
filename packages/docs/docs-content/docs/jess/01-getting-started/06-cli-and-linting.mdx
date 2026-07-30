@@ -91,6 +91,7 @@ export default {
       'declaration-block-no-duplicate-properties': ['warn', { ignore: ['consecutive-duplicates'] }],
       'length-zero-no-unit': 'warn',
       'jess/no-unused-variable': 'off',
+      'jess/no-duplicate-module-load': 'warn',
       'jess/unsupported-sass-form': 'warn'
     }
   }
@@ -118,6 +119,7 @@ Jess's stable lint set is deliberately small:
 | `color-no-invalid-hex` | `lint/hex-color-length` | Invalid hex color lengths |
 | `length-zero-no-unit` | `lint/zero-units` | Zero length values that do not need a unit |
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Opt-in same-file unused Less, SCSS, and Jess variables |
+| `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Repeated same-file static SCSS/Jess module-load directives |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | SCSS forms Jess recognizes but does not support yet |
 
 The lint package owns policy and reporting. Detection lives in the shared Jess

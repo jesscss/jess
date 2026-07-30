@@ -40,6 +40,7 @@ export const LINT_CODES = {
   boxModel: 'lint/box-model',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
+  duplicateModuleLoads: 'lint/no-duplicate-module-load',
   unknownAnimations: 'lint/no-unknown-animations',
   unknownUnits: 'lint/unit-no-unknown',
   unknownFunctions: 'lint/function-no-unknown',
@@ -262,6 +263,8 @@ const KEYFRAMES_TYPES = new Set(['Keyframes']);
 const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
 const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
 const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule']);
+const MODULE_LOAD_TYPES = new Set(['UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport']);
+const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'PlainQuoted', 'ImportTarget', 'Url']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
@@ -400,6 +403,12 @@ type FontFamilyPart = {
 
 type ImportKey = {
   readonly key: string;
+  readonly target: string;
+};
+
+type ModuleLoadKey = {
+  readonly key: string;
+  readonly directive: string;
   readonly target: string;
 };
 
@@ -2807,6 +2816,55 @@ function normalizedImportKey(source: string, node: CssCstNode): ImportKey | null
   };
 }
 
+function normalizedModuleLoadKey(source: string, node: CssCstNode, language: JessLanguage): ModuleLoadKey | null {
+  if ((language !== 'scss' && language !== 'jess') || !MODULE_LOAD_TYPES.has(node.grammarType)) {
+    return null;
+  }
+  if (language === 'scss' && node.grammarType !== 'UseRule' && node.grammarType !== 'ForwardRule') {
+    return null;
+  }
+  if (language === 'jess' && node.grammarType !== 'ModuleImport' && node.grammarType !== 'StyleImport') {
+    return null;
+  }
+
+  const start = absoluteStart(node);
+  let end = absoluteEnd(node);
+  if (source.charCodeAt(end - 1) === 59 /* ; */) {
+    end--;
+  }
+  const nameEnd = atRuleNameEnd(source, start, end);
+  if (nameEnd <= start + 1) {
+    return null;
+  }
+  const targetNode = firstDescendantNodeMatching(node, STATIC_IMPORT_TARGET_TYPES);
+  if (targetNode === undefined) {
+    return null;
+  }
+  const targetStart = absoluteStart(targetNode);
+  const targetEnd = absoluteEnd(targetNode);
+  if (targetStart < nameEnd || targetEnd > end) {
+    return null;
+  }
+  const rawTarget = source.slice(targetStart, targetEnd);
+  const rawTail = source.slice(targetEnd, end);
+  if (
+    rawTarget.includes('@{') || rawTarget.includes('#{') || rawTarget.includes('${')
+    || rawTail.includes('@{') || rawTail.includes('#{') || rawTail.includes('${')
+  ) {
+    return null;
+  }
+  const target = unquoteImportTarget(rawTarget);
+  if (target === '') {
+    return null;
+  }
+  const directive = source.slice(start, nameEnd).toLowerCase();
+  return {
+    key: `${language}|${directive}|${target}|${normalizedCssWords(rawTail)}`,
+    directive,
+    target
+  };
+}
+
 function splitFontFamilyValue(source: string, valueStart: number, valueEnd: number): FontFamilyPart[] {
   const parts: FontFamilyPart[] = [];
   let partStart = valueStart;
@@ -3359,6 +3417,7 @@ export function cstLintDiagnostics(
   const out: SourceDiagnostic[] = [];
   const emitted = new Set<string>();
   const seenImports = new Map<string, ImportKey>();
+  const seenModuleLoads = new Map<string, ModuleLoadKey>();
   const declaredAnimations = new Set<string>();
   const animationReferences: AnimationNameReference[] = [];
   const declaredCustomProperties = new Set<string>();
@@ -3564,6 +3623,20 @@ export function cstLintDiagnostics(
         } else {
           seenImports.set(importKey.key, importKey);
         }
+      }
+    }
+
+    const moduleLoadKey = normalizedModuleLoadKey(source, node, language);
+    if (moduleLoadKey !== null) {
+      if (seenModuleLoads.has(moduleLoadKey.key)) {
+        push(
+          LINT_CODES.duplicateModuleLoads,
+          'warning',
+          `Duplicate ${moduleLoadKey.directive} module load ${moduleLoadKey.target}`,
+          node.span
+        );
+      } else {
+        seenModuleLoads.set(moduleLoadKey.key, moduleLoadKey);
       }
     }
 
