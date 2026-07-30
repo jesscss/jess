@@ -18,7 +18,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, endsWith, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when, word } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, trivia, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -1437,17 +1437,6 @@ const compilerAtRuleName = keywords(
   { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
 );
 
-/*
- * The exclusion list is dispatch, not vocabulary: every name here HAS a typed
- * production. Media and container are excluded so the header choice can lead
- * every arm with a concrete `@` first-set (their dedicated arms own those
- * names); keeping `media`/`container` out of the generic name is what lets the
- * whole at-rule subtree be `@`-dispatched instead of speculatively entered at
- * every rule. Only the five compiler names are excluded from the `@-\u2026` space \u2014
- * which at-rules exist is a language-service fact, so an ordinary vendor prefix
- * (`@-webkit-anything`, `@-moz-document`) is plain unknown CSS and passes.
- */
-const genericAtRuleName = regex(/@(?!(?:charset|import|supports|property|media|container|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
 const charsetAtRuleName = word('@charset', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
 const importAtRuleName = word('@import', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
 const propertyAtRuleName = word('@property', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
@@ -1461,6 +1450,10 @@ const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 export const jessFactory = (g: JessRules & SharedSyntax) => {
   const caseInsensitiveWhen = makeWhen({ caseInsensitive: true });
   const syntaxWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF');
+  const typedAtRuleHeaderNames = [
+    '@keyframes', '@charset', '@import', '@supports', '@property',
+    '@-use', '@-compose', '@-export', '@-import', '@-from'
+  ];
 
   const VariableReference = node<VariableReference>(
     'VariableReference',
@@ -3807,30 +3800,69 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * CSS owns the broad statement at-keyword token. Jess routes it once here
+   * because the consumed spelling decides the media/container/generic header
+   * family. The blocked spellings have dedicated typed productions elsewhere;
+   * reject them here instead of letting a generic header steal their input.
+   */
+  const atRuleHeaderKeyword = token(noTrivia(g.StatementAtRuleName));
+  const typedAtRuleHeader = not(routed());
+
+  /*
+   * The compiler route rejects this slot normally. The public CST route is
+   * tolerant, so retain the same rejection as a positioned diagnostic instead
+   * of silently dropping an invalid at-rule list item after the committed
+   * routed header.
+   */
+  const requiredContainerPrelude = expect(g.ContainerPrelude, 'container prelude');
+
+  /*
    * Statement headers remain interpolation-free. The documented deferred media form
    * is a block-only construct, so it cannot silently become `@media $(x);`.
-   * Every arm leads with a concrete `@`-first recognizer (no leading `not(...)`),
-   * so the whole header — and the `AtRuleStatement`/`AtRuleBlock` that
-   * wrap it — keeps a `{@}` first-set. That lets parseman fast-reject non-`@`
-   * statements at the leading char instead of entering this node frame. Known
-   * block-only conditional at-rules stay out of the generic statement route;
-   * their block headers are owned by `AtRuleHeader`.
+   * The one consumed at-keyword routes `@media` to its stricter statement
+   * form, rejects names owned by another typed production, and gives every
+   * remaining CSS name the generic prelude. This is a routed token family, not
+   * a late-delimiter choice.
    */
   const AtRuleStatementHeader = node<JessAtRuleHeader>(
     'AtRuleStatementHeader',
-    choice(
-      sequence(
-        g.MediaAtKeyword,
-        not(choice(
-          literal('{'),
-          literal(';')
-        )),
-        g.AtRulePrelude
+    dispatch(
+      atRuleHeaderKeyword,
+      caseInsensitiveWhen(
+        '@media',
+        sequence(
+          routed(),
+          not(choice(
+            literal('{'),
+            literal(';')
+          )),
+          g.AtRulePrelude
+        )
       ),
-      sequence(
-        genericAtRuleName,
+      caseInsensitiveWhen(typedAtRuleHeaderNames, typedAtRuleHeader),
+      when(endsWith('-keyframes'), typedAtRuleHeader, { caseInsensitive: true }),
+      otherwise(sequence(
+        routed(),
         g.AtRulePrelude
-      )
+      ))
+    ),
+    (children) => {
+      const name = requireToken(children.find(isToken)!).value;
+      const prelude = children.find(isValueNode) ?? null;
+      return { name, prelude };
+    }
+  );
+
+  /*
+   * The generic block-header branch has already consumed its at-keyword in
+   * `AtRuleHeader`. It retains the semantic statement-header CST owner rather
+   * than inventing a routed/provenance node name for the same concept.
+   */
+  const RoutedAtRuleStatementHeader = node<JessAtRuleHeader>(
+    'AtRuleStatementHeader',
+    sequence(
+      routed(),
+      g.AtRulePrelude
     ),
     (children) => {
       const name = requireToken(children.find(isToken)!).value;
@@ -3841,22 +3873,32 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * Keep the dynamic extension scoped to documented block `@media $(…)`.
-   * Every other header, including `@container`, stays on the plain header grammar;
-   * mixing the deferred form with query terms remains rejected.
+   * The routed keyword itself decides media/container/generic ownership; each
+   * selected branch then owns its distinct prelude. Mixing the deferred media
+   * form with query terms remains rejected by `MediaPrelude`.
    */
   const AtRuleHeader = node<JessAtRuleHeader>(
     'AtRuleHeader',
-    choice(
-      sequence(
-        g.MediaAtKeyword,
-        not(literal('{')),
-        g.MediaPrelude
+    dispatch(
+      atRuleHeaderKeyword,
+      caseInsensitiveWhen(
+        '@media',
+        sequence(
+          routed(),
+          not(literal('{')),
+          g.MediaPrelude
+        )
       ),
-      sequence(
-        g.ContainerAtKeyword,
-        g.ContainerPrelude
+      caseInsensitiveWhen(
+        '@container',
+        sequence(
+          routed(),
+          requiredContainerPrelude
+        )
       ),
-      g.AtRuleStatementHeader
+      caseInsensitiveWhen(typedAtRuleHeaderNames, typedAtRuleHeader),
+      when(endsWith('-keyframes'), typedAtRuleHeader, { caseInsensitive: true }),
+      otherwise(RoutedAtRuleStatementHeader)
     ),
     (children) => {
       const statementHeader = children.find(isJessAtRuleHeader);
