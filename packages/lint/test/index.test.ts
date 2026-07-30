@@ -61,6 +61,7 @@ describe('stable rule set', () => {
       LINT_CODES.invalidTypedCustomPropertyValue,
       LINT_CODES.unusedVariables,
       LINT_CODES.duplicateModuleLoads,
+      LINT_CODES.unboundedExtends,
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
@@ -104,15 +105,17 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.unusedVariables,
       LINT_RULE_NAMES.duplicateModuleLoads,
+      LINT_RULE_NAMES.unboundedExtends,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(35);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(36);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.boxModel]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('warn');
+    expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
   });
 
   it('keeps the Stylelint comparison policy limited to comparable rules', () => {
@@ -161,6 +164,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyValue]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unboundedExtends]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unsupportedSassForm]).toBe('off');
   });
 });
@@ -993,6 +997,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_RULE_NAMES.duplicateModuleLoads, LINT_CODES.duplicateModuleLoads, 'error']
+    ]);
+  });
+
+  it('applies policy to unbounded extend diagnostics by lint rule name', async () => {
+    const result = await lintText(
+      {
+        source: '.a { @extend div; }',
+        filePath: '/tmp/input.scss'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.unboundedExtends]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.unboundedExtends, LINT_CODES.unboundedExtends, 'error']
     ]);
   });
 });

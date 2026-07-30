@@ -804,6 +804,40 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports extend targets with no bounded selector anchor', () => {
+    const less = collectTolerantDiagnostics({
+      source: '.a:extend(div all) {}\n.b:extend(.btn all) {}\n.c:extend([data-x] all, #ok all) {}',
+      language: 'less'
+    });
+    const scss = collectTolerantDiagnostics({
+      source: '.a { @extend div; }\n.b { @extend .btn; }\n.c { @extend [data-x]; }\n.d { @extend %tool; }',
+      language: 'scss'
+    });
+    const jess = collectTolerantDiagnostics({
+      source: '.a { $extend div, .btn, [data-x]; }',
+      language: 'jess'
+    });
+
+    expect(less.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unboundedExtends)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Extend target "div" has no class, id, placeholder, or parent selector anchor', 1, 11],
+      ['Extend target "[data-x]" has no class, id, placeholder, or parent selector anchor', 3, 11]
+    ]);
+    expect(scss.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unboundedExtends)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Extend target "div" has no class, id, placeholder, or parent selector anchor', 1, 14],
+      ['Extend target "[data-x]" has no class, id, placeholder, or parent selector anchor', 3, 14]
+    ]);
+    expect(jess.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unboundedExtends)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Extend target "div" has no class, id, placeholder, or parent selector anchor', 1, 14],
+      ['Extend target "[data-x]" has no class, id, placeholder, or parent selector anchor', 1, 25]
+    ]);
+  });
+
   it('reports unknown units while accepting modern CSS units', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { width: 1pixels; height: 1e3px; min-width: 1e3foo; gap: 1cqi; flex: 1fr; rotate: 1turn; transition-duration: 1ms; }',

@@ -817,6 +817,20 @@ describe('JessLanguageServiceEngine', () => {
         disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
         expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-duplicate-module-load');
       });
+
+      it('surfaces unbounded extend diagnostics by default and allows disable', () => {
+        const source = '.a { @extend div; }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-unbounded-extend');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-unbounded-extend', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-unbounded-extend');
+      });
     });
 
     describe('duplicateProperties (lint/duplicate-property)', () => {

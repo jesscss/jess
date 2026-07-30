@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 35;
+export const STABLE_LINT_RULE_SET_VERSION = 36;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -48,6 +48,7 @@ export const LINT_RULE_NAMES = {
   invalidTypedCustomPropertyValue: 'jess/no-invalid-typed-custom-property-value',
   unusedVariables: 'jess/no-unused-variable',
   duplicateModuleLoads: 'jess/no-duplicate-module-load',
+  unboundedExtends: 'jess/no-unbounded-extend',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
 
@@ -105,6 +106,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: LINT_CODES.invalidTypedCustomPropertyValue,
   [LINT_RULE_NAMES.unusedVariables]: LINT_CODES.unusedVariables,
   [LINT_RULE_NAMES.duplicateModuleLoads]: LINT_CODES.duplicateModuleLoads,
+  [LINT_RULE_NAMES.unboundedExtends]: LINT_CODES.unboundedExtends,
   [LINT_RULE_NAMES.unsupportedSassForm]: LINT_CODES.unsupportedSassForm
 };
 
@@ -149,6 +151,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.invalidTypedCustomPropertyValue]: LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
   [LINT_CODES.unusedVariables]: LINT_RULE_NAMES.unusedVariables,
   [LINT_CODES.duplicateModuleLoads]: LINT_RULE_NAMES.duplicateModuleLoads,
+  [LINT_CODES.unboundedExtends]: LINT_RULE_NAMES.unboundedExtends,
   [LINT_CODES.unsupportedSassForm]: LINT_RULE_NAMES.unsupportedSassForm
 };
 
@@ -193,6 +196,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'warn',
   [LINT_RULE_NAMES.unusedVariables]: 'off',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'warn',
+  [LINT_RULE_NAMES.unboundedExtends]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
 };
 
@@ -240,6 +244,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'off',
   [LINT_RULE_NAMES.unusedVariables]: 'off',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'off',
+  [LINT_RULE_NAMES.unboundedExtends]: 'off',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'off'
 };
 
@@ -635,6 +640,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'warn',
     comparison: 'jess-only',
     notes: 'Flags repeated same-file static SCSS/Jess module-load directives with the same target and authored options; import graph aliasing remains future semantic-facts work.'
+  },
+  {
+    diagnosticCode: LINT_CODES.unboundedExtends,
+    ruleName: LINT_RULE_NAMES.unboundedExtends,
+    title: 'Unbounded extends',
+    tier: 'maintainability',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags static Less/SCSS/Jess extend targets that have no top-level class, id, placeholder, or parent selector anchor; selector graph reachability remains future work.'
   },
   {
     diagnosticCode: LINT_CODES.unsupportedSassForm,

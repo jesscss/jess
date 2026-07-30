@@ -56,6 +56,7 @@ export const LINT_CODES = {
   invalidColorFunctionChannels: 'lint/invalid-color-function-channels',
   invalidTypedCustomPropertyValue: 'lint/invalid-typed-custom-property-value',
   unusedVariables: 'lint/no-unused-variable',
+  unboundedExtends: 'lint/no-unbounded-extend',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -265,6 +266,7 @@ const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
 const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule']);
 const MODULE_LOAD_TYPES = new Set(['UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport']);
 const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'PlainQuoted', 'ImportTarget', 'Url']);
+const EXTEND_TARGET_TYPES = new Set(['ExtendTargetComplex', 'Selector', 'PseudoSelectorComplex']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
@@ -2865,6 +2867,103 @@ function normalizedModuleLoadKey(source: string, node: CssCstNode, language: Jes
   };
 }
 
+function forEachExtendTarget(
+  node: CssCstNode,
+  language: JessLanguage,
+  fn: (target: CssCstNode) => void
+): void {
+  if (node.grammarType === 'ExtendTarget') {
+    const target = firstChildNodeMatching(node, EXTEND_TARGET_TYPES);
+    if (target !== undefined) {
+      fn(target);
+    }
+    return;
+  }
+  if (node.grammarType !== 'Extend') {
+    return;
+  }
+  if (language === 'scss') {
+    const target = firstChildNodeOf(node, 'Selector');
+    if (target !== undefined) {
+      fn(target);
+    }
+    return;
+  }
+  if (language === 'jess') {
+    for (const child of cstChildrenOf(node)) {
+      if (isCstNode(child) && child.grammarType === 'PseudoSelectorComplex') {
+        fn(child);
+      }
+    }
+  }
+}
+
+function hasTopLevelBoundedSelectorAtom(source: string, start: number, end: number): boolean {
+  let quote = 0;
+  let bracketDepth = 0;
+  let parenDepth = 0;
+  for (let i = start; i < end; i++) {
+    const code = source.charCodeAt(i);
+    const next = i + 1 < end ? source.charCodeAt(i + 1) : 0;
+    if (quote !== 0) {
+      if (code === 92) {
+        i++;
+        continue;
+      }
+      if (code === quote) {
+        quote = 0;
+      }
+      continue;
+    }
+    if (code === 47 && next === 42) {
+      i = skipCssComment(source, i, end) - 1;
+      continue;
+    }
+    if (code === 34 || code === 39) {
+      quote = code;
+      continue;
+    }
+    if (code === 91) {
+      bracketDepth++;
+      continue;
+    }
+    if (code === 93 && bracketDepth > 0) {
+      bracketDepth--;
+      continue;
+    }
+    if (bracketDepth > 0) {
+      continue;
+    }
+    if (code === 40) {
+      parenDepth++;
+      continue;
+    }
+    if (code === 41 && parenDepth > 0) {
+      parenDepth--;
+      continue;
+    }
+    if (parenDepth > 0) {
+      continue;
+    }
+    if (code === 38) {
+      return true;
+    }
+    if (code === 35 || code === 37 || code === 46) {
+      if (next === 92 || isIdentChar(next)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isUnboundedExtendTarget(source: string, target: CssCstNode): boolean {
+  const start = absoluteStart(target);
+  const end = absoluteEnd(target);
+  const text = source.slice(start, end);
+  return !hasDynamicSyntax(text) && !hasTopLevelBoundedSelectorAtom(source, start, end);
+}
+
 function splitFontFamilyValue(source: string, valueStart: number, valueEnd: number): FontFamilyPart[] {
   const parts: FontFamilyPart[] = [];
   let partStart = valueStart;
@@ -3639,6 +3738,19 @@ export function cstLintDiagnostics(
         seenModuleLoads.set(moduleLoadKey.key, moduleLoadKey);
       }
     }
+
+    forEachExtendTarget(node, language, (target) => {
+      if (isUnboundedExtendTarget(source, target)) {
+        const targetStart = absoluteStart(target);
+        const targetEnd = absoluteEnd(target);
+        push(
+          LINT_CODES.unboundedExtends,
+          'warning',
+          `Extend target "${selectorDisplay(source, targetStart, targetEnd)}" has no class, id, placeholder, or parent selector anchor`,
+          target.span
+        );
+      }
+    });
 
     if (PSEUDO_SELECTOR_TYPES.has(gt)) {
       const pseudo = pseudoNameSpan(source, start, end);
