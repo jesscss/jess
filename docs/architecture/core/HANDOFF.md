@@ -2045,43 +2045,45 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-07-30 ValueLayout provenance compression. `withValueLayout`
-  now declines a non-empty layout whose every separator is the renderer's implied
-  single space. It retains explicit empty function-layout facts and a top-level
-  spaced `/` array, because Less uses that exact fact for deferred-division
-  semantics.
-- Architecture surface: parser-authored ValueLayout provenance side-table only;
-  no grammar, AST public field, serializer API, or output contract changes.
-- Separation/duplication: removes the duplicate storage of the renderer's
-  already-implied single-space separator while preserving the two non-inferable
-  ownership facts (empty function boundary and spaced slash).
-- Cumulative node weight: unchanged. No AST node, wrapper, or public collection
-  is created; the existing `WeakMap` receives fewer entries.
-- New traversal: three bounded loops only: scan the supplied separator array once;
-  when it is all single spaces, scan the already-built top-level value array for
-  `/`; comment collection iterates Parseman's already-filtered comment gaps instead
-  of walking its complete root-gap set after the filter. None reads source, walks
-  descendants, allocates an intermediate array, or runs during evaluation/render.
-- New node/materialization: none. The pass deletes `WeakMap` entries; it adds no
-  nodes, wrappers, copied values, layouts, or source metadata.
-- Render path: unchanged. Absent layout already renders raw `ValueSlot[]` with
-  `join(' ')`; the retained slash layout keeps the existing Less semantic branch.
-- Helper/API surface: one private `hasTopLevelSlash` predicate; no public AST or
-  serializer API changes. It prevents the public `valueLayoutOf` side table from
-  carrying a fact output can infer.
-- Metadata mutations: fewer only—the existing layout `WeakMap` is no longer set
-  for implied spaces. Empty layout and semantic slash rows remain explicit.
-- Review-flagged diff tokens: [loop/traversal] the separator and existing
-  top-level value arrays are scanned once at parse-time side-table admission; the
-  existing comment collector now iterates selected comment gaps rather than every
-  root gap. No source walk, descendant traversal, allocation, or render-time loop
-  is added.
-- Evidence: core provenance test covers implied-space elision, explicit empty
-  layout retention, and spaced slash retention; focused Less public parse and
-  value-comment suites passed 88/88 after fresh dependency-order builds; the
-  full core suite passed 3264 tests. No performance claim is made here.
-- Verdict: accepted as a semantic-runtime side-table reduction; performance
-  evidence remains separate from this behavior proof.
+- Latest pass: 2026-07-30 root-trivia map elimination. Renderer comment replay
+  now consumes the source-ordered comment ranges it actually needs instead of
+  materializing every root whitespace gap through Parseman 0.43's generic map.
+  The pending Parseman 0.44 selected-root mode is marked explicitly so its marker
+  entries continue to use its owned-gap query rather than being mistaken for full
+  ranges.
+- Architecture surface: parser-owned trivia provenance and AST serializer comment
+  replay only; no grammar, AST public field, output CSS, or plugin API changes.
+- Separation/duplication: deletes root-map construction for a comment-only render
+  request. Legacy labeled logs stream one contiguous comment-bearing range at a
+  time; sparse selected-root indexes remain the sole owner of their complete ranges.
+- Cumulative node weight: reduced. The generic Parseman map, per-gap objects, and
+  entry-index arrays are no longer reached by the Bootstrap render; only the small
+  comment-range array and renderer's existing emitted-comment set remain.
+- New traversal: one parser-bound linear pass over the already-packed legacy root
+  trivia entries groups contiguous ranges and retains only comment-bearing ones;
+  one render-time binary search finds a comment range at a requested boundary. No
+  source scan, AST descendant walk, or general root-gap enumeration is added.
+- New node/materialization: none. The new `TriviaRange[]` is transient parse
+  provenance data, not an AST node or public collection; it replaces the much
+  larger generic root-gap object/map materialization.
+- Render path: direct comment lookup now binary-searches the cached source-ordered
+  comment runs. Leading comment emission reads the first run, so normal authored
+  content at offset zero cannot trigger a general root lookup.
+- Helper/API surface: two private helpers only—`labeledCommentRangesFromEntries`
+  and `commentTriviaAfter`; parser compatibility is structural and adds no public
+  Jess API.
+- Metadata mutations: unchanged. Existing canonical trivia ranges remain interned
+  by source range; no AST/source/parent metadata is added or mutated.
+- Review-flagged diff tokens: [loop/traversal] one packed-entry grouping loop and
+  one binary search replace generic all-gap construction; [materialized array/object]
+  the temporary selected-comment range array replaces maps, gap objects, and entry
+  index arrays for every whitespace run.
+- Evidence: provenance and imported-leading-comment tests passed 54/54 after a
+  fresh core build. On the exact 288,434-byte upstream PostCSS Bootstrap Less
+  workload, two 61-sample interleaved runs measured Jess at 38.32 ms and 37.74 ms
+  versus Less 4.8.1 at 26.85 ms and 26.68 ms; output assertions passed.
+- Verdict: accepted as a measured root-trivia cost cut. Jess remains behind Less,
+  so this is an active performance batch, not completion.
 - Hot-path cost contracts:
 ```json
 [
@@ -2091,10 +2093,10 @@ involved.
     "performanceClaim": "none",
     "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
-    "why": "This pass narrows parser-authored ValueLayout provenance without changing the canonical ValueSlot or List shape. The only retained defaults are the established explicit-empty function-boundary and spaced-slash Less semantic facts, so this remains semantic runtime work rather than a claimed neutral refactor.",
-    "dangerTokensJustification": "The two parse-time loops inspect only arrays already created by the parser before deciding whether to mutate the existing provenance WeakMap. They do not traverse AST descendants, read source, materialize values, introduce a new side map, or add work to evaluation or serialization.",
-    "behaviorEvidence": "Core provenance tests passed 12/12; fresh Less public parse and value-comment tests passed 88/88, including comment/newline layout and generic function delimiter facts.",
-    "buildEvidence": "pnpm --filter @jesscss/core build and dependency-order parser builds passed on the current worktree.",
+    "why": "Comment replay needs only ordered comment-bearing root ranges. Streaming those ranges from Parseman's packed labels and searching the cached sparse result removes generic whitespace-gap map construction without changing the canonical Stylesheet or emitted CSS contract.",
+    "dangerTokensJustification": "The entry pass reads each already-recorded root trivia item once and retains only ranges containing a labeled comment. The binary search reads that small cached range list; neither path walks AST descendants, scans source, creates nodes, or materializes a generic root-gap map.",
+    "behaviorEvidence": "Core provenance and imported-leading-comment tests passed 54/54, including labeled legacy fallback, sparse-index boundaries, and comment rendering at an import site.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passed before the exact upstream PostCSS eval-and-emit measurement.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
   }
 ]

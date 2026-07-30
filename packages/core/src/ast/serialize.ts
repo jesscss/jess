@@ -5591,13 +5591,34 @@ function emitBlockCommentTriviaBetween(
   return emitted;
 }
 
+/** Find a comment-bearing trivia range that starts at one exact source offset. */
+function commentTriviaAfter(trivia: TriviaMap, offset: number): Trivia | undefined {
+  const runs = trivia.commentRuns();
+  let low = 0;
+  let high = runs.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (runs[middle]!.start < offset) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  const run = runs[low];
+  return run?.start === offset ? run : undefined;
+}
+
 function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   const trivia = e.trivia;
   const span = sourceSpanOf(node);
   if (trivia === undefined || span === undefined) {
     return;
   }
-  const trailing = trivia.lookup(span.end, 'after');
+
+  /* This path only emits comments. A general trivia-boundary lookup forces a
+   * legacy Parseman root map for all whitespace gaps; comment runs are already
+   * sparse and source ordered. */
+  const trailing = commentTriviaAfter(trivia, span.end);
   if (trailing !== undefined && !e.emittedBlockTrivia.has(trailing) && blockCommentsIn(trailing).length > 0) {
     e.emittedBlockTrivia.add(trailing);
     put(e, inlineBlockCommentText(trailing));
@@ -5954,8 +5975,12 @@ function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
   if (trivia === undefined) {
     return;
   }
-  const run = trivia.lookup(0, 'after');
-  if (run === undefined) {
+
+  /* `commentRuns()` is already source ordered. Going through a boundary lookup
+   * at offset zero makes legacy Parseman materialize every root whitespace gap
+   * merely to discover that a stylesheet begins with authored content. */
+  const run = trivia.commentRuns()[0];
+  if (run?.start !== 0) {
     return;
   }
   if (e.emittedBlockTrivia.has(run)) {
