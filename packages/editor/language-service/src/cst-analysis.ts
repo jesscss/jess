@@ -95,7 +95,20 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
  * Grammar types (raw `grammarType`, shared across css/less/scss/jess) grouped by
  * the symbol they yield — matching the AST-based `getDocumentSymbols` exactly.
  */
-const SELECTOR_TYPES = new Set(['Selector', 'SelectorList', 'ComplexSelector', 'CompoundSelector', 'InterpolatedSelector', 'BasicSelector']);
+const SELECTOR_TYPES = new Set([
+  'Selector',
+  'SelectorList',
+  'SelectorBranch',
+  'NestedSelector',
+  'ComplexSelector',
+  'RelativeComplex',
+  'Complex',
+  'CompoundSelector',
+  'Compound',
+  'InterpolatedSelector',
+  'BasicSelector'
+]);
+const LESS_SELECTOR_TYPES = new Set(['SelectorBranch', 'Compound']);
 const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBlock', 'QueryAtRuleBlock']);
 
 /*
@@ -114,6 +127,42 @@ function firstSelectorChild(node: CssCstNode): CssCstNode | null {
     }
   }
   return null;
+}
+
+function onlyTriviaBetween(source: string, start: number, end: number): boolean {
+  for (let i = start; i < end; i++) {
+    const code = source.charCodeAt(i);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function previousLessSelector(index: CstIndex, source: string, node: CssCstNode): CssCstNode | null {
+  const span = index.spanOf(node);
+  if (!span) {
+    return null;
+  }
+  let best: CstIndexEntry | null = null;
+  for (const entry of index.nodes) {
+    if (
+      !LESS_SELECTOR_TYPES.has(entry.node.grammarType)
+      || entry.end > span.start
+      || !onlyTriviaBetween(source, entry.end, span.start)
+    ) {
+      continue;
+    }
+    if (
+      best === null
+      || entry.end > best.end
+      || (entry.end === best.end && entry.start < best.start)
+      || (entry.end === best.end && entry.start === best.start && entry.node.grammarType === 'SelectorBranch')
+    ) {
+      best = entry;
+    }
+  }
+  return best?.node ?? null;
 }
 
 function toRange(doc: TextDocument, start: number, end: number): Range {
@@ -178,8 +227,8 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
 
   for (const { node } of index.nodes) {
     const gt = node.grammarType;
-    if (gt === 'Ruleset') {
-      const sel = firstSelectorChild(node);
+    if (gt === 'Ruleset' || gt === 'NestedRuleset') {
+      const sel = firstSelectorChild(node) ?? previousLessSelector(index, src, node);
       const name = sel ? sliceOf(sel) : sliceOf(node).split('{')[0]!.trim();
       add(name || 'ruleset', SymbolKind.Class, node, sel, true);
     } else if (ATRULE_TYPES.has(gt)) {
@@ -189,9 +238,10 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
       const name = sliceOf(node).split(':')[0]!.trim();
       add(name || 'variable', SymbolKind.Variable, node, null, false);
     } else if (MIXIN_TYPES.has(gt)) {
-      const raw = sliceOf(node);
+      const sel = previousLessSelector(index, src, node);
+      const raw = sel ? sliceOf(sel) : sliceOf(node);
       const name = raw.split(/[({]/)[0]!.trim();
-      add(name || 'mixin', SymbolKind.Function, node, null, true);
+      add(name || 'mixin', SymbolKind.Function, node, sel, true);
     } else if (FUNC_TYPES.has(gt)) {
       const name = sliceOf(node).split(/[({]/)[0]!.trim();
       add(name || 'function', SymbolKind.Function, node, null, true);
@@ -200,7 +250,7 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
   return result;
 }
 
-const FOLD_TYPES = new Set(['Ruleset', ...ATRULE_TYPES, ...MIXIN_TYPES, ...FUNC_TYPES]);
+const FOLD_TYPES = new Set(['Ruleset', 'NestedRuleset', ...ATRULE_TYPES, ...MIXIN_TYPES, ...FUNC_TYPES]);
 
 /** CST-grounded folding: every multi-line structural block. Matches the AST
  * folding set, sourced from the tolerant CST. */

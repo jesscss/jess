@@ -12,8 +12,8 @@
  *   - string literal      → `Quoted`
  *   - variable reference   → `Reference` / `VariableReference` (`@primary` / `$primary`)
  *   - variable declaration → `VarDeclaration` / `VariableDeclaration` (`@primary: red;`)
- *   - mixin definition     → `MixinDefinition` (`.button() { … }`) / `MixinDefinitionRule` (`@mixin foo`)
- *   - mixin call           → `MixinCall`      (`.button();`) / `MixinCallRule` (`@include foo`)
+ *   - mixin definition     → `SelectorBranch` + `MixinDefinition` (`.button() { … }`) / `MixinDefinition` (`@mixin foo`)
+ *   - mixin call           → `SelectorBranch` + `MixinCall` (`.button();`) / `MixinCall` (`@include foo`)
  *   - scss function def    → `FunctionRule`   (`@function bar`)
  *   - numbers              → `Num` / `Dimension` / `Color`
  *   - at-rules             → `AtRuleBlock` / `AtRuleStatement` / `QueryAtRuleBlock` / `ScssUse` …
@@ -76,7 +76,8 @@ const NAMESPACE_KEYWORD_TYPES = new Set([
  * SCSS callable statements: `@mixin foo` / `@include foo` / `@function bar`. The
  * `@keyword` is a `namespace` token and the name that follows is a `function`.
  */
-const SCSS_CALLABLE_TYPES = new Set(['MixinDefinitionRule', 'MixinCallRule', 'FunctionRule']);
+const SCSS_CALLABLE_TYPES = new Set(['MixinDefinition', 'MixinCall', 'FunctionRule']);
+const LESS_SELECTOR_TYPES = new Set(['SelectorBranch', 'Compound']);
 
 function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
@@ -97,6 +98,42 @@ function mixinIdentOf(slice: string): string {
   return head.replace(/^[.#]/, '').trim();
 }
 
+function onlyTriviaBetween(source: string, start: number, end: number): boolean {
+  for (let i = start; i < end; i++) {
+    const code = source.charCodeAt(i);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function previousLessSelectorName(
+  entries: readonly { readonly node: CssCstNode; readonly start: number; readonly end: number }[],
+  source: string,
+  start: number
+): string {
+  let best: { readonly node: CssCstNode; readonly start: number; readonly end: number } | null = null;
+  for (const entry of entries) {
+    if (
+      !LESS_SELECTOR_TYPES.has(entry.node.grammarType)
+      || entry.end > start
+      || !onlyTriviaBetween(source, entry.end, start)
+    ) {
+      continue;
+    }
+    if (
+      best === null
+      || entry.end > best.end
+      || (entry.end === best.end && entry.start < best.start)
+      || (entry.end === best.end && entry.start === best.start && entry.node.grammarType === 'SelectorBranch')
+    ) {
+      best = entry;
+    }
+  }
+  return best === null ? '' : mixinIdentOf(source.slice(best.start, best.end));
+}
+
 /**
  * Every declared variable and mixin (bare identifiers) in one document's CST.
  * Powers the "did you mean" quick-fix candidate pools without reparsing to the
@@ -114,8 +151,12 @@ export function cstDeclaredSymbols(root: CssCstNode, doc: TextDocument): { vars:
       if (name) {
         vars.add(name);
       }
-    } else if (gt === 'MixinDefinitionRule' || gt === 'MixinDefinition') {
-      const name = mixinIdentOf(src.slice(start, end));
+    } else if (gt === 'MixinDefinition') {
+      const slice = src.slice(start, end);
+      const previousSelectorName = previousLessSelectorName(index.nodes, src, start);
+      const name = slice.trim().startsWith('@') || previousSelectorName === ''
+        ? mixinIdentOf(slice)
+        : previousSelectorName;
       if (name) {
         mixins.add(name);
       }
@@ -271,17 +312,6 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
       } else {
         push(start, end, 'variable');
       }
-    } else if (gt === 'MixinCall') {
-      const leaf = firstLeafSpan(node);
-      if (leaf) {
-        push(leaf.start, leaf.end, 'function');
-      }
-    } else if (NUMBER_TYPES.has(gt)) {
-      push(start, end, 'number');
-    } else if (gt === 'Quoted') {
-      if (looksQuoted(start, end)) {
-        emitStringRegion(start, end);
-      }
     } else if (SCSS_CALLABLE_TYPES.has(gt)) {
       /*
        * `@mixin foo` / `@include foo` / `@function bar`: the keyword is a
@@ -291,11 +321,22 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
       const kw = /^@[-\w]+/.exec(slice);
       if (kw) {
         push(start, start + kw[0].length, 'namespace');
+        const nm = /^@[-\w]+\s+([\w-]+)/.exec(slice);
+        if (nm?.[1]) {
+          const nameStart = start + nm[0].length - nm[1].length;
+          push(nameStart, nameStart + nm[1].length, 'function');
+        }
+      } else if (gt === 'MixinCall') {
+        const leaf = firstLeafSpan(node);
+        if (leaf) {
+          push(leaf.start, leaf.end, 'function');
+        }
       }
-      const nm = /^@[-\w]+\s+([\w-]+)/.exec(slice);
-      if (nm?.[1]) {
-        const nameStart = start + nm[0].length - nm[1].length;
-        push(nameStart, nameStart + nm[1].length, 'function');
+    } else if (NUMBER_TYPES.has(gt)) {
+      push(start, end, 'number');
+    } else if (gt === 'Quoted') {
+      if (looksQuoted(start, end)) {
+        emitStringRegion(start, end);
       }
     } else if (NAMESPACE_KEYWORD_TYPES.has(gt)) {
       /*

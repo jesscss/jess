@@ -1,4 +1,4 @@
-import { parseCssDoc, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
+import { parseCssDoc, type CssCstChild, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
 
 /*
  * CST parsing is a language-service capability. Compiler/plugin imports use the
@@ -122,6 +122,31 @@ function diffRange(oldText: string, newText: string): { from: number; to: number
     newEnd--;
   }
   return { from: start, to: oldEnd, replacement: newText.slice(start, newEnd) };
+}
+
+function leafAtOffset(node: CssCstChild, offset: number): Extract<CssCstChild, { _tag: 'leaf' }> | null {
+  if (node._tag === 'leaf') {
+    return node.span.start <= offset && offset < node.span.end ? node : null;
+  }
+  if (node._tag !== 'node' && node._tag !== 'error') {
+    return null;
+  }
+  let best: Extract<CssCstChild, { _tag: 'leaf' }> | null = null;
+  for (const child of node.rules) {
+    const leaf = leafAtOffset(child, offset);
+    if (leaf === null) {
+      continue;
+    }
+    if (best === null || (leaf.span.end - leaf.span.start) <= (best.span.end - best.span.start)) {
+      best = leaf;
+    }
+  }
+  return best;
+}
+
+function editedLeafMatchesSource(tree: CssCstNode, source: string, offset: number): boolean {
+  const leaf = leafAtOffset(tree, Math.max(0, Math.min(offset, source.length)));
+  return leaf === null || leaf.value === source.slice(leaf.span.start, leaf.span.end);
 }
 
 /*
@@ -1116,7 +1141,12 @@ export function createEngine(): JessLanguageServiceEngine {
     if (t.cstDoc) {
       try {
         t.cstDoc = t.cstDoc.edit(from, to, replacement);
-        t.editApplied++;
+        if (t.cstDoc.tree && !editedLeafMatchesSource(t.cstDoc.tree, newText, from)) {
+          rebuildCstDoc(t);
+          t.fullRebuild++;
+        } else {
+          t.editApplied++;
+        }
       } catch {
         rebuildCstDoc(t);
         t.fullRebuild++;

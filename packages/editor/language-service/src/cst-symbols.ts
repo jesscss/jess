@@ -10,11 +10,11 @@
  * SYMBOL SHAPES (raw `grammarType`, confirmed empirically across less/scss):
  *   - variable reference   → `Reference` / `VariableReference` (`@primary` / `$primary`)
  *   - variable declaration → `VarDeclaration` / `VariableDeclaration` (`@primary: red;`)
- *   - mixin reference      → `MixinCall` / `MixinCallRule` (`.button();` / `@include foo`)
- *   - mixin definition     → `MixinDefinition` / `MixinDefinitionRule`
- *                            (`.button() { … }` / `@mixin foo` / Jess mixin def)
- * A plain selector rule is `Ruleset`, so a mixin definition (which carries
- * `MixinArgs`) is cleanly distinguished by its grammarType.
+ *   - mixin reference      → `SelectorBranch` + `MixinCall` (`.button();`) / `MixinCall` (`@include foo`)
+ *   - mixin definition     → `SelectorBranch` + `MixinDefinition`
+ *                            (`.button() { … }`) / `MixinDefinition` (`@mixin foo`)
+ * A plain selector rule is `SelectorBranch` + `Ruleset`, so a Less mixin is
+ * distinguished by the sibling body node after the selector.
  *
  * SPAN MODEL: CST nodes carry absolute spans. Identifiers are sliced from
  * source text over those spans (whitespace lives in trivia, not leaves).
@@ -22,13 +22,13 @@
 import type { CssCstNode } from '@jesscss/css-parser';
 import type { Location, Range } from 'vscode-languageserver-types';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
-import { buildCstIndex } from './cst-analysis.js';
+import { buildCstIndex, type CstIndexEntry } from './cst-analysis.js';
 
 const VAR_REF_TYPES = new Set(['Reference', 'VariableReference']);
 const VAR_DECL_TYPES = new Set(['VarDeclaration', 'VariableDeclaration']);
 
-// A mixin CALL site: Less/Jess `MixinCall` / SCSS `@include foo`.
-const MIXIN_REF_TYPES = new Set(['MixinCall', 'MixinCallRule']);
+// A mixin CALL site: Less/Jess selector + `MixinCall` / SCSS `@include foo`.
+const MIXIN_REF_TYPES = new Set(['MixinCall']);
 
 /*
  * A mixin/function DEFINITION: shared Less/Jess `MixinDefinition`, SCSS
@@ -36,7 +36,8 @@ const MIXIN_REF_TYPES = new Set(['MixinCall', 'MixinCallRule']);
  * `@include`/`@mixin` are DISTINCT grammarTypes (call vs def); `mixinNameOf`
  * strips the differing keyword so both resolve to the same bare `matchName`.
  */
-const MIXIN_DEF_TYPES = new Set(['MixinDefinitionRule', 'MixinDefinition', 'FunctionRule']);
+const MIXIN_DEF_TYPES = new Set(['MixinDefinition', 'FunctionRule']);
+const MIXIN_SELECTOR_TYPES = new Set(['SelectorBranch', 'Compound']);
 
 /** A variable/mixin symbol resolved from a cursor position. */
 export type CstSymbol = {
@@ -83,6 +84,72 @@ function mixinNameOf(slice: string): string {
 /** Strip a mixin name to its bare identifier (drop leading `.`/`#`, trailing `()`). */
 function mixinIdentOf(name: string): string {
   return name.replace(/^[.#]/, '').replace(/\(\s*\)\s*$/, '').trim();
+}
+
+function onlyTriviaBetween(source: string, start: number, end: number): boolean {
+  for (let i = start; i < end; i++) {
+    const code = source.charCodeAt(i);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function previousMixinSelector(entries: readonly CstIndexEntry[], source: string, start: number): CstIndexEntry | null {
+  let best: CstIndexEntry | null = null;
+  for (const entry of entries) {
+    if (
+      !MIXIN_SELECTOR_TYPES.has(entry.node.grammarType)
+      || entry.end > start
+      || !onlyTriviaBetween(source, entry.end, start)
+    ) {
+      continue;
+    }
+    if (
+      best === null
+      || entry.end > best.end
+      || (entry.end === best.end && entry.start < best.start)
+      || (entry.end === best.end && entry.start === best.start && entry.node.grammarType === 'SelectorBranch')
+    ) {
+      best = entry;
+    }
+  }
+  return best;
+}
+
+function followingMixinBody(entries: readonly CstIndexEntry[], source: string, selector: CstIndexEntry): CstIndexEntry | null {
+  let best: CstIndexEntry | null = null;
+  for (const entry of entries) {
+    if (
+      (!MIXIN_REF_TYPES.has(entry.node.grammarType) && !MIXIN_DEF_TYPES.has(entry.node.grammarType))
+      || entry.start < selector.end
+      || !onlyTriviaBetween(source, selector.end, entry.start)
+    ) {
+      continue;
+    }
+    if (best === null || entry.start < best.start || (entry.start === best.start && entry.end < best.end)) {
+      best = entry;
+    }
+  }
+  return best;
+}
+
+function mixinNameForEntry(entries: readonly CstIndexEntry[], source: string, entry: CstIndexEntry): string {
+  const slice = source.slice(entry.start, entry.end);
+  if (slice.trim().startsWith('@') || entry.node.grammarType === 'FunctionRule') {
+    return mixinNameOf(slice);
+  }
+  const selector = previousMixinSelector(entries, source, entry.start);
+  return selector === null ? mixinNameOf(slice) : source.slice(selector.start, selector.end).trim();
+}
+
+function mixinRangeEntry(entries: readonly CstIndexEntry[], source: string, entry: CstIndexEntry): CstIndexEntry {
+  const slice = source.slice(entry.start, entry.end);
+  if (slice.trim().startsWith('@') || entry.node.grammarType === 'FunctionRule') {
+    return entry;
+  }
+  return previousMixinSelector(entries, source, entry.start) ?? entry;
 }
 
 function isNameChar(ch: string): boolean {
@@ -140,7 +207,8 @@ export function cstSymbolAtOffset(root: CssCstNode, doc: TextDocument, offset: n
   let best: { node: CssCstNode; start: number; end: number } | null = null;
   for (const entry of index.nodes) {
     const gt = entry.node.grammarType;
-    const isSymbol = VAR_REF_TYPES.has(gt) || VAR_DECL_TYPES.has(gt) || MIXIN_REF_TYPES.has(gt) || MIXIN_DEF_TYPES.has(gt);
+    const isMixinSelector = MIXIN_SELECTOR_TYPES.has(gt) && followingMixinBody(index.nodes, src, entry) !== null;
+    const isSymbol = VAR_REF_TYPES.has(gt) || VAR_DECL_TYPES.has(gt) || MIXIN_REF_TYPES.has(gt) || MIXIN_DEF_TYPES.has(gt) || isMixinSelector;
     if (!isSymbol) {
       continue;
     }
@@ -163,8 +231,15 @@ export function cstSymbolAtOffset(root: CssCstNode, doc: TextDocument, offset: n
     const name = varNameOf(slice);
     return { kind: 'variable', role: 'definition', matchName: name, refineIdent: name };
   }
-  const mn = mixinNameOf(slice);
+  const selectorBody = MIXIN_SELECTOR_TYPES.has(gt) ? followingMixinBody(index.nodes, src, best) : null;
+  const mixinEntry = selectorBody ?? best;
+  const mn = MIXIN_SELECTOR_TYPES.has(gt)
+    ? src.slice(best.start, best.end).trim()
+    : mixinNameForEntry(index.nodes, src, mixinEntry);
   const ident = mixinIdentOf(mn);
+  if (selectorBody !== null && MIXIN_REF_TYPES.has(selectorBody.node.grammarType)) {
+    return { kind: 'mixin', role: 'reference', matchName: mn, refineIdent: ident };
+  }
   if (MIXIN_REF_TYPES.has(gt)) {
     return { kind: 'mixin', role: 'reference', matchName: mn, refineIdent: ident };
   }
@@ -182,8 +257,9 @@ export function cstFindDefinitionInDoc(root: CssCstNode, doc: TextDocument, uri:
       if (VAR_DECL_TYPES.has(gt) && varNameOf(src.slice(entry.start, entry.end)) === target.matchName) {
         return { uri, range: toRange(doc, entry.start, entry.end) };
       }
-    } else if (MIXIN_DEF_TYPES.has(gt) && mixinNameOf(src.slice(entry.start, entry.end)) === target.matchName) {
-      return { uri, range: toRange(doc, entry.start, entry.end) };
+    } else if (MIXIN_DEF_TYPES.has(gt) && mixinNameForEntry(index.nodes, src, entry) === target.matchName) {
+      const rangeEntry = mixinRangeEntry(index.nodes, src, entry);
+      return { uri, range: toRange(doc, rangeEntry.start, rangeEntry.end) };
     }
   }
   return null;
@@ -201,10 +277,11 @@ export function cstCollectReferencesInDoc(root: CssCstNode, doc: TextDocument, u
     if (target.kind === 'variable') {
       hit = (VAR_REF_TYPES.has(gt) || VAR_DECL_TYPES.has(gt)) && varNameOf(slice) === target.matchName;
     } else {
-      hit = (MIXIN_REF_TYPES.has(gt) || MIXIN_DEF_TYPES.has(gt)) && mixinNameOf(slice) === target.matchName;
+      hit = (MIXIN_REF_TYPES.has(gt) || MIXIN_DEF_TYPES.has(gt)) && mixinNameForEntry(index.nodes, src, entry) === target.matchName;
     }
     if (hit) {
-      out.push({ uri, range: toRange(doc, entry.start, entry.end) });
+      const rangeEntry = target.kind === 'mixin' ? mixinRangeEntry(index.nodes, src, entry) : entry;
+      out.push({ uri, range: toRange(doc, rangeEntry.start, rangeEntry.end) });
     }
   }
 }
