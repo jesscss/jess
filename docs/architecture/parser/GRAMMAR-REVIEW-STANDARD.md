@@ -477,7 +477,7 @@ The rule:
   `StaticValueQuoted` or `StaticNthChildArgument` are findings: use the actual
   semantic concept, such as `Quoted`, `NthChildArgument`, or
   `PseudoSelectorArgument`. A private helper may carry a context name such as
-  `PlainQuoted` only when that context changes recognition.
+  `LiteralQuoted` only when that context changes recognition.
 - **`Ast` / `Cst` in a name is the same error one axis over.** That is a compile
   _mode_, not an identity; one grammar serves both modes, so the mode does not
   belong in the rule's name.

@@ -432,7 +432,7 @@ highest-priority non-Parseman grammar surfaces:
   larger follow-up is still to make that shared frame CSS-owned, with only real
   Jess holes parameterized (`$`-reserved URL handling and interpolation policy).
   Do not grow this back into a Jess-local CSS import parser.
-- Jess constrained CSS headers deliberately use private `PlainValue*` helpers
+- Jess constrained CSS headers deliberately use private `HeaderValue*` helpers
   because they exclude Jess execution forms while reusing the same value
   semantics. Their public CST labels are `ValueAtom`, `Value`, `CallArgument`,
   and `Call`, never the private helper names. This is the narrow-helper rule:
@@ -4194,7 +4194,7 @@ follow-up grammar-shape debt.
 
 Jess contextual CSS-only name cleanup, 2026-07-29: the folded Jess grammar no
 longer uses parser-mode terminology for constrained quoted and pseudo-selector
-contexts. The private `PlainQuoted` helper recognizes quoted syntax without a
+contexts. The private `LiteralQuoted` helper recognizes quoted syntax without a
 Jess interpolation but still emits the semantic `Quoted` CST label;
 `NthChildArgument`, `NthTypeArgument`, `PseudoSelectorArgument`,
 `PseudoSelectorCompound`, `PseudoSelectorComplex`, and `PseudoSelectorList`
@@ -5222,3 +5222,16 @@ arguments and the original diagnostic span. It is not acceptable to delete or
 replace that scan with `peek(...)` alone. The scan inventory remains governed by
 the question "can this be structured or trivia-owned?"; `scanTo(...)` is kept
 only where an opaque language region is actually the accepted syntax.
+
+Quoted/header semantic-name alignment, 2026-07-30: SCSS and Jess now name the
+private non-interpolated quoted slot `LiteralQuoted`, not `PlainQuoted`. It is a
+real restricted recognition slot: module/import paths, static CSS import
+targets, scanner skips, and header-only leaves must reject the dialect's quoted
+interpolation forms, while the universal `Quoted` override remains the ordinary
+value/string production. Jess also calls its restricted CSS-header value spine
+`HeaderValueAtom`, `HeaderValue`, `HeaderCallArgument`, and `HeaderCall`: those
+rules serve typed at-rule/descriptors, never normal Jess values, and therefore
+exclude execution forms without inventing a second public vocabulary. Every
+affected node continues to emit `Quoted`, `ValueAtom`, `Value`, `CallArgument`,
+or `Call` in CST mode. This is a horizontal private-name cleanup across the two
+interpolating dialects; it does not change the grammar's accepted language.

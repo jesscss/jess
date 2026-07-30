@@ -46,7 +46,7 @@ type ScssRules = {
   VariableReference: Combinator<VariableReference>;
   SassInterpolation: Combinator<Interpolation>;
   Quoted: Combinator<Quoted | Interpolation>;
-  PlainQuoted: Combinator<Quoted>;
+  LiteralQuoted: Combinator<Quoted>;
   Keyword: Combinator<Keyword>;
   CustomPropertyValue: Combinator<Keyword>;
   Color: Combinator<Color>;
@@ -1230,7 +1230,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * comment. Both arms are closed regex/literal, so disabling trivia here
    * cannot propagate into a shared rule.
    */
-  const PlainQuoted = node<Quoted>(
+  const LiteralQuoted = node<Quoted>(
     'Quoted',
     choice(
       noTrivia(sequence(
@@ -2448,7 +2448,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'UseRule',
     sequence(
       regex(/@use(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.PlainQuoted,
+      g.LiteralQuoted,
       optional(g.UseNamespace),
       literal(';')
     ),
@@ -2489,7 +2489,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'ForwardRule',
     sequence(
       regex(/@forward(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.PlainQuoted,
+      g.LiteralQuoted,
       g.ForwardTail,
       literal(';')
     ),
@@ -2512,7 +2512,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'ForwardTail',
     optional(scanTo(
       literal(';'),
-      { skip: [balanced('(', ')'), g.PlainQuoted] }
+      { skip: [balanced('(', ')'), g.LiteralQuoted] }
     )),
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
@@ -3757,7 +3757,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'AtRootPrelude',
     optional(scanTo(
       literal('{'),
-      { skip: [balanced('(', ')'), g.PlainQuoted] }
+      { skip: [balanced('(', ')'), g.LiteralQuoted] }
     )),
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
@@ -3770,7 +3770,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('('),
       scanTo(
         literal('{'),
-        { skip: [balanced('(', ')'), g.PlainQuoted] }
+        { skip: [balanced('(', ')'), g.LiteralQuoted] }
       )
     ),
     children => any(children.map(requireToken).map(token => token.value).join('').trim())
@@ -4360,7 +4360,7 @@ export const scssFactory = (g: ScssInputRules) => {
 
   /*
    * Keyframe names do not participate in the module-path classification that
-   * deliberately keeps `PlainQuoted` escape-free. They are ordinary
+   * deliberately keeps `LiteralQuoted` escape-free. They are ordinary
    * static quoted values, so they reuse the escape-preserving static-value
    * string helper while still leaving a real `#{` opener for the rejected
    * dynamic path.
@@ -5010,7 +5010,7 @@ export const scssFactory = (g: ScssInputRules) => {
     VariableReference,
     SassInterpolation,
     Quoted,
-    PlainQuoted,
+    LiteralQuoted,
     Keyword,
     CustomPropertyValue,
     Color,
