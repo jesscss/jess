@@ -1291,7 +1291,7 @@ export const mixinDef = (
 ): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard !== undefined ? { guard } : {}), _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
 
 /** [guards] Args may be bare value nodes (positional) or `{ value, name? }`. */
-export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): MixinCall => ({
+export const mixinCall = (name: string, args: readonly (ValueNode | CallArg)[] = []): MixinCall => ({
   type: 'MixinCall',
   name,
   args: args.map(a => ('type' in a ? { value: a } : a)),
