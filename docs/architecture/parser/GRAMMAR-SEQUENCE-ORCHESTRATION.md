@@ -4347,7 +4347,7 @@ at-rule, supports, import, registered-property, keyframe, scope, and opaque
 grammar keys now use semantic AST/CST-aligned labels (`MediaPrelude`,
 `AtRuleHeader`, `SupportsAtom`, `SupportsNot`, `SupportsLogical`,
 `SupportsFeature`, `SupportsInParens`, `SupportsCondition`,
-`ImportTailFunction`, `CssImportPrelude`, `Charset`, `CssImport`,
+`ImportTailFunction`, `ImportPrelude`, `Charset`, `ImportStatement`,
 `SupportsAtRuleBlock`, `PropertyName`, `PropertyAtRule`, `KeyframeSelector`,
 `KeyframeBlock`, `Keyframes`, `OpaquePrelude`, `OpaqueBody`,
 `OpaqueAtRuleBlock`, `ScopeBlock`, `AtRuleBlock`, and `AtRuleStatement`)
@@ -4367,7 +4367,7 @@ check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed. The previous at-rule/supports/import gating warnings now report under
 semantic rule names such as `AtRuleHeader`, `MediaPrelude`,
-`SupportsCondition`, and `CssImportPrelude`.
+`SupportsCondition`, and `ImportPrelude`.
 
 Jess general-enclosed template name cleanup, 2026-07-29: the final Jess
 `DirectJess*` grammar keys now use semantic AST/CST-aligned labels
@@ -4456,6 +4456,33 @@ build` passed; `pnpm --filter @jesscss/jess-parser build` passed; `pnpm run
 check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed.
+
+Jess parser-local terminal vocabulary cleanup, 2026-07-29: private lexical
+terminal/helper names in `packages/syntax/jess/jess-parser/src/grammar.ts` no
+longer carry a redundant lowercase `jess*` owner prefix. The renamed names are
+semantic local grammar facts (`dollarName`, `expressionBoundary`,
+`expressionProductSymbol`, `expressionSumSymbol`, `expressionCompareSymbol`,
+`ifGuardCompareOperator`, `guardUnaryTypePredicate`, `guardIsUnitPredicate`,
+`typeNamespace`, `dollarBraceStructure`, `dollarInterpolationStructure`,
+`customPropertyChunk`, `selectorTextRun`, `ampersand`,
+`ampersandAppendPayload`, `interpolatedValueTail`, `valueSlashBoundary`,
+`generalTemplateText`, `urlInterpolatedText`, `pseudoRawDoubleQuoted`,
+`pseudoRawSingleQuoted`, `pseudoRawArgument`, and `caseInsensitiveWhen`). This
+is source-only naming cleanup: exported dialect entrypoints such as
+`jessFactory`, `jessGrammar`, `jessAstGrammar`, and `jessCstGrammar` still name
+the package surface, and no grammar branch, public CST/AST node label, reducer
+shape, regex body, or scanner/trivia behavior changed.
+
+Evidence for the Jess parser-local terminal vocabulary cleanup: `rg` finds no
+remaining lowercase `jess[A-Z]` identifiers in
+`packages/syntax/jess/jess-parser/src/grammar.ts` except the exported dialect
+entrypoints; `pnpm --filter @jesscss/jess-parser test --
+test/cst-public.test.ts test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed; `pnpm --filter
+@jesscss/parser-shared build` passed; `pnpm --filter @jesscss/jess-parser
+build` passed; `pnpm run check:macro` reported parser-shared, CSS, Less, SCSS,
+and Jess all fully compiled and 0 interpreter fallbacks; and `pnpm run
+verify:compose-integrity` passed.
 
 SCSS custom/declaration rule name cleanup, 2026-07-29: the SCSS declaration and
 custom-property grammar keys now use semantic AST/CST-aligned labels

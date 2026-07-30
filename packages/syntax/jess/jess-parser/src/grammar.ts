@@ -1222,7 +1222,7 @@ const interpolatedSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))+/)
  * Jess's live `$` grammar does not permit CSS escapes in names. Keep that
  * dialect-local fact explicit while the value keyword leaf remains shared.
  */
-const jessDollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const dollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 
 /*
  * An operator boundary inside a Jess expression is whitespace, and a block
@@ -1230,10 +1230,10 @@ const jessDollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]
  * the comment as part of the boundary keeps the operator symbol a separate
  * grammar fact, so no reduction has to strip comment bytes back out of a token.
  */
-const jessExprBoundary = regex(/(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
-const jessExprProductSymbol = regex(/[*/%]/);
-const jessExprSumSymbol = regex(/[-+]/);
-const jessExprCompareSymbol = regex(/>=|<=|>|<|=/);
+const expressionBoundary = regex(/(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
+const expressionProductSymbol = regex(/[*/%]/);
+const expressionSumSymbol = regex(/[-+]/);
+const expressionCompareSymbol = regex(/>=|<=|>|<|=/);
 
 /*
  * `$if` conditions retain the CST's comparison spelling, which permits both
@@ -1241,22 +1241,22 @@ const jessExprCompareSymbol = regex(/>=|<=|>|<|=/);
  * expression interpolation, whose arithmetic/comparison grammar requires
  * spaces to avoid value-position ambiguity.
  */
-const jessIfGuardCompareOperator = regex(/[ \t\n\r\f]*(?:>=|<=|>|<|=)[ \t\n\r\f]*/);
+const ifGuardCompareOperator = regex(/[ \t\n\r\f]*(?:>=|<=|>|<|=)[ \t\n\r\f]*/);
 
 /*
  * This is intentionally the type-predicate namespace, not general function
  * syntax in a guard. The existing GuardNode evaluator accepts these names;
  * recognition retains a typed argument list and never routes through source.
  */
-const jessGuardUnaryTypePredicate = regex(/\$type\.(?:iscolor|isnumber|isstring|iskeyword|ispixel|ispercentage|isem)(?![-_a-zA-Z0-9\u0080-\uffff])/);
-const jessGuardIsUnitPredicate = regex(/\$type\.isunit(?![-_a-zA-Z0-9\u0080-\uffff])/);
+const guardUnaryTypePredicate = regex(/\$type\.(?:iscolor|isnumber|isstring|iskeyword|ispixel|ispercentage|isem)(?![-_a-zA-Z0-9\u0080-\uffff])/);
+const guardIsUnitPredicate = regex(/\$type\.isunit(?![-_a-zA-Z0-9\u0080-\uffff])/);
 
 /*
  * The reserved guard-predicate namespace. An expression atom uses this as a
  * negative lookahead so `$type.*` can never take a generic call tail and bypass
  * the closed, arity-checked predicate grammar above.
  */
-const jessTypeNamespace = regex(/\$type\./);
+const typeNamespace = regex(/\$type\./);
 
 /*
  * `${…}` — the interpolation form for every NAME, SELECTOR, and STRING position.
@@ -1282,19 +1282,19 @@ const jessTypeNamespace = regex(/\$type\./);
  * so `--$name-color` has no unambiguous name boundary.
  *
  * The `${[` / `]}` openers are ONE literal each so that the bracketed arms carry
- * the same child layout as `jessDollarInterpStructure` and share its reducer —
+ * the same child layout as `dollarInterpolationStructure` and share its reducer —
  * two reducers for one body grammar would drift.
  */
-const jessDollarBraceStructure = noTrivia(choice(
+const dollarBraceStructure = noTrivia(choice(
   sequence(
     literal('${['),
     literal('$'),
-    jessDollarName,
+    dollarName,
     literal(']}')
   ),
   sequence(
     literal('${['),
-    jessDollarName,
+    dollarName,
     literal(']}')
   ),
   sequence(
@@ -1313,20 +1313,20 @@ const jessDollarBraceStructure = noTrivia(choice(
   ),
   sequence(
     literal('${'),
-    jessDollarName,
+    dollarName,
     literal('}')
   )
 ));
-const jessDollarInterpStructure = noTrivia(choice(
+const dollarInterpolationStructure = noTrivia(choice(
   sequence(
     literal('$['),
     literal('$'),
-    jessDollarName,
+    dollarName,
     literal(']')
   ),
   sequence(
     literal('$['),
-    jessDollarName,
+    dollarName,
     literal(']')
   ),
   sequence(
@@ -1344,8 +1344,8 @@ const jessDollarInterpStructure = noTrivia(choice(
     literal(']')
   )
 ));
-const jessCustomPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-const jessSelectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+const customPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const selectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 
 /*
  * The parent selector. `&` alone is a selector reference; `&` fused with an
@@ -1359,7 +1359,7 @@ const jessSelectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
  * positioned parse error in `.jess` \u2014 `-1` is not an identifier \u2014 and `&(-1)` is
  * its explicit spelling.
  */
-const jessAmpersand = regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
+const ampersand = regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
 
 /*
  * `&(X)` is the explicit spelling of the fused append: `&(-1)` appends `-1` to
@@ -1371,28 +1371,28 @@ const jessAmpersand = regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F
  * `nil` is not a Jess keyword. Neither may degrade into "append nothing", so the
  * payload is non-empty and excludes a bare `nil`.
  */
-const jessAmpersandAppendPayload = regex(/(?!nil\))[-_a-zA-Z0-9\u0080-\uffff]+/);
+const ampersandAppendPayload = regex(/(?!nil\))[-_a-zA-Z0-9\u0080-\uffff]+/);
 
 /*
  * The literal tail an authored value-position interpolation may carry: a unit
  * (`$(20)px`), a percent sign, or an identifier suffix (`$[name]-suffix`).
  */
-const jessInterpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
+const interpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
 
 /*
  * One value-term slash boundary, with its authored whitespace on either side.
  * The negative lookahead keeps a comment opener (`/*`) out of the boundary so a
  * commented value still fails exactly where it did before.
  */
-const jessValueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
-const jessGeneralTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
+const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
+const generalTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 
 /*
  * An unquoted Jess URL keeps literal URL-token bytes and `$[…]` segments as
  * separate grammar facts. Whitespace, quotes, parentheses, and any other `$`
  * form remain outside this closed URL slice rather than becoming raw payload.
  */
-const jessUrlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const urlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
  * Jess's compiler namespace: the `@-\u2026` names a module directive lowers to. They
@@ -1422,18 +1422,18 @@ const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 
 export const jessFactory = (g: JessRules & SharedCssSyntax) => {
-  const jessCase = makeWhen({ caseInsensitive: true });
+  const caseInsensitiveWhen = makeWhen({ caseInsensitive: true });
 
   const VariableReference = node<VariableReference>(
     'VariableReference',
     choice(
       noTrivia(sequence(
         literal('$$'),
-        jessDollarName
+        dollarName
       )),
       noTrivia(sequence(
         literal('$'),
-        jessDollarName
+        dollarName
       ))
     ),
     (children, _fields, span) => withSourceSpan(
@@ -1451,7 +1451,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const DollarBrace = node<Interpolation>(
     'DollarBrace',
-    jessDollarBraceStructure,
+    dollarBraceStructure,
     (children, _fields, span) => dollarBraceInterpolation(
       children,
       span
@@ -1459,7 +1459,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const DollarInterp = node<Interpolation>(
     'DollarInterp',
-    jessDollarInterpStructure,
+    dollarInterpolationStructure,
     (children, _fields, span) => interpolationFromChildren(
       children,
       span
@@ -1472,7 +1472,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    */
   const ExpressionDollarBrace = node<ExpressionFact>(
     'ExpressionDollarBrace',
-    jessDollarBraceStructure,
+    dollarBraceStructure,
     (children, _fields, span) => {
       return { value: dollarBraceInterpolation(
         children,
@@ -1482,7 +1482,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const ExpressionDollarInterp = node<ExpressionFact>(
     'ExpressionDollarInterp',
-    jessDollarInterpStructure,
+    dollarInterpolationStructure,
     (children, _fields, span) => ({ value: interpolationFromChildren(
       children,
       span
@@ -1491,27 +1491,27 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ExpressionProductOperator = node<OperatorFact>(
     'ExpressionProductOperator',
     noTrivia(sequence(
-      jessExprBoundary,
-      jessExprProductSymbol,
-      jessExprBoundary
+      expressionBoundary,
+      expressionProductSymbol,
+      expressionBoundary
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
   const ExpressionSumOperator = node<OperatorFact>(
     'ExpressionSumOperator',
     noTrivia(sequence(
-      jessExprBoundary,
-      jessExprSumSymbol,
-      jessExprBoundary
+      expressionBoundary,
+      expressionSumSymbol,
+      expressionBoundary
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
   const ExpressionCompareOperator = node<OperatorFact>(
     'ExpressionCompareOperator',
     noTrivia(sequence(
-      jessExprBoundary,
-      jessExprCompareSymbol,
-      jessExprBoundary
+      expressionBoundary,
+      expressionCompareSymbol,
+      expressionBoundary
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
@@ -1521,7 +1521,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         g.DeclarationReference,
         literal('.'),
-        jessDollarName,
+        dollarName,
         many(choice(
           g.ExpressionReferenceCallTail,
           g.ReferenceTail
@@ -1529,7 +1529,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       ),
       sequence(
         literal('.'),
-        jessDollarName,
+        dollarName,
         many(choice(
           g.ExpressionReferenceCallTail,
           g.ReferenceTail
@@ -1558,7 +1558,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       sequence(
         literal('$'),
-        jessDollarName,
+        dollarName,
         literal(':'),
         g.ExpressionCompare
       ),
@@ -1621,7 +1621,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      */
     choice(
       noTrivia(sequence(
-        not(jessTypeNamespace),
+        not(typeNamespace),
         g.VariableReference,
         many(choice(
           g.ExpressionReferenceCallTail,
@@ -1753,13 +1753,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'GuardCall',
     choice(
       sequence(
-        jessGuardUnaryTypePredicate,
+        guardUnaryTypePredicate,
         literal('('),
         g.ValueTerm,
         literal(')')
       ),
       sequence(
-        jessGuardIsUnitPredicate,
+        guardIsUnitPredicate,
         literal('('),
         g.ValueTerm,
         optional(sequence(
@@ -2283,13 +2283,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const UrlInterpolatedValue = node<Interpolation>(
     'UrlInterpolatedValue',
     noTrivia(sequence(
-      optional(jessUrlInterpolatedText),
+      optional(urlInterpolatedText),
       choice(
         g.DollarBrace,
         g.Expression
       ),
       many(choice(
-        jessUrlInterpolatedText,
+        urlInterpolatedText,
         g.DollarBrace,
         g.Expression
       ))
@@ -2370,10 +2370,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       sequence(
         literal('&('),
-        jessAmpersandAppendPayload,
+        ampersandAppendPayload,
         literal(')')
       ),
-      jessAmpersand
+      ampersand
     ),
     (children) => {
       const head = requireToken(children[0]).value;
@@ -2396,11 +2396,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     noTrivia(sequence(
       interpolatedSimpleAhead,
       optional(regex(/[.#]/)),
-      many(jessSelectorTextRun),
+      many(selectorTextRun),
       g.DollarBrace,
       many(choice(
         g.DollarBrace,
-        jessSelectorTextRun
+        selectorTextRun
       ))
     )),
     (children) => {
@@ -2451,11 +2451,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     noTrivia(sequence(
       interpolatedParentSuffixAhead,
       literal('&'),
-      many(jessSelectorTextRun),
+      many(selectorTextRun),
       g.DollarBrace,
       many(choice(
         g.DollarBrace,
-        jessSelectorTextRun
+        selectorTextRun
       ))
     )),
     children => interpolatedSimpleSelector(templateInterpolationFromChildren(children.filter(child => !isToken(child) || !child.value.includes('$'))))
@@ -2770,17 +2770,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * required `)` then fails: a Jess interpolation in a pseudo
    * argument still rejects rather than being flattened into opaque text.
    */
-  const jessPseudoRawDoubleQuoted = sequence(
+  const pseudoRawDoubleQuoted = sequence(
     literal('"'),
     plainDoubleQuotedText,
     literal('"')
   );
-  const jessPseudoRawSingleQuoted = sequence(
+  const pseudoRawSingleQuoted = sequence(
     literal('\''),
     plainSingleQuotedText,
     literal('\'')
   );
-  const jessPseudoRawArgument = scanTo(
+  const pseudoRawArgument = scanTo(
     choice(
       literal('$'),
       literal(')')
@@ -2790,15 +2790,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         balanced(
           '(',
           ')',
-          { skip: [jessPseudoRawDoubleQuoted, jessPseudoRawSingleQuoted] }
+          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
         ),
         balanced(
           '[',
           ']',
-          { skip: [jessPseudoRawDoubleQuoted, jessPseudoRawSingleQuoted] }
+          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
         ),
-        jessPseudoRawDoubleQuoted,
-        jessPseudoRawSingleQuoted,
+        pseudoRawDoubleQuoted,
+        pseudoRawSingleQuoted,
         blockComment
       ]
     }
@@ -2811,7 +2811,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.StaticPseudoArgument,
         optional(rawWhitespace)
       ),
-      jessPseudoRawArgument
+      pseudoRawArgument
     ),
     (children) => {
       const selector = children.find(isSelectorList);
@@ -2975,7 +2975,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       'ReferenceDotTail',
       noTrivia(sequence(
         literal('.'),
-        jessDollarName
+        dollarName
       )),
       (children) => {
         const name = requireToken(children[1]).value;
@@ -3064,7 +3064,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       attempt(sequence(
         g.DeclarationReference,
         literal('.'),
-        jessDollarName,
+        dollarName,
         many(choice(
           g.ReferenceCallTail,
           g.ReferenceTail
@@ -3195,7 +3195,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.DollarInterp
       ),
       many(choice(
-        jessInterpolatedValueTail,
+        interpolatedValueTail,
         g.Expression,
         g.DollarInterp
       ))
@@ -3301,7 +3301,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     noTrivia(sequence(
       g.ValueSpaceGroup,
       many(sequence(
-        jessValueSlashBoundary,
+        valueSlashBoundary,
         g.ValueSpaceGroup
       ))
     )),
@@ -3856,7 +3856,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.GeneralTemplateBrace,
       g.GeneralTemplateDoubleQuoted,
       g.GeneralTemplateSingleQuoted,
-      jessGeneralTemplateText
+      generalTemplateText
     )),
     templateInterpolationFromChildren
   );
@@ -3921,7 +3921,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.GeneralQuotedTemplateBrace,
       g.GeneralQuotedTemplateDoubleQuoted,
       g.GeneralQuotedTemplateSingleQuoted,
-      jessGeneralTemplateText
+      generalTemplateText
     )),
     templateInterpolationFromChildren
   );
@@ -4131,14 +4131,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        * supports arguments reuse `SupportsCondition`; declaration-shaped
        * `supports(display: grid)` is owned by `ImportSupportsArgument`.
        */
-      jessCase(
+      caseInsensitiveWhen(
         'supports(',
         sequence(
           routed(),
           g.ImportSupportsArgument
         )
       ),
-      jessCase(
+      caseInsensitiveWhen(
         'layer(',
         sequence(
           routed(),
@@ -4387,19 +4387,19 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     noTrivia(sequence(
       literal('$'),
       literal('$'),
-      jessDollarName,
+      dollarName,
       literal('?:')
     )),
     noTrivia(sequence(
       literal('$'),
-      jessDollarName,
+      dollarName,
       literal('?:')
     )),
     sequence(
       noTrivia(sequence(
         literal('$'),
         literal('$'),
-        jessDollarName
+        dollarName
       )),
       choice(
         literal(':='),
@@ -4409,7 +4409,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       noTrivia(sequence(
         literal('$'),
-        jessDollarName
+        dollarName
       )),
       choice(
         literal(':='),
@@ -4537,10 +4537,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       noTrivia(sequence(
         literal('--'),
-        many(jessCustomPropertyChunk),
+        many(customPropertyChunk),
         g.DollarBrace,
         many(choice(
-          jessCustomPropertyChunk,
+          customPropertyChunk,
           g.DollarBrace
         ))
       )),
@@ -4824,7 +4824,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'MixinParam',
     sequence(
       literal('$'),
-      jessDollarName,
+      dollarName,
       optional(sequence(
         literal(':'),
         g.ValueTerm
@@ -4857,7 +4857,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       sequence(
         literal('$'),
-        jessDollarName,
+        dollarName,
         literal(':'),
         g.ValueTerm
       ),
@@ -4923,7 +4923,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'ReferenceCall',
     sequence(
       literal('$'),
-      jessDollarName,
+      dollarName,
       literal('('),
       literal(')'),
       optional(literal(';'))
@@ -5070,7 +5070,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'ForName',
     sequence(
       literal('$'),
-      jessDollarName
+      dollarName
     ),
     children => requireToken(children[1]).value
   );
@@ -5228,7 +5228,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'IfGuardCompare',
     noTrivia(sequence(
       g.ExpressionSum,
-      jessIfGuardCompareOperator,
+      ifGuardCompareOperator,
       g.ExpressionSum
     )),
     reduceGuardCompare
