@@ -1,6 +1,12 @@
 /**
  * Canonical CSS grammar.
  *
+ * CSS owns the shared stylesheet structure: rulesets, declarations, selectors,
+ * values, standard at-rules, conditional query/supports/container preludes,
+ * custom properties, pseudos, and opaque unknown CSS at-rules. Dialects should
+ * reuse these rules unless they expand a specific value/selector/header shape
+ * or add language-specific statements.
+ *
  * Parseman reductions call core AST constructors directly in the default
  * artifact. The CST artifact is compiled from the same factory with
  * `hostMode: 'cst'` for language-service and dialect composition use.

@@ -4,9 +4,12 @@
  * CSS base: ../../../css/css-parser/src/grammar.ts
  *
  * SCSS adds and overrides:
- * - $variables, Sass interpolation, modules, mixins, functions, control rules,
- *   placeholder selectors, @extend, and Sass import/use/forward forms.
- * - SCSS-specific expression, map/list, nested-property, and selector syntax.
+ * - Language-specific features: $variables, Sass interpolation, modules,
+ *   mixins, functions, control rules, placeholder selectors, @extend, and
+ *   Sass import/use/forward forms.
+ * - Expanded CSS shapes: expression/map/list values, nested properties,
+ *   interpolated selectors/properties/at-rule preludes, and selector forms
+ *   where SCSS adds authored syntax inside otherwise CSS-owned structure.
  * - SCSS is a sibling grammar over CSS/shared syntax; it must not inherit Less
  *   routes or keep Less-only compatibility seams.
  *
