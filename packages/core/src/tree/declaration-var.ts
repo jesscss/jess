@@ -16,12 +16,11 @@ export type VarDeclarationOptions = DeclarationOptions & {
   paramVar?: boolean;
 
   /**
-   * Live-binding ASSIGNMENT, written `$!foo: bar` — the `!` sigil right after `$`,
-   * mirroring the `$!foo` read form's `readMode: 'snapshot'`. Records the `$!`
-   * intent on the assignment node; it renders back as `$!name`.
+   * Historical live-binding assignment marker from the legacy tree parser.
+   * Current Jess source retired `$!foo`; live assignment is `$foo := value` and
+   * scoped assignment is `$^foo := value`.
    *
-   * @todo eval — "assign through the live binding" is NOT implemented; the parser
-   * accepts `$!foo:` and warns.
+   * @todo delete with the legacy tree surface.
    */
   liveBinding?: boolean;
 };
@@ -39,7 +38,7 @@ export type VarDeclarationOptions = DeclarationOptions & {
  *   Jess: `$foo := 1`  (nearest-outer non-shadowing)
  *
  * @example `liveBinding`
- *   Jess: `$!foo: 1`  (live-binding assignment; eval TODO)
+ *   Legacy tree spelling: `$!foo: 1`  (retired in current Jess source)
  *
  * @todo Support destructuring
  * e.g. `$(var1, var2): 1 2`
@@ -114,7 +113,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     const w = options.writer;
     w.add('$', this);
 
-    // Live-binding assignment `$!foo: …` — emit the `!` sigil after `$`.
+    // Historical legacy-tree `$!foo: …` emission; current Jess source retired it.
     if (this._options?.liveBinding) {
       w.add('!', this);
     }

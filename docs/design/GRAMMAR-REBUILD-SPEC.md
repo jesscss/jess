@@ -363,7 +363,10 @@ Likewise, expression lowering is dialect policy, not a license to widen every
 value slot. Less math and comparison may lower to expression nodes based on
 `mathMode`; Jess math, comparison, and leading-dot declaration lookup belong
 inside explicit `$()` expressions only, with normal value positions rejecting
-the same spellings.
+the same spellings. Less-to-Jess conversion must preserve Less expression facts
+with explicit Jess `$(...)` output, for example a Less math expression
+`@foo + 1` projects as `$(^foo + 1)` when `mathMode` lowered it as math; it must
+not widen normal Jess values to accept `$foo + 1`.
 
 **Cross-artifact `compose()` is not available, so the rebuild proceeds as
 terminal leaves.** The constraint a builder must satisfy to be statically

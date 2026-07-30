@@ -143,11 +143,12 @@ Implementation:
   branch for VarDeclaration is gone. (`AssignmentType.Add` still exists in core for
   the Less PROPERTY `+:` merge — a separate feature, see the deferred design below.)
 - **Variable lookup and assignment source contract.** `$foo` is the live/current
-  read and `$$foo` is the scoped/final read. Both `$foo: value` and `$$foo: value`
+  read and `$^foo` is the scoped/final read. Both `$foo: value` and `$^foo: value`
   create or update both bindings; the declaration sigil does not select a binding
-  kind. `$foo?:` tests the live map and `$$foo?:` tests the scoped/final map, with
+  kind. `$foo?:` tests the live map and `$^foo?:` tests the scoped/final map, with
   either form creating/updating both bindings only on a miss. `$foo :=` updates the
-  live/current binding; `$$foo :=` updates the scoped/final binding. `$!` is
+  live/current binding; `$^foo :=` updates the scoped/final binding. `$!` and `$$`
+  are
   retired and must not be documented as an accepted or compatibility spelling.
   AST representation and parser/evaluator migration are deliberately not specified
   by this note; see the active resolver shape specification for the target rules.
@@ -220,8 +221,8 @@ Dependents of `;`-separated `List` found (would need review before dropping):
 ## Deferred eval TODOs
 
 Variable parser/evaluator migration must implement the settled source contract:
-`$foo` reads live/current, `$$foo` reads scoped/final, and `$!` is retired.
-`$foo :=` updates the live/current binding while `$$foo :=` updates the
+`$foo` reads live/current, `$^foo` reads scoped/final, and `$!`/`$$` are retired.
+`$foo :=` updates the live/current binding while `$^foo :=` updates the
 scoped/final binding. Do not preserve old `nearestOuter`, `liveBinding`, or
 `setDefined` machinery as compatibility semantics.
 
@@ -296,9 +297,9 @@ rediscovered.
   Jess delta + `//` comments. Selectors stay clean unless interpolated. The
   current grammar owns AST and CST through one host-mode factory; do not
   reintroduce a CST-only Jess delta.
-- **Variables:** `$name: value;` and `$$name: value;` both create or update both
-  bindings. `$name` reads live/current and `$$name` reads scoped/final. `?:` and
-  `:=` use their target lookup mode. `$!` is retired.
+- **Variables:** `$name: value;` and `$^name: value;` both create or update both
+  bindings. `$name` reads live/current and `$^name` reads scoped/final. `?:` and
+  `:=` use their target lookup mode. `$!`/`$$` are retired.
 - **Accessor model** (`$theme.$key` is INVALID — removed from `reference.ts`):
   | Syntax | `type` | Semantics |
   | --- | --- | --- |
@@ -317,17 +318,14 @@ rediscovered.
   `$(1+2)` / `$(5%2)` are NOT operations (that's Less — convert-Less spaces them
   out). `50%` glued = percent Dimension; `5 % 2` spaced = modulo. Bare ident
   inside `$()` = keyword literal; `$x` = reference.
-- **Unwrapped leading-`$var` arithmetic (value position)** — corpus 13. Targeted
-  relaxation of the double-`$`: value-position arithmetic that LEADS with a `$var`
-  needs no `$(…)` wrapper — `$w + 1` builds the SAME `Operation` as `$($w + 1)`.
-  Gated by: (a) leads with a `Reference`, (b) ≥1 STANDALONE `+`/`-`/`*` op. `/` is
-  EXCLUDED (still needs the wrapper — `font: 16px/1.5` ambiguity). Fused signs stay
-  a list: `$w -1`/`$w +1` → `[$w, -1]`/`[$w, +1]` (no standalone op — falls out of
-  tokenization, no whitespace heuristic). Keyword arith (`w + 1`, no `$`) stays a
-  literal list. Precedence (`*` over `+`/`-`) + `_buildOperation` reuse the wrapped
-  path verbatim (grammar `unwrapProductLead`/`unwrapProductRest`/`UnwrapArith`,
-  placed in `value` between `Expression` and `Reference`). Wrapped `$(…)` path and
-  normal CSS lists (`transition: a 1s, b 2s`) untouched.
+- **No unwrapped value-position arithmetic:** ordinary Jess values do not accept
+  `$w + 1`, `.w + 1`, or comparison forms. Math, comparison, and leading-dot
+  declaration lookup live behind the explicit `$(...)` expression boundary:
+  `$(.w + 1)` and `$(.w > 0)` parse as expressions; `$w + 1` remains illegal in
+  a normal declaration value. Less conversion must project Less `mathMode`
+  expression facts into explicit `$(...)` Jess output, e.g. `@foo + 1` becomes
+  `$(^foo + 1)` when Less actually lowered the source as math. Plain `^foo` is
+  expression-only; ordinary value-position scoped lookup is `$^foo`.
 
 ## Core change made by this build
 - `reference.ts` `writeSyntax` `case 'variable'`: a variable lookup WITH a target

@@ -42,6 +42,7 @@ type JessRules = {
   ExpressionLambda: Combinator<AnonymousMixin>;
   ValueBlock: Combinator<ValueNode>;
   VariableReference: Combinator<VariableReference>;
+  ExpressionScopedReference: Combinator<VariableReference>;
   DeclarationReference: Combinator<DeclarationReference>;
   ReferenceTail: Combinator<JessReferenceTail>;
   ReferenceCallTail: Combinator<JessReferenceTail>;
@@ -674,7 +675,7 @@ function foldExpression(children: readonly unknown[]): ExpressionFact {
 function expressionSource(value: ValueNode): string {
   switch (value.type) {
     case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
-    case 'VariableReference': return `$${value.name}`;
+    case 'VariableReference': return value.lookup === 'scoped' ? `^${value.name}` : `$${value.name}`;
     case 'Reference': return value.raw;
     case 'DeclarationReference': return value.raw;
     case 'PropertyReference': return value.raw;
@@ -687,7 +688,7 @@ function expressionSource(value: ValueNode): string {
 
 function referenceBaseSource(value: ValueNode): string {
   switch (value.type) {
-    case 'VariableReference': return `${value.lookup === 'scoped' ? '$$' : '$'}${value.name}`;
+    case 'VariableReference': return value.lookup === 'scoped' ? `^${value.name}` : `$${value.name}`;
     case 'DeclarationReference': return value.raw;
     default: throw new TypeError(`Jess expression reference cannot start from ${value.type}.`);
   }
@@ -818,7 +819,7 @@ function referenceArgSource(value: JessMixinCallArgument['value']): string {
   }
   switch (value.type) {
     case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
-    case 'VariableReference': return `$${value.name}`;
+    case 'VariableReference': return `${value.lookup === 'scoped' ? '$^' : '$'}${value.name}`;
     case 'Reference': case 'DeclarationReference': case 'PropertyReference': return value.raw;
     case 'Operation': case 'Condition': case 'Interpolation': return expressionSource(value);
     default: return '';
@@ -1444,7 +1445,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'VariableReference',
     choice(
       noTrivia(sequence(
-        literal('$$'),
+        literal('$^'),
         dollarName
       )),
       noTrivia(sequence(
@@ -1455,7 +1456,21 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     (children, _fields, span) => withSourceSpan(
       variableReference(
         requireToken(children.at(-1)).value,
-        requireToken(children[0]).value === '$$' ? 'scoped' : 'live'
+        requireToken(children[0]).value === '$^' ? 'scoped' : 'live'
+      ),
+      span
+    )
+  );
+  const ExpressionScopedReference = node<VariableReference>(
+    'VariableReference',
+    noTrivia(sequence(
+      literal('^'),
+      dollarName
+    )),
+    (children, _fields, span) => withSourceSpan(
+      variableReference(
+        requireToken(children[1]).value,
+        'scoped'
       ),
       span
     )
@@ -1636,6 +1651,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       noTrivia(sequence(
         not(typeNamespace),
         g.VariableReference,
+        many(choice(
+          g.ExpressionReferenceCallTail,
+          g.ReferenceTail
+        ))
+      )),
+      noTrivia(sequence(
+        g.ExpressionScopedReference,
         many(choice(
           g.ExpressionReferenceCallTail,
           g.ReferenceTail
@@ -3049,7 +3071,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       (children) => {
         const key = children[1];
         if (isValueNode(key) && key.type === 'VariableReference') {
-          return { step: { type: 'BracketLookup', key, keyKind: 'var' }, src: `[${key.lookup === 'scoped' ? '$$' : '$'}${key.name}]` };
+          return { step: { type: 'BracketLookup', key, keyKind: 'var' }, src: `[${key.lookup === 'scoped' ? '$^' : '$'}${key.name}]` };
         }
         if (isValueNode(key) && key.type === 'Quoted') {
           return { step: { type: 'BracketLookup', key, keyKind: 'member' }, src: `[${key.src}]` };
@@ -3100,7 +3122,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * Left-factored `$`/`$$`+name so the ubiquitous dollar value is parsed ONCE.
+   * Left-factored `$`/`$^`+name so the ubiquitous dollar value is parsed ONCE.
    * The leading `VariableReference` is shared across plain references,
    * accessor-tail chains, and unwrapped `/` slash lists. Arithmetic and
    * comparison stay in the explicit `$(...)` expression grammar so normal value
@@ -3176,7 +3198,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         return reference(
           base,
           tails.map(tail => tail.step),
-          `${base.lookup === 'scoped' ? '$$' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`
+          `${base.lookup === 'scoped' ? '$^' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`
         );
       }
       if (rest.some(child => isToken(child) && child.value === '/')) {
@@ -4496,7 +4518,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const assignHead = choice(
     noTrivia(sequence(
       literal('$'),
-      literal('$'),
+      literal('^'),
       dollarName,
       literal('?:')
     )),
@@ -4508,7 +4530,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       noTrivia(sequence(
         literal('$'),
-        literal('$'),
+        literal('^'),
         dollarName
       )),
       choice(
@@ -5645,6 +5667,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ExpressionLambda,
     ValueBlock,
     VariableReference,
+    ExpressionScopedReference,
     DeclarationReference,
     ReferenceTail,
     ReferenceCallTail,

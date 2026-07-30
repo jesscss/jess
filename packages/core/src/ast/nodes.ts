@@ -149,7 +149,7 @@ export interface VariableReference {
   readonly type: 'VariableReference';
   readonly name: string;
 
-  /** `$name` reads `live`; `$$name` and Less `@name` read `scoped`. */
+  /** `$name` reads `live`; `$^name` and Less `@name` read `scoped`. */
   readonly lookup: VariableLookup;
 }
 

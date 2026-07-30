@@ -191,7 +191,7 @@ again, **no new tree2 kinds**, every target already closed by an earlier rung:
 
 | `.jess` construct | tree2 target | Rung |
 |---|---|---|
-| `$foo` live read; `$$foo` scoped/final read; `$foo:` / `$$foo:` create or update both bindings; `?:` / `:=` use their target lookup | `VarRef` / `VarDeclaration` / `VarAssignment` | R3 (scoped index + cells) |
+| `$foo` live read; `$^foo` scoped/final read; `$foo:` / `$^foo:` create or update both bindings; `?:` / `:=` use their target lookup | `VarRef` / `VarDeclaration` / `VarAssignment` | R3 (scoped index + cells) |
 | readonly `!$foo`; private `_name` | binding flags on the cell | R3 |
 | `$base.name` STATIC member (literal keyword key → `.name`) | member/lookup value | R4 (namespaces/maps) |
 | `$base[0]` / `$base['k']` / `$base[$key]` (index / literal-prop / dynamic) | indexed lookup value | R4 (maps/indexing) |
@@ -239,8 +239,8 @@ prior-art reference, mark **"needs owner confirmation of intended v5 shape."**
 - **O-JESS-2** — `$apply .foo` desugaring to `$ > *[.foo]`: does the bridge desugar
   to the mixin-apply core path, or does tree2 want a distinct apply node? (Spec
   assumes desugar-in-bridge, zero new kind — confirm.)
-- **O-JESS-3** — `$!` is retired. The parser and evaluator must represent `$` as
-  live/current and `$$` as scoped/final lookup without a snapshot alias.
+- **O-JESS-3** — `$!`/`$$` are retired. The parser and evaluator must represent
+  `$` as live/current and `$^` as scoped/final lookup without a snapshot alias.
 
 ---
 
