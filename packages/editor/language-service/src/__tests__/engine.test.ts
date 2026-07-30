@@ -1237,6 +1237,27 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('unusedFunctions (lint/no-unused-function)', () => {
+      it('stays quiet by default until project callable facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '@function used() { @return 1; }\n@function unused() { @return 2; }\n.a { width: used(); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/no-unused-function');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/no-unused-function', 'warning'));
+        const doc = createDocument('scss', '@function used() { @return 1; }\n@function unused() { @return 2; }\n.a { width: used(); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/no-unused-function');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('unused');
+      });
+    });
+
     describe('shadowedTokens (lint/no-shadowed-token)', () => {
       it('stays quiet by default until project symbol facts exist', () => {
         const engine = createEngine();

@@ -547,6 +547,44 @@ describe('collectTolerantDiagnostics', () => {
       .some(diagnostic => diagnostic.code === LINT_CODES.unusedMixins)).toBe(false);
   });
 
+  it('reports same-file unused functions in dialect stylesheets without external module sources', () => {
+    const scss = '@function used() { @return 1; }\n@function unused() { @return 2; }\n.a { w: used(); }';
+    const scssHyphen = '@function used_name() { @return 1; }\n.a { w: used-name(); }';
+    const jess = '$used: @() > { result: 1; }\n$unused: @() > { result: 2; }\n.a { w: $used(); }';
+    const jessExpression = '$used: @() > $(1 + 2);\n$unused: @() > $(3 + 4);\n.a { w: $used(); }';
+    const jessPlainMixinValue = '$fn: @($x) { color: $x; };\n.a { color: red; }';
+
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused function "unused"', scss.indexOf('unused'), scss.indexOf('unused') + 'unused'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: scssHyphen, language: 'scss' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused function "$unused"', jess.indexOf('$unused'), jess.indexOf('$unused') + '$unused'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: jessExpression, language: 'jess' }).diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)
+      .map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unused function "$unused"', jessExpression.indexOf('$unused'), jessExpression.indexOf('$unused') + '$unused'.length]
+    ]);
+    expect(collectTolerantDiagnostics({ source: jessPlainMixinValue, language: 'jess' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
+  });
+
+  it('does not report same-file unused functions when imports or modules can export them', () => {
+    const scss = '@use "lib";\n@function unused() { @return 1; }';
+    const jess = '@-compose "lib";\n$unused: @() > { result: 1; }';
+
+    expect(collectTolerantDiagnostics({ source: scss, language: 'scss' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
+    expect(collectTolerantDiagnostics({ source: jess, language: 'jess' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
+  });
+
   it('reports numeric key access against same-file map-like variables', () => {
     const less = '@tokens: { tone: blue; gap: 1px; };\n.a { color: @tokens[0]; bg: @tokens[tone]; }';
     const scss = '$tokens: (tone: blue, gap: 1px);\n.a { color: map-get($tokens, 0); bg: map-get($tokens, tone); }';

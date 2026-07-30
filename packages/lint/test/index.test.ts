@@ -81,6 +81,7 @@ describe('stable rule set', () => {
       LINT_CODES.shadowedTokens,
       LINT_CODES.unusedVariables,
       LINT_CODES.unusedMixins,
+      LINT_CODES.unusedFunctions,
       LINT_CODES.duplicateModuleLoads,
       LINT_CODES.unboundedExtends,
       LINT_CODES.deadExtends,
@@ -148,13 +149,14 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.shadowedTokens,
       LINT_RULE_NAMES.unusedVariables,
       LINT_RULE_NAMES.unusedMixins,
+      LINT_RULE_NAMES.unusedFunctions,
       LINT_RULE_NAMES.duplicateModuleLoads,
       LINT_RULE_NAMES.unboundedExtends,
       LINT_RULE_NAMES.deadExtends,
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(53);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(54);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -180,6 +182,7 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.shadowedTokens]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedMixins]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.unusedFunctions]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.deadExtends]).toBe('warn');
@@ -252,6 +255,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedMixins]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedFunctions]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unboundedExtends]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.deadExtends]).toBe('off');
@@ -1565,6 +1569,31 @@ describe('lintText', () => {
     });
     expect(configured.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_RULE_NAMES.unusedMixins, LINT_CODES.unusedMixins, 'warning']
+    ]);
+  });
+
+  it('keeps unused functions opt-in until project callable facts exist', async () => {
+    const input = {
+      source: '@function used() { @return 1; }\n@function unused() { @return 2; }\n.a { width: used(); }',
+      filePath: '/tmp/input.scss'
+    };
+
+    const defaults = await lintText(input, {
+      stylesConfig: {}
+    });
+    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unusedFunctions)).toBe(false);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.unusedFunctions]: 'warn'
+          }
+        }
+      }
+    });
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.unusedFunctions, LINT_CODES.unusedFunctions, 'warning']
     ]);
   });
 

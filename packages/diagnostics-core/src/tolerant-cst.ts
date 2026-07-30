@@ -77,6 +77,7 @@ export const LINT_CODES = {
   shadowedTokens: 'lint/no-shadowed-token',
   unusedVariables: 'lint/no-unused-variable',
   unusedMixins: 'lint/no-unused-mixin',
+  unusedFunctions: 'lint/no-unused-function',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
   suspiciousMapKeyAccess: 'lint/no-suspicious-map-key-access',
@@ -561,6 +562,12 @@ type VariableDeclarationFact = {
 };
 
 type MixinDefinitionFact = {
+  readonly name: string;
+  readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+type FunctionDefinitionFact = {
   readonly name: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
@@ -2886,6 +2893,71 @@ function mixinCallNamesOf(source: string, node: CssCstNode, language: JessLangua
   return name === null ? [] : [name];
 }
 
+function exactDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNode | null {
+  const descendant = firstDescendantNodeOf(node, grammarType);
+  return descendant !== undefined
+    && absoluteStart(descendant) === absoluteStart(node)
+    && absoluteEnd(descendant) === absoluteEnd(node)
+    ? descendant
+    : null;
+}
+
+function blockLambdaYieldsValue(source: string, node: CssCstNode): boolean {
+  if (node.grammarType !== 'BlockLambda') {
+    return false;
+  }
+  const params = firstChildNodeOf(node, 'MixinParams');
+  if (params === undefined) {
+    return false;
+  }
+  const start = absoluteEnd(params);
+  const end = absoluteEnd(node);
+  const bodyStart = source.indexOf('{', start);
+  return bodyStart >= start && bodyStart < end && source.slice(start, bodyStart).includes('>');
+}
+
+function jessFunctionValueNode(node: CssCstNode): CssCstNode | null {
+  const value = firstChildNodeMatching(node, MAP_LIKE_VALUE_TYPES) ?? firstChildNodeOf(node, 'Value');
+  if (value === undefined) {
+    return null;
+  }
+  const expressionLambda = exactDescendantNodeOf(value, 'ExpressionLambda');
+  if (expressionLambda !== null) {
+    return expressionLambda;
+  }
+  const blockLambda = exactDescendantNodeOf(value, 'BlockLambda');
+  return blockLambda !== null ? blockLambda : null;
+}
+
+function functionDefinitionOf(source: string, node: CssCstNode, language: JessLanguage): FunctionDefinitionFact | null {
+  if (language === 'scss') {
+    return node.grammarType === 'FunctionRule' ? scssNamedRuleName(source, node, '@function') : null;
+  }
+  if (language !== 'jess') {
+    return null;
+  }
+  const declaration = variableDeclarationOf(source, node, language);
+  const value = declaration === null ? null : jessFunctionValueNode(node);
+  if (declaration === null || value === null) {
+    return null;
+  }
+  if (value.grammarType === 'BlockLambda' && !blockLambdaYieldsValue(source, value)) {
+    return null;
+  }
+  return declaration;
+}
+
+function functionReferenceNameOf(source: string, node: CssCstNode, language: JessLanguage): string | null {
+  if (language === 'scss' && node.grammarType === 'Call') {
+    const name = functionNameOf(source, absoluteStart(node), absoluteEnd(node));
+    return name === null ? null : normalizedScssCallableName(name);
+  }
+  if (language === 'jess') {
+    return variableReferenceNameOf(source, node, language);
+  }
+  return null;
+}
+
 function createChildVariableScope(parent: VariableScope): VariableScope {
   return {
     declarations: new Map(),
@@ -4128,6 +4200,9 @@ export function cstLintDiagnostics(
   const variableReferences = new Set<string>();
   const mixinDefinitions: MixinDefinitionFact[] = [];
   const mixinReferences = new Set<string>();
+  const functionDefinitions: FunctionDefinitionFact[] = [];
+  const functionReferences = new Set<string>();
+  const functionDefinitionNames = new Set<string>();
   const mapLikeVariables = new Set<string>();
   const ruleSelectorKeys = new Set<string>();
   const exactExtendTargets: ExactExtendTargetFact[] = [];
@@ -4285,6 +4360,17 @@ export function cstLintDiagnostics(
 
     for (const mixinReference of mixinCallNamesOf(source, node, language)) {
       mixinReferences.add(mixinReference);
+    }
+
+    const functionDefinition = functionDefinitionOf(source, node, language);
+    if (functionDefinition !== null) {
+      functionDefinitions.push(functionDefinition);
+      functionDefinitionNames.add(functionDefinition.name);
+    }
+
+    const functionReference = functionReferenceNameOf(source, node, language);
+    if (functionReference !== null) {
+      functionReferences.add(functionReference);
     }
 
     const suspiciousMapKeyAccess = suspiciousMapKeyAccessOf(source, node, language, mapLikeVariables);
@@ -5230,7 +5316,7 @@ export function cstLintDiagnostics(
 
   if (language !== 'css') {
     for (const declaration of variableDeclarations) {
-      if (!variableReferences.has(declaration.name)) {
+      if (!functionDefinitionNames.has(declaration.name) && !variableReferences.has(declaration.name)) {
         push(
           LINT_CODES.unusedVariables,
           'warning',
@@ -5241,6 +5327,17 @@ export function cstLintDiagnostics(
     }
 
     if (!hasExternalSources) {
+      for (const definition of functionDefinitions) {
+        if (!functionReferences.has(definition.name)) {
+          push(
+            LINT_CODES.unusedFunctions,
+            'warning',
+            `Unused function "${definition.display}"`,
+            definition.span
+          );
+        }
+      }
+
       for (const definition of mixinDefinitions) {
         if (!mixinReferences.has(definition.name)) {
           push(

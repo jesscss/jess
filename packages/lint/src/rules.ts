@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 53;
+export const STABLE_LINT_RULE_SET_VERSION = 54;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -68,6 +68,7 @@ export const LINT_RULE_NAMES = {
   shadowedTokens: 'jess/no-shadowed-token',
   unusedVariables: 'jess/no-unused-variable',
   unusedMixins: 'jess/no-unused-mixin',
+  unusedFunctions: 'jess/no-unused-function',
   duplicateModuleLoads: 'jess/no-duplicate-module-load',
   unboundedExtends: 'jess/no-unbounded-extend',
   deadExtends: 'jess/no-dead-extend',
@@ -149,6 +150,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.shadowedTokens]: LINT_CODES.shadowedTokens,
   [LINT_RULE_NAMES.unusedVariables]: LINT_CODES.unusedVariables,
   [LINT_RULE_NAMES.unusedMixins]: LINT_CODES.unusedMixins,
+  [LINT_RULE_NAMES.unusedFunctions]: LINT_CODES.unusedFunctions,
   [LINT_RULE_NAMES.duplicateModuleLoads]: LINT_CODES.duplicateModuleLoads,
   [LINT_RULE_NAMES.unboundedExtends]: LINT_CODES.unboundedExtends,
   [LINT_RULE_NAMES.deadExtends]: LINT_CODES.deadExtends,
@@ -217,6 +219,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.shadowedTokens]: LINT_RULE_NAMES.shadowedTokens,
   [LINT_CODES.unusedVariables]: LINT_RULE_NAMES.unusedVariables,
   [LINT_CODES.unusedMixins]: LINT_RULE_NAMES.unusedMixins,
+  [LINT_CODES.unusedFunctions]: LINT_RULE_NAMES.unusedFunctions,
   [LINT_CODES.duplicateModuleLoads]: LINT_RULE_NAMES.duplicateModuleLoads,
   [LINT_CODES.unboundedExtends]: LINT_RULE_NAMES.unboundedExtends,
   [LINT_CODES.deadExtends]: LINT_RULE_NAMES.deadExtends,
@@ -285,6 +288,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.shadowedTokens]: 'off',
   [LINT_RULE_NAMES.unusedVariables]: 'off',
   [LINT_RULE_NAMES.unusedMixins]: 'off',
+  [LINT_RULE_NAMES.unusedFunctions]: 'off',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'warn',
   [LINT_RULE_NAMES.unboundedExtends]: 'warn',
   [LINT_RULE_NAMES.deadExtends]: 'warn',
@@ -356,6 +360,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.selectorMaxUniversal]: 'off',
   [LINT_RULE_NAMES.unusedVariables]: 'off',
   [LINT_RULE_NAMES.unusedMixins]: 'off',
+  [LINT_RULE_NAMES.unusedFunctions]: 'off',
   [LINT_RULE_NAMES.duplicateModuleLoads]: 'off',
   [LINT_RULE_NAMES.unboundedExtends]: 'off',
   [LINT_RULE_NAMES.deadExtends]: 'off',
@@ -949,6 +954,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'off',
     comparison: 'jess-only',
     notes: 'Opt-in same-file dialect diagnostic for Less, SCSS, and Jess mixins that are declared but never called in a file with no imports, modules, or plugins; project callable facts remain future work.'
+  },
+  {
+    diagnosticCode: LINT_CODES.unusedFunctions,
+    ruleName: LINT_RULE_NAMES.unusedFunctions,
+    title: 'Unused functions',
+    tier: 'maintainability',
+    defaultPolicy: 'off',
+    comparison: 'jess-only',
+    notes: 'Opt-in same-file dialect diagnostic for SCSS @function rules and Jess yielding function values that are declared but never referenced in a file with no imports, modules, or plugins; project callable facts remain future work.'
   },
   {
     diagnosticCode: LINT_CODES.duplicateModuleLoads,
