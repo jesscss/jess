@@ -163,17 +163,11 @@ type JessRules = {
   AtRuleHeader: Combinator<JessAtRuleHeader>;
   SupportsAtom: Combinator<ValueNode>;
   GeneralTemplate: Combinator<Interpolation>;
-  GeneralTemplateParen: Combinator<Interpolation>;
-  GeneralTemplateSquare: Combinator<Interpolation>;
-  GeneralTemplateBrace: Combinator<Interpolation>;
-  GeneralTemplateDoubleQuoted: Combinator<Interpolation>;
-  GeneralTemplateSingleQuoted: Combinator<Interpolation>;
+  GeneralTemplateGroup: Combinator<Interpolation>;
+  GeneralTemplateQuoted: Combinator<Interpolation>;
   GeneralQuotedTemplate: Combinator<Interpolation>;
-  GeneralQuotedTemplateParen: Combinator<Interpolation>;
-  GeneralQuotedTemplateSquare: Combinator<Interpolation>;
-  GeneralQuotedTemplateBrace: Combinator<Interpolation>;
-  GeneralQuotedTemplateDoubleQuoted: Combinator<Interpolation>;
-  GeneralQuotedTemplateSingleQuoted: Combinator<Interpolation>;
+  GeneralQuotedTemplateGroup: Combinator<Interpolation>;
+  GeneralQuotedTemplateQuoted: Combinator<Interpolation>;
   GeneralEnclosed: Combinator<GeneralEnclosed>;
   SupportsNot: Combinator<Keyword>;
   SupportsLogical: Combinator<Keyword>;
@@ -4008,61 +4002,30 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * still string content and must stay permissive. Rejecting `$(…)` only at the
    * top level would mean an extra paren unlocks the spelling
    * (`@supports foo($(x))` rejected but `@supports foo(($(x)))` accepted), so the
-   * strict chain mirrors ALL its non-quoted wrappers and the permissive chain
-   * mirrors all five of its own.
-   *
-   * The duplication is deliberate and required: grammar dedup here admits only
-   * parameterless combinator consts and plain reducers, and a factory would
-   * degrade the macro-compiled artifact into the interpreter. The ONLY difference
-   * between the two chains is the `g.Expression` arm.
+   * strict chain mirrors every non-quoted wrapper and the permissive chain
+   * mirrors every wrapper of its own. Within one chain, delimiter spellings are
+   * first-set-disjoint alternatives of one semantic group or quoted template;
+   * only the `g.Expression` arm distinguishes the two chains.
    */
 
   /*
    * STRICT chain — the general-enclosed body and its non-quoted wrappers. Its
    * quoted arms hand off to the permissive chain below and never come back.
    */
-  const GeneralTemplateParen = node<Interpolation>(
-    'GeneralTemplateParen',
-    sequence(
-      literal('('),
-      g.GeneralTemplate,
-      literal(')')
+  const GeneralTemplateGroup = node<Interpolation>(
+    'GeneralTemplateGroup',
+    choice(
+      sequence(literal('('), g.GeneralTemplate, literal(')')),
+      sequence(literal('['), g.GeneralTemplate, literal(']')),
+      sequence(literal('{'), g.GeneralTemplate, literal('}'))
     ),
     templateInterpolationFromChildren
   );
-  const GeneralTemplateSquare = node<Interpolation>(
-    'GeneralTemplateSquare',
-    sequence(
-      literal('['),
-      g.GeneralTemplate,
-      literal(']')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralTemplateBrace = node<Interpolation>(
-    'GeneralTemplateBrace',
-    sequence(
-      literal('{'),
-      g.GeneralTemplate,
-      literal('}')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralTemplateDoubleQuoted = node<Interpolation>(
-    'GeneralTemplateDoubleQuoted',
-    sequence(
-      literal('"'),
-      g.GeneralQuotedTemplate,
-      literal('"')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralTemplateSingleQuoted = node<Interpolation>(
-    'GeneralTemplateSingleQuoted',
-    sequence(
-      literal('\''),
-      g.GeneralQuotedTemplate,
-      literal('\'')
+  const GeneralTemplateQuoted = node<Interpolation>(
+    'GeneralTemplateQuoted',
+    choice(
+      sequence(literal('"'), g.GeneralQuotedTemplate, literal('"')),
+      sequence(literal('\''), g.GeneralQuotedTemplate, literal('\''))
     ),
     templateInterpolationFromChildren
   );
@@ -4070,11 +4033,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     'GeneralTemplate',
     many(choice(
       g.DollarBrace,
-      g.GeneralTemplateParen,
-      g.GeneralTemplateSquare,
-      g.GeneralTemplateBrace,
-      g.GeneralTemplateDoubleQuoted,
-      g.GeneralTemplateSingleQuoted,
+      g.GeneralTemplateGroup,
+      g.GeneralTemplateQuoted,
       generalTemplateText
     )),
     templateInterpolationFromChildren
@@ -4085,48 +4045,20 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * Reached ONLY through the two quoted arms above, and closed under its own
    * wrappers so nesting never escapes back to the strict chain.
    */
-  const GeneralQuotedTemplateParen = node<Interpolation>(
-    'GeneralQuotedTemplateParen',
-    sequence(
-      literal('('),
-      g.GeneralQuotedTemplate,
-      literal(')')
+  const GeneralQuotedTemplateGroup = node<Interpolation>(
+    'GeneralQuotedTemplateGroup',
+    choice(
+      sequence(literal('('), g.GeneralQuotedTemplate, literal(')')),
+      sequence(literal('['), g.GeneralQuotedTemplate, literal(']')),
+      sequence(literal('{'), g.GeneralQuotedTemplate, literal('}'))
     ),
     templateInterpolationFromChildren
   );
-  const GeneralQuotedTemplateSquare = node<Interpolation>(
-    'GeneralQuotedTemplateSquare',
-    sequence(
-      literal('['),
-      g.GeneralQuotedTemplate,
-      literal(']')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralQuotedTemplateBrace = node<Interpolation>(
-    'GeneralQuotedTemplateBrace',
-    sequence(
-      literal('{'),
-      g.GeneralQuotedTemplate,
-      literal('}')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralQuotedTemplateDoubleQuoted = node<Interpolation>(
-    'GeneralQuotedTemplateDoubleQuoted',
-    sequence(
-      literal('"'),
-      g.GeneralQuotedTemplate,
-      literal('"')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralQuotedTemplateSingleQuoted = node<Interpolation>(
-    'GeneralQuotedTemplateSingleQuoted',
-    sequence(
-      literal('\''),
-      g.GeneralQuotedTemplate,
-      literal('\'')
+  const GeneralQuotedTemplateQuoted = node<Interpolation>(
+    'GeneralQuotedTemplateQuoted',
+    choice(
+      sequence(literal('"'), g.GeneralQuotedTemplate, literal('"')),
+      sequence(literal('\''), g.GeneralQuotedTemplate, literal('\''))
     ),
     templateInterpolationFromChildren
   );
@@ -4135,11 +4067,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     many(choice(
       g.DollarBrace,
       g.Expression,
-      g.GeneralQuotedTemplateParen,
-      g.GeneralQuotedTemplateSquare,
-      g.GeneralQuotedTemplateBrace,
-      g.GeneralQuotedTemplateDoubleQuoted,
-      g.GeneralQuotedTemplateSingleQuoted,
+      g.GeneralQuotedTemplateGroup,
+      g.GeneralQuotedTemplateQuoted,
       generalTemplateText
     )),
     templateInterpolationFromChildren
@@ -5678,17 +5607,11 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     AtRuleHeader,
     SupportsAtom,
     GeneralTemplate,
-    GeneralTemplateParen,
-    GeneralTemplateSquare,
-    GeneralTemplateBrace,
-    GeneralTemplateDoubleQuoted,
-    GeneralTemplateSingleQuoted,
+    GeneralTemplateGroup,
+    GeneralTemplateQuoted,
     GeneralQuotedTemplate,
-    GeneralQuotedTemplateParen,
-    GeneralQuotedTemplateSquare,
-    GeneralQuotedTemplateBrace,
-    GeneralQuotedTemplateDoubleQuoted,
-    GeneralQuotedTemplateSingleQuoted,
+    GeneralQuotedTemplateGroup,
+    GeneralQuotedTemplateQuoted,
     GeneralEnclosed,
     SupportsNot,
     SupportsLogical,

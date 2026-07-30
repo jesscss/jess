@@ -76,6 +76,18 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(['CustomParen', 'CustomSquare', 'CustomCurly'].some(type => grammarTypes.has(type))).toBe(false);
   });
 
+  it('uses semantic general-enclosed template labels in supports', () => {
+    const result = parseScssCst('$kind: card; @supports selector(([#{$kind}] {"#{$kind}"})) { .a { color: red; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('GeneralEnclosed')).toBe(1);
+    expect(grammarTypes.get('GeneralTemplateGroup')).toBe(3);
+    expect(grammarTypes.get('GeneralTemplateQuoted')).toBe(1);
+    expect([...grammarTypes.keys()].some(type => type.startsWith('SupportsGeneralTemplate'))).toBe(false);
+  });
+
   it('accepts an ASCII-case-insensitive declaration priority through the public parser', () => {
     const result = parseScssCst('.card { color: blue !IMPORTANT; }');
 

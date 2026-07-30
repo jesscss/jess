@@ -53,6 +53,19 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(['CustomParen', 'CustomSquare', 'CustomCurly'].some(type => grammarTypes.has(type))).toBe(false);
   });
 
+  it('keeps supports general-enclosed template boundaries semantic', () => {
+    const result = parseJessCst('$kind: card; @supports selector(([${kind}] {"( $(.theme) )"})) { .a { color: red; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('GeneralEnclosed')).toBe(1);
+    expect(grammarTypes.get('GeneralTemplateGroup')).toBe(3);
+    expect(grammarTypes.get('GeneralTemplateQuoted')).toBe(1);
+    expect(grammarTypes.get('GeneralQuotedTemplateGroup')).toBe(1);
+    expect([...grammarTypes.keys()].some(type => /General(?:Quoted)?Template(?:Paren|Square|Brace|DoubleQuoted|SingleQuoted)$/.test(type))).toBe(false);
+  });
+
   it('keeps collapse mode from dropping leaves or inventing Unknown nodes', () => {
     /*
      * A bare `${side}` selector owns a structural interpolation boundary in the

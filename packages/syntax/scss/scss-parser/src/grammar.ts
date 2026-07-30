@@ -119,13 +119,10 @@ type ScssRules = {
   QueryClause: Combinator<ValueNode>;
   QueryPrelude: Combinator<ValueNode>;
   SupportsAtom: Combinator<ValueNode>;
-  SupportsGeneralTemplate: Combinator<Interpolation>;
-  SupportsGeneralTemplateParen: Combinator<Interpolation>;
-  SupportsGeneralTemplateSquare: Combinator<Interpolation>;
-  SupportsGeneralTemplateBrace: Combinator<Interpolation>;
-  SupportsGeneralTemplateDoubleQuoted: Combinator<Interpolation>;
-  SupportsGeneralTemplateSingleQuoted: Combinator<Interpolation>;
-  SupportsGeneralEnclosed: Combinator<GeneralEnclosed>;
+  GeneralTemplate: Combinator<Interpolation>;
+  GeneralTemplateGroup: Combinator<Interpolation>;
+  GeneralTemplateQuoted: Combinator<Interpolation>;
+  GeneralEnclosed: Combinator<GeneralEnclosed>;
   SupportsFeature: Combinator<ValueNode>;
   SupportsInParens: Combinator<ValueNode>;
   SupportsNotKeyword: Combinator<Keyword>;
@@ -3377,76 +3374,51 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     children => requireValue(children[0])
   );
-  const SupportsGeneralTemplateParen = node<Interpolation>(
-    'SupportsGeneralTemplateParen',
-    sequence(
-      literal('('),
-      g.SupportsGeneralTemplate,
-      literal(')')
+
+  /*
+   * Supports general-enclosed content needs interpolation, but delimiter
+   * provenance is not semantic. The group and quoted alternatives have
+   * disjoint first sets and recurse through the same template policy.
+   */
+  const GeneralTemplateGroup = node<Interpolation>(
+    'GeneralTemplateGroup',
+    choice(
+      sequence(literal('('), g.GeneralTemplate, literal(')')),
+      sequence(literal('['), g.GeneralTemplate, literal(']')),
+      sequence(literal('{'), g.GeneralTemplate, literal('}'))
     ),
     interpolationFromTemplateChildren
   );
-  const SupportsGeneralTemplateSquare = node<Interpolation>(
-    'SupportsGeneralTemplateSquare',
-    sequence(
-      literal('['),
-      g.SupportsGeneralTemplate,
-      literal(']')
+  const GeneralTemplateQuoted = node<Interpolation>(
+    'GeneralTemplateQuoted',
+    choice(
+      sequence(literal('"'), g.GeneralTemplate, literal('"')),
+      sequence(literal('\''), g.GeneralTemplate, literal('\''))
     ),
     interpolationFromTemplateChildren
   );
-  const SupportsGeneralTemplateBrace = node<Interpolation>(
-    'SupportsGeneralTemplateBrace',
-    sequence(
-      literal('{'),
-      g.SupportsGeneralTemplate,
-      literal('}')
-    ),
-    interpolationFromTemplateChildren
-  );
-  const SupportsGeneralTemplateDoubleQuoted = node<Interpolation>(
-    'SupportsGeneralTemplateDoubleQuoted',
-    sequence(
-      literal('"'),
-      g.SupportsGeneralTemplate,
-      literal('"')
-    ),
-    interpolationFromTemplateChildren
-  );
-  const SupportsGeneralTemplateSingleQuoted = node<Interpolation>(
-    'SupportsGeneralTemplateSingleQuoted',
-    sequence(
-      literal('\''),
-      g.SupportsGeneralTemplate,
-      literal('\'')
-    ),
-    interpolationFromTemplateChildren
-  );
-  const SupportsGeneralTemplate = node<Interpolation>(
-    'SupportsGeneralTemplate',
+  const GeneralTemplate = node<Interpolation>(
+    'GeneralTemplate',
     many(choice(
       g.SassInterpolation,
-      g.SupportsGeneralTemplateParen,
-      g.SupportsGeneralTemplateSquare,
-      g.SupportsGeneralTemplateBrace,
-      g.SupportsGeneralTemplateDoubleQuoted,
-      g.SupportsGeneralTemplateSingleQuoted,
+      g.GeneralTemplateGroup,
+      g.GeneralTemplateQuoted,
       generalTemplateText
     )),
     interpolationFromTemplateChildren
   );
-  const SupportsGeneralEnclosed = node<GeneralEnclosed>(
-    'SupportsGeneralEnclosed',
+  const GeneralEnclosed = node<GeneralEnclosed>(
+    'GeneralEnclosed',
     choice(
       sequence(
         g.Identifier,
         literal('('),
-        g.SupportsGeneralTemplate,
+        g.GeneralTemplate,
         literal(')')
       ),
       sequence(
         literal('('),
-        g.SupportsGeneralTemplate,
+        g.GeneralTemplate,
         literal(')')
       )
     ),
@@ -3499,7 +3471,7 @@ export const scssFactory = (g: ScssInputRules) => {
         literal(')')
       ),
       g.SupportsFeature,
-      g.SupportsGeneralEnclosed
+      g.GeneralEnclosed
     ),
     (children) => {
       const value = children.find(isValue);
@@ -5008,13 +4980,10 @@ export const scssFactory = (g: ScssInputRules) => {
     QueryClause,
     QueryPrelude,
     SupportsAtom,
-    SupportsGeneralTemplate,
-    SupportsGeneralTemplateParen,
-    SupportsGeneralTemplateSquare,
-    SupportsGeneralTemplateBrace,
-    SupportsGeneralTemplateDoubleQuoted,
-    SupportsGeneralTemplateSingleQuoted,
-    SupportsGeneralEnclosed,
+    GeneralTemplate,
+    GeneralTemplateGroup,
+    GeneralTemplateQuoted,
+    GeneralEnclosed,
     SupportsFeature,
     SupportsInParens,
     SupportsNotKeyword,

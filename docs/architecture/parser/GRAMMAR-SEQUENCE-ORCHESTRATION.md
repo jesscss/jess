@@ -5386,3 +5386,13 @@ the interior only. Any replacement must therefore decide how to preserve that
 interior CST/AST contract (or intentionally revise it) before changing the
 recognizer. Until then, the scanner remains explicit design debt rather than a
 declared final shape.
+
+General-enclosed template consolidation, 2026-07-30: SCSS and Jess now name
+the same supports general-enclosed facts `GeneralEnclosed`, `GeneralTemplate`,
+`GeneralTemplateGroup`, and `GeneralTemplateQuoted`, rather than preserving
+supports-context or delimiter provenance in public CST labels. The group and
+quoted alternatives have disjoint first sets, so a `choice(...)` is the direct
+recognition shape. Jess additionally retains `GeneralQuotedTemplate` with its
+own group/quoted children because only quoted subtemplates admit `$(...)`
+expressions; that recursion-policy difference is real language structure, not
+a reason to restore five delimiter-specific wrappers per chain.
