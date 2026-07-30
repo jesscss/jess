@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 22;
+export const STABLE_LINT_RULE_SET_VERSION = 23;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -19,6 +19,7 @@ export const LINT_RULE_NAMES = {
   hexColorLength: 'color-no-invalid-hex',
   zeroUnits: 'length-zero-no-unit',
   customPropertyMissingVarFunction: 'custom-property-no-missing-var-function',
+  unknownCustomProperties: 'no-unknown-custom-properties',
   keyframeDuplicateSelectors: 'keyframe-block-no-duplicate-selectors',
   keyframeDeclarationNoImportant: 'keyframe-declaration-no-important',
   declarationNoImportant: 'declaration-no-important',
@@ -68,6 +69,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.hexColorLength]: LINT_CODES.hexColorLength,
   [LINT_RULE_NAMES.zeroUnits]: LINT_CODES.zeroUnits,
   [LINT_RULE_NAMES.customPropertyMissingVarFunction]: LINT_CODES.customPropertyMissingVarFunction,
+  [LINT_RULE_NAMES.unknownCustomProperties]: LINT_CODES.unknownCustomProperties,
   [LINT_RULE_NAMES.keyframeDuplicateSelectors]: LINT_CODES.keyframeDuplicateSelectors,
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: LINT_CODES.keyframeDeclarationNoImportant,
   [LINT_RULE_NAMES.declarationNoImportant]: LINT_CODES.declarationNoImportant,
@@ -104,6 +106,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.hexColorLength]: LINT_RULE_NAMES.hexColorLength,
   [LINT_CODES.zeroUnits]: LINT_RULE_NAMES.zeroUnits,
   [LINT_CODES.customPropertyMissingVarFunction]: LINT_RULE_NAMES.customPropertyMissingVarFunction,
+  [LINT_CODES.unknownCustomProperties]: LINT_RULE_NAMES.unknownCustomProperties,
   [LINT_CODES.keyframeDuplicateSelectors]: LINT_RULE_NAMES.keyframeDuplicateSelectors,
   [LINT_CODES.keyframeDeclarationNoImportant]: LINT_RULE_NAMES.keyframeDeclarationNoImportant,
   [LINT_CODES.declarationNoImportant]: LINT_RULE_NAMES.declarationNoImportant,
@@ -140,6 +143,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.hexColorLength]: 'error',
   [LINT_RULE_NAMES.zeroUnits]: 'warn',
   [LINT_RULE_NAMES.customPropertyMissingVarFunction]: 'warn',
+  [LINT_RULE_NAMES.unknownCustomProperties]: 'warn',
   [LINT_RULE_NAMES.keyframeDuplicateSelectors]: 'warn',
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'warn',
   [LINT_RULE_NAMES.declarationNoImportant]: 'warn',
@@ -197,6 +201,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
 const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateSelectors]: 'off',
   [LINT_RULE_NAMES.unknownAtRuleDescriptorValues]: 'off',
+  [LINT_RULE_NAMES.unknownCustomProperties]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
   [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'off',
   [LINT_RULE_NAMES.invalidTypedCustomPropertyValue]: 'off',
@@ -313,6 +318,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-equivalent',
     stylelintRule: 'custom-property-no-missing-var-function',
     notes: 'Flags custom property names used as ordinary values without wrapping them in var(...).'
+  },
+  {
+    code: LINT_CODES.unknownCustomProperties,
+    ruleName: LINT_RULE_NAMES.unknownCustomProperties,
+    title: 'Unknown custom properties',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'no-unknown-custom-properties',
+    notes: 'Flags var() references without a same-file custom property declaration or @property registration; project reference files and import graph facts remain future work.'
   },
   {
     code: LINT_CODES.keyframeDuplicateSelectors,

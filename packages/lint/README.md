@@ -96,6 +96,7 @@ export default {
     rules: {
       'property-no-unknown': 'error',
       'at-rule-descriptor-value-no-unknown': 'warn',
+      'no-unknown-custom-properties': 'warn',
       'length-zero-no-unit': 'warn',
       'jess/no-invalid-typed-custom-property-value': 'warn',
       'jess/unsupported-sass-form': 'warn'
@@ -125,6 +126,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `color-no-invalid-hex` | `lint/hex-color-length` | `color-no-invalid-hex` |
 | `length-zero-no-unit` | `lint/zero-units` | `length-zero-no-unit` |
 | `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | `custom-property-no-missing-var-function` |
+| `no-unknown-custom-properties` | `lint/no-unknown-custom-properties` | near `no-unknown-custom-properties` |
 | `keyframe-block-no-duplicate-selectors` | `lint/keyframe-block-no-duplicate-selectors` | `keyframe-block-no-duplicate-selectors` |
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | `keyframe-declaration-no-important` |
 | `declaration-no-important` | `lint/declaration-no-important` | near `declaration-no-important` |

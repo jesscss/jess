@@ -63,6 +63,7 @@ a `jess/` prefix.
 | `color-no-invalid-hex` | `lint/hex-color-length` | Stylelint-equivalent |
 | `length-zero-no-unit` | `lint/zero-units` | Stylelint-equivalent |
 | `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | Stylelint-equivalent |
+| `no-unknown-custom-properties` | `lint/no-unknown-custom-properties` | Stylelint-near |
 | `keyframe-block-no-duplicate-selectors` | `lint/keyframe-block-no-duplicate-selectors` | Stylelint-equivalent |
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | Stylelint-equivalent |
 | `declaration-no-important` | `lint/declaration-no-important` | Stylelint-near |
@@ -167,7 +168,7 @@ can detect over authored source.
 | P0 | Unknown CSS | existing `property-no-unknown`, `at-rule-no-unknown` | Keep metadata current and dialect-aware. |
 | P0 | Duplicates | existing `declaration-block-no-duplicate-properties` | Add ignore-consecutive and expand shorthand/longhand property-table coverage. |
 | P0 | Empty blocks | existing `block-no-empty` | Extend to empty mixin bodies only when configured. Empty mixins can be API placeholders. |
-| Landed | Custom properties | `custom-property-no-missing-var-function` | Flags `color: --x`; suppresses inside custom-property declarations and `var()`. |
+| Landed | Custom properties | `custom-property-no-missing-var-function`, `no-unknown-custom-properties` | Flags `color: --x` and same-file unknown `var(--x)` references; reference files and import graph facts remain future work. |
 | Landed | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement after style rules or blocking at-rules. Jess `@-import` is separate. |
 | Landed | Duplicate imports | `no-duplicate-at-import-rules` | Flags repeated same-file imports with the same target/options/conditions; import-graph duplicate modules remain Jess-only semantic work. |
 | Landed | Unknown animations | `no-unknown-animations` | Flags definite CSS animation names without same-file `@keyframes`; imported reference roots and dialect animation facts remain semantic-facts work. |

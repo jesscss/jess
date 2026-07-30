@@ -139,6 +139,35 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('reports var() references to unknown same-file custom properties', () => {
+    const source = [
+      '.a { color: var(--brand); background: var(--missing, var(--fallback)); border-color: var(--registered); }',
+      '@property --registered { syntax: "<color>"; inherits: false; initial-value: red; }',
+      ':root { --brand: red; }'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownCustomProperties = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.unknownCustomProperties
+    );
+
+    expect(unknownCustomProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown custom property "--missing"', source.indexOf('--missing'), source.indexOf('--missing') + '--missing'.length],
+      ['Unknown custom property "--fallback"', source.indexOf('--fallback'), source.indexOf('--fallback') + '--fallback'.length]
+    ]);
+  });
+
+  it('does not report unknown custom properties in dialect files before project facts exist', () => {
+    const less = collectTolerantDiagnostics({
+      source: '.a { color: var(--missing); }',
+      language: 'less'
+    });
+
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownCustomProperties)).toBe(false);
+  });
+
   it('reports duplicate custom properties in one declaration block', () => {
     const source = '.a { --brand: red; --Brand: blue; --brand: green; color: red; color: blue; }';
     const result = collectTolerantDiagnostics({

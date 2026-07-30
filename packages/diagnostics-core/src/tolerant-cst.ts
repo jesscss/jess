@@ -26,6 +26,7 @@ export const LINT_CODES = {
   hexColorLength: 'lint/hex-color-length',
   zeroUnits: 'lint/zero-units',
   customPropertyMissingVarFunction: 'lint/custom-property-no-missing-var-function',
+  unknownCustomProperties: 'lint/no-unknown-custom-properties',
   keyframeDuplicateSelectors: 'lint/keyframe-block-no-duplicate-selectors',
   keyframeDeclarationNoImportant: 'lint/keyframe-declaration-no-important',
   declarationNoImportant: 'lint/declaration-no-important',
@@ -458,6 +459,11 @@ type AnimationNameReference = {
   readonly span: DiagnosticSpan;
 };
 
+type CustomPropertyReference = {
+  readonly name: string;
+  readonly span: DiagnosticSpan;
+};
+
 const ROOT_VISIT_CONTEXT_BASE = {
   inVarCall: false,
   inDeclaration: false,
@@ -871,6 +877,42 @@ function isCssIdentifier(value: string): boolean {
     }
   }
   return true;
+}
+
+function isStaticCustomPropertyName(value: string): boolean {
+  return value.length > 2
+    && value.startsWith('--')
+    && !hasDynamicSyntax(value)
+    && isCssIdentifier(value);
+}
+
+function customPropertyRegistrationName(source: string, node: CssCstNode): string | null {
+  const prelude = firstChildNodeOf(node, 'AtRulePrelude');
+  if (prelude === undefined) {
+    return null;
+  }
+  const start = absoluteStart(prelude);
+  const end = absoluteEnd(prelude);
+  const raw = stripComments(source.slice(start, end));
+  const trimmed = raw.trim();
+  return isStaticCustomPropertyName(trimmed) ? trimmed : null;
+}
+
+function customPropertyReferenceOfVarCall(source: string, node: CssCstNode): CustomPropertyReference | null {
+  const child = firstChildNodeOf(node, 'CustomPropertyValue');
+  if (child === undefined) {
+    return null;
+  }
+  const start = absoluteStart(child);
+  const end = absoluteEnd(child);
+  const name = source.slice(start, end).trim();
+  if (!isStaticCustomPropertyName(name)) {
+    return null;
+  }
+  return {
+    name,
+    span: spanAtOrContaining(node, start, end)
+  };
 }
 
 function isKeyframesAtRuleName(name: string): boolean {
@@ -2775,6 +2817,8 @@ export function cstLintDiagnostics(
   const seenImports = new Map<string, ImportKey>();
   const declaredAnimations = new Set<string>();
   const animationReferences: AnimationNameReference[] = [];
+  const declaredCustomProperties = new Set<string>();
+  const customPropertyReferences: CustomPropertyReference[] = [];
   const cssData = metadataWithDefaults(metadata);
   const dialectAtRules = DIALECT_AT_RULES[language];
   const push = (
@@ -2879,6 +2923,10 @@ export function cstLintDiagnostics(
     }
 
     if (language === 'css' && gt === 'DescriptorBlock' && descriptorAtRuleName === 'property') {
+      const registeredName = customPropertyRegistrationName(source, node);
+      if (registeredName !== null) {
+        declaredCustomProperties.add(registeredName);
+      }
       const problem = typedCustomPropertyValueProblem(source, node);
       if (problem !== null) {
         push(
@@ -3035,6 +3083,12 @@ export function cstLintDiagnostics(
     }
 
     if (language === 'css' && nodeContext.inDeclaration && FUNCTION_TYPES.has(gt) && functionName !== null) {
+      if (gt === 'VarCall') {
+        const customPropertyReference = customPropertyReferenceOfVarCall(source, node);
+        if (customPropertyReference !== null) {
+          customPropertyReferences.push(customPropertyReference);
+        }
+      }
       if (!functionName.startsWith('--') && !cssData.isKnownFunction(functionName)) {
         push(
           LINT_CODES.unknownFunctions,
@@ -3330,7 +3384,10 @@ export function cstLintDiagnostics(
         const childStart = absoluteStart(child);
         const childEnd = absoluteEnd(child);
         const name = propNameOf(source.slice(childStart, childEnd));
-        if (name.startsWith('--') && !name.includes('#{') && !name.includes('@{') && !name.includes('${')) {
+        if (isStaticCustomPropertyName(name)) {
+          if (language === 'css') {
+            declaredCustomProperties.add(name);
+          }
           seenCustomProps ??= new Set();
           if (seenCustomProps.has(name)) {
             push(LINT_CODES.duplicateCustomProperties, 'warning', `Duplicate custom property "${name}"`, child.span);
@@ -3356,6 +3413,19 @@ export function cstLintDiagnostics(
         `Unknown animation "${animation.name}"`,
         animation.span
       );
+    }
+  }
+
+  if (language === 'css') {
+    for (const reference of customPropertyReferences) {
+      if (!declaredCustomProperties.has(reference.name)) {
+        push(
+          LINT_CODES.unknownCustomProperties,
+          'warning',
+          `Unknown custom property "${reference.name}"`,
+          reference.span
+        );
+      }
     }
   }
 
