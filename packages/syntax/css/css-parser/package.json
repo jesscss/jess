@@ -43,6 +43,8 @@
     "oracle:postcss": "node test/postcss-oracle.mjs",
     "oracle:postcss:single": "node test/postcss-oracle.mjs --file packages/jess/benchmark/benchmark.css",
     "bench:postcss": "node test/postcss-oracle.mjs --file packages/jess/benchmark/benchmark.css --bench",
+    "bar:postcss": "node test/postcss-parse-bar.mjs",
+    "bar:postcss:gate": "node test/postcss-parse-bar.mjs --gate",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"

@@ -1,0 +1,49 @@
+{
+  "schema": "jess/postcss-parse-bar-baseline@1",
+  "policy": {
+    "rule": "These ceilings are an ABSOLUTE bar, not a rolling reference. A run whose ratioVsPostcss exceeds maxRatioVsPostcss fails the gate. Raising a ceiling is a REBASELINE and requires the owner to say so: it is not something an agent decides because the gate is red. Lowering a ceiling after a real win is always welcome.",
+    "rebaselineRequires": "Owner sign-off, recorded verbatim in ownerSignoff below, in the same commit as the changed numbers, so the diff shows who authorised the loosening and why. A gate run ignores ownerSignoff entirely; it exists to make an unauthorised rebaseline visible in review.",
+    "toleranceRationale": "maxRatioVsPostcss = recorded ratio x (1 + toleranceFraction). The tolerance is the measured identical-case noise floor of the recording run, floored at 0.05, so the gate never fires on machine noise and never absorbs more than a real regression."
+  },
+  "ownerSignoff": "INITIAL RECORD, NOT AN OWNER APPROVAL: first measurement of the bar at 0dbfc89f0/58453da24. These ceilings are where jess stands today, not a target the owner has accepted. Owner to confirm or tighten.",
+  "recordedOn": {
+    "sha": "58453da2408c9740b7342c9d6f131cfb063838c1",
+    "dirty": true,
+    "recordedAt": "2026-07-30T21:25:42.120Z",
+    "node": "v24.11.1",
+    "platform": "darwin-arm64",
+    "parseman": "parseman@0.43.0",
+    "postcss": "postcss@8.5.25",
+    "upstreamCommit": "ddc1a86710a65de302e0675ef3a5a1cc7db270bd",
+    "observedNoiseFloorPct": 2.0179
+  },
+  "toleranceFraction": 0.12,
+  "fixtures": {
+    "bootstrap": {
+      "bytes": 280311,
+      "sha256": "4a50207b956a4ab943640ee993118b554a34e96a23261cfe58b9aa1807a7849b"
+    },
+    "jess-benchmark-css": {
+      "bytes": 123029,
+      "sha256": "5e6bf8603c661099f1f4b1988441fdfa96da2f784654027f945f7b76c027ed74"
+    }
+  },
+  "cases": {
+    "bootstrap/jess-ast": {
+      "recordedRatioVsPostcss": 1.2766,
+      "maxRatioVsPostcss": 1.4298
+    },
+    "bootstrap/jess-cst": {
+      "recordedRatioVsPostcss": 3.1488,
+      "maxRatioVsPostcss": 3.5267
+    },
+    "jess-benchmark-css/jess-ast": {
+      "recordedRatioVsPostcss": 1.5932,
+      "maxRatioVsPostcss": 1.7844
+    },
+    "jess-benchmark-css/jess-cst": {
+      "recordedRatioVsPostcss": 3.9609,
+      "maxRatioVsPostcss": 4.4362
+    }
+  }
+}

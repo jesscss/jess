@@ -175,9 +175,33 @@ for (const fixture of fixtures) {
 
 /* ------------------------------------------------------------ measurement */
 
-const warmup = Number(process.env.WARMUP ?? 12);
-const rounds = Number(process.env.ROUNDS ?? 31);
-const iterations = Number(process.env.ITERATIONS ?? 1);
+/*
+ * Defaults are the configuration this bar was validated at. ITERATIONS=1 was
+ * tried and rejected: a single major GC lands inside one sample and moves the
+ * median by tens of percent. Amortising five parses per sample brought the
+ * bootstrap AST ratio's run-to-run spread from ~30% to ~8%.
+ */
+const warmup = Number(process.env.WARMUP ?? 10);
+const rounds = Number(process.env.ROUNDS ?? 21);
+const iterations = Number(process.env.ITERATIONS ?? 5);
+
+/*
+ * A run whose identical-case disagreement exceeds this is not gate-quality: the
+ * box was busy and every ratio in it is contaminated. Observed on this repo's
+ * hardware: four clean runs reported 1.5-5.2%, while a fifth run on a loaded
+ * machine reported 13.5% and inflated every median by ~1.8x. The guard exists
+ * so a contaminated run cannot pass a gate OR be written as a baseline.
+ */
+const gateQualityNoiseFloorPct = Number(process.env.MAX_NOISE_FLOOR_PCT ?? 6);
+
+/*
+ * The identical-case floor measures sampling noise WITHIN one process. It
+ * understates variance BETWEEN processes, where JIT and GC state differ: four
+ * clean runs at these settings reported within-run floors of 1.5-5.2% while the
+ * same case's ratio moved up to 12% across them. The gate's ceiling therefore
+ * never sits tighter than this, or every second honest run is red.
+ */
+const minimumTolerance = 0.12;
 for (const [name, value] of [['WARMUP', warmup], ['ROUNDS', rounds], ['ITERATIONS', iterations]]) {
   if (!Number.isInteger(value) || value < (name === 'WARMUP' ? 0 : 1)) {
     console.error(`${name} must be a positive integer.`);
@@ -393,6 +417,8 @@ const report = {
       + 'and comments) retained in a trivia log, plus an error/expectation set.'
   },
   observedNoiseFloorPct,
+  gateQualityNoiseFloorPct,
+  gateQuality: observedNoiseFloorPct <= gateQualityNoiseFloorPct ? 'usable' : 'contaminated',
   noiseFloors,
   fixtures: fixtures.map(({ name, path, origin, bytes, sha256 }) => ({
     name, path, origin, bytes, sha256
@@ -417,9 +443,11 @@ const baselineShape = () => ({
       + 'ignores ownerSignoff entirely; it exists to make an unauthorised rebaseline visible '
       + 'in review.',
     toleranceRationale:
-      'maxRatioVsPostcss = recorded ratio x (1 + toleranceFraction). The tolerance is the '
-      + 'measured identical-case noise floor of the recording run, floored at 0.05, so the '
-      + 'gate never fires on machine noise and never absorbs more than a real regression.'
+      'maxRatioVsPostcss = recorded ratio x (1 + toleranceFraction). toleranceFraction is the '
+      + `recording run's measured identical-case noise floor, floored at ${minimumTolerance}. `
+      + 'The floor is not arbitrary: the identical-case figure measures sampling noise within '
+      + 'one process, and the same case moved up to 12% across four clean processes. A ceiling '
+      + 'tighter than that is red on honest runs; a ceiling looser than that absorbs real decay.'
   },
   ownerSignoff: null,
   recordedOn: {
@@ -433,18 +461,36 @@ const baselineShape = () => ({
     upstreamCommit: report.comparator.upstreamCommit,
     observedNoiseFloorPct
   },
-  toleranceFraction: round4(Math.max(0.05, observedNoiseFloorPct / 100)),
+  toleranceFraction: round4(Math.max(minimumTolerance, observedNoiseFloorPct / 100)),
   fixtures: Object.fromEntries(fixtures.map(f => [f.name, { bytes: f.bytes, sha256: f.sha256 }])),
   cases: Object.fromEntries(measured.map(result => [
     result.case,
     {
       recordedRatioVsPostcss: result.ratioVsPostcss,
       maxRatioVsPostcss: round4(
-        result.ratioVsPostcss * (1 + Math.max(0.05, observedNoiseFloorPct / 100))
+        result.ratioVsPostcss * (1 + Math.max(minimumTolerance, observedNoiseFloorPct / 100))
       )
     }
   ]))
 });
+
+/*
+ * A contaminated run must be able to neither pass a gate nor become a baseline.
+ * Exit 3 distinguishes "unusable measurement" from "real breach" (1) so a CI
+ * wiring can retry rather than fail a change.
+ */
+const gateQualityFailure = observedNoiseFloorPct > gateQualityNoiseFloorPct
+  ? `Measured noise floor ${observedNoiseFloorPct}% exceeds the gate-quality limit of `
+  + `${gateQualityNoiseFloorPct}%. Two identical PostCSS cases disagreed by that much in `
+  + 'this run, so every ratio in it is contaminated. This is not a result. Re-run on an '
+  + 'idle machine.'
+  : null;
+
+if ((writeBaseline || runGate) && gateQualityFailure) {
+  console.error(gateQualityFailure);
+  console.log(JSON.stringify(report, null, 2));
+  process.exit(3);
+}
 
 if (writeBaseline) {
   const signoff = process.env.JESS_BAR_OWNER_SIGNOFF?.trim();
