@@ -3777,13 +3777,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const ContainerQueryPrelude = node<ValueNode>(
     'ContainerQueryPrelude',
-    sequence(
-      g.ContainerQueryClause,
-      many(sequence(
-        literal(','),
-        g.ContainerQueryClause
-      ))
-    ),
+    oneOrMoreSep(g.ContainerQueryClause, literal(',')),
     (children) => {
       const values = children.filter(isValueNode);
       return values.length === 1
