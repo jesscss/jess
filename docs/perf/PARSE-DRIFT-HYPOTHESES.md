@@ -279,3 +279,183 @@ compiler and determine whether it gates codegen.
 **Predicted for the record:** H4 is real but symmetric and therefore *not* the
 answer to the question asked. If the eventual data shows the Less AST ~13% with
 CST flat, H4 is refuted as the cause of *that* candidate.
+
+---
+
+# Results (appended AFTER the predictions above were committed at `f1fc88418`)
+
+All measurements on base SHA `0dbfc89f03ce4f90ee9317d7e1103dd63959ae38`,
+against the **built artifact** (`pnpm run build:release`, exit 0).
+Parseman `0.43.0` at
+`node_modules/.pnpm/parseman@0.43.0/node_modules/parseman/dist/index.cjs`.
+No `grammar.ts` was changed by this work; one temporary probe edit was applied,
+measured, and restored (`git status` clean, verified).
+
+Probes committed on this branch:
+`docs/perf/probe-codegen-counts.mjs`, `docs/perf/probe-capture-counts.mjs`,
+`docs/perf/probe-recognizer-symmetry.mjs`.
+
+## Codegen feature counts in the shipped artifact (no noise floor)
+
+Sliced at the four grammar boundaries in each generated `grammar*.js`.
+
+| dialect | first-set guards AST | first-set guards CST | state clones AST | state clones CST | reducer nodes |
+|---|---|---|---|---|---|
+| css  | **74** | **77** | 2  | 231 | 219 |
+| less | 132 | 132 | **43** | 383 | 383 |
+| scss | 55  | 55  | 14 | 163 | 163 |
+| jess | 57  | 57  | 26 | 184 | 184 |
+
+## CONFIRMED — CSS AST emits 3 fewer first-set guards than CSS CST
+
+**Mechanism, proven.** Parseman emits the first-set guard only when
+`capturesChildren || structural` (`dist/index.cjs:~9120`). `capturesChildren`
+is driven by `buildReadsChildren`, which is `confirmedBuildArity(src) >= 1`. A
+**zero-arity reducer `() => ...`** therefore disables children capture *and*,
+as a side effect, suppresses the node's first-set gate — **in AST mode only**,
+because CST's `cstOut` forces `capturesChildren` true everywhere.
+
+CSS has exactly three zero-arity reducers:
+
+- `packages/syntax/css/css-parser/src/grammar.ts:1409` — `() => simpleSelector('&')` (`NestingSelector`)
+- `packages/syntax/css/css-parser/src/grammar.ts:1899` — `() => any('')`
+- `packages/syntax/css/css-parser/src/grammar.ts:2415` — `() => true` (`!important`)
+
+**Direct experiment (probe, applied then reverted).** Changing only those three
+reducers from `() =>` to `_children =>` and rebuilding css-parser moved the AST
+guard count **74 → 77**, exactly restoring CST parity. Nothing else changed.
+The causal link is established by construction, not by correlation.
+
+**Cross-check that keeps this honest:** the arity-0 count does *not* predict the
+guard delta in general — Less has 9 zero-arity reducers and **zero** guard
+delta, SCSS and Jess have 1 each and zero delta. `needsFirstSetGuard` also
+requires a non-`any` first set and a non-nullable start, so most arity-0 nodes
+were never guardable. CSS's 3-of-3 is a genuine match, not a general law.
+
+## REFUTED — the missing guards are not a meaningful cost
+
+Same corpus, same process shape, built artifact, 8 warmup / 25 timed samples,
+`packages/syntax/css/css-parser/test/parse-bench.mjs` (the repo's existing
+harness, not a new one):
+
+| build | test-data-css AST median | min–max |
+|---|---|---|
+| probe (77 guards) | 11.2058 ms | 9.65 – 13.25 |
+| HEAD  (74 guards) | 11.2195 ms | 10.35 – 14.90 |
+
+Delta **0.12%** against a sample min–max spread of roughly **±20%**. Restoring
+all three first-set guards buys nothing measurable. **The guard asymmetry is
+real and is NOT the +7.5%.** Predicted magnitude was wrong; recorded as such.
+
+Also worth pinning: on `test-data-css` (151 files, 285.8 KB) CSS **AST is
+faster than CSS CST** (11.2 ms vs 17.5 ms). The reported regression is AST
+slower *than its own past*, not slower than CST. Any explanation must survive
+that.
+
+## REFUTED — `createTriviaMapFromParseman` (refuted by reading, before measuring)
+
+`packages/core/src/ast/provenance.ts:214`, called AST-only at
+`packages/syntax/less/less-parser/src/index.ts:90-93`. It allocates two empty
+`Map`s and closures; all per-gap work is deferred to `lookup`/`entries`. O(1) at
+construction. The Less hotspot report's suggestion to isolate it is a dead end
+at this SHA.
+
+## REFUTED — H6, compose-level duplication
+
+Established by reading (**F1** above) and consistent with the artifact: the four
+dialects do **not** `compose([cssGrammar, delta])`. Each ships one `rules()`
+factory via `composeLeaf([...leaf recognition..., rules(...)])`; Less never
+imports `cssGrammar`. There is no override layer in which a shadowed-but-live
+CSS base rule could hide, so the "overridden but still reachable" and
+"first-set gating lost across the compose boundary" mechanisms have no surface
+here. The parseman coverage-tooling gap is real but not load-bearing for this
+question.
+
+## UNTESTED but ELEVATED — Less per-node `state` cloning (now the strongest lead)
+
+**Less clones `_ctx.state` at 43 AST node sites; CSS at 2, SCSS 14, Jess 26.**
+Generated form: `Object.assign({}, _ctx.state)` **per node instance, per parse**.
+Less is also the dialect reported ~13% slower on `benchmark.less`, and the
+`less` grammar realizes 63,077 nodes on that one file.
+
+`clonesState` is `!structural && (cstOut || (!hasProject && buildReadsState))`,
+and `buildReadsState` is `confirmedBuildArity >= 6` **or `null`**.
+
+Two authoring shapes produce it, both invisible as costs in the source:
+
+1. **Underscore-prefixed unused parameters still count.** 15 Less reducers are
+   written `(children, _fields, _span, _rawChildren, triviaLog, state) => ...`
+   — e.g. `grammar.ts:3282, 3295, 4656, 4671, 4698, 4707, 4719, 4790`. The
+   author marked fields/span/raw as unused, but parseman counts *positional
+   arity*, so declaring 6 params turns on children + fields + raw + trivia
+   capture **and** the state clone. Writing `_rawChildren` costs exactly as much
+   as using it.
+2. **Unconfirmable parameter lists collapse to maximum cost.**
+   `CONFIRMABLE_PARAM_RE` rejects destructuring, defaults, and rest params, and
+   `confirmedBuildArity` then returns `null`, which enables *all five* captures.
+   `queryClauseReducer` at `packages/syntax/less/less-parser/src/grammar.ts:1115-1118`
+   has a **default parameter** (`triviaLog: readonly number[] = []`) and would
+   hit this if ever passed as a bare reference. Nine Less reducers *are* passed
+   as bare named references (`grammar.ts:2966, 3848, 4403, 4412, 4423, 5351,
+   5764, 5793, 5812`), where the helper's own declared signature — not the call
+   site — sets the cost.
+
+**Predicted magnitude (still a prediction, not a result):** 43 cloning sites
+over 63k realized nodes is the largest single AST-only allocation source found.
+Reducing 6-arity reducers to the arity they actually need should be worth low
+single-digit percent on Less AST with zero CST movement.
+
+**Falsification:** count realized `Object.assign` calls per parse of
+`benchmark.less` (instrument the built artifact), then probe-lower the arity of
+the 15 six-arity reducers and re-count + re-time. Not run — see below.
+
+## UNTESTED — H1 as a *regression*, H2, H5, H7, H8
+
+Everything above is a HEAD-only snapshot. **H1's actual claim was that these
+counts got worse during the cleanup, and I did not test that**, because it needs
+a second full `build:release` at a pre-cleanup SHA and a re-count. What I can
+say is that at HEAD the AST artifact elides capture at 328/383 Less sites and
+elides trivia at 671 sites — AST is doing *less* capture than CST, not more —
+so the aggregate H1 story is not supported at HEAD in absolute terms. Whether
+the escalated subset grew is open.
+
+**`docs/perf/probe-codegen-counts.mjs` is the instrument for exactly that**, and
+it is deliberately cheap and noise-free: check out a candidate SHA, build, run
+it, diff the table. This composes directly with the separate bisect lane — that
+agent can run it at each candidate and get a per-SHA count with no timing noise.
+
+- **H2 (`project`/structural loss):** untested. Needs the same HEAD-vs-baseline diff.
+- **H5 (`mkType` inline build):** `inlineMk` counted **0** in every dialect and
+  every host mode, so no grammar currently takes the inline-build fast path at
+  all. Whether it was ever taken is untested.
+- **H7 (hidden classes):** not tested, deliberately, per the prediction.
+- **H8 (`hostBranchElided`):** not tested; requires reading every consumer in the
+  parseman compiler.
+
+## Instrument caveat found the hard way
+
+Parseman's own `run(..., { profile: true })` returns three phases
+(`recognizer` / `structuralCapture` / `hostConstruction`). **`childSlots` and
+`rawSlots` came back exactly equal between AST and CST (2789/2789, 91533/91533)
+and that equality is an artifact, not a finding**: in the capture phase the
+generated allocator is gated on `profileCapture`, so arrays are allocated even
+where AST mode would elide them. `triviaSlots` is *not* gated that way and does
+show the real difference (Less AST 7,044 vs CST 39,092; ratio 0.18). Anyone
+using this profiler to reason about AST capture elision will get a false
+negative on children/raw. Recorded so the next agent does not re-derive it.
+
+The `ms` fields from that profiler are single-sample and cold; the ones I
+collected showed 93–155% spread and are not reported as evidence.
+
+## Parseman findings to report upstream (not fixed here)
+
+1. **Zero-arity reducers silently disable a node's first-set gate.** Guard
+   emission is gated on `capturesChildren`, which is an unrelated concern.
+   Confirmed by construction (74→77). Currently costless in CSS, but it is a
+   latent trap: it couples an optimization to reducer *spelling*.
+2. **Positional arity is the cost model, so unused underscore-prefixed params
+   are not free** — and nothing warns. This is the same class as the
+   `'cst' as const` footgun.
+3. **Unconfirmable param lists fail to the most expensive setting**
+   (destructuring / defaults / rest → all five captures). Failing open to
+   maximum cost with no diagnostic is the sharpest edge in the group.
