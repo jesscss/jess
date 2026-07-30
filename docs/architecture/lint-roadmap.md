@@ -196,14 +196,14 @@ can detect over authored source.
 | --- | --- | --- | --- |
 | P0 | Unknown CSS | existing `property-no-unknown`, `at-rule-no-unknown` | Keep metadata current and dialect-aware. |
 | Landed | Property values | `declaration-property-value-no-unknown` | Flags definite unknown simple CSS property values from VSCode web custom data values and restrictions; compound, dynamic, and dialect values stay unknown until richer value facts exist. |
-| P0 | Duplicates | existing `declaration-block-no-duplicate-properties` | `ignore: ["consecutive-duplicates"]` landed through Stylelint-like rule options; remaining work is expanding shorthand/longhand property-table coverage. |
+| Landed | Duplicates | existing `declaration-block-no-duplicate-properties` | `ignore: ["consecutive-duplicates"]` landed through Stylelint-like rule options; shorthand override coverage is tracked by the dedicated shorthand row. |
 | Landed | Empty blocks | `block-no-empty` | Flags empty rulesets by default; empty Less/SCSS/Jess mixin bodies use the same shared diagnostic code with a `mixin-body` qualifier and surface only with `include: ["mixins"]`. Empty mixins can be API placeholders. |
 | Landed | Custom properties | `custom-property-no-missing-var-function`, `no-unknown-custom-properties` | Flags `color: --x` and same-file unknown `var(--x)` references; reference files and import graph facts remain future work. |
 | Landed | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement after style rules or blocking at-rules. Jess `@-import` is separate. |
 | Landed | Duplicate imports | `no-duplicate-at-import-rules` | Flags repeated same-file imports with the same target/options/conditions; import-graph duplicate modules remain Jess-only semantic work. |
 | Landed | Unknown animations | `no-unknown-animations` | Flags definite CSS animation names without same-file `@keyframes`; imported reference roots and dialect animation facts remain semantic-facts work. |
 | Landed | Duplicate custom properties | `declaration-block-no-duplicate-custom-properties` | Flags repeated custom property declarations in one parsed block with exact name matching. |
-| Landed | Shorthand overrides | `declaration-block-no-shorthand-property-overrides` | Flags common CSS shorthands that override earlier longhands in the same parsed block; starts with a curated high-value shorthand map. |
+| Landed | Shorthand overrides | `declaration-block-no-shorthand-property-overrides` | Flags common CSS shorthands that override earlier longhands in the same parsed block; the static table covers physical, logical, layout, text, transition, animation, border, and font shorthand families. |
 | Landed | Duplicate selectors | `no-duplicate-selectors` | CSS selector-list duplicates are CST-owned: duplicate entries inside one list and duplicate whole lists among sibling rules. Dialect nested resolution still needs selector facts. |
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
 | Landed | Important declarations | `declaration-no-important` | Flags CSS `!important` declarations outside keyframes; keyframes use the dedicated keyframe rule to avoid duplicate default diagnostics. |

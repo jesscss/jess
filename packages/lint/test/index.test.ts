@@ -20,7 +20,7 @@ describe('stable rule set', () => {
   it('pins the recommended rule policy by public rule name', () => {
     const recommended = recommendedLintRules();
 
-    expect(STABLE_LINT_RULES.map(rule => rule.code)).toEqual([
+    expect(STABLE_LINT_RULES.map(rule => rule.diagnosticCode)).toEqual([
       LINT_CODES.emptyRules,
       LINT_CODES.unknownProperties,
       LINT_CODES.unknownPropertyValues,
@@ -102,7 +102,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(32);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(33);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');

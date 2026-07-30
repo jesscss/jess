@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 32;
+export const STABLE_LINT_RULE_SET_VERSION = 33;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -52,7 +52,7 @@ export const LINT_RULE_NAMES = {
 export type LintRuleName = typeof LINT_RULE_NAMES[keyof typeof LINT_RULE_NAMES];
 
 export interface StableLintRule {
-  readonly code: string;
+  readonly diagnosticCode: string;
   readonly ruleName: LintRuleName;
   readonly title: string;
   readonly tier: LintRuleTier;
@@ -235,7 +235,7 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
 
 export const STABLE_LINT_RULES: readonly StableLintRule[] = [
   {
-    code: LINT_CODES.emptyRules,
+    diagnosticCode: LINT_CODES.emptyRules,
     ruleName: LINT_RULE_NAMES.emptyRules,
     title: 'Empty rules',
     tier: 'maintainability',
@@ -245,7 +245,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags empty qualified rules after Jess dialect parsing; supports opt-in include: ["mixins"] for empty Less/SCSS/Jess mixin bodies.'
   },
   {
-    code: LINT_CODES.unknownProperties,
+    diagnosticCode: LINT_CODES.unknownProperties,
     ruleName: LINT_RULE_NAMES.unknownProperties,
     title: 'Unknown properties',
     tier: 'css-validity',
@@ -255,7 +255,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Uses Jess language metadata and suppresses dialect variables, custom properties, vendor-prefixed properties, and interpolated names.'
   },
   {
-    code: LINT_CODES.unknownPropertyValues,
+    diagnosticCode: LINT_CODES.unknownPropertyValues,
     ruleName: LINT_RULE_NAMES.unknownPropertyValues,
     title: 'Unknown property values',
     tier: 'css-validity',
@@ -265,7 +265,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags definite unknown simple CSS property values from VSCode web custom data values and restrictions; compound, dynamic, and dialect values stay unknown until richer value facts exist.'
   },
   {
-    code: LINT_CODES.unknownAtRules,
+    diagnosticCode: LINT_CODES.unknownAtRules,
     ruleName: LINT_RULE_NAMES.unknownAtRules,
     title: 'Unknown at-rules',
     tier: 'css-validity',
@@ -275,7 +275,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Uses Jess language metadata plus dialect at-rule allow-lists.'
   },
   {
-    code: LINT_CODES.unknownAtRuleDescriptors,
+    diagnosticCode: LINT_CODES.unknownAtRuleDescriptors,
     ruleName: LINT_RULE_NAMES.unknownAtRuleDescriptors,
     title: 'Unknown at-rule descriptors',
     tier: 'css-validity',
@@ -285,7 +285,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags unknown descriptors in parsed CSS descriptor blocks using shared CSS metadata, including CSS @page page-context and margin-box descriptors.'
   },
   {
-    code: LINT_CODES.unknownAtRuleDescriptorValues,
+    diagnosticCode: LINT_CODES.unknownAtRuleDescriptorValues,
     ruleName: LINT_RULE_NAMES.unknownAtRuleDescriptorValues,
     title: 'Unknown at-rule descriptor values',
     tier: 'css-validity',
@@ -295,7 +295,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags definite invalid CSS descriptor values in parsed descriptor blocks; the initial subset covers @property syntax/inherits and @font-face font-display while leaving dynamic or unsupported descriptor grammars unknown.'
   },
   {
-    code: LINT_CODES.duplicateProperties,
+    diagnosticCode: LINT_CODES.duplicateProperties,
     ruleName: LINT_RULE_NAMES.duplicateProperties,
     title: 'Duplicate properties',
     tier: 'maintainability',
@@ -305,17 +305,17 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags duplicate declaration names in the same parsed block; supports Stylelint-compatible ignore: ["consecutive-duplicates"] filtering through lint policy.'
   },
   {
-    code: LINT_CODES.shorthandPropertyOverrides,
+    diagnosticCode: LINT_CODES.shorthandPropertyOverrides,
     ruleName: LINT_RULE_NAMES.shorthandPropertyOverrides,
     title: 'Shorthand property overrides',
     tier: 'maintainability',
     defaultPolicy: 'warn',
     comparison: 'stylelint-near',
     stylelintRule: 'declaration-block-no-shorthand-property-overrides',
-    notes: 'Flags common CSS shorthands that override earlier longhands in the same parsed block; the initial property table covers high-value shorthand families and can expand with metadata.'
+    notes: 'Flags common CSS shorthands that override earlier longhands in the same parsed block; the static table covers physical, logical, layout, text, transition, animation, border, and font shorthand families.'
   },
   {
-    code: LINT_CODES.duplicateCustomProperties,
+    diagnosticCode: LINT_CODES.duplicateCustomProperties,
     ruleName: LINT_RULE_NAMES.duplicateCustomProperties,
     title: 'Duplicate custom properties',
     tier: 'maintainability',
@@ -325,7 +325,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags duplicate custom property declarations in the same parsed block, using exact custom property names.'
   },
   {
-    code: LINT_CODES.hexColorLength,
+    diagnosticCode: LINT_CODES.hexColorLength,
     ruleName: LINT_RULE_NAMES.hexColorLength,
     title: 'Invalid hex colors',
     tier: 'css-validity',
@@ -335,7 +335,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags hex color literals whose digit count is not valid CSS.'
   },
   {
-    code: LINT_CODES.zeroUnits,
+    diagnosticCode: LINT_CODES.zeroUnits,
     ruleName: LINT_RULE_NAMES.zeroUnits,
     title: 'Zero length units',
     tier: 'style-suggestion',
@@ -345,7 +345,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags zero values with length units; non-length units such as percentages and time are left alone.'
   },
   {
-    code: LINT_CODES.customPropertyMissingVarFunction,
+    diagnosticCode: LINT_CODES.customPropertyMissingVarFunction,
     ruleName: LINT_RULE_NAMES.customPropertyMissingVarFunction,
     title: 'Bare custom property references',
     tier: 'css-validity',
@@ -355,7 +355,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags custom property names used as ordinary values without wrapping them in var(...).'
   },
   {
-    code: LINT_CODES.unknownCustomProperties,
+    diagnosticCode: LINT_CODES.unknownCustomProperties,
     ruleName: LINT_RULE_NAMES.unknownCustomProperties,
     title: 'Unknown custom properties',
     tier: 'css-validity',
@@ -365,7 +365,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags var() references without a same-file custom property declaration or @property registration; project reference files and import graph facts remain future work.'
   },
   {
-    code: LINT_CODES.keyframeDuplicateSelectors,
+    diagnosticCode: LINT_CODES.keyframeDuplicateSelectors,
     ruleName: LINT_RULE_NAMES.keyframeDuplicateSelectors,
     title: 'Duplicate keyframe selectors',
     tier: 'maintainability',
@@ -375,7 +375,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags duplicate selectors in one @keyframes block, normalizing from/to to 0%/100%.'
   },
   {
-    code: LINT_CODES.keyframeDeclarationNoImportant,
+    diagnosticCode: LINT_CODES.keyframeDeclarationNoImportant,
     ruleName: LINT_RULE_NAMES.keyframeDeclarationNoImportant,
     title: 'Important keyframe declarations',
     tier: 'css-validity',
@@ -385,7 +385,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags !important declarations inside @keyframes blocks.'
   },
   {
-    code: LINT_CODES.declarationNoImportant,
+    diagnosticCode: LINT_CODES.declarationNoImportant,
     ruleName: LINT_RULE_NAMES.declarationNoImportant,
     title: 'Important declarations',
     tier: 'maintainability',
@@ -395,7 +395,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags CSS !important declarations outside @keyframes; keyframe declarations use the dedicated keyframe rule to avoid duplicate default diagnostics.'
   },
   {
-    code: LINT_CODES.invalidNamedGridAreas,
+    diagnosticCode: LINT_CODES.invalidNamedGridAreas,
     ruleName: LINT_RULE_NAMES.invalidNamedGridAreas,
     title: 'Invalid named grid areas',
     tier: 'css-validity',
@@ -405,7 +405,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags empty, ragged, or non-rectangular named grid area strings in CSS declarations; dialect value facts remain future work.'
   },
   {
-    code: LINT_CODES.fontFamilyDuplicateNames,
+    diagnosticCode: LINT_CODES.fontFamilyDuplicateNames,
     ruleName: LINT_RULE_NAMES.fontFamilyDuplicateNames,
     title: 'Duplicate font family names',
     tier: 'maintainability',
@@ -415,7 +415,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags duplicate names in font-family declarations while leaving dynamic values alone.'
   },
   {
-    code: LINT_CODES.fontFamilyMissingGeneric,
+    diagnosticCode: LINT_CODES.fontFamilyMissingGeneric,
     ruleName: LINT_RULE_NAMES.fontFamilyMissingGeneric,
     title: 'Missing generic font family',
     tier: 'css-validity',
@@ -425,7 +425,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags definite font-family declarations that omit a generic family keyword.'
   },
   {
-    code: LINT_CODES.fontFaceMissingRequiredProperties,
+    diagnosticCode: LINT_CODES.fontFaceMissingRequiredProperties,
     ruleName: LINT_RULE_NAMES.fontFaceMissingRequiredProperties,
     title: 'Missing @font-face required properties',
     tier: 'css-validity',
@@ -434,7 +434,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Matches VSCode stylesheet-service fontFaceProperties: CSS @font-face blocks must define both font-family and src; dialect semantic facts remain future work.'
   },
   {
-    code: LINT_CODES.propertyIgnoredDueToDisplay,
+    diagnosticCode: LINT_CODES.propertyIgnoredDueToDisplay,
     ruleName: LINT_RULE_NAMES.propertyIgnoredDueToDisplay,
     title: 'Properties ignored by display',
     tier: 'css-validity',
@@ -443,7 +443,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Matches VSCode stylesheet-service propertyIgnoredDueToDisplay for CSS display:inline-block with non-none float and display:block with vertical-align; dialect semantic facts remain future work.'
   },
   {
-    code: LINT_CODES.boxModel,
+    diagnosticCode: LINT_CODES.boxModel,
     ruleName: LINT_RULE_NAMES.boxModel,
     title: 'Box model size risks',
     tier: 'style-suggestion',
@@ -452,7 +452,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Matches VSCode stylesheet-service boxModel for definite CSS width/height with non-zero padding or border, suppressing blocks that declare box-sizing and leaving dynamic or dialect values unknown.'
   },
   {
-    code: LINT_CODES.invalidImportPosition,
+    diagnosticCode: LINT_CODES.invalidImportPosition,
     ruleName: LINT_RULE_NAMES.invalidImportPosition,
     title: 'Invalid @import positions',
     tier: 'css-validity',
@@ -462,7 +462,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags CSS @import rules that appear after style rules or blocking at-rules; @charset and statement @layer do not block imports.'
   },
   {
-    code: LINT_CODES.duplicateAtImportRules,
+    diagnosticCode: LINT_CODES.duplicateAtImportRules,
     ruleName: LINT_RULE_NAMES.duplicateAtImportRules,
     title: 'Duplicate @import rules',
     tier: 'maintainability',
@@ -472,7 +472,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags repeated @import targets with the same authored options and conditions in one file.'
   },
   {
-    code: LINT_CODES.unknownAnimations,
+    diagnosticCode: LINT_CODES.unknownAnimations,
     ruleName: LINT_RULE_NAMES.unknownAnimations,
     title: 'Unknown animations',
     tier: 'css-validity',
@@ -482,7 +482,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags definite CSS animation names that do not have a same-file @keyframes definition; dynamic values and dialect animation facts remain future work.'
   },
   {
-    code: LINT_CODES.duplicateSelectors,
+    diagnosticCode: LINT_CODES.duplicateSelectors,
     ruleName: LINT_RULE_NAMES.duplicateSelectors,
     title: 'Duplicate selectors',
     tier: 'maintainability',
@@ -492,7 +492,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags duplicate CSS selector-list entries and duplicate selector lists among sibling rules; dialect nested selector resolution waits for selector facts.'
   },
   {
-    code: LINT_CODES.unknownUnits,
+    diagnosticCode: LINT_CODES.unknownUnits,
     ruleName: LINT_RULE_NAMES.unknownUnits,
     title: 'Unknown units',
     tier: 'css-validity',
@@ -502,7 +502,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags unknown CSS units from parsed Dimension nodes, suppressing url() values and allowing resolution x where CSS permits it.'
   },
   {
-    code: LINT_CODES.unknownFunctions,
+    diagnosticCode: LINT_CODES.unknownFunctions,
     ruleName: LINT_RULE_NAMES.unknownFunctions,
     title: 'Unknown functions',
     tier: 'css-validity',
@@ -512,7 +512,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags unknown CSS declaration functions using css-functions-list; dialect callable checks wait for semantic facts.'
   },
   {
-    code: LINT_CODES.linearGradientNonstandardDirection,
+    diagnosticCode: LINT_CODES.linearGradientNonstandardDirection,
     ruleName: LINT_RULE_NAMES.linearGradientNonstandardDirection,
     title: 'Nonstandard linear-gradient directions',
     tier: 'css-validity',
@@ -522,7 +522,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags old side-or-corner direction syntax and unitless numeric directions in CSS linear-gradient() and repeating-linear-gradient() calls.'
   },
   {
-    code: LINT_CODES.unknownMediaFeatureNames,
+    diagnosticCode: LINT_CODES.unknownMediaFeatureNames,
     ruleName: LINT_RULE_NAMES.unknownMediaFeatureNames,
     title: 'Unknown media feature names',
     tier: 'css-validity',
@@ -532,7 +532,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags unknown CSS @media feature names; skips custom media and vendor-prefixed features.'
   },
   {
-    code: LINT_CODES.unknownMediaFeatureValues,
+    diagnosticCode: LINT_CODES.unknownMediaFeatureValues,
     ruleName: LINT_RULE_NAMES.unknownMediaFeatureValues,
     title: 'Unknown media feature values',
     tier: 'css-validity',
@@ -542,7 +542,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags definite invalid CSS @media feature values using Jess media metadata; dynamic values are left unknown.'
   },
   {
-    code: LINT_CODES.unknownPseudoClasses,
+    diagnosticCode: LINT_CODES.unknownPseudoClasses,
     ruleName: LINT_RULE_NAMES.unknownPseudoClasses,
     title: 'Unknown pseudo-classes',
     tier: 'css-validity',
@@ -552,7 +552,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags unknown pseudo-class selectors using CSS metadata while suppressing custom, vendor, and dialect pseudo-classes.'
   },
   {
-    code: LINT_CODES.unknownPseudoElements,
+    diagnosticCode: LINT_CODES.unknownPseudoElements,
     ruleName: LINT_RULE_NAMES.unknownPseudoElements,
     title: 'Unknown pseudo-elements',
     tier: 'css-validity',
@@ -562,7 +562,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags unknown pseudo-element selectors using CSS metadata while suppressing vendor pseudo-elements.'
   },
   {
-    code: LINT_CODES.unmatchableAnbSelectors,
+    diagnosticCode: LINT_CODES.unmatchableAnbSelectors,
     ruleName: LINT_RULE_NAMES.unmatchableAnbSelectors,
     title: 'Unmatchable An+B selectors',
     tier: 'css-validity',
@@ -572,7 +572,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags CSS nth-selector An+B expressions that can never match; dialect selector facts remain future work.'
   },
   {
-    code: LINT_CODES.unknownTypeSelectors,
+    diagnosticCode: LINT_CODES.unknownTypeSelectors,
     ruleName: LINT_RULE_NAMES.unknownTypeSelectors,
     title: 'Unknown type selectors',
     tier: 'css-validity',
@@ -582,7 +582,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags unknown CSS type selectors using HTML, SVG, and MathML metadata; custom elements and dialect selectors are intentionally skipped.'
   },
   {
-    code: LINT_CODES.incompatibleMathFunctionUnits,
+    diagnosticCode: LINT_CODES.incompatibleMathFunctionUnits,
     ruleName: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
     title: 'Incompatible math function units',
     tier: 'css-validity',
@@ -591,7 +591,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags definite CSS min()/max()/clamp() numeric-kind mismatches while leaving dynamic, percentage, and compound arguments unknown.'
   },
   {
-    code: LINT_CODES.invalidColorFunctionChannels,
+    diagnosticCode: LINT_CODES.invalidColorFunctionChannels,
     ruleName: LINT_RULE_NAMES.invalidColorFunctionChannels,
     title: 'Invalid color function channels',
     tier: 'css-validity',
@@ -600,7 +600,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Matches VSCode stylesheet-service argumentsInColorFunction for definite rgb()/rgba()/hsl()/hsla() channel arity/type errors while leaving dynamic and nested values unknown.'
   },
   {
-    code: LINT_CODES.invalidTypedCustomPropertyValue,
+    diagnosticCode: LINT_CODES.invalidTypedCustomPropertyValue,
     ruleName: LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
     title: 'Invalid typed custom property values',
     tier: 'css-validity',
@@ -609,7 +609,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     notes: 'Flags definite CSS @property initial-value descriptors that do not match simple syntax descriptors such as <length>, <integer>, or <color>; dynamic and unsupported syntax stays unknown.'
   },
   {
-    code: LINT_CODES.unsupportedSassForm,
+    diagnosticCode: LINT_CODES.unsupportedSassForm,
     ruleName: LINT_RULE_NAMES.unsupportedSassForm,
     title: 'Unsupported Sass forms',
     tier: 'dialect-support',

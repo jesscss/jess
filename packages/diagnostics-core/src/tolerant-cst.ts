@@ -154,8 +154,14 @@ const SHORTHAND_OVERRIDE_PROPERTIES: ReadonlyMap<string, ReadonlySet<string>> = 
     'border-right-color', 'border-right-style', 'border-right-width', 'border-style',
     'border-top', 'border-top-color', 'border-top-style', 'border-top-width', 'border-width'
   ])],
+  ['border-block', new Set(['border-block-color', 'border-block-style', 'border-block-width'])],
+  ['border-block-end', new Set(['border-block-end-color', 'border-block-end-style', 'border-block-end-width'])],
+  ['border-block-start', new Set(['border-block-start-color', 'border-block-start-style', 'border-block-start-width'])],
   ['border-bottom', new Set(['border-bottom-color', 'border-bottom-style', 'border-bottom-width'])],
   ['border-color', new Set(['border-bottom-color', 'border-left-color', 'border-right-color', 'border-top-color'])],
+  ['border-inline', new Set(['border-inline-color', 'border-inline-style', 'border-inline-width'])],
+  ['border-inline-end', new Set(['border-inline-end-color', 'border-inline-end-style', 'border-inline-end-width'])],
+  ['border-inline-start', new Set(['border-inline-start-color', 'border-inline-start-style', 'border-inline-start-width'])],
   ['border-left', new Set(['border-left-color', 'border-left-style', 'border-left-width'])],
   ['border-radius', new Set([
     'border-bottom-left-radius', 'border-bottom-right-radius',
@@ -176,9 +182,11 @@ const SHORTHAND_OVERRIDE_PROPERTIES: ReadonlyMap<string, ReadonlySet<string>> = 
     'font-variant-numeric', 'font-variant-position', 'font-variation-settings',
     'font-weight', 'line-height'
   ])],
+  ['gap', new Set(['column-gap', 'row-gap'])],
   ['grid', new Set([
-    'grid-auto-columns', 'grid-auto-flow', 'grid-auto-rows',
-    'grid-template', 'grid-template-areas', 'grid-template-columns', 'grid-template-rows'
+    'grid-auto-columns', 'grid-auto-flow', 'grid-auto-rows', 'grid-column-gap',
+    'grid-row-gap', 'grid-template', 'grid-template-areas',
+    'grid-template-columns', 'grid-template-rows'
   ])],
   ['grid-template', new Set(['grid-template-areas', 'grid-template-columns', 'grid-template-rows'])],
   ['inset', new Set(['bottom', 'left', 'right', 'top'])],
@@ -186,13 +194,28 @@ const SHORTHAND_OVERRIDE_PROPERTIES: ReadonlyMap<string, ReadonlySet<string>> = 
   ['inset-inline', new Set(['inset-inline-end', 'inset-inline-start'])],
   ['list-style', new Set(['list-style-image', 'list-style-position', 'list-style-type'])],
   ['margin', new Set(['margin-bottom', 'margin-left', 'margin-right', 'margin-top'])],
+  ['margin-block', new Set(['margin-block-end', 'margin-block-start'])],
+  ['margin-inline', new Set(['margin-inline-end', 'margin-inline-start'])],
   ['outline', new Set(['outline-color', 'outline-style', 'outline-width'])],
+  ['overflow', new Set(['overflow-x', 'overflow-y'])],
+  ['overscroll-behavior', new Set(['overscroll-behavior-x', 'overscroll-behavior-y'])],
   ['padding', new Set(['padding-bottom', 'padding-left', 'padding-right', 'padding-top'])],
+  ['padding-block', new Set(['padding-block-end', 'padding-block-start'])],
+  ['padding-inline', new Set(['padding-inline-end', 'padding-inline-start'])],
   ['place-content', new Set(['align-content', 'justify-content'])],
   ['place-items', new Set(['align-items', 'justify-items'])],
   ['place-self', new Set(['align-self', 'justify-self'])],
   ['scroll-margin', new Set(['scroll-margin-bottom', 'scroll-margin-left', 'scroll-margin-right', 'scroll-margin-top'])],
+  ['scroll-margin-block', new Set(['scroll-margin-block-end', 'scroll-margin-block-start'])],
+  ['scroll-margin-inline', new Set(['scroll-margin-inline-end', 'scroll-margin-inline-start'])],
   ['scroll-padding', new Set(['scroll-padding-bottom', 'scroll-padding-left', 'scroll-padding-right', 'scroll-padding-top'])],
+  ['scroll-padding-block', new Set(['scroll-padding-block-end', 'scroll-padding-block-start'])],
+  ['scroll-padding-inline', new Set(['scroll-padding-inline-end', 'scroll-padding-inline-start'])],
+  ['text-decoration', new Set([
+    'text-decoration-color', 'text-decoration-line',
+    'text-decoration-style', 'text-decoration-thickness'
+  ])],
+  ['text-emphasis', new Set(['text-emphasis-color', 'text-emphasis-style'])],
   ['transition', new Set(['transition-delay', 'transition-duration', 'transition-property', 'transition-timing-function'])]
 ]);
 
