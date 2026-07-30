@@ -346,6 +346,41 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports modern shorthand override families from the CSS property table', () => {
+    const source = '.a { row-gap: 1rem; gap: 0; overflow-x: hidden; overflow: clip; text-decoration-color: red; text-decoration: underline; }\n'
+      + '.b { margin-inline-start: 1rem; margin-inline: 0; padding-block-end: 1rem; padding-block: 0; }\n'
+      + '.c { border-inline-start-color: red; border-inline-start: 1px solid; border-block-width: 1px; border-block: 0; }\n'
+      + '.d { scroll-padding-inline-end: 2rem; scroll-padding-inline: 0; text-emphasis-color: red; text-emphasis: filled; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const shorthandOverrides = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.shorthandPropertyOverrides
+    );
+    const gapStart = source.indexOf('gap: 0');
+    const overflowStart = source.indexOf('overflow: clip');
+    const textDecorationStart = source.indexOf('text-decoration: underline');
+    const marginInlineStart = source.indexOf('margin-inline: 0');
+    const paddingBlockStart = source.indexOf('padding-block: 0');
+    const borderInlineStart = source.indexOf('border-inline-start: 1px');
+    const borderBlockStart = source.indexOf('border-block: 0');
+    const scrollPaddingInlineStart = source.indexOf('scroll-padding-inline: 0');
+    const textEmphasisStart = source.indexOf('text-emphasis: filled');
+
+    expect(shorthandOverrides.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Overridden property "row-gap" by shorthand "gap"', gapStart, gapStart + 'gap'.length],
+      ['Overridden property "overflow-x" by shorthand "overflow"', overflowStart, overflowStart + 'overflow'.length],
+      ['Overridden property "text-decoration-color" by shorthand "text-decoration"', textDecorationStart, textDecorationStart + 'text-decoration'.length],
+      ['Overridden property "margin-inline-start" by shorthand "margin-inline"', marginInlineStart, marginInlineStart + 'margin-inline'.length],
+      ['Overridden property "padding-block-end" by shorthand "padding-block"', paddingBlockStart, paddingBlockStart + 'padding-block'.length],
+      ['Overridden property "border-inline-start-color" by shorthand "border-inline-start"', borderInlineStart, borderInlineStart + 'border-inline-start'.length],
+      ['Overridden property "border-block-width" by shorthand "border-block"', borderBlockStart, borderBlockStart + 'border-block'.length],
+      ['Overridden property "scroll-padding-inline-end" by shorthand "scroll-padding-inline"', scrollPaddingInlineStart, scrollPaddingInlineStart + 'scroll-padding-inline'.length],
+      ['Overridden property "text-emphasis-color" by shorthand "text-emphasis"', textEmphasisStart, textEmphasisStart + 'text-emphasis'.length]
+    ]);
+  });
+
   it('reports unknown at-rule descriptors without also reporting unknown properties', () => {
     const source = '@font-face { font-family: Inter; src: url(inter.woff2); made-up: nope; }\n'
       + '@property --x { syntax: "<length>"; inherits: false; initial-value: 0px; unknown: yes; }\n'

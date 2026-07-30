@@ -171,7 +171,8 @@ The current stable rule set is intentionally small and migration-friendly:
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
 
 Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
-`stylelintComparisonRules()` when building migration reports. The older
+`stylelintComparisonRules()` when building migration reports. Each
+`STABLE_LINT_RULES` entry exposes both `ruleName` and `diagnosticCode`; the
 diagnostic-code helpers remain available for tools that already consume Jess
 diagnostic codes.
 
