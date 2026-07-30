@@ -3401,19 +3401,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * is rejected rather than hidden in an Any/raw prelude. Extend this with
    * another typed form when Jess gives that form semantics.
    */
-  const HeaderValueAtom = node<ValueNode>(
-    'ValueAtom',
-    choice(
-      g.Url,
-      g.HeaderCall,
-      g.LiteralQuoted,
-      g.Color,
-      g.Dimension,
-      g.CustomPropertyValue,
-      g.Keyword
-    ),
-    children => requireValueNode(children[0])
-  );
   const HeaderValue = node<ValueSlot>(
     'Value',
     noTrivia(sequence(
@@ -3450,16 +3437,13 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * No function NAME is excluded. Which functions carry meaning in a media
    * feature or an `@property` descriptor is a language-service fact; a parser
    * that rejects `var()` here turns a diagnosable squiggle into a lost file.
-   * `url(` needs no exclusion either: the dedicated Url leaf precedes this arm
-   * in HeaderValueAtom and takes it first.
+   * The shared identifier/function opener is routed below, so the static URL
+   * leaf, generic call, and bare keyword never reread one another's prefix.
    */
   const HeaderCall = node<FunctionCall>(
     'Call',
     sequence(
-      noTrivia(sequence(
-        g.Identifier,
-        literal('(')
-      )),
+      routed(),
       optional(sequence(
         g.HeaderValue,
         many(g.HeaderCallArgument)
@@ -3467,17 +3451,51 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       literal(')')
     ),
     (children) => {
-      if (children.length < 3 || requireToken(children[1]).value !== '(' || requireToken(children.at(-1)).value !== ')') {
+      if (children.length < 2 || requireToken(children.at(-1)).value !== ')') {
         throw new TypeError('Jess plain function call lost its call boundaries.');
       }
       return funcCall(
-        requireToken(children[0]).value,
-        children.slice(
-          2,
-          -1
-        ).filter(isValueSlotValue)
+        functionOpenName(children[0]),
+        children.slice(1, -1).filter(isValueSlotValue)
       );
     }
+  );
+
+  /*
+   * Header URLs deliberately retain the CSS-only URL payload. The normal Jess
+   * value route replaces this child with its dynamic URL override, but media,
+   * supports, and descriptor headers are not value positions. Routing after the
+   * shared glued opener keeps that narrow override local without a competing
+   * `Url` / `Call` / `Keyword` choice.
+   */
+  const HeaderUrl = node<Url>(
+    'Url',
+    sequence(
+      routed(),
+      optional(choice(
+        g.LiteralQuoted,
+        g.PlainUrlInner
+      )),
+      literal(')')
+    ),
+    urlFromChildren
+  );
+  const HeaderIdentifierOrFunction = dispatch(
+    identifierOrFunction,
+    caseInsensitiveWhen('url(', HeaderUrl),
+    when(endsWith('('), HeaderCall),
+    otherwise(KeywordValue)
+  );
+  const HeaderValueAtom = node<ValueNode>(
+    'ValueAtom',
+    choice(
+      g.LiteralQuoted,
+      g.Color,
+      g.Dimension,
+      g.CustomPropertyValue,
+      HeaderIdentifierOrFunction
+    ),
+    children => requireValueNode(children[0])
   );
 
   /*

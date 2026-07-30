@@ -1649,7 +1649,9 @@ describe('Jess AST grammar facts', () => {
 
     for (const dynamic of [
       '@namespace svg url($[path]);',
-      '@document url("$[path]") { .icon { color: blue; } }'
+      '@document url("$[path]") { .icon { color: blue; } }',
+      '@namespace svg url("$(.path)");',
+      '@document url($( .path )) { .icon { color: blue; } }'
     ]) {
       expect(() => parse(dynamic), dynamic).toThrow(SyntaxError);
     }
