@@ -492,16 +492,22 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
-  it('uses the ambient quoted-span skipper in opaque SCSS scans', () => {
-    const forwardTail = run(
-      scssGrammar.ForwardTail,
-      ' as "theme;variant";',
-      { trivia: scssGrammar.whitespace }
-    );
-    expect(forwardTail.ok).toBe(true);
-    expect(forwardTail.unconsumedFrom).toBe(19);
-    expect(forwardTail.value).toEqual({ value: 'as "theme;variant"' });
+  it('routes SCSS @at-root to its filter or ordinary block continuation', () => {
+    const source = '@at-root { .top { color: red; } } @at-root (with: .scope) { .filtered { color: blue; } }';
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
 
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        { type: 'AtRuleBlock', name: '@at-root', prelude: null },
+        { type: 'AtRuleBlock', name: '@at-root', prelude: { type: 'Any', src: '(with: .scope)' } }
+      ]
+    });
+  });
+
+  it('uses the ambient quoted-span skipper in opaque SCSS scans', () => {
     const queryFunction = run(
       scssGrammar.QueryFunction,
       'selector([data-state=")"])',

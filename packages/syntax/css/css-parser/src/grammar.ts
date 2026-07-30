@@ -77,7 +77,7 @@ import type {
 type SourceSpan = { readonly start: number; readonly end: number };
 type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
 
-type CssGrammarRuleName =
+type GrammarRuleName =
   | 'AtRulePrelude'
   | 'AtRulePreludeSegments'
   | 'AtRuleStatement'
@@ -226,7 +226,7 @@ type CssGrammarRuleName =
   | 'VarFallbackTerm'
   | 'keyframeSelector';
 
-type CssGrammarSelf = { readonly [K in CssGrammarRuleName]: Combinator<unknown> };
+type GrammarSelf = { readonly [K in GrammarRuleName]: Combinator<unknown> };
 
 function tokenText(child: unknown): string {
   if (typeof child === 'string') {
@@ -576,9 +576,9 @@ function selectorArgumentText(value: unknown): string {
   return tokenText(value);
 }
 
-type CssComplexSegment = { combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: SelectorTerm };
+type ComplexSegment = { combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: SelectorTerm };
 
-function cssCombinator(child: unknown): NonNullable<CssComplexSegment['combinator']> {
+function selectorCombinator(child: unknown): NonNullable<ComplexSegment['combinator']> {
   const token = tokenText(child);
   if (token === '>' || token === '+' || token === '~' || token === '|' || token === '||') {
     return token;
@@ -594,7 +594,7 @@ function cssRelativeCombinator(child: unknown): '>' | '+' | '~' {
   return '~';
 }
 
-function complexSegments(children: readonly unknown[]): [CssComplexSegment, ...CssComplexSegment[]] {
+function complexSegments(children: readonly unknown[]): [ComplexSegment, ...ComplexSegment[]] {
   const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: SelectorTerm }> = [];
   let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   for (const child of children) {
@@ -603,16 +603,16 @@ function complexSegments(children: readonly unknown[]): [CssComplexSegment, ...C
       combinator = ' ';
       continue;
     }
-    combinator = cssCombinator(child);
+    combinator = selectorCombinator(child);
   }
   return [segments[0]!, ...segments.slice(1)];
 }
 
-function branchSegments(branch: SelectorBranch): [CssComplexSegment, ...CssComplexSegment[]] {
+function branchSegments(branch: SelectorBranch): [ComplexSegment, ...ComplexSegment[]] {
   if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
     return [{ term: branch }];
   }
-  const segments: CssComplexSegment[] = [];
+  const segments: ComplexSegment[] = [];
   let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   const start = branch.type === 'RelativeSelector' ? 1 : 0;
   for (let index = start; index < branch.value.length; index++) {
@@ -999,7 +999,7 @@ const importTailSquareGroup = sequence(
     ']'
   )
 );
-export const cssFactory = (g: CssGrammarSelf) => {
+export const cssFactory = (g: GrammarSelf) => {
   const identWord = makeWord(
     '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
     { caseInsensitive: true }

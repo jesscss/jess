@@ -3408,17 +3408,21 @@ shared-opener work this way:
    parses the branch once, collects inline extends, and removes the static /
    dynamic selector-branch fallback competition. Its semantic public owner is
    `SelectorBranch`; historical `DirectLess*` labels are not a contract.
-4. Less mixin statement family: the class/id router now parses the prefix once.
+4. Less mixin statement family: the class/id router parses the prefix once.
    `.a.b`, `.a .b`, and `.a > .b` retain their compound/complex selector facts
    until `(`/`;` selects a namespace call or the ruleset continuation selects
    `:extend`, `,`, `when`, or `{`. A definition is permitted only for one
-   class/id name, so `.a.b() {}` remains rejected. The router still has one
-   narrow `attempt(MixinDefinitionTail)` after an already-consumed `(`: Less
-   parameter and call-argument grammars are not interchangeable, so do not
-   erase it by parsing one as the other. The next reduction must retain a
-   truly shared parenthesized fact with separator and value semantics intact,
-   then prove the mixin/qualified-rule backtracking rate. Do not reintroduce a
-   prefix scanner or a route that reparses the selector.
+   class/id name, so `.a.b() {}` remains rejected. `MixinInterior` consumes
+   the opening `(`, each item, and separators once, but leaves `)` for the
+   selected continuation. A bare `@name` is a binding only at a comma,
+   semicolon, or closing-parenthesis boundary; `@name - 1` therefore remains
+   a positional call value. `MixinDefinitionContinuation` and
+   `MixinCallContinuation` each consume `)`, so the narrow definition attempt
+   can retry only its delimiter and tail, never the parenthesized interior.
+   The public parameter-list entry reuses that same interior and reduces it to
+   `Param[]`. The generic positional-value fallback is intentionally local to
+   an already-open interior; do not turn it into a class/id prefix scanner or
+   a route that reparses the selector.
 5. Less query feature parentheses: several `(`-led query arms decide only after
    entering the parentheses. This may become a dispatch/left-factor target, but
    public `QueryAtRuleBlock` CST children and media/container query AST shapes
@@ -5290,3 +5294,44 @@ value or comma list. The CST test exercises two media and container clauses and
 asserts the shared semantic clause counts. Parser-shared then Jess builds and
 the focused AST/CST/public/macro/compose suite passed. No performance claim was
 made.
+
+SCSS module-prefix routing, 2026-07-30: the document-prefix module family now
+parses one shared `RoutedAtRuleKeyword` token and dispatches it to the existing
+`UseRule` or `ForwardRule` tail. This is a real routed family: the prefix allows
+only those two Sass module directives, their keyword decides the continuation,
+and each continuation owns the consumed keyword through `routed()` so its
+semantic CST node and source span stay intact. `@import` is intentionally not a
+third arm because it is ordinary stylesheet syntax, not prefix-only module
+syntax. The dispatcher itself remains unlabeled routing machinery; public CST
+continues to expose `UseRule` and `ForwardRule`. The wider stylesheet/body
+at-rule choices remain a separate context-sensitive dispatch design task, not a
+reason to reintroduce individual `@use` / `@forward` opener regexes. The former
+`ForwardTail` opaque `scanTo(';')` was deleted: no accepted SCSS module form
+needs that raw tail, and the `literal(';')` in `ForwardRule` now rejects every
+unsupported modifier at its actual grammar boundary instead of scanning and
+discarding it.
+
+SCSS `@at-root` routing, 2026-07-30: `@at-root` is Sass-only structure, so
+SCSS owns its route rather than copying a CSS at-rule rule. Every allowed body
+context now reaches one `AtRootDirective` dispatcher: it consumes the shared
+at-keyword exactly once and routes the selected continuation through
+`routed()`. The remaining `choice(AtRootFilter, AtRootBlock)` is intentional:
+both continuations share that opener, and only the subsequent `(`-led filter
+prelude versus ordinary prelude/block decides which syntax applies. The
+dispatcher stays unlabeled; the CST continues to expose `AtRootFilter` and
+`AtRootBlock`, which are the semantic AST/CST-aligned shapes. Focused AST and
+public-CST tests now cover both forms, including their route through the public
+stylesheet entry.
+
+SCSS Sass-directive routing, 2026-07-30: repeated `@include`, `@mixin`,
+`@function`, `@if`, `@each`, `@for`, and `@at-root` opener regexes no longer
+appear in every stylesheet/body choice. `SassDirective`, `SassNestedDirective`,
+and `SassControlDirective` consume one shared at-keyword and route to the
+existing semantic `routed()` tails. They are deliberately context-specific:
+the full family admits `@function`, restricted nested bodies do not, and a
+function body admits only the control forms. CSS at-rule blocks remain outside
+these dispatchers because their body structure is CSS-owned and varies by
+context. The router nodes are unlabeled; the public CST exposes the existing
+`MixinDefinition`, `MixinCall`, `FunctionRule`, `EachRule`, `ForRule`, `IfRule`,
+and `AtRootBlock`/`AtRootFilter` labels. A public mixed-directive CST fixture
+pins that contract and verifies no `SassDirective` label leaks into the tree.

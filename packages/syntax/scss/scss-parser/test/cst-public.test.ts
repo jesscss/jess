@@ -75,12 +75,14 @@ describe('@jesscss/scss-parser/cst', () => {
   });
 
   it('uses contextual CST labels for quoted, pseudo-selector, and $if-body syntax', () => {
-    const result = parseScssCst('@use "theme"; $state: open; .a[data-label="#{$state}"]:not(:where([data-kind="open"])) { color: red; } .c:nth-child(2n) { color: blue; } @if true { .when-true { color: green; } @media screen { .nested { color: lime; } } }');
+    const result = parseScssCst('@use "theme"; @forward "public"; $state: open; .a[data-label="#{$state}"]:not(:where([data-kind="open"])) { color: red; } .c:nth-child(2n) { color: blue; } @if true { .when-true { color: green; } @media screen { .nested { color: lime; } } }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     const { grammarTypes } = stats(result.tree);
     expect(grammarTypes.get('Quoted')).toBeGreaterThan(1);
+    expect(grammarTypes.get('UseRule')).toBe(1);
+    expect(grammarTypes.get('ForwardRule')).toBe(1);
     expect(grammarTypes.get('AttributeSelector')).toBeGreaterThan(1);
     expect(grammarTypes.get('SassInterpolation')).toBeGreaterThan(0);
     expect(grammarTypes.get('PseudoArgument')).toBeGreaterThan(0);
@@ -99,6 +101,35 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(stats(result.tree).grammarTypes.get('ImportAtRule')).toBe(1);
     expect(leafText(result.tree)).toContain('supports');
     expect(leafText(result.tree)).toContain('theme.css');
+    expectNoModeLabels(result.tree);
+  });
+
+  it('keeps the selected SCSS @at-root continuation as the semantic CST node', () => {
+    const result = parseScssCst('@at-root { .top { color: red; } } @at-root (with: .scope) { .filtered { color: blue; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AtRootBlock')).toBe(1);
+    expect(grammarTypes.get('AtRootFilter')).toBe(1);
+    expectNoModeLabels(result.tree);
+  });
+
+  it('routes Sass directive keywords without exposing dispatcher CST nodes', () => {
+    const source = '@mixin tone($value) { color: $value; } @include tone(red); @function identity($value) { @return $value; } @each $name in red { .#{$name} { color: red; } } @for $i from 1 through 2 { .n-#{$i} { color: red; } } @if true { .yes { color: red; } } @at-root { .top { color: red; } }';
+    const result = parseScssCst(source);
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('MixinDefinition')).toBe(1);
+    expect(grammarTypes.get('MixinCall')).toBe(1);
+    expect(grammarTypes.get('FunctionRule')).toBe(1);
+    expect(grammarTypes.get('EachRule')).toBe(1);
+    expect(grammarTypes.get('ForRule')).toBe(1);
+    expect(grammarTypes.get('IfRule')).toBe(1);
+    expect(grammarTypes.get('AtRootBlock')).toBe(1);
+    expect(grammarTypes.has('SassDirective')).toBe(false);
     expectNoModeLabels(result.tree);
   });
 

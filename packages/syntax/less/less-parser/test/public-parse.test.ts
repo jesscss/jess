@@ -2803,6 +2803,61 @@ describe('public Less parse()', () => {
     expect(() => parse('.a.b() { color: red; }')).toThrow(SyntaxError);
   });
 
+  it('lowers one parenthesized mixin interior by its definition or call continuation', () => {
+    const document = parse([
+      '@first: one; @second: two; @third: three;',
+      '.join(@first, @second; @third,) { first: @first; second: @second; third: @third; }',
+      '.host { .join(@first; @second, @third,); .join(@first - 1); }'
+    ].join('\n'));
+
+    expect(document).toMatchObject({
+      rules: [
+        { type: 'VariableDeclaration', name: 'first' },
+        { type: 'VariableDeclaration', name: 'second' },
+        { type: 'VariableDeclaration', name: 'third' },
+        {
+          type: 'MixinDefinition',
+          name: '.join',
+          params: [{ name: 'first' }, { name: 'second' }, { name: 'third' }]
+        },
+        {
+          type: 'Ruleset',
+          rules: [
+            {
+              type: 'MixinCall',
+              name: '.join',
+              args: [
+                { value: { type: 'VariableReference', name: 'first' } },
+                {
+                  value: {
+                    type: 'List',
+                    sep: ',',
+                    value: [
+                      { type: 'VariableReference', name: 'second' },
+                      { type: 'VariableReference', name: 'third' }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              type: 'MixinCall',
+              name: '.join',
+              args: [{
+                value: {
+                  type: 'Operation',
+                  operator: '-',
+                  left: { type: 'VariableReference', name: 'first' },
+                  right: { type: 'Dimension', number: 1 }
+                }
+              }]
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it('returns static ruleset guards from the public Stylesheet route', () => {
     expect(
       parse(
