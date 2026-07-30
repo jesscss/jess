@@ -220,10 +220,13 @@ Apply these while folding each family, not as polish on duplicate bodies:
 - Selector list with inline extends: the ruleset fallback is paid. Preserve the
   context-aware selector-list route that parses each branch once, returns
   selector facts, and collects branch-local extend instructions.
-- Mixin statement router: the current broad `mixinStatementAhead`
-  skips repeated work but still leaves the same name/path family spread across
-  definition/call/bare-call arms. The fold target is one consumed mixin opener
-  with suffix routing.
+- Mixin statement router: the broad `mixinStatementAhead` scan has been
+  replaced by one typed class/id selector prefix and literal-led tails. The
+  prefix remains selector structure for rulesets and lowers to a namespace path
+  only for `(`/`;` mixin continuations. A narrow definition-versus-call attempt
+  remains after `(` because the current parameter and argument grammars differ;
+  it is a measurable reduction target, not permission to collapse one grammar
+  into the other. Do not reintroduce a prefix scan or a second selector parse.
 - Query feature parentheses: CSS/Less media features are a real left-factor or
   context-helper target, not an automatic dispatch target. The same inner
   identifier can begin colon, comparison, range, grouped, and negated features,
