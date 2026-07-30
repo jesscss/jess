@@ -135,7 +135,7 @@ import type { Branch, Level } from './extend/ir.js';
 import { mkBranch } from './extend/ir.js';
 import type { Context } from '../context.js';
 import { Deprecation } from '../deprecation.js';
-import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
+import { ERR, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
 import { bodySpanOf, sourceSpanOf, triviaMapOf, valueLayoutOf, type AstSourceSpan } from './provenance.js';
@@ -752,15 +752,17 @@ function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: E
           : evalBytesSync(statement.target, frame, e);
       const options = statement.options === null ? null : evalBytesSync(statement.options, frame, e);
       const deprecation = Deprecation.fromId('less-plugin') ?? Deprecation.userAuthored;
-      e.context?.warnDeprecation(deprecation, WARN.deprecated({
-        node: statement,
-        ...callSiteLocation(statement, e),
-        meta: {
+      e.context?.warnAtNode(
+        'eval/deprecated',
+        'eval',
+        statement,
+        {
           what: 'Less @plugin',
           use: '@use or @-use',
           deprecation
-        }
-      }));
+        },
+        { code: `deprecation/${deprecation.id}` }
+      );
 
       /*
        * A `@plugin` that cannot be resolved, or whose script throws while
@@ -4368,11 +4370,11 @@ function reportPluginLog(node: FunctionCall, record: { level: string; message: s
   if (record.level !== 'warn' && record.level !== 'error') {
     return;
   }
-  e.context?.warn(WARN.pluginLog({
-    node,
-    ...callSiteLocation(node, e),
-    meta: { name: node.name, level: record.level, message: record.message }
-  }));
+  e.context?.warnAtNode('plugin/log', 'plugin', node, {
+    name: node.name,
+    level: record.level,
+    message: record.message
+  });
 }
 
 function needsPluginRawArguments(args: readonly ValueSlot[], frame: Frame | null, e: EvalCtx): boolean {
@@ -4537,23 +4539,27 @@ function pluginCallFailure(
       ? error.message
       : String(error);
   const stack = error instanceof Error && typeof error.stack === 'string' ? error.stack : undefined;
-  const attribution = {
-    node,
-    ...callSiteLocation(node, e),
-    ...(stack === undefined ? {} : { note: stack }),
-    meta: { name: node.name, reason }
-  };
 
   /*
    * `breakOnError` is the render-level "stop at the first real problem" switch,
    * and a plugin fault IS a real problem: it aborts unless the caller explicitly
    * opted into collecting failures instead (`breakOnError: false`).
    */
-  const diagnostic = ERR.pluginFunctionThrew(attribution);
   if (e.context?.opts.breakOnError !== false) {
-    throw diagnostic;
+    throw ERR.pluginFunctionThrew({
+      node,
+      ...callSiteLocation(node, e),
+      ...(stack === undefined ? {} : { note: stack }),
+      meta: { name: node.name, reason }
+    });
   }
   if (e.modes.functionMode === 'error') {
+    const diagnostic = ERR.pluginFunctionThrew({
+      node,
+      ...callSiteLocation(node, e),
+      ...(stack === undefined ? {} : { note: stack }),
+      meta: { name: node.name, reason }
+    });
     const collected = toDiagnostic(diagnostic);
     if ('errors' in collected) {
       e.context.errors.push(collected);
@@ -4562,7 +4568,10 @@ function pluginCallFailure(
     }
     return preserveCall(node, frame, e);
   }
-  e.context?.warn(WARN.pluginFunctionThrew(attribution));
+  e.context?.warnAtNode('plugin/function-threw', 'plugin', node, {
+    name: node.name,
+    reason
+  }, stack === undefined ? undefined : { note: stack });
   return preserveCall(node, frame, e);
 }
 

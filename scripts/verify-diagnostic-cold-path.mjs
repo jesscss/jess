@@ -17,12 +17,16 @@ const warn = warnStart === -1 || warnEnd === -1 ? '' : context.slice(warnStart, 
 if (!warn) {
   fail('could not locate Context.warn()');
 } else {
-  const policy = warn.indexOf('warnCodeMatchesAny(code, cfg.silence)');
-  const normalize = warn.indexOf('toDiagnostic(warning,');
-  const cap = warn.indexOf('stats.emittedSites.has(key)');
-  if (policy === -1 || cap === -1 || normalize === -1 || policy > normalize || cap > normalize) {
-    fail('Context.warn() must apply silence and capping policy before toDiagnostic()');
+  const policy = warn.indexOf('warnCodeMatchesAny(code, this.warnConfig.silence)');
+  const row = warn.indexOf('this.appendWarning(');
+  if (policy === -1 || row === -1 || policy > row || warn.includes('toDiagnostic(warning,')) {
+    fail('Context.warn() must apply silence before retaining a scalar warning row, never normalize eagerly');
   }
+}
+if (!context.includes('private readonly _warningCodes: string[] = []')
+  || !context.includes('get warningCount(): number')
+  || !context.includes('warnAtNode(')) {
+  fail('compiler-originated warnings must use a columnar collector with a count-only fast path');
 }
 
 const serialize = read('packages/core/src/ast/serialize.ts');
@@ -53,6 +57,12 @@ if (!warningTest.includes('preserves a declined registered call without producin
 const frameTest = read('packages/core/src/__tests__/code-frame.test.ts');
 if (!frameTest.includes('CRLF source without splitting it')) {
   fail('missing source-index code-frame regression test');
+}
+const warningProcessorTest = read('packages/core/src/__tests__/warnings-processor.test.ts');
+if (!warningProcessorTest.includes('context.warnAtNode columnar collection')
+  || !warningProcessorTest.includes('silenced compiler-originated warning')
+  || !warningProcessorTest.includes('repeated compiler-originated warning')) {
+  fail('missing warning collector tests for lazy template work and row materialization');
 }
 
 if (process.exitCode === undefined) {

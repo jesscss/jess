@@ -2045,14 +2045,16 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-07-30 compiler source-fact ownership and function-dispatch
-  cost cut. This pass removes eager suppressed-function diagnostics, deletes
-  the routine preserved-function warning lane, gates scoped function lookup by
-  registered name, makes warning admission precede diagnostic normalization,
-  and makes surviving code frames file-indexed.
+- Latest pass: 2026-07-30 compiler source-fact ownership, function-dispatch,
+  and warning-event cost cut. The first slice removes eager
+  suppressed-function diagnostics, deletes the routine preserved-function
+  warning lane, gates scoped function lookup by registered name, and makes
+  surviving code frames file-indexed. The follow-up stores admitted
+  compiler-originated warnings as columnar scalar rows, deferring public
+  diagnostic materialization and line/frame reads to the display/result boundary.
 - Architecture surface: core evaluator/serializer/context/error diagnostic
-  paths, plus benchmark evidence and a PR gate. No parser, AST shape, output
-  CSS, import, or plugin ABI is changed.
+  paths, the compiler result/report boundary, benchmark evidence, and a PR gate.
+  No parser, AST shape, output CSS, import, or plugin ABI is changed.
 - Separation/duplication: removed duplicate lexical function resolution and
   duplicate source derivation. One `scopedFunctionNames` owner admits a lexical
   lookup; one file-owned line-start index owns offset and frame reads.
@@ -2061,17 +2063,21 @@ involved.
 - New traversal: bounded only. A scoped name may walk parent frames that own
   registered functions; all other calls bypass it. Source replay searches are
   bounded to their existing AST spans rather than a file prefix/suffix.
-- New node/materialization: none. The line index is an off-node, lazy per-file
-  `WeakMap` fact; it replaces repeated full-source scans and line arrays.
+- New node/materialization: none on the successful compile path. The line index
+  is an off-node, lazy per-file `WeakMap` fact; admitted warnings live as parallel
+  scalar arrays and construct public diagnostic objects only when reporting or
+  returning a result requires them.
 - Render path: ordinary function calls now dispatch directly to the flat
   registry unless their name is registered lexically. A registered function
   declining CSS-compatible arguments preserves authored bytes silently;
-  suppressed/capped/line display warnings still do no frame extraction, and
-  frame display slices indexed lines.
+  silenced/capped compiler warnings do no template or frame work, retained
+  warnings do no diagnostic-object work, and frame display slices indexed lines.
 - Helper/API surface: `ValueEvaluator.call()` accepts an optional
   already-resolved scoped `Fn`, preserving the legacy `FnScope` input for direct
   consumers without forcing the serializer to allocate it. The transitional
-  unresolved-function warning callback and code were deleted.
+  unresolved-function warning callback and code were deleted. `Context` keeps
+  the existing `warnings` array-facing result API while adding a count-only
+  internal reporting path and a node-attributed warning event entry point.
 - Metadata mutations: only render-local `scopedFunctionNames` and existing
   frame nearest-function cache invalidation are updated during plugin loading;
   no AST/provenance mutation is introduced.
@@ -2085,12 +2091,16 @@ involved.
   name `Set` is built when functions are registered, not per call; [parent/source
   mutation] the detector matches location/source *reads*, while this pass mutates
   neither AST parents nor source provenance; [materialized array/object] a
-  file-owned line-start array replaces every rejected-call whole-source line array.
-- Behavior evidence: focused core tests passed 30/30 after the preserve-policy
-  deletion: code-frame/index and warning policy coverage, a declined registered
-  call with no warning, strict `functionMode: 'error'`, and direct scoped-call
-  dispatch. Jess Less `function-mode.test.ts` also passes with the maintained
-  Less error fixtures preserving silently by default.
+  file-owned line-start array replaces every rejected-call whole-source line array;
+  [materialized array/object] the new column arrays replace the prior JessError →
+  WarningDiagnostic pair, while parser/plugin boundary objects are copied once;
+  [side map/set] no new map is introduced by the collector.
+- Behavior evidence: focused warning/function tests passed 29/29, including a
+  silenced or repeated `warnAtNode()` that performs no template work and a public
+  diagnostic array that remains unmaterialized until requested. The complete core
+  suite passes 206 files / 3,261 tests (9 skipped, 2 todo). Jess Less
+  `function-mode.test.ts` and `plugin-diagnostics.test.ts` pass 13/13, including
+  a preserved plugin failure that remains visibly diagnosed at the result boundary.
 - Build evidence: `pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit`
   and `pnpm --filter @jesscss/core build` pass on this worktree.
 - Boundary evidence: `JessError` remains a plain diagnostic value (not an
@@ -2149,12 +2159,15 @@ involved.
 ]
 ```
 - Evidence: strict `pnpm exec tsc -p packages/core/tsconfig.build.json --noEmit`,
-  `pnpm run verify:diagnostic-cold-path`, and focused core tests (42/42) pass.
-  `pnpm --filter @jesscss/core build` passes. Exact upstream PostCSS workload:
+  `pnpm run verify:diagnostic-cold-path`, focused warning/function tests (29/29),
+  and the complete core suite (206 files / 3,261 tests) pass. `pnpm --filter
+  @jesscss/core build` and the targeted Jess plugin/function suite (13/13) pass.
+  Exact upstream PostCSS workload:
   288,434-byte Less input, Bootstrap SHA
   `4a50207b956a4ab943640ee993118b554a34e96a23261cfe58b9aa1807a7849b`,
-  Jess Less median 52.71 ms (5 warmups/15 samples); post-fix 80-sample CPU
-  profile has no line-location/frame-split bucket.
+  paired post-collector run: Jess Less median 47.46 ms versus Less 4.8.1 at
+  29.02 ms (10 warmups/30 interleaved samples); the 7,181-sample CPU profile
+  has no line-location/frame-split bucket.
 - Verdict: accepted as a measured cost cut. The PostCSS workload still has
   Jess Less behind Less and PostCSS, so this is one committed batch in the
   active performance goal, not completion.

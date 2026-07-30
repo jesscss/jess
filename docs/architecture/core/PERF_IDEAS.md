@@ -102,15 +102,32 @@ Jess-Less samples, produced 3,982 CPU samples. The former warning location /
 frame bucket has **zero** samples: no `callSiteLocation`, `lineColAt`,
 `extractRelevantLines`, `toDiagnostic`, or source-line split frame appears.
 `unresolvedFunction` had one isolated sample in this pre-policy-removal profile;
-the code path has since been deleted rather than made cheaper. The single-engine
-warm run (10 warmups / 30 samples) reports a 48.38 ms median; the comparable
-multi-engine run (5 warmups / 15 samples) reports Jess Less 52.71 ms versus
-Less 4.8.1 at 31.61 ms and PostCSS at 17.33 ms. That is a successful deletion
-of the profiled architecture failure, not benchmark victory; the next profile
-targets remain Parseman trivia/root maps, AST provenance, GC, and a columnar
-collector for the comparatively rare warnings that still need to be retained.
+the code path has since been deleted rather than made cheaper. A second direct
+Jess-Less profile (ten warmups / 160 renders, 7,181 samples) confirms zero
+samples for `unresolved`, `callSiteLocation`, `lineColAt`,
+`extractRelevantLines`, and `toDiagnostic`; its leading remaining direct buckets
+are GC (17.67%), Parseman `appendGap` (2.83%), Parseman `gapsWithKind` (2.55%),
+and Parseman `buildRootMaps` (1.53%). The single-engine warm run (10 warmups /
+30 samples) reports a 47.56 ms median; the comparable multi-engine run (5
+warmups / 15 samples) reports Jess Less 49.45 ms versus Less 4.8.1 at 30.37 ms
+and PostCSS at 16.53 ms. A post-collector paired confirmation (ten warmups / 30
+interleaved samples) reports Jess Less 47.46 ms versus Less 4.8.1 at 29.02 ms
+(1.64×); its output still contains the required evaluated feature markers. That
+is a successful deletion of the profiled architecture failure, not benchmark
+victory.
 
 ### P1 — remove cross-workload metadata overhead
+
+- **Warning event storage:** implemented as a Context-owned columnar collector.
+  Jess-originated warnings now pass policy/cap admission before template
+  interpolation, retain scalar fields in parallel arrays, and materialize the
+  public `WarningDiagnostic[]` only for a renderer/result boundary. The compiler
+  uses `warningCount` for successful-path bookkeeping. Parser/plugin APIs still
+  supply normalized objects at their public boundary, which are copied into the
+  columns rather than made part of an internal object chain. The guard proves a
+  silenced or repeated compiler warning does not render its template, and that
+  no diagnostic array exists until requested. This is an allocation architecture
+  correction; it is not yet a benchmark claim.
 
 - **Canonical AST source spans:** `withSourceSpan()` and `sourceSpanOf()` account
   for 2.0% of the CSS-heavy profile and 3.6% of the authored-Less control. Test a
@@ -118,10 +135,16 @@ collector for the comparatively rare warnings that still need to be retained.
   per-node WeakMap set/get without introducing polymorphic node shapes. Do this
   after P0 so warning-only span reads do not inflate the result.
 - **Parseman trivia indexing:** root-trivia map construction and lookup account
-  for 4.5% and 3.8% respectively. Split raw macro-compiled `run(...)` time from
-  parser-package trivia attachment, then remove only facts that AST-mode parse
-  and emit demonstrably do not consume. Comments remain trivia; this is not
-  permission to lose them or recreate scanner logic.
+  for 4.5% and 3.8% respectively. Current Parseman `runOnce()` records every
+  skipped whitespace/comment chunk in a root trivia log and `buildRootMaps()`
+  indexes that complete stream; the existing capture mask only governs per-node
+  CST capture, not that root log. The likely design is explicit **skip** trivia
+  (advance with no retained record) versus sparse **capture** trivia (comments
+  and renderer-proven layout boundaries), with exact formatting semantics proved
+  before changing the default. This requires a Parseman-side capture-policy
+  design, not a Jess scanner or a loss of comment fidelity. Split raw
+  macro-compiled `run(...)` time from parser-package trivia attachment, then
+  remove only facts that AST-mode parse and emit demonstrably do not consume.
 
 ### P2 — allocation profile after P0
 
