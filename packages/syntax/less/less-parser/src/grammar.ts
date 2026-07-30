@@ -58,9 +58,6 @@ type MixinInteriorFact = {
   readonly trailingSeparator?: ',' | ';';
 };
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
-/** Private grammar reduction: delimiters remain parser facts, while the public
- * MixinDefinition receives only the semantic Param array. */
-type MixinParameterListFact = { readonly params: readonly Param[] };
 type AttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
 type AttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
@@ -123,7 +120,6 @@ type LessRules = {
   Dimension: Combinator<ValueNode>;
   UnicodeRange: Combinator<Any>;
   EscapeValue: Combinator<Any>;
-  PercentEscape: Combinator<Any>;
   PagePseudo: Combinator<Any>;
   DoubledQuoteArgument: Combinator<Any>;
   FunctionArgument: Combinator<ValueSlot>;
@@ -160,31 +156,20 @@ type LessRules = {
   CustomAtKeywordText: Combinator<string>;
   CustomPart: Combinator<CustomValuePart>;
   CustomInnerPart: Combinator<CustomValuePart>;
-  CustomParen: Combinator<readonly CustomValuePart[]>;
-  CustomSquare: Combinator<readonly CustomValuePart[]>;
-  CustomCurly: Combinator<readonly CustomValuePart[]>;
+  CustomGroup: Combinator<readonly CustomValuePart[]>;
   CustomValue: Combinator<ValueNode>;
   CustomPropertyValue: Combinator<Keyword>;
   CustomDeclaration: Combinator<Declaration>;
-  PunctuationMapDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
-  MixinParam: Combinator<Param>;
-  MixinParameterList: Combinator<MixinParameterListFact>;
   ClassIdStatement: Combinator<Statement>;
-  PositionalMixinCallArgument: Combinator<MixinCallArgument>;
   MixinArgumentGroup: Combinator<MixinCallArgument>;
   MixinArguments: Combinator<readonly MixinCallArgument[]>;
   MixinInterior: Combinator<MixinInteriorFact>;
   ClassIdSelectorPrefix: Combinator<SelectorBranchFact>;
-  MixinStatementTail: Combinator<MixinStatementFact>;
-  BareMixinCall: Combinator<BareMixinCallFact>;
-  RulesetTail: Combinator<RulesetTailFact>;
-  SelectorBranch: Combinator<SelectorBranchFact>;
   SelectorBranchTail: Combinator<SelectorBranchFact>;
   FlatMixinCall: Combinator<MixinCall>;
   NamespacedMixinCall: Combinator<MixinCall>;
   NamespacedMixinValue: Combinator<MixinCall>;
-  MixinPathTail: Combinator<MixinPathSegmentFact>;
   MixinReference: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
   MixinGuard: Combinator<MixinGuard>;
@@ -211,16 +196,9 @@ type LessRules = {
   GeneralEnclosed: Combinator<GeneralEnclosed>;
   SupportsBlock: Combinator<AtRuleBlock>;
   QueryValue: Combinator<ValueNode>;
-  QueryLogicalGroup: Combinator<ValueNode>;
-  QueryNegatedFeature: Combinator<ValueNode>;
   QueryColonFeature: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryClause: Combinator<ValueNode>;
-  QueryPrelude: Combinator<ValueNode>;
-  MediaQueryTerm: Combinator<ValueNode>;
-  MediaQueryOnlyClause: Combinator<ValueNode>;
-  MediaQueryClause: Combinator<ValueNode>;
-  MediaQueryPrelude: Combinator<ValueNode>;
   ContainerStyleQuery: Combinator<FunctionCall>;
   ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
@@ -250,7 +228,6 @@ type LessRules = {
   NthPseudoArgument: Combinator<string>;
   PseudoArgumentText: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
-  PseudoArgumentSquare: Combinator<string>;
   PseudoArgumentCompound: Combinator<SelectorTerm>;
   PseudoArgumentComplexTail: Combinator<ComplexTailFact>;
   PseudoArgumentComplex: Combinator<SelectorBranch>;
@@ -276,8 +253,6 @@ type LessRules = {
   RelativeComplex: Combinator<SelectorBranch>;
   SelectorTail: Combinator<SelectorBranch>;
   Selector: Combinator<SelectorList>;
-  RelativeSelector: Combinator<SelectorList>;
-  ExtendComplex: Combinator<SelectorBranch>;
   ExtendTarget: Combinator<ExtendTargetFact>;
   ExtendStatement: Combinator<ExtendInstruction[]>;
   RulesetWithExtends: Combinator<Ruleset>;
@@ -1669,11 +1644,6 @@ function isReferenceCall(value: unknown): value is Reference {
 function isParam(value: unknown): value is Param {
   return typeof value === 'object' && value !== null && !('type' in value)
     && ('name' in value || 'pattern' in value || 'rest' in value);
-}
-
-function isMixinParameterListFact(value: unknown): value is MixinParameterListFact {
-  return typeof value === 'object' && value !== null && 'params' in value
-    && Array.isArray(value.params) && value.params.every(isParam);
 }
 
 function isAttributeNameFact(value: unknown): value is AttributeNameFact {
@@ -3135,8 +3105,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // distinction rather than normalizing both spellings to negation.
   const MathUnary = node<ValueNode>(
     'MathUnary',
-    choice(
-      noTrivia(sequence(regex(/-(?=[(@])/), g.Value)),
+    sequence(
+      optional(noTrivia(regex(/-(?=[(@])/))),
       g.Value
     ),
     children => children.length === 1
@@ -3414,27 +3384,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return interpolation(interpolationPartsFrom(children, false));
     }
   );
-  const CustomParen = node<readonly CustomValuePart[]>(
-    'CustomParen',
+  const CustomGroup = node<readonly CustomValuePart[]>(
+    'CustomGroup',
     parser(
       { trivia: customValueCommentTrivia },
-      sequence(literal('('), many(g.CustomInnerPart), literal(')'))
-    ),
-    children => customPartsFromChildren(children)
-  );
-  const CustomSquare = node<readonly CustomValuePart[]>(
-    'CustomSquare',
-    parser(
-      { trivia: customValueCommentTrivia },
-      sequence(literal('['), many(g.CustomInnerPart), literal(']'))
-    ),
-    children => customPartsFromChildren(children)
-  );
-  const CustomCurly = node<readonly CustomValuePart[]>(
-    'CustomCurly',
-    parser(
-      { trivia: customValueCommentTrivia },
-      sequence(literal('{'), many(g.CustomInnerPart), literal('}'))
+      choice(
+        sequence(literal('('), many(g.CustomInnerPart), literal(')')),
+        sequence(literal('['), many(g.CustomInnerPart), literal(']')),
+        sequence(literal('{'), many(g.CustomInnerPart), literal('}'))
+      )
     ),
     children => customPartsFromChildren(children)
   );
@@ -3448,9 +3406,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueInnerContent,
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly,
+    g.CustomGroup,
     g.CustomAtKeywordText,
     g.VariableReference
   );
@@ -3459,9 +3415,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomValueOuterContent,
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly,
+    g.CustomGroup,
     g.CustomAtKeywordText,
     g.VariableReference
   );
@@ -3628,69 +3582,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         decl(requireToken(children[0]).value, value === undefined ? any('') : value),
         span
       );
-    }
-  );
-  // A parameter default stops before a line-comment signature boundary. The
-  // ordinary value term deliberately treats a whitespace run as the start of a
-  // next value piece; guard that transition here so `@x: 1 // note\n )` leaves
-  // the comment to the signature rather than committing the whitespace first.
-  const mixinParamValueTerm = node<ValueSlot>(
-    'MixinParamValueTerm',
-    noTrivia(sequence(
-      valuePiece,
-      many(valueContinuation)
-    )),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
-  );
-  const MixinParam: Combinator<Param> = choice(
-    node<Param>(
-      'MixinRestParam',
-      sequence(literal('@'), lessVariableName, literal('...')),
-      (children, _fields, span) => ({
-        name: requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1),
-        rest: true
-      })
-    ),
-    node<Param>('MixinAnonymousRestParam', literal('...'), () => ({ rest: true })),
-    node<Param>(
-      'MixinBoundParam',
-      sequence(
-        literal('@'),
-        lessVariableName,
-        optional(sequence(
-          literal(':'),
-          choice(g.ValueBlock, mixinParamValueTerm),
-          optional(whitespace)
-        ))
-      ),
-      (children, _fields, span) => {
-        const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
-        const value = children.at(-1);
-        return isValueSlotValue(value) ? { name, default: value } : { name };
-      }
-    ),
-    node<Param>(
-      'MixinPatternParam',
-      sequence(mixinParamValueTerm, optional(whitespace)),
-      children => ({ pattern: requireValueSlot(children[0]) })
-    )
-  );
-  // The signature owns trivia at every delimiter boundary: mixin name → `(`,
-  // after `(`, between params/separators, after the final param, after `)`, and
-  // before `when`/`{`. The common interior retains delimiter facts until the
-  // definition/call continuation is known; this public entry reduces it to the
-  // deliberately semantic `Param[]` surface.
-  const MixinParameterList = node<MixinParameterListFact>(
-    'MixinParameterList',
-    parser({ trivia: mixinSignatureTrivia }, sequence(g.MixinInterior, literal(')'))),
-    (children) => {
-      const interior = children.find((value): value is MixinInteriorFact =>
-        typeof value === 'object' && value !== null && 'items' in value && 'separators' in value
-      );
-      if (interior === undefined) {
-        throw new TypeError('Less mixin parameter list lost its parenthesized interior.');
-      }
-      return { params: mixinParamsFromInterior(interior) };
     }
   );
   const PositionalMixinCallArgument = node<MixinCallArgument>(
@@ -5403,15 +5294,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return interpolatedSimpleSelector(interpolation(parts));
     }
   );
-  const pseudoArgumentInner = choice(g.PseudoArgumentGroup, g.PseudoArgumentSquare, g.LiteralQuoted, staticPseudoChunk);
+  const pseudoArgumentInner = choice(g.PseudoArgumentGroup, g.LiteralQuoted, staticPseudoChunk);
   const PseudoArgumentGroup = node<string>(
     'PseudoArgumentGroup',
-    parser({ trivia: staticSelectorTrivia }, sequence(literal('('), many(pseudoArgumentInner), literal(')'))),
-    (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
-  );
-  const PseudoArgumentSquare = node<string>(
-    'PseudoArgumentSquare',
-    parser({ trivia: staticSelectorTrivia }, sequence(literal('['), many(pseudoArgumentInner), literal(']'))),
+    parser({ trivia: staticSelectorTrivia }, choice(
+      sequence(literal('('), many(pseudoArgumentInner), literal(')')),
+      sequence(literal('['), many(pseudoArgumentInner), literal(']'))
+    )),
     (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   const PseudoArgumentText = node<string>(
@@ -6267,7 +6156,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Dimension,
     UnicodeRange,
     EscapeValue,
-    PercentEscape,
     PagePseudo,
     DoubledQuoteArgument,
     FunctionArgument,
@@ -6304,31 +6192,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CustomAtKeywordText,
     CustomPart,
     CustomInnerPart,
-    CustomParen,
-    CustomSquare,
-    CustomCurly,
+    CustomGroup,
     CustomValue,
     CustomPropertyValue,
     CustomDeclaration,
-    PunctuationMapDeclaration,
     Declaration,
-    MixinParam,
-    MixinParameterList,
     ClassIdStatement,
-    PositionalMixinCallArgument,
     MixinArgumentGroup,
     MixinArguments,
     MixinInterior,
     ClassIdSelectorPrefix,
-    MixinStatementTail,
-    BareMixinCall,
-    RulesetTail,
-    SelectorBranch,
     SelectorBranchTail,
     FlatMixinCall,
     NamespacedMixinCall,
     NamespacedMixinValue,
-    MixinPathTail,
     MixinReference,
     ReferenceCall,
     MixinGuard,
@@ -6354,16 +6231,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     GeneralEnclosed,
     SupportsBlock,
     QueryValue,
-    QueryLogicalGroup,
-    QueryNegatedFeature,
     QueryColonFeature,
     QueryFeature,
     QueryClause,
-    QueryPrelude,
-    MediaQueryTerm,
-    MediaQueryOnlyClause,
-    MediaQueryClause,
-    MediaQueryPrelude,
     ContainerStyleQuery,
     ContainerScrollStateQuery,
     ContainerName,
@@ -6393,7 +6263,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     NthPseudoArgument,
     PseudoArgumentText,
     PseudoArgumentGroup,
-    PseudoArgumentSquare,
     PseudoArgumentCompound,
     PseudoArgumentComplexTail,
     PseudoArgumentComplex,
@@ -6418,12 +6287,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Complex,
     SelectorTail,
     Selector,
-    ExtendComplex,
     ExtendTarget,
     ExtendStatement,
     RulesetWithExtends,
     RelativeComplex,
-    RelativeSelector,
     NestedRulesetWithExtends,
     Quoted,
     LiteralQuoted,

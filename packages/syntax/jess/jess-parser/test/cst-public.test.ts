@@ -43,6 +43,29 @@ describe('@jesscss/jess-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('uses one semantic custom-value group label for every balanced delimiter', () => {
+    const result = parseJessCst('.a { --x: fn([a {b:c}]); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('CustomGroup')).toBe(3);
+    expect(['CustomParen', 'CustomSquare', 'CustomCurly'].some(type => grammarTypes.has(type))).toBe(false);
+  });
+
+  it('keeps supports general-enclosed template boundaries semantic', () => {
+    const result = parseJessCst('$kind: card; @supports selector(([${kind}] {"( $(.theme) )"})) { .a { color: red; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('GeneralEnclosed')).toBe(1);
+    expect(grammarTypes.get('GeneralTemplateGroup')).toBe(3);
+    expect(grammarTypes.get('GeneralTemplateQuoted')).toBe(1);
+    expect(grammarTypes.get('GeneralQuotedTemplateGroup')).toBe(1);
+    expect([...grammarTypes.keys()].some(type => /General(?:Quoted)?Template(?:Paren|Square|Brace|DoubleQuoted|SingleQuoted)$/.test(type))).toBe(false);
+  });
+
   it('keeps collapse mode from dropping leaves or inventing Unknown nodes', () => {
     /*
      * A bare `${side}` selector owns a structural interpolation boundary in the
@@ -85,6 +108,16 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(grammarTypes.get('PseudoSelectorCompound')).toBeGreaterThan(0);
     expect(grammarTypes.get('NthChildArgument')).toBe(1);
     expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+  });
+
+  it('gives unknown functional pseudos one structural generic argument', () => {
+    const result = parseJessCst('.a:future-thing(foo(bar[qux])) { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('GenericPseudoArgument')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorArgument')).toBeUndefined();
   });
 
   it('reuses the semantic Quoted slot for static attribute values', () => {

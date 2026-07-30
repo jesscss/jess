@@ -333,7 +333,10 @@ that shape intentionally and fail with the richer diagnostic.
       unknown at-rule preludes/bodies or custom-property values. Opaque does not
       make comments semantic payload; comments in those regions still belong to
       the source trivia index and are reintroduced by source-offset queries when
-      byte preservation requires it;
+      byte preservation requires it. This establishes the required byte/CST
+      contract, not that `scanTo(...)` is the final recognizer: record the
+      structural fact currently lost and why a structured Parseman combinator
+      cannot preserve the contract before retaining a scanner;
     - temporary compatibility while existing consumers still expect lifted
       `Comment` nodes. This is migration debt, not a grammar model.
 

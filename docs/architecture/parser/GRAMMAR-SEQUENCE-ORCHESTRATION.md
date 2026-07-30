@@ -139,11 +139,13 @@ remove real duplicated recognition or make the grammar clearer.
 Scanner cleanup priority, 2026-07-29: treat `scanTo(..., { skip })` and
 `balanced(..., { skip })` as review findings, not neutral plumbing. The first
 question is whether the bytes can be parsed as structured grammar or handled by
-the grammar's trivia / ambient `scanSkip`; only keep a scanner-local skip when
-the scanner is still the narrow accepted representation and a comment, quote, or
-balanced group must not terminate that specific opaque span. Do not tune a
-scanner skip list as a substitute for moving the language back into grammar
-structure. In the same pass, keep burning down false migration prefixes and use
+the grammar's trivia / ambient `scanSkip`; a retained scanner-local skip proves
+only that the current source region needs opaque acceptance, not that
+`scanTo(...)` is its final recognition shape. Record the lost structural fact,
+the CST/AST byte contract, and why an available structured combinator cannot
+preserve it before retaining one. Do not tune a scanner skip list as a
+substitute for moving the language back into grammar structure. In the same
+pass, keep burning down false migration prefixes and use
 `dispatch(...)` when `choice(...)` is re-reading one routed opener, one
 decisive delimiter, or one same-family known/generic token. Treat `peek(...)`
 as a temporary exception: if a branch only works by looking ahead, first ask
@@ -362,9 +364,10 @@ reparse selectors, values, at-rules, functions, pseudos, variables, or
 interpolation after recognition. Treat every explicit `scanTo(..., { skip })`
 or `balanced(..., { skip })` as a small design review: first ask whether the
 region can become structured grammar or rely on trivia / ambient `scanSkip`,
-then keep only scanner-local exceptions needed by a still-deliberate opaque
-span. Dispatch is not a blanket replacement for `choice(...)`; use it where a
-shared already-consumed token can be refined and routed, and keep `choice(...)`
+then document the lost structural fact and byte contract before retaining an
+opaque scan. A current opaque requirement is not evidence that `scanTo(...)` is
+the final shape. Dispatch is not a blanket replacement for `choice(...)`; use
+it where a shared already-consumed token can be refined and routed, and keep `choice(...)`
 for truly disjoint constructs, closed spelling tables, lists, and context
 decisions whose delimiter has not been consumed yet.
 
@@ -5271,6 +5274,13 @@ calls. These are single profiling passes, not benchmark deltas; their stable
 counts identify the recognizer-side value/condition and opaque-scan routes as
 the next queue, rather than a generic CST-allocation cleanup.
 
+Less unary-value left-factor, 2026-07-30: `MathUnary` now consumes its optional
+glued `-` once and then parses `Value` once. This is a left-factor, not a
+dispatch: the sign is a local optional prefix and has no known/generic routed
+family. The AST child layout stays `[value]` for an ordinary value and
+`['-', value]` for glued `-@x` / `-(...)`; spaced `- @x` remains outside the
+unary branch. The focused AST/public-rendering math tests cover both boundaries.
+
 Less function-argument condition routing, 2026-07-30: `FunctionArgument` first
 accepts scalar and adjacent-value forms only when they reach their real `,`,
 `;`, or `)` boundary. Its local value continuation stops before a top-level Less
@@ -5356,3 +5366,59 @@ context. The router nodes are unlabeled; the public CST exposes the existing
 `MixinDefinition`, `MixinCall`, `FunctionRule`, `EachRule`, `ForRule`, `IfRule`,
 and `AtRootBlock`/`AtRootFilter` labels. A public mixed-directive CST fixture
 pins that contract and verifies no `SassDirective` label leaks into the tree.
+
+Custom-value group consolidation, 2026-07-30: Less, SCSS, and Jess each keep
+their own interpolation/reference part because that is the real dialect delta,
+but the three balanced delimiter productions are one concept. `CustomGroup`
+uses a first-set-disjoint `choice` for `(`, `[`, and `{`, recurses only through
+the existing `CustomInnerPart`, and reduces to exactly the same child parts as
+the former delimiter-specific wrappers. This deliberately makes the public CST
+describe the common semantic group instead of incidental delimiter provenance;
+the AST remains a `CustomValue` with the same literal and interpolation parts.
+
+Opaque at-rule scan re-audit, 2026-07-30: unknown at-rule preludes and bodies
+must currently preserve arbitrary authored bytes, including quoted closers,
+comments, and nested braces. That validates an opaque byte contract, not the
+current `scanTo(...)` implementation as an architectural exception. In
+particular, Parseman's `balanced('{', '}')` includes the delimiters, whereas the
+public `OpaqueBody` CST value and the `OpaqueAtRuleBlock.rawBody` AST fact are
+the interior only. Any replacement must therefore decide how to preserve that
+interior CST/AST contract (or intentionally revise it) before changing the
+recognizer. Until then, the scanner remains explicit design debt rather than a
+declared final shape.
+
+General-enclosed template consolidation, 2026-07-30: SCSS and Jess now name
+the same supports general-enclosed facts `GeneralEnclosed`, `GeneralTemplate`,
+`GeneralTemplateGroup`, and `GeneralTemplateQuoted`, rather than preserving
+supports-context or delimiter provenance in public CST labels. The group and
+quoted alternatives have disjoint first sets, so a `choice(...)` is the direct
+recognition shape. Jess additionally retains `GeneralQuotedTemplate` with its
+own group/quoted children because only quoted subtemplates admit `$(...)`
+expressions; that recursion-policy difference is real language structure, not
+a reason to restore five delimiter-specific wrappers per chain.
+
+SCSS at-rule-prelude alignment, 2026-07-30: SCSS's static known-block header
+capture retains its local Sass comment and interpolation-reservation policy,
+but its parenthesis/square and quote delimiter wrappers are unchanged CSS
+structure. They now use the CSS-aligned `AtRulePreludeGroup` and
+`AtRulePreludeQuoted` CST labels, each with a first-set-disjoint `choice(...)`,
+instead of four delimiter-provenance productions.
+
+Pseudo-argument group consolidation, 2026-07-30: Less and SCSS generic
+functional-pseudo arguments both recurse through quoted text, comments where
+applicable, literal chunks, and further parenthesis/bracket groups. The
+delimiters do not alter the resulting string fact, so both grammars now expose
+one `PseudoArgumentGroup` node with a first-set-disjoint `choice(...)` rather
+than a separate `PseudoArgumentSquare` production.
+
+Generic functional pseudo ownership, 2026-07-30: CSS and Jess route only the
+explicit selector-pseudo names (`:is`, `:where`, `:not`, `:has`, and
+`:matches`) to their selector grammar. Every other glued pseudo function owns
+one `GenericPseudoArgument` structural `<any-value>` capture instead: it is not
+a speculative selector, and it is not an undifferentiated byte capture. Its bounded content
+recognizer keeps nested parenthesis/bracket groups from terminating the outer
+argument, while CSS's ambient scan policy owns strings/comments. Jess adds the
+single real dialect rule at that slot: a top-level `$` ends the capture so a
+Jess interpolation cannot become generic pseudo content. The generic node owns
+the final `)` as part of its complete production, which eliminates the former
+partial-selector continuation and keeps the CSS/Jess AST/CST family aligned.

@@ -94,9 +94,7 @@ type JessRules = {
   InterpolatedCustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<unknown>;
   CustomInnerPart: Combinator<unknown>;
-  CustomParen: Combinator<readonly unknown[]>;
-  CustomSquare: Combinator<readonly unknown[]>;
-  CustomCurly: Combinator<readonly unknown[]>;
+  CustomGroup: Combinator<readonly unknown[]>;
   CustomValue: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
@@ -114,8 +112,8 @@ type JessRules = {
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoSelector: Combinator<SimpleToken>;
-  PseudoSelectorArgument: Combinator<SelectorList | string>;
-  GenericPseudoArgument: Combinator<SelectorList | string>;
+  PseudoSelectorArgument: Combinator<SelectorList>;
+  GenericPseudoArgument: Combinator<string>;
   Compound: Combinator<SelectorTerm>;
   PseudoSelectorCompound: Combinator<SelectorTerm>;
   PseudoSelectorComplexTail: Combinator<JessComplexTail>;
@@ -151,9 +149,6 @@ type JessRules = {
   HeaderValueAtom: Combinator<ValueNode>;
   HeaderValue: Combinator<ValueSlot>;
   HeaderCallArgument: Combinator<ValueSlot>;
-  HeaderCall: Combinator<FunctionCall>;
-  QueryNonOnlyKeyword: Combinator<Keyword>;
-  QueryTerm: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryDashedIdentifier: Combinator<Keyword>;
   QueryClause: Combinator<ValueNode>;
@@ -168,17 +163,11 @@ type JessRules = {
   AtRuleHeader: Combinator<JessAtRuleHeader>;
   SupportsAtom: Combinator<ValueNode>;
   GeneralTemplate: Combinator<Interpolation>;
-  GeneralTemplateParen: Combinator<Interpolation>;
-  GeneralTemplateSquare: Combinator<Interpolation>;
-  GeneralTemplateBrace: Combinator<Interpolation>;
-  GeneralTemplateDoubleQuoted: Combinator<Interpolation>;
-  GeneralTemplateSingleQuoted: Combinator<Interpolation>;
+  GeneralTemplateGroup: Combinator<Interpolation>;
+  GeneralTemplateQuoted: Combinator<Interpolation>;
   GeneralQuotedTemplate: Combinator<Interpolation>;
-  GeneralQuotedTemplateParen: Combinator<Interpolation>;
-  GeneralQuotedTemplateSquare: Combinator<Interpolation>;
-  GeneralQuotedTemplateBrace: Combinator<Interpolation>;
-  GeneralQuotedTemplateDoubleQuoted: Combinator<Interpolation>;
-  GeneralQuotedTemplateSingleQuoted: Combinator<Interpolation>;
+  GeneralQuotedTemplateGroup: Combinator<Interpolation>;
+  GeneralQuotedTemplateQuoted: Combinator<Interpolation>;
   GeneralEnclosed: Combinator<GeneralEnclosed>;
   SupportsNot: Combinator<Keyword>;
   SupportsLogical: Combinator<Keyword>;
@@ -2693,8 +2682,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
           endsWith('('),
           sequence(
             routed(),
-            g.GenericPseudoArgument,
-            literal(')')
+            g.GenericPseudoArgument
           )
         ),
         otherwise(routed())
@@ -2819,15 +2807,14 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * A functional pseudo this grammar has no typed argument for is still
    * well-formed CSS: Selectors-4 §3.5 gives an unknown functional pseudo-class an
    * `<any-value>` argument, and WHETHER a pseudo exists is a language-service
-   * fact, not a parse decision — `a:totally-made-up(1)` and `:lang("en-US")` lost
-   * the whole stylesheet. The selector arm is tried first so every argument that
-   * already parsed keeps its structured `SelectorList` byte-for-byte; only what
-   * previously rejected reaches the delimiter-aware verbatim scan the other
-   * dialects already run for this class. A top-level `$` ends the scan, so the
-   * required `)` then fails: a Jess interpolation in a pseudo
-   * argument still rejects rather than being flattened into opaque text.
+   * fact, not a parse decision — `a:totally-made-up(1)` and `:lang("en-US")` keep
+   * the whole stylesheet parseable. This is its own structural `<any-value>`
+   * production, not a speculative selector parse: only the explicitly routed
+   * selector pseudo names accept `PseudoSelectorArgument`. A top-level `$` ends
+   * this bounded capture, so the required `)` then fails and a Jess interpolation
+   * cannot become a generic pseudo-argument byte sequence.
    */
-  const pseudoRawArgument = scanTo(
+  const genericPseudoContent = scanTo(
     choice(
       literal('$'),
       literal(')')
@@ -2839,23 +2826,13 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       ]
     }
   );
-  const GenericPseudoArgument = node<SelectorList | string>(
+  const GenericPseudoArgument = node<string>(
     'GenericPseudoArgument',
-    choice(
-      sequence(
-        optional(rawWhitespace),
-        g.PseudoSelectorArgument,
-        optional(rawWhitespace)
-      ),
-      pseudoRawArgument
+    sequence(
+      genericPseudoContent,
+      literal(')')
     ),
-    (children) => {
-      const selector = children.find(isSelectorList);
-      if (selector !== undefined) {
-        return selector;
-      }
-      return children.length === 0 ? '' : requireToken(children[0]).value;
-    }
+    children => requireToken(children[0]).value
   );
   const SelectorCapture = node<SelectorCapture>(
     'SelectorCapture',
@@ -4013,61 +3990,30 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * still string content and must stay permissive. Rejecting `$(…)` only at the
    * top level would mean an extra paren unlocks the spelling
    * (`@supports foo($(x))` rejected but `@supports foo(($(x)))` accepted), so the
-   * strict chain mirrors ALL its non-quoted wrappers and the permissive chain
-   * mirrors all five of its own.
-   *
-   * The duplication is deliberate and required: grammar dedup here admits only
-   * parameterless combinator consts and plain reducers, and a factory would
-   * degrade the macro-compiled artifact into the interpreter. The ONLY difference
-   * between the two chains is the `g.Expression` arm.
+   * strict chain mirrors every non-quoted wrapper and the permissive chain
+   * mirrors every wrapper of its own. Within one chain, delimiter spellings are
+   * first-set-disjoint alternatives of one semantic group or quoted template;
+   * only the `g.Expression` arm distinguishes the two chains.
    */
 
   /*
    * STRICT chain — the general-enclosed body and its non-quoted wrappers. Its
    * quoted arms hand off to the permissive chain below and never come back.
    */
-  const GeneralTemplateParen = node<Interpolation>(
-    'GeneralTemplateParen',
-    sequence(
-      literal('('),
-      g.GeneralTemplate,
-      literal(')')
+  const GeneralTemplateGroup = node<Interpolation>(
+    'GeneralTemplateGroup',
+    choice(
+      sequence(literal('('), g.GeneralTemplate, literal(')')),
+      sequence(literal('['), g.GeneralTemplate, literal(']')),
+      sequence(literal('{'), g.GeneralTemplate, literal('}'))
     ),
     templateInterpolationFromChildren
   );
-  const GeneralTemplateSquare = node<Interpolation>(
-    'GeneralTemplateSquare',
-    sequence(
-      literal('['),
-      g.GeneralTemplate,
-      literal(']')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralTemplateBrace = node<Interpolation>(
-    'GeneralTemplateBrace',
-    sequence(
-      literal('{'),
-      g.GeneralTemplate,
-      literal('}')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralTemplateDoubleQuoted = node<Interpolation>(
-    'GeneralTemplateDoubleQuoted',
-    sequence(
-      literal('"'),
-      g.GeneralQuotedTemplate,
-      literal('"')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralTemplateSingleQuoted = node<Interpolation>(
-    'GeneralTemplateSingleQuoted',
-    sequence(
-      literal('\''),
-      g.GeneralQuotedTemplate,
-      literal('\'')
+  const GeneralTemplateQuoted = node<Interpolation>(
+    'GeneralTemplateQuoted',
+    choice(
+      sequence(literal('"'), g.GeneralQuotedTemplate, literal('"')),
+      sequence(literal('\''), g.GeneralQuotedTemplate, literal('\''))
     ),
     templateInterpolationFromChildren
   );
@@ -4075,11 +4021,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     'GeneralTemplate',
     many(choice(
       g.DollarBrace,
-      g.GeneralTemplateParen,
-      g.GeneralTemplateSquare,
-      g.GeneralTemplateBrace,
-      g.GeneralTemplateDoubleQuoted,
-      g.GeneralTemplateSingleQuoted,
+      g.GeneralTemplateGroup,
+      g.GeneralTemplateQuoted,
       generalTemplateText
     )),
     templateInterpolationFromChildren
@@ -4090,48 +4033,20 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * Reached ONLY through the two quoted arms above, and closed under its own
    * wrappers so nesting never escapes back to the strict chain.
    */
-  const GeneralQuotedTemplateParen = node<Interpolation>(
-    'GeneralQuotedTemplateParen',
-    sequence(
-      literal('('),
-      g.GeneralQuotedTemplate,
-      literal(')')
+  const GeneralQuotedTemplateGroup = node<Interpolation>(
+    'GeneralQuotedTemplateGroup',
+    choice(
+      sequence(literal('('), g.GeneralQuotedTemplate, literal(')')),
+      sequence(literal('['), g.GeneralQuotedTemplate, literal(']')),
+      sequence(literal('{'), g.GeneralQuotedTemplate, literal('}'))
     ),
     templateInterpolationFromChildren
   );
-  const GeneralQuotedTemplateSquare = node<Interpolation>(
-    'GeneralQuotedTemplateSquare',
-    sequence(
-      literal('['),
-      g.GeneralQuotedTemplate,
-      literal(']')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralQuotedTemplateBrace = node<Interpolation>(
-    'GeneralQuotedTemplateBrace',
-    sequence(
-      literal('{'),
-      g.GeneralQuotedTemplate,
-      literal('}')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralQuotedTemplateDoubleQuoted = node<Interpolation>(
-    'GeneralQuotedTemplateDoubleQuoted',
-    sequence(
-      literal('"'),
-      g.GeneralQuotedTemplate,
-      literal('"')
-    ),
-    templateInterpolationFromChildren
-  );
-  const GeneralQuotedTemplateSingleQuoted = node<Interpolation>(
-    'GeneralQuotedTemplateSingleQuoted',
-    sequence(
-      literal('\''),
-      g.GeneralQuotedTemplate,
-      literal('\'')
+  const GeneralQuotedTemplateQuoted = node<Interpolation>(
+    'GeneralQuotedTemplateQuoted',
+    choice(
+      sequence(literal('"'), g.GeneralQuotedTemplate, literal('"')),
+      sequence(literal('\''), g.GeneralQuotedTemplate, literal('\''))
     ),
     templateInterpolationFromChildren
   );
@@ -4140,11 +4055,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     many(choice(
       g.DollarBrace,
       g.Expression,
-      g.GeneralQuotedTemplateParen,
-      g.GeneralQuotedTemplateSquare,
-      g.GeneralQuotedTemplateBrace,
-      g.GeneralQuotedTemplateDoubleQuoted,
-      g.GeneralQuotedTemplateSingleQuoted,
+      g.GeneralQuotedTemplateGroup,
+      g.GeneralQuotedTemplateQuoted,
       generalTemplateText
     )),
     templateInterpolationFromChildren
@@ -4689,31 +4601,15 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * reference. Delimiters recurse as grammar children rather than being captured
    * as one opaque span, so an inner `;` or `}` cannot end the declaration.
    */
-  const CustomParen = node<readonly unknown[]>(
-    'CustomParen',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('('),
-      many(g.CustomInnerPart),
-      literal(')')
-    )),
-    children => children.slice()
-  );
-  const CustomSquare = node<readonly unknown[]>(
-    'CustomSquare',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('['),
-      many(g.CustomInnerPart),
-      literal(']')
-    )),
-    children => children.slice()
-  );
-  const CustomCurly = node<readonly unknown[]>(
-    'CustomCurly',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('{'),
-      many(g.CustomInnerPart),
-      literal('}')
-    )),
+  const CustomGroup = node<readonly unknown[]>(
+    'CustomGroup',
+    parser({ trivia: customValueCommentTrivia },
+      choice(
+        sequence(literal('('), many(g.CustomInnerPart), literal(')')),
+        sequence(literal('['), many(g.CustomInnerPart), literal(']')),
+        sequence(literal('{'), many(g.CustomInnerPart), literal('}'))
+      )
+    ),
     children => children.slice()
   );
   const CustomInnerPart: Combinator<unknown> = choice(
@@ -4721,18 +4617,14 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     g.CustomInnerContent,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly
+    g.CustomGroup
   );
   const CustomPart: Combinator<unknown> = choice(
     g.DollarBrace,
     g.CustomOuterContent,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly
+    g.CustomGroup
   );
   const CustomValue = node<ValueNode>(
     'CustomValue',
@@ -5689,9 +5581,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     HeaderValueAtom,
     HeaderValue,
     HeaderCallArgument,
-    HeaderCall,
-    QueryNonOnlyKeyword,
-    QueryTerm,
     QueryFeature,
     QueryDashedIdentifier,
     QueryClause,
@@ -5706,17 +5595,11 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     AtRuleHeader,
     SupportsAtom,
     GeneralTemplate,
-    GeneralTemplateParen,
-    GeneralTemplateSquare,
-    GeneralTemplateBrace,
-    GeneralTemplateDoubleQuoted,
-    GeneralTemplateSingleQuoted,
+    GeneralTemplateGroup,
+    GeneralTemplateQuoted,
     GeneralQuotedTemplate,
-    GeneralQuotedTemplateParen,
-    GeneralQuotedTemplateSquare,
-    GeneralQuotedTemplateBrace,
-    GeneralQuotedTemplateDoubleQuoted,
-    GeneralQuotedTemplateSingleQuoted,
+    GeneralQuotedTemplateGroup,
+    GeneralQuotedTemplateQuoted,
     GeneralEnclosed,
     SupportsNot,
     SupportsLogical,
@@ -5760,9 +5643,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     InterpolatedCustomPropertyName,
     CustomPart,
     CustomInnerPart,
-    CustomParen,
-    CustomSquare,
-    CustomCurly,
+    CustomGroup,
     CustomValue,
     CustomDeclaration,
     Declaration,

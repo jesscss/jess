@@ -66,6 +66,49 @@ describe('@jesscss/scss-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
+  it('uses one semantic custom-value group label for every balanced delimiter', () => {
+    const result = parseScssCst('.a { --x: fn([a {b:c}]); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('CustomGroup')).toBe(3);
+    expect(['CustomParen', 'CustomSquare', 'CustomCurly'].some(type => grammarTypes.has(type))).toBe(false);
+  });
+
+  it('uses semantic general-enclosed template labels in supports', () => {
+    const result = parseScssCst('$kind: card; @supports selector(([#{$kind}] {"#{$kind}"})) { .a { color: red; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('GeneralEnclosed')).toBe(1);
+    expect(grammarTypes.get('GeneralTemplateGroup')).toBe(3);
+    expect(grammarTypes.get('GeneralTemplateQuoted')).toBe(1);
+    expect([...grammarTypes.keys()].some(type => type.startsWith('SupportsGeneralTemplate'))).toBe(false);
+  });
+
+  it('matches CSS semantic labels for static at-rule prelude fragments', () => {
+    const result = parseScssCst('@layer theme (wide) [brand] "local" { .a { color: red; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AtRulePreludeGroup')).toBe(2);
+    expect(grammarTypes.get('AtRulePreludeQuoted')).toBe(1);
+    expect([...grammarTypes.keys()].some(type => /^AtRulePrelude(?:Paren|Square|DoubleQuoted|SingleQuoted)$/.test(type))).toBe(false);
+  });
+
+  it('uses one semantic group label for nested generic pseudo arguments', () => {
+    const result = parseScssCst('.a:lang(([wide])) { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('PseudoArgumentGroup')).toBe(2);
+    expect(grammarTypes.has('PseudoArgumentSquare')).toBe(false);
+  });
+
   it('accepts an ASCII-case-insensitive declaration priority through the public parser', () => {
     const result = parseScssCst('.card { color: blue !IMPORTANT; }');
 

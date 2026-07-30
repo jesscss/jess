@@ -1143,6 +1143,7 @@ describe('Jess AST grammar facts', () => {
        */
       ['.x:future-thing("b(c)") { color: red; }', ':future-thing("b(c)")'],
       ['.x:future-thing([d]) { color: red; }', ':future-thing([d])'],
+      ['.x:future-thing(foo(bar[qux])) { color: red; }', ':future-thing(foo(bar[qux]))'],
       ['.x:future-thing(/* nested ) */ [d]) { color: red; }', ':future-thing(/* nested ) */ [d])']
     ] as const) {
       expect(parse(source), source).toMatchObject({

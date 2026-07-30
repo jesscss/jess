@@ -74,9 +74,7 @@ type ScssRules = {
   CustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<unknown>;
   CustomInnerPart: Combinator<unknown>;
-  CustomParen: Combinator<readonly unknown[]>;
-  CustomSquare: Combinator<readonly unknown[]>;
-  CustomCurly: Combinator<readonly unknown[]>;
+  CustomGroup: Combinator<readonly unknown[]>;
   CustomValue: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
@@ -84,8 +82,6 @@ type ScssRules = {
   NestedPropertyDeclaration: Combinator<Declaration>;
   ImportAtRule: Combinator<ImportAtRule>;
   UseNamespace: Combinator<string>;
-  UseRule: Combinator<StyleImport | ModuleImport>;
-  ForwardRule: Combinator<StyleImport>;
   ModuleDirective: Combinator<StyleImport | ModuleImport>;
   ImportUrl: Combinator<Url>;
   ImportLayer: Combinator<ValueNode>;
@@ -95,7 +91,6 @@ type ScssRules = {
   ImportMediaFeature: Combinator<ValueNode>;
   ImportMediaInParens: Combinator<ValueNode>;
   ImportMediaCondition: Combinator<ValueNode>;
-  ImportMediaOnlyClause: Combinator<ValueNode>;
   ImportMediaClause: Combinator<ValueNode>;
   ImportMediaPrelude: Combinator<ValueNode>;
   ImportTail: Combinator<ValueNode>;
@@ -124,13 +119,10 @@ type ScssRules = {
   QueryClause: Combinator<ValueNode>;
   QueryPrelude: Combinator<ValueNode>;
   SupportsAtom: Combinator<ValueNode>;
-  SupportsGeneralTemplate: Combinator<Interpolation>;
-  SupportsGeneralTemplateParen: Combinator<Interpolation>;
-  SupportsGeneralTemplateSquare: Combinator<Interpolation>;
-  SupportsGeneralTemplateBrace: Combinator<Interpolation>;
-  SupportsGeneralTemplateDoubleQuoted: Combinator<Interpolation>;
-  SupportsGeneralTemplateSingleQuoted: Combinator<Interpolation>;
-  SupportsGeneralEnclosed: Combinator<GeneralEnclosed>;
+  GeneralTemplate: Combinator<Interpolation>;
+  GeneralTemplateGroup: Combinator<Interpolation>;
+  GeneralTemplateQuoted: Combinator<Interpolation>;
+  GeneralEnclosed: Combinator<GeneralEnclosed>;
   SupportsFeature: Combinator<ValueNode>;
   SupportsInParens: Combinator<ValueNode>;
   SupportsNotKeyword: Combinator<Keyword>;
@@ -142,15 +134,10 @@ type ScssRules = {
   /** CSS-compatible generic header capture for known passthrough blocks. */
   AtRulePrelude: Combinator<ValueNode | null>;
   AtRulePreludeAtom: Combinator<Token>;
-  AtRulePreludeParen: Combinator<Token>;
-  AtRulePreludeSquare: Combinator<Token>;
-  AtRulePreludeDoubleQuoted: Combinator<Token>;
-  AtRulePreludeSingleQuoted: Combinator<Token>;
+  AtRulePreludeGroup: Combinator<Token>;
+  AtRulePreludeQuoted: Combinator<Token>;
   AtRuleStatement: Combinator<AtRuleStatement>;
   AtRootFilterPrelude: Combinator<ValueNode>;
-  AtRootBlock: Combinator<AtRuleBlock>;
-  AtRootFilter: Combinator<AtRuleBlock>;
-  AtRootContinuation: Combinator<AtRuleBlock>;
   SassDirective: Combinator<AtRuleBlock | For | If | MixinCall | MixinDefinition | VariableDeclaration>;
   SassNestedDirective: Combinator<AtRuleBlock | For | If | MixinCall | MixinDefinition>;
   SassControlDirective: Combinator<For | If>;
@@ -182,7 +169,6 @@ type ScssRules = {
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
-  PseudoArgumentSquare: Combinator<string>;
   PseudoSelector: Combinator<SimpleToken>;
   NestingSelector: Combinator<SimpleSelector>;
   Compound: Combinator<SelectorTerm>;
@@ -1091,7 +1077,6 @@ const scssGenericAtRuleName = regex(/@(?!(?:use|forward|import|mixin|include|fun
 
 export const scssFactory = (g: ScssInputRules) => {
   const caseInsensitive = makeWhen({ caseInsensitive: true });
-  const atRuleKeyword = token(noTrivia(g.RoutedAtRuleKeyword));
 
   /*
    * CSS owns the ordinary property identifier. SCSS adds only the legacy `*`
@@ -1881,31 +1866,15 @@ export const scssFactory = (g: ScssInputRules) => {
    * captured as one opaque span, so an inner `;` or `}` cannot end the
    * declaration and an inner `#{…}` still reduces to a typed segment.
    */
-  const CustomParen = node<readonly unknown[]>(
-    'CustomParen',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('('),
-      many(g.CustomInnerPart),
-      literal(')')
-    )),
-    children => children.slice()
-  );
-  const CustomSquare = node<readonly unknown[]>(
-    'CustomSquare',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('['),
-      many(g.CustomInnerPart),
-      literal(']')
-    )),
-    children => children.slice()
-  );
-  const CustomCurly = node<readonly unknown[]>(
-    'CustomCurly',
-    parser({ trivia: customValueCommentTrivia }, sequence(
-      literal('{'),
-      many(g.CustomInnerPart),
-      literal('}')
-    )),
+  const CustomGroup = node<readonly unknown[]>(
+    'CustomGroup',
+    parser({ trivia: customValueCommentTrivia },
+      choice(
+        sequence(literal('('), many(g.CustomInnerPart), literal(')')),
+        sequence(literal('['), many(g.CustomInnerPart), literal(']')),
+        sequence(literal('{'), many(g.CustomInnerPart), literal('}'))
+      )
+    ),
     children => children.slice()
   );
   const CustomInnerPart: Combinator<unknown> = choice(
@@ -1913,18 +1882,14 @@ export const scssFactory = (g: ScssInputRules) => {
     g.CustomInnerContent,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly
+    g.CustomGroup
   );
   const CustomPart: Combinator<unknown> = choice(
     g.SassInterpolation,
     g.CustomOuterContent,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
-    g.CustomParen,
-    g.CustomSquare,
-    g.CustomCurly
+    g.CustomGroup
   );
   const CustomValue = node<ValueNode>(
     'CustomValue',
@@ -2493,7 +2458,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * sequence below, not this prefix-only module family.
    */
   const ModuleDirective = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     caseInsensitive('@use', UseRule),
     caseInsensitive('@forward', ForwardRule)
   );
@@ -3406,76 +3371,51 @@ export const scssFactory = (g: ScssInputRules) => {
     ),
     children => requireValue(children[0])
   );
-  const SupportsGeneralTemplateParen = node<Interpolation>(
-    'SupportsGeneralTemplateParen',
-    sequence(
-      literal('('),
-      g.SupportsGeneralTemplate,
-      literal(')')
+
+  /*
+   * Supports general-enclosed content needs interpolation, but delimiter
+   * provenance is not semantic. The group and quoted alternatives have
+   * disjoint first sets and recurse through the same template policy.
+   */
+  const GeneralTemplateGroup = node<Interpolation>(
+    'GeneralTemplateGroup',
+    choice(
+      sequence(literal('('), g.GeneralTemplate, literal(')')),
+      sequence(literal('['), g.GeneralTemplate, literal(']')),
+      sequence(literal('{'), g.GeneralTemplate, literal('}'))
     ),
     interpolationFromTemplateChildren
   );
-  const SupportsGeneralTemplateSquare = node<Interpolation>(
-    'SupportsGeneralTemplateSquare',
-    sequence(
-      literal('['),
-      g.SupportsGeneralTemplate,
-      literal(']')
+  const GeneralTemplateQuoted = node<Interpolation>(
+    'GeneralTemplateQuoted',
+    choice(
+      sequence(literal('"'), g.GeneralTemplate, literal('"')),
+      sequence(literal('\''), g.GeneralTemplate, literal('\''))
     ),
     interpolationFromTemplateChildren
   );
-  const SupportsGeneralTemplateBrace = node<Interpolation>(
-    'SupportsGeneralTemplateBrace',
-    sequence(
-      literal('{'),
-      g.SupportsGeneralTemplate,
-      literal('}')
-    ),
-    interpolationFromTemplateChildren
-  );
-  const SupportsGeneralTemplateDoubleQuoted = node<Interpolation>(
-    'SupportsGeneralTemplateDoubleQuoted',
-    sequence(
-      literal('"'),
-      g.SupportsGeneralTemplate,
-      literal('"')
-    ),
-    interpolationFromTemplateChildren
-  );
-  const SupportsGeneralTemplateSingleQuoted = node<Interpolation>(
-    'SupportsGeneralTemplateSingleQuoted',
-    sequence(
-      literal('\''),
-      g.SupportsGeneralTemplate,
-      literal('\'')
-    ),
-    interpolationFromTemplateChildren
-  );
-  const SupportsGeneralTemplate = node<Interpolation>(
-    'SupportsGeneralTemplate',
+  const GeneralTemplate = node<Interpolation>(
+    'GeneralTemplate',
     many(choice(
       g.SassInterpolation,
-      g.SupportsGeneralTemplateParen,
-      g.SupportsGeneralTemplateSquare,
-      g.SupportsGeneralTemplateBrace,
-      g.SupportsGeneralTemplateDoubleQuoted,
-      g.SupportsGeneralTemplateSingleQuoted,
+      g.GeneralTemplateGroup,
+      g.GeneralTemplateQuoted,
       generalTemplateText
     )),
     interpolationFromTemplateChildren
   );
-  const SupportsGeneralEnclosed = node<GeneralEnclosed>(
-    'SupportsGeneralEnclosed',
+  const GeneralEnclosed = node<GeneralEnclosed>(
+    'GeneralEnclosed',
     choice(
       sequence(
         g.Identifier,
         literal('('),
-        g.SupportsGeneralTemplate,
+        g.GeneralTemplate,
         literal(')')
       ),
       sequence(
         literal('('),
-        g.SupportsGeneralTemplate,
+        g.GeneralTemplate,
         literal(')')
       )
     ),
@@ -3528,7 +3468,7 @@ export const scssFactory = (g: ScssInputRules) => {
         literal(')')
       ),
       g.SupportsFeature,
-      g.SupportsGeneralEnclosed
+      g.GeneralEnclosed
     ),
     (children) => {
       const value = children.find(isValue);
@@ -3591,49 +3531,33 @@ export const scssFactory = (g: ScssInputRules) => {
    * until they have an interpolation-bearing prelude model.
    */
   const atRulePreludeText = regex(/(?:[^#()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?!\*))+/);
-  const AtRulePreludeDoubleQuoted = node<Token>(
-    'AtRulePreludeDoubleQuoted',
-    sequence(
-      literal('"'),
-      doubleQuotedText,
-      literal('"')
+
+  /*
+   * SCSS keeps CSS's semantic at-rule-prelude group/quoted names. Its only
+   * local behavior is the template/trivia policy; delimiters are disjoint
+   * spellings of the same authored header fragment.
+   */
+  const AtRulePreludeGroup = node<Token>(
+    'AtRulePreludeGroup',
+    choice(
+      sequence(literal('('), many(g.AtRulePreludeAtom), literal(')')),
+      sequence(literal('['), many(g.AtRulePreludeAtom), literal(']'))
     ),
     joinTokenValue
   );
-  const AtRulePreludeSingleQuoted = node<Token>(
-    'AtRulePreludeSingleQuoted',
-    sequence(
-      literal('\''),
-      singleQuotedText,
-      literal('\'')
-    ),
-    joinTokenValue
-  );
-  const AtRulePreludeParen = node<Token>(
-    'AtRulePreludeParen',
-    sequence(
-      literal('('),
-      many(g.AtRulePreludeAtom),
-      literal(')')
-    ),
-    joinTokenValue
-  );
-  const AtRulePreludeSquare = node<Token>(
-    'AtRulePreludeSquare',
-    sequence(
-      literal('['),
-      many(g.AtRulePreludeAtom),
-      literal(']')
+  const AtRulePreludeQuoted = node<Token>(
+    'AtRulePreludeQuoted',
+    choice(
+      sequence(literal('"'), doubleQuotedText, literal('"')),
+      sequence(literal('\''), singleQuotedText, literal('\''))
     ),
     joinTokenValue
   );
   const AtRulePreludeAtom = node<Token>(
     'AtRulePreludeAtom',
     choice(
-      g.AtRulePreludeParen,
-      g.AtRulePreludeSquare,
-      g.AtRulePreludeDoubleQuoted,
-      g.AtRulePreludeSingleQuoted,
+      g.AtRulePreludeGroup,
+      g.AtRulePreludeQuoted,
       g.BlockCommentToken,
       g.LineComment,
       atRulePreludeText
@@ -3657,10 +3581,8 @@ export const scssFactory = (g: ScssInputRules) => {
   const StatementPrelude = node<ValueNode | null>(
     'StatementPrelude',
     noTrivia(many(choice(
-      g.AtRulePreludeParen,
-      g.AtRulePreludeSquare,
-      g.AtRulePreludeDoubleQuoted,
-      g.AtRulePreludeSingleQuoted,
+      g.AtRulePreludeGroup,
+      g.AtRulePreludeQuoted,
       g.BlockCommentToken,
       g.LineComment,
       statementPreludeText
@@ -3766,7 +3688,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * function body accepts control directives but not a nested function/mixin.
    */
   const SassDirective = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     caseInsensitive('@include', g.MixinCallRule),
     caseInsensitive('@mixin', g.MixinDefinitionRule),
     caseInsensitive('@function', g.FunctionRule),
@@ -3776,7 +3698,7 @@ export const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('@at-root', AtRootContinuation)
   );
   const SassNestedDirective = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     caseInsensitive('@include', g.MixinCallRule),
     caseInsensitive('@mixin', g.MixinDefinitionRule),
     caseInsensitive('@if', g.IfRule),
@@ -3785,7 +3707,7 @@ export const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('@at-root', AtRootContinuation)
   );
   const SassControlDirective = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     caseInsensitive('@if', g.IfRule),
     caseInsensitive('@each', g.EachRule),
     caseInsensitive('@for', g.ForRule)
@@ -4435,35 +4357,15 @@ export const scssFactory = (g: ScssInputRules) => {
    * excludes a real SCSS `#{` opener, so interpolation cannot be flattened into
    * this static spelling while selector-valued arguments retain their existing
    * canonical spelling inside the containing SimpleSelector.
-   */
+  */
   const staticPseudoChunk = regex(/(?:[^()\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
+
+  /* Parenthesis and bracket nesting are the same opaque pseudo-argument fact. */
   const PseudoArgumentGroup = node<string>(
     'PseudoArgumentGroup',
-    sequence(
-      literal('('),
-      many(choice(
-        g.PseudoArgumentGroup,
-        g.PseudoArgumentSquare,
-        g.LiteralQuoted,
-        g.BlockCommentToken,
-        staticPseudoChunk
-      )),
-      literal(')')
-    ),
-    joinSourceText
-  );
-  const PseudoArgumentSquare = node<string>(
-    'PseudoArgumentSquare',
-    sequence(
-      literal('['),
-      many(choice(
-        g.PseudoArgumentGroup,
-        g.PseudoArgumentSquare,
-        g.LiteralQuoted,
-        g.BlockCommentToken,
-        staticPseudoChunk
-      )),
-      literal(']')
+    choice(
+      sequence(literal('('), many(choice(g.PseudoArgumentGroup, g.LiteralQuoted, g.BlockCommentToken, staticPseudoChunk)), literal(')')),
+      sequence(literal('['), many(choice(g.PseudoArgumentGroup, g.LiteralQuoted, g.BlockCommentToken, staticPseudoChunk)), literal(']'))
     ),
     joinSourceText
   );
@@ -4471,7 +4373,6 @@ export const scssFactory = (g: ScssInputRules) => {
     'PseudoArgument',
     oneOrMore(choice(
       g.PseudoArgumentGroup,
-      g.PseudoArgumentSquare,
       g.LiteralQuoted,
       g.BlockCommentToken,
       staticPseudoChunk
@@ -4992,9 +4893,7 @@ export const scssFactory = (g: ScssInputRules) => {
     CustomPropertyName,
     CustomPart,
     CustomInnerPart,
-    CustomParen,
-    CustomSquare,
-    CustomCurly,
+    CustomGroup,
     CustomValue,
     CustomDeclaration,
     Declaration,
@@ -5002,8 +4901,6 @@ export const scssFactory = (g: ScssInputRules) => {
     NestedPropertyDeclaration,
     ImportAtRule,
     UseNamespace,
-    UseRule,
-    ForwardRule,
     ModuleDirective,
     ImportUrl,
     ImportLayer,
@@ -5013,7 +4910,6 @@ export const scssFactory = (g: ScssInputRules) => {
     ImportMediaFeature,
     ImportMediaInParens,
     ImportMediaCondition,
-    ImportMediaOnlyClause,
     ImportMediaClause,
     ImportMediaPrelude,
     ImportTail,
@@ -5042,13 +4938,10 @@ export const scssFactory = (g: ScssInputRules) => {
     QueryClause,
     QueryPrelude,
     SupportsAtom,
-    SupportsGeneralTemplate,
-    SupportsGeneralTemplateParen,
-    SupportsGeneralTemplateSquare,
-    SupportsGeneralTemplateBrace,
-    SupportsGeneralTemplateDoubleQuoted,
-    SupportsGeneralTemplateSingleQuoted,
-    SupportsGeneralEnclosed,
+    GeneralTemplate,
+    GeneralTemplateGroup,
+    GeneralTemplateQuoted,
+    GeneralEnclosed,
     SupportsFeature,
     SupportsInParens,
     SupportsNotKeyword,
@@ -5058,15 +4951,10 @@ export const scssFactory = (g: ScssInputRules) => {
     MediaPrelude,
     AtRulePrelude,
     AtRulePreludeAtom,
-    AtRulePreludeParen,
-    AtRulePreludeSquare,
-    AtRulePreludeDoubleQuoted,
-    AtRulePreludeSingleQuoted,
+    AtRulePreludeGroup,
+    AtRulePreludeQuoted,
     AtRuleStatement,
     AtRootFilterPrelude,
-    AtRootBlock,
-    AtRootFilter,
-    AtRootContinuation,
     SassDirective,
     SassNestedDirective,
     SassControlDirective,
@@ -5100,7 +4988,6 @@ export const scssFactory = (g: ScssInputRules) => {
     AttributeSelector,
     PseudoArgument,
     PseudoArgumentGroup,
-    PseudoArgumentSquare,
     PseudoSelector,
     NestingSelector,
     Compound,
