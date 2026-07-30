@@ -60,6 +60,9 @@ describe('stable rule set', () => {
       LINT_CODES.invalidColorFunctionChannels,
       LINT_CODES.invalidTypedCustomPropertyValue,
       LINT_CODES.unusedVariables,
+      LINT_CODES.duplicateModuleLoads,
+      LINT_CODES.unboundedExtends,
+      LINT_CODES.deadExtends,
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
@@ -102,14 +105,20 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidColorFunctionChannels,
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.unusedVariables,
+      LINT_RULE_NAMES.duplicateModuleLoads,
+      LINT_RULE_NAMES.unboundedExtends,
+      LINT_RULE_NAMES.deadExtends,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(34);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(37);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.boxModel]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('warn');
+    expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
+    expect(recommended[LINT_RULE_NAMES.deadExtends]).toBe('warn');
   });
 
   it('keeps the Stylelint comparison policy limited to comparable rules', () => {
@@ -157,6 +166,9 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyValue]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedVariables]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unboundedExtends]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.deadExtends]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unsupportedSassForm]).toBe('off');
   });
 });
@@ -967,6 +979,72 @@ describe('lintText', () => {
     });
     expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unusedVariables, 'warning']
+    ]);
+  });
+
+  it('applies policy to duplicate module-load diagnostics by lint rule name', async () => {
+    const result = await lintText(
+      {
+        source: '@use "theme";\n@use "theme";',
+        filePath: '/tmp/input.scss'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.duplicateModuleLoads]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.duplicateModuleLoads, LINT_CODES.duplicateModuleLoads, 'error']
+    ]);
+  });
+
+  it('applies policy to unbounded extend diagnostics by lint rule name', async () => {
+    const result = await lintText(
+      {
+        source: '.a { @extend div; }',
+        filePath: '/tmp/input.scss'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.unboundedExtends]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.unboundedExtends, LINT_CODES.unboundedExtends, 'error']
+    ]);
+  });
+
+  it('applies policy to dead extend diagnostics by lint rule name', async () => {
+    const result = await lintText(
+      {
+        source: '.hit { color: red; }\n.a { @extend .missing; }',
+        filePath: '/tmp/input.scss'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.deadExtends]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.deadExtends, LINT_CODES.deadExtends, 'error']
     ]);
   });
 });

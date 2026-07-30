@@ -803,6 +803,48 @@ describe('JessLanguageServiceEngine', () => {
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         expect(codesOf(engine, doc.uri)).not.toContain('lint/no-unknown-animations');
       });
+
+      it('surfaces duplicate module-load diagnostics by default and allows disable', () => {
+        const source = '@use "theme";\n@use "theme";';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-duplicate-module-load');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-duplicate-module-load', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-duplicate-module-load');
+      });
+
+      it('surfaces unbounded extend diagnostics by default and allows disable', () => {
+        const source = '.a { @extend div; }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-unbounded-extend');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-unbounded-extend', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-unbounded-extend');
+      });
+
+      it('surfaces dead extend diagnostics by default and allows disable', () => {
+        const source = '.hit {}\n.a { @extend .missing; }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-dead-extend');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-dead-extend', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-dead-extend');
+      });
     });
 
     describe('duplicateProperties (lint/duplicate-property)', () => {

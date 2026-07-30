@@ -106,6 +106,9 @@ mode until its behavior is comparable enough.
 | `color-function-no-invalid-arguments` | `lint/invalid-color-function-channels` | VSCode-equivalent |
 | `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess-only value diagnostic |
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Jess-only symbol diagnostic, opt-in |
+| `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess-only module diagnostic |
+| `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess-only selector diagnostic |
+| `jess/no-dead-extend` | `lint/no-dead-extend` | Jess-only selector diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -274,9 +277,9 @@ Stylelint.
 | `jess/no-ambiguous-mixin-call` | warn | Callable facts | A call matches multiple overloads with incompatible bodies or signatures. |
 | `jess/no-mixin-output-mismatch` | off | Call signatures | A mixin used as declarations emits nested rules, or a value callable emits declarations. |
 | `jess/no-unsafe-reference-compose` | warn | Module facts | Extending or reading through a protected boundary that cannot surface output. |
-| `jess/no-duplicate-module-load` | warn | Import graph/config | Same file loaded through multiple specifiers or overload mode unintentionally. |
-| `jess/no-unbounded-extend` | warn | Selector facts | Broad `$extend` target likely to match more than intended. |
-| `jess/no-dead-extend` | warn | Selector facts | `$extend` target matches no selector in accessible surfaces. |
+| `jess/no-duplicate-module-load` | warn | Module refs now; import graph/config later | Initial same-file static SCSS/Jess duplicate directive check landed; same resolved file through multiple specifiers still needs module graph facts. |
+| `jess/no-unbounded-extend` | warn | Static targets now; selector facts later | Initial Less/SCSS/Jess diagnostic flags static extend targets with no top-level class, id, placeholder, or parent selector anchor; selector graph facts can later catch broad resolved targets more precisely. |
+| `jess/no-dead-extend` | warn | Same-file exact targets now; selector graph later | Initial import-free Less/SCSS/Jess diagnostic flags exact static extend targets that match no same-file selector; accessible imported surfaces and partial extend submatching still need selector graph facts. |
 
 ## Type and value linting
 
