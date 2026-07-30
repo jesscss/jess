@@ -8391,10 +8391,16 @@ describe('Less AST grammar facts', () => {
       )
     ).toContainEqual([':not(', '.disabled', ')']);
     expect(
-      findCstNodes(cst.tree, 'StaticNonSelectorPseudo').map(
+      findCstNodes(cst.tree, 'GenericPseudo').map(
         cstLeafValues
       )
     ).toEqual([[':hover'], [':lang(', 'en', ')']]);
+    expect(
+      findCstNodes(cst.tree, 'PseudoArgumentText').map(
+        cstLeafValues
+      )
+    ).toEqual([['en']]);
+    expect(findCstNodes(cst.tree, 'StaticNonSelectorPseudo')).toHaveLength(0);
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
