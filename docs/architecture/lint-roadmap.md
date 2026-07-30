@@ -82,6 +82,7 @@ a `jess/` prefix.
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | Stylelint-near |
 | `jess/no-incompatible-math-function-units` | `lint/incompatible-math-function-units` | Jess-only value diagnostic |
 | `jess/no-invalid-color-function-channels` | `lint/invalid-color-function-channels` | Jess-only value diagnostic |
+| `jess/no-invalid-typed-custom-property-value` | `lint/invalid-typed-custom-property-value` | Jess-only value diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
 
 Syntax failures are not lint rules. `jess lint` can surface parser/compiler
@@ -183,6 +184,7 @@ can detect over authored source.
 | Landed | Media feature names and values | `media-feature-name-no-unknown`, `media-feature-name-value-no-unknown` | Flags unknown CSS `@media` feature names and definite invalid static values; dialect media facts remain future work. |
 | Landed | At-rule descriptors | `at-rule-descriptor-no-unknown` | Flags unknown descriptors in parsed CSS descriptor blocks, including `@page` page-context and margin-box descriptors. |
 | Landed | Color function channels | `jess/no-invalid-color-function-channels` | Flags definite rgb()/rgba()/hsl()/hsla() channel arity/type errors; dynamic, nested, and dialect value facts remain future work. |
+| Landed | Typed custom properties | `jess/no-invalid-typed-custom-property-value` | Flags definite CSS `@property` `initial-value` mismatches for simple syntax descriptors; full CSS value-definition syntax and dialect value facts remain future work. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |
 | P2 | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Project-policy heavy; opt-in only. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |
@@ -265,7 +267,7 @@ Follow-on value/type diagnostics:
 | --- | --- | --- |
 | Incompatible units | Compiler or strict lint | Arithmetic and comparisons with impossible unit families. If Jess rejects it, compiler owns it; if Jess can still emit useful CSS, lint owns it. |
 | Invalid color channel | CSS validity/compiler | Initial CSS-authored rgb()/rgba()/hsl()/hsla() arity/type checks landed as `jess/no-invalid-color-function-channels`; broader color functions and semantic value facts remain future work. |
-| Invalid typed custom property value | Diagnostics-core/type facts | Validate `@property syntax` and future Jess constraints without guessing through dynamic values. |
+| Invalid typed custom property value | Diagnostics-core/type facts | Initial CSS `@property` descriptor check landed as `jess/no-invalid-typed-custom-property-value` for simple static syntax/value pairs; future work is full CSS value-definition syntax and Jess constraints. |
 | Impossible guard | Lint preference | Guard condition that is statically always false. |
 | Unused default branch | Lint preference | Mixin `default()` branch that cannot be selected. |
 | Suspicious map key access | Lint preference | Numeric bracket access against a collection when the author likely meant a value key. |
