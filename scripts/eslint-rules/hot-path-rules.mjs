@@ -15,6 +15,7 @@
  *   no-rescan-in-loop                   -> invariant 4 / R3 (complexity class)
  *   no-loop-invariant-accessor          -> invariant 4 / 10 (construct once, read)
  *   no-source-text-rescan               -> invariant 2 / 10 (byte re-derivation)
+ *   no-json-stringify-on-tree           -> invariant 5 (materialization)
  *
  * POLICY (deliberate, same as `index.mjs`): every rule here is ADVISORY. They
  * are wired only in `eslint.hotpath.config.mjs` — a separate pass that the
@@ -665,12 +666,168 @@ const noSourceTextRescan = {
   }
 };
 
+/* ------------------------------------------------------------------------ *
+ * Rule 6 — no-json-stringify-on-tree                            (V8-ARCH 5)
+ * ------------------------------------------------------------------------ *
+ *
+ * `JSON.stringify` applied to an AST/CST value. Three INDEPENDENT
+ * disqualifiers, any one of them fatal on its own:
+ *
+ *   CYCLES          A parent pointer, a shared subtree, or any side table that
+ *                   round-trips a node throws `TypeError: Converting circular
+ *                   structure to JSON` — at runtime, and only on the input that
+ *                   happens to contain the cycle.
+ *   STACK DEPTH     It recurses with no depth guard, so a deeply nested
+ *                   stylesheet overflows rather than degrading.
+ *   MATERIALIZATION It builds the ENTIRE tree as one string before anything can
+ *                   consume it. This is what OOMs the Less byte-identity oracle
+ *                   at 8 GB: the call does not merely run slowly, it returns no
+ *                   verdict at all.
+ *
+ * Note carefully what the argument is NOT. AST nodes here are ordinary,
+ * well-shaped objects — the ~75 node types realize only 16 monomorphic shapes
+ * in practice, and inline fields beat a WeakMap side table 40x on reads. The
+ * case against `JSON.stringify` is not that these values are exotic. It is that
+ * they are LARGE, DEEP, and REFERENTIAL. That distinction matters because it
+ * tells you the fix: a faster stringify library addresses none of the three,
+ * since it still builds the string.
+ *
+ * SO THE FIX IS TO REMOVE THE STRING, NOT TO REPLACE THE STRINGIFIER:
+ *
+ *   digest / hash   feed a canonical traversal into `createHash('sha256')` via
+ *                   `hash.update(chunk)`. Nothing is materialized, so it cannot
+ *                   OOM at any corpus size, and it is faster because the
+ *                   allocation is SKIPPED rather than optimized.
+ *   equality        walk and compare, or compare two digests. Never build two
+ *                   strings in order to `===` them.
+ *   debug output    `util.inspect(node, { depth, maxArrayLength })` — bounded
+ *                   explicitly, and never on a hot path.
+ *
+ * Where a string is genuinely required and the value is NOT a tree, the honest
+ * answers are `safe-stable-stringify` (stable key order AND cycle safety, for
+ * anything committed or diffed) and `fast-json-stringify` (schema-compiled, for
+ * a fixed shape). Neither is in this workspace today; both are real new
+ * dependencies, so prefer neither until a site needs one.
+ *
+ * PRECISION: name-based, exactly like `no-source-text-rescan`, and for the same
+ * reason — these rules are deliberately not type-aware (see the `projectService`
+ * note in `eslint.hotpath.config.mjs`), so a value's runtime type is simply not
+ * knowable here. It therefore fires ONLY on positive tree evidence: an argument
+ * whose FINAL name is a tree name, or one that came straight out of a
+ * `parse*`/`build*` call.
+ *
+ * It is tuned to FALSE NEGATIVES on purpose. A rule that fires on
+ * `JSON.stringify(options)` is disabled within a week and then protects
+ * nothing, which is the exact failure this rule set exists to end. So a generic
+ * binding name — `value`, `data`, `result`, `payload` — is deliberately NOT
+ * treated as evidence, even though such a binding may very well hold a tree.
+ * The uncovered remainder is a reviewer obligation, not a covered one.
+ */
+
+const TREE_NAMES = new Set([
+  'node', 'nodes', 'ast', 'cst', 'tree', 'stylesheet', 'sheet',
+  'rules', 'ruleset', 'selector', 'selectors',
+  'decl', 'declaration', 'declarations', 'atRule', 'children', 'root'
+]);
+
+/**
+ * A `parse*`/`build*` call is assumed to return a tree. `parseInt`/`parseFloat`
+ * return numbers and are the obvious false positive, so they are excluded by
+ * name rather than by hoping nobody stringifies one.
+ */
+const TREE_BUILDER_PREFIXES = ['parse', 'build'];
+
+const NUMERIC_PARSERS = new Set(['parseInt', 'parseFloat']);
+
+const noJsonStringifyOnTree = {
+  meta: {
+    type: 'problem',
+    docs: {
+      description: 'Do not JSON.stringify an AST/CST value: cycles throw, deep trees overflow the stack, and the whole tree is materialized (V8-ARCH 5).'
+    },
+    schema: [{
+      type: 'object',
+      properties: {
+        treeNames: { type: 'array', items: { type: 'string' } },
+        builderPrefixes: { type: 'array', items: { type: 'string' } }
+      },
+      additionalProperties: false
+    }],
+    messages: {
+      tree: 'JSON.stringify on a tree value (`{{argument}}`): cycles throw, deep trees overflow the stack, and the whole tree is materialized at once. Remove the string rather than replacing the stringifier — stream a canonical traversal into createHash(), compare by walk or by digest, or use util.inspect with an explicit depth for debug output (V8-ARCH 5).'
+    }
+  },
+  create(context) {
+    const options = context.options[0] || {};
+    const names = options.treeNames ? new Set(options.treeNames) : TREE_NAMES;
+    const prefixes = options.builderPrefixes || TREE_BUILDER_PREFIXES;
+    const sourceCode = context.sourceCode;
+
+    /** Final name of an argument: `x` / `a.b.x` -> `x`. Computed access -> undefined. */
+    function finalName(node) {
+      if (node.type === 'Identifier') {
+        return node.name;
+      }
+      if (node.type === 'MemberExpression' && !node.computed && node.property.type === 'Identifier') {
+        return node.property.name;
+      }
+
+      // `node!` / `node as Rules` — the TS wrappers are transparent here.
+      if (node.type === 'TSNonNullExpression' || node.type === 'TSAsExpression') {
+        return finalName(node.expression);
+      }
+      return undefined;
+    }
+
+    /** `parseStylesheet(src)` / `buildAst(cst)` — a call whose result IS a tree. */
+    function isTreeBuilderCall(node) {
+      if (node.type !== 'CallExpression') {
+        return false;
+      }
+      const name = calleeName(node.callee);
+      if (name === undefined || NUMERIC_PARSERS.has(name)) {
+        return false;
+      }
+      return prefixes.some(prefix => name.startsWith(prefix) && name.length > prefix.length);
+    }
+
+    function isTreeValued(node) {
+      if (!node) {
+        return false;
+      }
+      if (isTreeBuilderCall(node)) {
+        return true;
+      }
+      const name = finalName(node);
+      return name !== undefined && names.has(name);
+    }
+
+    return {
+      CallExpression(node) {
+        if (namespacedCallee(node) !== 'JSON.stringify') {
+          return;
+        }
+        const argument = node.arguments[0];
+        if (!argument || argument.type === 'SpreadElement' || !isTreeValued(argument)) {
+          return;
+        }
+        context.report({
+          node,
+          messageId: 'tree',
+          data: { argument: sourceCode.getText(argument).slice(0, 40) }
+        });
+      }
+    };
+  }
+};
+
 export const rules = {
   'no-speculative-allocation-predicate': noSpeculativeAllocationPredicate,
   'no-node-keyed-side-map': noNodeKeyedSideMap,
   'no-rescan-in-loop': noRescanInLoop,
   'no-loop-invariant-accessor': noLoopInvariantAccessor,
-  'no-source-text-rescan': noSourceTextRescan
+  'no-source-text-rescan': noSourceTextRescan,
+  'no-json-stringify-on-tree': noJsonStringifyOnTree
 };
 
 export default { rules };

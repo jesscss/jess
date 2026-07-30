@@ -99,6 +99,7 @@
     "verify:hot-path": "node scripts/verify-hot-path-antipatterns.mjs",
     "verify:hot-path:clean": "node scripts/verify-hot-path-antipatterns.mjs --require-clean",
     "test:hot-path-rules": "node --test scripts/eslint-rules/__tests__/hot-path-rules.test.mjs",
+    "test:digest-json-stream": "node --test scripts/__tests__/digest-json-stream.test.mjs",
     "bench:css:ref": "node scripts/bench-compare-ref.mjs --package @jesscss/css-parser",
     "perf:ab:verify": "node scripts/perf-ab/ab-worktree.mjs verify",
     "perf:ab:prepare": "node scripts/perf-ab/ab-worktree.mjs prepare",
