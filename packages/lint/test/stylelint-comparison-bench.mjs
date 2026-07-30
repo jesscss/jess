@@ -28,7 +28,12 @@ const STYLELINT_RULES = {
   'at-rule-no-unknown': true,
   'declaration-block-no-duplicate-properties': true,
   'color-no-invalid-hex': true,
-  'length-zero-no-unit': true
+  'length-zero-no-unit': true,
+  'custom-property-no-missing-var-function': true,
+  'keyframe-block-no-duplicate-selectors': true,
+  'keyframe-declaration-no-important': true,
+  'font-family-no-duplicate-names': true,
+  'font-family-no-missing-generic-family-keyword': true
 };
 
 const STYLELINT_LESS_RULES = {

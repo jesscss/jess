@@ -59,4 +59,56 @@ describe('collectTolerantDiagnostics', () => {
     expect(hexDiagnostics).toHaveLength(1);
     expect(hexDiagnostics[0]?.start).toBe('#abcde { color: red; }\n.a { color: '.length);
   });
+
+  it('reports bare custom property reads without flagging var() calls or custom declarations', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { color: --brand; background: var(--ok); --local: --allowed; }',
+      language: 'css'
+    });
+    const customPropertyReads = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.customPropertyMissingVarFunction
+    );
+
+    expect(customPropertyReads).toHaveLength(1);
+    expect(customPropertyReads[0]).toMatchObject({
+      message: 'Use var(--brand) when reading a custom property',
+      start: '.a { color: '.length
+    });
+  });
+
+  it('reports duplicate keyframe selectors and important keyframe declarations', () => {
+    const result = collectTolerantDiagnostics({
+      source: '@keyframes spin { from { opacity: 1 !important; } 0% { opacity: .5; } 50% { color: red; } 50% { color: blue; } }',
+      language: 'css'
+    });
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.keyframeDeclarationNoImportant);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.keyframeDuplicateSelectors);
+    expect(result.diagnostics.find(diagnostic => diagnostic.code === LINT_CODES.keyframeDuplicateSelectors)).toMatchObject({
+      message: 'Duplicate keyframe selector \'0%\''
+    });
+  });
+
+  it('reports duplicate font families and missing generic family keywords', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { font-family: Inter, "Open Sans", inter; }\n.b { font-family: Arial, sans-serif; }\n.c { font: 12px/16px Arial; }',
+      language: 'css'
+    });
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.fontFamilyDuplicateNames);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.fontFamilyMissingGeneric);
+    expect(result.diagnostics.find(diagnostic => diagnostic.code === LINT_CODES.fontFamilyDuplicateNames)).toMatchObject({
+      message: 'Duplicate font family \'inter\''
+    });
+    expect(result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.fontFamilyMissingGeneric)).toHaveLength(2);
+  });
+
+  it('does not report missing generic font families for CSS-wide, dynamic, or @font-face values', () => {
+    const result = collectTolerantDiagnostics({
+      source: '@font-face { font-family: Headline; src: url(headline.woff2); }\n.a { font-family: inherit; }\n.b { font-family: var(--family); }\n.c { font-family: $family; }',
+      language: 'css'
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.fontFamilyMissingGeneric)).toBe(false);
+  });
 });

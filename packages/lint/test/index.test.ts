@@ -7,6 +7,7 @@ import {
   LINT_RULE_NAMES,
   PARSE_SYNTAX_ERROR_CODE,
   STABLE_LINT_RULES,
+  STABLE_LINT_RULE_SET_VERSION,
   STYLELINT_COMPARISON_LINT_CONFIG,
   formatStyledLintResult,
   lintFiles,
@@ -26,6 +27,11 @@ describe('stable rule set', () => {
       LINT_CODES.duplicateProperties,
       LINT_CODES.hexColorLength,
       LINT_CODES.zeroUnits,
+      LINT_CODES.customPropertyMissingVarFunction,
+      LINT_CODES.keyframeDuplicateSelectors,
+      LINT_CODES.keyframeDeclarationNoImportant,
+      LINT_CODES.fontFamilyDuplicateNames,
+      LINT_CODES.fontFamilyMissingGeneric,
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
@@ -35,8 +41,14 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.duplicateProperties,
       LINT_RULE_NAMES.hexColorLength,
       LINT_RULE_NAMES.zeroUnits,
+      LINT_RULE_NAMES.customPropertyMissingVarFunction,
+      LINT_RULE_NAMES.keyframeDuplicateSelectors,
+      LINT_RULE_NAMES.keyframeDeclarationNoImportant,
+      LINT_RULE_NAMES.fontFamilyDuplicateNames,
+      LINT_RULE_NAMES.fontFamilyMissingGeneric,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(2);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -48,6 +60,11 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.duplicateProperties,
       LINT_RULE_NAMES.emptyRules,
       LINT_RULE_NAMES.hexColorLength,
+      LINT_RULE_NAMES.customPropertyMissingVarFunction,
+      LINT_RULE_NAMES.fontFamilyDuplicateNames,
+      LINT_RULE_NAMES.fontFamilyMissingGeneric,
+      LINT_RULE_NAMES.keyframeDeclarationNoImportant,
+      LINT_RULE_NAMES.keyframeDuplicateSelectors,
       LINT_RULE_NAMES.unknownAtRules,
       LINT_RULE_NAMES.unknownProperties,
       LINT_RULE_NAMES.zeroUnits
@@ -147,6 +164,53 @@ describe('lintText', () => {
     );
 
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([LINT_CODES.zeroUnits]);
+  });
+
+  it('applies policy to new Stylelint-comparable source diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '@keyframes spin { from { opacity: 1 !important; } 0% { opacity: .5; } }\n.a { color: --brand; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.customPropertyMissingVarFunction]: 'error',
+              [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'off'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.keyframeDuplicateSelectors, 'warning'],
+      [LINT_CODES.customPropertyMissingVarFunction, 'error']
+    ]);
+  });
+
+  it('applies policy to font-family diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { font-family: Inter, inter; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.fontFamilyDuplicateNames]: 'error',
+              [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'off'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.fontFamilyDuplicateNames, 'error']
+    ]);
   });
 });
 

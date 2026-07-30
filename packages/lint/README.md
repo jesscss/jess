@@ -118,6 +118,11 @@ The current stable rule set is intentionally small and migration-friendly:
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | `declaration-block-no-duplicate-properties` |
 | `color-no-invalid-hex` | `lint/hex-color-length` | `color-no-invalid-hex` |
 | `length-zero-no-unit` | `lint/zero-units` | `length-zero-no-unit` |
+| `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | `custom-property-no-missing-var-function` |
+| `keyframe-block-no-duplicate-selectors` | `lint/keyframe-block-no-duplicate-selectors` | `keyframe-block-no-duplicate-selectors` |
+| `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | `keyframe-declaration-no-important` |
+| `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | near `font-family-no-duplicate-names` |
+| `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | near `font-family-no-missing-generic-family-keyword` |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
 
 Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
