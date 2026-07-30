@@ -84,7 +84,10 @@ interface OutputOptions {
 }
 
 type LintSeverity = 'off' | 'warn' | 'error';
-type LintRuleSetting = LintSeverity | null | readonly [LintSeverity | null, { ignore?: readonly string[] }];
+type LintRuleSetting = LintSeverity | null | readonly [
+  LintSeverity | null,
+  { ignore?: readonly string[]; include?: readonly string[] }?
+];
 ```
 
 ### Example Configuration

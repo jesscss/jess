@@ -86,6 +86,7 @@ export default {
     ignoreFiles: ['dist/**'],
     reportSyntax: true,
     rules: {
+      'block-no-empty': ['warn', { include: ['mixins'] }],
       'property-no-unknown': 'error',
       'declaration-block-no-duplicate-properties': ['warn', { ignore: ['consecutive-duplicates'] }],
       'length-zero-no-unit': 'warn',
@@ -99,13 +100,17 @@ Rule severity values are `off`, `warn`, and `error`; `null` also disables a
 rule. Rules that support secondary options can use a Stylelint-like tuple:
 `['warn', { ...options }]`.
 
+`block-no-empty` reports empty rulesets by default. Use
+`['warn', { include: ['mixins'] }]` to also report empty Less, SCSS, and Jess
+mixin bodies.
+
 ## What Jess Checks Today
 
 Jess's stable lint set is deliberately small:
 
 | Rule name | Jess diagnostic code | What it catches |
 | --- | --- | --- |
-| `block-no-empty` | `lint/empty-rules` | Empty rulesets |
+| `block-no-empty` | `lint/empty-rules` | Empty rulesets; empty mixin bodies with `include: ['mixins']` |
 | `property-no-unknown` | `lint/unknown-property` | Unknown CSS properties |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | Unknown CSS at-rules |
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | Duplicate declarations in one block |

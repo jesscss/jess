@@ -102,7 +102,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(31);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(32);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -319,6 +319,34 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.message])).toEqual([
       [LINT_CODES.duplicateProperties, 'Duplicate property \'color\'']
+    ]);
+  });
+
+  it('keeps empty mixin bodies quiet unless block-no-empty opts into mixins', async () => {
+    const input = {
+      source: '.mixin() { }\n.a { }',
+      filePath: '/tmp/input.less'
+    };
+
+    const defaults = await lintText(input, {
+      stylesConfig: {}
+    });
+    expect(defaults.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.message])).toEqual([
+      [LINT_CODES.emptyRules, 'Do not use empty rulesets']
+    ]);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.emptyRules]: ['warn', { include: ['mixins'] }]
+          }
+        }
+      }
+    });
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.message])).toEqual([
+      [LINT_CODES.emptyRules, 'Do not use empty mixin bodies'],
+      [LINT_CODES.emptyRules, 'Do not use empty rulesets']
     ]);
   });
 

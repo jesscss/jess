@@ -132,6 +132,10 @@ function suggestWithJess(_text: string, _lang: JessLang, _offset: number): Array
   return [];
 }
 
+function hasDiagnosticQualifier(diagnostic: { readonly qualifiers?: readonly string[] }, value: string): boolean {
+  return diagnostic.qualifiers?.includes(value) === true;
+}
+
 function getCurrentWord(text: string, offset: number): string {
   const WORD_BREAKS = ' \t\n\r":{[()]},*>+;}';
 
@@ -1822,6 +1826,9 @@ export function createEngine(): JessLanguageServiceEngine {
           isKnownAtRule: name => AT_RULES_MAP.has(`@${name}`)
         }, undefined, cstDoc.errors.length > 0 || cstDoc.unconsumedFrom !== null);
         for (const diagnostic of cstDiagnostics) {
+          if (diagnostic.code === LINT_CODES.emptyRules && hasDiagnosticQualifier(diagnostic, 'mixin-body')) {
+            continue;
+          }
           const configured = semanticDiagnosticSeverities[diagnostic.code];
           if (typeof configured !== 'number') {
             continue;

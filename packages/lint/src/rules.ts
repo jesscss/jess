@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 31;
+export const STABLE_LINT_RULE_SET_VERSION = 32;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -242,7 +242,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'warn',
     comparison: 'stylelint-equivalent',
     stylelintRule: 'block-no-empty',
-    notes: 'Flags empty qualified rules after Jess dialect parsing.'
+    notes: 'Flags empty qualified rules after Jess dialect parsing; supports opt-in include: ["mixins"] for empty Less/SCSS/Jess mixin bodies.'
   },
   {
     code: LINT_CODES.unknownProperties,

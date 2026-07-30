@@ -217,6 +217,11 @@ const RULESET_TYPES = new Set([
   'RulesetWithExtends',
   'NestedRulesetWithExtends'
 ]);
+const MIXIN_DEFINITION_TYPES = new Set([
+  'MixinDefinition',
+  'MixinDefinitionRule',
+  'MixinOrQualifiedRule'
+]);
 const ATRULE_TYPES = new Set([
   'AtRuleBlock',
   'AtRuleStatement',
@@ -495,11 +500,15 @@ function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
   return node.rules;
 }
 
+function isQuotedCstNode(node: CssCstNode): boolean {
+  return node.grammarType === 'Quoted' || node.grammarType === 'PlainQuoted';
+}
+
 function forwardPreludeOf(node: CssCstNode, src: string): string | null {
   let afterPath = false;
   for (const child of cstChildrenOf(node)) {
     if (isCstNode(child)) {
-      if (child.grammarType === 'Quoted') {
+      if (isQuotedCstNode(child)) {
         afterPath = true;
       }
       if (afterPath && child.grammarType === 'ForwardTail') {
@@ -552,6 +561,12 @@ function isWhitespaceOnly(source: string, start: number, end: number): boolean {
     }
   }
   return true;
+}
+
+function emptyBracedBody(source: string, start: number, end: number): boolean {
+  const open = source.indexOf('{', start);
+  const close = source.lastIndexOf('}', end - 1);
+  return open >= start && close > open && isWhitespaceOnly(source, open + 1, close);
 }
 
 function atRuleNameEnd(source: string, start: number, end: number): number {
@@ -1382,7 +1397,7 @@ function gridAreaRows(source: string, node: CssCstNode): GridAreaRow[] {
     if (!isCstNode(child)) {
       return;
     }
-    if (child.grammarType === 'Quoted') {
+    if (isQuotedCstNode(child)) {
       const start = absoluteStart(child);
       const end = absoluteEnd(child);
       if (Number.isFinite(start) && Number.isFinite(end) && end > start + 1) {
@@ -3312,11 +3327,13 @@ export function cstLintDiagnostics(
     }
 
     if (RULESET_TYPES.has(gt)) {
-      const open = source.indexOf('{', start);
-      const close = source.lastIndexOf('}', end - 1);
-      if (open >= start && close > open && isWhitespaceOnly(source, open + 1, close)) {
+      if (emptyBracedBody(source, start, end)) {
         push(LINT_CODES.emptyRules, 'warning', 'Do not use empty rulesets', node.span);
       }
+    }
+
+    if (MIXIN_DEFINITION_TYPES.has(gt) && emptyBracedBody(source, start, end)) {
+      push(LINT_CODES.emptyRules, 'warning', 'Do not use empty mixin bodies', node.span, ['mixin-body']);
     }
 
     if (language === 'css' && gt === 'DescriptorBlock' && descriptorAtRuleName === 'property') {

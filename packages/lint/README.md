@@ -95,6 +95,7 @@ export default {
     ignoreFiles: ['dist/**'],
     reportSyntax: true,
     rules: {
+      'block-no-empty': ['warn', { include: ['mixins'] }],
       'property-no-unknown': 'error',
       'declaration-property-value-no-unknown': 'warn',
       'declaration-block-no-duplicate-properties': ['warn', { ignore: ['consecutive-duplicates'] }],
@@ -117,6 +118,11 @@ Severity values are `off`, `warn`, and `error`; `null` also disables a rule.
 Rules can also use a Stylelint-like tuple, `['warn', { ...options }]`, when a
 rule supports secondary options. Jess uses Stylelint rule names where the rule
 intent is familiar and Jess-native names for Jess-only diagnostics.
+
+`block-no-empty` warns on empty rulesets by default. Add
+`['warn', { include: ['mixins'] }]` when empty Less, SCSS, or Jess mixin bodies
+should also be reported; they stay quiet by default because empty mixins can be
+intentional API placeholders.
 
 ## Stable Rules
 
