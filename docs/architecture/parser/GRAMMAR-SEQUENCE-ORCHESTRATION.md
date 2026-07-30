@@ -117,7 +117,7 @@ Current priority order:
 Side-lane grammar cleanup still matters: comments are trivia, not semantic AST
 nodes; short spec-aligned production names beat migration prefixes; `Value` is
 one atomic value piece while `ValueSequence` and `ValueList` compose values; and
-Parseman 0.41+ idioms such as `dispatch(...)`, `routed()`, `makeWhen(...)`,
+Parseman 0.43+ idioms such as `dispatch(...)`, `routed()`, `makeWhen(...)`,
 `word(...)`, separated-list helpers, and composition should be used where they
 remove real duplicated recognition or make the grammar clearer.
 
@@ -313,7 +313,7 @@ fix the surviving host-mode grammar and its tests.
 | jess | `src/grammar.ts` | deleted |
 
 This makes the remaining target concrete: four folded grammar factories must
-become small, readable, well-documented, and idiomatic Parseman 0.41 grammars.
+become small, readable, well-documented, and idiomatic Parseman 0.43 grammars.
 
 ## Current copy/paste goal
 
@@ -321,7 +321,7 @@ Act as the grammar-cleanup orchestrator in `/Users/matthew/git/oss/jess`.
 Assume the physical eight-to-four fold is complete: CSS, Less, SCSS, and Jess
 each ship AST and CST from one `src/grammar.ts`, and the deleted
 `src/ast/grammar.ts` files are historical evidence only. The active objective is
-to make the four surviving grammars exemplary Parseman 0.41 grammars.
+to make the four surviving grammars exemplary Parseman 0.43 grammars.
 Do not spend effort re-planning the fold or reviving old AST/CST grammar pairs;
 the fold is paid, and all remaining work happens inside the four surviving
 host-mode grammar bodies plus their direct tests/docs.
@@ -719,7 +719,7 @@ state.
    `lessCstGrammar` compile the same Less-owned factory in the appropriate host
    mode. The active Less work is now quality plus CST residue classification:
    delete `DirectLess*` migration names as each family is reviewed, replace broad
-   known/generic `choice(...)` arms with Parseman 0.41
+known/generic `choice(...)` arms with Parseman 0.43
    `dispatch(...)`/`routed()` routes, keep selector and value regions parsed
    once, replace statement-position class/id and identifier lookahead with
    parse-once routing, document Less-specific deviations from CSS placement
@@ -802,7 +802,7 @@ state.
    Sass fixture proves otherwise.
 4. **Jess folded; keep only Jess-specific syntax.** Jess now ships from one
    host-mode grammar source. Reuse CSS/preprocessor concepts, route shared
-   opener families with Parseman 0.41, and do not copy Less/SCSS shapes unless
+opener families with Parseman 0.43, and do not copy Less/SCSS shapes unless
    they are shared language with shared names.
 
 ## Batch rule
