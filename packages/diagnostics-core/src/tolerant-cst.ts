@@ -3829,6 +3829,13 @@ export function cstLintDiagnostics(
       }
     }
 
+    if (language !== 'css' && gt === 'SelectorBranch') {
+      const key = normalizedSelectorText(source, start, end);
+      if (key.length > 0) {
+        ruleSelectorKeys.add(key);
+      }
+    }
+
     if (MIXIN_DEFINITION_TYPES.has(gt) && emptyBracedBody(source, start, end)) {
       push(LINT_CODES.emptyRules, 'warning', 'Do not use empty mixin bodies', node.span, ['mixin-body']);
     }
