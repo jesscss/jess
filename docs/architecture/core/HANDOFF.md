@@ -468,7 +468,7 @@ conversion, and finally invokes either `_internal` or a Context-bound function.
 That contract is the bridge deletion target, not a public runtime model.
 
 The replacement is the existing AST-v2 value seam. A canonical `Fn` is called
-with `(List, FnCtx)` by `buildEvaluator`/`value-dispatch`; `ParamSpec` kinds,
+with `(List, FnCtx)` by `buildEvaluator`/`value-dispatch`; `ParamSpec.type`,
 defaults, rest, and explicit lazy thunks provide typed binding, while direct
 Sass/Jess embeddings may use named records. `FnCtx` carries only resolved modes,
 the value-to-string hook, and optional IO; it does not expose `Context`, legacy
@@ -481,7 +481,7 @@ plugin/import dispatcher rather than a function-body ABI.
 The deletion gate is therefore concrete: migrate every production consumer of
 the old contract (currently the Less `rgb`/`hsl`/`rgba`/`hsla`/`each` paths and
 the Sass compatibility/map functions), then migrate their direct tests from
-`RuntimeFunction`/`callWithContext` to typed `ValueObj` and registry calls.
+`RuntimeFunction`/`callWithContext` to typed `Value`/`ValueGroup` and registry calls.
 Only after the consumer/test search is empty may `tree/call.ts`,
 `define-function.ts`, and their old conversion exports be removed; no adapter,
 alias, or tree-to-AST bridge is allowed as an intermediate state.
@@ -489,13 +489,11 @@ alias, or tree-to-AST bridge is allowed as an intermediate state.
 ### Alpha packaging blocker: generated legacy declarations
 
 The alpha tarball audit found a packaging surface issue, not a reason to
-delete declaration files blindly. `@jesscss/core` exposes only `.`, `./value`,
-and `./ast` in its package `exports`, but `src/index.ts` still does
-`export * from './tree/index.js'`; therefore the legacy tree classes and the
-explicit tree utility exports are genuinely public through the root entry.
-`tsconfig.build.json` separately emits declarations and maps for every
-`src/**/*.ts`, so unexported `lib/tree/**` helpers are generated artifacts but
-must remain until no reachable declaration refers to them.
+delete declaration files blindly. `@jesscss/core` now exposes only the curated
+root API plus `./value` and `./ast`; `src/index.ts` intentionally does not export
+the old tree classes. `tsconfig.build.json` separately emits declarations and
+maps for every `src/**/*.ts`, so unexported `lib/tree/**` helpers are generated
+artifacts but must remain until no reachable declaration refers to them.
 
 `@jesscss/fns` was broader and inconsistent: its `./*` export map claimed every
 generated `lib/*.d.ts/js/cjs` subpath while `tsdown.config.ts` emitted only the
@@ -518,14 +516,15 @@ entries only for `index` and `builtins`, and the former
 state that those folders are source ownership boundaries, not published
 entrypoints. `plugin-js`'s filesystem trust rule remains a separate sandbox
 boundary for resolved built-in files and is not used to justify package
-subpaths. The core root tree barrel is intentionally not cut in this batch:
-`Context`, the legacy fns implementation, and compat consumers still import
-its classes, so the prerequisite migration remains the next required slice.
+subpaths. The core root tree barrel has since been cut from the public root
+surface. The remaining deletion lane is internal: `Context`, the legacy fns
+implementation, and compat consumers still import tree classes directly, so
+those migrations remain the next required slice.
 
 The minimal cut sequence is:
 
 **A.** Finish the remaining legacy `@jesscss/fns` Less/Sass function and test
-migrations to `@jesscss/core/value`; rewrite or intentionally retire the
+migrations to root `@jesscss/core` semantic values; rewrite or intentionally retire the
 production `packages/jess-plugin-js/src/bridge.ts`, which still transports
 legacy `Any`/`Color`/`Dimension`/`List`/`Rules` values.
 
@@ -536,9 +535,10 @@ after the consumer search is empty.
 `Node`/`Rules` state, spine/visitor fields, and tree-only utilities while
 retaining the AST-v2 `DocumentContext`, plugin host, and import dispatch.
 
-**D.** Remove `export * from './tree/index.js'` and explicit legacy utility
-exports from `core/src/index.ts`; expose only the stable Context/plugin/error,
-`ast`, and `value` seams.
+**D.** Keep the already-narrowed `core/src/index.ts` root surface narrow; remove
+any remaining explicit legacy utility exports only after the consumer search is
+empty. The public root should expose only stable Context/plugin/error, canonical
+AST execution, and semantic value/fn seams.
 
 **E.** Remove the now-unreachable tree runtime and legacy tests/visitor ABI.
 
@@ -592,7 +592,7 @@ That ABI is observable and tested by
 `packages/jess-plugin-js/test/plugin-js-security.test.ts` (the
 `less.tree`/`less.dimension`/`less.value` `instanceof` and legacy `@plugin`
 cases), by `packages/jess/test/less/wall8-repro.test.ts`, and by the
-`plugin-js` README's typed-bridge guarantee. AST-v2 `@jesscss/core/value` is
+`plugin-js` README's typed-bridge guarantee. The AST-v2 semantic value API is
 not a 1:1 replacement: it has structural `Dimension`/`Color`/`Quoted`/
 `Keyword`/`List`/`Block`/`Bool`/`Nil`, but no Less-compatible
 `Anonymous`-vs-`Keyword` class identity,

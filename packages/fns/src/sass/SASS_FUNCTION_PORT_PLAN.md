@@ -1,12 +1,14 @@
 # Sass Function Port Plan
 
-This document outlines the plan for systematically porting dart-sass functions to Jess, one at a time, using the standard `defineFunction` pattern.
+This document outlines the plan for systematically porting dart-sass functions to
+Jess, one at a time, using the canonical value-domain `defineFunction` pattern.
 
 ## Approach
 
-1. **No conversion helpers** - Use standard `defineFunction` with explicit `ParamDefinition[]` arrays
+1. **No legacy conversion helpers** - Use `defineFunction` with explicit
+   `ParamSpec[]` metadata and semantic `Value` objects from `@jesscss/core`.
 2. **Direct implementation** - Rewrite functions based on dart-sass source code
-3. **Test parity** - Port dart-sass tests to ensure same input → same output (serialized)
+3. **Test parity** - Port dart-sass tests to ensure same input -> same output (serialized)
 4. **Module structure** - Maintain Sass module organization (global vs module-specific)
 
 ## Standard Pattern
@@ -14,29 +16,21 @@ This document outlines the plan for systematically porting dart-sass functions t
 All functions should follow this pattern:
 
 ```typescript
-import { defineFunction, Color, Dimension, ... } from '@jesscss/core';
-import { percentOf, toNumber, ... } from '@jesscss/core';
+import { defineFunction, makeDimension, type Color, type Dimension, type Fn } from '@jesscss/core';
 
-const functionName = defineFunction(
-  'function-name', // Use dash-case for Sass function names
-  function(param1: Type1, param2?: Type2) {
-    // Implementation based on dart-sass source
-    // ...
-    return result;
-  },
+const functionName: Fn = defineFunction(
+  'function-name',
   {
     params: [
-      {
-        name: 'param1',
-        type: Type1
-      },
-      {
-        name: 'param2',
-        type: Type2,
-        optional: true,
-        convert: [percentOf(1), toNumber()] // if needed
-      }
-    ]
+      { name: 'color', type: 'Color' },
+      { name: 'amount', type: 'Dimension', optional: true }
+    ] as const,
+    body(color: Color, amount: Dimension | undefined) {
+      // Implementation based on dart-sass source.
+      // Functions receive semantic values: Color has rgb/alpha/format metadata,
+      // Dimension has number/unit, and constructors produce canonical values.
+      return makeDimension(color.alpha * (amount?.number ?? 1));
+    }
   }
 );
 
@@ -189,15 +183,14 @@ Example test structure:
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { Color, Dimension, Context, callWithContext } from '@jesscss/core';
+import { makeColorHsl, serializeValue, HSL } from '@jesscss/core';
 import hue from '../src/sass/hue.js';
 
 describe('hue()', () => {
-  it('should extract hue from HSL color', async () => {
-    const color = new Color({ format: ColorFormat.HSL, hsl: [180, 0.5, 0.5] });
-    const context = new Context();
-    const result = await callWithContext(context, hue, color);
-    expect(result.toString()).toBe('180deg');
+  it('should extract hue from HSL color', () => {
+    const color = makeColorHsl([180, 0.5, 0.5], 1, HSL);
+    const result = hue(color);
+    expect(serializeValue(result)).toBe('180deg');
   });
   
   // Port more test cases from dart-sass

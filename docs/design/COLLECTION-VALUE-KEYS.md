@@ -102,7 +102,7 @@ Two further facts made this its own landing rather than a rider:
 1. **The lookup machinery is byte-keyed strings end to end.** `DeclMap` is
    `Map<string, DeclEntry>`. Value-equality keys are not a parser change at all at
    that layer — they are a value-domain change, which is exactly what the
-   `core-value-domain-map` branch is building (`ValueObj` gains an ordered-entry
+   `core-value-domain-map` branch is building (`Value`/`ValueGroup` gain an ordered-entry
    `Collection` whose `key` is deliberately wider than the parser can produce).
    Landing a second, parser-side redefinition of the same node concurrently would
    collide.
@@ -129,7 +129,7 @@ and the carrier flags move onto the entry.
 
 ## Landed order
 
-1. **Value domain first** — `@jesscss/core/value` owns ordered
+1. **Value domain first** — the `@jesscss/core` semantic value API owns ordered
    `CollectionEntry` projection and value-equality keying.
 2. **`CollectionEntry` in the AST** — `Collection.entries` is retyped, consumers
    have Collection branches, and `valueBlockBody` is honest: it only accepts
