@@ -3409,7 +3409,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * another typed form when Jess gives that form semantics.
    */
   const PlainValueAtom = node<ValueNode>(
-    'PlainValueAtom',
+    'ValueAtom',
     choice(
       g.Url,
       g.PlainCall,
@@ -3422,7 +3422,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     children => requireValueNode(children[0])
   );
   const PlainValue = node<ValueSlot>(
-    'PlainValue',
+    'Value',
     noTrivia(sequence(
       g.PlainValueAtom,
       many(sequence(
@@ -3436,7 +3436,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     }
   );
   const PlainCallArgument = node<ValueSlot>(
-    'PlainCallArgument',
+    'CallArgument',
     sequence(
       literal(','),
       optional(regex(/[ \t\n\r\f]+/)),
@@ -3461,7 +3461,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * in PlainValueAtom and takes it first.
    */
   const PlainCall = node<FunctionCall>(
-    'PlainCall',
+    'Call',
     sequence(
       noTrivia(sequence(
         g.Identifier,

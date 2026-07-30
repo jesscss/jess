@@ -106,6 +106,19 @@ describe('@jesscss/jess-parser/cst', () => {
     expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
   });
 
+  it('keeps constrained CSS-header value helpers private to the Jess grammar', () => {
+    const result = parseJessCst('@property --theme { syntax: fn(1px, "x"); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('ValueAtom')).toBeGreaterThan(0);
+    expect(grammarTypes.get('Value')).toBeGreaterThan(0);
+    expect(grammarTypes.get('CallArgument')).toBeGreaterThan(0);
+    expect(grammarTypes.get('Call')).toBeGreaterThan(0);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Plain'))).toEqual([]);
+  });
+
   /*
    * The editor route must recognize `${…}` too, or valid source that compiles
    * would light up red in the language service. Selector interpolation and value

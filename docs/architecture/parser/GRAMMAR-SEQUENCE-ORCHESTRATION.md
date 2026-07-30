@@ -432,6 +432,11 @@ highest-priority non-Parseman grammar surfaces:
   larger follow-up is still to make that shared frame CSS-owned, with only real
   Jess holes parameterized (`$`-reserved URL handling and interpolation policy).
   Do not grow this back into a Jess-local CSS import parser.
+- Jess constrained CSS headers deliberately use private `PlainValue*` helpers
+  because they exclude Jess execution forms while reusing the same value
+  semantics. Their public CST labels are `ValueAtom`, `Value`, `CallArgument`,
+  and `Call`, never the private helper names. This is the narrow-helper rule:
+  the restriction earns a private grammar name, not a second public vocabulary.
 - Custom-property values in Less, SCSS, and Jess repeat the same CSS
   declaration-value balanced-group frame. Replace that with a shared skeleton
   parameterized by dialect interpolation/reference leaves; comments remain
@@ -4744,6 +4749,24 @@ parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
 fallbacks; and `pnpm run verify:compose-integrity` passed. The previous
 `ScssMixinCallArg` gating warning now reports under semantic
 `MixinCallArgument`.
+
+SCSS mixin frame CST alignment, 2026-07-30: `MixinCallRule` and
+`MixinDefinitionRule` remain private grammar-context names because their body
+call sites make that distinction useful, but both produce the canonical core
+facts. Their public CST labels are therefore `MixinCall` and
+`MixinDefinition`, matching Less and Jess. This is a per-const naming-only
+conversion: the existing `@include`/`@mixin` word-boundary recognition and the
+body-family `choice(...)` ordering are unchanged; neither production is a
+shared-opener dispatch candidate.
+
+Verification for that alignment: parser-shared then SCSS builds; SCSS public
+CST, macro-compiled AST, compose-integrity, and mixin-focused AST tests; root
+`check:macro` (zero interpreter fallbacks); and root compose integrity passed.
+The full SCSS AST grammar suite has three separate existing stack overflows in
+custom-property/interpolation and `@supports` fixtures. The same three failures
+reproduced after temporarily restoring the prior CST labels, so they do not
+gate this naming-only change; repair the recursive SCSS grammar route as its
+own semantic slice.
 
 CSS at-rule prelude scanner-skip cleanup, 2026-07-29: CSS `AtRulePreludeGroup`
 now relies on the grammar-level ambient `scanSkip` / trivia policy for balanced
