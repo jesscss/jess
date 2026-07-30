@@ -50,6 +50,7 @@ describe('stable rule set', () => {
       LINT_CODES.unmatchableAnbSelectors,
       LINT_CODES.unknownTypeSelectors,
       LINT_CODES.incompatibleMathFunctionUnits,
+      LINT_CODES.invalidColorFunctionChannels,
       LINT_CODES.unsupportedSassForm
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
@@ -82,9 +83,10 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unmatchableAnbSelectors,
       LINT_RULE_NAMES.unknownTypeSelectors,
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
+      LINT_RULE_NAMES.invalidColorFunctionChannels,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(19);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(20);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
   });
@@ -124,6 +126,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.reportSyntax).toBe(false);
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateSelectors]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unsupportedSassForm]).toBe('off');
   });
 });
@@ -642,6 +645,28 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.incompatibleMathFunctionUnits, 'error']
+    ]);
+  });
+
+  it('applies policy to invalid color function channel diagnostics', async () => {
+    const result = await lintText(
+      {
+        source: '.a { color: hsl(120 50 50%); }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_CODES.invalidColorFunctionChannels, 'error']
     ]);
   });
 });

@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 19;
+export const STABLE_LINT_RULE_SET_VERSION = 20;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -37,6 +37,7 @@ export const LINT_RULE_NAMES = {
   unmatchableAnbSelectors: 'selector-anb-no-unmatchable',
   unknownTypeSelectors: 'selector-type-no-unknown',
   incompatibleMathFunctionUnits: 'jess/no-incompatible-math-function-units',
+  invalidColorFunctionChannels: 'jess/no-invalid-color-function-channels',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
 
@@ -83,6 +84,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unmatchableAnbSelectors]: LINT_CODES.unmatchableAnbSelectors,
   [LINT_RULE_NAMES.unknownTypeSelectors]: LINT_CODES.unknownTypeSelectors,
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: LINT_CODES.incompatibleMathFunctionUnits,
+  [LINT_RULE_NAMES.invalidColorFunctionChannels]: LINT_CODES.invalidColorFunctionChannels,
   [LINT_RULE_NAMES.unsupportedSassForm]: LINT_CODES.unsupportedSassForm
 };
 
@@ -116,6 +118,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.unmatchableAnbSelectors]: LINT_RULE_NAMES.unmatchableAnbSelectors,
   [LINT_CODES.unknownTypeSelectors]: LINT_RULE_NAMES.unknownTypeSelectors,
   [LINT_CODES.incompatibleMathFunctionUnits]: LINT_RULE_NAMES.incompatibleMathFunctionUnits,
+  [LINT_CODES.invalidColorFunctionChannels]: LINT_RULE_NAMES.invalidColorFunctionChannels,
   [LINT_CODES.unsupportedSassForm]: LINT_RULE_NAMES.unsupportedSassForm
 };
 
@@ -149,6 +152,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unmatchableAnbSelectors]: 'warn',
   [LINT_RULE_NAMES.unknownTypeSelectors]: 'warn',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'warn',
+  [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
 };
 
@@ -185,6 +189,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
 const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateSelectors]: 'off',
   [LINT_RULE_NAMES.incompatibleMathFunctionUnits]: 'off',
+  [LINT_RULE_NAMES.invalidColorFunctionChannels]: 'off',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'off'
 };
 
@@ -477,6 +482,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'warn',
     comparison: 'jess-only',
     notes: 'Flags definite CSS min()/max()/clamp() numeric-kind mismatches while leaving dynamic, percentage, and compound arguments unknown.'
+  },
+  {
+    code: LINT_CODES.invalidColorFunctionChannels,
+    ruleName: LINT_RULE_NAMES.invalidColorFunctionChannels,
+    title: 'Invalid color function channels',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags definite invalid rgb()/rgba()/hsl()/hsla() channel arity and channel types while leaving dynamic and nested values unknown.'
   },
   {
     code: LINT_CODES.unsupportedSassForm,

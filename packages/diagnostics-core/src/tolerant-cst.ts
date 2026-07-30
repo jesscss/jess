@@ -43,6 +43,7 @@ export const LINT_CODES = {
   unmatchableAnbSelectors: 'lint/selector-anb-no-unmatchable',
   duplicateSelectors: 'lint/no-duplicate-selectors',
   incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
+  invalidColorFunctionChannels: 'lint/invalid-color-function-channels',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -68,6 +69,7 @@ const TIME_UNITS = new Set(['s', 'ms']);
 const FREQUENCY_UNITS = new Set(['hz', 'khz']);
 const RESOLUTION_UNITS = new Set(['dpi', 'dpcm', 'dppx', 'x']);
 const MATH_FUNCTION_NAMES = new Set(['min', 'max', 'clamp']);
+const COLOR_FUNCTION_NAMES = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
 const PAGE_DESCRIPTOR_PROPERTIES = new Set([
   'bleed', 'marks', 'page-orientation', 'size',
   'direction', 'background-color', 'background-image', 'background-repeat',
@@ -360,6 +362,19 @@ type MathUnitMismatch = {
   readonly functionName: string;
   readonly expected: MathArgumentFact;
   readonly actual: MathArgumentFact;
+};
+
+type ColorChannelKind = 'number' | 'percentage' | 'angle' | 'keyword' | 'dimension' | 'unknown';
+
+type ColorChannelFact = {
+  readonly kind: ColorChannelKind;
+  readonly text: string;
+  readonly span: DiagnosticSpan;
+};
+
+type ColorFunctionChannelProblem = {
+  readonly message: string;
+  readonly span: DiagnosticSpan;
 };
 
 type SelectorSeen = {
@@ -1419,6 +1434,139 @@ function incompatibleMathFunctionUnits(source: string, node: CssCstNode, functio
   return null;
 }
 
+function colorChannelFact(source: string, node: CssCstNode): ColorChannelFact {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  const trimmed = trimOffsets(source.slice(start, end), start);
+  const text = source.slice(trimmed.start, trimmed.end);
+  const span = spanAtOrContaining(node, trimmed.start, trimmed.end);
+  if (trimmed.start >= trimmed.end || hasDynamicSyntax(text) || firstDescendantNodeMatching(node, FUNCTION_TYPES) !== undefined) {
+    return { kind: 'unknown', text, span };
+  }
+  const lower = text.toLowerCase();
+  if (lower === 'none' || isCssIdentifier(text)) {
+    return { kind: 'keyword', text, span };
+  }
+  if (cssNumberValue(text) !== null) {
+    return { kind: 'number', text, span };
+  }
+  if (cssPercentageValue(text) !== null) {
+    return { kind: 'percentage', text, span };
+  }
+  const unit = cssDimensionUnit(text);
+  if (unit !== null) {
+    return {
+      kind: numericKindOfUnit(unit) === 'angle' ? 'angle' : 'dimension',
+      text,
+      span
+    };
+  }
+  return { kind: 'unknown', text, span };
+}
+
+function colorFunctionChannels(source: string, node: CssCstNode): { readonly channels: readonly ColorChannelFact[]; readonly alphaIndex: number | null } | null {
+  const argumentSequences: CssCstNode[] = [];
+  for (const child of cstChildrenOf(node)) {
+    if (isCstNode(child) && child.grammarType === 'ValueSequence') {
+      argumentSequences.push(child);
+    }
+  }
+  if (argumentSequences.length === 0) {
+    return { channels: [], alphaIndex: null };
+  }
+  if (argumentSequences.length > 1) {
+    return {
+      channels: argumentSequences.map(sequence => colorChannelFact(source, sequence)),
+      alphaIndex: argumentSequences.length === 4 ? 3 : null
+    };
+  }
+
+  const channels: ColorChannelFact[] = [];
+  let alphaIndex: number | null = null;
+  for (const child of cstChildrenOf(argumentSequences[0]!)) {
+    if (!isCstNode(child) || child.grammarType !== 'Value') {
+      continue;
+    }
+    const start = absoluteStart(child);
+    const end = absoluteEnd(child);
+    const text = source.slice(start, end).trim();
+    if (text === '/') {
+      alphaIndex = channels.length;
+      continue;
+    }
+    channels.push(colorChannelFact(source, child));
+  }
+  return { channels, alphaIndex };
+}
+
+function isRgbChannel(channel: ColorChannelFact): boolean {
+  return channel.text.toLowerCase() === 'none'
+    || channel.kind === 'number'
+    || channel.kind === 'percentage';
+}
+
+function isHueChannel(channel: ColorChannelFact): boolean {
+  return channel.text.toLowerCase() === 'none'
+    || channel.kind === 'number'
+    || channel.kind === 'angle';
+}
+
+function isPercentageColorChannel(channel: ColorChannelFact): boolean {
+  return channel.text.toLowerCase() === 'none' || channel.kind === 'percentage';
+}
+
+function isAlphaChannel(channel: ColorChannelFact): boolean {
+  return channel.text.toLowerCase() === 'none'
+    || channel.kind === 'number'
+    || channel.kind === 'percentage';
+}
+
+function invalidColorFunctionChannels(source: string, node: CssCstNode, functionName: string): ColorFunctionChannelProblem | null {
+  const lowerName = functionName.toLowerCase();
+  if (!COLOR_FUNCTION_NAMES.has(lowerName)) {
+    return null;
+  }
+  const argsText = source.slice(absoluteStart(node), absoluteEnd(node));
+  if (hasDynamicSyntax(argsText)) {
+    return null;
+  }
+  const parsed = colorFunctionChannels(source, node);
+  if (parsed === null || parsed.channels.some(channel => channel.kind === 'unknown')) {
+    return null;
+  }
+  const expectedAlphaIndex = parsed.channels.length === 4 ? 3 : null;
+  if (parsed.channels.length !== 3 && parsed.channels.length !== 4) {
+    return {
+      message: `Invalid ${functionName}() color channel count`,
+      span: spanAtOrContaining(node, absoluteStart(node), absoluteStart(node) + functionName.length)
+    };
+  }
+  if (parsed.alphaIndex !== null && parsed.alphaIndex !== expectedAlphaIndex) {
+    return {
+      message: `Invalid ${functionName}() alpha channel placement`,
+      span: spanAtOrContaining(node, absoluteStart(node), absoluteStart(node) + functionName.length)
+    };
+  }
+  const isRgb = lowerName === 'rgb' || lowerName === 'rgba';
+  for (let i = 0; i < parsed.channels.length; i++) {
+    const channel = parsed.channels[i]!;
+    const valid = i === 3
+      ? isAlphaChannel(channel)
+      : isRgb
+        ? isRgbChannel(channel)
+        : i === 0
+          ? isHueChannel(channel)
+          : isPercentageColorChannel(channel);
+    if (!valid) {
+      return {
+        message: `Invalid ${functionName}() color channel "${channel.text}"`,
+        span: channel.span
+      };
+    }
+  }
+  return null;
+}
+
 function isResolutionMediaFeatureDimension(source: string, dimensionStart: number): boolean {
   const open = source.lastIndexOf('(', dimensionStart);
   if (open < 0) {
@@ -1459,6 +1607,22 @@ function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNod
       return child;
     }
     const nested = firstDescendantNodeOf(child, grammarType);
+    if (nested !== undefined) {
+      return nested;
+    }
+  }
+  return undefined;
+}
+
+function firstDescendantNodeMatching(node: CssCstNode, grammarTypes: ReadonlySet<string>): CssCstNode | undefined {
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (grammarTypes.has(child.grammarType)) {
+      return child;
+    }
+    const nested = firstDescendantNodeMatching(child, grammarTypes);
     if (nested !== undefined) {
       return nested;
     }
@@ -2553,6 +2717,15 @@ export function cstLintDiagnostics(
             mismatch.actual.span
           );
         }
+      }
+      const colorProblem = invalidColorFunctionChannels(source, node, functionName);
+      if (colorProblem !== null) {
+        push(
+          LINT_CODES.invalidColorFunctionChannels,
+          'warning',
+          colorProblem.message,
+          colorProblem.span
+        );
       }
     }
 

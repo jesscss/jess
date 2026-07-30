@@ -583,6 +583,35 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownFunctions)).toBe(false);
   });
 
+  it('reports definite invalid CSS color function channels', () => {
+    const source = '.a { color: rgb(1px 0 0); background: hsl(120 50 50%); border-color: rgb(0 0); outline-color: rgb(var(--brand)); }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const colorChannels = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.invalidColorFunctionChannels);
+
+    expect(colorChannels.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Invalid rgb() color channel "1px"', source.indexOf('1px'), source.indexOf('1px') + '1px'.length],
+      ['Invalid hsl() color channel "50"', source.indexOf('50 50%'), source.indexOf('50 50%') + '50'.length],
+      ['Invalid rgb() color channel count', source.indexOf('rgb(0 0)'), source.indexOf('rgb(0 0)') + 'rgb('.length]
+    ]);
+  });
+
+  it('does not report invalid color function channels in dialect files before value facts exist', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '.a { color: rgb(1px 0 0); }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '.a { color: rgb(1px 0 0); }',
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidColorFunctionChannels)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidColorFunctionChannels)).toBe(false);
+  });
+
   it('reports unknown CSS media feature names', () => {
     const source = '@media (min-width: 1px) and (future-feature: 3) and (600px < project-range < 900px) and (-webkit-device-pixel-ratio: 2) { .a { color: red; } }\n@container (future-feature: 3) { .a { color: red; } }';
     const result = collectTolerantDiagnostics({
