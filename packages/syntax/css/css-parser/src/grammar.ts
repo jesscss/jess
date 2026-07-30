@@ -55,23 +55,23 @@ import {
 import type {
   AtRuleBlock,
   OpaqueAtRuleBlock,
-  CompoundSelector as AstCompoundSelector,
-  Color as AstColor,
-  Declaration as AstDeclaration,
-  Dimension as AstDimension,
+  CompoundSelector,
+  Color,
+  Declaration,
+  Dimension,
   Interpolation,
   Keyword,
-  Quoted as AstQuoted,
-  Ruleset as AstRuleset,
-  SelectorBranch as AstSelectorBranch,
-  SelectorList as AstSelectorList,
-  SelectorTerm as AstSelectorTerm,
+  Quoted,
+  Ruleset,
+  SelectorBranch,
+  SelectorList,
+  SelectorTerm,
   SimpleSelector,
   SimpleToken,
   Statement,
   ValueNode,
   ValueSlot,
-  Url as AstUrl
+  Url
 } from '@jesscss/core/ast';
 
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -376,39 +376,39 @@ function isSimpleToken(value: unknown): value is SimpleToken {
  */
 const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 
-function isCompound(value: unknown): value is AstCompoundSelector {
+function isCompound(value: unknown): value is CompoundSelector {
   return isNodeType(
     value,
     'CompoundSelector'
   );
 }
 
-function isSelectorTerm(value: unknown): value is AstSelectorTerm {
+function isSelectorTerm(value: unknown): value is SelectorTerm {
   return isSimpleToken(value) || isCompound(value);
 }
 
-const selectorTermFromTokens = (tokens: readonly SimpleToken[]): AstSelectorTerm =>
+const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
   selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
-function isComplex(value: unknown): value is Extract<AstSelectorBranch, { readonly type: 'ComplexSelector' }> {
+function isComplex(value: unknown): value is Extract<SelectorBranch, { readonly type: 'ComplexSelector' }> {
   return isNodeType(
     value,
     'ComplexSelector'
   );
 }
 
-function isRelative(value: unknown): value is Extract<AstSelectorBranch, { readonly type: 'RelativeSelector' }> {
+function isRelative(value: unknown): value is Extract<SelectorBranch, { readonly type: 'RelativeSelector' }> {
   return isNodeType(
     value,
     'RelativeSelector'
   );
 }
 
-function isSelectorBranch(value: unknown): value is AstSelectorBranch {
+function isSelectorBranch(value: unknown): value is SelectorBranch {
   return isSelectorTerm(value) || isComplex(value) || isRelative(value);
 }
 
-function isSelectorList(value: unknown): value is AstSelectorList {
+function isSelectorList(value: unknown): value is SelectorList {
   return isNodeType(
     value,
     'SelectorList'
@@ -429,14 +429,14 @@ function isInterpolation(value: unknown): value is Interpolation {
   );
 }
 
-function isDeclaration(value: unknown): value is AstDeclaration {
+function isDeclaration(value: unknown): value is Declaration {
   return isNodeType(
     value,
     'Declaration'
   );
 }
 
-function isRuleset(value: unknown): value is AstRuleset {
+function isRuleset(value: unknown): value is Ruleset {
   return isNodeType(
     value,
     'Ruleset'
@@ -528,7 +528,7 @@ function chainedQueryComparison(left: ValueNode, children: readonly unknown[]): 
   return result;
 }
 
-function isImportTarget(value: unknown): value is AstQuoted | { readonly type: 'Url'; readonly value: ValueNode } {
+function isImportTarget(value: unknown): value is Quoted | { readonly type: 'Url'; readonly value: ValueNode } {
   return isNodeType(
     value,
     'Quoted'
@@ -541,7 +541,7 @@ function isImportTarget(value: unknown): value is AstQuoted | { readonly type: '
 /** CSS `@import` is an ordinary statement at-rule. Its dedicated grammar only
  * validates the required target and retains its authored prelude; it does not
  * make import loading or resolution part of the AST. */
-function importPrelude(target: AstQuoted | { readonly type: 'Url'; readonly value: ValueNode }, tail: ValueNode | null): ValueNode {
+function importPrelude(target: Quoted | { readonly type: 'Url'; readonly value: ValueNode }, tail: ValueNode | null): ValueNode {
   const targetText = target.type === 'Url'
     ? `url(${sourceText(target.value)})`
     : target.src;
@@ -566,7 +566,7 @@ function isDocumentStatement(value: unknown): value is Statement {
     || isOpaqueAtRuleBlock(value);
 }
 
-const selectorBranches = (children: readonly unknown[]): AstSelectorBranch[] =>
+const selectorBranches = (children: readonly unknown[]): SelectorBranch[] =>
   children.filter(isSelectorBranch);
 
 function selectorArgumentText(value: unknown): string {
@@ -576,7 +576,7 @@ function selectorArgumentText(value: unknown): string {
   return tokenText(value);
 }
 
-type CssComplexSegment = { combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm };
+type CssComplexSegment = { combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: SelectorTerm };
 
 function cssCombinator(child: unknown): NonNullable<CssComplexSegment['combinator']> {
   const token = tokenText(child);
@@ -595,7 +595,7 @@ function cssRelativeCombinator(child: unknown): '>' | '+' | '~' {
 }
 
 function complexSegments(children: readonly unknown[]): [CssComplexSegment, ...CssComplexSegment[]] {
-  const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }> = [];
+  const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: SelectorTerm }> = [];
   let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   for (const child of children) {
     if (isSelectorTerm(child)) {
@@ -608,7 +608,7 @@ function complexSegments(children: readonly unknown[]): [CssComplexSegment, ...C
   return [segments[0]!, ...segments.slice(1)];
 }
 
-function branchSegments(branch: AstSelectorBranch): [CssComplexSegment, ...CssComplexSegment[]] {
+function branchSegments(branch: SelectorBranch): [CssComplexSegment, ...CssComplexSegment[]] {
   if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
     return [{ term: branch }];
   }
@@ -720,7 +720,7 @@ function blockStatements(children: readonly unknown[]): Statement[] {
   return children.filter(isDocumentStatement);
 }
 
-function keyframeSelectorList(children: readonly unknown[]): AstSelectorList {
+function keyframeSelectorList(children: readonly unknown[]): SelectorList {
   const selectors = children.filter(isSimple);
   return selist(...selectors);
 }
@@ -1526,7 +1526,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     g.CustomPropertyName,
     children => keyword(tokenText(children[0]))
   );
-  const Color = node<AstColor>(
+  const Color = node<Color>(
     'Color',
     hexColor,
     children => color(tokenText(children[0]))
@@ -1542,7 +1542,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     g.UnicodeRangeToken,
     children => any(tokenText(children[0]))
   );
-  const Percentage = node<AstDimension>(
+  const Percentage = node<Dimension>(
     'Percentage',
     noTrivia(sequence(
       numberValue,
@@ -1557,7 +1557,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const Dimension = node<AstDimension>(
+  const Dimension = node<Dimension>(
     'Dimension',
     noTrivia(sequence(
       numberNoPercentage,
@@ -1573,7 +1573,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const Quoted = node<AstQuoted>(
+  const Quoted = node<Quoted>(
     'Quoted',
     choice(
       noTrivia(sequence(
@@ -1620,7 +1620,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     g.UrlInner,
     children => any(tokenText(children[0]!))
   );
-  const Url = node<AstUrl>(
+  const Url = node<Url>(
     'Url',
     sequence(
       urlOpen,
@@ -2135,7 +2135,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const UrlFunction = node<AstUrl>(
+  const UrlFunction = node<Url>(
     'Url',
     sequence(
       routed(),
@@ -3312,7 +3312,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
-      children.filter((value): value is AstDeclaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
+      children.filter((value): value is Declaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
     ), rawChildren)
   );
   const RoutedKeyframes = node(
@@ -3641,7 +3641,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
-      children.filter((value): value is AstDeclaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
+      children.filter((value): value is Declaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
     ), rawChildren)
   );
   const keyframeSelector = node(
