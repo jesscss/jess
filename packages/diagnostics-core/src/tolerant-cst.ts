@@ -19,6 +19,7 @@ export const LINT_CODES = {
   unknownProperties: 'lint/unknown-property',
   unknownAtRules: 'lint/unknown-at-rule',
   unknownAtRuleDescriptors: 'lint/at-rule-descriptor-no-unknown',
+  unknownAtRuleDescriptorValues: 'lint/at-rule-descriptor-value-no-unknown',
   duplicateProperties: 'lint/duplicate-property',
   shorthandPropertyOverrides: 'lint/declaration-block-no-shorthand-property-overrides',
   duplicateCustomProperties: 'lint/declaration-block-no-duplicate-custom-properties',
@@ -72,6 +73,24 @@ const FREQUENCY_UNITS = new Set(['hz', 'khz']);
 const RESOLUTION_UNITS = new Set(['dpi', 'dpcm', 'dppx', 'x']);
 const MATH_FUNCTION_NAMES = new Set(['min', 'max', 'clamp']);
 const COLOR_FUNCTION_NAMES = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+const FONT_DISPLAY_VALUES = new Set(['auto', 'block', 'swap', 'fallback', 'optional']);
+const PROPERTY_SYNTAX_TYPES = new Set([
+  'angle',
+  'color',
+  'custom-ident',
+  'image',
+  'integer',
+  'length',
+  'length-percentage',
+  'number',
+  'percentage',
+  'resolution',
+  'string',
+  'time',
+  'transform-function',
+  'transform-list',
+  'url'
+]);
 const PAGE_DESCRIPTOR_PROPERTIES = new Set([
   'bleed', 'marks', 'page-orientation', 'size',
   'direction', 'background-color', 'background-image', 'background-repeat',
@@ -376,6 +395,12 @@ type ColorChannelFact = {
 
 type ColorFunctionChannelProblem = {
   readonly message: string;
+  readonly span: DiagnosticSpan;
+};
+
+type AtRuleDescriptorValueProblem = {
+  readonly descriptorName: string;
+  readonly value: string;
   readonly span: DiagnosticSpan;
 };
 
@@ -1612,6 +1637,99 @@ function invalidColorFunctionChannels(source: string, node: CssCstNode, function
 
 function declarationValueNode(node: CssCstNode): CssCstNode | null {
   return firstChildNodeOf(node, 'ValueList') ?? null;
+}
+
+function declarationValueText(source: string, node: CssCstNode): { readonly text: string; readonly span: DiagnosticSpan } | null {
+  const value = declarationValueNode(node);
+  if (value === null) {
+    return null;
+  }
+  const start = absoluteStart(value);
+  const end = absoluteEnd(value);
+  const trimmed = trimOffsets(source.slice(start, end), start);
+  if (trimmed.start >= trimmed.end) {
+    return null;
+  }
+  return {
+    text: source.slice(trimmed.start, trimmed.end),
+    span: spanAtOrContaining(node, trimmed.start, trimmed.end)
+  };
+}
+
+function quotedStringInnerText(value: string): string | null {
+  if (value.length < 2) {
+    return null;
+  }
+  const quote = value.charCodeAt(0);
+  if ((quote !== 34 /* " */ && quote !== 39 /* ' */) || value.charCodeAt(value.length - 1) !== quote) {
+    return null;
+  }
+  return value.slice(1, -1);
+}
+
+function simplePropertySyntaxType(value: string): string | null {
+  if (value.length < 3 || value.charCodeAt(0) !== 60 /* < */ || value.charCodeAt(value.length - 1) !== 62 /* > */) {
+    return null;
+  }
+  const name = value.slice(1, -1);
+  if (name.length === 0) {
+    return '';
+  }
+  for (let i = 0; i < name.length; i++) {
+    const code = name.charCodeAt(i);
+    const isLowercase = code >= 97 && code <= 122;
+    if (!isLowercase && code !== 45 /* - */) {
+      return null;
+    }
+  }
+  return name;
+}
+
+function atRuleDescriptorValueProblem(
+  source: string,
+  node: CssCstNode,
+  atRuleName: string,
+  descriptorName: string
+): AtRuleDescriptorValueProblem | null {
+  const value = declarationValueText(source, node);
+  if (value === null || hasDynamicSyntax(value.text)) {
+    return null;
+  }
+  const valueNode = declarationValueNode(node);
+  if (valueNode !== null && firstDescendantNodeMatching(valueNode, FUNCTION_TYPES) !== undefined) {
+    return null;
+  }
+  const lowerAtRule = atRuleName.toLowerCase();
+  const lowerDescriptor = descriptorName.toLowerCase();
+  const lowerValue = value.text.toLowerCase();
+  if (lowerAtRule === 'property') {
+    if (lowerDescriptor === 'inherits' && lowerValue !== 'true' && lowerValue !== 'false') {
+      return { descriptorName, value: value.text, span: value.span };
+    }
+    if (lowerDescriptor === 'syntax') {
+      const inner = quotedStringInnerText(value.text);
+      if (inner === null) {
+        return { descriptorName, value: value.text, span: value.span };
+      }
+      const rawSyntax = inner.trim().toLowerCase();
+      if (rawSyntax.length === 0) {
+        return { descriptorName, value: value.text, span: value.span };
+      }
+      const simpleType = simplePropertySyntaxType(rawSyntax);
+      if (simpleType !== null && !PROPERTY_SYNTAX_TYPES.has(simpleType)) {
+        return { descriptorName, value: rawSyntax, span: value.span };
+      }
+    }
+  }
+  if (
+    lowerAtRule === 'font-face'
+    && lowerDescriptor === 'font-display'
+    && isCssIdentifier(value.text)
+    && !FONT_DISPLAY_VALUES.has(lowerValue)
+  ) {
+    return { descriptorName, value: value.text, span: value.span };
+  }
+  return null;
 }
 
 function typedCustomPropertySyntax(source: string, node: CssCstNode): TypedCustomPropertySyntax | null {
@@ -3044,6 +3162,17 @@ export function cstLintDiagnostics(
         const important = firstChildNodeOf(node, 'Important');
         const absoluteValueStart = start + valueStart;
         const absoluteValueEnd = important ? absoluteStart(important) : end;
+        if (language === 'css' && descriptor?.status === true) {
+          const descriptorValueProblem = atRuleDescriptorValueProblem(source, node, descriptor.atRuleName, lowerName);
+          if (descriptorValueProblem !== null) {
+            push(
+              LINT_CODES.unknownAtRuleDescriptorValues,
+              'warning',
+              `Unknown value "${descriptorValueProblem.value}" for descriptor "${descriptorValueProblem.descriptorName}" in @${descriptor.atRuleName}`,
+              descriptorValueProblem.span
+            );
+          }
+        }
         if (language === 'css' && (lowerName === 'animation' || lowerName === 'animation-name')) {
           animationReferences.push(...animationNameReferences(source, node, name, absoluteValueStart, absoluteValueEnd));
         }

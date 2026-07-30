@@ -95,6 +95,7 @@ export default {
     reportSyntax: true,
     rules: {
       'property-no-unknown': 'error',
+      'at-rule-descriptor-value-no-unknown': 'warn',
       'length-zero-no-unit': 'warn',
       'jess/no-invalid-typed-custom-property-value': 'warn',
       'jess/unsupported-sass-form': 'warn'
@@ -117,6 +118,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `property-no-unknown` | `lint/unknown-property` | near `property-no-unknown` |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | near `at-rule-no-unknown` |
 | `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | near `at-rule-descriptor-no-unknown` |
+| `at-rule-descriptor-value-no-unknown` | `lint/at-rule-descriptor-value-no-unknown` | near `at-rule-descriptor-value-no-unknown` |
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | `declaration-block-no-duplicate-properties` |
 | `declaration-block-no-shorthand-property-overrides` | `lint/declaration-block-no-shorthand-property-overrides` | near `declaration-block-no-shorthand-property-overrides` |
 | `declaration-block-no-duplicate-custom-properties` | `lint/declaration-block-no-duplicate-custom-properties` | `declaration-block-no-duplicate-custom-properties` |
