@@ -93,6 +93,7 @@ export default {
       'jess/no-unused-variable': 'off',
       'jess/no-duplicate-module-load': 'warn',
       'jess/no-unbounded-extend': 'warn',
+      'jess/no-dead-extend': 'warn',
       'jess/unsupported-sass-form': 'warn'
     }
   }
@@ -122,6 +123,7 @@ Jess's stable lint set is deliberately small:
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Opt-in same-file unused Less, SCSS, and Jess variables |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Repeated same-file static SCSS/Jess module-load directives |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Static Less/SCSS/Jess extend targets with no bounded selector anchor |
+| `jess/no-dead-extend` | `lint/no-dead-extend` | Exact static extend targets with no same-file selector match |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | SCSS forms Jess recognizes but does not support yet |
 
 The lint package owns policy and reporting. Detection lives in the shared Jess

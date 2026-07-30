@@ -838,6 +838,42 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports exact static extend targets that do not match same-file selectors', () => {
+    const less = collectTolerantDiagnostics({
+      source: '.hit {}\n.a:extend(.hit) {}\n.b:extend(.missing) {}\n.c:extend(.maybe all) {}',
+      language: 'less'
+    });
+    const scss = collectTolerantDiagnostics({
+      source: '.hit {}\n.a { @extend .hit; }\n.b { @extend .missing; }',
+      language: 'scss'
+    });
+    const jess = collectTolerantDiagnostics({
+      source: '.hit {}\n.a { $extend .hit !exact; }\n.b { $extend .missing !exact; }\n.c { $extend .maybe; }',
+      language: 'jess'
+    });
+    const imported = collectTolerantDiagnostics({
+      source: '@use "external";\n.a { @extend .from-import; }',
+      language: 'scss'
+    });
+
+    expect(less.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.deadExtends)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Extend target ".missing" does not match any same-file selector', 3, 11]
+    ]);
+    expect(scss.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.deadExtends)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Extend target ".missing" does not match any same-file selector', 3, 14]
+    ]);
+    expect(jess.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.deadExtends)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['Extend target ".missing" does not match any same-file selector', 3, 14]
+    ]);
+    expect(imported.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.deadExtends)).toBe(false);
+  });
+
   it('reports unknown units while accepting modern CSS units', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { width: 1pixels; height: 1e3px; min-width: 1e3foo; gap: 1cqi; flex: 1fr; rotate: 1turn; transition-duration: 1ms; }',

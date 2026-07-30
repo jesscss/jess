@@ -57,6 +57,7 @@ export const LINT_CODES = {
   invalidTypedCustomPropertyValue: 'lint/invalid-typed-custom-property-value',
   unusedVariables: 'lint/no-unused-variable',
   unboundedExtends: 'lint/no-unbounded-extend',
+  deadExtends: 'lint/no-dead-extend',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -267,6 +268,7 @@ const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule']);
 const MODULE_LOAD_TYPES = new Set(['UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport']);
 const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'PlainQuoted', 'ImportTarget', 'Url']);
 const EXTEND_TARGET_TYPES = new Set(['ExtendTargetComplex', 'Selector', 'PseudoSelectorComplex']);
+const EXTERNAL_SELECTOR_SOURCE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
@@ -282,6 +284,8 @@ const NTH_ARGUMENT_TYPES = new Set(['PseudoArgument', 'OfTypePseudoArgument']);
 const BASIC_SELECTOR_TYPES = new Set(['BasicSelector']);
 const SELECTOR_LIST_TYPES = new Set(['SelectorList', 'TopLevelSelectorList']);
 const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector', 'RelativeSelector']);
+const RULE_SELECTOR_TYPES = new Set(['SelectorList', 'TopLevelSelectorList', 'SelectorListWithExtends', 'Selector']);
+const RULE_SELECTOR_BRANCH_TYPES = new Set([...SELECTOR_BRANCH_TYPES, 'SelectorBranch', 'Complex']);
 const LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS = new Set(['before', 'after', 'first-line', 'first-letter']);
 const IGNORED_TYPE_SELECTOR_PSEUDO_CLASSES = new Set([
   'active-view-transition-type',
@@ -515,6 +519,12 @@ type CustomPropertyReference = {
 
 type VariableDeclarationFact = {
   readonly name: string;
+  readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+type ExactExtendTargetFact = {
+  readonly key: string;
   readonly display: string;
   readonly span: DiagnosticSpan;
 };
@@ -2658,6 +2668,54 @@ function selectorListKey(branches: readonly SelectorBranchFact[]): string {
   return branches.map(branch => branch.key).sort().join('\n');
 }
 
+function collectRuleSelectorBranches(source: string, selector: CssCstNode): SelectorBranchFact[] {
+  const branches: SelectorBranchFact[] = [];
+  const visit = (node: CssCstNode) => {
+    if (RULE_SELECTOR_BRANCH_TYPES.has(node.grammarType)) {
+      const start = absoluteStart(node);
+      const end = absoluteEnd(node);
+      const key = normalizedSelectorText(source, start, end);
+      if (key.length > 0) {
+        branches.push({
+          key,
+          display: selectorDisplay(source, start, end),
+          span: node.span
+        });
+      }
+      return;
+    }
+    for (const child of cstChildrenOf(node)) {
+      if (isCstNode(child)) {
+        visit(child);
+      }
+    }
+  };
+  visit(selector);
+  return branches;
+}
+
+function exactExtendTargetFact(source: string, target: CssCstNode): ExactExtendTargetFact | null {
+  if (isUnboundedExtendTarget(source, target)) {
+    return null;
+  }
+  const branches = collectRuleSelectorBranches(source, target);
+  if (branches.length > 1) {
+    return null;
+  }
+  if (branches.length === 1) {
+    const branch = branches[0]!;
+    return { key: branch.key, display: branch.display, span: branch.span };
+  }
+  const start = absoluteStart(target);
+  const end = absoluteEnd(target);
+  const text = source.slice(start, end);
+  if (hasDynamicSyntax(text)) {
+    return null;
+  }
+  const key = normalizedSelectorText(source, start, end);
+  return key.length > 0 ? { key, display: selectorDisplay(source, start, end), span: target.span } : null;
+}
+
 function unquoteFontFamily(raw: string): { value: string; quoted: boolean } {
   const trimmed = raw.trim();
   if (trimmed.length >= 2) {
@@ -2868,14 +2926,15 @@ function normalizedModuleLoadKey(source: string, node: CssCstNode, language: Jes
 }
 
 function forEachExtendTarget(
+  source: string,
   node: CssCstNode,
   language: JessLanguage,
-  fn: (target: CssCstNode) => void
+  fn: (target: CssCstNode, exact: boolean) => void
 ): void {
   if (node.grammarType === 'ExtendTarget') {
     const target = firstChildNodeMatching(node, EXTEND_TARGET_TYPES);
     if (target !== undefined) {
-      fn(target);
+      fn(target, !isLessPartialExtendTarget(source.slice(absoluteStart(node), absoluteEnd(node))));
     }
     return;
   }
@@ -2885,17 +2944,26 @@ function forEachExtendTarget(
   if (language === 'scss') {
     const target = firstChildNodeOf(node, 'Selector');
     if (target !== undefined) {
-      fn(target);
+      fn(target, true);
     }
     return;
   }
   if (language === 'jess') {
+    const exact = isJessExactExtend(source.slice(absoluteStart(node), absoluteEnd(node)));
     for (const child of cstChildrenOf(node)) {
       if (isCstNode(child) && child.grammarType === 'PseudoSelectorComplex') {
-        fn(child);
+        fn(child, exact);
       }
     }
   }
+}
+
+function isLessPartialExtendTarget(text: string): boolean {
+  return /\s!?all\s*$/i.test(normalizedCssWords(text));
+}
+
+function isJessExactExtend(text: string): boolean {
+  return /(?:^|\s)!exact(?:\s|;|$)/.test(text);
 }
 
 function hasTopLevelBoundedSelectorAtom(source: string, start: number, end: number): boolean {
@@ -3523,6 +3591,9 @@ export function cstLintDiagnostics(
   const customPropertyReferences: CustomPropertyReference[] = [];
   const variableDeclarations: VariableDeclarationFact[] = [];
   const variableReferences = new Set<string>();
+  const ruleSelectorKeys = new Set<string>();
+  const exactExtendTargets: ExactExtendTargetFact[] = [];
+  let hasExternalSelectorSources = false;
   const cssData = metadataWithDefaults(metadata);
   const dialectAtRules = DIALECT_AT_RULES[language];
   const push = (
@@ -3549,6 +3620,7 @@ export function cstLintDiagnostics(
       return;
     }
     const gt = node.grammarType;
+    hasExternalSelectorSources ||= EXTERNAL_SELECTOR_SOURCE_TYPES.has(gt);
     const declarationName = DECLARATION_TYPES.has(gt)
       ? propNameOf(source.slice(start, end)).toLowerCase()
       : null;
@@ -3622,6 +3694,12 @@ export function cstLintDiagnostics(
     if (RULESET_TYPES.has(gt)) {
       if (emptyBracedBody(source, start, end)) {
         push(LINT_CODES.emptyRules, 'warning', 'Do not use empty rulesets', node.span);
+      }
+      const selector = firstChildNodeMatching(node, RULE_SELECTOR_TYPES);
+      if (selector !== undefined) {
+        for (const branch of collectRuleSelectorBranches(source, selector)) {
+          ruleSelectorKeys.add(branch.key);
+        }
       }
     }
 
@@ -3739,7 +3817,7 @@ export function cstLintDiagnostics(
       }
     }
 
-    forEachExtendTarget(node, language, (target) => {
+    forEachExtendTarget(source, node, language, (target, exact) => {
       if (isUnboundedExtendTarget(source, target)) {
         const targetStart = absoluteStart(target);
         const targetEnd = absoluteEnd(target);
@@ -3749,6 +3827,11 @@ export function cstLintDiagnostics(
           `Extend target "${selectorDisplay(source, targetStart, targetEnd)}" has no class, id, placeholder, or parent selector anchor`,
           target.span
         );
+      } else if (exact) {
+        const targetFact = exactExtendTargetFact(source, target);
+        if (targetFact !== null) {
+          exactExtendTargets.push(targetFact);
+        }
       }
     });
 
@@ -4301,6 +4384,19 @@ export function cstLintDiagnostics(
           `Unused variable "${declaration.display}"`,
           declaration.span
         );
+      }
+    }
+
+    if (!hasExternalSelectorSources) {
+      for (const target of exactExtendTargets) {
+        if (!ruleSelectorKeys.has(target.key)) {
+          push(
+            LINT_CODES.deadExtends,
+            'warning',
+            `Extend target "${target.display}" does not match any same-file selector`,
+            target.span
+          );
+        }
       }
     }
   }

@@ -111,6 +111,7 @@ export default {
       'jess/no-unused-variable': 'off',
       'jess/no-duplicate-module-load': 'warn',
       'jess/no-unbounded-extend': 'warn',
+      'jess/no-dead-extend': 'warn',
       'jess/unsupported-sass-form': 'warn'
     }
   }
@@ -174,6 +175,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `jess/no-unused-variable` | `lint/no-unused-variable` | Jess same-file symbol diagnostic, opt-in |
 | `jess/no-duplicate-module-load` | `lint/no-duplicate-module-load` | Jess same-file module diagnostic |
 | `jess/no-unbounded-extend` | `lint/no-unbounded-extend` | Jess static extend target diagnostic |
+| `jess/no-dead-extend` | `lint/no-dead-extend` | Jess exact same-file extend diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
 
 Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
