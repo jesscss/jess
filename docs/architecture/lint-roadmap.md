@@ -63,6 +63,7 @@ a `jess/` prefix.
 | `keyframe-declaration-no-important` | `lint/keyframe-declaration-no-important` | Stylelint-equivalent |
 | `font-family-no-duplicate-names` | `lint/font-family-no-duplicate-names` | Stylelint-near |
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
+| `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | Stylelint-equivalent |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
 | `unit-no-unknown` | `lint/unit-no-unknown` | Stylelint-near |
 | `function-no-unknown` | `lint/function-no-unknown` | Stylelint-near |
@@ -130,8 +131,8 @@ using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 236-finding rule set:
 
 | Path | Median |
 | --- | --- |
-| Jess lint stable rules | `21.97 ms/op` |
-| Stylelint comparable rules | `21.34 ms/op` |
+| Jess lint stable rules | `23.40 ms/op` |
+| Stylelint comparable rules | `23.06 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -147,7 +148,7 @@ can detect over authored source.
 | P0 | Duplicates | existing `declaration-block-no-duplicate-properties` | Add ignore-consecutive and shorthand/longhand awareness. |
 | P0 | Empty blocks | existing `block-no-empty` | Extend to empty mixin bodies only when configured. Empty mixins can be API placeholders. |
 | Landed | Custom properties | `custom-property-no-missing-var-function` | Flags `color: --x`; suppresses inside custom-property declarations and `var()`. |
-| P1 | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement. Jess `@-import` is separate. |
+| Landed | Invalid positioning | `no-invalid-position-at-import-rule` | CSS `@import` placement after style rules or blocking at-rules. Jess `@-import` is separate. |
 | Landed | Duplicate imports | `no-duplicate-at-import-rules` | Flags repeated same-file imports with the same target/options/conditions; import-graph duplicate modules remain Jess-only semantic work. |
 | P1 | Duplicate selectors | `no-duplicate-selectors` | Needs selector normalization over the canonical selector AST. |
 | Landed | Keyframes | `keyframe-block-no-duplicate-selectors`, `keyframe-declaration-no-important` | Duplicate selector and `!important` checks are CST-owned. |
