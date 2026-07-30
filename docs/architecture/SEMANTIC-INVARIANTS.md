@@ -53,7 +53,7 @@ emitValueInterp packages --include=*.test.ts` returns nothing. The behavior
 4. **The cited evidence was deleted too.** The commit's proof was "alpha-oracle
    differential MATCH 64 unchanged". `alpha-oracle-differential.test.ts` and
    `alpha-oracle-baseline.json` went in that same commit;
-   [`GOAL1-SCORECARD.md`](./core/GOAL1-SCORECARD.md) now
+   [`GOAL1-SCORECARD.md`](./core/archive/GOAL1-SCORECARD.md) now
    carries a banner saying its counts are not evidence of anything.
 5. **It was promoted to a language feature.** It is documented for users at
    `packages/docs-content/docs/less/advanced/number-precision.md` — where the

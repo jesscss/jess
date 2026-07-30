@@ -2,7 +2,7 @@
 
 > The subsystem-by-subsystem specification for the tree2 core rewrite. Each rung
 > in the done-right roadmap
-> ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md`](./TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md))
+> ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md`](./archive/TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md))
 > adds one section here: **data model · algorithm · invariants · reference**. Keep it
 > a real spec (what the code guarantees), not a status log — the living
 > experiment log stays in `AST-ARENA-EXPERIMENT-HANDOFF.md`.

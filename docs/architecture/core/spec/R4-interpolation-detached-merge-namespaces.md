@@ -8,7 +8,7 @@
 > as migration evidence and must not be reintroduced.
 
 > Rung R4 of the tree2 definitive rewrite
-> ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md`](../TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md) §3 R4).
+> ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md`](../archive/TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md) §3 R4).
 > Same contract as [`TREE2-DESIGN-SPEC.md` § R0](../TREE2-DESIGN-SPEC.md): each
 > feature is specified as **data model · algorithm · invariants · reference ·
 > both-emit-mode · where current tree2 must change · open owner-confirm items.**

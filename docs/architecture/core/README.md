@@ -1,117 +1,94 @@
 # `docs/architecture/core/` — index
 
-62 files landed here and nothing said which ones were still load-bearing. This is
-that index. It is **an index, not a status tracker** — it records what each file
-*is* and whether anything still points at it. It makes no progress claims; those
-belong in [`HANDOFF.md`](./HANDOFF.md), [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md),
-and [`../../state/PROJECT_STATE.md`](../../state/PROJECT_STATE.md).
-
 **Start at [`HANDOFF.md`](./HANDOFF.md).** Its Router sends you to the right file
-for the work you have. This page is for the other question: *"what is this file
-and does anyone still use it?"*
+for the work you have. This page answers the other question: *"what is this file,
+and is it still current?"*
 
-## How the classification was made (2026-07-30, `991b315e0`)
+This is an index, not a status tracker. It records what each file *is*; progress
+claims belong in [`HANDOFF.md`](./HANDOFF.md),
+[`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md), and
+[`../../state/PROJECT_STATE.md`](../../state/PROJECT_STATE.md).
 
-Two mechanical signals, both reproducible:
+## The 2026-07-30 cleanup (`991b315e0`)
 
-- **last-touched** — `git log -1 --date=short -- <file>`. Note that **2026-07-24
-  is not a real edit date** for most files: `0806ccdbb` bulk-moved the tree that
-  day. "Last touched 2026-07-24" means *untouched since the move*.
-- **inbound** — how many files under `docs/`, `.cursor/`, `AGENTS.md`,
-  `CLAUDE.md`, or `README.md` mention it by name, excluding itself and
-  `archive/`.
+62 files → **47**. Sixteen were moved, none deleted.
 
-Neither signal is proof a document is wrong. A dormant orphan may be a correct
-record nobody needed lately. They are a **reading order**, and a prompt to check
-before citing a file as current.
+The signal that decided it was **each document's own header**. Fifteen files
+opened with some form of *"Historical design evidence — not an execution plan"*,
+*"Status: ARCHIVED"*, or *"STRUCK AS AN EXECUTION PLAN"* — mostly describing the
+retired tree2 / parse-host / bridge era — while still sitting in `architecture/`.
+`../../README.md` is explicit that **a document describing machinery the repo
+does not have does not belong in `architecture/`**, so they moved to
+[`archive/`](./archive/). One more, `AST-NATIVE-PLUGINS-DESIGN.md`, is marked
+DESIGN-ONLY for unbuilt work, so it moved to
+[`../../design/`](../../design/AST-NATIVE-PLUGINS-DESIGN.md) under the same rule.
 
-## Live — recently edited and routed
+**Inbound-reference count turned out to be a bad liveness signal and is not used
+here.** An earlier pass of this index guessed at staleness that way and got four
+of eight calls wrong in both directions: `AST-QUALITY-AUDIT.md` and
+`TYPECHECK-BURNDOWN.md` are unreferenced but live, while
+`UNIFIED-NODE-MODEL-SPEC.md` and `TREE2-KILL-LIST.md` were well-referenced and
+self-declared historical. Read the header, not the backlinks.
+
+Two files were reprieved on evidence:
+
+- **`TYPECHECK-BURNDOWN.md`** — live. `--noCheck` is still in **15** package.json
+  files, so the burn-down it defines is genuinely open.
+- **`AST-QUALITY-AUDIT.md`** — live. Present-tense audit criteria for
+  `packages/core/src/ast`, explicitly scoped to exclude the deleted host/bridge
+  paths.
+
+## Live
 
 | File | Role |
 | --- | --- |
 | [`HANDOFF.md`](./HANDOFF.md) | The entry point. Work in flight, priority checklist, open defects, Router. |
 | [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md) | The canonical OPEN/SETTLED owner decision ledger. Cite a row; do not re-litigate it. |
 | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) | Patch-shape review standard. |
+| [`AST-QUALITY-AUDIT.md`](./AST-QUALITY-AUDIT.md) | Audit criteria for `packages/core/src/ast` as a parser-independent leaf. |
 | [`PERF_IDEAS.md`](./PERF_IDEAS.md) | The measured workload and comparator numbers behind the current CPU lane. |
 | [`TREE-CUTOVER-SURFACE.md`](./TREE-CUTOVER-SURFACE.md) | Deleting `packages/core/src/tree/`: public-surface inventory, `Context` decomposition, extraction order. |
-| [`TREE2-DESIGN-SPEC.md`](./TREE2-DESIGN-SPEC.md) · [`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md`](./TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md) · [`TREE2-KILL-LIST.md`](./TREE2-KILL-LIST.md) · [`TREE2-CONSTITUTION.md`](./TREE2-CONSTITUTION.md) | The AST-v2 engine spec cluster. |
-| [`UNIFIED-NODE-MODEL-SPEC.md`](./UNIFIED-NODE-MODEL-SPEC.md) · [`VALUE-NODE-MODEL-DESIGN.md`](./VALUE-NODE-MODEL-DESIGN.md) · [`VALUE-LITERAL-TAG-SPEC.md`](./VALUE-LITERAL-TAG-SPEC.md) | The node/value model. |
-| [`RESOLVER-SHAPE-SPEC.md`](./RESOLVER-SHAPE-SPEC.md) · [`VARIABLE-RESOLUTION-SEMANTICS.md`](./VARIABLE-RESOLUTION-SEMANTICS.md) | Reference/resolution shape. |
-| [`FNS-PACKAGE-MIGRATION-SPEC.md`](./FNS-PACKAGE-MIGRATION-SPEC.md) | The `@jesscss/fns` migration contract. |
-| [`V5-OUTPUT-SEMANTICS.md`](./V5-OUTPUT-SEMANTICS.md) · [`JESS-PARENT-SELECTOR-DESIGN.md`](./JESS-PARENT-SELECTOR-DESIGN.md) | Emitted-output semantics. |
-| [`DOC-COVERAGE.md`](./DOC-COVERAGE.md) | The 3-location documentation coverage matrix. |
-| [`GOAL1-SCORECARD.md`](./GOAL1-SCORECARD.md) · [`LESS-V5-CONTENT-PR-PLAN.md`](./LESS-V5-CONTENT-PR-PLAN.md) | Less-alpha scoring and content plan. |
-| [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) · [`AST-REORG-EXECUTION.md`](./AST-REORG-EXECUTION.md) · [`GRAMMAR-RELOCATION-DESIGN.md`](./GRAMMAR-RELOCATION-DESIGN.md) · [`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`](./AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md) | Four short Router targets stating the no-host/no-bridge boundary from four angles. See the consolidation note below. |
+| [`TREE2-DESIGN-SPEC.md`](./TREE2-DESIGN-SPEC.md) | Subsystem-by-subsystem spec for the core rewrite. |
+| [`VALUE-NODE-MODEL-DESIGN.md`](./VALUE-NODE-MODEL-DESIGN.md) · [`VALUE-LITERAL-TAG-SPEC.md`](./VALUE-LITERAL-TAG-SPEC.md) · [`VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md`](./VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md) | The value model: shape, literal tagging, materialization/memoization. |
+| [`RESOLVER-SHAPE-SPEC.md`](./RESOLVER-SHAPE-SPEC.md) · [`VARIABLE-RESOLUTION-SEMANTICS.md`](./VARIABLE-RESOLUTION-SEMANTICS.md) · [`REFERENCE.md`](./REFERENCE.md) · [`REFERENCE-CALL-PLAN.md`](./REFERENCE-CALL-PLAN.md) | Reference / resolution shape. |
+| [`FNS-PACKAGE-MIGRATION-SPEC.md`](./FNS-PACKAGE-MIGRATION-SPEC.md) | The `@jesscss/fns` migration contract. Carries a partial-supersession header on the registration mechanism only. |
+| [`V5-OUTPUT-SEMANTICS.md`](./V5-OUTPUT-SEMANTICS.md) · [`JESS-PARENT-SELECTOR-DESIGN.md`](./JESS-PARENT-SELECTOR-DESIGN.md) · [`UNIFIED-EVAL-EMIT-DESIGN.md`](./UNIFIED-EVAL-EMIT-DESIGN.md) | Emitted-output and eval/emit semantics. |
+| [`EXTEND-SEMANTICS.md`](./EXTEND-SEMANTICS.md) · [`EXTEND-PORT-DESIGN.md`](./EXTEND-PORT-DESIGN.md) · [`EXTEND-REDESIGN.md`](./EXTEND-REDESIGN.md) · [`EXTEND-4TH-OPTION-SYNTHESIS.md`](./EXTEND-4TH-OPTION-SYNTHESIS.md) · [`R1-EXTEND-HANDOFF.md`](./R1-EXTEND-HANDOFF.md) · [`_R1_IMPL_BRIEF.md`](./_R1_IMPL_BRIEF.md) | The extend cluster. |
+| [`BENCHMARK-EXTEND-EVIDENCE.md`](./BENCHMARK-EXTEND-EVIDENCE.md) | Per-case adjudication of the benchmark extend shapes against real Less 4.6.7. Completed evidence, still valid. |
+| [`PSEUDO-ARGUMENT-CONSOLIDATION-DESIGN.md`](./PSEUDO-ARGUMENT-CONSOLIDATION-DESIGN.md) · [`PSEUDO-ARGUMENT-ALWAYS-STRUCTURE-DESIGN.md`](./PSEUDO-ARGUMENT-ALWAYS-STRUCTURE-DESIGN.md) · [`P0-PSEUDO-STRUCTURING-DESIGN.md`](./P0-PSEUDO-STRUCTURING-DESIGN.md) | Pseudo-argument structuring. |
+| [`TYPECHECK-BURNDOWN.md`](./TYPECHECK-BURNDOWN.md) | The `--noCheck` burn-down. Open: 15 package.json files still pass it. |
+| [`STATIC-IMPORT-PREP-DESIGN.md`](./STATIC-IMPORT-PREP-DESIGN.md) · [`ASSIGNABLE-CONTROL-NODES-PLAN.md`](./ASSIGNABLE-CONTROL-NODES-PLAN.md) · [`NODE-SLIM-FOLLOWONS.md`](./NODE-SLIM-FOLLOWONS.md) · [`STRINGS-OVER-NODES.md`](./STRINGS-OVER-NODES.md) | Node/import shape work. |
+| [`NON-ENGINE-BLOAT-INVENTORY.md`](./NON-ENGINE-BLOAT-INVENTORY.md) · [`WRONG-TESTDATA-AUDIT.md`](./WRONG-TESTDATA-AUDIT.md) · [`DOC-COVERAGE.md`](./DOC-COVERAGE.md) | Inventories and coverage matrices. |
+| [`LESS-V5-CONTENT-PR-PLAN.md`](./LESS-V5-CONTENT-PR-PLAN.md) | Less-alpha content plan. |
+| [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) · [`AST-REORG-EXECUTION.md`](./AST-REORG-EXECUTION.md) · [`GRAMMAR-RELOCATION-DESIGN.md`](./GRAMMAR-RELOCATION-DESIGN.md) · [`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`](./AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md) · [`GRAMMAR-AST-FUSION-DESIGN.md`](./GRAMMAR-AST-FUSION-DESIGN.md) | Five short docs stating one boundary rule from five angles. See below. |
 
-## Live but unrouted — edited within the last week, zero inbound references
+Also live and self-explanatory: [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md),
+[`AST-COLOCATION-REORG-PLAN.md`](./AST-COLOCATION-REORG-PLAN.md),
+[`PHASE1-BURNDOWN.md`](./PHASE1-BURNDOWN.md),
+[`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md).
 
-Nothing pointed at these, so a fresh agent would not find them. They are listed
-here and, where they bear on current work, from `HANDOFF.md`.
+> `PARSER-RECOGNIZER-GAP.md` carries **stale measurements** — its phase profile
+> was taken 2026-07-15 against parseman 0.32-era code, and the floor is now
+> `^0.43.0`. The Less-4.x-versus-Parseman gap it frames is still the live
+> question; its numbers are not current. Re-measure before citing.
 
-| File | Last touched | Role |
-| --- | --- | --- |
-| [`BENCHMARK-AST-FAILURE-INVENTORY.md`](./BENCHMARK-AST-FAILURE-INVENTORY.md) | 2026-07-30 | Named inventory of benchmark-corpus AST failures. |
-| [`NON-ENGINE-BLOAT-INVENTORY.md`](./NON-ENGINE-BLOAT-INVENTORY.md) | 2026-07-29 | Non-engine surface that is a size/complexity cost. |
-| [`VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md`](./VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md) | 2026-07-29 | Lazy-materialization/memoization design for values. |
-| [`STATIC-IMPORT-PREP-DESIGN.md`](./STATIC-IMPORT-PREP-DESIGN.md) | 2026-07-28 | Static-import preparation design. |
-
-## Dormant — untouched since the 2026-07-24 move
-
-Still in `architecture/` and still readable; simply not the current lane. Check
-the date before citing one as the present state.
-
-Referenced by at least one other document: `AST-ARENA-EXPERIMENT-HANDOFF.md`,
-`AST-COLOCATION-REORG-PLAN.md`, `AST-FROM-SCRATCH-DESIGN.md`,
-`AST-REMAINING-DEBT-KILL-LIST.md`, `ASSIGNABLE-CONTROL-NODES-PLAN.md`,
-`BENCHMARK-PERF-PATH.md`, `BUILDERHOST-RETIREMENT-DESIGN.md`,
-`EXTEND-4TH-OPTION-SYNTHESIS.md`, `EXTEND-PORT-DESIGN.md`,
-`EXTEND-REDESIGN.md`, `EXTEND-SEMANTICS.md`, `NODE-SLIM-FOLLOWONS.md`,
-`P0-PSEUDO-STRUCTURING-DESIGN.md`, `PHASE1-BURNDOWN.md`,
-`PSEUDO-ARGUMENT-ALWAYS-STRUCTURE-DESIGN.md`,
-`PSEUDO-ARGUMENT-CONSOLIDATION-DESIGN.md`,
-`QUOTED-GRAMMAR-STRUCTURING-PLAN.md`, `R1-EXTEND-HANDOFF.md`, `REFERENCE.md`,
-`REFERENCE-CALL-PLAN.md`, `SCSS-PARSER-REBASE-DESIGN.md`,
-`STRINGS-OVER-NODES.md`, `TIER-B-INTERPOLATION-GRAMMAR-SPEC.md`,
-`UNIFIED-EVAL-EMIT-DESIGN.md`, `WRONG-TESTDATA-AUDIT.md`, `_R1_IMPL_BRIEF.md`.
-
-## Dormant AND orphaned — archive candidates (owner call, not yet moved)
-
-Untouched since the move **and** referenced by nothing. 8 files, ~1,615 lines.
-They have not been moved or deleted: dormancy plus orphaning is a prompt to
-decide, not a verdict that a file is wrong.
-
-| File | Lines | Why it is a candidate |
-| --- | --- | --- |
-| `AST-NATIVE-PLUGINS-DESIGN.md` | 569 | Plugin design predating the current plugin host / `compiler-preset` split. |
-| `BENCHMARK-EXTEND-EVIDENCE.md` | 277 | Extend benchmark evidence superseded by the roadmap's own numbers. |
-| `PARSER-RECOGNIZER-GAP.md` | 209 | Recognizer-gap inventory from before the four-grammar fold. |
-| `TYPECHECK-BURNDOWN.md` | 208 | Burndown for a gate (`verify:types`) that `c3db7e53e` made green. |
-| `AST-MIGRATION-MAP.md` | 176 | Migration map for a migration that has landed. |
-| `AST-V2-STRUCTURE-BLUEPRINT.md` | 107 | Blueprint superseded by `UNIFIED-NODE-MODEL-SPEC.md`. |
-| `AST-QUALITY-AUDIT.md` | 38 | One-off audit, no follow-up. |
-| `GRAMMAR-AST-FUSION-DESIGN.md` | 31 | Fusion design; the eight-to-four fold is done. |
-
-The "why" column is a **hypothesis from the file's own text and dates**, not a
-verified supersession claim. Confirm before archiving any row.
-
-## Consolidation note — the four boundary docs
+## Consolidation note — five docs, one rule
 
 `AST-REORG-EXECUTION.md` (42 lines), `GRAMMAR-RELOCATION-DESIGN.md` (48),
-`CORE-CLEANUP.md` (50), and `AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md` (30)
-each open by restating the same boundary: the parser grammar owns AST
-construction, and no host, action registry, bridge, adapter, or source reparse is
-a valid replacement. `HANDOFF.md`'s "Non-negotiable rules" states it a fifth
-time.
+`CORE-CLEANUP.md` (50), `AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md` (30),
+and `GRAMMAR-AST-FUSION-DESIGN.md` (31) each open by restating the same
+boundary: the parser grammar owns AST construction, and no host, action
+registry, bridge, adapter, or source reparse replaces it. `HANDOFF.md`'s
+"Non-negotiable rules" states it a sixth time.
 
-They are not redundant in their tails — each carries a distinct queue
-(`CORE-CLEANUP.md` an active priority table, `AST-REORG-EXECUTION.md` the
-construction rules, and so on). The duplication is in the preambles. Merging
-them is an owner call because all four are Router targets; it is recorded here
-so the next reader does not mistake four statements of one rule for four rules.
+Their tails are *not* redundant — each carries a distinct queue. The duplication
+is in the preambles. Merging them is an owner call because four are Router
+targets; it is recorded here so the next reader does not mistake six statements
+of one rule for six rules.
 
 ## Subdirectories
 
-- [`archive/`](./archive/) — 21 files, ~14,300 lines of superseded history. Read
-  for archaeology; never cite as current.
-- [`spec/`](./spec/) — 7 files of R-numbered specs (`R4`, `R6`, `R7`,
+- [`archive/`](./archive/) — 36 files. Superseded history, including the 15
+  moved on 2026-07-30. Read for archaeology; never cite as current.
+- [`spec/`](./spec/) — R-numbered specs (`R4`, `R5`, `R6`, `R7`,
   `TREE2-EMITTING-GRAMMAR-PLAN`).

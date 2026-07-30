@@ -1,7 +1,7 @@
 # R6 — Plugin/visitor hook · less-compat · module semantics
 
 > DESIGN SPEC for roadmap rung **R6**
-> ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md` §3 R6](../TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md), arch F/G in
+> ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md` §3 R6](../archive/TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md), arch F/G in
 > [`UNIFIED-EVAL-EMIT-DESIGN.md` §6–§7](../UNIFIED-EVAL-EMIT-DESIGN.md)). Same
 > shape as [`TREE2-DESIGN-SPEC.md` §R0](../TREE2-DESIGN-SPEC.md): **data model ·
 > algorithm · invariants · reference · owner-confirm**. This is a DESIGN doc — no

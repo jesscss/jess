@@ -891,11 +891,12 @@ flow.
 | The per-`const` grammar review checklist and the naming law (item 14) | [`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md) |
 | Patch-shape review | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) |
 | Owner semantic/architecture questions and rulings | [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md) — the canonical OPEN/SETTLED decision ledger |
-| Named benchmark-corpus AST failures | [`BENCHMARK-AST-FAILURE-INVENTORY.md`](./BENCHMARK-AST-FAILURE-INVENTORY.md) |
 | Non-engine surface carrying size/complexity cost | [`NON-ENGINE-BLOAT-INVENTORY.md`](./NON-ENGINE-BLOAT-INVENTORY.md) |
 | Lazy value materialization / memoization | [`VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md`](./VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md) |
 | Static-import preparation | [`STATIC-IMPORT-PREP-DESIGN.md`](./STATIC-IMPORT-PREP-DESIGN.md) |
-| **"What is this file in `architecture/core/` and does anyone still use it?"** | [`README.md`](./README.md) — the 62-file index, classified by last-touched and inbound references |
+| The `--noCheck` typecheck burn-down (still open: 15 package.json files) | [`TYPECHECK-BURNDOWN.md`](./TYPECHECK-BURNDOWN.md) |
+| Benchmark extend shapes adjudicated against real Less 4.6.7 | [`BENCHMARK-EXTEND-EVIDENCE.md`](./BENCHMARK-EXTEND-EVIDENCE.md) |
+| **"What is this file in `architecture/core/` and is it still current?"** | [`README.md`](./README.md) — the directory index, and the record of the 2026-07-30 archive pass |
 
 ### Router — grammar cleanup (`docs/architecture/parser/`)
 
