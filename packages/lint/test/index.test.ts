@@ -60,6 +60,8 @@ describe('stable rule set', () => {
       LINT_CODES.unknownPseudoElements,
       LINT_CODES.unmatchableAnbSelectors,
       LINT_CODES.unknownTypeSelectors,
+      LINT_CODES.selectorMaxId,
+      LINT_CODES.selectorMaxUniversal,
       LINT_CODES.incompatibleMathFunctionUnits,
       LINT_CODES.invalidColorFunctionChannels,
       LINT_CODES.invalidTypedCustomPropertyValue,
@@ -110,6 +112,8 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unknownPseudoElements,
       LINT_RULE_NAMES.unmatchableAnbSelectors,
       LINT_RULE_NAMES.unknownTypeSelectors,
+      LINT_RULE_NAMES.selectorMaxId,
+      LINT_RULE_NAMES.selectorMaxUniversal,
       LINT_RULE_NAMES.incompatibleMathFunctionUnits,
       LINT_RULE_NAMES.invalidColorFunctionChannels,
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
@@ -120,7 +124,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(42);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(44);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -129,6 +133,8 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.float]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.compatibleVendorPrefixes]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unknownVendorSpecificProperties]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.selectorMaxId]).toBe('off');
+    expect(recommended[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(recommended[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
@@ -184,6 +190,8 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.incompatibleMathFunctionUnits]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.invalidTypedCustomPropertyValue]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxId]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.selectorMaxUniversal]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unusedVariables]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateModuleLoads]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unboundedExtends]).toBe('off');
@@ -1051,6 +1059,56 @@ describe('lintText', () => {
 
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownTypeSelectors, 'error']
+    ]);
+  });
+
+  it('keeps ID selector policy opt-in by lint rule name', async () => {
+    const input = {
+      source: '#app { color: red; }',
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(LINT_CODES.selectorMaxId);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.selectorMaxId]: 'error'
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
+      [LINT_CODES.selectorMaxId, LINT_RULE_NAMES.selectorMaxId, 'error']
+    ]);
+  });
+
+  it('keeps universal selector policy opt-in by lint rule name', async () => {
+    const input = {
+      source: '* { color: red; }',
+      filePath: '/tmp/input.css'
+    };
+    const defaultResult = await lintText(input);
+
+    expect(defaultResult.diagnostics.map(diagnostic => diagnostic.code)).not.toContain(
+      LINT_CODES.selectorMaxUniversal
+    );
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [LINT_RULE_NAMES.selectorMaxUniversal]: 'error'
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.ruleName, diagnostic.severity])).toEqual([
+      [LINT_CODES.selectorMaxUniversal, LINT_RULE_NAMES.selectorMaxUniversal, 'error']
     ]);
   });
 

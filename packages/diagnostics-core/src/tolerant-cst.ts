@@ -54,6 +54,8 @@ export const LINT_CODES = {
   unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
   unknownTypeSelectors: 'lint/selector-type-no-unknown',
+  selectorMaxId: 'lint/selector-max-id',
+  selectorMaxUniversal: 'lint/selector-max-universal',
   unmatchableAnbSelectors: 'lint/selector-anb-no-unmatchable',
   duplicateSelectors: 'lint/no-duplicate-selectors',
   incompatibleMathFunctionUnits: 'lint/incompatible-math-function-units',
@@ -851,6 +853,15 @@ function typeSelectorNameSpan(source: string, node: CssCstNode): { name: string;
     return null;
   }
   return { name, start, end };
+}
+
+function basicSelectorText(source: string, node: CssCstNode): string | null {
+  const start = absoluteStart(node);
+  const end = absoluteEnd(node);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return null;
+  }
+  return source.slice(start, end);
 }
 
 function ignoresTypeSelectorsInPseudo(source: string, start: number, end: number): boolean {
@@ -4076,6 +4087,25 @@ export function cstLintDiagnostics(
             );
           }
         }
+      }
+    }
+
+    if (language === 'css' && BASIC_SELECTOR_TYPES.has(gt)) {
+      const basicSelector = basicSelectorText(source, node);
+      if (basicSelector === '*') {
+        push(
+          LINT_CODES.selectorMaxUniversal,
+          'warning',
+          'Avoid universal selectors',
+          node.span
+        );
+      } else if (basicSelector?.startsWith('#') === true) {
+        push(
+          LINT_CODES.selectorMaxId,
+          'warning',
+          'Avoid ID selectors',
+          node.span
+        );
       }
     }
 
