@@ -2585,7 +2585,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const Dimension = node<ValueNode>(
     'Dimension',
     noTrivia(sequence(g.CssSyntaxNumber, optional(g.CssSyntaxDimensionUnit))),
-    (children) => {
+    (children, _fields, span) => {
       const numberText = requireToken(children[0]).value;
       const unit = children.length > 1 ? requireToken(children[1]).value : '';
       return dimension(Number(numberText), unit, `${numberText}${unit}`);
@@ -3371,24 +3371,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       // Parseman's optional branch is transparent when absent. Find the value
       // only after the property delimiter, because an interpolated property
       // name is itself an `Interpolation` value node.
-      let mergeToken: Token | undefined;
-      let valueChild: ValueSlot | undefined;
-      let foundColon = false;
-      for (const child of children) {
-        if (!foundColon) {
-          if (isTerminalText(child, ':')) {
-            foundColon = true;
-          } else if (isToken(child) && (child.value === '+' || child.value === '+_')) {
-            mergeToken = child;
-          }
-        } else if (isValueSlotValue(child)) {
-          valueChild = child;
-          break;
-        }
-      }
-      if (!foundColon) {
+      const mergeToken = children.find(child => isToken(child) && (child.value === '+' || child.value === '+_'));
+      const colonIndex = children.findIndex(child => isTerminalText(child, ':'));
+      if (colonIndex < 0) {
         throw new TypeError('Less grammar produced no declaration delimiter.');
       }
+      const valueChild = children.slice(colonIndex + 1).find(isValueSlotValue);
       const value: ValueSlot = valueChild === undefined ? any('') : requireValueSlot(valueChild);
       const merge = mergeToken === undefined ? null : requireToken(mergeToken).value === '+_' ? ' ' : ',';
       const valueGap = fields?.valueGap === undefined ? '' : requireTerminalText(requireField(fields, 'valueGap').value);
