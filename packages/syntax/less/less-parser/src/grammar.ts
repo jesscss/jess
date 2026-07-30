@@ -272,6 +272,7 @@ type LessRules = {
   RulesetWithExtends: Combinator<Ruleset>;
   NestedRulesetWithExtends: Combinator<Ruleset>;
   Quoted: Combinator<Quoted | Interpolation>;
+  LiteralQuoted: Combinator<Quoted>;
   EscapedQuoted: Combinator<Quoted | Interpolation>;
   PlainUrl: Combinator<Url>;
   UrlInterpolation: Combinator<Interpolation>;
@@ -2395,7 +2396,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(literal('"'), many(choice(g.QuotedDoubleText, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
     noTrivia(sequence(literal('\''), many(choice(g.QuotedSingleText, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
   );
-  const plainQuoted = node<Quoted>(
+  const LiteralQuoted = node<Quoted>(
     'Quoted',
     staticQuotedBody,
     (children) => {
@@ -4465,7 +4466,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     otherwise(QueryKeyword)
   );
-  const queryLeaf = choice(g.VariableReferenceChain, g.Dimension, g.Color, g.NamedColor, plainQuoted, QueryIdentOrFunction);
+  const queryLeaf = choice(g.VariableReferenceChain, g.Dimension, g.Color, g.NamedColor, g.LiteralQuoted, QueryIdentOrFunction);
   // Media/container query syntax shares CSS's grammar-owned comparison terminal
   // and canonical `Block(paren, Operation)` shape. Less only supplies the additional
   // variable-bearing value leaves; it does not capture a query prelude as raw
@@ -4831,7 +4832,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'Keyframes',
     sequence(
       g.KeyframesAtKeyword,
-      field('prelude', choice(g.AtRuleInterpolation, BareVariableInterpolation, g.EscapedQuoted, plainQuoted, g.Keyword)),
+      field('prelude', choice(g.AtRuleInterpolation, BareVariableInterpolation, g.EscapedQuoted, g.LiteralQuoted, g.Keyword)),
       literal('{'),
       // Less permits a detached-ruleset call as a keyframes-body entry. Keep
       // that as the existing typed Reference fact so a parameterized keyframe
@@ -4894,7 +4895,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'AtRulePreludeValueAtom',
     choice(
       g.EscapedQuoted,
-      plainQuoted,
+      g.LiteralQuoted,
       g.Color,
       g.NamedColor,
       g.Dimension,
@@ -5227,7 +5228,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return interpolatedSimpleSelector(interpolation(parts));
     }
   );
-  const pseudoArgumentInner = choice(g.PseudoArgumentGroup, g.PseudoArgumentSquare, plainQuoted, staticPseudoChunk);
+  const pseudoArgumentInner = choice(g.PseudoArgumentGroup, g.PseudoArgumentSquare, g.LiteralQuoted, staticPseudoChunk);
   const PseudoArgumentGroup = node<string>(
     'PseudoArgumentGroup',
     parser({ trivia: staticSelectorTrivia }, sequence(literal('('), many(pseudoArgumentInner), literal(')'))),
@@ -5475,7 +5476,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'AttributeMatch',
     sequence(
       g.AttributeOperator,
-      choice(staticIdentifier, plainQuoted),
+      choice(staticIdentifier, g.LiteralQuoted),
       optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
     ),
     children => ({
@@ -5510,7 +5511,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           g.InterpolatedAttributeToken,
           optional(sequence(
             g.AttributeOperator,
-            choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessIdentifier, plainQuoted),
+            choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessIdentifier, g.LiteralQuoted),
             optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
           ))
         ),
@@ -6246,6 +6247,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     RelativeSelector,
     NestedRulesetWithExtends,
     Quoted,
+    LiteralQuoted,
     EscapedQuoted,
     PlainUrl,
     UrlInterpolation,
