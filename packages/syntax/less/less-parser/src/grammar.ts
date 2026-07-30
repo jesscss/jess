@@ -4901,7 +4901,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     children => keyword(children.map(requireTerminalText).join(''))
   );
   const StaticAtRuleCustomProperty = node<ValueNode>(
-    'StaticAtRuleCustomProperty',
+    'AtRulePreludeValueCustomProperty',
     g.LessSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
@@ -4922,7 +4922,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // model for interpolation or parenthesized forms. Their direct subset stays
   // static; `@layer` gets its own typed interpolation alternative below.
   const StaticAtRuleAtom = node<ValueNode>(
-    'StaticAtRuleAtom',
+    'AtRulePreludeValueAtom',
     choice(
       g.EscapedQuoted,
       plainQuoted,
@@ -4938,7 +4938,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     children => requireValueNode(children[0])
   );
   const StaticAtRuleTerm = node<ValueNode>(
-    'StaticAtRuleTerm',
+    'AtRulePreludeValueTerm',
     oneOrMore(g.StaticAtRuleAtom),
     (children) => {
       const values = children.map(requireValueNode);
@@ -4946,7 +4946,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const StaticAtRulePrelude = node<ValueNode>(
-    'StaticAtRulePrelude',
+    'AtRulePreludeValue',
     oneOrMoreSep(
       g.StaticAtRuleTerm,
       field('separator', regex(/,[ \t\n\r\f]*/))
@@ -5716,7 +5716,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
   const StaticExtendCompound = node<SelectorTerm>(
-    'StaticExtendCompound',
+    'InlineExtendSubjectCompound',
     parser(
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.NamespaceTypeSelector, staticSimpleSelector, staticAmpersand, pseudo, g.StaticNthPseudo, g.AttributeSelector))
@@ -5724,7 +5724,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     children => selectorTermFromTokens(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
   const StaticExtendComplexTail = node<ComplexTailFact>(
-    'StaticExtendComplexTail',
+    'InlineExtendSubjectComplexTail',
     sequence(optional(staticCombinator), StaticExtendCompound),
     combinatorTailReducer
   );
