@@ -6072,8 +6072,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const MixinDefinitionContinuation = node<MixinDefinitionFact>(
     'MixinDefinition',
-    parser({ trivia: mixinSignatureTrivia }, sequence(
-      literal(')'),
+    sequence(
       choice(
         sequence(g.MixinGuard, optional(mixinSignatureGap), literal('{')),
         literal('{')
@@ -6082,7 +6081,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.Call),
       literal('}'),
       optional(literal(';'))
-    )),
+    ),
     (children, _fields, _span, rawChildren) => {
       const bodySpan = bodySpanFromRaw(rawChildren);
       return {
@@ -6095,12 +6094,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const MixinCallContinuation = node<MixinCallFact>(
     'MixinCall',
-    parser({ trivia: mixinSignatureTrivia }, sequence(
-      literal(')'),
+    sequence(
       not(whenGuardAhead),
       optional(literal('!important')),
       optional(literal(';'))
-    )),
+    ),
     children => ({
       args: [],
       important: children.some(child => isTerminalText(child, '!important'))
@@ -6108,7 +6106,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const MixinStatementTail = node<MixinStatementFact>(
     'MixinStatement',
-    sequence(g.MixinInterior, choice(attempt(MixinDefinitionContinuation), MixinCallContinuation)),
+    sequence(
+      g.MixinInterior,
+      parser({ trivia: mixinSignatureTrivia }, sequence(
+        literal(')'),
+        choice(MixinDefinitionContinuation, MixinCallContinuation)
+      ))
+    ),
     (children) => {
       const interior = children.find((value): value is MixinInteriorFact =>
         typeof value === 'object' && value !== null && 'items' in value && 'separators' in value
