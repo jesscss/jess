@@ -1472,8 +1472,8 @@ describe('Rules', () => {
          *
          * This test demonstrates Sass !global behavior with mixins using live resolution.
          *
-         * Current syntax uses `$!color` for explicit source-position reads in
-         * the live-binding model.
+         * This legacy tree fixture uses the retired `$!color` spelling for
+         * explicit source-position reads.
          *
          * When a mixin uses explicit live-binding syntax, the variable is resolved at the call site, allowing
          * !global assignments to affect mixin behavior correctly.

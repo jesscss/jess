@@ -84,7 +84,7 @@ const scssSources: CorpusSource[] = [
 const jessSources: CorpusSource[] = [
   s('if-else-chain', '$theme: "dark"; $if ($theme = "light") { .card { color: black; } } $else if ($theme = "dark") { .card { color: white; } } $else { .card { color: gray; } }'),
   s('guarded-numeric', '$size: 6; $if ($size>5) { .card { color: green; } } $else { .card { color: red; } }'),
-  s('nearest-outer-assign', '$tone: gray; $if (true) { $tone := blue; $$tone := navy; } .after { live: $tone; }'),
+  s('nearest-outer-assign', '$tone: gray; $if (true) { $tone := blue; $^tone := navy; } .after { live: $tone; }'),
   s('mixin-activate', '$if (true) { paint() { color: blue; } .after { $ > paint(); } }'),
   s('apply-and-for', 'paint() { color: red; } $held: { background: blue; }; $items: one, two; .host { $ > paint(); $held(); $apply paint; $for ($item of $items) { .item-$[item] { order: $item; } } }'),
   s('apply-selectors', '$apply .rounded, #theme, button[data-x]:hover;'),

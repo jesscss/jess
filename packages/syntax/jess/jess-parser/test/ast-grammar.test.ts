@@ -168,7 +168,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('publishes selected branch declarations into the containing live and scoped stores', () => {
-    const source = '$tone: gray; $if (true) { $tone := blue; $$tone := navy; $if (true) { $nested: green; } } .after { live: $tone; scoped: $$tone; nested: $$nested; }';
+    const source = '$tone: gray; $if (true) { $tone := blue; $^tone := navy; $if (true) { $nested: green; } } .after { live: $tone; scoped: $^tone; nested: $^nested; }';
     const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
@@ -196,7 +196,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('keeps unselected branch declarations isolated and publishes the selected else arm', () => {
-    const source = '$tone: gray; $if (false) { $tone := red; $$tone := maroon; } $else { $tone := blue; $$tone := navy; } .after { live: $tone; scoped: $$tone; }';
+    const source = '$tone: gray; $if (false) { $tone := red; $^tone := maroon; } $else { $tone := blue; $^tone := navy; } .after { live: $tone; scoped: $^tone; }';
 
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.after {\n  live: blue;\n  scoped: navy;\n}\n'
@@ -434,7 +434,7 @@ describe('Jess AST grammar facts', () => {
                 boundary: true,
                 value: {
                   type: 'Reference',
-                  base: { type: 'DeclarationReference', raw: '' },
+                  base: { type: 'DeclarationReference', raw: '$' },
                   steps: [
                     { type: 'DotLookup', name: 'type' },
                     { type: 'DotLookup', name: 'isnumber' },
@@ -443,7 +443,7 @@ describe('Jess AST grammar facts', () => {
                       args: [{
                         value: {
                           type: 'Reference',
-                          base: { type: 'DeclarationReference', raw: '' },
+                          base: { type: 'DeclarationReference', raw: '$' },
                           steps: [{ type: 'DotLookup', name: 'math' }, { type: 'DotLookup', name: 'e' }],
                           raw: '.math.e'
                         }
@@ -498,12 +498,76 @@ describe('Jess AST grammar facts', () => {
     for (const invalid of [
       '.card { value: .type; }',
       '.card { value: .type.isnumber(.math.e); }',
+      '.card { $w: 1; value: $w + 1; }',
       '.card { $w: 1px; value: $w + 1px; }',
       '.card { $w: 1px; base: 2px; value: $w + .base; }',
       '.card { value: $.1; }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
+    expect(parse('.card { $w: 2; value: $(.w + 1); }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'VariableDeclaration', name: 'w' },
+        {
+          type: 'Declaration',
+          name: 'value',
+          value: {
+            type: 'Interpolation',
+            parts: [{
+              ref: {
+                type: 'Block',
+                boundary: true,
+                value: {
+                  type: 'Operation',
+                  operator: '+',
+                  left: {
+                    type: 'Reference',
+                    base: { type: 'DeclarationReference', raw: '$' },
+                    steps: [{ type: 'DotLookup', name: 'w' }],
+                    raw: '.w'
+                  },
+                  right: { type: 'Dimension', number: 1, unit: '', src: '1' }
+                }
+              },
+              unquote: true
+            }]
+          }
+        }
+      ] }]
+    });
+    expect(parse('.card { $w: 2; value: $(.w > 0); }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'VariableDeclaration', name: 'w' },
+        {
+          type: 'Declaration',
+          name: 'value',
+          value: {
+            type: 'Interpolation',
+            parts: [{
+              ref: {
+                type: 'Block',
+                boundary: true,
+                value: {
+                  type: 'Condition',
+                  guard: {
+                    g: 'cmp',
+                    op: '>',
+                    left: {
+                      type: 'Reference',
+                      base: { type: 'DeclarationReference', raw: '$' },
+                      steps: [{ type: 'DotLookup', name: 'w' }],
+                      raw: '.w'
+                    },
+                    right: { type: 'Dimension', number: 0, unit: '', src: '0' }
+                  }
+                }
+              },
+              unquote: true
+            }]
+          }
+        }
+      ] }]
+    });
     expect(parse('.card { value: .1; }')).toMatchObject({
       rules: [{ type: 'Ruleset', rules: [{ value: { type: 'Dimension', number: 0.1, src: '.1' } }] }]
     });
@@ -529,7 +593,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('lowers Jess live/scoped references and lookup-bearing writes directly', () => {
-    const source = '$live: one; $$scoped: two; $live?: three; $$scoped?: four; $live := five; $$scoped := six; .card { live: $live; scoped: $$scoped; }';
+    const source = '$live: one; $^scoped: two; $live?: three; $^scoped?: four; $live := five; $^scoped := six; .card { live: $live; scoped: $^scoped; }';
     const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
@@ -558,7 +622,7 @@ describe('Jess AST grammar facts', () => {
       ]
     });
 
-    for (const unsupported of ['$!live: one;', '$$$scoped: two;', '$live ?: three;', '$live ? : three;', '$$ scoped: two;', '$ live: one;', '.card { value: $ live; }']) {
+    for (const unsupported of ['$!live: one;', '$$scoped: two;', '$$$scoped: two;', '$live ?: three;', '$live ? : three;', '$^ scoped: two;', '$ live: one;', '.card { value: $ live; }']) {
       expect(() => parse(unsupported), unsupported).toThrow(SyntaxError);
     }
   });
@@ -779,7 +843,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('keeps arithmetic expression-only while preserving slash and signed value boundaries', () => {
-    const source = '$w: 2px; .card { signed: $w -1; slash: $w / 2; wrapped: $($w / 2); }';
+    const source = '$w: 2px; .card { signed: $w -1; slash: $w / 2; scoped: $^w; wrapped: $($w / 2); scoped-wrapped: $(^w + 1px); scoped-compare: $(^w > 0px); }';
     const cst = parseJessCst(source);
     const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
 
@@ -794,7 +858,10 @@ describe('Jess AST grammar facts', () => {
         { type: 'Ruleset', rules: [
           { type: 'Declaration', name: 'signed', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '-1' }] },
           { type: 'Declaration', name: 'slash', value: { type: 'List', sep: '/', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '2' }] } },
-          { type: 'Declaration', name: 'wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '/' } }, unquote: true }] } }
+          { type: 'Declaration', name: 'scoped', value: { type: 'VariableReference', name: 'w', lookup: 'scoped' } },
+          { type: 'Declaration', name: 'wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '/' } }, unquote: true }] } },
+          { type: 'Declaration', name: 'scoped-wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '+', left: { type: 'VariableReference', name: 'w', lookup: 'scoped' } } }, unquote: true }] } },
+          { type: 'Declaration', name: 'scoped-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '>', left: { type: 'VariableReference', name: 'w', lookup: 'scoped' } } } }, unquote: true }] } }
         ] }
       ]
     });
@@ -802,11 +869,14 @@ describe('Jess AST grammar facts', () => {
       rules: [{ type: 'VariableDeclaration' }, { type: 'Ruleset', rules: [
         { value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '-1' }] },
         { value: { type: 'List', sep: '/' } },
+        { value: { type: 'VariableReference', name: 'w', lookup: 'scoped' } },
+        { value: { type: 'Interpolation' } },
+        { value: { type: 'Interpolation' } },
         { value: { type: 'Interpolation' } }
       ] }]
     });
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
-      '.card {\n  signed: 2px -1;\n  slash: 2px / 2;\n  wrapped: 1px;\n}\n'
+      '.card {\n  signed: 2px -1;\n  slash: 2px / 2;\n  scoped: 2px;\n  wrapped: 1px;\n  scoped-wrapped: 3px;\n  scoped-compare: ^w > 0px;\n}\n'
     );
 
     /*
@@ -826,7 +896,9 @@ describe('Jess AST grammar facts', () => {
       '$w: 2px; .card { x: $w * 2; }',
       '$w: 2px; .card { x: $w / 2 + 1; }',
       '$w: 2px; .card { x: $w % 2; }',
-      '$w: 2px; .card { x: $w = 2px; }'
+      '$w: 2px; .card { x: $w = 2px; }',
+      '$w: 2px; .card { x: ^w; }',
+      '$w: 2px; .card { x: ^w + 1px; }'
     ]) {
       const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
@@ -2741,7 +2813,7 @@ describe('Jess AST grammar facts', () => {
       '.button { $ > mixin(1,); }',
       '.button { $ > mixin($a:); }',
       '.button { $ > mixin(a: red); }',
-      '.button { $ > mixin($$a: red); }',
+      '.button { $ > mixin($^a: red); }',
       '.button { $ > mixin($a?: red); }',
       '.button { $ > mixin($a := red); }',
       '.button { $ > mixin($[a]: red); }'

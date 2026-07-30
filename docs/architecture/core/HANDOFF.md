@@ -1134,7 +1134,7 @@ or a completion milestone.
   `$if`, mixin-definition, and `$for` body positions. `Apply` is a core
   ruleset-only, whole-selector, merge-all operation; it is not a dialect render
   policy or an ordinary `MixinCall`. R3 now
-  gives `$` live/current and `$$` scoped/final references explicit
+  gives `$` live/current and `$^` scoped/final references explicit
   AST lookup facts; normal declarations write both stores, while `?:` and `:=`
   retain their selected lookup/write behavior. `$[$name]` is a live/live
   dynamic variable reference; Less `@@name` remains scoped/scoped. Selected
@@ -1235,7 +1235,7 @@ or a legacy-tree port.
 - Variable-held calls use `VariableCall { target: VariableReference, args:
   CallArg[] }`, replacing `DetachedCall` without an alias. The current Jess and
   Less grammar admits only their existing zero-argument spellings; the node can
-  retain arguments, but grammar work must not invent their syntax. `$`/`$$`
+  retain arguments, but grammar work must not invent their syntax. `$`/`$^`
   lookup mode remains on the `VariableReference`; named/spread wrapper-argument
   semantics are held until they are defined against a variable holding an
   already-invoked `MixinCall`.
@@ -1256,7 +1256,7 @@ or a legacy-tree port.
   add left-associated explicit-target access: dot/declaration names,
   variable-member bracket names, property-member quoted names, zero-based
   signed indexes, and computed bracket keys remain distinct typed access forms;
-  every `$`/`$$` lookup mode stays on its own `VariableReference`. This records
+  every `$`/`$^` lookup mode stays on its own `VariableReference`. This records
   syntax, not a decision to port Less:
   `MapAccessor` has one-based indexing, Less variable/property namespaces, and
   a raw-byte fallback, all invalid for Jess. Existing R7 controls dot-member
@@ -1496,6 +1496,90 @@ resolver, parser replay, source reconstruction, or compatibility path is
 involved.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Latest pass: scoped-caret parser syntax slice on 2026-07-29. Jess source now
+  spells scoped/final variable lookup as `$^foo`, with expression-only `^foo`
+  for Less math lowering. SCSS math remains `$($foo + 1)` because SCSS `$foo`
+  is the variable token and avoids declaration-lookup ambiguity.
+- Architecture surface: changed intentionally at the parser syntax and
+  documentation boundary. The only core runtime edit is the undefined
+  scoped-variable diagnostic text, replacing the retired `$$foo` spelling with
+  `$^foo`.
+- Separation/duplication: reduced by removing the old `$$` fallback language
+  from conversion and public docs. Less conversion now has one canonical scoped
+  read spelling; SCSS keeps its separate variable spelling.
+- Cumulative node weight: unchanged. No AST node type, CST label family,
+  materialization route, render wrapper, parser replay, or runtime dispatch host
+  was added.
+- New traversal: none.
+- New node/materialization: none. The changed `ReferenceError` line is an
+  existing exceptional failure site and does not create a new node, copied rule,
+  wrapper `Rules`, side table, source metadata mutation, or render materialized
+  array.
+- Render path: unchanged for successful renders. The diagnostic-only string
+  update changes the spelling reported for an undefined scoped variable from
+  retired `$$foo` to `$^foo`.
+- Helper/API surface: one grammar atom was added for expression-only `^foo`;
+  no exported API, helper layer, parser host, or runtime resolver fallback was
+  added.
+- Metadata mutations: none.
+- Behavior evidence: `pnpm --filter @jesscss/jess-parser test --
+  ast-grammar.test.ts -t "live/scoped|arithmetic expression-only|calls
+  as|declaration-member"` passed; `pnpm --filter @jesscss/jess-parser test --
+  cst-public.test.ts` passed; `pnpm --filter jess test --
+  conversion-construct-support.test.ts` passed; the registered
+  `ast-semantic-runtime-cutover` behavior command passed 128/128 tests.
+- Build evidence: `pnpm --filter @jesscss/jess-parser build`, `pnpm --filter
+  @jesscss/core build`, `pnpm --filter @jesscss/awaitable-pipe build`, and
+  `pnpm --filter @jesscss/fns build` passed in dependency order.
+- Boundary evidence: public docs now describe `$foo` as live/current, `$^foo`
+  as scoped/final, `^foo` as expression-only, Less `@foo + 1` lowering as
+  `$(^foo + 1)`, and SCSS `$foo + 1` lowering as `$($foo + 1)`.
+- Evidence: behavior, build, macro, compose-integrity, and aggressive-cutting
+  contract evidence is recorded in the bullets and JSON audit record in this
+  latest pass.
+- Verdict: accepted. This is a parser/source-spelling correction with no
+  performance claim and no added successful render/eval hot-path machinery.
+- Review-flagged diff tokens: [node construction] the current diff touches an
+  existing exceptional `ReferenceError` allocation only to correct its diagnostic
+  spelling from retired `$$foo` to `$^foo`; this is not routine control flow,
+  not a new allocation site, and not a successful render/eval path.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "This slice changes a serializer diagnostic spelling that belongs to the coordinated AST-v2 runtime owner, but it does not claim a neutral refactor, cost cut, or speed result. The semantic point is source spelling correctness: undefined scoped variables should mention `$^foo`, matching the parser and docs.",
+    "dangerTokensJustification": "The only danger token is [node construction] at an existing exceptional `ReferenceError` site. The change edits the error message text from retired `$$foo` to `$^foo`; it adds no traversal, allocation site, branch, render array, parser replay, or normal lookup fallback.",
+    "behaviorEvidence": "`pnpm --filter @jesscss/core test -- --run src/ast/__tests__/value-define-function.test.ts src/ast/__tests__/value-list.test.ts src/ast/__tests__/plugin-direct-body-scope.test.ts src/ast/__tests__/extend-direct-acceptance.test.ts src/ast/__tests__/extend-preflight-contract.test.ts src/ast/__tests__/value-operate-units.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/declaration-merge.test.ts` passed 128/128.",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the diagnostic spelling change.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  }
+]
+```
 
 - C16 scoped-function lookup slice on 2026-07-27: AST serialize frames now keep
   `fns` as a strictly local function-family registry and add `fnScope` /

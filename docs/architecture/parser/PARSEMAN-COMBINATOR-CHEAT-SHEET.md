@@ -9,7 +9,7 @@ This is the working grammar-authoring guide for the four host-mode grammar
 files. Use the language production name first, keep rules small, and prefer the
 Parseman combinator that states the ownership boundary directly.
 
-## The CSS/Less Choice
+## The CSS-Family Choice
 
 | Shape | Use | Do not use |
 | --- | --- | --- |
@@ -25,8 +25,8 @@ Analyzer overlap is a prompt for review, not an instruction to use
 "left-factor this later", or "route the shared opener once"; choose the one that
 matches the language boundary.
 
-For every CSS/Less `choice(...)` touched during the rewrite, classify it before
-editing:
+For every CSS-family `choice(...)` touched during the rewrite, classify it
+before editing:
 
 - **Routed token family**: one broad opener is consumed once, its matched value
   chooses known cases, and the same family has a generic continuation. Use
@@ -85,7 +85,22 @@ Less function names are glued to `(`, so `name(` belongs in the routed opener;
 `name (` is an identifier followed by later parenthesized syntax if that context
 allows it.
 
-Before changing a CSS/Less `choice(...)` into `dispatch(...)`, write down the
+Keep `Identifier` and `Keyword` as separate slots. `Identifier` is for
+identifier-shaped grammar structure outside value position, such as selector
+pieces, attribute names/modifiers, property-ish names, and at-rule names.
+`Keyword` is for value-position identifier facts. In value position, route
+`IdentifierOrFunction`: a bare identifier can become a `Keyword` value and a
+glued `name(` opener can dispatch to known/generic function bodies. Do not use
+the value `Keyword` slot merely because the raw CSS recognizer happens to share
+the same spelling as an identifier.
+
+Expression-shaped values are still policy-bound. Less value math/comparison
+lowers through its expression grammar according to `mathMode`; Jess math,
+comparison, and leading-dot lookup are expression-only and require the explicit
+`$()` boundary. Do not use a local parser retry or broad value arm to smuggle
+one dialect's expression policy into another dialect's ordinary value position.
+
+Before changing a CSS-family `choice(...)` into `dispatch(...)`, write down the
 routed value the first combinator returns. If that value is only `@`, `(`, `:`,
 or a bare identifier whose following delimiter decides the language branch, the
 rewrite is premature. Either include the deciding syntax in the routed
@@ -143,7 +158,7 @@ Less examples:
   and public CST owner families whose safe shared-opener rewrite has not been
   designed yet.
 
-CSS ownership and at-rule cleanup rule:
+CSS ownership, horizontal cleanup, and at-rule cleanup rule:
 
 - All CSS structure is CSS-owned unless a downstream grammar changes that
   exact structure. Even then, override only the smallest changed child, value
@@ -152,6 +167,12 @@ CSS ownership and at-rule cleanup rule:
   add or the specific CSS substructure they change. Interpolation is a
   leaf/value extension point, not a reason to reimplement a whole CSS production
   from scratch.
+- CSS may be cleaned vertically until spotless. Less, SCSS, and Jess cleanup
+  should move horizontally by production family: imports, at-rules, quoted
+  values, identifiers/functions, pseudo selectors/functions, selector starts,
+  query/supports/container forms, guards, custom-property values, values, and
+  declaration/property access should converge as one shared structure plus the
+  smallest necessary dialect slots.
 - Treat at-rules as routed at-keyword families. Do not "clean up" at-keyword
   regexes by replacing them with `word(...)` / `makeWord(...)` as the final
   shape.

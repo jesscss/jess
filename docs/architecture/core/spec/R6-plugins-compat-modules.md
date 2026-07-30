@@ -533,12 +533,12 @@ same source-level variable operations as native Jess:
 
 | SCSS | Jess canonical source | Required semantic result |
 |---|---|---|
-| `$foo: bar;` | `$foo: bar;` or `$$foo: bar;` | declaration creates or updates both bindings |
-| `$foo: bar !default;` | `$$foo?: bar;` | test the scoped/final map, then create/update both only on a miss |
-| `$foo: bar !global;` | `$$foo := bar;` | update the scoped/final binding |
+| `$foo: bar;` | `$foo: bar;` or `$^foo: bar;` | declaration creates or updates both bindings |
+| `$foo: bar !default;` | `$^foo?: bar;` | test the scoped/final map, then create/update both only on a miss |
+| `$foo: bar !global;` | `$^foo := bar;` | update the scoped/final binding |
 
-`$foo` is the live/current reference and `$$foo` is the scoped/final reference;
-`$!` is retired. Both `$foo:` and `$$foo:` create or update both bindings, so a
+`$foo` is the live/current reference and `$^foo` is the scoped/final reference;
+`$!`/`$$` are retired. Both `$foo:` and `$^foo:` create or update both bindings, so a
 declaration has no sigil-selected binding kind. `?:` and `:=` use the target
 reference's lookup mode. The evaluator semantics are the binding-system rules in
 `RESOLVER-SHAPE-SPEC.md`: scoped declarations use immutable lazy stacks plus a

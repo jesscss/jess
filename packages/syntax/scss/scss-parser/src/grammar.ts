@@ -1252,13 +1252,14 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * Static values retain escapes, unlike module paths (whose classification
    * deliberately rejects them). A real `#{` opener remains outside this fact
-   * so a supports condition can never flatten interpolation into a Quoted node.
+   * so a supports condition can never flatten interpolation into a static
+   * `Quoted` node.
    * `noTrivia` for the same reason as the module-path fact above: a supports
    * condition's string is literal bytes, not a place the `//` trivia arm may
    * reach. Closed regex/literal arms, so nothing shared is affected.
    */
-  const StaticValueQuoted = node<Quoted>(
-    'StaticValueQuoted',
+  const staticValueQuoted = node<Quoted>(
+    'Quoted',
     choice(
       noTrivia(sequence(
         literal('"'),
@@ -3466,7 +3467,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const SupportsAtom = node<ValueNode>(
     'SupportsAtom',
     choice(
-      StaticValueQuoted,
+      staticValueQuoted,
       g.Color,
       g.Dimension,
       g.CustomPropertyValue,
@@ -4368,9 +4369,9 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * Keyframe names do not participate in the module-path classification that
    * deliberately keeps `StaticQuoted` escape-free. They are ordinary
-   * static quoted values, so they reuse the escape-preserving
-   * `StaticValueQuoted` production (identical grammar and reducer)
-   * while still leaving a real `#{` opener for the rejected dynamic path.
+   * static quoted values, so they reuse the escape-preserving static-value
+   * string helper while still leaving a real `#{` opener for the rejected
+   * dynamic path.
    */
   const Keyframes = node<AtRuleBlock>(
     'Keyframes',
@@ -4378,7 +4379,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.CssSyntaxKeyframesAtKeyword,
       choice(
         g.Keyword,
-        StaticValueQuoted
+        staticValueQuoted
       ),
       literal('{'),
       many(choice(
@@ -4458,9 +4459,9 @@ export const scssFactory = (g: ScssInputRules) => {
     'Attribute',
     sequence(
       literal('['),
-      g.CssSyntaxKeyword,
+      g.Identifier,
       optional(sequence(
-        g.CssSyntaxAttributeOperator,
+        g.AttributeOperator,
         choice(
 
           /*
@@ -4479,9 +4480,9 @@ export const scssFactory = (g: ScssInputRules) => {
             singleQuotedText,
             literal('\'')
           )),
-          g.CssSyntaxKeyword
+          g.Identifier
         ),
-        optional(g.CssSyntaxAttributeModifier)
+        optional(g.AttributeModifier)
       )),
       literal(']')
     ),
@@ -4527,7 +4528,7 @@ export const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.StaticPseudoGroup,
         g.StaticPseudoSquare,
-        StaticValueQuoted,
+        staticValueQuoted,
         g.CssSyntaxBlockComment,
         staticPseudoChunk
       )),
@@ -4542,7 +4543,7 @@ export const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.StaticPseudoGroup,
         g.StaticPseudoSquare,
-        StaticValueQuoted,
+        staticValueQuoted,
         g.CssSyntaxBlockComment,
         staticPseudoChunk
       )),
@@ -4555,7 +4556,7 @@ export const scssFactory = (g: ScssInputRules) => {
     oneOrMore(choice(
       g.StaticPseudoGroup,
       g.StaticPseudoSquare,
-      StaticValueQuoted,
+      staticValueQuoted,
       g.CssSyntaxBlockComment,
       staticPseudoChunk
     )),
@@ -4574,7 +4575,7 @@ export const scssFactory = (g: ScssInputRules) => {
     oneOrMore(choice(
       g.StaticPseudoGroup,
       g.StaticPseudoSquare,
-      StaticValueQuoted,
+      staticValueQuoted,
       g.CssSyntaxBlockComment,
       staticSelectorPseudoChunk
     )),
