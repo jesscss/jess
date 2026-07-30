@@ -68,10 +68,18 @@ Every written rule must answer:
 
 1. **Is this from CSS?** Does it need to be duplicated? Is it called a different
    name — and if so, why, and is that justified? This is a question about
-   _duplication_, not about naming style. A production that restates a CSS
+   _duplication_, not about naming style. All CSS structure is CSS-owned unless a
+   downstream grammar changes that exact structure. Even then, override only the
+   smallest changed child, value slot, or reference; a dialect change is not a
+   license to replace the whole CSS rule. A production that restates a CSS
    construct the base grammar already defines should compose on it, not re-spell
    it. `less-parser` carried a byte-identical copy of a shared rule; the shared
-   rule's docstring even named the local copy.
+   rule's docstring even named the local copy. Less, SCSS, and Jess should be
+   lean overlays that describe only the syntax they add or the specific CSS
+   substructure they change. A different nested value grammar, interpolated
+   leaf, body item set, or syntactic guard is a reason to parameterize or replace
+   that child, not to fork the parent production unless the parent shape itself
+   is different.
 
 2. **Is it readable and well formatted?** In practice this splits into items 3
    and 4, which fail differently — see _the floor and the bar_ below.
@@ -354,6 +362,16 @@ The rule:
   is a finding unless the spec has no usable name.
 - **Default to a plain, undecorated name** — `declaration`, `selector`,
   `atRule`, `block`, `value`. Most productions are not dialect-specific at all.
+- **Name the semantic family before the concrete form.** The at-rule family is
+  `AtRule`; statement/block concrete kinds may be `AtRuleStatement` and
+  `AtRuleBlock` / `AtRuleWithBlock`, but a top-level route named for its caller
+  (`StylesheetAtRule`) or provenance (`CssAtRulePrelude`) is a finding unless
+  that caller context changes the accepted language. A future CST family tag may
+  make this easier for consumers, but the grammar name should already reflect
+  the language concept.
+- **Selectors are selectors.** A pseudo selector should be named
+  `PseudoSelector`, not bare `Pseudo`; a selector helper may include a narrower
+  semantic qualifier only when the accepted selector language actually differs.
 - **Do not preserve a whole compound spec phrase as a prefix.** Use the spec
   term at the node that actually parses that construct, then let surrounding
   rules be plain. Even when the CSS spec uses a repeated phrase like
@@ -369,6 +387,13 @@ The rule:
   to actually differ in what it _accepts_.
 - **Never prefix a shared rule.** A `Declaration` used by more than one dialect
   is `declaration`.
+- **`Css*` is still a prefix.** In grammar-local rule names, AST node kinds, and
+  public CST labels, `Css*` is a provenance claim just like `Less*`, `Scss*`,
+  or `Jess*`. It is acceptable only when the rule accepts CSS syntax in a place
+  where the surrounding dialect deliberately accepts something else and that
+  split is documented. Parser-shared terminal leaves such as `CssSyntax*` are
+  the narrower exception because the prefix names the accepted syntax surface;
+  do not copy that prefix into higher-level grammar families.
 - **`Ast` / `Cst` in a name is the same error one axis over.** That is a compile
   _mode_, not an identity; one grammar serves both modes, so the mode does not
   belong in the rule's name.
@@ -411,6 +436,13 @@ Observations, each re-checkable from the current grammar files:
   dialects carry the same helper with only the dialect name changed in the error
   string, either move the shared helper to the right home or rename the local
   divergence so it says what is actually different.
+- Jess `CssImport*` is current evidence of provenance naming hiding duplication:
+  Jess `@import` is CSS, not a Jess-specific import syntax. The fix is CSS-owned
+  or shared import composition with parameterized Jess holes, not a mechanical
+  rename that leaves the duplicated parser body intact.
+- At-rule family names should converge on `AtRule` with concrete statement/block
+  forms. Existing `StylesheetAtRule`, `DeclarationListAtRule`, and
+  `CssAtRulePrelude` names are review prompts, not precedent.
 
 _Interpretation, not observation:_ the target architecture in
 [`DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`](./DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md)

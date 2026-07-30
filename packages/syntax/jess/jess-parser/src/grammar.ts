@@ -13,7 +13,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, field, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, composeLeaf, dispatch, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -105,7 +105,7 @@ type JessRules = {
   InterpolatedSimple: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
   Attribute: Combinator<SimpleSelector>;
-  Pseudo: Combinator<SimpleToken>;
+  PseudoSelector: Combinator<SimpleToken>;
   StaticPseudoArgument: Combinator<SelectorList | string>;
   GenericPseudoArgument: Combinator<SelectorList | string>;
   Compound: Combinator<SelectorTerm>;
@@ -172,11 +172,12 @@ type JessRules = {
   SupportsFeature: Combinator<ValueNode>;
   SupportsInParens: Combinator<ValueNode>;
   SupportsCondition: Combinator<ValueNode>;
-  CssImportTarget: Combinator<Quoted | Url>;
+  ImportTarget: Combinator<Quoted | Url>;
+  ImportSupportsArgument: Combinator<ValueNode>;
   ImportTailFunction: Combinator<FunctionCall>;
-  CssImportPrelude: Combinator<ValueNode>;
+  ImportPrelude: Combinator<ValueNode>;
   Charset: Combinator<AtRuleStatement>;
-  CssImport: Combinator<AtRuleStatement>;
+  ImportStatement: Combinator<AtRuleStatement>;
   SupportsAtRuleBlock: Combinator<AtRuleBlock>;
   PropertyName: Combinator<Keyword>;
   StaticPropertyDescriptor: Combinator<Declaration>;
@@ -184,7 +185,7 @@ type JessRules = {
   KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
-  OpaquePrelude: Combinator<string | null>;
+  OpaqueAtPrelude: Combinator<string | null>;
   OpaqueBody: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   ScopeBlock: Combinator<AtRuleBlock>;
@@ -223,6 +224,7 @@ type SharedCssSyntax = {
   CssSyntaxQueryOnly: Combinator<string>;
   CssSyntaxQueryComparisonOperator: Combinator<string>;
   CssSyntaxContainerAtKeyword: Combinator<string>;
+  CssSyntaxSupportsAtKeyword: Combinator<string>;
   CssSyntaxSingleQuotedText: Combinator<string>;
   CssSyntaxDimensionUnit: Combinator<string>;
   CssSyntaxUrlOpen: Combinator<string>;
@@ -232,8 +234,8 @@ type SharedCssSyntax = {
   CssSyntaxSimple: Combinator<string>;
   CssSyntaxPseudoColon: Combinator<string>;
   CssSyntaxMediaAtKeyword: Combinator<string>;
-  JessOpaqueStaticPrelude: Combinator<string | null>;
-  JessOpaqueBody: Combinator<string>;
+  PreprocessorOpaqueAtRulePreludeCapture: Combinator<string | null>;
+  PreprocessorOpaqueAtRuleBodyCapture: Combinator<string>;
 };
 
 function requireToken(value: unknown): Token {
@@ -903,6 +905,11 @@ function reduceColonFeature(children: readonly unknown[], lostMessage: string): 
       ));
 }
 
+function functionOpenName(child: unknown): string {
+  const value = requireToken(child).value;
+  return value.endsWith('(') ? value.slice(0, -1) : value;
+}
+
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
@@ -1213,7 +1220,7 @@ const interpolatedSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))+/)
  * Jess's live `$` grammar does not permit CSS escapes in names. Keep that
  * dialect-local fact explicit while the value keyword leaf remains shared.
  */
-const jessDollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const dollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 
 /*
  * An operator boundary inside a Jess expression is whitespace, and a block
@@ -1221,10 +1228,10 @@ const jessDollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]
  * the comment as part of the boundary keeps the operator symbol a separate
  * grammar fact, so no reduction has to strip comment bytes back out of a token.
  */
-const jessExprBoundary = regex(/(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
-const jessExprProductSymbol = regex(/[*/%]/);
-const jessExprSumSymbol = regex(/[-+]/);
-const jessExprCompareSymbol = regex(/>=|<=|>|<|=/);
+const expressionBoundary = regex(/(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
+const expressionProductSymbol = regex(/[*/%]/);
+const expressionSumSymbol = regex(/[-+]/);
+const expressionCompareSymbol = regex(/>=|<=|>|<|=/);
 
 /*
  * `$if` conditions retain the CST's comparison spelling, which permits both
@@ -1232,22 +1239,22 @@ const jessExprCompareSymbol = regex(/>=|<=|>|<|=/);
  * expression interpolation, whose arithmetic/comparison grammar requires
  * spaces to avoid value-position ambiguity.
  */
-const jessIfGuardCompareOperator = regex(/[ \t\n\r\f]*(?:>=|<=|>|<|=)[ \t\n\r\f]*/);
+const ifGuardCompareOperator = regex(/[ \t\n\r\f]*(?:>=|<=|>|<|=)[ \t\n\r\f]*/);
 
 /*
  * This is intentionally the type-predicate namespace, not general function
  * syntax in a guard. The existing GuardNode evaluator accepts these names;
  * recognition retains a typed argument list and never routes through source.
  */
-const jessGuardUnaryTypePredicate = regex(/\$type\.(?:iscolor|isnumber|isstring|iskeyword|ispixel|ispercentage|isem)(?![-_a-zA-Z0-9\u0080-\uffff])/);
-const jessGuardIsUnitPredicate = regex(/\$type\.isunit(?![-_a-zA-Z0-9\u0080-\uffff])/);
+const guardUnaryTypePredicate = regex(/\$type\.(?:iscolor|isnumber|isstring|iskeyword|ispixel|ispercentage|isem)(?![-_a-zA-Z0-9\u0080-\uffff])/);
+const guardIsUnitPredicate = regex(/\$type\.isunit(?![-_a-zA-Z0-9\u0080-\uffff])/);
 
 /*
  * The reserved guard-predicate namespace. An expression atom uses this as a
  * negative lookahead so `$type.*` can never take a generic call tail and bypass
  * the closed, arity-checked predicate grammar above.
  */
-const jessTypeNamespace = regex(/\$type\./);
+const typeNamespace = regex(/\$type\./);
 
 /*
  * `${…}` — the interpolation form for every NAME, SELECTOR, and STRING position.
@@ -1273,19 +1280,19 @@ const jessTypeNamespace = regex(/\$type\./);
  * so `--$name-color` has no unambiguous name boundary.
  *
  * The `${[` / `]}` openers are ONE literal each so that the bracketed arms carry
- * the same child layout as `jessDollarInterpStructure` and share its reducer —
+ * the same child layout as `dollarInterpolationStructure` and share its reducer —
  * two reducers for one body grammar would drift.
  */
-const jessDollarBraceStructure = noTrivia(choice(
+const dollarBraceStructure = noTrivia(choice(
   sequence(
     literal('${['),
     literal('$'),
-    jessDollarName,
+    dollarName,
     literal(']}')
   ),
   sequence(
     literal('${['),
-    jessDollarName,
+    dollarName,
     literal(']}')
   ),
   sequence(
@@ -1304,20 +1311,20 @@ const jessDollarBraceStructure = noTrivia(choice(
   ),
   sequence(
     literal('${'),
-    jessDollarName,
+    dollarName,
     literal('}')
   )
 ));
-const jessDollarInterpStructure = noTrivia(choice(
+const dollarInterpolationStructure = noTrivia(choice(
   sequence(
     literal('$['),
     literal('$'),
-    jessDollarName,
+    dollarName,
     literal(']')
   ),
   sequence(
     literal('$['),
-    jessDollarName,
+    dollarName,
     literal(']')
   ),
   sequence(
@@ -1335,8 +1342,8 @@ const jessDollarInterpStructure = noTrivia(choice(
     literal(']')
   )
 ));
-const jessCustomPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-const jessSelectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+const customPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const selectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 
 /*
  * The parent selector. `&` alone is a selector reference; `&` fused with an
@@ -1350,7 +1357,7 @@ const jessSelectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
  * positioned parse error in `.jess` \u2014 `-1` is not an identifier \u2014 and `&(-1)` is
  * its explicit spelling.
  */
-const jessAmpersand = regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
+const ampersand = regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
 
 /*
  * `&(X)` is the explicit spelling of the fused append: `&(-1)` appends `-1` to
@@ -1362,28 +1369,28 @@ const jessAmpersand = regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F
  * `nil` is not a Jess keyword. Neither may degrade into "append nothing", so the
  * payload is non-empty and excludes a bare `nil`.
  */
-const jessAmpersandAppendPayload = regex(/(?!nil\))[-_a-zA-Z0-9\u0080-\uffff]+/);
+const ampersandAppendPayload = regex(/(?!nil\))[-_a-zA-Z0-9\u0080-\uffff]+/);
 
 /*
  * The literal tail an authored value-position interpolation may carry: a unit
  * (`$(20)px`), a percent sign, or an identifier suffix (`$[name]-suffix`).
  */
-const jessInterpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
+const interpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
 
 /*
  * One value-term slash boundary, with its authored whitespace on either side.
  * The negative lookahead keeps a comment opener (`/*`) out of the boundary so a
  * commented value still fails exactly where it did before.
  */
-const jessValueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
-const jessGeneralTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
+const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
+const generalTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 
 /*
  * An unquoted Jess URL keeps literal URL-token bytes and `$[…]` segments as
  * separate grammar facts. Whitespace, quotes, parentheses, and any other `$`
  * form remain outside this closed URL slice rather than becoming raw payload.
  */
-const jessUrlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const urlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
  * Jess's compiler namespace: the `@-\u2026` names a module directive lowers to. They
@@ -1391,7 +1398,10 @@ const jessUrlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1
  * or captured as opaque bytes \u2014 their own typed productions own them, and a
  * malformed one must report its own error rather than silently degrade.
  */
-const jessCompilerAtRuleName = regex(/@-(?:use|compose|export|import|from)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const compilerAtRuleName = keywords(
+  ['@-use', '@-compose', '@-export', '@-import', '@-from'],
+  { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
+);
 
 /*
  * The exclusion list is dispatch, not vocabulary: every name here HAS a typed
@@ -1403,28 +1413,31 @@ const jessCompilerAtRuleName = regex(/@-(?:use|compose|export|import|from)(?![-_
  * which at-rules exist is a language-service fact, so an ordinary vendor prefix
  * (`@-webkit-anything`, `@-moz-document`) is plain unknown CSS and passes.
  */
-const jessGenericCssAtRuleName = regex(/@(?!(?:charset|import|supports|property|media|container|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
-const jessCharsetAtRuleName = regex(/@charset(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessImportAtRuleName = regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessSupportsAtRuleName = regex(/@supports(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessPropertyAtRuleName = regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessScopeAtRuleName = regex(/@scope(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessKeyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessKeyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
+const genericAtRuleName = regex(/@(?!(?:charset|import|supports|property|media|container|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+const charsetAtRuleName = word('@charset', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const importAtRuleName = word('@import', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const propertyAtRuleName = word('@property', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const scopeAtRuleName = word('@scope', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const keyframeEndpoint = keywords(
+  ['from', 'to'],
+  { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
+);
+const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 
 export const jessFactory = (g: JessRules & SharedCssSyntax) => {
-  const jessCase = makeWhen({ caseInsensitive: true });
+  const caseInsensitiveWhen = makeWhen({ caseInsensitive: true });
+  const syntaxWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF');
 
   const VariableReference = node<VariableReference>(
     'VariableReference',
     choice(
       noTrivia(sequence(
         literal('$$'),
-        jessDollarName
+        dollarName
       )),
       noTrivia(sequence(
         literal('$'),
-        jessDollarName
+        dollarName
       ))
     ),
     (children, _fields, span) => withSourceSpan(
@@ -1442,7 +1455,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const DollarBrace = node<Interpolation>(
     'DollarBrace',
-    jessDollarBraceStructure,
+    dollarBraceStructure,
     (children, _fields, span) => dollarBraceInterpolation(
       children,
       span
@@ -1450,7 +1463,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const DollarInterp = node<Interpolation>(
     'DollarInterp',
-    jessDollarInterpStructure,
+    dollarInterpolationStructure,
     (children, _fields, span) => interpolationFromChildren(
       children,
       span
@@ -1463,7 +1476,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    */
   const ExpressionDollarBrace = node<ExpressionFact>(
     'ExpressionDollarBrace',
-    jessDollarBraceStructure,
+    dollarBraceStructure,
     (children, _fields, span) => {
       return { value: dollarBraceInterpolation(
         children,
@@ -1473,7 +1486,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const ExpressionDollarInterp = node<ExpressionFact>(
     'ExpressionDollarInterp',
-    jessDollarInterpStructure,
+    dollarInterpolationStructure,
     (children, _fields, span) => ({ value: interpolationFromChildren(
       children,
       span
@@ -1482,27 +1495,27 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ExpressionProductOperator = node<JessOperatorFact>(
     'ExpressionProductOperator',
     noTrivia(sequence(
-      jessExprBoundary,
-      jessExprProductSymbol,
-      jessExprBoundary
+      expressionBoundary,
+      expressionProductSymbol,
+      expressionBoundary
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
   const ExpressionSumOperator = node<JessOperatorFact>(
     'ExpressionSumOperator',
     noTrivia(sequence(
-      jessExprBoundary,
-      jessExprSumSymbol,
-      jessExprBoundary
+      expressionBoundary,
+      expressionSumSymbol,
+      expressionBoundary
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
   const ExpressionCompareOperator = node<JessOperatorFact>(
     'ExpressionCompareOperator',
     noTrivia(sequence(
-      jessExprBoundary,
-      jessExprCompareSymbol,
-      jessExprBoundary
+      expressionBoundary,
+      expressionCompareSymbol,
+      expressionBoundary
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
@@ -1512,7 +1525,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         g.DeclarationReference,
         literal('.'),
-        jessDollarName,
+        dollarName,
         many(choice(
           g.ExpressionReferenceCallTail,
           g.ReferenceTail
@@ -1520,7 +1533,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       ),
       sequence(
         literal('.'),
-        jessDollarName,
+        dollarName,
         many(choice(
           g.ExpressionReferenceCallTail,
           g.ReferenceTail
@@ -1549,7 +1562,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       sequence(
         literal('$'),
-        jessDollarName,
+        dollarName,
         literal(':'),
         g.ExpressionCompare
       ),
@@ -1570,12 +1583,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal('('),
       parser(
         { trivia: whitespace },
-        optional(sequence(
+        optional(oneOrMoreSep(
           g.ExpressionCallArgument,
-          many(sequence(
-            literal(','),
-            g.ExpressionCallArgument
-          ))
+          literal(',')
         ))
       ),
       optional(rawWhitespace),
@@ -1612,7 +1622,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      */
     choice(
       noTrivia(sequence(
-        not(jessTypeNamespace),
+        not(typeNamespace),
         g.VariableReference,
         many(choice(
           g.ExpressionReferenceCallTail,
@@ -1744,13 +1754,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'GuardCall',
     choice(
       sequence(
-        jessGuardUnaryTypePredicate,
+        guardUnaryTypePredicate,
         literal('('),
         g.ValueTerm,
         literal(')')
       ),
       sequence(
-        jessGuardIsUnitPredicate,
+        guardIsUnitPredicate,
         literal('('),
         g.ValueTerm,
         optional(sequence(
@@ -2034,34 +2044,47 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    */
   const moduleBindingName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const moduleAsClause = sequence(
-    regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/),
+    syntaxWord('as'),
     moduleBindingName
   );
   const styleImportAsClause = sequence(
-    regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/),
+    syntaxWord('as'),
     choice(
       literal('*'),
       moduleBindingName
     )
   );
+  const styleImportDirective = keywords(['@-compose', '@-export', '@-import'], {
+    boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
+  });
   const StyleImport = node<StyleImport>(
     'StyleImport',
-    choice(
-      sequence(
-        regex(/@-compose(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.Quoted,
-        optional(styleImportAsClause),
-        optional(literal(';'))
+    dispatch(
+      styleImportDirective,
+      when(
+        '@-compose',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(styleImportAsClause),
+          optional(literal(';'))
+        )
       ),
-      sequence(
-        regex(/@-export(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.Quoted,
-        optional(literal(';'))
+      when(
+        '@-export',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(literal(';'))
+        )
       ),
-      sequence(
-        regex(/@-import(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.Quoted,
-        optional(literal(';'))
+      when(
+        '@-import',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(literal(';'))
+        )
       )
     ),
     (children) => {
@@ -2105,47 +2128,53 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       alias: children.length === 3 ? requireToken(children[2]).value : null
     })
   );
+  const moduleSpecifierList = oneOrMoreSep(
+    g.ModuleSpecifier,
+    literal(',')
+  );
+  const moduleImportDirective = keywords(['@-use', '@-from'], {
+    boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
+  });
   const ModuleImport = node<ModuleImport>(
     'ModuleImport',
-    choice(
-      sequence(
-        regex(/@-use(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.Quoted,
-        optional(styleImportAsClause),
-        optional(literal(';'))
+    dispatch(
+      moduleImportDirective,
+      when(
+        '@-use',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(styleImportAsClause),
+          optional(literal(';'))
+        )
       ),
-      sequence(
-        regex(/@-from(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.Quoted,
-        regex(/import(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        choice(
-          sequence(
-            literal('*'),
-            moduleAsClause
-          ),
-          sequence(
-            g.ModuleSpecifier,
-            literal(','),
-            literal('('),
-            g.ModuleSpecifier,
-            many(sequence(
+      when(
+        '@-from',
+        sequence(
+          routed(),
+          g.Quoted,
+          syntaxWord('import'),
+          choice(
+            sequence(
+              literal('*'),
+              moduleAsClause
+            ),
+            sequence(
+              g.ModuleSpecifier,
               literal(','),
-              g.ModuleSpecifier
-            )),
-            literal(')')
-          ),
-          g.ModuleSpecifier,
-          sequence(
-            literal('('),
+              literal('('),
+              moduleSpecifierList,
+              literal(')')
+            ),
             g.ModuleSpecifier,
-            many(sequence(
-              literal(','),
-              g.ModuleSpecifier
-            )),
-            literal(')')
-          )
-        ),
-        optional(literal(';'))
+            sequence(
+              literal('('),
+              moduleSpecifierList,
+              literal(')')
+            )
+          ),
+          optional(literal(';'))
+        )
       )
     ),
     (children) => {
@@ -2274,13 +2303,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const UrlInterpolatedValue = node<Interpolation>(
     'UrlInterpolatedValue',
     noTrivia(sequence(
-      optional(jessUrlInterpolatedText),
+      optional(urlInterpolatedText),
       choice(
         g.DollarBrace,
         g.Expression
       ),
       many(choice(
-        jessUrlInterpolatedText,
+        urlInterpolatedText,
         g.DollarBrace,
         g.Expression
       ))
@@ -2361,10 +2390,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       sequence(
         literal('&('),
-        jessAmpersandAppendPayload,
+        ampersandAppendPayload,
         literal(')')
       ),
-      jessAmpersand
+      ampersand
     ),
     (children) => {
       const head = requireToken(children[0]).value;
@@ -2381,17 +2410,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * simple selector and a sibling selector's interpolation never falsely admits
    * a plain one.
    */
-  const interpolatedSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
+  const interpolatedSimpleAhead = peek(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
   const InterpolatedSimple = node<SimpleSelector>(
     'InterpolatedSimple',
     noTrivia(sequence(
       interpolatedSimpleAhead,
       optional(regex(/[.#]/)),
-      many(jessSelectorTextRun),
+      many(selectorTextRun),
       g.DollarBrace,
       many(choice(
         g.DollarBrace,
-        jessSelectorTextRun
+        selectorTextRun
       ))
     )),
     (children) => {
@@ -2436,17 +2465,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * the same fast reject `InterpolatedSimple` uses, so an ordinary `&`
    * compound member never pays a failed template scan.
    */
-  const interpolatedParentSuffixAhead = not(not(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
+  const interpolatedParentSuffixAhead = peek(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
   const InterpolatedParentSuffix = node<SimpleSelector>(
     'InterpolatedParentSuffix',
     noTrivia(sequence(
       interpolatedParentSuffixAhead,
       literal('&'),
-      many(jessSelectorTextRun),
+      many(selectorTextRun),
       g.DollarBrace,
       many(choice(
         g.DollarBrace,
-        jessSelectorTextRun
+        selectorTextRun
       ))
     )),
     children => interpolatedSimpleSelector(templateInterpolationFromChildren(children.filter(child => !isToken(child) || !child.value.includes('$'))))
@@ -2567,8 +2596,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return nth.value;
     }
   );
-  const Pseudo = node<SimpleToken>(
-    'Pseudo',
+  const PseudoSelector = node<SimpleToken>(
+    'PseudoSelector',
 
     /*
      * Insignificant whitespace may surround a functional pseudo's argument inside
@@ -2662,7 +2691,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         { trivia: whitespace },
         g.Attribute
       ),
-      g.Pseudo,
+      g.PseudoSelector,
       g.Parent,
       g.Simple
     ))),
@@ -2729,7 +2758,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * source text. Retain the parsed `SelectorList` rather than collapsing it to
    * text: a whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as
    * structured `args` and never canonicalizes at parse (the inner `_canon` memos
-   * stay unpopulated); `Pseudo` derives opaque SimpleSelector text otherwise.
+   * stay unpopulated); `PseudoSelector` derives opaque SimpleSelector text otherwise.
    */
   const StaticPseudoArgument = node<SelectorList | string>(
     'StaticPseudoArgument',
@@ -2758,17 +2787,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * required `)` then fails: a Jess interpolation in a pseudo
    * argument still rejects rather than being flattened into opaque text.
    */
-  const jessPseudoRawDoubleQuoted = sequence(
+  const pseudoRawDoubleQuoted = sequence(
     literal('"'),
     plainDoubleQuotedText,
     literal('"')
   );
-  const jessPseudoRawSingleQuoted = sequence(
+  const pseudoRawSingleQuoted = sequence(
     literal('\''),
     plainSingleQuotedText,
     literal('\'')
   );
-  const jessPseudoRawArgument = scanTo(
+  const pseudoRawArgument = scanTo(
     choice(
       literal('$'),
       literal(')')
@@ -2778,15 +2807,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         balanced(
           '(',
           ')',
-          { skip: [jessPseudoRawDoubleQuoted, jessPseudoRawSingleQuoted] }
+          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
         ),
         balanced(
           '[',
           ']',
-          { skip: [jessPseudoRawDoubleQuoted, jessPseudoRawSingleQuoted] }
+          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
         ),
-        jessPseudoRawDoubleQuoted,
-        jessPseudoRawSingleQuoted,
+        pseudoRawDoubleQuoted,
+        pseudoRawSingleQuoted,
         blockComment
       ]
     }
@@ -2799,7 +2828,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.StaticPseudoArgument,
         optional(rawWhitespace)
       ),
-      jessPseudoRawArgument
+      pseudoRawArgument
     ),
     (children) => {
       const selector = children.find(isSelectorList);
@@ -2966,7 +2995,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       'ReferenceDotTail',
       noTrivia(sequence(
         literal('.'),
-        jessDollarName
+        dollarName
       )),
       (children) => {
         const name = requireToken(children[1]).value;
@@ -3021,12 +3050,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal('('),
       parser(
         { trivia: whitespace },
-        optional(sequence(
+        optional(oneOrMoreSep(
           g.MixinCallArgument,
-          many(sequence(
-            literal(','),
-            g.MixinCallArgument
-          ))
+          literal(',')
         ))
       ),
       optional(rawWhitespace),
@@ -3055,7 +3081,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       attempt(sequence(
         g.DeclarationReference,
         literal('.'),
-        jessDollarName,
+        dollarName,
         many(choice(
           g.ReferenceCallTail,
           g.ReferenceTail
@@ -3186,7 +3212,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.DollarInterp
       ),
       many(choice(
-        jessInterpolatedValueTail,
+        interpolatedValueTail,
         g.Expression,
         g.DollarInterp
       ))
@@ -3292,7 +3318,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     noTrivia(sequence(
       g.ValueSpaceGroup,
       many(sequence(
-        jessValueSlashBoundary,
+        valueSlashBoundary,
         g.ValueSpaceGroup
       ))
     )),
@@ -3692,7 +3718,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * running the media/container lookaheads at every rule. The former arm-2
    * `not(@media)` / `not(@container only)` guards are folded into the dedicated
    * media/container arms plus the `media`/`container` exclusion in
-   * `jessGenericCssAtRuleName`, preserving the exact accept/reject set.
+   * `genericAtRuleName`, preserving the exact accept/reject set.
    */
   const StaticAtRuleHeader = node<JessAtRuleHeader>(
     'StaticAtRuleHeader',
@@ -3711,7 +3737,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.StaticAtPrelude
       ),
       sequence(
-        jessGenericCssAtRuleName,
+        genericAtRuleName,
         g.StaticAtPrelude
       )
     ),
@@ -3847,7 +3873,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.GeneralTemplateBrace,
       g.GeneralTemplateDoubleQuoted,
       g.GeneralTemplateSingleQuoted,
-      jessGeneralTemplateText
+      generalTemplateText
     )),
     templateInterpolationFromChildren
   );
@@ -3912,7 +3938,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.GeneralQuotedTemplateBrace,
       g.GeneralQuotedTemplateDoubleQuoted,
       g.GeneralQuotedTemplateSingleQuoted,
-      jessGeneralTemplateText
+      generalTemplateText
     )),
     templateInterpolationFromChildren
   );
@@ -4025,7 +4051,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const Charset = node<AtRuleStatement>(
     'Charset',
     sequence(
-      jessCharsetAtRuleName,
+      charsetAtRuleName,
       g.StaticQuoted,
       literal(';')
     ),
@@ -4034,8 +4060,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       requireStaticQuoted(children[1])
     )
   );
-  const CssImportTarget = node<Quoted | Url>(
-    'CssImportTarget',
+  const ImportTarget = node<Quoted | Url>(
+    'ImportTarget',
     choice(
       g.StaticQuoted,
       sequence(
@@ -4074,45 +4100,79 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Kept local to the import tail: the general at-rule value grammar is not
    * widened, so no other header gains a function-call spelling here.
    */
-  const importTailFunctionName = token(noTrivia(sequence(
+  const importTailFunctionOpen = token(noTrivia(sequence(
     g.CssSyntaxKeyword,
-    not(not(literal('(')))
+    literal('(')
   )));
+  const ImportSupportsArgument = node<ValueNode>(
+    'ImportSupportsArgument',
+    choice(
+      sequence(
+        g.SupportsCondition,
+        literal(')')
+      ),
+      sequence(
+        optional(rawWhitespace),
+        g.CssSyntaxKeyword,
+        optional(rawWhitespace),
+        literal(':'),
+        optional(rawWhitespace),
+        g.SupportsAtom,
+        optional(rawWhitespace),
+        literal(')')
+      ),
+      sequence(
+        optional(rawWhitespace),
+        g.CssSyntaxKeyword,
+        optional(rawWhitespace),
+        literal(')')
+      )
+    ),
+    (children) => {
+      if (isValueNode(children[0])) {
+        return children[0];
+      }
+      return reduceColonFeature(
+        children,
+        'Jess import supports argument lost its property name.'
+      );
+    }
+  );
   const ImportTailFunction = node<FunctionCall>(
     'ImportTailFunction',
     dispatch(
-      importTailFunctionName,
+      importTailFunctionOpen,
 
       /*
-       * `<supports-condition>` already owns its own parentheses, so the
-       * `supports(` opener IS the condition's leading paren — no second pair.
+       * The routed value is the glued CSS function opener. Nested/logical
+       * supports arguments reuse `SupportsCondition`; declaration-shaped
+       * `supports(display: grid)` is owned by `ImportSupportsArgument`.
        */
-      jessCase(
-        'supports',
+      caseInsensitiveWhen(
+        'supports(',
         sequence(
           routed(),
-          g.SupportsCondition
+          g.ImportSupportsArgument
         )
       ),
-      jessCase(
-        'layer',
+      caseInsensitiveWhen(
+        'layer(',
         sequence(
           routed(),
-          literal('('),
           g.Keyword,
           literal(')')
         )
       )
     ),
     children => funcCall(
-      requireToken(children[0]).value,
+      functionOpenName(children[0]),
       [requireValueNode(children.find(isValueNode))]
     )
   );
-  const CssImportPrelude = node<ValueNode>(
-    'CssImportPrelude',
+  const ImportPrelude = node<ValueNode>(
+    'ImportPrelude',
     noTrivia(sequence(
-      g.CssImportTarget,
+      g.ImportTarget,
       many(sequence(
         regex(/[ \t\n\r\f]+/),
         choice(
@@ -4126,11 +4186,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const CssImport = node<AtRuleStatement>(
-    'CssImport',
+  const ImportStatement = node<AtRuleStatement>(
+    'ImportStatement',
     sequence(
-      jessImportAtRuleName,
-      g.CssImportPrelude,
+      importAtRuleName,
+      g.ImportPrelude,
       literal(';')
     ),
     children => atRuleStatement(
@@ -4198,7 +4258,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const SupportsAtRuleBlock = node<AtRuleBlock>(
     'SupportsAtRuleBlock',
     sequence(
-      jessSupportsAtRuleName,
+      g.CssSyntaxSupportsAtKeyword,
       g.SupportsCondition,
       literal('{'),
       many(atBlockStatement),
@@ -4253,7 +4313,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const PropertyAtRule = node<AtRuleBlock>(
     'PropertyAtRule',
     sequence(
-      jessPropertyAtRuleName,
+      propertyAtRuleName,
       g.PropertyName,
       literal('{'),
       many(g.StaticPropertyDescriptor),
@@ -4277,8 +4337,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const KeyframeSelector = node<SimpleSelector>(
     'KeyframeSelector',
     choice(
-      jessKeyframeEndpoint,
-      jessKeyframePercent
+      keyframeEndpoint,
+      keyframePercent
     ),
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -4344,19 +4404,19 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     noTrivia(sequence(
       literal('$'),
       literal('$'),
-      jessDollarName,
+      dollarName,
       literal('?:')
     )),
     noTrivia(sequence(
       literal('$'),
-      jessDollarName,
+      dollarName,
       literal('?:')
     )),
     sequence(
       noTrivia(sequence(
         literal('$'),
         literal('$'),
-        jessDollarName
+        dollarName
       )),
       choice(
         literal(':='),
@@ -4366,7 +4426,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       noTrivia(sequence(
         literal('$'),
-        jessDollarName
+        dollarName
       )),
       choice(
         literal(':='),
@@ -4448,7 +4508,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
    * real interpolated property is never skipped.
    */
-  const interpolatedPropertyAhead = not(not(regex(/[^{};:]*\$[[{]/)));
+  const interpolatedPropertyAhead = peek(regex(/[^{};:]*\$[[{]/));
   const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     noTrivia(sequence(
@@ -4494,10 +4554,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       noTrivia(sequence(
         literal('--'),
-        many(jessCustomPropertyChunk),
+        many(customPropertyChunk),
         g.DollarBrace,
         many(choice(
-          jessCustomPropertyChunk,
+          customPropertyChunk,
           g.DollarBrace
         ))
       )),
@@ -4665,9 +4725,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ScopeBlock = node<AtRuleBlock>(
     'ScopeBlock',
     sequence(
-      jessScopeAtRuleName,
+      scopeAtRuleName,
       noTrivia(sequence(
-        g.OpaquePrelude,
+        g.OpaqueAtPrelude,
         literal('{')
       )),
       many(atBlockStatement),
@@ -4731,9 +4791,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * one child, matching the explicit wrapper shape the other dialects use for
    * optional opaque captures.
    */
-  const OpaquePrelude = node<string | null>(
-    'OpaquePrelude',
-    g.JessOpaqueStaticPrelude,
+  const OpaqueAtPrelude = node<string | null>(
+    'OpaqueAtPrelude',
+    g.PreprocessorOpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
       return text === '' ? null : text;
@@ -4741,16 +4801,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
   const OpaqueBody = node<string>(
     'OpaqueBody',
-    g.JessOpaqueBody,
+    g.PreprocessorOpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : requireToken(children[0]).value
   );
   const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
     'OpaqueAtRuleBlock',
     sequence(
-      not(jessCompilerAtRuleName),
+      not(compilerAtRuleName),
       g.CssSyntaxGenericAtRuleName,
       noTrivia(sequence(
-        g.OpaquePrelude,
+        g.OpaqueAtPrelude,
         literal('{'),
         g.OpaqueBody,
         literal('}')
@@ -4781,7 +4841,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'MixinParam',
     sequence(
       literal('$'),
-      jessDollarName,
+      dollarName,
       optional(sequence(
         literal(':'),
         g.ValueTerm
@@ -4798,12 +4858,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'MixinParams',
     sequence(
       literal('('),
-      optional(sequence(
+      optional(oneOrMoreSep(
         g.MixinParam,
-        many(sequence(
-          literal(','),
-          g.MixinParam
-        ))
+        literal(',')
       )),
       literal(')')
     ),
@@ -4814,7 +4871,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       sequence(
         literal('$'),
-        jessDollarName,
+        dollarName,
         literal(':'),
         g.ValueTerm
       ),
@@ -4840,12 +4897,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         mixinNameToken
       )),
       literal('('),
-      optional(sequence(
+      optional(oneOrMoreSep(
         g.MixinCallArgument,
-        many(sequence(
-          literal(','),
-          g.MixinCallArgument
-        ))
+        literal(',')
       )),
       literal(')'),
       optional(literal(';'))
@@ -4880,7 +4934,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'ReferenceCall',
     sequence(
       literal('$'),
-      jessDollarName,
+      dollarName,
       literal('('),
       literal(')'),
       optional(literal(';'))
@@ -4903,7 +4957,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       mixinNameToken,
       g.MixinParams,
       optional(sequence(
-        regex(/when(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('when'),
         literal('('),
         g.MixinGuard,
         literal(')')
@@ -5027,7 +5081,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'ForName',
     sequence(
       literal('$'),
-      jessDollarName
+      dollarName
     ),
     children => requireToken(children[1]).value
   );
@@ -5090,11 +5144,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       optional(literal('>')),
       g.ForRangeBound,
-      regex(/to(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('to'),
       optional(literal('<')),
       g.ForRangeBound,
       optional(sequence(
-        regex(/step(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('step'),
         g.ForRangeBound
       ))
     ),
@@ -5185,7 +5239,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'IfGuardCompare',
     noTrivia(sequence(
       g.ExpressionSum,
-      jessIfGuardCompareOperator,
+      ifGuardCompareOperator,
       g.ExpressionSum
     )),
     reduceGuardCompare
@@ -5327,7 +5381,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         { trivia: whitespace },
         g.Attribute
       ),
-      g.Pseudo,
+      g.PseudoSelector,
       g.InterpolatedParentSuffix,
       g.InterpolatedSimple,
       g.Parent,
@@ -5464,7 +5518,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.ModuleImport,
         g.ValueBlockDeclaration,
         g.VariableDeclaration,
-        g.CssImport
+        g.ImportStatement
       )),
       many(choice(
         g.MixinCall,
@@ -5561,12 +5615,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     SupportsFeature,
     SupportsInParens,
     SupportsCondition,
-    CssImportTarget,
+    ImportTarget,
+    ImportSupportsArgument,
     ImportTailFunction,
-    CssImportPrelude,
+    ImportPrelude,
     UrlInterpolatedValue,
     Charset,
-    CssImport,
+    ImportStatement,
     SupportsAtRuleBlock,
     PropertyName,
     StaticPropertyDescriptor,
@@ -5574,7 +5629,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,
-    OpaquePrelude,
+    OpaqueAtPrelude,
     OpaqueBody,
     OpaqueAtRuleBlock,
     ScopeBlock,
@@ -5618,7 +5673,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     InterpolatedSimple,
     InterpolatedParentSuffix,
     Attribute,
-    Pseudo,
+    PseudoSelector,
     StaticPseudoArgument,
     GenericPseudoArgument,
     Compound,

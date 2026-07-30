@@ -161,17 +161,22 @@ describe('Less import CST facts', () => {
     expect(leafValues(findNode(imp!, 'ImportTail')!)).toContain('screen and ');
   });
 
-  it('keeps a url target and the @-export keyword', () => {
-    const result = parseLessCst('@-export (reference) url("theme.less") print;');
+  it('keeps a url target and the @-import keyword', () => {
+    const result = parseLessCst('@-import (reference) url("theme.less") print;');
     expect(result.errors).toHaveLength(0);
     const imp = findNode(result.tree, 'ImportAtRule');
     expect(imp).toBeDefined();
-    expect(leafValues(imp!)).toContain('@-export');
+    expect(leafValues(imp!)).toContain('@-import');
     expect(findNode(imp!, 'ImportOptions')).toBeDefined();
     expect(findNode(imp!, 'ImportTarget')).toBeDefined();
     expect(findNode(imp!, 'Url')).toBeDefined();
     expect(findNode(imp!, 'ImportTail')).toBeDefined();
     expectNoModeLabels(result.tree);
+  });
+
+  it('does not treat @-export as a Less import spelling', () => {
+    const result = parseLessCst('@-export (reference) url("theme.less") print;');
+    expect(cstIssueCount(result)).toBeGreaterThan(0);
   });
 
   it('rejects an unterminated quoted interpolation import target', () => {

@@ -1295,7 +1295,7 @@ describe('Less AST grammar facts', () => {
   it('constructs canonical import, variable, declaration, and ruleset facts directly', () => {
     const result = run(
       lessAstGrammar.Document,
-      '@theme: "dark";\n.a { /* note */ color: red; }\n@import "theme.less";\n@-export \'tokens.less\';',
+      '@theme: "dark";\n.a { /* note */ color: red; }\n@import "theme.less";\n@-import \'tokens.less\';',
       { trivia: lessAstGrammar.whitespace }
     );
 
@@ -1351,7 +1351,7 @@ describe('Less AST grammar facts', () => {
         },
         {
           type: 'ImportAtRule',
-          name: '@-export',
+          name: '@-import',
           options: null,
           target: {
             type: 'Quoted',
@@ -3872,7 +3872,7 @@ describe('Less AST grammar facts', () => {
   });
 
   it('keeps fallback CSS at-rule prelude comments in trivia, not semantic bytes', () => {
-    const result = run(lessAstGrammar.CssAtRulePrelude, 'a/* note */b', {
+    const result = run(lessAstGrammar.AtRulePrelude, 'a/* note */b', {
       trivia: lessAstGrammar.whitespace
     });
 

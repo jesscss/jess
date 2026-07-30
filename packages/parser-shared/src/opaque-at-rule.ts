@@ -40,50 +40,37 @@ const preprocessorBrace = balanced(
 const preprocessorSkip = [blockComment, lineComment, escape, doubleQuoted, singleQuoted, preprocessorBrace];
 
 export const opaqueAtRuleRecognition = rules(_g => ({
-  CssOpaqueCapturePrelude: optional(scanTo(
+  OpaqueAtRulePreludeCapture: optional(scanTo(
     choice(
       literal('{'),
       literal(';')
     ),
     { skip: cssSkip }
   )),
-  CssOpaqueCaptureBody: noTrivia(scanTo(
+  OpaqueAtRuleBodyCapture: noTrivia(scanTo(
     literal('}'),
     { skip: cssSkip }
   )),
 
   /*
    * `$` is a sentinel only outside strings/comments/balanced regions.  The
-   * enclosing Jess grammar must subsequently require `{`, rejecting dynamic
-   * headers without treating raw body bytes as Jess syntax.
+   * enclosing preprocessor grammar must subsequently require `{`, rejecting
+   * dynamic headers without treating raw body bytes as static opaque syntax.
    */
-  JessOpaqueStaticPrelude: optional(scanTo(
+  PreprocessorOpaqueAtRulePreludeCapture: optional(scanTo(
     choice(
       literal('$'),
       literal('{'),
       literal(';')
     ),
-    { skip: preprocessorSkip }
-  )),
-  JessOpaqueBody: noTrivia(scanTo(
-    literal('}'),
     { skip: preprocessorSkip }
   )),
 
   /*
-   * Same contract for SCSS: a top-level `$` stops the header scan so a dynamic
-   * prelude rejects instead of becoming opaque text, and `#{…}` interpolation
-   * is reserved the same way by the enclosing grammar's own `{` requirement.
+   * The body capture differs from CSS only in trivia ownership: preprocessor
+   * line comments are skippable while scanning for the closing block sentinel.
    */
-  ScssOpaqueStaticPrelude: optional(scanTo(
-    choice(
-      literal('$'),
-      literal('{'),
-      literal(';')
-    ),
-    { skip: preprocessorSkip }
-  )),
-  ScssOpaqueBody: noTrivia(scanTo(
+  PreprocessorOpaqueAtRuleBodyCapture: noTrivia(scanTo(
     literal('}'),
     { skip: preprocessorSkip }
   ))

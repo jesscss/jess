@@ -92,8 +92,6 @@ type CssGrammarRuleName =
   | 'ContainerPrelude'
   | 'ContainerQueryClause'
   | 'ContainerQueryPrelude'
-  | 'CssOpaqueCaptureBody'
-  | 'CssOpaqueCapturePrelude'
   | 'CssSyntax'
   | 'CssSyntaxAttributeModifier'
   | 'CssSyntaxAttributeOperator'
@@ -173,7 +171,9 @@ type CssGrammarRuleName =
   | 'NestedStartingStyleBlock'
   | 'NestingSelector'
   | 'OfTypePseudoArgument'
+  | 'OpaqueAtRuleBodyCapture'
   | 'OpaqueAtPrelude'
+  | 'OpaqueAtRulePreludeCapture'
   | 'OpaqueAtRuleBlock'
   | 'OpaqueBody'
   | 'PageBlock'
@@ -717,9 +717,6 @@ function blockStatements(children: readonly unknown[]): Statement[] {
 
 function keyframeSelectorList(children: readonly unknown[]): AstSelectorList {
   const selectors = children.filter(isSimple);
-  if (selectors.length === 0) {
-    throw new Error('KeyframeBlock requires a keyframe selector');
-  }
   return selist(...selectors);
 }
 
@@ -2691,7 +2688,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const OpaqueAtPrelude = node(
     'OpaqueAtPrelude',
-    g.CssOpaqueCapturePrelude,
+    g.OpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : tokenText(children[0]).trim();
       return text === '' ? null : text;
@@ -2699,7 +2696,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const OpaqueBody = node(
     'OpaqueBody',
-    g.CssOpaqueCaptureBody,
+    g.OpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : tokenText(children[0])
   );
   const OpaqueAtRuleBlock = node(
@@ -3713,10 +3710,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       expect(literal('}'), '}')
     ),
     (children, _fields, _span, rawChildren) => {
-      const selector = children.find(isSelectorList);
-      if (selector === undefined) {
-        throw new Error('Ruleset requires a selector');
-      }
+      const selector = children.find(isSelectorList)!;
       return withBlockBody(rule(
         selector,
         rulesetStatements(children)
@@ -3738,10 +3732,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       expect(literal('}'), '}')
     ),
     (children, _fields, _span, rawChildren) => {
-      const selector = children.find(isSelectorList);
-      if (selector === undefined) {
-        throw new Error('TopLevelRuleset requires a selector');
-      }
+      const selector = children.find(isSelectorList)!;
       return withBlockBody(rule(
         selector,
         rulesetStatements(children)

@@ -308,11 +308,12 @@ export interface PreparedImports {
  */
 function canLoadImport(node: ImportAtRule, specifier: string, options: string | null): boolean {
   const optionWords = options === null ? [] : options.toLowerCase().split(',').map(word => word.trim());
+  const explicitSourceImport = node.name.toLowerCase() === '@-import';
   return !optionWords.includes('inline')
     && !optionWords.includes('optional')
     && !optionWords.includes('css')
     && node.alias === null
-    && !(specifier.toLowerCase().endsWith('.css') && !optionWords.includes('less'));
+    && !(specifier.toLowerCase().endsWith('.css') && !optionWords.includes('less') && !explicitSourceImport);
 }
 
 function importHasOption(options: string | null, option: string): boolean {
@@ -377,9 +378,10 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
      * flag asks the existing dispatcher for its `less` plugin even when the path
      * ends in `.css`; core never chooses or invokes a parser itself.
      */
+    const explicitSourceImport = node.name.toLowerCase() === '@-import';
     let loaded: Awaited<ReturnType<Context['loadImport']>>;
     try {
-      loaded = await context.loadImport(specifier, importHasOption(options, 'less') ? { type: 'less' } : {});
+      loaded = await context.loadImport(specifier, importHasOption(options, 'less') || explicitSourceImport ? { type: 'less' } : {});
     } catch (error) {
       importError(request, error);
     }
@@ -10258,6 +10260,9 @@ function emitHoistedCharset(rules: Statement[], frame: Frame, e: Emit): void {
  */
 function rootCssImportKey(node: ImportAtRule): string | null {
   if (node.options !== null || node.alias !== null) {
+    return null;
+  }
+  if (node.name.toLowerCase() === '@-import') {
     return null;
   }
   const target = node.target;

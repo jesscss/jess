@@ -25,7 +25,7 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
+import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
@@ -44,6 +44,7 @@ type LessEachCallback = { readonly binding: ForBinding; readonly rules: Statemen
 type MixinGuard = NonNullable<MixinDefinition['guard']>;
 type MixinCallArgument = MixinCall['args'][number];
 type CallValue = ValueSlot | MixinCall;
+type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
 /** Private grammar reduction: delimiters remain parser facts, while the public
  * MixinDefinition receives only the semantic Param array. */
 type MixinParameterListFact = { readonly params: readonly Param[] };
@@ -132,7 +133,7 @@ type LessRules = {
   CustomSquare: Combinator<readonly CustomValuePart[]>;
   CustomCurly: Combinator<readonly CustomValuePart[]>;
   CustomValue: Combinator<ValueNode>;
-  CssCustomPropertyValue: Combinator<Keyword>;
+  CustomPropertyValue: Combinator<Keyword>;
   CustomDeclaration: Combinator<Declaration>;
   PunctuationMapDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
@@ -198,7 +199,7 @@ type LessRules = {
   StaticAtRuleAtom: Combinator<ValueNode>;
   StaticAtRuleTerm: Combinator<ValueNode>;
   StaticAtRulePrelude: Combinator<ValueNode>;
-  CssAtRulePrelude: Combinator<ValueNode | null>;
+  AtRulePrelude: Combinator<ValueNode | null>;
   NamespacePrelude: Combinator<ValueNode>;
   AtRuleBlock: Combinator<AtRuleBlock>;
   OpaqueAtPrelude: Combinator<string | null>;
@@ -414,7 +415,7 @@ function requireString(value: unknown): string {
   return value;
 }
 
-function requireCombinator(value: unknown): AstCombinator {
+function requireCombinator(value: unknown): SelectorCombinator {
   const text = requireTerminalText(value);
   if (text === '>' || text === '+' || text === '~' || text === '|' || text === '||') {
     return text;
@@ -688,6 +689,19 @@ function isReferenceTailFact(value: unknown): value is ReferenceTailFact {
 function requireReferenceTailFact(value: unknown): ReferenceTailFact {
   if (!isReferenceTailFact(value)) {
     throw new TypeError('Less grammar produced an invalid reference-tail fact.');
+  }
+  return value;
+}
+
+function isMixinReferenceBaseFact(value: unknown): value is MixinReferenceBaseFact {
+  return typeof value === 'object' && value !== null
+    && 'call' in value && isMixinCall(value.call)
+    && 'raw' in value && typeof value.raw === 'string';
+}
+
+function requireMixinReferenceBaseFact(value: unknown): MixinReferenceBaseFact {
+  if (!isMixinReferenceBaseFact(value)) {
+    throw new TypeError('Less grammar produced an invalid mixin-reference base fact.');
   }
   return value;
 }
@@ -1393,12 +1407,12 @@ function isSelectorBranch(value: unknown): value is SelectorBranch {
 const selectorBranchesFrom = (children: readonly unknown[]): SelectorBranch[] =>
   children.filter(isSelectorBranch);
 
-function branchSegments(branch: SelectorBranch): [{ combinator?: AstCombinator; term: SelectorTerm }, ...Array<{ combinator?: AstCombinator; term: SelectorTerm }>] {
+function branchSegments(branch: SelectorBranch): [{ combinator?: SelectorCombinator; term: SelectorTerm }, ...Array<{ combinator?: SelectorCombinator; term: SelectorTerm }>] {
   if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
     return [{ term: branch }];
   }
-  const segments: Array<{ combinator?: AstCombinator; term: SelectorTerm }> = [];
-  let combinator: AstCombinator = ' ';
+  const segments: Array<{ combinator?: SelectorCombinator; term: SelectorTerm }> = [];
+  let combinator: SelectorCombinator = ' ';
   const start = branch.type === 'RelativeSelector' ? 1 : 0;
   for (let index = start; index < branch.value.length; index++) {
     const part = branch.value[index]!;
@@ -1866,7 +1880,7 @@ const lessTriviaGap = oneOrMore(choice(
 const whitespace = trivia(lessTriviaGap);
 const selectorAttributeModifierSpace = regex(/[ \t\n\r\f]+/);
 const importKeyword = keywords(
-  ['@-import', '@-export', '@import'],
+  ['@-import', '@import'],
   { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
 );
 const customValueAtKeyword = regex(/@(?:-import|-export|import|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w])/i);
@@ -2086,7 +2100,7 @@ const lessDashVariableName = leaf(
 );
 const lessVariableName = choice(lessUnsupportedNumericVariableName, lessSupportedVariableName, lessDashVariableName);
 
-const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
+const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const caseOf = makeWhen({ caseInsensitive: true });
   const lessWord = makeWord('-_0-9A-Za-z');
   const lessCaseWord = makeWord('-_0-9A-Za-z', { caseInsensitive: true });
@@ -2889,26 +2903,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       span
     )
   );
-  // Cheap superset lookahead so a plain `#fff` hex color (or any non-reference
-  // `.`/`#`-led value) does not run the whole mixin path + call speculation only
-  // to fail the required trailing lookup accessor and backtrack. A real mixin
-  // reference is `name path? (args)?` then `oneOrMore(ReferenceTail)`; its first
-  // differentiating tail is `[…]`, or — when a call precedes it — `(…)`. The chars
-  // before that first `[`/`(` are only the mixin name and `>`-joined path
-  // segments, never `;`/`{`/`}`. So requiring the `[.#]` head that every mixin
-  // name shares, then a `[` OR `(` before the next `;`/`{`/`}`, is a strict
-  // superset: a reference whose call args carry `;`/`{`/`}` still opens with `(`
-  // first and is never skipped, while a bracket-less color/class value is. The
-  // `[.#]` anchor also makes the predicate fail at offset 0 for every non-name
-  // value (`10px`, `linear-gradient(…)`), so it adds no forward scan on the
-  // common path the doomed `attempt` already rejected at its first byte. The
-  // predicate emits a throwaway token, so consumers select the real value node
-  // by type rather than by fixed position.
-  const mixinReferenceAhead = not(not(regex(/[.#][^;{}]*[([]/)));
   const Value = node<ValueNode>(
     'Value',
     choice(
-      sequence(mixinReferenceAhead, attempt(g.MixinReference)),
+      attempt(g.MixinReference),
       g.InterpolatedValue,
       g.EscapedQuoted,
       g.Quoted,
@@ -2916,7 +2914,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       g.IndirectVariableReference,
       g.VariableReferenceChain,
       g.PropertyReference,
-      g.CssCustomPropertyValue,
+      g.CustomPropertyValue,
       g.Dimension,
       g.Color,
       g.NamedColor,
@@ -3113,8 +3111,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     choice(
       // This transaction owns the WHOLE accessor-bearing value. Keeping it out
       // of Value means its typed mixin arguments do not recurse through the
-      // same candidate before the required bracket fact has been established.
-      sequence(mixinReferenceAhead, attempt(sequence(g.MixinReference, not(choice(topProductOperator, sumOperator))))),
+      // same candidate before the required accessor fact has been established.
+      attempt(sequence(g.MixinReference, not(choice(topProductOperator, sumOperator)))),
       oneOrMoreSep(
         g.ValueSequence,
         field('separator', regex(/,[ \t\n\r\f]*/))
@@ -3267,8 +3265,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // It reduces to the same Keyword the css/scss/jess grammars produce, and the
   // same one StaticAtRuleCustomProperty already produces for the
   // identical token in an at-rule header.
-  const CssCustomPropertyValue = node<Keyword>(
-    'CssCustomPropertyValue',
+  const CustomPropertyValue = node<Keyword>(
+    'CustomPropertyValue',
     g.LessSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
@@ -3320,7 +3318,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // actually present before the delimiter, so plain properties fall straight to
   // the literal DeclarationProperty arm. The `node()` boundary keeps the marker
   // off the declaration reducer's `children[0]` property slot.
-  const interpolatedPropertyAhead = not(not(regex(/[^:;{}]*[@$]\{/)));
+  const interpolatedPropertyAhead = peek(regex(/[^:;{}]*[@$]\{/));
   const gatedInterpolatedProperty = node<Interpolation>(
     'GatedInterpolatedProperty',
     sequence(interpolatedPropertyAhead, g.InterpolatedProperty),
@@ -3589,6 +3587,116 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       }
     )
   );
+  const InterpolationLastAccessorFromRouted = node<InterpolationAccessorFact>(
+    'InterpolationLastAccessor',
+    noTrivia(routed()),
+    () => ({ key: -1, keyKind: 'index', src: '-1' })
+  );
+  const InterpolationIndexAccessorFromRouted = node<InterpolationAccessorFact>(
+    'InterpolationIndexAccessor',
+    noTrivia(sequence(routed(), g.LessSyntaxInterpIndexKey, literal(']'))),
+    (children) => {
+      const text = requireToken(children[1]).value;
+      return { key: Number(text), keyKind: 'index', src: text };
+    }
+  );
+  const InterpolationPropertyVariableAccessorFromRouted = node<InterpolationAccessorFact>(
+    'InterpolationPropertyVariableAccessor',
+    noTrivia(sequence(routed(), literal('$'), g.VariableReference, literal(']'))),
+    (children) => {
+      const key = requireValueNode(children[2]);
+      if (!isVarRef(key)) {
+        throw new TypeError('Less property-variable map key must retain its variable reference.');
+      }
+      return { key, keyKind: 'prop', src: `$@${key.name}` };
+    }
+  );
+  const InterpolationReferenceAccessorFromRouted = choice(
+    node<InterpolationAccessorFact>(
+      'InterpolationReferenceAccessor',
+      noTrivia(sequence(routed(), g.IndirectVariableReference, literal(']'))),
+      (children) => {
+        const key = requireValueNode(children[1]);
+        if (!isVarIndirect(key) || !isVarRef(key.nameRef)) {
+          throw new TypeError('Less indirect map key must retain its variable reference.');
+        }
+        return { key, keyKind: 'var', src: `@@${key.nameRef.name}` };
+      }
+    ),
+    node<InterpolationAccessorFact>(
+      'InterpolationReferenceAccessor',
+      noTrivia(sequence(routed(), g.VariableReference, literal(']'))),
+      (children) => {
+        const key = requireValueNode(children[1]);
+        if (!isVarRef(key)) {
+          throw new TypeError('Less variable map key must retain its variable reference.');
+        }
+        return { key, keyKind: 'var', src: `@${key.name}` };
+      }
+    ),
+    node<InterpolationAccessorFact>(
+      'InterpolationReferenceAccessor',
+      noTrivia(sequence(routed(), g.PropertyReference, literal(']'))),
+      (children) => {
+        const key = requireValueNode(children[1]);
+        if (!isPropRef(key)) {
+          throw new TypeError('Less property map key must retain its property reference.');
+        }
+        return { key, keyKind: 'prop', src: key.raw };
+      }
+    ),
+    node<InterpolationAccessorFact>(
+      'InterpolationReferenceAccessor',
+      noTrivia(sequence(routed(), g.LessSyntaxInterpBareKey, literal(']'))),
+      (children) => {
+        const text = requireToken(children[1]).value;
+        return { key: keyword(text), keyKind: 'prop', src: text };
+      }
+    )
+  );
+  const ReferenceLastTailFromRouted = node<ReferenceTailFact>(
+    'ReferenceBracketTail',
+    InterpolationLastAccessorFromRouted,
+    (children) => {
+      const accessor = requireInterpolationAccessorFact(children[0]);
+      return { step: { type: 'BracketLookup', key: accessor.key, keyKind: accessor.keyKind }, src: `[${accessor.src}]` };
+    }
+  );
+  const ReferenceBracketTailFromRouted = node<ReferenceTailFact>(
+    'ReferenceBracketTail',
+    choice(
+      InterpolationIndexAccessorFromRouted,
+      InterpolationPropertyVariableAccessorFromRouted,
+      InterpolationReferenceAccessorFromRouted
+    ),
+    (children) => {
+      const accessor = requireInterpolationAccessorFact(children[0]);
+      return { step: { type: 'BracketLookup', key: accessor.key, keyKind: accessor.keyKind }, src: `[${accessor.src}]` };
+    }
+  );
+  const ReferenceDotTailFromRouted = node<ReferenceTailFact>(
+    'ReferenceDotTail',
+    sequence(routed(), g.LessSyntaxVariableName),
+    (children) => {
+      const name = requireToken(children[1]).value;
+      return { step: { type: 'DotLookup', name }, src: `.${name}` };
+    }
+  );
+  const ReferenceCallTailFromRouted = node<ReferenceTailFact>(
+    'ReferenceCallTail',
+    sequence(routed(), optional(g.MixinArguments), literal(')')),
+    (children) => {
+      const args = mixinArgumentsFromChildren(children);
+      return { step: { type: 'Call', args }, src: `(${args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` };
+    }
+  );
+  const ReferenceTailFromDelimiter = dispatch(
+    choice(literal('[]'), literal('['), literal('.'), literal('(')),
+    when('[]', ReferenceLastTailFromRouted),
+    when('[', ReferenceBracketTailFromRouted),
+    when('.', ReferenceDotTailFromRouted),
+    when('(', ReferenceCallTailFromRouted)
+  );
   const MixinCall = node<MixinCall>(
     'MixinCall',
     sequence(
@@ -3720,15 +3828,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return children.some(child => isTerminalText(child, '!important')) ? { ...call, important: true } : call;
     }
   );
-  // A static namespace/mixin invocation remains the existing typed MixinCall
-  // (including its selector-path combinators).  Once it is followed by a map
-  // lookup, the whole value is a Reference: its base stays dispatchable by the
-  // proven namespace resolver and its dynamic accessors retain their ordered
-  // typed steps. `attempt` is essential here: a `#DEF` color or ordinary mixin
-  // prefix must be returned to the later value alternatives unless this grammar
-  // reaches at least one complete bracket accessor.
-  const MixinReference = node<Reference>(
-    'MixinReference',
+  const MixinReferenceBase = node<MixinReferenceBaseFact>(
+    'MixinReferenceBase',
     sequence(
       mixinName,
       many(MixinPathTail),
@@ -3736,20 +3837,36 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         literal('('),
         optional(g.MixinArguments),
         literal(')')
-      )),
-      oneOrMore(g.ReferenceTail)
+      ))
     ),
-    (children, _fields, span) => {
+    (children) => {
       const head = requireToken(children[0]).value;
       const tails = children.filter(isMixinPathTail);
       const terminal = tails.at(-1);
       const call = mixinCall(terminal?.selector ?? head, mixinArgumentsFromChildren(children));
-      const base = tails.length === 0
+      const withPath = tails.length === 0
         ? call
         : { ...call, path: [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)] as MixinCall['path'] };
       const hasCall = children.some(child => isTerminalText(child, '('));
-      const baseRaw = `${head}${tails.map(tail => `${tail.combinator}${tail.selector}`).join('')}${hasCall ? `(${base.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` : ''}`;
-      return withSourceSpan(referenceWithTails(base, baseRaw, children.filter(isReferenceTailFact)), span);
+      const raw = `${head}${tails.map(tail => `${tail.combinator}${tail.selector}`).join('')}${hasCall ? `(${withPath.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` : ''}`;
+      return { call: withPath, raw };
+    }
+  );
+  // A static namespace/mixin invocation remains the existing typed MixinCall
+  // (including its selector-path combinators). Once the shared base is followed
+  // by a lookup/call accessor, the whole value is a Reference. The first
+  // accessor delimiter is consumed once and routed to the matching tail builder,
+  // so malformed accessor bodies stay on the selected reference route instead
+  // of probing forward with a broad value-position lookahead.
+  const MixinReference = node<Reference>(
+    'MixinReference',
+    sequence(
+      MixinReferenceBase,
+      oneOrMore(ReferenceTailFromDelimiter)
+    ),
+    (children, _fields, span) => {
+      const base = requireMixinReferenceBaseFact(children.find(isMixinReferenceBaseFact));
+      return withSourceSpan(referenceWithTails(base.call, base.raw, children.filter(isReferenceTailFact)), span);
     }
   );
   const ReferenceCall = node<Reference>(
@@ -4858,8 +4975,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     scanSkipSingleString
   ));
   const atPreludeText = noTrivia(regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
-  const CssAtRulePrelude = node<ValueNode | null>(
-    'CssAtRulePrelude',
+  const AtRulePrelude = node<ValueNode | null>(
+    'AtRulePrelude',
     parser(
       { trivia: atPreludeCommentTrivia },
       many(choice(
@@ -4930,7 +5047,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     )),
     sequence(
       not(peek(regex(/[ \t\n\r\f]*:/))),
-      g.CssAtRulePrelude,
+      g.AtRulePrelude,
       atRuleBlockBody
     )
   );
@@ -5038,7 +5155,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
             )),
             sequence(
               not(peek(regex(/[ \t\n\r\f]*:/))),
-              g.CssAtRulePrelude,
+              g.AtRulePrelude,
               literal(';')
             )
           )
@@ -5845,7 +5962,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     CustomSquare,
     CustomCurly,
     CustomValue,
-    CssCustomPropertyValue,
+    CustomPropertyValue,
     CustomDeclaration,
     PunctuationMapDeclaration,
     Declaration,
@@ -5910,7 +6027,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     StaticAtRuleAtom,
     StaticAtRuleTerm,
     StaticAtRulePrelude,
-    CssAtRulePrelude,
+    AtRulePrelude,
     NamespacePrelude,
     AtRuleBlock,
     OpaqueAtPrelude,
@@ -5977,8 +6094,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   };
 };
 
-export const lessGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, lessAstFactory)]);
+export const lessGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, lessGrammarFactory)]);
 export const lessAstGrammar = lessGrammar;
 
 /** Public Less CST artifact: the same grammar factory compiled in CST mode. */
-export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst' }, lessAstFactory)]);
+export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst' }, lessGrammarFactory)]);

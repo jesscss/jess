@@ -877,7 +877,7 @@ workaround shapes for older pins into new grammar code.
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | keyword regexes              | `word(...)`, `makeWord(...)`, and `keywords(...)`; share one grammar-local helper when case-sensitivity and boundary policy are the same                               |
 | separated lists              | `oneOrMoreSep(...)`, `sepBy(...)`, and an explicit optional terminator outside the list when the language permits a trailing separator                                 |
-| small lookahead              | `peek(...)`, used sparingly when it expresses ownership such as "declaration may end at `}`"; do not use broad leading lookahead as a substitute for grammar structure |
+| small lookahead              | A temporary exception, not a cleanup target. Prefer a leading discriminator, separator/list helper, contextual rule, or `dispatch(...)`; keep `peek(...)` only for a narrow terminator/ownership case with a const-level note explaining why no clearer route owns the decision |
 | known/generic shared openers | `dispatch(combinator, when(...), otherwise(...))` with `routed()` inside the selected branch when that branch should own the already-consumed value/span               |
 | AST projection               | `node(..., { project })` and local AST factories; no builder host or generic construction registry                                                                     |
 | gates                        | `check:macro`, `verify:compose-integrity`, parser suites, and the relevant oracle/corpus differential                                                                  |
@@ -899,10 +899,12 @@ declarations, reference calls, imports/plugins, conditional at-rules, generic
 at-rules, and mixin-like continuations need more syntax before the grammar knows
 which language branch it is in.
 
-Lookahead remains a cost and ownership signal, not a forbidden word. Prefer a
-leading discriminator, a separator/list helper, or a routed opener. Use `peek(...)`
-only when the surrounding list owns the terminator and consuming it would be
-wrong.
+Lookahead remains a cost and ownership signal. If a grammar position needs
+`peek(...)`, first assume the rule is missing a better owner: a shared opener
+parsed once, a later routed delimiter, a context parameter, or a list boundary.
+Use `peek(...)` only when the surrounding grammar truly owns a terminator that
+must not be consumed, and record why `dispatch(...)` or left-factoring cannot
+own the same decision.
 
 **(c) A compiled piece keeps the mode it was built with — the cross-mode fusion
 hazard.** Relevant only once the collapse reaches 0.37.0 (§5.0), but it is the
@@ -1787,11 +1789,11 @@ produced this document.
 - No copy/paste from the old grammars.
 - No hand-rolled keyword regexes — `keywords()` / `word()`.
 - No `not(regex(…))` as a terminator.
-- No leading `not()`. **`peek()` does not exist at 0.32.0** — restructure so the
-  discriminating terminal leads. Do not reach for `not(not(x))`: it reports
-  first-set `any` and poisons the entire choice. Where a rule genuinely needs
-  lookahead that 0.32.0 cannot express, that is `blocked`, with `peek()` as the
-  named reason.
+- No leading `not()` and no nested positive-lookahead spelling such as
+  `not(not(...))`. The active grammar floor has `peek()`, but `peek()` is still
+  a smell unless a const-level review proves the grammar owns a non-consuming
+  terminator. Prefer restructuring so the discriminating terminal leads, or
+  consume the shared opener once and route with `dispatch(...)`.
 - No manual `optional(ws)` or hand-written whitespace beside `noTrivia`.
   (`noTrivia` itself is the ambient mechanism and is not the target — §5.2.)
 - No production consuming its own `;`. **`;` separates; the list owns it.**

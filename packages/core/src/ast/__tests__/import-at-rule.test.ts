@@ -346,6 +346,63 @@ describe('ImportAtRule', () => {
     expect(lessAgain.parseCalls).toBe(1);
   });
 
+  it('routes dash import css targets through the Less parser while bare css imports stay terminal', async () => {
+    const filePath = '/virtual/tokens.css';
+    const imported = stylesheet([
+      rule('.from-less-parser', [decl('color', keyword('red'))])
+    ]);
+    const dashImport = stylesheet([
+      importAtRule('@-import', quoted(`"${filePath}"`, filePath, '"', false)),
+      rule('.entry', [decl('color', keyword('blue'))])
+    ]);
+    const bareImport = stylesheet([
+      importAtRule('@import', quoted(`"${filePath}"`, filePath, '"', false)),
+      rule('.entry', [decl('color', keyword('blue'))])
+    ]);
+
+    class MemoryFilePlugin extends AbstractPlugin {
+      name = 'files';
+      sourceCalls = 0;
+
+      override locate(paths: string[]) {
+        return paths.includes(filePath) ? filePath : null;
+      }
+
+      override async getSource() {
+        this.sourceCalls++;
+        return '.from-less-parser { color: red; }\n';
+      }
+    }
+
+    class MemoryLessPlugin extends AbstractPlugin {
+      name = 'less';
+      supportedExtensions = ['.less'];
+      parseCalls = 0;
+
+      safeParse(_filePath: string, _source: string, options?: { importOptions?: { type?: string } }) {
+        this.parseCalls++;
+        expect(options?.importOptions?.type).toBe('less');
+        return { document: imported, errors: [], warnings: [] };
+      }
+    }
+
+    const files = new MemoryFilePlugin();
+    const less = new MemoryLessPlugin();
+    const context = new Context({}, [files, less]);
+
+    await expect(context.withDocument(dashImport, () => serialize(dashImport, { context }))).resolves.toEqual({
+      css: '.from-less-parser {\n  color: red;\n}\n.entry {\n  color: blue;\n}\n'
+    });
+    expect(files.sourceCalls).toBe(1);
+    expect(less.parseCalls).toBe(1);
+
+    await expect(context.withDocument(bareImport, () => serialize(bareImport, { context }))).resolves.toEqual({
+      css: `@import "${filePath}";\n.entry {\n  color: blue;\n}\n`
+    });
+    expect(files.sourceCalls).toBe(1);
+    expect(less.parseCalls).toBe(1);
+  });
+
   it('loads a claimed external import through Context without a core network resolver', async () => {
     const remoteSpecifier = 'https://styles.example.test/tokens.less';
     const mappedPath = '/virtual/tokens.less';

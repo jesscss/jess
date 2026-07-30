@@ -181,7 +181,7 @@ type ScssRules = {
   StaticPseudoArgument: Combinator<string>;
   StaticPseudoGroup: Combinator<string>;
   StaticPseudoSquare: Combinator<string>;
-  Pseudo: Combinator<SimpleToken>;
+  PseudoSelector: Combinator<SimpleToken>;
   NestingSelector: Combinator<SimpleSelector>;
   Compound: Combinator<SelectorTerm>;
   ComplexTail: Combinator<ScssComplexTail>;
@@ -192,7 +192,7 @@ type ScssRules = {
   NestedSelectorTail: Combinator<SelectorBranch>;
   NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
-  OpaquePrelude: Combinator<string | null>;
+  OpaqueAtPrelude: Combinator<string | null>;
   OpaqueBody: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   OpaqueAtRuleStatement: Combinator<AtRuleStatement>;
@@ -1027,7 +1027,7 @@ const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
  * CssSyntaxHexColor / CssSyntaxNumber). Leading a choice arm with a
  * cross-composition `g.CssSyntax*` reference leaves that arm's first-set
  * unresolved (`any`) across the composeLeaf artifact boundary, so the compiler
- * enters the Pseudo / Color / Dimension node frame SPECULATIVELY at every simple
+ * enters the PseudoSelector / Color / Dimension node frame SPECULATIVELY at every simple
  * selector and value atom. A grammar-local leading recognizer lets the compiler
  * resolve the arm's first-set (`:`, `#`, a digit/sign) and first-char-gate it,
  * skipping the doomed frame entirely.
@@ -3118,15 +3118,15 @@ export const scssFactory = (g: ScssInputRules) => {
     'IfStaticConditionalBlock',
     choice(
       sequence(
-        supportsAtKeyword,
+        g.CssSyntaxSupportsAtKeyword,
         g.SupportsPrelude,
         g.IfBody
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -3135,9 +3135,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -3145,12 +3145,12 @@ export const scssFactory = (g: ScssInputRules) => {
         g.IfBody
       ),
       sequence(
-        startingStyleAtKeyword,
+        g.CssSyntaxStartingStyleAtKeyword,
         g.StaticAtPrelude,
         g.IfBody
       ),
       sequence(
-        layerAtKeyword,
+        g.CssSyntaxLayerAtKeyword,
         g.StaticAtPrelude,
         g.IfBody
       )
@@ -3830,7 +3830,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const ScopeBlock = node<AtRuleBlock>(
     'ScopeBlock',
     sequence(
-      scopeAtKeyword,
+      g.CssSyntaxScopeAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
@@ -3876,7 +3876,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const NestedScopeBlock = node<AtRuleBlock>(
     'NestedScopeBlock',
     sequence(
-      scopeAtKeyword,
+      g.CssSyntaxScopeAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       nestedBody,
@@ -3898,7 +3898,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'ConditionalBlock',
     choice(
       sequence(
-        supportsAtKeyword,
+        g.CssSyntaxSupportsAtKeyword,
         g.SupportsPrelude,
         literal('{'),
         conditionalBlockBody,
@@ -3906,9 +3906,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -3919,9 +3919,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -3943,7 +3943,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const StartingStyleBlock = node<AtRuleBlock>(
     'StartingStyleBlock',
     sequence(
-      startingStyleAtKeyword,
+      g.CssSyntaxStartingStyleAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       startingLayerBlockBody,
@@ -3961,7 +3961,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const LayerBlock = node<AtRuleBlock>(
     'LayerBlock',
     sequence(
-      layerAtKeyword,
+      g.CssSyntaxLayerAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       startingLayerBlockBody,
@@ -3987,7 +3987,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const DocumentBlock = node<AtRuleBlock>(
     'DocumentBlock',
     sequence(
-      documentAtKeyword,
+      g.CssSyntaxDocumentAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
@@ -4060,7 +4060,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const PageBlock = node<AtRuleBlock>(
     'PageBlock',
     sequence(
-      pageAtKeyword,
+      g.CssSyntaxPageAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
@@ -4114,7 +4114,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const FontFeatureValuesBlock = node<AtRuleBlock>(
     'FontFeatureValuesBlock',
     sequence(
-      fontFeatureValuesAtKeyword,
+      g.CssSyntaxFontFeatureValuesAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       many(choice(
@@ -4136,7 +4136,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'NestedConditionalBlock',
     choice(
       sequence(
-        supportsAtKeyword,
+        g.CssSyntaxSupportsAtKeyword,
         g.SupportsPrelude,
         literal('{'),
         nestedKeyframesBody,
@@ -4144,9 +4144,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -4157,9 +4157,9 @@ export const scssFactory = (g: ScssInputRules) => {
       ),
       sequence(
         choice(
-          mediaAtKeyword,
+          g.CssSyntaxMediaAtKeyword,
           sequence(
-            containerAtKeyword,
+            g.CssSyntaxContainerAtKeyword,
             not(g.CssSyntaxQueryOnly)
           )
         ),
@@ -4184,7 +4184,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const NestedStartingStyleBlock = node<AtRuleBlock>(
     'NestedStartingStyleBlock',
     sequence(
-      startingStyleAtKeyword,
+      g.CssSyntaxStartingStyleAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       nestedKeyframesBody,
@@ -4205,7 +4205,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const NestedLayerBlock = node<AtRuleBlock>(
     'NestedLayerBlock',
     sequence(
-      layerAtKeyword,
+      g.CssSyntaxLayerAtKeyword,
       g.StaticAtPrelude,
       literal('{'),
       nestedKeyframesBody,
@@ -4781,7 +4781,7 @@ export const scssFactory = (g: ScssInputRules) => {
     routed(),
     children => simpleSelector(requireToken(children[0]).value)
   );
-  const PseudoDispatch = dispatch(
+  const PseudoSelectorDispatch = dispatch(
     pseudoIdentOrFunction,
     caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
     caseInsensitive([':nth-of-type(', ':nth-last-of-type('], NthTypePseudo),
@@ -4801,9 +4801,9 @@ export const scssFactory = (g: ScssInputRules) => {
     when(endsWith('('), GenericFunctionPseudo),
     otherwise(GenericBarePseudo)
   );
-  const Pseudo = node<SimpleToken>(
-    'Pseudo',
-    PseudoDispatch,
+  const PseudoSelector = node<SimpleToken>(
+    'PseudoSelector',
+    PseudoSelectorDispatch,
     children => children.find(isSimpleToken)!
   );
   const NestingSelector = node<SimpleSelector>(
@@ -4820,7 +4820,7 @@ export const scssFactory = (g: ScssInputRules) => {
           { trivia: whitespace },
           g.Attribute
         ),
-        g.Pseudo,
+        g.PseudoSelector,
         g.Placeholder,
         g.InterpolatedSimple,
         g.Simple
@@ -4926,9 +4926,9 @@ export const scssFactory = (g: ScssInputRules) => {
    * fixed: an `optional(scanTo(...))` that matches nothing emits no child and
    * would otherwise shift every positional index in the reducers below.
    */
-  const OpaquePrelude = node<string | null>(
-    'OpaquePrelude',
-    g.ScssOpaqueStaticPrelude,
+  const OpaqueAtPrelude = node<string | null>(
+    'OpaqueAtPrelude',
+    g.PreprocessorOpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
       return text === '' ? null : text;
@@ -4936,7 +4936,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const OpaqueBody = node<string>(
     'OpaqueBody',
-    g.ScssOpaqueBody,
+    g.PreprocessorOpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : requireToken(children[0]).value
   );
   const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
@@ -4944,7 +4944,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       scssGenericAtRuleName,
       noTrivia(sequence(
-        g.OpaquePrelude,
+        g.OpaqueAtPrelude,
         literal('{'),
         g.OpaqueBody,
         literal('}')
@@ -4974,7 +4974,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       scssGenericAtRuleName,
       noTrivia(sequence(
-        g.OpaquePrelude,
+        g.OpaqueAtPrelude,
         literal(';')
       ))
     ),
@@ -5220,7 +5220,7 @@ export const scssFactory = (g: ScssInputRules) => {
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,
-    OpaquePrelude,
+    OpaqueAtPrelude,
     OpaqueBody,
     OpaqueAtRuleBlock,
     OpaqueAtRuleStatement,
@@ -5235,7 +5235,7 @@ export const scssFactory = (g: ScssInputRules) => {
     StaticPseudoArgument,
     StaticPseudoGroup,
     StaticPseudoSquare,
-    Pseudo,
+    PseudoSelector,
     NestingSelector,
     Compound,
     ComplexTail,

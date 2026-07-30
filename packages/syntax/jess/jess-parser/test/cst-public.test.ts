@@ -130,8 +130,14 @@ describe('@jesscss/jess-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
+    expect(stats(result.tree).grammarTypes.get('ImportStatement')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ImportPrelude')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ImportTarget')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('InterpolatedUrl')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('UrlInterpolatedValue')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('CssImport')).toBeUndefined();
+    expect(stats(result.tree).grammarTypes.get('CssImportPrelude')).toBeUndefined();
+    expect(stats(result.tree).grammarTypes.get('CssImportTarget')).toBeUndefined();
   });
 
   it('keeps documented expression arithmetic in the public CST route', () => {
@@ -150,6 +156,24 @@ describe('@jesscss/jess-parser/cst', () => {
 
     const normalValue = parseJessCst('$w: 2px; .card { width: $w * 2 + 1px; }');
     expect(normalValue.errors.length + Number(normalValue.unconsumedFrom !== null)).toBeGreaterThan(0);
+  });
+
+  it('keeps leading-dot declaration lookup expression-only in the public CST route', () => {
+    const result = parseJessCst('$tokens: { tone: blue; }; .card { value: $(.type.isnumber(.math.e)); root: $($.tokens.tone); ns: $($tokens.tone); decimal: $(.1); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stats(result.tree).grammarTypes.get('ExpressionDeclarationReference')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ReferenceDotTail')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ExpressionAtom')).toBeGreaterThan(0);
+    expectNoModeLabels(result.tree);
+
+    const normalLookup = parseJessCst('.card { value: .type.isnumber(.math.e); }');
+    expect(normalLookup.errors.length + Number(normalLookup.unconsumedFrom !== null)).toBeGreaterThan(0);
+
+    const normalDecimal = parseJessCst('.card { value: .1; }');
+    expect(normalDecimal.errors).toHaveLength(0);
+    expect(normalDecimal.unconsumedFrom).toBeNull();
   });
 
   it('uses unprefixed structural nodes for documented $for loops', () => {

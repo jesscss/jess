@@ -1110,7 +1110,16 @@ describe('Jess AST grammar facts', () => {
       ]
     });
     expect(serialize(parse(source))).toEqual({ css: `${source}\n` });
-    for (const invalid of ['@-compose $[path];', '@-use "./x.ts" as **;', '@-from "./x.ts" import *;', '@-from "./x.ts" import foo, bar;']) {
+    for (const invalid of [
+      '@-compose $[path];',
+      '@-use "./x.ts" as **;',
+      '@-from "./x.ts" import *;',
+      '@-from "./x.ts" import foo, bar;',
+      '@-COMPOSE "./theme.jess";',
+      '@-USE "./module.ts";',
+      '@-from "./module.ts" IMPORT foo;',
+      '@-use "./module.ts" AS mod;'
+    ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
   });
@@ -1316,6 +1325,18 @@ describe('Jess AST grammar facts', () => {
         { type: 'Quoted' },
         { type: 'FunctionCall', name: 'SUPPORTS' },
         { type: 'FunctionCall', name: 'LaYeR' }
+      ] }
+    });
+    expect(parse('@import "a.css" supports((display: grid) and (color));').rules[0]).toMatchObject({
+      prelude: { parts: [
+        { type: 'Quoted' },
+        { type: 'FunctionCall', name: 'supports', args: [{ type: 'SpacedValue' }] }
+      ] }
+    });
+    expect(parse('@import "a.css" supports(not (display: grid));').rules[0]).toMatchObject({
+      prelude: { parts: [
+        { type: 'Quoted' },
+        { type: 'FunctionCall', name: 'supports', args: [{ type: 'SpacedValue' }] }
       ] }
     });
     expect(parse('@import "a.css" supports (display: grid);').rules[0]).toMatchObject({
@@ -2677,6 +2698,7 @@ describe('Jess AST grammar facts', () => {
     );
 
     for (const invalid of [
+      'm() WHEN (true) {}',
       'm($value) when ($value = true and $value = false) {}',
       'm() when ((true) and (false) or (true)) {}',
       'm() when (default(1)) {}',
