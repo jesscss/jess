@@ -50,7 +50,7 @@ const nth = regex(/even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\
  */
 const malformedPseudoNumericArgument = regex(/(?:[-+]?\d*\.\d|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*(?:\)|[^0-9 \t\n\r\f]|\d+[_a-zA-Z\u0080-\uffff\\]))|[+-][ \t\n\r\f]+(?:\d*n|n)|[-+]?\d+[ \t\n\r\f]+n|[-+]?\d+[ \t\n\r\f]*[+-][ \t\n\r\f]*n)/i);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const scssLineComment = regex(/\/\/[^\n\r]*/);
+const lineComment = regex(/\/\/[^\n\r]*/);
 
 /*
  * A closed SCSS media/container fallback for legacy static modifiers such as
@@ -58,7 +58,7 @@ const scssLineComment = regex(/\/\/[^\n\r]*/);
  * groups, strings, and interpolation have their own grammar productions, while
  * a top-level `$` or `;` must stop the run rather than become opaque AST text.
  */
-const scssStaticMediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
+const mediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
 
 /*
  * CSS and SCSS priority matching is ASCII-case-insensitive. Direct dialect
@@ -323,8 +323,6 @@ const lessPunctuationMapKey = regex(/[<>()#]/);
  * percent-format calls or dimensions.
  */
 const lessPercentEscape = regex(/%[0-9a-fA-F]{2}/);
-const lessDoubleQuotedText = regex(/[^"\\]*/);
-const lessSingleQuotedText = regex(/[^'\\]*/);
 
 /*
  * Less direct-AST interpolation terminals. Dialect AST grammars assemble these
@@ -440,8 +438,8 @@ export const cssSyntax = rules(_g => ({
   NthExpression: nth,
   MalformedPseudoSelectorNumericArgument: malformedPseudoNumericArgument,
   BlockCommentToken: blockComment,
-  ScssSyntaxLineComment: scssLineComment,
-  ScssSyntaxStaticMediaModifier: scssStaticMediaModifier,
+  LineComment: lineComment,
+  MediaModifier: mediaModifier,
   ImportantToken: important,
   HexColor: hexColor,
   UnicodeRangeToken: unicodeRange,
@@ -481,31 +479,28 @@ export const cssSyntax = rules(_g => ({
 }));
 
 export const lessSyntax = rules(_g => ({
-  LessSyntaxIdentifier: lessBareIdentifier,
-  LessSyntaxVariableName: lessVariableName,
-  LessSyntaxProperty: lessBareIdentifier,
-  LessSyntaxDeclarationProperty: lessDeclarationProperty,
-  LessSyntaxNumericMapKey: lessNumericMapKey,
-  LessSyntaxPunctuationMapKey: lessPunctuationMapKey,
-  LessSyntaxPercentEscape: lessPercentEscape,
-  LessSyntaxKeyword: lessBareIdentifier,
-  LessSyntaxNamedColor: lessNamedColor,
-  LessSyntaxDoubleQuotedText: lessDoubleQuotedText,
-  LessSyntaxSingleQuotedText: lessSingleQuotedText,
-  LessSyntaxInterpHead: lessInterpHead,
-  LessSyntaxInterpBareKey: lessInterpBareKey,
-  LessSyntaxInterpIndexKey: lessInterpIndexKey,
-  LessSyntaxQuotedDoubleChunk: lessQuotedDoubleChunk,
-  LessSyntaxQuotedSingleChunk: lessQuotedSingleChunk,
-  LessSyntaxInterpolatedCustomPropertyStart: lessInterpolatedCustomPropertyStart,
-  LessSyntaxInterpolatedCustomPropertyDash: lessInterpolatedCustomPropertyDash,
-  LessSyntaxInterpolatedCustomPropertyTail: lessInterpolatedCustomPropertyTail,
-  LessSyntaxInterpolatedValueStart: lessInterpolatedValueStart,
-  LessSyntaxInterpolatedValueDash: lessInterpolatedValueDash,
-  LessSyntaxInterpolatedValueTail: lessInterpolatedValueTail,
-  LessSyntaxCustomProperty: lessCustomProperty,
-  LessSyntaxCustomOuterContent: lessCustomOuterContent,
-  LessSyntaxCustomInnerContent: lessCustomInnerContent,
-  LessSyntaxCustomSingleQuoted: lessCustomSingleQuoted,
-  LessSyntaxCustomDoubleQuoted: lessCustomDoubleQuoted
+  LessIdentifier: lessBareIdentifier,
+  VariableNameToken: lessVariableName,
+  DeclarationPropertyToken: lessDeclarationProperty,
+  NumericMapKeyToken: lessNumericMapKey,
+  PunctuationMapKeyToken: lessPunctuationMapKey,
+  PercentEscapeToken: lessPercentEscape,
+  ValueIdentifier: lessBareIdentifier,
+  NamedColorToken: lessNamedColor,
+  InterpolationHead: lessInterpHead,
+  InterpolationKey: lessInterpBareKey,
+  InterpolationIndex: lessInterpIndexKey,
+  QuotedDoubleText: lessQuotedDoubleChunk,
+  QuotedSingleText: lessQuotedSingleChunk,
+  InterpolatedCustomPropertyStart: lessInterpolatedCustomPropertyStart,
+  InterpolatedCustomPropertyDash: lessInterpolatedCustomPropertyDash,
+  InterpolatedCustomPropertyTail: lessInterpolatedCustomPropertyTail,
+  InterpolatedValueStart: lessInterpolatedValueStart,
+  InterpolatedValueDash: lessInterpolatedValueDash,
+  InterpolatedValueTail: lessInterpolatedValueTail,
+  CustomPropertyToken: lessCustomProperty,
+  CustomValueOuterContent: lessCustomOuterContent,
+  CustomValueInnerContent: lessCustomInnerContent,
+  CustomValueSingleQuoted: lessCustomSingleQuoted,
+  CustomValueDoubleQuoted: lessCustomDoubleQuoted
 }));

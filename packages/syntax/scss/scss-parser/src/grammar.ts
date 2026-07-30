@@ -1038,7 +1038,7 @@ const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)
 
 /*
  * Grammar-local block/line comment recognizers (byte-identical to the shared
- * BlockCommentToken / ScssSyntaxLineComment). Both open on `/`, so a
+ * BlockCommentToken / LineComment). Both open on `/`, so a
  * local copy lets the statement-comment arm resolve its first-set to `/` and be
  * first-char-gated in the body-prefix choice instead of entering the comment
  * node frame speculatively at every rule/at-statement position.
@@ -3639,7 +3639,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const MediaPrelude = node<ValueNode>(
     'MediaPrelude',
-    noTrivia(oneOrMore(g.ScssSyntaxStaticMediaModifier)),
+    noTrivia(oneOrMore(g.MediaModifier)),
     children => any(children.map(requireToken).map(token => token.value).join('').trim())
   );
 
@@ -3696,7 +3696,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.AtRulePreludeDoubleQuoted,
       g.AtRulePreludeSingleQuoted,
       g.BlockCommentToken,
-      g.ScssSyntaxLineComment,
+      g.LineComment,
       atRulePreludeText
     ),
     children => ({ value: requireToken(children[0]).value })
@@ -3723,7 +3723,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.AtRulePreludeDoubleQuoted,
       g.AtRulePreludeSingleQuoted,
       g.BlockCommentToken,
-      g.ScssSyntaxLineComment,
+      g.LineComment,
       statementPreludeText
     ))),
     (children) => {

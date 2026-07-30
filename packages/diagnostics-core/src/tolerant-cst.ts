@@ -184,9 +184,7 @@ const RULESET_TYPES = new Set([
   'Ruleset',
   'NestedRuleset',
   'RulesetWithExtends',
-  'NestedRulesetWithExtends',
-  'DirectScssRule',
-  'DirectJessRule'
+  'NestedRulesetWithExtends'
 ]);
 const ATRULE_TYPES = new Set([
   'AtRuleBlock',
@@ -195,16 +193,16 @@ const ATRULE_TYPES = new Set([
   'QueryAtRuleBlock',
   'OpaqueAtRuleBlock'
 ]);
-const DECLARATION_TYPES = new Set(['Declaration', 'DirectScssDeclaration', 'DirectJessDeclaration']);
+const DECLARATION_TYPES = new Set(['Declaration']);
 const CUSTOM_DECLARATION_TYPES = new Set(['CustomDeclaration']);
-const DIMENSION_TYPES = new Set(['Dimension', 'DirectScssDimension', 'DirectJessDimension']);
+const DIMENSION_TYPES = new Set(['Dimension']);
 const PERCENTAGE_TYPES = new Set(['Percentage']);
 const CUSTOM_PROPERTY_VALUE_TYPES = new Set(['CustomPropertyValue']);
 const KEYFRAMES_TYPES = new Set(['Keyframes']);
 const KEYFRAME_BLOCK_TYPES = new Set(['KeyframeBlock']);
 const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
-const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule', 'StaticImportRule']);
-const FUNCTION_TYPES = new Set(['Call', 'StaticCall', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
+const IMPORT_RULE_TYPES = new Set(['ImportStatement', 'ImportAtRule']);
+const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
 const ANB_PSEUDO_CLASSES = new Set([
@@ -418,7 +416,7 @@ function forwardPreludeOf(node: CssCstNode, src: string): string | null {
   let afterPath = false;
   for (const child of cstChildrenOf(node)) {
     if (isCstNode(child)) {
-      if (child.grammarType === 'Quoted' || child.grammarType === 'StaticQuoted') {
+      if (child.grammarType === 'Quoted') {
         afterPath = true;
       }
       if (afterPath && child.grammarType === 'ForwardTail') {
@@ -1179,7 +1177,7 @@ function gridAreaRows(source: string, node: CssCstNode): GridAreaRow[] {
     if (!isCstNode(child)) {
       return;
     }
-    if (child.grammarType === 'Quoted' || child.grammarType === 'StaticQuoted') {
+    if (child.grammarType === 'Quoted') {
       const start = absoluteStart(child);
       const end = absoluteEnd(child);
       if (Number.isFinite(start) && Number.isFinite(end) && end > start + 1) {

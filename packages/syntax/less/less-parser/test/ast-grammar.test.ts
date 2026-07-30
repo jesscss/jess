@@ -8400,7 +8400,6 @@ describe('Less AST grammar facts', () => {
         cstLeafValues
       )
     ).toEqual([['en']]);
-    expect(findCstNodes(cst.tree, 'StaticNonSelectorPseudo')).toHaveLength(0);
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
