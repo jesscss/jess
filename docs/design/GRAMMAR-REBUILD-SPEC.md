@@ -127,7 +127,7 @@ The checked-in baseline aggregates are
 with 120 throws and
 `cst=7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4`
 with 0 throws over 709 entries. The current integration checkout is not
-byte-identical against that committed baseline; the active registry-0.41.0
+byte-identical against that committed baseline; the active registry-0.43.0
 aggregate is recorded below and classified in
 [`LESS-ORACLE-MOVER-CLASSIFICATION.md`](../architecture/parser/LESS-ORACLE-MOVER-CLASSIFICATION.md).
 SCSS now ships from one host-mode grammar source too;
@@ -143,7 +143,7 @@ parser-shared, CSS, Less, SCSS, and Jess fully compiled with 0 interpreter
 fallbacks, and `pnpm run verify:compose-integrity` passes. Less, SCSS, and Jess
 still carry naming/gating cleanup debt, but not second grammar bodies.
 
-Current 2026-07-28 registry-0.41.0 gate evidence: dependency-order parser/plugin/
+Current 2026-07-29 registry-0.43.0 gate evidence: dependency-order parser/plugin/
 jess builds pass; `pnpm run check:macro` passes with all parser packages fully
 compiled and 0 interpreter fallbacks; `pnpm run verify:compose-integrity` passes
 with exit code 0; and `pnpm run verify:less-alpha` passes its Less parser,
@@ -291,7 +291,7 @@ their method rather than as bare numbers:
   the less/scss/jess grammars. So the headline **735** total holds under
   per-package scoping and is **744** repo-wide. Both are true; say which you
   mean.
-- **`parseman` manifest ranges are all `^0.41.0`** across the root,
+- **`parseman` manifest ranges are all `^0.43.0`** across the root,
   `@jesscss/parser-shared`, and the four parser packages. There are no exact
   parseman pins in package manifests; compiled parser artifacts still must never
   cross parseman versions.
@@ -323,12 +323,12 @@ release is adopted.
 
 | file                                            | line                                | form                 |
 | ----------------------------------------------- | ----------------------------------- | -------------------- |
-| `package.json`                                  | root dev dependency range           | `^0.41.0`            |
-| `packages/parser-shared/package.json`           | shared dependency range             | `^0.41.0`            |
-| `packages/syntax/css/css-parser/package.json`   | peer floor and dev dependency range | `^0.41.0`, `^0.41.0` |
-| `packages/syntax/less/less-parser/package.json` | peer floor and dev dependency range | `^0.41.0`, `^0.41.0` |
-| `packages/syntax/scss/scss-parser/package.json` | peer floor and dev dependency range | `^0.41.0`, `^0.41.0` |
-| `packages/syntax/jess/jess-parser/package.json` | peer floor and dev dependency range | `^0.41.0`, `^0.41.0` |
+| `package.json`                                  | root dev dependency range           | `^0.43.0`            |
+| `packages/parser-shared/package.json`           | shared dependency range             | `^0.43.0`            |
+| `packages/syntax/css/css-parser/package.json`   | peer floor and dev dependency range | `^0.43.0`, `^0.43.0` |
+| `packages/syntax/less/less-parser/package.json` | peer floor and dev dependency range | `^0.43.0`, `^0.43.0` |
+| `packages/syntax/scss/scss-parser/package.json` | peer floor and dev dependency range | `^0.43.0`, `^0.43.0` |
+| `packages/syntax/jess/jess-parser/package.json` | peer floor and dev dependency range | `^0.43.0`, `^0.43.0` |
 
 Plus `pnpm-lock.yaml`. **The invariant is that compiled parser artifacts never
 cross parseman versions** — a bump regenerates every artifact and rebaselines
@@ -852,7 +852,7 @@ fact from jess measuring it on four dialect grammars, and parseman's own
 per-dialect divergence.
 
 The active checkout supersedes this historical measurement by consuming
-`parseman@0.41.0`; use §5.0 for current authoring guidance.
+`parseman@0.43.0`; use §5.0 for current authoring guidance.
 
 **Why this ordering is better, not merely tolerable.** The residual regression is
 concentrated in **Less parsing plain CSS**, not Less parsing Less. That points at
@@ -1169,7 +1169,7 @@ across 3,053 file-parses in all four dialects; four parser suites green;
 three harness designs, win-rate 2–4 of 25. Two other Less workloads were
 ambiguous and **no direction was claimed on them** — the right call, recorded as
 such. This was a measured non-adoption of 0.36.0, not a standing pin decision.
-The active floor is 0.41.0 (§0.2).
+The active floor is 0.43.0 (§0.2).
 
 **This unit is no longer a blocker on anything.** Units 3, 4 and 5 target the
 current pinned parseman floor.

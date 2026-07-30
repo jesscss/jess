@@ -13,10 +13,17 @@ after reading the Stage 3 CSS Phase A/B evidence.
 ## Current floor
 
 The rewrite is no longer blocked on the original host-mode prerequisite.
-`parseman@0.41.0` is published and installed from the registry. The root
+`parseman@0.43.0` is published and installed from the registry. The root
 manifest, `@jesscss/parser-shared`, and all four parser package dependency/peer
-ranges require `^0.41.0`; `pnpm-lock.yaml` resolves the active checkout to
-`parseman@0.41.0`.
+ranges require `^0.43.0`; `pnpm-lock.yaml` resolves the active checkout to
+`parseman@0.43.0`.
+
+This release does not make a terminal `composeLeaf(...)` artifact composable:
+`compose(...)` still rejects one. CSS semantic ownership is therefore an
+authoring rule enforced by targeted, same-named production overrides, not a
+claim that a derived package literally imports a finished CSS grammar map today.
+Do not use that macro boundary to justify copying an unchanged CSS structure;
+the long-term composition boundary remains a Parseman/base-grammar design task.
 
 The current floor includes the earlier architecture features (`hostMode`, `peek`,
 `oneOrMoreSep`, `analyzeGatingRules`, `analyzeDuplicationRules`) plus the
@@ -24,7 +31,7 @@ keyword ergonomics needed for grammar cleanup:
 `word(str, { caseInsensitive: true })`,
 `word(str, boundary, { caseInsensitive: true })`, and
 `makeWord(boundary?, { caseInsensitive: true })`. Defaults remain
-case-sensitive across the API. Parseman 0.41.0 also provides the complete
+case-sensitive across the API. Parseman 0.43.0 also provides the complete
 grammar-routing and projection surface this rebuild should use:
 `dispatch(combinator, when(...), otherwise(...))`,
 `when(..., { caseInsensitive: true })`, `makeWhen(...)`, string-array cases,
@@ -183,7 +190,7 @@ dispatch. Other selector starts remain qualified-rule parsing. This mirrors the
 old Chevrotain "parse wide once, store the losing-side error, then throw the
 selected original error" strategy without backtracking or broad lookahead.
 
-Live alpha evidence, 2026-07-27: registry `parseman@0.41.0` is installed;
+Live alpha evidence, refreshed 2026-07-29: registry `parseman@0.43.0` is installed;
 dependency-order parser/plugin/jess builds pass; `pnpm run check:macro` and
 `pnpm run verify:compose-integrity` both pass with 0 interpreter fallbacks.
 `pnpm run verify:less-alpha` passes its Less parser, Less plugin, `jess`,
@@ -658,7 +665,7 @@ state.
 ## Stale or risky assumptions
 
 - Older sections of `GRAMMAR-REBUILD-SPEC.md` still preserve 0.37/0.38 planning
-  history. The current manifests supersede that history: `0.41.0` is resolved,
+  history. The current manifests supersede that history: `0.43.0` is resolved,
   `hostMode`, `dispatch(...)`, and `node(..., { project })` exist, and the
   architecture floor is paid.
 - CSS Phase A disproved the early "AST grammar is mostly deletable reducer
@@ -2052,7 +2059,7 @@ slice yet:
 
 ## Parseman dispatch guidance
 
-`parseman@0.41.0` is the Jess grammar floor. Treat dispatch as a current
+`parseman@0.43.0` is the Jess grammar floor. Treat dispatch as a current
 authoring primitive, not a future dependency. Use it wherever sibling arms share
 an opener, route by the value already consumed, and include a generic
 continuation for the same token family.
@@ -2195,7 +2202,7 @@ Latest dispatch pressure-test against the live Jess grammars, 2026-07-26:
   `@-from`) are a later narrow dispatch target, after CSS/Less prove the
   at-rule router and after Jess itself is the active dialect.
 - Function and pseudo-name dispatch are first-class cleanup targets now that
-  `0.41.0` is resolved. They require a routing combinator that consumes either a
+  `0.43.0` is resolved. They require a routing combinator that consumes either a
   bare name or a glued `name(` opener, exact cases written against the full
   opener (`when('url(')`, not `when('url')`), a generic `endsWith('(')` case for
   other functions, and `otherwise(...)` for bare names.
@@ -2214,7 +2221,7 @@ Latest dispatch pressure-test against the live Jess grammars, 2026-07-26:
   `makeWord(...)` in the emitted grammar module, so tests fail at runtime with
   `ReferenceError: makeWord is not defined`.
 - A factory-local alias inside the `rules(...)` factory DOES macro-lower under
-  the current `parseman@0.41.0`. That makes `const asciiWord = makeWord(...);`
+  the current `parseman@0.43.0`. That makes `const asciiWord = makeWord(...);`
   / `const identWord = makeWord(...);` a good CSS grammar-factory cleanup, while
   the same alias at module scope remains unsafe.
 - For CSS now, prefer factory-local `makeWord(...)` aliases where several rules
@@ -2231,7 +2238,7 @@ now imports `makeWord` and defines factory-local `asciiWord` / `identWord`
 helpers inside `cssFactory`. This removes repeated `word(..., { caseInsensitive:
 true })` calls for fixed CSS words and at-keywords without changing the
 known/generic at-rule router. Evidence: a direct `transformMacro` probe against
-the current `parseman@0.41.0` showed top-level aliases leave `makeWord(...)` in the
+the current `parseman@0.43.0` showed top-level aliases leave `makeWord(...)` in the
 emitted module, while factory-local aliases, direct chained `makeWord(...)`, and
 `word(...)` all lower without runtime parseman calls.
 
@@ -2894,7 +2901,7 @@ reserved-word identifier guards, or using a known-only dispatch beside the old
 unknown fallback. The former wants `identExcept(...)`-style structure; the
 latter makes commitment semantics non-local and easier to misuse.
 
-Parseman 0.41.0 is resolved: use case-insensitive `when(...)`, matcher cases,
+Parseman 0.43.0 is resolved: use case-insensitive `when(...)`, matcher cases,
 `makeWhen(...)`, `routed()`, and declarative node projection in the actual
 grammar cleanup. Documentation may use domain-flavoured examples, but production
 grammar helpers should be consolidated by matching policy.
@@ -4801,7 +4808,7 @@ string protection from grammar-level `scanSkip`. The custom-property value,
 import-tail group, var()-fallback, and raw parenthesized-value scans now list
 only the nested balanced groups that are local to those opaque spans, or no
 explicit skip at all when ambient `scanSkip` is sufficient. This relies on
-Parseman 0.41.0's documented scanner contract: `scanTo(...)` merges grammar
+Parseman 0.43.0's documented scanner contract: `scanTo(...)` merges grammar
 trivia plus ambient `scanSkip`, and `balanced(...)` merges ambient `scanSkip`
 unless the combinator is raw. It is still scanner-local cleanup for accepted
 opaque CSS component text, not a replacement for future structured parsing
