@@ -338,6 +338,27 @@ describe('lintText', () => {
     expect(result.diagnostics.map(diagnostic => input.source.slice(diagnostic.start, diagnostic.end))).toEqual(['flxe']);
   });
 
+  it('maps @supports declaration-condition diagnostics to stable lint rule names', async () => {
+    const input = {
+      source: '@supports (future-prop: grid) and (color: maybe) { .a { color: red; } }',
+      filePath: '/tmp/input.css'
+    };
+    const result = await lintText(input);
+
+    expect(result.diagnostics
+      .filter(diagnostic =>
+        diagnostic.code === LINT_CODES.unknownProperties
+        || diagnostic.code === LINT_CODES.unknownPropertyValues)
+      .map(diagnostic => [
+        diagnostic.ruleName,
+        diagnostic.code,
+        input.source.slice(diagnostic.start, diagnostic.end)
+      ])).toEqual([
+      [LINT_RULE_NAMES.unknownProperties, LINT_CODES.unknownProperties, 'future-prop'],
+      [LINT_RULE_NAMES.unknownPropertyValues, LINT_CODES.unknownPropertyValues, 'maybe']
+    ]);
+  });
+
   it('passes caller CSS metadata into shared diagnostics', async () => {
     const result = await lintText(
       {

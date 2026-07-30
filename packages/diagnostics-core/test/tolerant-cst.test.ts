@@ -1987,6 +1987,34 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidTypedCustomPropertyValue)).toBe(false);
   });
 
+  it('reports unknown CSS @supports declaration-condition properties and values', () => {
+    const source = '@media (future-feature: 1) { @supports (display: grid) and (future-prop: grid) and (color: maybe) { .a { color: red; } } }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownProperties = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownProperties);
+    const unknownPropertyValues = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues);
+    const unknownMediaFeatures = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownMediaFeatureNames);
+    const futurePropStart = source.indexOf('future-prop');
+    const maybeStart = source.indexOf('maybe');
+    const mediaFeatureStart = source.indexOf('future-feature');
+
+    expect(unknownProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toContainEqual([
+      'Unknown property: \'future-prop\'',
+      futurePropStart,
+      futurePropStart + 'future-prop'.length
+    ]);
+    expect(unknownPropertyValues.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toContainEqual([
+      'Unknown value "maybe" for property "color"',
+      maybeStart,
+      maybeStart + 'maybe'.length
+    ]);
+    expect(unknownMediaFeatures.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown media feature name "future-feature"', mediaFeatureStart, mediaFeatureStart + 'future-feature'.length]
+    ]);
+  });
+
   it('reports unknown CSS media feature names', () => {
     const source = '@media (min-width: 1px) and (future-feature: 3) and (600px < project-range < 900px) and (-webkit-device-pixel-ratio: 2) { .a { color: red; } }\n@container (future-feature: 3) { .a { color: red; } }';
     const result = collectTolerantDiagnostics({

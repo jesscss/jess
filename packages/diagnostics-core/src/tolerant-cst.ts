@@ -437,7 +437,7 @@ type ParseDiagnosticSource = {
 type VisitContext = {
   readonly inVarCall: boolean;
   readonly inDeclaration: boolean;
-  readonly inMediaAtRule: boolean;
+  readonly queryAtRuleKind: 'media' | 'supports' | null;
   readonly inCustomDeclaration: boolean;
   readonly inFontFaceAtRule: boolean;
   readonly descriptorAtRuleName: string | null;
@@ -669,7 +669,7 @@ type StaticGuardValue =
 const ROOT_VISIT_CONTEXT_BASE = {
   inVarCall: false,
   inDeclaration: false,
-  inMediaAtRule: false,
+  queryAtRuleKind: null,
   inCustomDeclaration: false,
   inFontFaceAtRule: false,
   descriptorAtRuleName: null,
@@ -1102,6 +1102,34 @@ function mediaFeatureValue(source: string, node: CssCstNode): { fact: CssMediaFe
       fact: mediaFeatureValueFact(source, start, end, raw),
       span: spanAtOrContaining(child, start, end)
     };
+  }
+  return null;
+}
+
+function supportsFeatureValue(source: string, node: CssCstNode): PropertyValueDiagnosticFact | null {
+  for (const child of node.rules) {
+    if (child._tag !== 'node' || child.grammarType !== 'QueryValue') {
+      continue;
+    }
+    let start = absoluteStart(child);
+    let end = absoluteEnd(child);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      return null;
+    }
+    while (start < end && isCssWhitespace(source.charCodeAt(start))) {
+      start++;
+    }
+    while (end > start && isCssWhitespace(source.charCodeAt(end - 1))) {
+      end--;
+    }
+    if (end <= start) {
+      return null;
+    }
+    return propertyValueDiagnosticFact(
+      source,
+      source.slice(start, end),
+      spanAtOrContaining(child, start, end)
+    );
   }
   return null;
 }
@@ -5268,13 +5296,16 @@ export function cstLintDiagnostics(
     const isMediaAtRule = gt === 'QueryAtRuleBlock'
       && source.charCodeAt(start) === 64
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'media';
+    const isSupportsAtRule = gt === 'QueryAtRuleBlock'
+      && source.charCodeAt(start) === 64
+      && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'supports';
     const isFontFaceAtRule = (gt === 'DescriptorBlock' || ATRULE_TYPES.has(gt))
       && source.charCodeAt(start) === 64
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'font-face';
     const nodeContext: VisitContext = {
       inVarCall: context.inVarCall || gt === 'VarCall',
       inDeclaration: context.inDeclaration || DECLARATION_TYPES.has(gt),
-      inMediaAtRule: context.inMediaAtRule || isMediaAtRule,
+      queryAtRuleKind: isMediaAtRule ? 'media' : isSupportsAtRule ? 'supports' : context.queryAtRuleKind,
       inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
       inFontFaceAtRule: context.inFontFaceAtRule || isFontFaceAtRule,
       descriptorAtRuleName: descriptorAtRuleName ?? context.descriptorAtRuleName,
@@ -5722,7 +5753,7 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (language === 'css' && nodeContext.inMediaAtRule && MEDIA_FEATURE_NAME_TYPES.has(gt)) {
+    if (language === 'css' && nodeContext.queryAtRuleKind === 'media' && MEDIA_FEATURE_NAME_TYPES.has(gt)) {
       const feature = mediaFeatureNameSpan(source, node);
       if (feature !== null) {
         const lower = feature.name.toLowerCase();
@@ -5751,6 +5782,34 @@ export function cstLintDiagnostics(
               'warning',
               `Unknown media feature value "${value.fact.raw}" for name "${feature.name}"`,
               value.span
+            );
+          }
+        }
+      }
+    }
+
+    if (language === 'css' && nodeContext.queryAtRuleKind === 'supports' && MEDIA_FEATURE_NAME_TYPES.has(gt)) {
+      const feature = mediaFeatureNameSpan(source, node);
+      if (feature !== null) {
+        const lower = feature.name.toLowerCase();
+        const skip = lower.startsWith('--')
+          || lower.startsWith('-')
+          || hasDynamicSyntax(lower);
+        if (!skip && !cssData.isKnownProperty(lower)) {
+          push(
+            LINT_CODES.unknownProperties,
+            'warning',
+            `Unknown property: '${feature.name}'`,
+            spanAtOrContaining(node, feature.start, feature.end)
+          );
+        } else if (!skip && cssData.isKnownProperty(lower)) {
+          const propertyValue = supportsFeatureValue(source, node);
+          if (propertyValue !== null && cssData.isKnownPropertyValue(lower, propertyValue.fact) === false) {
+            push(
+              LINT_CODES.unknownPropertyValues,
+              'warning',
+              `Unknown value "${propertyValue.fact.raw}" for property "${feature.name}"`,
+              propertyValue.span
             );
           }
         }
