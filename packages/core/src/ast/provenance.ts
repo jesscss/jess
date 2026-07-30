@@ -288,7 +288,7 @@ export function createTriviaMapFromParseman(
         const labeledGaps = labeledRanges === undefined && hasCommentKind && index.gapsWithKind !== undefined
           ? index.gapsWithKind(COMMENT_TRIVIA_KINDS)
           : undefined;
-        if (labeledRanges !== undefined) {
+        if (labeledRanges !== undefined && labeledRanges.length > 0) {
           for (const range of labeledRanges) {
             const run = triviaForRange(range.start, range.end, true);
             if (run !== undefined) {

@@ -85,6 +85,21 @@ necessary overrides. Do not fix `@supports`, an import tail, or a quoted-value
 rule in one dialect by creating a local structure that the next dialect will
 need to rediscover.
 
+Custom-property comment rule, 2026-07-30: `CustomValue`, its direct parts, and
+its nested delimiter groups own semantic value bytes only. Block comments in
+those positions are parser trivia in all three compiled overlays, never an
+`Any`/raw-text child or a dialect-specific comment node. The value retains its
+source span so the shared renderer replays the exact comment ranges from the
+document trivia map. Keep the one local labeled block-comment terminal only to
+classify the already-consumed trivia range; it is not a second scanner or a
+semantic leaf. Legacy composed Parseman trivia can advertise a comment label
+while recording the concrete chunk as generic whitespace. In that narrow
+compatibility case an empty labeled result must fall through to the existing
+source-gap detector; a nonempty labeled result remains the sparse fast path.
+Tests must cover outer, parenthesized, square, curly, and interpolation-adjacent
+positions, plus rendered replay. This does not settle the separate CSS-base
+general-enclosed and opaque-at-rule comment debt.
+
 Current integration warning: the physical fold blocker is paid: CSS, Less, SCSS,
 and Jess now each ship AST and CST from one host-mode grammar source. Older
 green Less byte-identity evidence below is historical evidence for the batches

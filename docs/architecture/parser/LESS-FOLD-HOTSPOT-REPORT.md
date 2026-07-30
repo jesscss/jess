@@ -105,10 +105,11 @@ Completed in the current grammar: declaration-head gaps now flow through
 `DeclarationHead` parser trivia instead of semantic declaration-name bytes. Do
 not reintroduce a declaration-head comment fact.
 
-Completed comment slices: custom-property value groups and opaque at-rule
-preludes use Parseman block-comment trivia. Their semantic values omit comment
-bytes, and the source/document trivia map restores the authored comments during
-rendering. Tests pin both custom-value nested positions and opaque `a/* note */b`
+Completed comment slices: custom-property value groups in Less, SCSS, and Jess,
+plus opaque at-rule preludes, use Parseman block-comment trivia. Their semantic
+values omit comment bytes, and the source/document trivia map restores the
+authored comments during rendering. Tests pin outer, parenthesized, square,
+curly, and interpolation-adjacent custom values as well as opaque `a/* note */b`
 preludes.
 
 Mostly legitimate exceptions:
@@ -130,12 +131,12 @@ names are also CST-recoverable again because the unsupported-name diagnostic is
 owned by AST host-mode reduction, not CST recognition.
 
 Completed custom-property comment slice: `CustomValue`, `CustomPart`, and the
-nested custom-value groups consume block comments as Parseman trivia, never as
-semantic value parts. Their AST text consequently omits comments, while the
-source/document trivia map restores the exact authored ranges during rendering.
-The public custom-property contract covers outer, parenthesized, square,
-curly, and interpolation-adjacent comments. Keep this architecture; do not
-reintroduce `BlockCommentToken` into the custom-value part families.
+nested custom-value groups consume block comments as Parseman trivia in Less,
+SCSS, and Jess, never as semantic value parts. Their AST text consequently omits
+comments, while the source/document trivia map restores the exact authored
+ranges during rendering. The public contract covers outer, parenthesized,
+square, curly, and interpolation-adjacent comments. Keep this architecture;
+do not reintroduce `BlockCommentToken` into the custom-value part families.
 - alpha render lane:
   `pnpm run verify:less-alpha`
 - oracle movement, named before any baseline update:

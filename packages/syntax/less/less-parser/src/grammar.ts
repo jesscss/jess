@@ -1982,6 +1982,12 @@ function foldOperation(children: readonly unknown[], _fields: FieldMap, _span: S
 
 const lineComment = regex(/\/\/[^\n\r]*/);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+/*
+ * Parseman trivia labels belong to terminal identity. This dedicated terminal
+ * keeps custom-value comments classed as `blockComment` in the root index rather
+ * than inheriting the generic whitespace label of the shared scanner terminal.
+ */
+const customValueBlockComment = label('blockComment', regex(/\/\*(?:[^*]|\*(?!\/))*\*\//));
 const lessTriviaGap = oneOrMore(choice(
   label('whitespace', regex(/[ \t\n\r\f]+/)),
   label('lineComment', lineComment),
@@ -2045,7 +2051,7 @@ const compoundSelectorTrivia = trivia(oneOrMore(choice(
   label('blockComment', blockComment)
 )));
 const atPreludeCommentTrivia = trivia(oneOrMore(label('blockComment', blockComment)));
-const customValueCommentTrivia = trivia(oneOrMore(label('blockComment', blockComment)));
+const customValueCommentTrivia = trivia(oneOrMore(customValueBlockComment));
 // Outer selector comments are lexical trivia. Render-time body/source spans own
 // whether a trivia-only body remains output-bearing; selectors do not invent
 // comment simple selectors.

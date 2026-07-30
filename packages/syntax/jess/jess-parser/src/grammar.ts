@@ -18,7 +18,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, trivia, when, word } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, trivia, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -1221,6 +1221,11 @@ const rawWhitespace = regex(/[ \t\n\r\f]+/);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
 
+/* Keep custom-value comments visible as `blockComment` ranges in source trivia
+ * without making them semantic custom-value parts. */
+const customValueBlockComment = label('blockComment', regex(/\/\*(?:[^*]|\*(?!\/))*\*\//));
+const customValueCommentTrivia = trivia(oneOrMore(customValueBlockComment));
+
 /*
  * Comments are Jess trivia. Block comments can still survive through the AST
  * trivia map for rendering/source consumers; line comments are lexical-only and
@@ -1228,8 +1233,8 @@ const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
  * `url(//host/path)` stays URL content.
  */
 const whitespace = trivia(oneOrMore(choice(
-  rawWhitespace,
-  commentTrivia
+  label('whitespace', rawWhitespace),
+  label('comment', commentTrivia)
 )));
 const plainDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))*/);
 const plainSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))*/);
@@ -4641,7 +4646,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    */
   const CustomParen = node<readonly unknown[]>(
     'CustomParen',
-    noTrivia(sequence(
+    parser({ trivia: customValueCommentTrivia }, sequence(
       literal('('),
       many(g.CustomInnerPart),
       literal(')')
@@ -4650,7 +4655,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const CustomSquare = node<readonly unknown[]>(
     'CustomSquare',
-    noTrivia(sequence(
+    parser({ trivia: customValueCommentTrivia }, sequence(
       literal('['),
       many(g.CustomInnerPart),
       literal(']')
@@ -4659,7 +4664,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const CustomCurly = node<readonly unknown[]>(
     'CustomCurly',
-    noTrivia(sequence(
+    parser({ trivia: customValueCommentTrivia }, sequence(
       literal('{'),
       many(g.CustomInnerPart),
       literal('}')
@@ -4669,7 +4674,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   const CustomInnerPart: Combinator<unknown> = choice(
     g.DollarBrace,
     g.CustomInnerContent,
-    blockComment,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
     g.CustomParen,
@@ -4679,7 +4683,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   const CustomPart: Combinator<unknown> = choice(
     g.DollarBrace,
     g.CustomOuterContent,
-    blockComment,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
     g.CustomParen,
@@ -4688,8 +4691,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const CustomValue = node<ValueNode>(
     'CustomValue',
-    noTrivia(many(g.CustomPart)),
-    children => customValueFromChildren(children)
+    parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
+    (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span)
   );
   const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',

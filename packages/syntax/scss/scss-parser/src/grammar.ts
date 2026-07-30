@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, choice, composeLeaf, dispatch, endsWith, expect, literal, makeWhen, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { balanced, choice, composeLeaf, dispatch, endsWith, expect, label, literal, makeWhen, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -983,8 +983,8 @@ function scssPseudoName(opener: string): string {
  * stays URL content and `"//u"` stays string content.
  */
 const whitespace = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
-  regex(/\/\/[^\n\r]*/)
+  label('whitespace', regex(/[ \t\n\r\f]+/)),
+  label('lineComment', regex(/\/\/[^\n\r]*/))
 )));
 
 /*
@@ -1044,6 +1044,11 @@ const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)
  */
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
+
+/* Keep custom-value comments visible as `blockComment` ranges in source trivia
+ * without making them semantic custom-value parts. */
+const customValueBlockComment = label('blockComment', regex(/\/\*(?:[^*]|\*(?!\/))*\*\//));
+const customValueCommentTrivia = trivia(oneOrMore(customValueBlockComment));
 
 /*
  * Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: every
@@ -1874,7 +1879,7 @@ export const scssFactory = (g: ScssInputRules) => {
    */
   const CustomParen = node<readonly unknown[]>(
     'CustomParen',
-    noTrivia(sequence(
+    parser({ trivia: customValueCommentTrivia }, sequence(
       literal('('),
       many(g.CustomInnerPart),
       literal(')')
@@ -1883,7 +1888,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const CustomSquare = node<readonly unknown[]>(
     'CustomSquare',
-    noTrivia(sequence(
+    parser({ trivia: customValueCommentTrivia }, sequence(
       literal('['),
       many(g.CustomInnerPart),
       literal(']')
@@ -1892,7 +1897,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const CustomCurly = node<readonly unknown[]>(
     'CustomCurly',
-    noTrivia(sequence(
+    parser({ trivia: customValueCommentTrivia }, sequence(
       literal('{'),
       many(g.CustomInnerPart),
       literal('}')
@@ -1902,7 +1907,6 @@ export const scssFactory = (g: ScssInputRules) => {
   const CustomInnerPart: Combinator<unknown> = choice(
     g.SassInterpolation,
     g.CustomInnerContent,
-    blockComment,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
     g.CustomParen,
@@ -1912,7 +1916,6 @@ export const scssFactory = (g: ScssInputRules) => {
   const CustomPart: Combinator<unknown> = choice(
     g.SassInterpolation,
     g.CustomOuterContent,
-    blockComment,
     g.CustomSingleQuoted,
     g.CustomDoubleQuoted,
     g.CustomParen,
@@ -1921,8 +1924,8 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const CustomValue = node<ValueNode>(
     'CustomValue',
-    noTrivia(many(g.CustomPart)),
-    children => customValue(children)
+    parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
+    (children, _fields, span) => withSourceSpan(customValue(children), span)
   );
   const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',
