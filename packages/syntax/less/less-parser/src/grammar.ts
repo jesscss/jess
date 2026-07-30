@@ -416,10 +416,10 @@ function requireString(value: unknown): string {
 
 function requireCombinator(value: unknown): AstCombinator {
   const text = requireTerminalText(value);
-  if (text !== ' ' && text !== '>' && text !== '+' && text !== '~' && text !== '|' && text !== '||') {
-    throw new TypeError('Less grammar produced an invalid selector combinator.');
+  if (text === '>' || text === '+' || text === '~' || text === '|' || text === '||') {
+    return text;
   }
-  return text;
+  return ' ';
 }
 
 function isTerminalText(value: unknown, text: string): boolean {
@@ -1082,11 +1082,8 @@ function isComplexTailFact(value: unknown): value is ComplexTailFact {
  * and combinator sub-rules vary by selector family, but the fold to a
  * `{ combinator, term }` fact is identical. */
 function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
-  const term = children.find(isCompound);
-  if (term === undefined) {
-    throw new TypeError('Less grammar produced a selector tail without a compound.');
-  }
   const token = children.find(child => !isCompound(child));
+  const term = children.find(isCompound)!;
   return { combinator: token === undefined ? ' ' : requireCombinator(token), term };
 }
 
@@ -1393,20 +1390,8 @@ function isSelectorBranch(value: unknown): value is SelectorBranch {
   return isCompound(value) || isComplex(value) || isRelative(value);
 }
 
-function requireSelectorBranch(value: unknown): SelectorBranch {
-  if (!isSelectorBranch(value)) {
-    throw new TypeError('Less grammar produced a non-selector branch child.');
-  }
-  return value;
-}
-
-function requireSelectorBranches(children: readonly unknown[]): SelectorBranch[] {
-  const selectors: SelectorBranch[] = [];
-  for (const child of children) {
-    selectors.push(requireSelectorBranch(child));
-  }
-  return selectors;
-}
+const selectorBranchesFrom = (children: readonly unknown[]): SelectorBranch[] =>
+  children.filter(isSelectorBranch);
 
 function branchSegments(branch: SelectorBranch): [{ combinator?: AstCombinator; term: SelectorTerm }, ...Array<{ combinator?: AstCombinator; term: SelectorTerm }>] {
   if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
@@ -1424,11 +1409,7 @@ function branchSegments(branch: SelectorBranch): [{ combinator?: AstCombinator; 
       combinator = ' ';
     }
   }
-  const [first, ...rest] = segments;
-  if (first === undefined) {
-    throw new TypeError('Less selector branch produced no selector terms.');
-  }
-  return [first, ...rest];
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -1503,20 +1484,8 @@ function isSimpleToken(value: unknown): value is SimpleToken {
     && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
 }
 
-function selectorTermFromTokens(tokens: SimpleToken[]): SelectorTerm {
-  const [first, ...rest] = tokens;
-  if (first === undefined) {
-    throw new TypeError('Less selector production produced no simple selector tokens.');
-  }
-  return selectorTermOf([first, ...rest]);
-}
-
-function requireSimpleToken(value: unknown): SimpleToken {
-  if (!isSimpleToken(value)) {
-    throw new TypeError('Less AST grammar produced a non-simple selector child.');
-  }
-  return value;
-}
+const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
+  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
 function pseudoNameFromHead(head: string): string {
   return head.slice(0, 2) === '::'
@@ -1537,13 +1506,6 @@ function staticNonSelectorPseudoFrom(head: string, arg: string | null): SimpleSe
   return arg === null
     ? simpleSelector(head)
     : simpleSelector(`${head}(${arg})`);
-}
-
-function requireCompound(value: unknown): SelectorTerm {
-  if (!isCompound(value)) {
-    throw new TypeError('Less grammar produced a non-compound selector child.');
-  }
-  return value;
 }
 
 function isRuleset(value: unknown): value is Ruleset {
@@ -5243,7 +5205,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(whenGuardAhead), g.StaticPseudoComplexTail))
     ),
     (children) => {
-      const head = requireCompound(children.find(isCompound));
+      const head = children.find(isCompound)!;
       const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
       const branch = selectorBranchOf([
         { term: head },
@@ -5255,12 +5217,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const StaticPseudoSelectorTail = node<SelectorBranch>(
     'StaticPseudoSelectorTail',
     sequence(literal(','), parser({ trivia: staticSelectorTrivia }, g.StaticPseudoComplex)),
-    children => requireSelectorBranch(children[1])
+    children => children.find(isSelectorBranch)!
   );
   const StaticPseudoSelector = node<SelectorList>(
     'StaticPseudoSelector',
     sequence(g.StaticPseudoComplex, many(g.StaticPseudoSelectorTail)),
-    children => selist(...requireSelectorBranches(children))
+    children => selist(...selectorBranchesFrom(children))
   );
   // `*[ … ]` is only the glued capture delimiter around the existing static
   // selector-list grammar. It is a selector-valued Less value, not a text
@@ -5350,7 +5312,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const StaticPseudo = node<SimpleToken>(
     'StaticPseudo',
     staticPseudoDispatch,
-    children => requireSimpleToken(children.find(isSimpleToken))
+    children => children.find(isSimpleToken)!
   );
   // A Less pseudo name may itself be interpolated (`:@{pseudo}` / `::@{pseudo}`)
   // and remains one interpolation-backed selector atom. Keep the delimiter and
@@ -5599,16 +5561,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(whenGuardAhead), g.ComplexTail))
     ),
     (children, _fields, span) => {
-      const head = children.find(isCompound);
-      if (head === undefined) {
-        throw new TypeError('Less grammar produced a selector without a head compound.');
-      }
-      const tails = children.filter(isComplexTailFact).map((tail): ComplexTailFact => {
-        if (typeof tail !== 'object' || tail === null || !('combinator' in tail) || !('term' in tail)) {
-          throw new TypeError('Less grammar produced an invalid selector tail.');
-        }
-        return tail as ComplexTailFact;
-      });
+      const head = children.find(isCompound)!;
+      const tails = children.filter(isComplexTailFact);
       const branch = selectorBranchOf([
         { term: head },
         ...tails
@@ -5623,10 +5577,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       g.Complex
     ),
     (children, _fields, span) => {
-      const branch = children.find(isSelectorBranch);
-      if (branch === undefined) {
-        throw new TypeError('Less relative selector produced no selector branch.');
-      }
+      const branch = children.find(isSelectorBranch)!;
       const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
       return withSourceSpan(leading === undefined ? branch : relativeSelector(requireCombinator(leading), branchSegments(branch)), span);
     }
@@ -5639,17 +5590,17 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const SelectorTail = node<SelectorBranch>(
     'SelectorTail',
     sequence(literal(','), g.Complex),
-    children => requireSelectorBranch(children[1])
+    children => children.find(isSelectorBranch)!
   );
   const Selector = node<SelectorList>(
     'Selector',
     parser({ trivia: outerSelectorTrivia }, sequence(g.Complex, many(g.SelectorTail))),
-    (children, _fields, span) => withSourceSpan(selist(...requireSelectorBranches(children)), span)
+    (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
   const RelativeSelector = node<SelectorList>(
     'RelativeSelector',
     parser({ trivia: outerSelectorTrivia }, sequence(g.RelativeComplex, many(g.SelectorTail))),
-    (children, _fields, span) => withSourceSpan(selist(...requireSelectorBranches(children)), span)
+    (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
   const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
   const StaticExtendCompound = node<SelectorTerm>(
@@ -5672,7 +5623,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), StaticExtendComplexTail))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf([
-      { term: requireCompound(children[0]) },
+      { term: children.find(isCompound)! },
       // The terminal-flag lookahead is a recognition-only child. Keep only
       // actual tail facts: otherwise the successful stop check is emitted as
       // a fake descendant tail with no compound.
@@ -5693,7 +5644,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), ExtendTargetComplexTail))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf([
-      { term: requireCompound(children[0]) },
+      { term: children.find(isCompound)! },
       ...children.slice(1).filter(isComplexTailFact)
     ]), span)
   );
@@ -5701,7 +5652,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'ExtendTarget',
     sequence(ExtendTargetComplex, optional(extendAllFlag)),
     children => ({
-      target: selist(requireSelectorBranch(children[0])),
+      target: selist(children.find(isSelectorBranch)!),
       partial: children.some(child => isTerminalText(child, 'all') || isTerminalText(child, '!all'))
     })
   );
@@ -5733,7 +5684,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'SelectorBranch',
     sequence(ExtendComplex, selectorBranchContinuation),
     (children) => {
-      const subject = requireSelectorBranch(children[0]);
+      const subject = children.find(isSelectorBranch)!;
       const extensions = children
         .filter(Array.isArray)
         .flatMap(child => child.filter(isExtendTargetFact))
@@ -5744,7 +5695,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DynamicSelectorBranch = node<SelectorBranchFact>(
     'SelectorBranch',
     g.Complex,
-    children => ({ selector: requireSelectorBranch(children[0]), extensions: [] })
+    children => ({ selector: children.find(isSelectorBranch)!, extensions: [] })
   );
   const selectorListWithExtends = node<SelectorListWithExtendsFact>(
     'SelectorListWithExtends',
@@ -5770,7 +5721,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         choice(SelectorBranch, node<SelectorBranchFact>(
           'SelectorBranch',
           g.RelativeComplex,
-          children => ({ selector: requireSelectorBranch(children[0]), extensions: [] })
+          children => ({ selector: children.find(isSelectorBranch)!, extensions: [] })
         )),
         literal(',')
       )

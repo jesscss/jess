@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/jess-parser';
+import type { AtRuleBlock, Declaration } from '@jesscss/core/ast';
 
 /**
  * A conditional at-rule prelude is the CSS "value hole": a composite shape whose
@@ -32,6 +33,20 @@ const ratio = (n: string, d: string) => op('/', dim(n), dim(d));
 const call = (name: string, args: unknown[]) => ({ type: 'FunctionCall', name, args });
 const staticUrl = (src: string) => ({ type: 'Url', value: { type: 'Any', src } });
 const list = (...value: unknown[]) => ({ type: 'List', sep: ',', value });
+
+function isAtRuleBlock(value: unknown): value is AtRuleBlock {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'AtRuleBlock';
+}
+
+function isDeclaration(value: unknown): value is Declaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Declaration';
+}
 
 /**
  * `<ratio>` — mediaqueries-4 §2.1, `<number> [ / <number> ]?`. The slash is a
@@ -214,11 +229,11 @@ const SUPPORTS: Array<[string, string, object]> = [
 
 function descriptorValue(source: string): unknown {
   const first = parse(source).rules[0];
-  if (first === undefined || !('body' in first)) {
+  if (!isAtRuleBlock(first)) {
     throw new TypeError(`Expected an at-rule block for: ${source}`);
   }
   const declaration = first.rules[0];
-  if (declaration === undefined || !('value' in declaration)) {
+  if (!isDeclaration(declaration)) {
     throw new TypeError(`Expected an @property descriptor for: ${source}`);
   }
   return declaration.value;

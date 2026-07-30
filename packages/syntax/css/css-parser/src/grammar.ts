@@ -382,13 +382,8 @@ function isSelectorTerm(value: unknown): value is AstSelectorTerm {
   return isSimpleToken(value) || isCompound(value);
 }
 
-function selectorTermFromTokens(tokens: SimpleToken[]): AstSelectorTerm {
-  const [first, ...rest] = tokens;
-  if (first === undefined) {
-    throw new TypeError('CSS selector production produced no simple selector tokens.');
-  }
-  return selectorTermOf([first, ...rest]);
-}
+const selectorTermFromTokens = (tokens: readonly SimpleToken[]): AstSelectorTerm =>
+  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
 function isComplex(value: unknown): value is Extract<AstSelectorBranch, { readonly type: 'ComplexSelector' }> {
   return isNodeType(
@@ -566,13 +561,8 @@ function isDocumentStatement(value: unknown): value is Statement {
     || isOpaqueAtRuleBlock(value);
 }
 
-function selectorBranches(children: readonly unknown[]): AstSelectorBranch[] {
-  const selectors = children.filter(isSelectorBranch);
-  if (selectors.length === 0) {
-    throw new Error('SelectorList requires a selector branch');
-  }
-  return selectors;
-}
+const selectorBranches = (children: readonly unknown[]): AstSelectorBranch[] =>
+  children.filter(isSelectorBranch);
 
 function selectorArgumentText(value: unknown): string {
   if (isSelectorList(value)) {
@@ -583,6 +573,22 @@ function selectorArgumentText(value: unknown): string {
 
 type CssComplexSegment = { combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm };
 
+function cssCombinator(child: unknown): NonNullable<CssComplexSegment['combinator']> {
+  const token = tokenText(child);
+  if (token === '>' || token === '+' || token === '~' || token === '|' || token === '||') {
+    return token;
+  }
+  return ' ';
+}
+
+function cssRelativeCombinator(child: unknown): '>' | '+' | '~' {
+  const token = tokenText(child);
+  if (token === '>' || token === '+') {
+    return token;
+  }
+  return '~';
+}
+
 function complexSegments(children: readonly unknown[]): [CssComplexSegment, ...CssComplexSegment[]] {
   const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }> = [];
   let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
@@ -592,17 +598,9 @@ function complexSegments(children: readonly unknown[]): [CssComplexSegment, ...C
       combinator = ' ';
       continue;
     }
-    const token = tokenText(child);
-    if (token !== '>' && token !== '+' && token !== '~' && token !== '|' && token !== '||') {
-      throw new Error('ComplexSelector has an invalid combinator');
-    }
-    combinator = token;
+    combinator = cssCombinator(child);
   }
-  const [first, ...rest] = segments;
-  if (first === undefined) {
-    throw new Error('ComplexSelector requires a compound selector');
-  }
-  return [first, ...rest];
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 function branchSegments(branch: AstSelectorBranch): [CssComplexSegment, ...CssComplexSegment[]] {
@@ -621,11 +619,7 @@ function branchSegments(branch: AstSelectorBranch): [CssComplexSegment, ...CssCo
       combinator = ' ';
     }
   }
-  const [first, ...rest] = segments;
-  if (first === undefined) {
-    throw new TypeError('CSS selector branch produced no selector terms.');
-  }
-  return [first, ...rest];
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 function valueChildren(children: readonly unknown[]): ValueNode[] {
@@ -1315,17 +1309,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.ComplexSelector
     ),
     (children) => {
-      const branch = children.find(isSelectorBranch);
-      if (branch === undefined) {
-        throw new Error('RelativeComplexSelector requires a selector branch');
-      }
+      const branch = children.find(isSelectorBranch)!;
       if (children.length === 1) {
         return branch;
       }
-      const lead = tokenText(children[0]);
-      if (lead !== '>' && lead !== '+' && lead !== '~') {
-        throw new Error('RelativeComplexSelector produced an invalid leading combinator');
-      }
+      const lead = cssRelativeCombinator(children[0]);
       return relativeSelector(lead, branchSegments(branch));
     }
   );
@@ -1455,16 +1443,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.BasicSelector
       ))
     )),
-    (children) => {
-      const simples: SimpleToken[] = [];
-      for (const child of children) {
-        if (!isSimpleToken(child)) {
-          throw new TypeError('CompoundSelector produced a non-simple selector child.');
-        }
-        simples.push(child);
-      }
-      return selectorTermFromTokens(simples);
-    }
+    children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
   const TopLevelCompoundSelector = node(
     'TopLevelCompoundSelector',
@@ -1482,16 +1461,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.BasicSelector
       ))
     )),
-    (children) => {
-      const simples: SimpleToken[] = [];
-      for (const child of children) {
-        if (!isSimpleToken(child)) {
-          throw new TypeError('TopLevelCompoundSelector produced a non-simple selector child.');
-        }
-        simples.push(child);
-      }
-      return selectorTermFromTokens(simples);
-    }
+    children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
   const ComplexSelector = node(
     'ComplexSelector',

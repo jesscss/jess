@@ -259,6 +259,13 @@ function isToken(value: unknown): value is Token {
   return typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string';
 }
 
+function jessCombinator(value: Token): JessComplexTail['combinator'] {
+  if (value.value === '>' || value.value === '+' || value.value === '~' || value.value === '||') {
+    return value.value;
+  }
+  return ' ';
+}
+
 function isExpressionFact(value: unknown): value is ExpressionFact {
   return typeof value === 'object' && value !== null && 'value' in value && 'src' in value;
 }
@@ -339,45 +346,12 @@ function isSimpleToken(value: unknown): value is SimpleToken {
   return isSimpleSelector(value) || isPseudoSelector(value);
 }
 
-function requireSimpleToken(value: unknown): SimpleToken {
-  if (!isSimpleToken(value)) {
-    throw new TypeError('Jess grammar produced a non-simple-token child.');
-  }
-  return value;
-}
-
-function requireCompound(value: unknown): SelectorTerm {
-  if (!isCompound(value)) {
-    throw new TypeError('Jess grammar produced a non-compound selector child.');
-  }
-  return value;
-}
-
-function selectorTermFromTokens(tokens: SimpleToken[]): SelectorTerm {
-  const [first, ...rest] = tokens;
-  if (first === undefined) {
-    throw new TypeError('Jess selector production produced no simple selector tokens.');
-  }
-  return selectorTermOf([first, ...rest]);
-}
-
-function requireSelectorBranch(value: unknown): SelectorBranch {
-  if (!isSelectorBranch(value)) {
-    throw new TypeError('Jess grammar produced a non-selector branch child.');
-  }
-  return value;
-}
+const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
+  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
 function requireSelectorList(value: unknown): SelectorList {
   if (!isSelectorList(value)) {
     throw new TypeError('Jess grammar produced a non-selector-list child.');
-  }
-  return value;
-}
-
-function requireJessComplexTail(value: unknown): JessComplexTail {
-  if (!isJessComplexTail(value)) {
-    throw new TypeError('Jess grammar produced an invalid selector tail.');
   }
   return value;
 }
@@ -1207,13 +1181,13 @@ function reduceLambda(children: readonly unknown[]): AnonymousMixin {
  * complex, tail, and list reductions are structurally identical.
  */
 function reduceCompound(children: readonly unknown[]): SelectorTerm {
-  return selectorTermFromTokens(children.map(requireSimpleToken));
+  return selectorTermFromTokens(children.filter(isSimpleToken));
 }
 function reduceSelectorTail(children: readonly unknown[]): SelectorBranch {
-  return requireSelectorBranch(children[1]);
+  return children.find(isSelectorBranch)!;
 }
 function reduceSelectorList(children: readonly unknown[]): SelectorList {
-  return selist(...children.map(requireSelectorBranch));
+  return selist(...children.filter(isSelectorBranch));
 }
 
 const rawWhitespace = regex(/[ \t\n\r\f]+/);
@@ -2707,15 +2681,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.StaticCompound
     ),
     (children) => {
-      const term = children.find(isCompound);
-      if (term === undefined) {
-        throw new TypeError('Jess static selector requires a compound tail.');
-      }
       const token = children.find(isToken);
-      const combinator = token?.value ?? ' ';
-      if (combinator !== ' ' && combinator !== '>' && combinator !== '+' && combinator !== '~' && combinator !== '||') {
-        throw new TypeError('Jess static selector produced an invalid combinator.');
-      }
+      const term = children.find(isCompound)!;
+      const combinator = token === undefined ? ' ' : jessCombinator(token);
       return { combinator, term };
     }
   );
@@ -2726,8 +2694,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       many(g.StaticComplexTail)
     ),
     children => selectorBranchOf([
-      { term: requireCompound(children[0]) },
-      ...children.slice(1).map(requireJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
+      { term: children.find(isCompound)! },
+      ...children.filter(isJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
     ])
   );
   const StaticSelectorTail = node<SelectorBranch>(
@@ -5374,15 +5342,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.Compound
     ),
     (children) => {
-      const term = children.find(isCompound);
-      if (term === undefined) {
-        throw new TypeError('Jess selector tail requires a compound.');
-      }
       const token = children.find(isToken);
-      const combinator = token?.value ?? ' ';
-      if (combinator !== ' ' && combinator !== '>' && combinator !== '+' && combinator !== '~' && combinator !== '||') {
-        throw new TypeError('Jess selector tail produced an invalid combinator.');
-      }
+      const term = children.find(isCompound)!;
+      const combinator = token === undefined ? ' ' : jessCombinator(token);
       return { combinator, term };
     }
   );
@@ -5393,8 +5355,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       many(g.ComplexTail)
     ),
     children => selectorBranchOf([
-      { term: requireCompound(children[0]) },
-      ...children.slice(1).map(requireJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
+      { term: children.find(isCompound)! },
+      ...children.filter(isJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
     ])
   );
   const SelectorTail = node<SelectorBranch>(

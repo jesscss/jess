@@ -330,33 +330,8 @@ function requireSelectorList(value: unknown): SelectorList {
   return value;
 }
 
-function isScssComplexTail(value: unknown): value is ScssComplexTail {
-  return typeof value === 'object' && value !== null
-    && 'combinator' in value && (value.combinator === ' ' || value.combinator === '>' || value.combinator === '+' || value.combinator === '~' || value.combinator === '||')
-    && 'term' in value && isSelectorTerm(value.term);
-}
-
-function requireScssComplexTail(value: unknown): ScssComplexTail {
-  if (!isScssComplexTail(value)) {
-    throw new TypeError('SCSS grammar produced an invalid selector tail.');
-  }
-  return value;
-}
-
-function requireSelectorTerm(value: unknown): SelectorTerm {
-  if (!isSelectorTerm(value)) {
-    throw new TypeError('SCSS grammar produced a non-compound selector child.');
-  }
-  return value;
-}
-
-function selectorTermFromTokens(tokens: SimpleToken[]): SelectorTerm {
-  const [first, ...rest] = tokens;
-  if (first === undefined) {
-    throw new TypeError('SCSS selector production produced no simple selector tokens.');
-  }
-  return selectorTermOf([first, ...rest]);
-}
+const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
+  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
 /*
  * A compound token is either a plain `SimpleSelector` or a structured
@@ -369,18 +344,25 @@ function isSimpleToken(value: unknown): value is SimpleToken {
     || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'PseudoSelector');
 }
 
-function requireSimpleToken(value: unknown): SimpleToken {
-  if (!isSimpleToken(value)) {
-    throw new TypeError('SCSS grammar produced a non-simple selector child.');
-  }
-  return value;
+function isScssComplexTail(value: unknown): value is ScssComplexTail {
+  return typeof value === 'object' && value !== null
+    && 'combinator' in value && (value.combinator === ' ' || value.combinator === '>' || value.combinator === '+' || value.combinator === '~' || value.combinator === '||')
+    && 'term' in value && isSelectorTerm(value.term);
 }
 
-function requireSelectorBranch(value: unknown): SelectorBranch {
-  if (!isSelectorBranch(value)) {
-    throw new TypeError('SCSS grammar produced a non-selector branch child.');
+function scssCombinatorText(value: unknown): ScssComplexTail['combinator'] {
+  if (isToken(value) && (value.value === '>' || value.value === '+' || value.value === '~' || value.value === '||')) {
+    return value.value;
   }
-  return value;
+  return ' ';
+}
+
+function scssRelativeCombinator(value: unknown): '>' | '+' | '~' {
+  const token = requireToken(value).value;
+  if (token === '>' || token === '+') {
+    return token;
+  }
+  return '~';
 }
 
 function branchSegments(branch: SelectorBranch): [{ combinator?: ScssSegmentCombinator; term: SelectorTerm }, ...Array<{ combinator?: ScssSegmentCombinator; term: SelectorTerm }>] {
@@ -399,11 +381,7 @@ function branchSegments(branch: SelectorBranch): [{ combinator?: ScssSegmentComb
       combinator = ' ';
     }
   }
-  const [first, ...rest] = segments;
-  if (first === undefined) {
-    throw new TypeError('SCSS selector branch produced no selector terms.');
-  }
-  return [first, ...rest];
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 function isImportTarget(value: unknown): value is Quoted | Url | Interpolation {
@@ -4651,17 +4629,11 @@ export const scssFactory = (g: ScssInputRules) => {
       )
     ),
     (children) => {
-      const branch = children.find(isSelectorBranch);
-      if (branch === undefined) {
-        throw new TypeError('SCSS relative complex selector requires a selector branch.');
-      }
+      const branch = children.find(isSelectorBranch)!;
       if (children.length === 1) {
         return branch;
       }
-      const lead = requireToken(children[0]).value;
-      if (lead !== '>' && lead !== '+' && lead !== '~') {
-        throw new TypeError('SCSS relative complex selector produced an invalid leading combinator.');
-      }
+      const lead = scssRelativeCombinator(children[0]);
       return relativeSelector(lead, branchSegments(branch));
     }
   );
@@ -4832,7 +4804,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const Pseudo = node<SimpleToken>(
     'Pseudo',
     PseudoDispatch,
-    children => requireSimpleToken(children.find(isSimpleToken))
+    children => children.find(isSimpleToken)!
   );
   const NestingSelector = node<SimpleSelector>(
     'NestingSelector',
@@ -4870,15 +4842,9 @@ export const scssFactory = (g: ScssInputRules) => {
       g.Compound
     ),
     (children) => {
-      const term = children.find(isSelectorTerm);
-      if (term === undefined) {
-        throw new TypeError('SCSS complex selector tail requires a compound.');
-      }
       const token = children.find(isToken);
-      const combinator = token?.value ?? ' ';
-      if (combinator !== ' ' && combinator !== '>' && combinator !== '+' && combinator !== '~' && combinator !== '||') {
-        throw new TypeError('SCSS complex selector tail produced an invalid combinator.');
-      }
+      const term = children.find(isSelectorTerm)!;
+      const combinator = token === undefined ? ' ' : scssCombinatorText(token);
       return { combinator, term };
     }
   );
@@ -4889,8 +4855,8 @@ export const scssFactory = (g: ScssInputRules) => {
       many(g.ComplexTail)
     ),
     children => selectorBranchOf([
-      { term: requireSelectorTerm(children[0]) },
-      ...children.slice(1).map(requireScssComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
+      { term: children.find(isSelectorTerm)! },
+      ...children.filter(isScssComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
     ])
   );
   const SelectorTail = node<SelectorBranch>(
@@ -4899,7 +4865,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal(','),
       g.Complex
     ),
-    children => requireSelectorBranch(children[1])
+    children => children.find(isSelectorBranch)!
   );
   const Selector = node<SelectorList>(
     'Selector',
@@ -4919,7 +4885,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal(','),
       g.RelativeComplex
     ),
-    children => requireSelectorBranch(children[1])
+    children => children.find(isSelectorBranch)!
   );
   const NestedSelector = node<SelectorList>(
     'NestedSelector',
