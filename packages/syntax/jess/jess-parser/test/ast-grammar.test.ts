@@ -2150,12 +2150,12 @@ describe('Jess AST grammar facts', () => {
       '.asset { image: url(images/${file}.svg); }',
       '.asset { image: url($asset); }',
       '.asset { image: url($[asset]); }',
-      '.asset { image: url("$(path)"); }'
+      '.asset { image: url("${file}/$(.path).svg"); }'
     ]) {
       const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
     }
-    const rule = parse('.asset { image: url("$(path)"); }').rules[0];
+    const rule = parse('.asset { image: url("${file}/$(.path).svg"); }').rules[0];
     expect(rule).toMatchObject({
       type: 'Ruleset',
       rules: [{

@@ -1025,16 +1025,6 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('(')
   ));
 
-  const pseudoRawDoubleQuoted = sequence(
-    literal('"'),
-    g.DoubleQuotedText,
-    literal('"')
-  );
-  const pseudoRawSingleQuoted = sequence(
-    literal('\''),
-    g.SingleQuotedText,
-    literal('\'')
-  );
   const pseudoIdentOrFunction = token(noTrivia(sequence(
     g.Identifier,
     optional(literal('('))
@@ -1043,19 +1033,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal(')'),
     {
       skip: [
-        balanced(
-          '(',
-          ')',
-          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
-        ),
-        balanced(
-          '[',
-          ']',
-          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
-        ),
-        pseudoRawDoubleQuoted,
-        pseudoRawSingleQuoted,
-        blockComment
+        balanced('(', ')'),
+        balanced('[', ']')
       ]
     }
   );

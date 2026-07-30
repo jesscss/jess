@@ -178,6 +178,8 @@ describe('CSS canonical-AST grammar', () => {
       ':nth-child(2n+1 of .item) { color: red; }',
       ':nth-child(-n+2 of .item) { color: red; }',
       ':lang(en-US) { color: red; }',
+      ':lang(")") { color: red; }',
+      ':unknown([data-state=")"]) { color: red; }',
       '50% { color: red; }'
     ]) {
       const cst = parseCssCst(source);
