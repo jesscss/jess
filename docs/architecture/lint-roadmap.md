@@ -132,8 +132,8 @@ using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 236-finding rule set:
 
 | Path | Median |
 | --- | --- |
-| Jess lint stable rules | `23.17 ms/op` |
-| Stylelint comparable rules | `28.03 ms/op` |
+| Jess lint stable rules | `23.38 ms/op` |
+| Stylelint comparable rules | `28.00 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
