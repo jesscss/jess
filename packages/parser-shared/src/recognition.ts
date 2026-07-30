@@ -8,7 +8,6 @@
 import { keywords, literal, noTrivia, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
 
 const cssIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-const propertyName = cssIdentifier;
 const keywordValue = cssIdentifier;
 const doubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const singleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
@@ -431,7 +430,6 @@ export const cssSyntax = rules(_g => ({
   Identifier: keywordValue,
   AttributeOperator: attributeOperator,
   AttributeModifier: attributeModifier,
-  CssSyntaxProperty: propertyName,
   DoubleQuotedText: doubleQuotedText,
   SingleQuotedText: singleQuotedText,
   CssSyntaxUrlOpen: urlOpen,

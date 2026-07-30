@@ -270,16 +270,16 @@ const UrlFunction = node('UrlFunction',
   children => urlFunction(children[0].value.slice(0, -1), children[1])
 );
 
-const Identifier = node('Identifier',
+const RoutedKeyword = node('Keyword',
   routed(),
-  children => identifier(children[0].value)
+  children => keyword(children[0].value)
 );
 
 const Value = dispatch(
   identOrFunctionOpen(cssIdent),
   caseOf('url(', UrlFunction),
   when(endsWith('('), GenericFunction),
-  otherwise(Identifier)
+  otherwise(RoutedKeyword)
 );
 ```
 

@@ -221,7 +221,6 @@ type SharedCssSyntax = {
   NthOfKeyword: Combinator<string>;
   PseudoSelectorCloseAhead: Combinator<string>;
   CssSyntaxNumber: Combinator<string>;
-  CssSyntaxProperty: Combinator<string>;
   CssSyntaxInterpolatedPropertyStart: Combinator<string>;
   CssSyntaxInterpolatedPropertyTail: Combinator<string>;
   CssSyntaxCustomProperty: Combinator<string>;
@@ -3003,7 +3002,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const CollectionEntry = node<CollectionEntry>(
     'CollectionEntry',
     sequence(
-      g.CssSyntaxProperty,
+      g.Identifier,
       literal(':'),
       parser(
         { trivia: whitespace },
@@ -4409,7 +4408,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const StaticPropertyDescriptor = node<Declaration>(
     'StaticPropertyDescriptor',
     sequence(
-      g.CssSyntaxProperty,
+      g.Identifier,
       literal(':'),
       g.StaticValue,
       literal(';')
@@ -4615,7 +4614,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Cheap superset lookahead so an ordinary `color: …` declaration does not
    * enter the interpolated-property arm, consume the whole property name via
    * the optional literal start, fail the required interpolation, and backtrack a
-   * property re-parse through CssSyntaxProperty. Skip this arm unless a
+   * property re-parse through Identifier. Skip this arm unless a
    * `$[` or `${` actually precedes the next `:`/`;`/brace. A property name never
    * contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
    * real interpolated property is never skipped.
@@ -4795,7 +4794,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         choice(
           InterpolatedProperty,
-          g.CssSyntaxProperty
+          g.Identifier
         ),
         literal(':'),
         g.Value,

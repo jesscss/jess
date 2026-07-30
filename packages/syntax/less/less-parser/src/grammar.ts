@@ -287,7 +287,7 @@ type SharedCssSyntax = {
   CssSyntaxDimensionUnit: Combinator<string>;
   CssSyntaxInterpolatedPropertyStart: Combinator<unknown>;
   CssSyntaxInterpolatedPropertyTail: Combinator<unknown>;
-  CssSyntaxProperty: Combinator<unknown>;
+  Identifier: Combinator<string>;
   CssSyntaxSupportsAtKeyword: Combinator<unknown>;
   CssSyntaxKeyframesAtKeyword: Combinator<unknown>;
   CssSyntaxMediaContainerAtKeyword: Combinator<unknown>;
@@ -2439,7 +2439,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // may poison the document's direct start rule.
   const ImportQueryTail = node<ValueNode>(
     'ImportQueryTail',
-    sequence(literal('('), g.CssSyntaxProperty, regex(/:[ \t\n\r\f]*/), g.VariableReference, literal(')')),
+    sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.VariableReference, literal(')')),
     children => block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3])))
   );
   const quotedOrUrlTarget = choice(g.EscapedQuoted, g.Quoted, UrlTarget);
@@ -2899,7 +2899,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // value and query grammars share it without a recursive query-value cycle.
   const QueryColonFeature = node<ValueNode>(
     'QueryColonFeature',
-    sequence(literal('('), g.CssSyntaxProperty, regex(/:[ \t\n\r\f]*/), g.MathSum, literal(')')),
+    sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.MathSum, literal(')')),
     (children, _fields, span) => withSourceSpan(
       block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))),
       span
@@ -4419,7 +4419,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'SupportsFeature',
     sequence(
       literal('('),
-      g.CssSyntaxProperty,
+      g.Identifier,
       optional(sequence(literal(':'), g.SupportsValue)),
       literal(')')
     ),
@@ -4517,13 +4517,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const QueryBareFeature = node<ValueNode>(
     'QueryBareFeature',
-    sequence(literal('('), g.CssSyntaxProperty, literal(')')),
+    sequence(literal('('), g.Identifier, literal(')')),
     children => block(keyword(requireToken(children[1]).value))
   );
   const QueryComparisonFeature = node<ValueNode>(
     'QueryComparisonFeature',
     sequence(
-      literal('('), g.CssSyntaxProperty, g.CssSyntaxQueryComparisonOperator, QueryFeatureValue,
+      literal('('), g.Identifier, g.CssSyntaxQueryComparisonOperator, QueryFeatureValue,
       optional(sequence(g.CssSyntaxQueryComparisonOperator, QueryFeatureValue)), literal(')')
     ),
     (children) => {
@@ -4545,7 +4545,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const QueryRangeFeature = node<ValueNode>(
     'QueryRangeFeature',
     sequence(
-      literal('('), QueryFeatureValue, g.CssSyntaxQueryComparisonOperator, g.CssSyntaxProperty,
+      literal('('), QueryFeatureValue, g.CssSyntaxQueryComparisonOperator, g.Identifier,
       optional(sequence(g.CssSyntaxQueryComparisonOperator, QueryFeatureValue)), literal(')')
     ),
     (children) => {
@@ -4704,7 +4704,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const ContainerScrollStateQuery = node<FunctionCall>(
     'ContainerScrollStateQuery',
-    sequence(scrollStateFunctionOpener, g.CssSyntaxProperty, literal(':'), g.QueryValue, literal(')')),
+    sequence(scrollStateFunctionOpener, g.Identifier, literal(':'), g.QueryValue, literal(')')),
     children => funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))])
   );
   const ContainerName = node<Keyword>(

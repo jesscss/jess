@@ -122,7 +122,6 @@ type CssGrammarRuleName =
   | 'NthTypePseudoSelectorName'
   | 'NthOfKeyword'
   | 'CssSyntaxPageAtKeyword'
-  | 'CssSyntaxProperty'
   | 'PseudoSelectorCloseAhead'
   | 'CssSyntaxQueryAndOr'
   | 'CssSyntaxQueryComparisonOperator'
@@ -1519,7 +1518,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const Property = node(
     'Property',
-    g.CssSyntaxProperty,
+    g.Identifier,
     children => tokenText(children[0])
   );
   const CustomProperty = node(

@@ -1102,18 +1102,19 @@ const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
  */
 const scssGenericAtRuleName = regex(/@(?!(?:use|forward|import|mixin|include|function|return|if|else|each|for|while|extend|at-root|content|debug|warn|error|charset|namespace|media|container|supports|starting-style|page|scope|font-face|counter-style|property|font-feature-values|layer|-moz-document|document|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uFFFF]))-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*/i);
 
-/*
- * Grammar-local property-name recognizer (byte-identical to CssSyntaxProperty).
- * Declaration and NestedPropertyDeclaration lead their arm with a `choice(interpolated
- * property, property)`; spelling the plain property locally resolves that arm's
- * first-set to the property opener class (`*`, `-`, an identifier char) so the
- * declaration arms first-char-gate — an ordinary rule (`.x`, `&…`) or block-close
- * no longer enters and rolls back the declaration/nested-property node frames.
- */
-const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-
 export const scssFactory = (g: ScssInputRules) => {
   const caseInsensitive = makeWhen({ caseInsensitive: true });
+
+  /*
+   * CSS owns the ordinary property identifier. SCSS adds only the legacy `*`
+   * declaration hack, so this is a disjoint two-arm extension rather than a
+   * copied identifier regex. Keep the starred arm trivia-free: `* color` is
+   * not one property name.
+   */
+  const propertyIdentifier = choice(
+    noTrivia(sequence(literal('*'), g.Identifier)),
+    g.Identifier
+  );
 
   /*
    * SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
@@ -1996,7 +1997,7 @@ export const scssFactory = (g: ScssInputRules) => {
       sequence(
         choice(
           g.InterpolatedProperty,
-          propertyName
+          propertyIdentifier
         ),
         literal(':'),
         g.Value,
@@ -2057,7 +2058,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       choice(
         g.InterpolatedProperty,
-        propertyName
+        propertyIdentifier
       ),
       literal(':'),
       g.Value,
@@ -2091,7 +2092,7 @@ export const scssFactory = (g: ScssInputRules) => {
       directNestedPropertyAhead,
       choice(
         g.InterpolatedProperty,
-        propertyName
+        propertyIdentifier
       ),
       literal(':'),
       optional(g.Value),
@@ -2204,7 +2205,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const StaticImportDeclaration = node<ValueNode>(
     'StaticImportDeclaration',
     sequence(
-      propertyName,
+      propertyIdentifier,
       literal(':'),
       g.SupportsAtom
     ),
@@ -2263,19 +2264,19 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       sequence(
         literal('('),
-        propertyName,
+        propertyIdentifier,
         literal(')')
       ),
       sequence(
         literal('('),
-        propertyName,
+        propertyIdentifier,
         literal(':'),
         g.SupportsAtom,
         literal(')')
       ),
       sequence(
         literal('('),
-        propertyName,
+        propertyIdentifier,
         g.CssSyntaxQueryComparisonOperator,
         g.SupportsAtom,
         literal(')')
@@ -3269,19 +3270,19 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       sequence(
         literal('('),
-        propertyName,
+        propertyIdentifier,
         literal(')')
       ),
       sequence(
         literal('('),
-        propertyName,
+        propertyIdentifier,
         literal(':'),
         QueryValue,
         literal(')')
       ),
       sequence(
         literal('('),
-        propertyName,
+        propertyIdentifier,
         queryComparisonOperator,
         QueryValue,
         literal(')')
@@ -3290,7 +3291,7 @@ export const scssFactory = (g: ScssInputRules) => {
         literal('('),
         QueryValue,
         queryComparisonOperator,
-        propertyName,
+        propertyIdentifier,
         optional(sequence(
           queryComparisonOperator,
           QueryValue
@@ -3565,12 +3566,12 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       sequence(
         literal('('),
-        propertyName,
+        propertyIdentifier,
         literal(')')
       ),
       sequence(
         literal('('),
-        propertyName,
+        propertyIdentifier,
         literal(':'),
         g.SupportsAtom,
         literal(')')

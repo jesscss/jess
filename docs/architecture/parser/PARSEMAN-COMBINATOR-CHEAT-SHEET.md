@@ -65,8 +65,8 @@ const GenericFunction = node(
   children => callFrom(children)
 );
 
-const Identifier = node(
-  'Identifier',
+const RoutedKeyword = node(
+  'Keyword',
   routed(),
   children => keywordFrom(children)
 );
@@ -76,7 +76,7 @@ const Value = dispatch(
   caseOf('url(', UrlFunction),
   caseOf('calc(', CalcFunction),
   when(endsWith('('), GenericFunction),
-  otherwise(Identifier)
+  otherwise(RoutedKeyword)
 );
 ```
 
