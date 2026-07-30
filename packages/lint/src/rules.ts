@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 15;
+export const STABLE_LINT_RULE_SET_VERSION = 16;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -13,6 +13,7 @@ export const LINT_RULE_NAMES = {
   unknownAtRules: 'at-rule-no-unknown',
   unknownAtRuleDescriptors: 'at-rule-descriptor-no-unknown',
   duplicateProperties: 'declaration-block-no-duplicate-properties',
+  shorthandPropertyOverrides: 'declaration-block-no-shorthand-property-overrides',
   duplicateCustomProperties: 'declaration-block-no-duplicate-custom-properties',
   hexColorLength: 'color-no-invalid-hex',
   zeroUnits: 'length-zero-no-unit',
@@ -55,6 +56,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unknownAtRules]: LINT_CODES.unknownAtRules,
   [LINT_RULE_NAMES.unknownAtRuleDescriptors]: LINT_CODES.unknownAtRuleDescriptors,
   [LINT_RULE_NAMES.duplicateProperties]: LINT_CODES.duplicateProperties,
+  [LINT_RULE_NAMES.shorthandPropertyOverrides]: LINT_CODES.shorthandPropertyOverrides,
   [LINT_RULE_NAMES.duplicateCustomProperties]: LINT_CODES.duplicateCustomProperties,
   [LINT_RULE_NAMES.hexColorLength]: LINT_CODES.hexColorLength,
   [LINT_RULE_NAMES.zeroUnits]: LINT_CODES.zeroUnits,
@@ -84,6 +86,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.unknownAtRules]: LINT_RULE_NAMES.unknownAtRules,
   [LINT_CODES.unknownAtRuleDescriptors]: LINT_RULE_NAMES.unknownAtRuleDescriptors,
   [LINT_CODES.duplicateProperties]: LINT_RULE_NAMES.duplicateProperties,
+  [LINT_CODES.shorthandPropertyOverrides]: LINT_RULE_NAMES.shorthandPropertyOverrides,
   [LINT_CODES.duplicateCustomProperties]: LINT_RULE_NAMES.duplicateCustomProperties,
   [LINT_CODES.hexColorLength]: LINT_RULE_NAMES.hexColorLength,
   [LINT_CODES.zeroUnits]: LINT_RULE_NAMES.zeroUnits,
@@ -113,6 +116,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownAtRules]: 'warn',
   [LINT_RULE_NAMES.unknownAtRuleDescriptors]: 'warn',
   [LINT_RULE_NAMES.duplicateProperties]: 'warn',
+  [LINT_RULE_NAMES.shorthandPropertyOverrides]: 'warn',
   [LINT_RULE_NAMES.duplicateCustomProperties]: 'warn',
   [LINT_RULE_NAMES.hexColorLength]: 'error',
   [LINT_RULE_NAMES.zeroUnits]: 'warn',
@@ -142,6 +146,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.unknownAtRules]: 'warn',
   [LINT_RULE_NAMES.unknownAtRuleDescriptors]: 'warn',
   [LINT_RULE_NAMES.duplicateProperties]: 'warn',
+  [LINT_RULE_NAMES.shorthandPropertyOverrides]: 'warn',
   [LINT_RULE_NAMES.duplicateCustomProperties]: 'warn',
   [LINT_RULE_NAMES.hexColorLength]: 'error',
   [LINT_RULE_NAMES.zeroUnits]: 'warn',
@@ -218,6 +223,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-equivalent',
     stylelintRule: 'declaration-block-no-duplicate-properties',
     notes: 'Flags duplicate declaration names in the same parsed block.'
+  },
+  {
+    code: LINT_CODES.shorthandPropertyOverrides,
+    ruleName: LINT_RULE_NAMES.shorthandPropertyOverrides,
+    title: 'Shorthand property overrides',
+    tier: 'maintainability',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'declaration-block-no-shorthand-property-overrides',
+    notes: 'Flags common CSS shorthands that override earlier longhands in the same parsed block; the initial property table covers high-value shorthand families and can expand with metadata.'
   },
   {
     code: LINT_CODES.duplicateCustomProperties,
