@@ -21,7 +21,7 @@ import {
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { ApplySelectorKind, ExtendSelectorKind } from '@jesscss/core';
-import { jessGrammarFor } from './grammar.js';
+import { grammarFor } from './grammar.js';
 
 export interface JessParseOptions {
   readonly trackLines?: boolean;
@@ -182,7 +182,7 @@ function lineOptions(span: Span): {
 
 /** Parse Jess directly into the canonical AST v2 document. */
 export function parse(input: string, options: JessParseOptions = {}): Stylesheet {
-  const grammar = jessGrammarFor({ trackLines: options.trackLines });
+  const grammar = grammarFor({ trackLines: options.trackLines });
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {

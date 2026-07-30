@@ -5809,12 +5809,12 @@ export const jessDiagnosticCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleReco
   jessFactory
 )]);
 
-export type JessGrammarOptions = {
+export type GrammarOptions = {
   readonly cst?: boolean;
   readonly trackLines?: boolean;
 };
 
-export function jessGrammarFor(options: JessGrammarOptions = {}) {
+export function grammarFor(options: GrammarOptions = {}) {
   if (options.cst) {
     return options.trackLines ? jessDiagnosticCstGrammar : jessCstGrammar;
   }

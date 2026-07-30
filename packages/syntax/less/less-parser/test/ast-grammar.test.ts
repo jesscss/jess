@@ -3396,6 +3396,44 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('routes only top-level function condition syntax through the condition grammar', () => {
+    const result = run(
+      lessGrammar.Document,
+      'nested: boolean(foo(1 = 1)); guard: boolean(foo(1 = 1) and true); plain: fn(red blue);',
+      { trivia: lessGrammar.whitespace }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      rules: [
+        {
+          value: {
+            args: [
+              {
+                type: 'FunctionCall',
+                name: 'foo',
+                args: [{ type: 'Condition', guard: { g: 'cmp', op: '=' } }]
+              }
+            ]
+          }
+        },
+        {
+          value: {
+            args: [{ type: 'Condition', guard: { g: 'and' } }]
+          }
+        },
+        {
+          value: {
+            args: [[{ type: 'Color', src: 'red' }, { type: 'Color', src: 'blue' }]]
+          }
+        }
+      ]
+    });
+    expect(parsesCompleteStylesheet('x: boolean(true and);')).toBe(false);
+    expect(parsesCompleteStylesheet('x: boolean(1 =);')).toBe(false);
+    expect(parsesCompleteStylesheet('x: boolean(foo(1 = 1) and);')).toBe(false);
+  });
+
   it('constructs a Less function condition comparison between parenthesized conditions', () => {
     const result = run(
       lessGrammar.Document,

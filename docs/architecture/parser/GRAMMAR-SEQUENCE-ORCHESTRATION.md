@@ -190,6 +190,9 @@ the class/id statement route now retains one typed selector prefix, then uses
 the actual `(`/`;`/ruleset continuation to construct the selected statement.
 A cosmetic `peek(...)` swap at the function-condition site would still preserve
 the wrong architecture.
+The declaration interpolated-property helper is a collapsed
+`InterpolatedProperty` node over that gate and the semantic production: it must
+not introduce a second public CST name for the same property concept.
 Less mixin-reference routing, 2026-07-29: the value-position
 `mixinReferenceAhead` probe was replaced by a typed shared mixin-reference base
 plus `dispatch(...)` on the first accessor delimiter (`[]`, `[`, `.`, or `(`).
@@ -5262,15 +5265,17 @@ calls. These are single profiling passes, not benchmark deltas; their stable
 counts identify the recognizer-side value/condition and opaque-scan routes as
 the next queue, rather than a generic CST-allocation cleanup.
 
-The current `FunctionArgument` condition detector is a specific audit target:
-it uses `peek(scanTo(...))` to discover a comparison/logical word before an
-argument delimiter. It correctly distinguishes a true top-level condition, but
-also sees an inner operator in `boolean(foo(1 = 1))`; removing it requires a
-one-pass, context-aware condition production that preserves nested function
-arguments and the original diagnostic span. It is not acceptable to delete or
-replace that scan with `peek(...)` alone. The scan inventory remains governed by
-the question "can this be structured or trivia-owned?"; `scanTo(...)` is kept
-only where an opaque language region is actually the accepted syntax.
+Less function-argument condition routing, 2026-07-30: `FunctionArgument` first
+accepts scalar and adjacent-value forms only when they reach their real `,`,
+`;`, or `)` boundary. Its local value continuation stops before a top-level Less
+comparison/logical marker; only then can the existing structural
+`FunctionCondition` own that syntax. A nested call is one value piece, so
+`boolean(foo(1 = 1))` retains an ordinary outer `foo(...)` value while that
+call's argument independently becomes a condition. The sole bounded opener
+test is immediate `not(`, needed because that valid condition has no later
+operator boundary. This replaces the former broad `peek(scanTo(...))` detector;
+the scan inventory remains governed by the question "can this be structured or
+trivia-owned?" and keeps `scanTo(...)` only for genuinely opaque syntax.
 
 Quoted/header semantic-name alignment, 2026-07-30: Less, SCSS, and Jess name
 the private non-interpolated quoted slot `LiteralQuoted`, not `PlainQuoted`.

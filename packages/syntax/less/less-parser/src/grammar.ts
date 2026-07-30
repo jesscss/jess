@@ -2085,11 +2085,10 @@ const importKeyword = keywords(
   { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
 );
 const customValueAtKeyword = regex(/@(?:-import|-export|import|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w])/i);
-// Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: a
-// `scanTo`/`balanced` with no per-call skip consults these so a sentinel (an
-// arg terminator, or a `functionConditionAhead` operator like `or`)
-// hidden INSIDE a string is never matched. Consumes quote-to-quote including
-// escapes; used only as a scan hole, so it builds nothing.
+// Opaque quoted-string skippers for the grammar-level ambient `scanSkip`.
+// `scanTo`/`balanced` with no per-call skip consults these so a delimiter hidden
+// inside a string is never matched. Consumes quote-to-quote including escapes;
+// used only as a scan hole, so it builds nothing.
 const scanSkipDoubleString = noTrivia(sequence(literal('"'), regex(/(?:[^"\\]|\\.)*/), literal('"')));
 const scanSkipSingleString = noTrivia(sequence(literal('\''), regex(/(?:[^'\\]|\\.)*/), literal('\'')));
 const lessOpaqueBodyBrace = balanced(
@@ -2262,12 +2261,6 @@ const functionConditionNot = word(
   '-_0-9A-Za-z',
   { caseInsensitive: true }
 );
-// Built on `mixinGuardOperator` rather than re-spelling the guard comparison
-// alternation: this is only ever consumed inside zero-width lookahead, so the
-// extra frames roll back and contribute no child. The keyword arm keeps its own regex — it is a
-// `scanTo` sentinel, so it lands at arbitrary offsets and needs the LEADING
-// `(?<![-\w])` boundary a token-position terminal does not carry.
-const functionConditionAhead = choice(mixinGuardOperator, regex(/(?<![-\w])(?:and|or|not)(?![-\w])/i));
 // A non-selector functional pseudo is still one canonical SimpleSelector leaf.
 // A pseudo body cannot quietly turn a Less variable read into static bytes.
 // Keep only `@` that cannot start `@{...}`, `@@name`, or `@name`; nested
@@ -2904,11 +2897,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     }
   );
   // A math expression may claim a function argument only at an actual argument
-  // boundary. A plain delimiter keeps the final-argument arithmetic fast path;
-  // a comment-separated comma/semicolon boundary is trivia owned by the
-  // enclosing function call, not a value child.
+  // boundary. It stays zero-width so the delimiter and surrounding trivia
+  // remain owned by the enclosing function call, not a value/CST child.
   const functionArgumentBoundaryAhead = choice(
-    regex(/(?=[,;)])/),
+    peek(choice(literal(','), literal(';'), literal(')'))),
     peek(parser({ trivia: functionTrivia }, choice(literal(','), literal(';'))))
   );
   const FunctionScalarArgument = node<ValueNode>(
@@ -2916,12 +2908,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(g.MathSum, functionArgumentBoundaryAhead),
     children => requireValueNode(children[0])
   );
+  // `not(...)` is an explicit Less condition opener even without a comparison.
+  // Keep this bounded opener test local: it only distinguishes that condition
+  // form from an ordinary function value, and does not inspect an opaque
+  // argument body.
+  const functionConditionNotAhead = peek(parser(
+    { trivia: functionTrivia },
+    sequence(functionConditionNot, literal('('))
+  ));
   const FunctionArgument = node<ValueSlot>(
     'FunctionArgument',
     choice(
-      sequence(peek(sequence(scanTo(choice(functionConditionAhead, regex(/[,;)]/))), functionConditionAhead)), g.FunctionCondition),
+      sequence(functionConditionNotAhead, g.FunctionCondition),
       g.FunctionScalarArgument,
-      g.ArgumentValueSequence
+      g.ArgumentValueSequence,
+      g.FunctionCondition
     ),
     (children) => {
       const value = children.find(isValueSlotValue);
@@ -3268,6 +3269,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     valuePiece
   );
   const valueContinuation = choice(valueTriviaBoundary, gluedVariableValueBoundary);
+  // Function arguments are the one value context where top-level Less
+  // comparison/logical syntax has a separate continuation. Stop before that
+  // marker so the FunctionArgument family can route it through FunctionCondition;
+  // nested calls are already one value piece and therefore never leak an inner
+  // operator into their parent's decision.
+  const functionArgumentValueTriviaBoundary = sequence(
+    not(functionConditionStop),
+    valueTriviaBoundary
+  );
+  const functionArgumentValueContinuation = choice(
+    functionArgumentValueTriviaBoundary,
+    gluedVariableValueBoundary
+  );
   // Adjacent value pieces are normally separated by authored whitespace, but a
   // Less variable reference may also be glued straight onto the previous piece
   // (`1px@v`, `calc(@w + 2vw)@suffix`). Less treats the glued form as the same
@@ -3301,7 +3315,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // argument's trailing trivia remains owned by `functionTrivia`.
   const ArgumentValueSequence = node<ValueSlot>(
     'FunctionValueSequence',
-    noTrivia(sequence(valuePiece, many(valueContinuation))),
+    noTrivia(sequence(
+      valuePiece,
+      many(functionArgumentValueContinuation),
+      functionArgumentBoundaryAhead
+    )),
     (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
   );
   const ValueList = node<ValueSlot>(
@@ -3514,11 +3532,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // failing at the required interpolation. This positive lookahead is the cheap
   // commit signal: only enter the interpolated-property arm when a marker is
   // actually present before the delimiter, so plain properties fall straight to
-  // the literal DeclarationProperty arm. The `node()` boundary keeps the marker
-  // off the declaration reducer's `children[0]` property slot.
+  // the literal DeclarationProperty arm. The collapsed semantic node keeps the
+  // marker off the declaration reducer's `children[0]` property slot without
+  // adding a second public CST name for the same InterpolatedProperty concept.
   const interpolatedPropertyAhead = peek(regex(/[^:;{}]*[@$]\{/));
-  const gatedInterpolatedProperty = node<Interpolation>(
-    'GatedInterpolatedProperty',
+  const interpolatedPropertyHead = node<Interpolation>(
+    'InterpolatedProperty',
     sequence(interpolatedPropertyAhead, g.InterpolatedProperty),
     (children) => {
       const property = children.find(isInterp);
@@ -3534,7 +3553,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // comments from the source trivia map before writing the colon.
   const DeclarationHead = parser({ trivia: whitespace }, sequence(
     choice(
-      gatedInterpolatedProperty,
+      interpolatedPropertyHead,
       g.NumericMapKeyToken,
       g.DeclarationPropertyToken
     ),
@@ -6430,12 +6449,12 @@ export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSynta
 /** Diagnostic Less CST artifact: CST mode with Parseman line tracking enabled. */
 export const lessDiagnosticCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst', trackLines: true }, lessGrammarFactory)]);
 
-export type LessGrammarOptions = {
+export type GrammarOptions = {
   readonly cst?: boolean;
   readonly trackLines?: boolean;
 };
 
-export function lessGrammarFor(options: LessGrammarOptions = {}) {
+export function grammarFor(options: GrammarOptions = {}) {
   if (options.cst) {
     return options.trackLines ? lessDiagnosticCstGrammar : lessCstGrammar;
   }

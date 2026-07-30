@@ -1,5 +1,5 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult } from './cst.js';
-import { cssDiagnosticCstGrammar, cssGrammarFor } from './grammar.js';
+import { cssDiagnosticCstGrammar, grammarFor } from './grammar.js';
 import type { ParseDoc } from 'parseman';
 
 export type { ParseDoc } from 'parseman';
@@ -9,7 +9,7 @@ export function parseCssCst(
   startRule = 'Stylesheet',
   options?: CssCstParseOptions
 ): CssCstParseResult {
-  const grammar = cssGrammarFor({ cst: true, trackLines: options?.trackLines });
+  const grammar = grammarFor({ cst: true, trackLines: options?.trackLines });
   return parseCst(
     grammar as Record<string, unknown>,
     input,
@@ -38,7 +38,7 @@ export function parseCssDoc(
   options?: Pick<CssCstParseOptions, 'trackLines'>
 ): ParseDoc<CssCstNode> {
   return parseDocCst(
-    cssGrammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
+    grammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
     input,
     startRule
   );

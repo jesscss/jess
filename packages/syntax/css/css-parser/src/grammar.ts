@@ -4035,12 +4035,12 @@ export const cssDiagnosticCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecog
   cssFactory
 )]);
 
-export type CssGrammarOptions = {
+export type GrammarOptions = {
   readonly cst?: boolean;
   readonly trackLines?: boolean;
 };
 
-export function cssGrammarFor(options: CssGrammarOptions = {}) {
+export function grammarFor(options: GrammarOptions = {}) {
   if (options.cst) {
     return options.trackLines ? cssDiagnosticCstGrammar : cssCstGrammar;
   }
