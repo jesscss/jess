@@ -429,8 +429,6 @@ export const cssSyntax = rules(_g => ({
   CssSyntaxStaticUrlInner: staticUrlInner,
   CssSyntaxSimple: simpleSelector,
   CssSyntaxPseudoColon: pseudoColon,
-  CssSyntaxAttributeOperator: attributeOperator,
-  CssSyntaxAttributeModifier: attributeModifier,
   CssSyntaxNth: nth,
   CssSyntaxMalformedPseudoNumericArgument: malformedPseudoNumericArgument,
   CssSyntaxBlockComment: blockComment,

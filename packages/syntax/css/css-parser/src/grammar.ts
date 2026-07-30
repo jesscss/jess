@@ -101,8 +101,6 @@ type CssGrammarRuleName =
   | 'ContainerQueryClause'
   | 'ContainerQueryPrelude'
   | 'CssSyntax'
-  | 'CssSyntaxAttributeModifier'
-  | 'CssSyntaxAttributeOperator'
   | 'CssSyntaxConditionalAtKeyword'
   | 'CssSyntaxContainerAtKeyword'
   | 'CssSyntaxCustomProperty'

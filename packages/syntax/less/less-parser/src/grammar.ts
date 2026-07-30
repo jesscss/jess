@@ -276,8 +276,6 @@ type LessInputRules = LessRules & typeof lessSyntax;
 type SharedCssSyntax = {
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
-  CssSyntaxAttributeModifier: Combinator<unknown>;
-  CssSyntaxAttributeOperator: Combinator<unknown>;
   CssSyntaxHexColor: Combinator<string>;
   CssSyntaxUnicodeRange: Combinator<string>;
   CssSyntaxNth: Combinator<unknown>;

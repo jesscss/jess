@@ -208,8 +208,6 @@ type JessRules = {
 type SharedCssSyntax = {
   AttributeModifier: Combinator<string>;
   AttributeOperator: Combinator<string>;
-  CssSyntaxAttributeModifier: Combinator<string>;
-  CssSyntaxAttributeOperator: Combinator<string>;
   CssSyntaxDoubleQuotedText: Combinator<string>;
   CssSyntaxHexColor: Combinator<string>;
   CssSyntaxImportant: Combinator<string>;
