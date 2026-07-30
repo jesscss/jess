@@ -2937,18 +2937,28 @@ export const cssFactory = (g: CssGrammarSelf) => {
     genericIdentifier,
     optional(literal('('))
   )));
+
+  /*
+   * A generic query function keeps its component payload opaque, but both the
+   * direct `QueryFunction` entry and the identifier/function dispatch consume
+   * the same CSS-owned tail. Only the opener differs: `routed()` preserves the
+   * token already consumed by the dispatch route.
+   */
+  const queryFunctionTail = sequence(
+    scanTo(
+      literal(')'),
+      { skip: [balancedParens] }
+    ),
+    expect(
+      literal(')'),
+      ')'
+    )
+  );
   const RoutedQueryFunction = node(
     'QueryFunction',
     sequence(
       routed(),
-      scanTo(
-        literal(')'),
-        { skip: [balancedParens] }
-      ),
-      expect(
-        literal(')'),
-        ')'
-      )
+      queryFunctionTail
     ),
     children => funcCall(
       functionOpenName(children[0]!),
@@ -3180,14 +3190,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'QueryFunction',
     sequence(
       queryFunctionOpen,
-      scanTo(
-        literal(')'),
-        { skip: [balancedParens] }
-      ),
-      expect(
-        literal(')'),
-        ')'
-      )
+      queryFunctionTail
     ),
     children => funcCall(
       functionOpenName(children[0]!),
