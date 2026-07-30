@@ -465,8 +465,9 @@ The rule:
 - **Private stricter helpers stay private.** A dialect may need a local helper
   for a truly narrower parse, but it should be lower-case/private and named by
   the constraint. Public node labels and shared rule references like
-  `StaticValueQuoted` or `StaticNthChildArgument` are findings unless they prove
-  a distinct language concept.
+  `StaticValueQuoted` or `StaticNthChildArgument` are findings: use the actual
+  constraint or context, such as `PlainQuoted`, `NthChildArgument`, or
+  `PseudoSelectorArgument`, when that distinct language concept is real.
 - **`Ast` / `Cst` in a name is the same error one axis over.** That is a compile
   _mode_, not an identity; one grammar serves both modes, so the mode does not
   belong in the rule's name.

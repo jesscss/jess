@@ -73,6 +73,20 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(stats(result.tree).grammarTypes.get('DollarBrace')).toBe(2);
   });
 
+  it('uses contextual CST labels for plain quoted and pseudo-selector syntax', () => {
+    const result = parseJessCst('@charset "UTF-8"; .a:not(.b) { color: red; } .c:nth-child(2n of .d) { color: blue; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('PlainQuoted')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorArgument')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorList')).toBeGreaterThan(0);
+    expect(grammarTypes.get('PseudoSelectorCompound')).toBeGreaterThan(0);
+    expect(grammarTypes.get('NthChildArgument')).toBe(1);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+  });
+
   /*
    * The editor route must recognize `${…}` too, or valid source that compiles
    * would light up red in the language service. Selector interpolation and value

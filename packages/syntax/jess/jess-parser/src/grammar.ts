@@ -71,7 +71,7 @@ type JessRules = {
   MixinGuard: Combinator<GuardNode>;
   Keyword: Combinator<Keyword>;
   Quoted: Combinator<Quoted | Interpolation>;
-  StaticQuoted: Combinator<Quoted>;
+  PlainQuoted: Combinator<Quoted>;
   Dimension: Combinator<Dimension>;
   Color: Combinator<Color>;
   Url: Combinator<Url>;
@@ -112,14 +112,14 @@ type JessRules = {
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
   Attribute: Combinator<SimpleSelector>;
   PseudoSelector: Combinator<SimpleToken>;
-  StaticPseudoArgument: Combinator<SelectorList | string>;
+  PseudoSelectorArgument: Combinator<SelectorList | string>;
   GenericPseudoArgument: Combinator<SelectorList | string>;
   Compound: Combinator<SelectorTerm>;
-  StaticCompound: Combinator<SelectorTerm>;
-  StaticComplexTail: Combinator<JessComplexTail>;
-  StaticComplex: Combinator<SelectorBranch>;
-  StaticSelectorTail: Combinator<SelectorBranch>;
-  StaticSelector: Combinator<SelectorList>;
+  PseudoSelectorCompound: Combinator<SelectorTerm>;
+  PseudoSelectorComplexTail: Combinator<JessComplexTail>;
+  PseudoSelectorComplex: Combinator<SelectorBranch>;
+  PseudoSelectorTail: Combinator<SelectorBranch>;
+  PseudoSelectorList: Combinator<SelectorList>;
   SelectorCapture: Combinator<SelectorCapture>;
   ComplexTail: Combinator<JessComplexTail>;
   Complex: Combinator<SelectorBranch>;
@@ -1041,9 +1041,9 @@ function isQuoted(value: unknown): value is Quoted {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Quoted';
 }
 
-function requireStaticQuoted(value: unknown): Quoted {
+function requirePlainQuoted(value: unknown): Quoted {
   if (!isQuoted(value)) {
-    throw new TypeError('Jess module syntax requires a static quoted path.');
+    throw new TypeError('Jess module syntax requires a plain quoted path.');
   }
   return value;
 }
@@ -1932,7 +1932,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     { trivia: whitespace },
     g.ExpressionInterpolation
   );
-  const escapedStaticQuoted = choice(
+  const escapedPlainQuoted = choice(
     noTrivia(sequence(
       literal('~'),
       literal('"'),
@@ -1965,7 +1965,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const Quoted = node<Quoted | Interpolation>(
     'Quoted',
     choice(
-      escapedStaticQuoted,
+      escapedPlainQuoted,
       plainDoubleQuoted,
       plainSingleQuoted,
 
@@ -2038,10 +2038,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * grammar recognition, rather than reaching a reducer that could throw a
    * non-SyntaxError from the public parse path.
    */
-  const StaticQuoted = node<Quoted>(
-    'StaticQuoted',
+  const PlainQuoted = node<Quoted>(
+    'PlainQuoted',
     choice(
-      escapedStaticQuoted,
+      escapedPlainQuoted,
       plainDoubleQuoted,
       plainSingleQuoted
     ),
@@ -2119,7 +2119,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     (children) => {
       const source = requireToken(children[0]).value;
-      const path = requireStaticQuoted(children[1]);
+      const path = requirePlainQuoted(children[1]);
       const names = children.slice(2).filter(isToken)
         .map(requireToken).map(token => token.value);
       if (source === '@-compose') {
@@ -2209,7 +2209,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     (children) => {
       const source = requireToken(children[0]).value;
-      const path = requireStaticQuoted(children[1]);
+      const path = requirePlainQuoted(children[1]);
       if (source === '@-use') {
         const names = children.slice(2).filter(isToken)
           .map(requireToken).map(token => token.value);
@@ -2267,7 +2267,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ExpressionQuoted = node<ExpressionFact>(
     'ExpressionQuoted',
     choice(
-      escapedStaticQuoted,
+      escapedPlainQuoted,
       plainDoubleQuoted,
       plainSingleQuoted,
       noTrivia(sequence(
@@ -2366,7 +2366,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       g.UrlOpen,
       optional(choice(
-        g.StaticQuoted,
+        g.PlainQuoted,
         g.StaticUrlInner
       )),
       literal(')')
@@ -2550,8 +2550,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * accepted as before; typed An+B is tried first so `-n+2` is not claimed as a
    * static `-n` selector.
    */
-  const StaticNthChildArgument = node<SelectorList | string>(
-    'StaticNthChildArgument',
+  const NthChildArgument = node<SelectorList | string>(
+    'NthChildArgument',
     choice(
       sequence(
         g.NthExpression,
@@ -2561,14 +2561,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           rawWhitespace,
           parser(
             { trivia: whitespace },
-            g.StaticSelector
+            g.PseudoSelectorList
           )
         )),
         g.PseudoSelectorCloseAhead
       ),
       parser(
         { trivia: whitespace },
-        g.StaticSelector
+        g.PseudoSelectorList
       )
     ),
     (children) => {
@@ -2593,8 +2593,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * `n of .a`, `-n+3 of .a` fail rather than being re-captured as a descendant
    * selector — the CSS-aligned owner decision (PSEUDO-ARGUMENT-CONSOLIDATION §7.1).
    */
-  const StaticNthTypeArgument = node<SelectorList | string>(
-    'StaticNthTypeArgument',
+  const NthTypeArgument = node<SelectorList | string>(
+    'NthTypeArgument',
     choice(
       sequence(
         g.NthExpression,
@@ -2610,7 +2610,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         )),
         parser(
           { trivia: whitespace },
-          g.StaticSelector
+          g.PseudoSelectorList
         )
       )
     ),
@@ -2652,7 +2652,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           g.NthChildPseudoSelectorName,
           literal('('),
           optional(rawWhitespace),
-          StaticNthChildArgument,
+          NthChildArgument,
           optional(rawWhitespace),
           literal(')')
         ),
@@ -2660,7 +2660,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           g.NthTypePseudoSelectorName,
           literal('('),
           optional(rawWhitespace),
-          StaticNthTypeArgument,
+          NthTypeArgument,
           optional(rawWhitespace),
           literal(')')
         ),
@@ -2668,7 +2668,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           g.SelectorArgumentPseudoSelectorName,
           literal('('),
           optional(rawWhitespace),
-          g.StaticPseudoArgument,
+          g.PseudoSelectorArgument,
           optional(rawWhitespace),
           literal(')')
         ),
@@ -2714,8 +2714,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return simpleSelector(`${head}(${argText})`);
     }
   );
-  const StaticCompound = node<SelectorTerm>(
-    'StaticCompound',
+  const PseudoSelectorCompound = node<SelectorTerm>(
+    'PseudoSelectorCompound',
     noTrivia(oneOrMore(choice(
       parser(
         { trivia: whitespace },
@@ -2733,11 +2733,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     literal('+'),
     literal('~')
   );
-  const StaticComplexTail = node<JessComplexTail>(
-    'StaticComplexTail',
+  const PseudoSelectorComplexTail = node<JessComplexTail>(
+    'PseudoSelectorComplexTail',
     sequence(
       optional(selectorCombinator),
-      g.StaticCompound
+      g.PseudoSelectorCompound
     ),
     (children) => {
       const token = children.find(isToken);
@@ -2746,35 +2746,35 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return { combinator, term };
     }
   );
-  const StaticComplex = node<SelectorBranch>(
-    'StaticComplex',
+  const PseudoSelectorComplex = node<SelectorBranch>(
+    'PseudoSelectorComplex',
     sequence(
-      g.StaticCompound,
-      many(g.StaticComplexTail)
+      g.PseudoSelectorCompound,
+      many(g.PseudoSelectorComplexTail)
     ),
     children => selectorBranchOf([
       { term: children.find(isSelectorTerm)! },
       ...children.filter(isJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
     ])
   );
-  const StaticSelectorTail = node<SelectorBranch>(
-    'StaticSelectorTail',
+  const PseudoSelectorTail = node<SelectorBranch>(
+    'PseudoSelectorTail',
     parser(
       { trivia: whitespace },
       sequence(
         literal(','),
-        g.StaticComplex
+        g.PseudoSelectorComplex
       )
     ),
     reduceSelectorTail
   );
-  const StaticSelector = node<SelectorList>(
-    'StaticSelector',
+  const PseudoSelectorList = node<SelectorList>(
+    'PseudoSelectorList',
     parser(
       { trivia: whitespace },
       sequence(
-        g.StaticComplex,
-        many(g.StaticSelectorTail)
+        g.PseudoSelectorComplex,
+        many(g.PseudoSelectorTail)
       )
     ),
     reduceSelectorList
@@ -2790,11 +2790,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * structured `args` and never canonicalizes at parse (the inner `_canon` memos
    * stay unpopulated); `PseudoSelector` derives opaque SimpleSelector text otherwise.
    */
-  const StaticPseudoArgument = node<SelectorList | string>(
-    'StaticPseudoArgument',
+  const PseudoSelectorArgument = node<SelectorList | string>(
+    'PseudoSelectorArgument',
     parser(
       { trivia: whitespace },
-      g.StaticSelector
+      g.PseudoSelectorList
     ),
     (children) => {
       const selector = children.find(isSelectorList);
@@ -2855,7 +2855,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       sequence(
         optional(rawWhitespace),
-        g.StaticPseudoArgument,
+        g.PseudoSelectorArgument,
         optional(rawWhitespace)
       ),
       pseudoRawArgument
@@ -2872,7 +2872,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'SelectorCapture',
     sequence(
       literal('*['),
-      g.StaticSelector,
+      g.PseudoSelectorList,
       literal(']')
     ),
     (children) => {
@@ -3419,7 +3419,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       g.Url,
       g.StaticCall,
-      g.StaticQuoted,
+      g.PlainQuoted,
       g.Color,
       g.Dimension,
       g.CustomPropertyValue,
@@ -4163,18 +4163,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'Charset',
     sequence(
       charsetAtRuleName,
-      g.StaticQuoted,
+      g.PlainQuoted,
       literal(';')
     ),
     children => atRuleStatement(
       requireToken(children[0]).value,
-      requireStaticQuoted(children[1])
+      requirePlainQuoted(children[1])
     )
   );
   const ImportTarget = node<Quoted | Url>(
     'ImportTarget',
     choice(
-      g.StaticQuoted,
+      g.PlainQuoted,
       sequence(
         g.UrlOpen,
         literal(')')
@@ -4191,7 +4191,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     (children) => {
       if (children.length === 1) {
-        return requireStaticQuoted(children[0]);
+        return requirePlainQuoted(children[0]);
       }
       if (children.length === 2) {
         return url(any(''));
@@ -4490,7 +4490,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.KeyframesAtKeyword,
       choice(
         g.Keyword,
-        g.StaticQuoted
+        g.PlainQuoted
       ),
       literal('{'),
       many(g.KeyframeBlock),
@@ -5544,10 +5544,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'Apply',
     sequence(
       regex(/\$apply(?![-\w])/),
-      g.StaticCompound,
+      g.PseudoSelectorCompound,
       many(sequence(
         literal(','),
-        g.StaticCompound
+        g.PseudoSelectorCompound
       )),
       optional(literal(';'))
     ),
@@ -5557,10 +5557,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'Extend',
     sequence(
       regex(/\$extend(?![-\w])/),
-      g.StaticComplex,
+      g.PseudoSelectorComplex,
       many(sequence(
         literal(','),
-        g.StaticComplex
+        g.PseudoSelectorComplex
       )),
       optional(regex(/!exact(?![-\w])/)),
       optional(literal(';'))
@@ -5691,7 +5691,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     MixinGuard,
     Keyword,
     Quoted,
-    StaticQuoted,
+    PlainQuoted,
     StyleImport,
     ModuleSpecifier,
     ModuleImport,
@@ -5791,14 +5791,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     InterpolatedParentSuffix,
     Attribute,
     PseudoSelector,
-    StaticPseudoArgument,
+    PseudoSelectorArgument,
     GenericPseudoArgument,
     Compound,
-    StaticCompound,
-    StaticComplexTail,
-    StaticComplex,
-    StaticSelectorTail,
-    StaticSelector,
+    PseudoSelectorCompound,
+    PseudoSelectorComplexTail,
+    PseudoSelectorComplex,
+    PseudoSelectorTail,
+    PseudoSelectorList,
     SelectorCapture,
     ComplexTail,
     Complex,

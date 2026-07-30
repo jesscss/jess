@@ -4181,28 +4181,24 @@ compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed. Existing gating warnings in adjacent guard/value families remain
 follow-up grammar-shape debt.
 
-Jess static-family name cleanup, 2026-07-29: the folded Jess grammar's static
-CSS subgrammar now uses syntax-shaped rule keys instead of parser-mode labels:
-`StaticQuoted`, `StaticValueAtom`, `StaticValue`, `StaticCallArgument`,
-`StaticCall`, `StaticAtQuery`, `StaticAtPrelude`, `StaticContainerName`,
-`StaticContainerQueryClause`, `StaticContainerQueryPrelude`,
-`StaticContainerPrelude`, `StaticAtRuleHeader`, `StaticPropertyDescriptor`,
-`StaticPseudoArgument`, `StaticCompound`,
-`StaticComplex`, and `StaticSelector` instead of `DirectJessStatic*`. `Static`
-is the real language boundary here: these productions admit the CSS-only static
-forms used inside Jess headers, captures, descriptors, and selectors, while
-excluding Jess dynamic value/expression forms.
+Jess contextual CSS-only name cleanup, 2026-07-29: the folded Jess grammar no
+longer uses parser-mode terminology for constrained quoted and pseudo-selector
+contexts. `PlainQuoted` means quoted syntax without a Jess interpolation;
+`NthChildArgument`, `NthTypeArgument`, `PseudoSelectorArgument`,
+`PseudoSelectorCompound`, `PseudoSelectorComplex`, and `PseudoSelectorList`
+name the selector context that intentionally excludes Jess dynamic value and
+expression forms. This is not a license to keep a `Static*` family: remaining
+at-rule/header restrictions must be named by their owning context or collapsed
+into a CSS slot when their accepted language does not genuinely differ.
 
-Evidence for the Jess static-family name cleanup: `pnpm --filter
-@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
-test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
-`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
-`parser-shared`; `pnpm run check:macro` passed with parser-shared, CSS, Less,
-SCSS, and Jess all fully compiled and 0 interpreter fallbacks; and `pnpm run
-verify:compose-integrity` passed. The renamed `StaticValueAtom`,
-`StaticAtPreludeTerm`, `StaticAtNonOnlyAtom`, and `StaticAtRuleHeader#0`
-warnings are existing left-factor/dispatch-review debt now reported under the
-semantic owner names.
+Evidence for the Jess contextual CSS-only name cleanup: the public CST test
+pins the new `PlainQuoted`, `PseudoSelectorArgument`, `PseudoSelectorList`,
+`PseudoSelectorCompound`, and `NthChildArgument` labels and rejects the old
+`Static*` family on the exercised source. Rebuild the parser dependency chain,
+then run `pnpm run check:macro` and `pnpm run verify:compose-integrity` before
+landing any related grammar change. The remaining at-rule/header grammar
+warnings are separate left-factor/dispatch-review debt under their semantic
+owner names.
 
 Shared opaque at-rule name cleanup, 2026-07-29: parser-shared's preprocessor
 opaque capture terminals are no longer mode- or dialect-labelled
@@ -4462,7 +4458,7 @@ passed.
 Jess parser-local source vocabulary cleanup, 2026-07-29: the remaining
 lowercase `directJess*` helper names were renamed to semantic local names
 (`quotedExpressionParser`, `quotedExpressionInterpolationParser`,
-`escapedStaticQuoted`, `plainDoubleQuoted`, `plainSingleQuoted`,
+`escapedPlainQuoted`, `plainDoubleQuoted`, `plainSingleQuoted`,
 `moduleBindingName`, `moduleAsClause`, `styleImportAsClause`,
 `attributeDoubleQuoted`, `attributeSingleQuoted`, `selectorCombinator`,
 `nonBlockValueAtom`, `assignHead`, `mixinNameToken`, and
