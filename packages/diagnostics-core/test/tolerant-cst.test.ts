@@ -313,6 +313,30 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('checks simple comma-separated property value members independently', () => {
+    const source = [
+      '.a {',
+      '  animation-duration: 1px, 200ms;',
+      '  display: block, nonsense;',
+      '  animation-duration: var(--duration), 2px;',
+      '  color: red blue;',
+      '}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'css' });
+    const unknownPropertyValues = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues
+    );
+
+    expect(unknownPropertyValues.map(diagnostic => [
+      diagnostic.message,
+      source.slice(diagnostic.start, diagnostic.end)
+    ])).toEqual([
+      ['Unknown value "1px" for property "animation-duration"', '1px'],
+      ['Unknown value "nonsense" for property "display"', 'nonsense'],
+      ['Unknown value "2px" for property "animation-duration"', '2px']
+    ]);
+  });
+
   it('reports deprecated CSS properties from web custom data', () => {
     const source = '.a { clip: auto; color: red; -ms-filter: none; }';
     const result = collectTolerantDiagnostics({ source, language: 'css' });

@@ -595,7 +595,7 @@ describe('JessLanguageServiceEngine', () => {
     describe('unknownPropertyValues (lint/unknown-property-value)', () => {
       it('fires on a definite unknown CSS property value', () => {
         const engine = createEngine();
-        const doc = createDocument('css', '.a { display: flxe; }');
+        const doc = createDocument('css', '.a { display: block, flxe; }');
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/unknown-property-value');
 

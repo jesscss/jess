@@ -304,11 +304,12 @@ describe('lintText', () => {
   });
 
   it('applies policy to unknown property value diagnostics', async () => {
+    const input = {
+      source: '.a { display: block, flxe; }',
+      filePath: '/tmp/input.css'
+    };
     const result = await lintText(
-      {
-        source: '.a { display: flxe; }',
-        filePath: '/tmp/input.css'
-      },
+      input,
       {
         stylesConfig: {
           lint: {
@@ -326,6 +327,7 @@ describe('lintText', () => {
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.unknownPropertyValues, 'error']
     ]);
+    expect(result.diagnostics.map(diagnostic => input.source.slice(diagnostic.start, diagnostic.end))).toEqual(['flxe']);
   });
 
   it('passes caller CSS metadata into shared diagnostics', async () => {

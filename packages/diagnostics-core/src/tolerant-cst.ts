@@ -638,6 +638,11 @@ type ExactExtendTargetFact = {
   readonly span: DiagnosticSpan;
 };
 
+type PropertyValueDiagnosticFact = {
+  readonly fact: CssPropertyValueFact;
+  readonly span: DiagnosticSpan;
+};
+
 type StaticGuardValue =
   | { readonly kind: 'boolean'; readonly value: boolean }
   | { readonly kind: 'null' }
@@ -1119,38 +1124,37 @@ function mediaFeatureValueFact(source: string, start: number, end: number, raw: 
   return { raw, normalized, kind: 'unknown' };
 }
 
-function declarationPropertyValue(source: string, node: CssCstNode): { fact: CssPropertyValueFact; span: DiagnosticSpan } | null {
-  const value = declarationValueText(source, node);
-  if (value === null) {
-    return null;
-  }
-  const raw = value.text;
+function propertyValueDiagnosticFact(
+  source: string,
+  raw: string,
+  span: DiagnosticSpan
+): PropertyValueDiagnosticFact {
   const normalized = raw.toLowerCase();
   if (hasDynamicSyntax(raw)) {
     return {
       fact: { raw, normalized, kind: 'unknown' },
-      span: value.span
+      span
     };
   }
   if (isStaticCustomPropertyName(raw)) {
     return {
       fact: { raw, normalized, kind: 'unknown' },
-      span: value.span
+      span
     };
   }
-  const valueStart = value.span.start;
-  const valueEnd = value.span.end;
+  const valueStart = span.start;
+  const valueEnd = span.end;
   const functionName = functionNameOf(source, valueStart, valueEnd);
   if (functionName !== null) {
     return {
       fact: { raw, normalized, kind: 'function', functionName },
-      span: value.span
+      span
     };
   }
   if (isValidHexColor(raw) || normalized === 'currentcolor' || namedColor(normalized) !== undefined) {
     return {
       fact: { raw, normalized, kind: 'color' },
-      span: value.span
+      span
     };
   }
   const numberValue = cssNumberValue(raw);
@@ -1162,27 +1166,66 @@ function declarationPropertyValue(source: string, node: CssCstNode): { fact: Css
         kind: isIntegerNumber(raw) ? 'integer' : 'number',
         numericValue: numberValue
       },
-      span: value.span
+      span
     };
   }
   const percentageValue = cssPercentageValue(raw);
   if (percentageValue !== null) {
     return {
       fact: { raw, normalized, kind: 'percentage', numericValue: percentageValue },
-      span: value.span
+      span
     };
   }
   const unit = cssDimensionUnit(raw);
   if (unit !== null) {
     return {
       fact: { raw, normalized, kind: 'dimension', unit },
-      span: value.span
+      span
     };
   }
   return {
     fact: { raw, normalized, kind: isCssIdentifier(raw) ? 'keyword' : 'unknown' },
-    span: value.span
+    span
   };
+}
+
+function declarationPropertyValue(source: string, node: CssCstNode): PropertyValueDiagnosticFact | null {
+  const value = declarationValueText(source, node);
+  return value === null ? null : propertyValueDiagnosticFact(source, value.text, value.span);
+}
+
+function declarationPropertyValueCandidates(source: string, node: CssCstNode): readonly PropertyValueDiagnosticFact[] {
+  const value = declarationValueNode(node);
+  if (value === null) {
+    return [];
+  }
+  const sequences = childNodesOfType(value, 'ValueSequence');
+  if (sequences.length <= 1) {
+    const single = declarationPropertyValue(source, node);
+    return single === null ? [] : [single];
+  }
+  const candidates: PropertyValueDiagnosticFact[] = [];
+  for (const sequence of sequences) {
+    const values = childNodesOfType(sequence, 'Value');
+    if (values.length !== 1) {
+      continue;
+    }
+    const start = absoluteStart(sequence);
+    const end = absoluteEnd(sequence);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      continue;
+    }
+    const trimmed = trimOffsets(source.slice(start, end), start);
+    if (trimmed.start >= trimmed.end) {
+      continue;
+    }
+    candidates.push(propertyValueDiagnosticFact(
+      source,
+      source.slice(trimmed.start, trimmed.end),
+      spanAtOrContaining(sequence, trimmed.start, trimmed.end)
+    ));
+  }
+  return candidates;
 }
 
 function isValidHexColor(value: string): boolean {
@@ -5817,14 +5860,15 @@ export function cstLintDiagnostics(
           }
         }
         if (language === 'css' && descriptor?.status === undefined && name.length > 0 && !lowerName.startsWith('--')) {
-          const propertyValue = declarationPropertyValue(source, node);
-          if (propertyValue !== null && cssData.isKnownPropertyValue(lowerName, propertyValue.fact) === false) {
-            push(
-              LINT_CODES.unknownPropertyValues,
-              'warning',
-              `Unknown value "${propertyValue.fact.raw}" for property "${name}"`,
-              propertyValue.span
-            );
+          for (const propertyValue of declarationPropertyValueCandidates(source, node)) {
+            if (cssData.isKnownPropertyValue(lowerName, propertyValue.fact) === false) {
+              push(
+                LINT_CODES.unknownPropertyValues,
+                'warning',
+                `Unknown value "${propertyValue.fact.raw}" for property "${name}"`,
+                propertyValue.span
+              );
+            }
           }
         }
         if (language === 'css' && (lowerName === 'animation' || lowerName === 'animation-name')) {
