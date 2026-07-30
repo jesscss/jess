@@ -499,7 +499,7 @@ function forwardPreludeOf(node: CssCstNode, src: string): string | null {
   let afterPath = false;
   for (const child of cstChildrenOf(node)) {
     if (isCstNode(child)) {
-      if (child.grammarType === 'Quoted') {
+      if (child.grammarType === 'Quoted' || child.grammarType === 'PlainQuoted') {
         afterPath = true;
       }
       if (afterPath && child.grammarType === 'ForwardTail') {

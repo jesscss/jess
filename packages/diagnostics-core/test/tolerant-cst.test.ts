@@ -210,6 +210,42 @@ describe('collectTolerantDiagnostics', () => {
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues)).toBe(false);
   });
 
+  it('reports unsupported SCSS @forward modifier forms from the diagnostic CST', () => {
+    const source = [
+      '@forward "tokens" as token-*;',
+      '@forward "visibility" show $a, b;',
+      '@forward "hidden" hide $a;',
+      '@forward "plain";',
+      '@forward "configured" with ($a: 1);'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'scss'
+    });
+    const unsupported = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unsupportedSassForm);
+    const asStart = source.indexOf('@forward "tokens"');
+    const showStart = source.indexOf('@forward "visibility"');
+    const hideStart = source.indexOf('@forward "hidden"');
+
+    expect(unsupported.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      [
+        '@forward with "as <prefix>-*" prefixing is not supported in Jess and will never be. Use explicit namespacing instead.',
+        asStart,
+        source.indexOf(';', asStart) + 1
+      ],
+      [
+        '@forward with "show"/"hide" lists is not supported in Jess and will never be. Visibility control belongs to the module itself.',
+        showStart,
+        source.indexOf(';', showStart) + 1
+      ],
+      [
+        '@forward with "show"/"hide" lists is not supported in Jess and will never be. Visibility control belongs to the module itself.',
+        hideStart,
+        source.indexOf(';', hideStart) + 1
+      ]
+    ]);
+  });
+
   it('reports duplicate custom properties in one declaration block', () => {
     const source = '.a { --brand: red; --Brand: blue; --brand: green; color: red; color: blue; }';
     const result = collectTolerantDiagnostics({
