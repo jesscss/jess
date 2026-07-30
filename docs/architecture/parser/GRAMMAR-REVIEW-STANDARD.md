@@ -622,8 +622,119 @@ In that order, one conversion class at a time.
    handoff. A result inside the documented noise band is inconclusive, not a
    performance claim. A material regression must be understood or explicitly
    accepted by the owner before the grammar commit.
-4. **Keep** only what survives 2 and 3. Otherwise revert, or record it as
+4. **Also measure against the committed baseline, not only against your
+   parent commit.** See "The drift gate" below. Item 3 alone cannot catch slow
+   degradation and must never be the only perf evidence for a grammar commit.
+5. **Keep** only what survives 2, 3, and 4. Otherwise revert, or record it as
    `blocked` / `deliberate exception` with the reason.
+
+### The drift gate — why item 3 is not sufficient on its own
+
+**A differential gate cannot see gradual decay.** Item 3 compares the candidate
+against its immediately preceding state and calls a sub-noise result
+inconclusive. Both halves are right in isolation and wrong together: with a
+±1.4–3.6% noise floor, a `+2%` commit reads as inconclusive, lands, and then
+**becomes the reference point for the next measurement**. Twenty such commits
+compound to roughly `+49%`, and every one of them passed its gate. Nothing in
+the loop remembers where the cleanup started.
+
+This is a named owner priority for the grammar cleanup (2026-07-30): the
+cleanup must not slowly degrade parse performance while every individual commit
+looks clean.
+
+**The required shape**, by direct analogy with the correctness gate — the
+byte-identity oracle works because `oracle-byte-identity.baseline.json` is a
+*committed absolute floor* that does not move commit-to-commit:
+
+- **Gate against a committed perf baseline**, not against `HEAD~1`. The
+  baseline is the reference for every commit in the cleanup, so drift is
+  measured from the start of the cleanup rather than from yesterday.
+- **Prefer a ratio over absolute milliseconds.** Record jess parse time divided
+  by an in-run comparator measured in the same process on the same corpus
+  (`lessc` 4.x for Less, dart-sass for SCSS). A ratio cancels machine speed, so
+  one baseline is valid across laptops and CI; absolute ms are not portable and
+  will produce false alarms. It is also the same axis as the standing goal of
+  Less alpha reaching 4.x parse performance.
+- **The standing bar for CSS parsing is PostCSS** (owner, 2026-07-30) — the
+  PostCSS / Evil Martians stylesheet parsing benchmark. **PostCSS parses much
+  less structure than jess does, and the goal is to beat it anyway.** That is
+  deliberate and it is not a handicapped comparison: do not introduce a
+  structure-adjusted score, a normalization, or an asterisk that discounts the
+  work jess does and PostCSS does not. Describe the structural difference so
+  the number is interpretable; never adjust the number by it. Report the honest
+  wall-clock comparison on identical input, and if jess loses, that gap is the
+  target rather than a footnote.
+- **Baselines are NAMED CASES** — dialect × fixture — never one aggregate
+  number. A single number cannot distinguish "nothing moved" from "one case got
+  faster and another got slower".
+- **Rebaselining requires owner sign-off**, exactly as with the byte-identity
+  baseline. Without that rule an agent simply rebaselines the drift away and
+  the ratchet is theatre. A commit that needs a new baseline is a commit that
+  needs a decision, not a commit that needs a bigger number.
+- **Direction is signal even when magnitude is not.** A sub-noise result that
+  is consistently positive across several consecutive commits is a real
+  regression being laundered through the noise band one commit at a time. If
+  the last N grammar commits each measured `+1%` to `+2%` "inconclusive", that
+  is the finding — investigate the accumulation, do not add an `N+1`th.
+
+### Every grammar commit commits its own A/B number
+
+**The mechanism (owner, 2026-07-30): EVERY commit carries its measured
+old-vs-new A/B number, committed with the change itself.** Not every tenth one,
+not only the ones that were about performance, not only the ones where someone
+suspected an effect — every commit that can touch parse, eval, or emit work.
+That includes readability edits, renames, reuse consolidation, and correctness
+fixes, because those are precisely the commits nobody thinks to measure and
+therefore the ones drift hides in. A commit with no measurable surface says so
+explicitly rather than omitting the trailer, so a missing trailer always reads
+as an omission and never as "not applicable". This is what makes drift
+auditable. A per-commit record turns the commit log into the memory the
+differential gate lacks: you do not have to rebuild ancient commits to see
+accumulation, you read the chain. Eight consecutive commits that each recorded
+a shrugging `+1.5%` are visibly `+12.7%` in the log, and the laundering is
+obvious in a way no single gate run could show.
+
+Record it as a commit-message trailer so it cannot drift from the commit it
+describes and can be recovered with `git log --grep`:
+
+```
+Perf-AB: less-ast benchmark.less 18.04ms -> 18.31ms (+1.5%) n=15 w=5 noise=±3.6% INCONCLUSIVE
+Perf-AB: less-cst benchmark.less 12.10ms -> 12.02ms (-0.7%) n=15 w=5 noise=±3.6% INCONCLUSIVE
+Perf-Ratio: less-ast/lessc-4.6.7 1.42x (chain start 1.39x @ 914caa6f0)
+Perf-Env: node=<v> parseman=<version> resolved=<path>
+```
+
+Every case named (dialect × surface × fixture), never one aggregate. A verdict
+of `INCONCLUSIVE` is a legitimate outcome for the individual commit and is
+still recorded — recording it is the entire point, because inconclusive is
+precisely the verdict that accumulates.
+
+**Two mechanisms, different jobs, both required:**
+
+- The **committed per-commit chain** is cheap, always available, and detects
+  accumulation and direction. It is a *detector*.
+- The **absolute baseline ratio** is the truth check. Composed deltas are not
+  reliable arithmetic — measurement error compounds, machines differ, corpora
+  shift — so the chain tells you *when to go look*, and an absolute
+  re-measurement against a fixed reference tells you *what is actually true*.
+
+Do not treat a summed chain as a measurement. Treat it as an alarm that demands
+one.
+
+**Trigger rule:** when the chain since the last owner-accepted reference
+exceeds the harness noise band in the positive direction — whether in one step
+or accumulated across many — stop and re-measure absolutely before adding
+another grammar commit. Report the accumulation, not just the latest step.
+
+**Status: the committed baseline artifact does not exist yet.** Until it does,
+item 4 is satisfied by (a) the `Perf-AB` trailer on every grammar commit, and
+(b) measuring the candidate against the *oldest* cleanup-era commit you can
+still build, not only against your parent, recording both deltas. Durable
+timing rows also go in
+[`PARSEMAN-BENCHMARK-LEDGER.md`](./PARSEMAN-BENCHMARK-LEDGER.md), which already
+requires that the parser was rebuilt from the measured commit and that the
+macro/compose gates prove the shipping tree did not fall back to the
+interpreter.
 
 The byte-identity oracle currently exists as `pnpm run
 oracle:less:byte-identity`, backed by the Less parser corpus under

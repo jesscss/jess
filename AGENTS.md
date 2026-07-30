@@ -415,6 +415,15 @@ instead.
   inconclusive, not a win or regression; investigate a material regression
   before committing. The parser review standard names the dialect harnesses and
   required correctness gates.
+- **A before/after against your parent commit is not enough.** "Sub-noise means
+  inconclusive" plus a reference point that moves every commit means a `+2%`
+  change lands as noise and becomes the new baseline; twenty of those compound
+  to `+49%` with every gate green. Also measure against the oldest cleanup-era
+  commit you can build, record both deltas, and treat a *consistently positive
+  direction* across consecutive commits as a real regression even when each
+  magnitude is inside the band. Do not let the grammar cleanup slowly degrade
+  parse performance. See the drift gate in
+  `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`.
 - If package B depends on package A, build A first when the workspace layout requires built outputs.
 - When debugging, record what was tried, what happened, and the next step in the repo’s transient state files instead of expanding permanent guidance.
 

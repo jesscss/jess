@@ -72,7 +72,7 @@ combine unreviewed experimental branches, push a red `dev`, or treat a passing
 parser build as proof of emitted CSS. For source changes, rebuild in dependency
 order and keep behavior, macro/compose, and benchmark evidence separate.
 
-Two commits on `dev` are the current guardrails:
+Three guardrails govern the cleanup:
 
 - `1517e97c5` requires a rebuilt-artifact before/after parser benchmark before
   every grammar commit. Record resolved versions, fixed corpus/surface, warmup,
@@ -81,6 +81,20 @@ Two commits on `dev` are the current guardrails:
   `Statement` node, or similar carrier wrapper. A selected existing semantic
   node (`Declaration`, `Ruleset`, `MixinCall`, or `MixinDefinition`) must own
   the retained/replayed prefix and reduce directly.
+- **The drift gate (owner priority, 2026-07-30): the cleanup must not slowly
+  degrade parse performance.** `1517e97c5` alone cannot catch this. It compares
+  against the immediately preceding commit and calls a sub-noise result
+  inconclusive, so a `+2%` commit lands as noise and *becomes the next
+  reference point*; twenty of those compound to about `+49%` with every gate
+  green. Every grammar commit must therefore ALSO be measured against a fixed
+  older reference — a committed baseline once one exists, and until then the
+  oldest cleanup-era commit that still builds — with both deltas recorded. A
+  consistently positive direction across consecutive commits is a real
+  regression even when each magnitude sits inside the band. Rebaselining is an
+  owner decision, never an agent's. Full statement, including the
+  ratio-over-absolute-ms design and why it mirrors the byte-identity baseline:
+  [`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md)
+  § "The drift gate".
 
 `66bebbc03` tried to route CSS identifier-led statements by adding exactly that
 forbidden `IdentifierStartFact`/`Statement` layer. The whole change was
