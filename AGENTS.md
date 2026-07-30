@@ -406,6 +406,28 @@ instead.
 
 - Run the smallest relevant test first while iterating.
 - Before claiming completion, run the appropriate baseline or verification command for the affected area.
+- **Done means landed on `origin/dev`, not "committed on my branch."** An agent
+  finishes its own work: gates run and reported by name, an adversarial review
+  passed, then rebase onto `origin/dev`, verify the fast-forward, and push. A
+  branch that stops at "ready for someone else to merge" is unfinished, and the
+  context needed to finish it dies with the agent that had it. The definition of
+  done is:
+  1. **Gates green, named.** Not a count, not "tests pass" — the specific gates
+     for the touched surface, each named with its result, and any red one
+     explained against its known baseline.
+  2. **Adversarially reviewed.** Use the reviewer that matches the surface —
+     `.cursor/agents/grammar-reviewer.md` (evidence per `const`),
+     `perf-architecture-reviewer.md` (evidence per invariant),
+     `semantics-reviewer.md`. A bare verdict, "tests pass", or a sampled review
+     is an invalid result.
+  3. **Landed.** `git fetch`, rebase or merge `origin/dev`, confirm the push is
+     a fast-forward, push, then confirm `HEAD..origin/dev` is 0.
+  A coordinator may sequence merges when lanes genuinely interact — but
+  sequencing is an exception that must be stated with its reason, not the
+  default. Defaulting to "hand it back" converts every finished lane into
+  someone else's unfinished one.
+- **Never push a red `dev`.** If landing would break it, say so and stop with
+  the specific failure — that is the one legitimate reason not to finish.
 - **On hot paths the reference class is a compiler, not an application.** Hot
   paths are `packages/core/src/ast/**` (`serialize.ts`, `provenance.ts`,
   `extend/**`), `packages/syntax/*/*-parser/src/**`, `packages/parser-shared/**`,
