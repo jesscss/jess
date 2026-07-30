@@ -78,17 +78,17 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | Feature | MS provides | Jess provides | Gap | Prio |
 |---|---|---|---|---|
 | Syntax / parse errors | ✓ | ✓ lexer + parser errors from the Jess parse result | At parity | — |
-| **Lint rules** | ✓ ~20 configurable rules (see below) | ✗ **none** | **Whole category missing** | **P0/P1** |
-| `unknownProperties` | ✓ (Warning) | ✗ | Missing | P1 |
-| `unknownAtRules` | ✓ (Warning) | ✗ | Missing | P1 |
-| `emptyRules` | ✓ (Warning) | ✗ | Missing | P1 |
-| `duplicateProperties` | ✓ | ✗ | Missing | P1 |
+| **Lint rules** | ✓ ~20 configurable rules (see below) | ✓ shared diagnostics surfaced through language-service severity config | Keep expanding parity and semantic facts | P1 |
+| `unknownProperties` | ✓ (Warning) | ✓ shared diagnostic default Warning | At parity | — |
+| `unknownAtRules` | ✓ (Warning) | ✓ shared diagnostic default Warning | At parity | — |
+| `emptyRules` | ✓ (Warning) | ✓ shared diagnostic default Warning | At parity | — |
+| `duplicateProperties` | ✓ | ✓ shared diagnostic default Warning | At parity plus Stylelint-compatible lint naming | — |
 | `hexColorLength` / `argumentsInColorFunction` | ✓ (Error) | ✓ shared diagnostics default to Error | At parity for hex length and rgb()/rgba()/hsl()/hsla() definite argument errors | — |
 | `vendorPrefix` / `compatibleVendorPrefixes` / `unknownVendorSpecificProperties` | ✓ | ✗ | Missing | P2 |
 | `propertyIgnoredDueToDisplay`, `fontFaceProperties` | ✓ (Warning) | ✓ shared diagnostics default to Warning | At parity for CSS @font-face required descriptors and display/property interactions | — |
 | `boxModel` | ✓ (Ignore by default) | ✓ shared diagnostic, opt-in | At parity for definite CSS width/height plus padding/border size risks | — |
 | `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `ieHack`, `importStatement` | ✓ (mostly default-Ignore, opt-in) | ✗ | Missing | P2 |
-| Configurable severities | ✓ per-rule | ✓ but only for the 2 semantic Jess codes (`var/undefined`, `mixin/undefined`) | Framework exists; needs rules to configure | P1 |
+| Configurable severities | ✓ per-rule | ✓ for semantic codes and shared lint diagnostic codes | Naming bridge from lint rule names into editor settings remains future polish | P2 |
 | **Semantic: undefined variable / mixin** | ✗ (MS does not resolve semantics this deeply) | ✓ `var/undefined`, `mixin/undefined` + escalate-to-error when modern features present | **Jess AHEAD** | — |
 
 MS lint rules with default levels (`src/services/lintRules.ts`):
@@ -170,7 +170,7 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
 8. ✅ **DONE (function completions insert as `name($1)` snippets).** **Snippet completions** — emit `InsertTextFormat.Snippet` for at-rules and
    function calls (`@media $1 { $0 }`), instead of plain `textEdit`.
 9. ✅ **DONE (configurable shared diagnostics, including VSCode-data-backed
-   property/value warnings).** **Diagnostics / lint rules** — port the high-value
+   property/value warnings and recommended IDE defaults).** **Diagnostics / lint rules** — port the high-value
    stylesheet-service subset first: `emptyRules`, `unknownProperties`,
    `declaration-property-value-no-unknown`, `unknownAtRules`,
    `duplicateProperties`, `hexColorLength`, `zeroUnits`, `fontFaceProperties`,

@@ -761,20 +761,48 @@ export function createEngine(): JessLanguageServiceEngine {
     'mixin/undefined': DiagnosticSeverity.Warning,
 
     /*
-     * CST lint rules (MS vscode-css-languageservice parity). Keys match
-     * `LINT_CODES`; every rule's severity is settable via `configure()` and
-     * disabled with `ignore`/`off`.
+     * CST lint rules. Keys match `LINT_CODES`; every rule's severity is
+     * settable via `configure()` and disabled with `ignore`/`off`.
+     * Keep these aligned with @jesscss/lint recommended diagnostics, except
+     * rules that are intentionally opt-in such as `lint/box-model`.
      */
     [LINT_CODES.emptyRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownPropertyValues]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownAtRules]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownAtRuleDescriptors]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownAtRuleDescriptorValues]: DiagnosticSeverity.Warning,
     [LINT_CODES.duplicateProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.shorthandPropertyOverrides]: DiagnosticSeverity.Warning,
+    [LINT_CODES.duplicateCustomProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.hexColorLength]: DiagnosticSeverity.Error,
-    [LINT_CODES.invalidColorFunctionChannels]: DiagnosticSeverity.Error,
     [LINT_CODES.zeroUnits]: DiagnosticSeverity.Hint,
+    [LINT_CODES.customPropertyMissingVarFunction]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownCustomProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.keyframeDuplicateSelectors]: DiagnosticSeverity.Warning,
+    [LINT_CODES.keyframeDeclarationNoImportant]: DiagnosticSeverity.Warning,
+    [LINT_CODES.declarationNoImportant]: DiagnosticSeverity.Warning,
+    [LINT_CODES.invalidNamedGridAreas]: DiagnosticSeverity.Warning,
+    [LINT_CODES.fontFamilyDuplicateNames]: DiagnosticSeverity.Warning,
+    [LINT_CODES.fontFamilyMissingGeneric]: DiagnosticSeverity.Warning,
     [LINT_CODES.fontFaceMissingRequiredProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.propertyIgnoredDueToDisplay]: DiagnosticSeverity.Warning,
+    [LINT_CODES.invalidImportPosition]: DiagnosticSeverity.Warning,
+    [LINT_CODES.duplicateAtImportRules]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownAnimations]: DiagnosticSeverity.Warning,
+    [LINT_CODES.duplicateSelectors]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownUnits]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownFunctions]: DiagnosticSeverity.Warning,
+    [LINT_CODES.linearGradientNonstandardDirection]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownMediaFeatureNames]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownMediaFeatureValues]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownPseudoClasses]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownPseudoElements]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unmatchableAnbSelectors]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownTypeSelectors]: DiagnosticSeverity.Warning,
+    [LINT_CODES.incompatibleMathFunctionUnits]: DiagnosticSeverity.Warning,
+    [LINT_CODES.invalidColorFunctionChannels]: DiagnosticSeverity.Error,
+    [LINT_CODES.invalidTypedCustomPropertyValue]: DiagnosticSeverity.Warning,
 
     /*
      * Parsed-but-never-evaluated SCSS forms. The "Unsupported Sass Features"

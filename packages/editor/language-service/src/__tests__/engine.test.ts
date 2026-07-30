@@ -730,6 +730,36 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('recommended shared diagnostics', () => {
+      it('surfaces stable diagnostics in the editor by default', () => {
+        const engine = createEngine();
+        const source = [
+          '@property --gap { syntax: "<length>"; inherits: yes; initial-value: red; }',
+          '.a:nonsense { color: --brand; animation: missing 1s; grid-template-areas: "a" "a b"; }',
+          '.a:nonsense { color: red; }'
+        ].join('\n');
+        const doc = createDocument('css', source);
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const codes = codesOf(engine, doc.uri);
+
+        expect(codes).toContain('lint/at-rule-descriptor-value-no-unknown');
+        expect(codes).toContain('lint/invalid-typed-custom-property-value');
+        expect(codes).toContain('lint/custom-property-no-missing-var-function');
+        expect(codes).toContain('lint/no-unknown-animations');
+        expect(codes).toContain('lint/named-grid-areas-no-invalid');
+        expect(codes).toContain('lint/selector-pseudo-class-no-unknown');
+        expect(codes).toContain('lint/no-duplicate-selectors');
+      });
+
+      it('respects configure() disable for recommended shared diagnostics', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/no-unknown-animations', 'ignore'));
+        const doc = createDocument('css', '.a { animation: missing 1s; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/no-unknown-animations');
+      });
+    });
+
     describe('duplicateProperties (lint/duplicate-property)', () => {
       it('fires when a property is declared twice in one block', () => {
         const engine = createEngine();

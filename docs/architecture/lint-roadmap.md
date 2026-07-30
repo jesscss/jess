@@ -141,6 +141,11 @@ that into compact per-file lines. The language service should adapt the same
 records to LSP ranges. Legacy Jess frame diagnostics are presentation objects
 and should stay opt-in.
 
+Language-service defaults should surface the same shared diagnostics as
+`@jesscss/lint` recommended policy unless a rule is explicitly opt-in. Opt-in
+rules still need shared detection and editor configuration support; they should
+not become IDE noise by accident.
+
 ## Stylelint story
 
 Stylelint is the broad ecosystem CSS linter. It has more than 100 built-in
