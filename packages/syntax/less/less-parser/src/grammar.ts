@@ -252,16 +252,16 @@ type LessRules = {
   NestedRulesetWithExtends: Combinator<Ruleset>;
   Quoted: Combinator<Quoted | Interpolation>;
   EscapedQuoted: Combinator<Quoted | Interpolation>;
-  StaticUrl: Combinator<Url>;
+  PlainUrl: Combinator<Url>;
   UrlInterpolation: Combinator<Interpolation>;
-  DynamicUrl: Combinator<Url>;
+  VariableUrl: Combinator<Url>;
   ImportOption: Combinator<Any>;
   ImportOptions: Combinator<List>;
   ImportTarget: Combinator<Quoted | Url | Interpolation>;
   ImportTail: Combinator<unknown>;
-  StaticTail: Combinator<unknown>;
-  StaticTailGroup: Combinator<unknown>;
-  StaticTailParen: Combinator<unknown>;
+  ImportTailText: Combinator<unknown>;
+  ImportTailGroup: Combinator<unknown>;
+  ImportTailParen: Combinator<unknown>;
   whitespace: Combinator<unknown>;
 };
 
@@ -2303,7 +2303,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       return quoted(`${open.value}${value}${open.value}`, value, open.value, false);
     }
   );
-  // A static Less `~"…"` / `~'…'` is an ordinary quoted value with the
+  // A non-interpolated Less `~"…"` / `~'…'` is an ordinary quoted value with the
   // existing escaped flag. Its interpolation-bearing form is a structural,
   // unquoted template—never a recovered source string.
   const EscapedQuoted = node<Quoted | Interpolation>(
@@ -2325,7 +2325,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       return quoted(`${opener}${value}${quote}`, value, quote, true);
     }
   );
-  const StaticUrl = node<Url>(
+  const PlainUrl = node<Url>(
     'Url',
     noTrivia(sequence(
       urlFunctionOpen,
@@ -2337,7 +2337,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     (_children, fields) => {
       const captured = fields?.body;
       if (Array.isArray(captured)) {
-        throw new TypeError('Less static URL produced repeated body facts.');
+        throw new TypeError('Less plain URL produced repeated body facts.');
       }
       const body = captured?.value;
       if (body === undefined) {
@@ -2360,17 +2360,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     )),
     children => interpolation(interpolationPartsFrom(children, true))
   );
-  const DynamicUrl = node<Url>(
+  const VariableUrl = node<Url>(
     'Url',
     sequence(urlFunctionOpen, choice(g.UrlInterpolation, g.VariableReference), literal(')')),
     children => url(requireValueNode(children[1]))
   );
-  const RoutedDynamicUrl = node<Url>(
+  const RoutedVariableUrl = node<Url>(
     'Url',
     sequence(routed(), choice(g.UrlInterpolation, g.VariableReference), literal(')')),
     children => url(requireValueNode(children[1]))
   );
-  const RoutedStaticUrl = node<Url>(
+  const RoutedPlainUrl = node<Url>(
     'Url',
     noTrivia(sequence(
       routed(),
@@ -2382,7 +2382,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     (_children, fields) => {
       const captured = fields?.body;
       if (Array.isArray(captured)) {
-        throw new TypeError('Less routed static URL produced repeated body facts.');
+        throw new TypeError('Less routed plain URL produced repeated body facts.');
       }
       const body = captured?.value;
       if (body === undefined) {
@@ -2394,7 +2394,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       return url(any(requireTerminalText(body)));
     }
   );
-  const UrlTarget = choice(g.DynamicUrl, g.StaticUrl);
+  const UrlTarget = choice(g.VariableUrl, g.PlainUrl);
   const ImportOption = node<Any>(
     'ImportOption',
     importOption,
@@ -2421,16 +2421,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       return list(options, ',');
     }
   );
-  const StaticTailParen = noTrivia(sequence(
+  const ImportTailParen = noTrivia(sequence(
     literal('('),
-    many(choice(staticTailText, g.Quoted, g.StaticTailGroup)),
+    many(choice(staticTailText, g.Quoted, g.ImportTailGroup)),
     literal(')')
   ));
-  const StaticTailGroup = g.StaticTailParen;
-  const StaticTail = noTrivia(oneOrMore(choice(
+  const ImportTailGroup = g.ImportTailParen;
+  const ImportTailText = noTrivia(oneOrMore(choice(
     staticTailText,
     g.Quoted,
-    g.StaticTailGroup
+    g.ImportTailGroup
   )));
   // An import postlude's variable-bearing media feature has an exact typed
   // shape. Keep this small prelude production here because the generic query
@@ -2458,7 +2458,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     choice(
       ImportQueryTail,
       g.AtRuleInterpolation,
-      g.StaticTail
+      g.ImportTailText
     ),
     children => children.length === 1 ? children[0] : children
   );
@@ -2833,7 +2833,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const IdentifierOrFunction = dispatch(
     identOrFunction,
-    caseOf('url(', choice(RoutedDynamicUrl, RoutedStaticUrl)),
+    caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
     caseOf('calc(', CalcFunction),
     when(endsWith('('), GenericFunction),
     otherwise(Identifier)
@@ -4915,7 +4915,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const AtRulePreludeIdentOrFunction = dispatch(
     atRulePreludeIdentOrFunction,
-    caseOf('url(', RoutedStaticUrl),
+    caseOf('url(', RoutedPlainUrl),
     caseOf('calc(', CalcFunction),
     when(endsWith('('), GenericFunction),
     otherwise(AtRulePreludeKeyword)
@@ -5016,15 +5016,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // `@custom foo@{name};` into a raw/recovered-header path.
   // Gating note: `url(` overlaps the URI-only arm with an identifier-prefixed
   // namespace in the analyzer, but the glued `url(` delimiter belongs to
-  // `StaticUrl`; dispatching on bare `url` would lose that distinction.
+  // `PlainUrl`; dispatching on bare `url` would lose that distinction.
   const NamespacePrelude = node<ValueNode>(
     'NamespacePrelude',
     choice(
-      g.StaticUrl,
+      g.PlainUrl,
       g.Quoted,
       sequence(
         choice(g.AtRuleInterpolation, g.Keyword),
-        choice(g.Quoted, g.StaticUrl)
+        choice(g.Quoted, g.PlainUrl)
       )
     ),
     (children) => {
@@ -5717,7 +5717,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
   const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-  const StaticExtendCompound = node<SelectorTerm>(
+  const InlineExtendSubjectCompound = node<SelectorTerm>(
     'InlineExtendSubjectCompound',
     parser(
       { trivia: compoundSelectorTrivia },
@@ -5725,16 +5725,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     children => selectorTermFromTokens(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
-  const StaticExtendComplexTail = node<ComplexTailFact>(
+  const InlineExtendSubjectComplexTail = node<ComplexTailFact>(
     'InlineExtendSubjectComplexTail',
-    sequence(optional(staticCombinator), StaticExtendCompound),
+    sequence(optional(staticCombinator), InlineExtendSubjectCompound),
     combinatorTailReducer
   );
   const ExtendComplex = node<SelectorBranch>(
     'ExtendComplex',
     sequence(
-      StaticExtendCompound,
-      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), StaticExtendComplexTail))
+      InlineExtendSubjectCompound,
+      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), InlineExtendSubjectComplexTail))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf([
       { term: children.find(isSelectorTerm)! },
@@ -6073,16 +6073,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     NestedRulesetWithExtends,
     Quoted,
     EscapedQuoted,
-    StaticUrl,
+    PlainUrl,
     UrlInterpolation,
-    DynamicUrl,
+    VariableUrl,
     ImportOption,
     ImportOptions,
     ImportTarget,
     ImportTail,
-    StaticTail,
-    StaticTailGroup,
-    StaticTailParen,
+    ImportTailText,
+    ImportTailGroup,
+    ImportTailParen,
     whitespace,
     rw: whitespace
   };

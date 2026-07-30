@@ -391,7 +391,6 @@ describe('Less direct-AST closure CST contract', () => {
     expect(findNodes(result.tree, 'ExtendTargetComplex').map(leafValues)).toEqual([
       ['.target']
     ]);
-    expect(findNodes(result.tree, 'StaticExtendCompound')).toHaveLength(0);
   });
 
   it('names typed generic at-rule headers by their prelude value role', () => {
