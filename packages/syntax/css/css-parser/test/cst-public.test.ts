@@ -37,7 +37,7 @@ function nodesByGrammarType(tree: CstNode, grammarType: string): CstNode[] {
 
 function collect(tree: CstNode) {
   let leaves = 0;
-  let basicSelectors = 0;
+  let selectorAtoms = 0;
   const grammarTypes = new Map<string, number>();
   const types = new Set<string>();
   const visit = (node: CstNode | CstNode['children'][number]) => {
@@ -48,14 +48,19 @@ function collect(tree: CstNode) {
     if (node._tag === 'node') {
       types.add(node.type);
       grammarTypes.set(node.grammarType, (grammarTypes.get(node.grammarType) ?? 0) + 1);
-      if (node.type === 'BasicSelector') {
-        basicSelectors++;
+      if (
+        node.type === 'ClassSelector'
+        || node.type === 'IdSelector'
+        || node.type === 'TypeSelector'
+        || node.type === 'UniversalSelector'
+      ) {
+        selectorAtoms++;
       }
       node.rules.forEach(visit);
     }
   };
   visit(tree);
-  return { leaves, basicSelectors, grammarTypes, types };
+  return { leaves, selectorAtoms, grammarTypes, types };
 }
 
 function isModeLabel(type: string): boolean {
@@ -122,7 +127,7 @@ describe('@jesscss/css-parser/cst', () => {
     expect(expanded.errors).toHaveLength(0);
     expect(collapsed.errors).toHaveLength(0);
     expect([...collect(collapsed.tree).types]).not.toContain('Unknown');
-    expect(collect(collapsed.tree)).toMatchObject({ leaves: collect(expanded.tree).leaves, basicSelectors: 2 });
+    expect(collect(collapsed.tree)).toMatchObject({ leaves: collect(expanded.tree).leaves, selectorAtoms: 2 });
     expectNoModeLabels(expanded.tree);
     expectNoModeLabels(collapsed.tree);
   });

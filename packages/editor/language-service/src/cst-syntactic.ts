@@ -26,7 +26,7 @@
 import type { CssCstChild, CssCstNode } from '@jesscss/css-parser';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 import { Position } from 'vscode-languageserver-types';
-import { buildCstIndex, cstChildrenOf } from './cst-analysis.js';
+import { buildCstIndex, cstChildrenOf, cstHasTag } from './cst-analysis.js';
 
 export type JessLangLike = 'css' | 'less' | 'scss' | 'jess';
 
@@ -53,7 +53,7 @@ const SEMANTIC_TOKEN_TYPE_INDEX = new Map<SemanticTokenType, number>(SEMANTIC_TO
 const NUMBER_TYPES = new Set(['Num', 'Dimension', 'Color']);
 const VARIABLE_REFERENCE_TYPES = new Set(['Reference', 'VariableReference']);
 const VARIABLE_DECLARATION_TYPES = new Set(['VarDeclaration', 'VariableDeclaration']);
-const STATIC_SIMPLE_SELECTOR_TYPES = new Set(['BasicSelector', 'Simple']);
+const STATIC_SIMPLE_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector', 'Simple']);
 
 /*
  * Genuine at-rule grammarTypes whose leading `@keyword` is a `namespace` token.
@@ -231,9 +231,10 @@ export function cstVariableNames(root: CssCstNode, doc: TextDocument): string[] 
 }
 
 /**
- * Static class selector names in source order, mined from `BasicSelector` CST
- * nodes. This intentionally ignores compound text, interpolation, attributes,
- * and pseudo arguments until richer selector facts exist.
+ * Static class selector names in source order, mined from CSS `ClassSelector`
+ * nodes and the still-broad dialect `Simple` selector nodes. This intentionally
+ * ignores compound text, interpolation, attributes, and pseudo arguments until
+ * richer selector facts exist across all dialect CSTs.
  */
 export function cstClassSelectorNames(root: CssCstNode, doc: TextDocument): string[] {
   const index = buildCstIndex(root);
@@ -241,7 +242,7 @@ export function cstClassSelectorNames(root: CssCstNode, doc: TextDocument): stri
   const out: string[] = [];
   const seen = new Set<string>();
   for (const { node, start, end } of index.nodes) {
-    if (!STATIC_SIMPLE_SELECTOR_TYPES.has(node.grammarType)) {
+    if (!cstHasTag(node, 'Selector') && !STATIC_SIMPLE_SELECTOR_TYPES.has(node.grammarType)) {
       continue;
     }
     const name = classSelectorNameOf(src.slice(start, end));

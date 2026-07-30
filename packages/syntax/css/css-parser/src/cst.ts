@@ -21,6 +21,7 @@ export type CssCstNode = {
   readonly _tag: 'node';
   readonly type: CssCstType;
   readonly grammarType: string;
+  readonly tags?: readonly string[];
   readonly span: Span;
   readonly state: unknown;
   readonly rules: CssCstChild[];
@@ -127,6 +128,32 @@ function numericGrammarType(rawChildren: readonly unknown[]): 'Percentage' | 'Di
   return suffix === undefined ? 'Num' : 'Dimension';
 }
 
+function startsWithDigit(value: string): boolean {
+  const first = value[0];
+  return first !== undefined && first >= '0' && first <= '9';
+}
+
+function selectorGrammarType(rawChildren: readonly unknown[]): 'BasicSelector' | 'ClassSelector' | 'IdSelector' | 'TypeSelector' | 'UniversalSelector' {
+  const first = rawChildren.find(isCssCstLeaf)?.value;
+  if (first?.startsWith('.') === true) {
+    return 'ClassSelector';
+  }
+  if (first?.startsWith('#') === true) {
+    return 'IdSelector';
+  }
+  if (first === '*') {
+    return 'UniversalSelector';
+  }
+  return first !== undefined && startsWithDigit(first) ? 'BasicSelector' : 'TypeSelector';
+}
+
+function mergeTags(tags: readonly string[] | undefined, tag: string): readonly string[] {
+  if (tags === undefined || tags.length === 0) {
+    return [tag];
+  }
+  return tags.includes(tag) ? tags : [...tags, tag];
+}
+
 function hasNodeChild(rawChildren: readonly unknown[], grammarType: string): boolean {
   return rawChildren.some(child => isCssCstChild(child) && child._tag === 'node' && child.grammarType === grammarType);
 }
@@ -134,6 +161,9 @@ function hasNodeChild(rawChildren: readonly unknown[], grammarType: string): boo
 function publicGrammarType(grammarType: string, rawChildren: readonly unknown[]): string {
   if (grammarType === 'Numeric' || grammarType === 'Dimension') {
     return numericGrammarType(rawChildren);
+  }
+  if (grammarType === 'BasicSelector') {
+    return selectorGrammarType(rawChildren);
   }
   if (grammarType === 'Declaration' && hasNodeChild(rawChildren, 'CustomProperty')) {
     return 'CustomDeclaration';
@@ -236,7 +266,7 @@ function publicSpan(grammarType: string, span: Span, rawChildren: readonly unkno
 }
 
 function buildCssCstNode(args: BuildHostArgs): CssCstNode {
-  const [grammarType, , , span, rawChildren, , state] = args;
+  const [grammarType, , , span, rawChildren, , state, tags] = args;
 
   /*
    * The unified `Numeric` value-position recognizer surfaces in the CST-public
@@ -252,10 +282,18 @@ function buildCssCstNode(args: BuildHostArgs): CssCstNode {
     grammarType,
     rawChildren
   );
+  const publicTags = type === 'ClassSelector'
+    || type === 'IdSelector'
+    || type === 'TypeSelector'
+    || type === 'UniversalSelector'
+    || type === 'BasicSelector'
+    ? mergeTags(tags, 'Selector')
+    : tags;
   return {
     _tag: 'node',
     type: publicTypeName(type),
     grammarType: type,
+    ...(publicTags === undefined || publicTags.length === 0 ? {} : { tags: publicTags }),
     span: publicSpan(
       grammarType,
       span,
@@ -269,7 +307,7 @@ function buildCssCstNode(args: BuildHostArgs): CssCstNode {
 
 export const cssCstBuildHost: BuildHost = Object.assign(
   (...args: BuildHostArgs) => buildCssCstNode(args),
-  parsemanCstBuildHost()
+  parsemanCstBuildHost({ tags: true })
 );
 
 function emptyStyleSheet(): CssCstNode {
@@ -291,7 +329,8 @@ function cssCstBuildHostFor(options: CssCstParseOptions): BuildHost {
   return Object.assign(
     (...args: BuildHostArgs) => cssCstBuildHost(...args),
     parsemanCstBuildHost({
-      collapse: (grammarType: string) => COLLAPSIBLE_GRAMMAR_TYPES.has(grammarType)
+      collapse: (grammarType: string) => COLLAPSIBLE_GRAMMAR_TYPES.has(grammarType),
+      tags: true
     })
   );
 }

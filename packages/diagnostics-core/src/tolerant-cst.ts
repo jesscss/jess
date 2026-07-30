@@ -322,7 +322,15 @@ const ZERO_SPECIFICITY_PSEUDO_CLASSES = new Set(['where']);
 const ADDITIVE_SELECTOR_ARGUMENT_PSEUDO_CLASSES = new Set(['host', 'host-context']);
 const ADDITIVE_SELECTOR_ARGUMENT_PSEUDO_ELEMENTS = new Set(['slotted']);
 const NTH_ARGUMENT_TYPES = new Set(['PseudoArgument', 'OfTypePseudoArgument']);
-const BASIC_SELECTOR_TYPES = new Set(['BasicSelector']);
+const BASIC_SELECTOR_TYPES = new Set([
+  'BasicSelector',
+  'ClassSelector',
+  'IdSelector',
+  'TypeSelector',
+  'UniversalSelector'
+]);
+const CLASS_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector']);
+const TYPE_SELECTOR_TYPES = new Set(['BasicSelector', 'TypeSelector']);
 const ATTRIBUTE_SELECTOR_TYPES = new Set(['AttributeSelector']);
 const SELECTOR_LIST_TYPES = new Set(['SelectorList', 'TopLevelSelectorList']);
 const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector', 'RelativeSelector']);
@@ -5676,7 +5684,7 @@ export function cstLintDiagnostics(
           'Avoid universal selectors',
           node.span
         );
-      } else if (basicSelector?.startsWith('#') === true) {
+      } else if (gt === 'IdSelector' || basicSelector?.startsWith('#') === true) {
         push(
           LINT_CODES.selectorMaxId,
           'warning',
@@ -5686,7 +5694,7 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (BASIC_SELECTOR_TYPES.has(gt)) {
+    if (CLASS_SELECTOR_TYPES.has(gt)) {
       const classSelector = classSelectorNameSpan(source, node);
       if (classSelector !== null) {
         push(
@@ -5698,7 +5706,7 @@ export function cstLintDiagnostics(
       }
     }
 
-    if (language === 'css' && !nodeContext.inIgnoredTypeSelectorPseudo && BASIC_SELECTOR_TYPES.has(gt)) {
+    if (language === 'css' && !nodeContext.inIgnoredTypeSelectorPseudo && TYPE_SELECTOR_TYPES.has(gt)) {
       const selector = typeSelectorNameSpan(source, node);
       if (
         selector !== null

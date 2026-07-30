@@ -32,6 +32,10 @@ function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
 }
 
+export function cstHasTag(node: CssCstNode, tag: string): boolean {
+  return node.tags?.includes(tag) === true;
+}
+
 export function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
   return node.rules;
 }
@@ -106,10 +110,18 @@ const SELECTOR_TYPES = new Set([
   'CompoundSelector',
   'Compound',
   'InterpolatedSelector',
-  'BasicSelector'
+  'BasicSelector',
+  'ClassSelector',
+  'IdSelector',
+  'TypeSelector',
+  'UniversalSelector'
 ]);
 const LESS_SELECTOR_TYPES = new Set(['SelectorBranch', 'Compound']);
 const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBlock', 'QueryAtRuleBlock']);
+
+export function cstIsSelector(node: CssCstNode): boolean {
+  return cstHasTag(node, 'Selector') || SELECTOR_TYPES.has(node.grammarType);
+}
 
 /*
  * Mixin DEFINITIONS: the shared `MixinDefinition` label in Less/Jess and the
@@ -123,7 +135,7 @@ const FUNC_TYPES = new Set(['FunctionRule']);
 
 function firstSelectorChild(node: CssCstNode): CssCstNode | null {
   for (const c of cstChildrenOf(node)) {
-    if (c._tag === 'node' && SELECTOR_TYPES.has(c.grammarType)) {
+    if (c._tag === 'node' && cstIsSelector(c)) {
       return c;
     }
   }
