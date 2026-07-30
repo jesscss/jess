@@ -1,5 +1,6 @@
 import { defineConfig } from 'tsdown';
 import parseman from 'parseman/plugin';
+import { nestSharedChunks } from '../../../../tools/tsdown/chunk-names.mts';
 
 export default defineConfig({
   entry: {
@@ -19,12 +20,17 @@ export default defineConfig({
   },
   plugins: [parseman.rolldown()],
   outputOptions(options, format) {
+    const nextOptions = {
+      ...options,
+      chunkFileNames: nestSharedChunks(options.chunkFileNames)
+    };
+
     if (format === 'cjs') {
       return {
-        ...options,
+        ...nextOptions,
         exports: 'named'
       };
     }
-    return options;
+    return nextOptions;
   }
 });
