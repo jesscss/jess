@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 5;
+export const STABLE_LINT_RULE_SET_VERSION = 6;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -21,6 +21,7 @@ export const LINT_RULE_NAMES = {
   fontFamilyMissingGeneric: 'font-family-no-missing-generic-family-keyword',
   duplicateAtImportRules: 'no-duplicate-at-import-rules',
   unknownUnits: 'unit-no-unknown',
+  unknownFunctions: 'function-no-unknown',
   unknownPseudoClasses: 'selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'selector-pseudo-element-no-unknown',
   unsupportedSassForm: 'jess/unsupported-sass-form'
@@ -53,6 +54,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: LINT_CODES.fontFamilyMissingGeneric,
   [LINT_RULE_NAMES.duplicateAtImportRules]: LINT_CODES.duplicateAtImportRules,
   [LINT_RULE_NAMES.unknownUnits]: LINT_CODES.unknownUnits,
+  [LINT_RULE_NAMES.unknownFunctions]: LINT_CODES.unknownFunctions,
   [LINT_RULE_NAMES.unknownPseudoClasses]: LINT_CODES.unknownPseudoClasses,
   [LINT_RULE_NAMES.unknownPseudoElements]: LINT_CODES.unknownPseudoElements,
   [LINT_RULE_NAMES.unsupportedSassForm]: LINT_CODES.unsupportedSassForm
@@ -72,6 +74,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.fontFamilyMissingGeneric]: LINT_RULE_NAMES.fontFamilyMissingGeneric,
   [LINT_CODES.duplicateAtImportRules]: LINT_RULE_NAMES.duplicateAtImportRules,
   [LINT_CODES.unknownUnits]: LINT_RULE_NAMES.unknownUnits,
+  [LINT_CODES.unknownFunctions]: LINT_RULE_NAMES.unknownFunctions,
   [LINT_CODES.unknownPseudoClasses]: LINT_RULE_NAMES.unknownPseudoClasses,
   [LINT_CODES.unknownPseudoElements]: LINT_RULE_NAMES.unknownPseudoElements,
   [LINT_CODES.unsupportedSassForm]: LINT_RULE_NAMES.unsupportedSassForm
@@ -91,6 +94,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
   [LINT_RULE_NAMES.unknownUnits]: 'warn',
+  [LINT_RULE_NAMES.unknownFunctions]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoClasses]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoElements]: 'warn',
   [LINT_RULE_NAMES.unsupportedSassForm]: 'warn'
@@ -110,6 +114,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
   [LINT_RULE_NAMES.duplicateAtImportRules]: 'warn',
   [LINT_RULE_NAMES.unknownUnits]: 'warn',
+  [LINT_RULE_NAMES.unknownFunctions]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoClasses]: 'warn',
   [LINT_RULE_NAMES.unknownPseudoElements]: 'warn'
 };
@@ -244,6 +249,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'unit-no-unknown',
     notes: 'Flags unknown CSS units from parsed Dimension nodes, suppressing url() values and allowing resolution x where CSS permits it.'
+  },
+  {
+    code: LINT_CODES.unknownFunctions,
+    ruleName: LINT_RULE_NAMES.unknownFunctions,
+    title: 'Unknown functions',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'function-no-unknown',
+    notes: 'Flags unknown CSS declaration functions using css-functions-list; dialect callable checks wait for semantic facts.'
   },
   {
     code: LINT_CODES.unknownPseudoClasses,

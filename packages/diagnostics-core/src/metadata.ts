@@ -3,6 +3,7 @@ import type { CssDiagnosticMetadata } from './types.js';
 
 const require = createRequire(import.meta.url);
 const webCssData: unknown = require('@vscode/web-custom-data/data/browsers.css-data.json');
+const cssFunctions: unknown = require('css-functions-list/index.json');
 const knownCssProperties: unknown = require('known-css-properties');
 
 function ownValue(value: unknown, key: string): unknown {
@@ -36,6 +37,11 @@ const AT_RULE_SET = new Set(
     .map(rule => stringField(rule, 'name')?.toLowerCase())
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
 );
+const CSS_FUNCTION_SET = new Set(
+  (Array.isArray(cssFunctions) ? cssFunctions : [])
+    .map(fn => typeof fn === 'string' ? fn.toLowerCase() : undefined)
+    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+);
 const PSEUDO_CLASS_SET = new Set(
   arrayField(webCssData, 'pseudoClasses')
     .map(pseudo => stringField(pseudo, 'name')?.toLowerCase())
@@ -55,6 +61,9 @@ export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
   isKnownAtRule(name) {
     const lower = name.startsWith('@') ? name.toLowerCase() : `@${name.toLowerCase()}`;
     return AT_RULE_SET.has(lower);
+  },
+  isKnownFunction(name) {
+    return CSS_FUNCTION_SET.has(name.toLowerCase());
   },
   isKnownPseudoClass(name) {
     const lower = name.startsWith(':') ? name.toLowerCase() : `:${name.toLowerCase()}`;

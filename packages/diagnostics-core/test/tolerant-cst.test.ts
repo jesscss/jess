@@ -48,6 +48,18 @@ describe('collectTolerantDiagnostics', () => {
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownPseudoElements)).toBe(false);
   });
 
+  it('uses caller-provided CSS metadata for known functions', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { width: project-size(1px); }',
+      language: 'css',
+      metadata: {
+        isKnownFunction: name => name === 'project-size'
+      }
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownFunctions)).toBe(false);
+  });
+
   it('recognizes lint-relevant nodes from direct SCSS and Jess grammars', () => {
     const scss = collectTolerantDiagnostics({
       source: '.a { .b {} }',
@@ -240,5 +252,36 @@ describe('collectTolerantDiagnostics', () => {
     expect(scss.diagnostics.some(
       diagnostic => diagnostic.code === LINT_CODES.unknownPseudoClasses || diagnostic.code === LINT_CODES.unknownPseudoElements
     )).toBe(false);
+  });
+
+  it('reports unknown CSS declaration functions', () => {
+    const source = '.a { color: rgb(0 0 0); width: calc(1px + 1px); height: project-size(1px); background: url(asset.png); opacity: --fade(1); }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownFunctions = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownFunctions);
+    const nameStart = source.indexOf('project-size');
+
+    expect(unknownFunctions).toHaveLength(1);
+    expect(unknownFunctions[0]).toMatchObject({
+      message: 'Unknown function "project-size"',
+      start: nameStart,
+      end: nameStart + 'project-size('.length
+    });
+  });
+
+  it('does not report unknown declaration functions in dialect files before callable facts exist', () => {
+    const scss = collectTolerantDiagnostics({
+      source: '.a { color: project-size($x); }',
+      language: 'scss'
+    });
+    const less = collectTolerantDiagnostics({
+      source: '.a { color: project-size(@x); }',
+      language: 'less'
+    });
+
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownFunctions)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownFunctions)).toBe(false);
   });
 });

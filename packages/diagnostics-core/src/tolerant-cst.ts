@@ -26,6 +26,7 @@ export const LINT_CODES = {
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   unknownUnits: 'lint/unit-no-unknown',
+  unknownFunctions: 'lint/function-no-unknown',
   unknownPseudoClasses: 'lint/selector-pseudo-class-no-unknown',
   unknownPseudoElements: 'lint/selector-pseudo-element-no-unknown',
   unsupportedSassForm: 'unsupported/sass-form'
@@ -152,6 +153,7 @@ type ParseDiagnosticSource = {
 
 type VisitContext = {
   readonly inVarCall: boolean;
+  readonly inDeclaration: boolean;
   readonly inCustomDeclaration: boolean;
   readonly inFontFaceAtRule: boolean;
   readonly inKeyframeBlock: boolean;
@@ -174,6 +176,7 @@ type ImportKey = {
 
 const ROOT_VISIT_CONTEXT: VisitContext = {
   inVarCall: false,
+  inDeclaration: false,
   inCustomDeclaration: false,
   inFontFaceAtRule: false,
   inKeyframeBlock: false,
@@ -919,6 +922,9 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
     isKnownAtRule(name) {
       return metadata?.isKnownAtRule?.(name) ?? defaultCssDiagnosticMetadata.isKnownAtRule(name);
     },
+    isKnownFunction(name) {
+      return metadata?.isKnownFunction?.(name) ?? defaultCssDiagnosticMetadata.isKnownFunction(name);
+    },
     isKnownPseudoClass(name) {
       return metadata?.isKnownPseudoClass?.(name) ?? defaultCssDiagnosticMetadata.isKnownPseudoClass(name);
     },
@@ -1037,6 +1043,7 @@ export function cstLintDiagnostics(
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'font-face';
     const nodeContext: VisitContext = {
       inVarCall: context.inVarCall || gt === 'VarCall',
+      inDeclaration: context.inDeclaration || DECLARATION_TYPES.has(gt),
       inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
       inFontFaceAtRule: context.inFontFaceAtRule || isFontFaceAtRule,
       inKeyframeBlock: context.inKeyframeBlock || KEYFRAME_BLOCK_TYPES.has(gt),
@@ -1139,6 +1146,17 @@ export function cstLintDiagnostics(
             );
           }
         }
+      }
+    }
+
+    if (language === 'css' && nodeContext.inDeclaration && FUNCTION_TYPES.has(gt) && functionName !== null) {
+      if (!functionName.startsWith('--') && !cssData.isKnownFunction(functionName)) {
+        push(
+          LINT_CODES.unknownFunctions,
+          'warning',
+          `Unknown function "${functionName}"`,
+          spanAtOrContaining(node, start, start + functionName.length)
+        );
       }
     }
 
