@@ -55,6 +55,7 @@ a `jess/` prefix.
 | `block-no-empty` | `lint/empty-rules` | Stylelint-equivalent |
 | `property-no-unknown` | `lint/unknown-property` | Stylelint-near |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | Stylelint-near |
+| `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | Stylelint-near |
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | Stylelint-equivalent |
 | `declaration-block-no-duplicate-custom-properties` | `lint/declaration-block-no-duplicate-custom-properties` | Stylelint-equivalent |
 | `color-no-invalid-hex` | `lint/hex-color-length` | Stylelint-equivalent |
@@ -137,8 +138,8 @@ comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint comparison config | `28.85 ms/op` |
-| Stylelint comparable rules | `31.74 ms/op` |
+| Jess lint comparison config | `22.31 ms/op` |
+| Stylelint comparable rules | `30.16 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -170,6 +171,7 @@ can detect over authored source.
 | Landed | Units | `unit-no-unknown` | Flags unknown Dimension units; URL values and resolution `x` contexts are suppressed. |
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
 | Landed | Media feature names and values | `media-feature-name-no-unknown`, `media-feature-name-value-no-unknown` | Flags unknown CSS `@media` feature names and definite invalid static values; dialect media facts remain future work. |
+| Landed | At-rule descriptors | `at-rule-descriptor-no-unknown` | Flags unknown descriptors in parsed CSS descriptor blocks; @page descriptor support remains future work. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |
 | P2 | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Project-policy heavy; opt-in only. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |

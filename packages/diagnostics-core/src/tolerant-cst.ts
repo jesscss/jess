@@ -17,6 +17,7 @@ export const LINT_CODES = {
   emptyRules: 'lint/empty-rules',
   unknownProperties: 'lint/unknown-property',
   unknownAtRules: 'lint/unknown-at-rule',
+  unknownAtRuleDescriptors: 'lint/at-rule-descriptor-no-unknown',
   duplicateProperties: 'lint/duplicate-property',
   duplicateCustomProperties: 'lint/declaration-block-no-duplicate-custom-properties',
   hexColorLength: 'lint/hex-color-length',
@@ -189,6 +190,7 @@ type VisitContext = {
   readonly inMediaAtRule: boolean;
   readonly inCustomDeclaration: boolean;
   readonly inFontFaceAtRule: boolean;
+  readonly descriptorAtRuleName: string | null;
   readonly inKeyframeBlock: boolean;
   readonly inUrlFunction: boolean;
   readonly inIgnoredTypeSelectorPseudo: boolean;
@@ -239,6 +241,7 @@ const ROOT_VISIT_CONTEXT_BASE = {
   inMediaAtRule: false,
   inCustomDeclaration: false,
   inFontFaceAtRule: false,
+  descriptorAtRuleName: null,
   inKeyframeBlock: false,
   inUrlFunction: false,
   inIgnoredTypeSelectorPseudo: false,
@@ -327,6 +330,17 @@ function atRuleNameEnd(source: string, start: number, end: number): number {
     i++;
   }
   return i;
+}
+
+function atRuleNameOf(source: string, start: number, end: number): string | null {
+  if (start >= end || source.charCodeAt(start) !== 64 /* @ */) {
+    return null;
+  }
+  const nameEnd = atRuleNameEnd(source, start, end);
+  if (nameEnd <= start + 1) {
+    return null;
+  }
+  return source.slice(start + 1, nameEnd).toLowerCase();
 }
 
 function isIdentStart(code: number): boolean {
@@ -1680,6 +1694,10 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
     isKnownAtRule(name) {
       return metadata?.isKnownAtRule?.(name) ?? defaultCssDiagnosticMetadata.isKnownAtRule(name);
     },
+    isKnownAtRuleDescriptor(atRuleName, descriptorName) {
+      return metadata?.isKnownAtRuleDescriptor?.(atRuleName, descriptorName)
+        ?? defaultCssDiagnosticMetadata.isKnownAtRuleDescriptor(atRuleName, descriptorName);
+    },
     isKnownFunction(name) {
       return metadata?.isKnownFunction?.(name) ?? defaultCssDiagnosticMetadata.isKnownFunction(name);
     },
@@ -1805,6 +1823,7 @@ export function cstLintDiagnostics(
     const functionName = FUNCTION_TYPES.has(gt) ? functionNameOf(source, start, end) : null;
     const isUrlFunction = gt === 'Url' || functionName === 'url';
     const isImageSetFunction = functionName !== null && unprefixedName(functionName) === 'image-set';
+    const descriptorAtRuleName = gt === 'DescriptorBlock' ? atRuleNameOf(source, start, end) : null;
     const isMediaAtRule = gt === 'QueryAtRuleBlock'
       && source.charCodeAt(start) === 64
       && source.slice(start + 1, atRuleNameEnd(source, start, end)).toLowerCase() === 'media';
@@ -1817,6 +1836,7 @@ export function cstLintDiagnostics(
       inMediaAtRule: context.inMediaAtRule || isMediaAtRule,
       inCustomDeclaration: context.inCustomDeclaration || CUSTOM_DECLARATION_TYPES.has(gt),
       inFontFaceAtRule: context.inFontFaceAtRule || isFontFaceAtRule,
+      descriptorAtRuleName: descriptorAtRuleName ?? context.descriptorAtRuleName,
       inKeyframeBlock: context.inKeyframeBlock || KEYFRAME_BLOCK_TYPES.has(gt),
       inUrlFunction: context.inUrlFunction || isUrlFunction,
       inIgnoredTypeSelectorPseudo: context.inIgnoredTypeSelectorPseudo || (gt === 'PseudoSelector' && ignoresTypeSelectorsInPseudo(source, start, end)),
@@ -2069,6 +2089,9 @@ export function cstLintDiagnostics(
       const slice = source.slice(start, end);
       const colon = slice.indexOf(':');
       const name = propNameOf(slice);
+      const descriptorStatus = name.length > 0 && nodeContext.descriptorAtRuleName !== null
+        ? cssData.isKnownAtRuleDescriptor(nodeContext.descriptorAtRuleName, name)
+        : undefined;
 
       if (name.length > 0) {
         const lower = name.toLowerCase();
@@ -2079,8 +2102,15 @@ export function cstLintDiagnostics(
           || lower.includes('#{')
           || lower.includes('@{')
           || lower.includes('${');
-        if (!skip && !cssData.isKnownProperty(lower)) {
-          const nameStart = start + slice.indexOf(name);
+        const nameStart = start + slice.indexOf(name);
+        if (descriptorStatus === false) {
+          push(
+            LINT_CODES.unknownAtRuleDescriptors,
+            'warning',
+            `Unknown descriptor "${name}" for at-rule "@${nodeContext.descriptorAtRuleName}"`,
+            spanAtOrContaining(node, nameStart, nameStart + name.length)
+          );
+        } else if (descriptorStatus === undefined && !skip && !cssData.isKnownProperty(lower)) {
           push(LINT_CODES.unknownProperties, 'warning', `Unknown property: '${name}'`, spanAtOrContaining(node, nameStart, nameStart + name.length));
         }
       }

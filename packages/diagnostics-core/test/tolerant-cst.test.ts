@@ -34,6 +34,19 @@ describe('collectTolerantDiagnostics', () => {
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toBe(false);
   });
 
+  it('uses caller-provided CSS metadata for known at-rule descriptors', () => {
+    const result = collectTolerantDiagnostics({
+      source: '@font-face { project-src: url(font.woff2); }',
+      language: 'css',
+      metadata: {
+        isKnownAtRuleDescriptor: (atRuleName, descriptorName) => atRuleName === 'font-face' && descriptorName === 'project-src'
+      }
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownAtRuleDescriptors)).toBe(false);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toBe(false);
+  });
+
   it('uses caller-provided CSS metadata for known selector pseudos', () => {
     const result = collectTolerantDiagnostics({
       source: '.a:project-state::project-part { color: red; }',
@@ -139,6 +152,24 @@ describe('collectTolerantDiagnostics', () => {
     expect(duplicateCustomProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
       ['Duplicate custom property "--brand"', source.lastIndexOf('--brand'), source.indexOf('; color')]
     ]);
+  });
+
+  it('reports unknown at-rule descriptors without also reporting unknown properties', () => {
+    const source = '@font-face { font-family: Inter; src: url(inter.woff2); made-up: nope; }\n'
+      + '@property --x { syntax: "<length>"; inherits: false; initial-value: 0px; unknown: yes; }\n'
+      + '@counter-style thumbs { system: cyclic; symbols: "x"; frob: nope; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const unknownDescriptors = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.unknownAtRuleDescriptors);
+
+    expect(unknownDescriptors.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Unknown descriptor "made-up" for at-rule "@font-face"', source.indexOf('made-up'), source.indexOf('made-up') + 'made-up'.length],
+      ['Unknown descriptor "unknown" for at-rule "@property"', source.indexOf('unknown'), source.indexOf('unknown') + 'unknown'.length],
+      ['Unknown descriptor "frob" for at-rule "@counter-style"', source.indexOf('frob'), source.indexOf('frob') + 'frob'.length]
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toBe(false);
   });
 
   it('reports duplicate keyframe selectors and important keyframe declarations', () => {

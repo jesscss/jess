@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 13;
+export const STABLE_LINT_RULE_SET_VERSION = 14;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -11,6 +11,7 @@ export const LINT_RULE_NAMES = {
   emptyRules: 'block-no-empty',
   unknownProperties: 'property-no-unknown',
   unknownAtRules: 'at-rule-no-unknown',
+  unknownAtRuleDescriptors: 'at-rule-descriptor-no-unknown',
   duplicateProperties: 'declaration-block-no-duplicate-properties',
   duplicateCustomProperties: 'declaration-block-no-duplicate-custom-properties',
   hexColorLength: 'color-no-invalid-hex',
@@ -51,6 +52,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.emptyRules]: LINT_CODES.emptyRules,
   [LINT_RULE_NAMES.unknownProperties]: LINT_CODES.unknownProperties,
   [LINT_RULE_NAMES.unknownAtRules]: LINT_CODES.unknownAtRules,
+  [LINT_RULE_NAMES.unknownAtRuleDescriptors]: LINT_CODES.unknownAtRuleDescriptors,
   [LINT_RULE_NAMES.duplicateProperties]: LINT_CODES.duplicateProperties,
   [LINT_RULE_NAMES.duplicateCustomProperties]: LINT_CODES.duplicateCustomProperties,
   [LINT_RULE_NAMES.hexColorLength]: LINT_CODES.hexColorLength,
@@ -78,6 +80,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.emptyRules]: LINT_RULE_NAMES.emptyRules,
   [LINT_CODES.unknownProperties]: LINT_RULE_NAMES.unknownProperties,
   [LINT_CODES.unknownAtRules]: LINT_RULE_NAMES.unknownAtRules,
+  [LINT_CODES.unknownAtRuleDescriptors]: LINT_RULE_NAMES.unknownAtRuleDescriptors,
   [LINT_CODES.duplicateProperties]: LINT_RULE_NAMES.duplicateProperties,
   [LINT_CODES.duplicateCustomProperties]: LINT_RULE_NAMES.duplicateCustomProperties,
   [LINT_CODES.hexColorLength]: LINT_RULE_NAMES.hexColorLength,
@@ -105,6 +108,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.emptyRules]: 'warn',
   [LINT_RULE_NAMES.unknownProperties]: 'warn',
   [LINT_RULE_NAMES.unknownAtRules]: 'warn',
+  [LINT_RULE_NAMES.unknownAtRuleDescriptors]: 'warn',
   [LINT_RULE_NAMES.duplicateProperties]: 'warn',
   [LINT_RULE_NAMES.duplicateCustomProperties]: 'warn',
   [LINT_RULE_NAMES.hexColorLength]: 'error',
@@ -132,6 +136,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.emptyRules]: 'warn',
   [LINT_RULE_NAMES.unknownProperties]: 'warn',
   [LINT_RULE_NAMES.unknownAtRules]: 'warn',
+  [LINT_RULE_NAMES.unknownAtRuleDescriptors]: 'warn',
   [LINT_RULE_NAMES.duplicateProperties]: 'warn',
   [LINT_RULE_NAMES.duplicateCustomProperties]: 'warn',
   [LINT_RULE_NAMES.hexColorLength]: 'error',
@@ -188,6 +193,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'at-rule-no-unknown',
     notes: 'Uses Jess language metadata plus dialect at-rule allow-lists.'
+  },
+  {
+    code: LINT_CODES.unknownAtRuleDescriptors,
+    ruleName: LINT_RULE_NAMES.unknownAtRuleDescriptors,
+    title: 'Unknown at-rule descriptors',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'at-rule-descriptor-no-unknown',
+    notes: 'Flags unknown descriptors in parsed CSS descriptor blocks using shared CSS metadata; @page descriptor support remains future work.'
   },
   {
     code: LINT_CODES.duplicateProperties,
