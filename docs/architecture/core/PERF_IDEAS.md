@@ -153,14 +153,15 @@ with SHA-256 `3ea6c1bdae41511923deece75676d453ff470cb447f531aae935b44eae6f5083`.
   must identify which semantic/render facts actually require a span and remove
   whole writes for facts that do not, while preserving the uniform AST shape.
 
-  Rejected first cut (2026-07-30): omitting standalone Less `Dimension` spans
-  removed 2,969 writes (14.7%) and 119 KB/document (1.76%) from the exact
-  held-AST measurement, but Parseman currently provides only the enclosing
-  reduction span. A chained expression can retain an intermediate `Operation`,
-  so spanning only the final fold loses that operation's precise diagnostic
-  location. Do not land this reduction until Parseman can provide child spans to
-  AST reductions, or a replacement proves precise spans for every
-  diagnostic-owning operation without retaining a per-dimension span.
+  Implemented (2026-07-30): standalone Less `Dimension` nodes no longer receive
+  source spans. The Less grammar folds each arithmetic operation from Parseman's
+  already-supplied raw child spans, so every intermediate operation retains its
+  authored range without a per-dimension WeakMap write. A chained
+  `1px * 1em / 1cm` test pins both operation ranges and its public strict-unit
+  diagnostic. The exact held-AST measurement removes 2,969 writes (14.7%) and
+  119 KB/document (1.76%). Reverse-order exact eval+emit samples were 38.33 ms
+  and 37.44 ms for the cut versus 39.75 ms for the clean baseline; this is
+  favorable but remains a confirmation signal, not a universal throughput claim.
 - **Parseman trivia indexing:** the Jess-side generic-map trigger is deleted in
   `bda41a0bb`: legacy labeled logs stream contiguous comment ranges directly,
   and comment-only emission uses an exact binary search over those sparse runs.

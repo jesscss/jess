@@ -23,7 +23,7 @@ import {
   not, scanTo, balanced, parser, trivia, noTrivia, label, word, keywords, field, leaf, peek,
   dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, when
 } from 'parseman' with { type: 'macro' };
-import type { Combinator, FieldCapture, FieldMap } from 'parseman';
+import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
@@ -1846,24 +1846,32 @@ function requireValueBlockBody(children: readonly unknown[]): Statement[] {
 /** Fold a grammar-produced flat binary chain left-to-right.  Precedence is
  * represented by which production supplies each operand; no source text is
  * recovered or re-parsed here. */
-function foldOperation(children: readonly unknown[]): ValueNode {
+function foldOperation(children: readonly unknown[], _fields: FieldMap, _span: Span, rawChildren: readonly unknown[]): ValueNode {
   const first = children.find(isValueNode);
   if (first === undefined) {
     throw new TypeError('Less arithmetic grammar produced no operand.');
   }
+  const firstIndex = children.indexOf(first);
+  const firstRaw = rawChildren[firstIndex];
+  // In AST mode Parseman supplies the original spanned children here. That
+  // gives each folded operation its authored range without retaining one span
+  // per standalone dimension. A synthetic child can still contribute an
+  // existing provenance fact when it has one.
+  const firstSpan = isSpannedToken(firstRaw) ? firstRaw.span : sourceSpanOf(first);
   let result = first;
+  const start = firstSpan?.start;
   for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
     const operatorToken = children[index];
     const right = children[index + 1];
     if (operatorToken === undefined || !isValueNode(right)) {
       throw new TypeError('Less arithmetic grammar lost an operator operand.');
     }
+    const rightRaw = rawChildren[index + 1];
+    const rightSpan = isSpannedToken(rightRaw) ? rightRaw.span : sourceSpanOf(right);
     const folded = operation(requireTerminalText(operatorToken).trim(), result, right);
-    const leftSpan = sourceSpanOf(result);
-    const rightSpan = sourceSpanOf(right);
-    result = leftSpan === undefined || rightSpan === undefined
+    result = start === undefined || rightSpan === undefined
       ? folded
-      : withSourceSpan(folded, { start: leftSpan.start, end: rightSpan.end });
+      : withSourceSpan(folded, { start, end: rightSpan.end });
   }
   return result;
 }
@@ -2580,10 +2588,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children, _fields, span) => {
       const numberText = requireToken(children[0]).value;
       const unit = children.length > 1 ? requireToken(children[1]).value : '';
-      return withSourceSpan(
-        dimension(Number(numberText), unit, `${numberText}${unit}`),
-        span
-      );
+      return dimension(Number(numberText), unit, `${numberText}${unit}`);
     }
   );
   // CSS unicode-range is one opaque CSS token, not Less arithmetic. It belongs

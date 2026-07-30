@@ -21,6 +21,18 @@ function makeCompiler() {
 }
 
 describe('Less unit arithmetic errors through the public AST route', () => {
+  it('keeps a chained arithmetic diagnostic at its authored operand', async () => {
+    await expect(makeCompiler().renderString(
+      '.x { value: (1px * 1em / 1cm); }',
+      { filePath: 'entry.less', extension: '.less' }
+    )).rejects.toMatchObject({
+      code: 'eval/invalid-unit-arithmetic',
+      line: 1,
+      column: 24,
+      filePath: 'entry.less'
+    });
+  });
+
   it.each([
     [
       'add-mixed-units',

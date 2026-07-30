@@ -48,6 +48,41 @@ describe('public Less parse()', () => {
     expect(result.span.endLine).toBe(3);
   });
 
+  it('keeps provenance for composite math without storing it on standalone dimensions', () => {
+    const source = '.x { plain: 10px; math: (1px * 1em / 1cm); }';
+    const document = parse(source);
+    const rule = document.rules[0];
+    if (rule?.type !== 'Ruleset') {
+      throw new Error('expected a ruleset');
+    }
+    const plain = rule.rules[0];
+    const math = rule.rules[1];
+    if (plain?.type !== 'Declaration' || math?.type !== 'Declaration') {
+      throw new Error('expected two declarations');
+    }
+    if (
+      math.value.type !== 'Block'
+      || Array.isArray(math.value.value)
+      || math.value.value.type !== 'Operation'
+    ) {
+      throw new Error('expected parenthesized arithmetic');
+    }
+
+    expect(sourceSpanOf(plain.value)).toBeUndefined();
+    const outer = math.value.value;
+    if (outer.left.type !== 'Operation') {
+      throw new Error('expected the left folded operation');
+    }
+    expect(sourceSpanOf(outer.left)).toEqual({
+      start: source.indexOf('1px'),
+      end: source.indexOf('/') - 1
+    });
+    expect(sourceSpanOf(outer)).toEqual({
+      start: source.indexOf('1px'),
+      end: source.indexOf(')')
+    });
+  });
+
   it('constructs boundary-complete CSS named colors as Color values', () => {
     const document = parse(
       '@tone: ReD; .card { color: lighten(@tone, 10%); enabled: iscolor(blue); plain: redder; current: currentColor; }'
