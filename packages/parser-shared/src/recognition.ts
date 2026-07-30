@@ -38,7 +38,18 @@ const nth = regex(/even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\
  * Keep this recognition fact shared and macro-fused: dialect reductions can
  * reject the malformed prefix before their otherwise lossless raw arm.
  */
-const malformedPseudoNumericArgument = regex(/(?:[-+]?\d*\.\d|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*(?:\)|[^0-9 \t\n\r\f]|\d+[_a-zA-Z\u0080-\uffff\\])))/i);
+/*
+ * The raw pseudo fallback must not recover malformed `<An+B>` spelling for an
+ * `:nth-*` family. In particular, CSS Syntax rejects whitespace that splits a
+ * sign, coefficient, or `n` token (`+ n`, `2 n + 2`, `1 - n`). Keep those
+ * rejection prefixes beside the existing decimal/dangling-tail guards; the
+ * consuming grammars apply this gate only to the `:nth-*` pseudo family, so
+ * unknown functional pseudos retain their ordinary `<any-value>` arguments.
+ *
+ * Derived from WPT css/css-syntax/anb-parsing.html at
+ * a95401e4e06351eb1e15f0e15cf50abf08fa545f.
+ */
+const malformedPseudoNumericArgument = regex(/(?:[-+]?\d*\.\d|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*(?:\)|[^0-9 \t\n\r\f]|\d+[_a-zA-Z\u0080-\uffff\\]))|[+-][ \t\n\r\f]+(?:\d*n|n)|[-+]?\d+[ \t\n\r\f]+n|[-+]?\d+[ \t\n\r\f]*[+-][ \t\n\r\f]*n)/i);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const scssLineComment = regex(/\/\/[^\n\r]*/);
 

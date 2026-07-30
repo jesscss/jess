@@ -276,7 +276,15 @@ describe('CSS canonical-AST grammar', () => {
       ':nth-child(2n +) { color: red; }',
       ':nth-child(1.5) { color: red; }',
       ':nth-child(2n+x) { color: red; }',
-      ':nth-child(2n+1x) { color: red; }'
+      ':nth-child(2n+1x) { color: red; }',
+
+      /* WPT css/css-syntax/anb-parsing.html @ a95401e4: token whitespace
+       * cannot split an An+B sign, coefficient, or `n` identifier. */
+      ':nth-child(+ n) { color: red; }',
+      ':nth-child(+ n-5) { color: red; }',
+      ':nth-child(1 - n) { color: red; }',
+      ':nth-child(2 n + 2) { color: red; }',
+      ':nth-child(- 2n) { color: red; }'
     ]) {
       const cst = parseCssCst(source);
       expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
@@ -520,7 +528,6 @@ describe('CSS canonical-AST grammar', () => {
       [':nth-child(2n + 1 of :is(.card, .tile)) { color: red; }', [':nth-child(2n + 1 of :is(.card, .tile))']],
       [':nth-child(-n+2 of .item) { color: red; }', [':nth-child(-n+2 of .item)']],
       [':nth-last-of-type(-5n) { color: red; }', [':nth-last-of-type(-5n)']],
-      [':nth-child(- n+2) { color: red; }', [':nth-child(- n+2)']],
       [':nth-child(-n+2/* preserve */ of .item) { color: red; }', [':nth-child(-n+2 of .item)']],
       [':nth-child(-) { color: red; }', [':nth-child(-)']],
       ['50% { color: red; }', ['50%']]

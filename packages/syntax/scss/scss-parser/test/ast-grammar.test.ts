@@ -1729,6 +1729,11 @@ describe('SCSS canonical-AST grammar', () => {
     for (const invalid of [
       '.card:nth-child(2n +) { color: blue; }',
       '.card:nth-child(1.5) { color: blue; }',
+      '.card:nth-child(+ n) { color: blue; }',
+      '.card:nth-child(+ n-5) { color: blue; }',
+      '.card:nth-child(1 - n) { color: blue; }',
+      '.card:nth-child(2 n + 2) { color: blue; }',
+      '.card:nth-child(- 2n) { color: blue; }',
       '.card:lang(#{$locale}) { color: blue; }',
       '.card:part(icon-#{$name}) { color: blue; }'
     ]) {

@@ -1143,6 +1143,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.PseudoSelectorCloseAhead
       ),
       noTrivia(sequence(
+
+        /* `- 2n` is malformed An+B, not a generic dash-led raw argument.
+         * The shared gate owns the full prefix before this branch can consume
+         * the dash and bypass the ordinary raw-argument guard below. */
+        not(g.MalformedPseudoSelectorNumericArgument),
         literal('-'),
         regex(/[ \t\n\r\f]+/),
         pseudoRawArgument
