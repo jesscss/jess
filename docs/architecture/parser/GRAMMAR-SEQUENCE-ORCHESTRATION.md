@@ -4996,11 +4996,12 @@ structural route.
 Evidence slice, 2026-07-30: SCSS and Jess now reuse the shared CSS
 `@supports` keyword leaf instead of spelling dialect-local `@supports`
 terminals. A CSS `ConditionalBlock` / `NestedConditionalBlock` dispatch rewrite
-was tested and intentionally not landed because the first attempt preserved CST
-recovery but changed AST rejection for malformed known conditional at-rules; the
-next at-rule dispatch slice needs a designed committed-error shape that keeps
-AST and CST host modes aligned. Verification for the landed leaf-reuse/docs
-slice: `pnpm --filter @jesscss/parser-shared build`;
+was tested and intentionally not landed: a selected malformed header still
+rejects in the AST host, but becomes a root-level nonrecoverable `ok: false`
+in the CST host instead of the existing recoverable diagnostic tree. The next
+at-rule dispatch slice needs Parseman support for preserving selected-tail CST
+recovery while retaining committed AST rejection. Verification for the landed
+leaf-reuse/docs slice: `pnpm --filter @jesscss/parser-shared build`;
 `pnpm --filter @jesscss/css-parser test -- test/conditional-at-rule-value.test.ts
 test/ast-grammar.test.ts test/cst-public.test.ts test/macro-compiled.test.ts
 --reporter=dot`; `pnpm --filter @jesscss/scss-parser test --
