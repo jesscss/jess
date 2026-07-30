@@ -406,6 +406,28 @@ instead.
 
 - Run the smallest relevant test first while iterating.
 - Before claiming completion, run the appropriate baseline or verification command for the affected area.
+- **On hot paths the reference class is a compiler, not an application.** Hot
+  paths are `packages/core/src/ast/**` (`serialize.ts`, `provenance.ts`,
+  `extend/**`), `packages/syntax/*/*-parser/src/**`, `packages/parser-shared/**`,
+  and `packages/core/src/tree/**`. Idiomatic general-purpose JavaScript is not
+  the bar: restarting a scan at index 0 inside a per-item loop over ordered
+  data, allocating an array or string only to test `.length` or emptiness,
+  per-node `WeakMap` side tables, and per-entry objects holding two integers are
+  all defects here no matter how ordinary or readable they look. The bad version
+  usually looks *better*, which is why it must be caught by counts rather than
+  by reading. Full statement and incidents: `docs/perf/V8-ARCHITECTURE.md`
+  invariant 11.
+- **None of that class changes emitted bytes**, so correctness gates,
+  byte-identity, and the full corpus stay green while the work is quadratic.
+  Prove hot-path changes with counts — allocations, `indexOf` calls, iterations
+  per render — not with timings; the timing harnesses currently cannot resolve
+  small effects.
+- **If a scope glob in `CLAUDE.md`, a `.cursor/rules/**` header, or a skill no
+  longer resolves, fix it in the same change.** A guardrail pointed at a deleted
+  directory is indistinguishable from a guardrail that passed. The `e96d1035d`
+  regroup left every parser rule pointing at `packages/*-parser/**` and left
+  `packages/core/src/ast/**` uncovered entirely; real invariant violations
+  landed in that window.
 - Before committing a parser-grammar change, run its parse-performance gate on
   the built artifact. Capture a named before/after comparison using the same
   fixture, Node runtime, warm-up, and timed samples; record the resolved parser

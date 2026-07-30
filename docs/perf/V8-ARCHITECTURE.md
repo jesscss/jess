@@ -201,6 +201,64 @@ policy-before-normalization, capping, indexed frame, and display-tier contracts;
 the PR workflow runs it. Reviewers must extend the same one-owner proof to any
 new source-derived runtime fact rather than adding a one-off cache afterward.
 
+## 11. The reference class is a compiler, not an application
+
+**RULE:** on these paths, judge code against what a compiler engineer considers
+table stakes — not against idiomatic general-purpose JavaScript. Specifically,
+all four of the following are defects here regardless of how ordinary they look
+elsewhere:
+
+- **Restarting a scan at index 0 inside a per-item loop** over source-ordered
+  data. Carry a monotonic cursor, or binary-search once. This is invariant 8 at
+  a smaller scale, and it is the most common instance.
+- **Allocating to evaluate a predicate** — building an array, string, or object
+  only to test `.length`, emptiness, or membership. Answer the question without
+  materializing the answer.
+- **Per-node weak side tables.** V8 backs `WeakMap` with an
+  `EphemeronHashTable`; every live entry is individually tracked and resolved by
+  a fixed-point iteration during marking, which V8 documents as able to degrade
+  to quadratic. When keys die with the document, weak semantics buy nothing and
+  the ephemeron cost is pure loss. Prefer indices into flat arrays, or a
+  document-scoped map dropped wholesale.
+- **Per-entry objects for fixed small tuples.** A `{ start, end }` pair per node
+  is an object header and a hash slot to hold two integers. Prefer flat parallel
+  arrays behind a lazy view.
+
+*Why:* the bad version usually looks *better* — shorter, more readable, more
+idiomatic. That is exactly why review does not catch it and why it must be
+countable. None of these change emitted bytes, so correctness gates,
+byte-identity gates, and the full corpus all pass while the work is quadratic
+or allocating.
+
+**INCIDENT:** `emitBlockCommentTriviaBetween` re-iterated `commentRuns()` from
+index 0 once per emitted statement — O(statements × runs) — while
+`blockCommentsIn()` re-scanned source with `indexOf('/*')` and allocated a
+fresh `string[]` *inside conditions that only tested `.length`*. In the same
+file, four module-global `WeakMap`s keyed by AST node stored
+`Readonly<{start,end}>` objects: 18,628 individually GC-tracked entries per
+render. Every gate was green throughout.
+
+**DETECTOR:** counts, not timings — `indexOf` calls, allocations, and
+inner-loop iterations per render against a committed named baseline. Counts
+have no noise floor, which matters because the timing harnesses cannot resolve
+small effects (eleven identical processes on the CSS gate corpus spanned
+−11.8% to +26.4%). Reviewers apply the `AGGRESSIVE-CUTTING-REVIEW.md` tokens
+(**[loop/traversal]**, **[array spread/materialization]**,
+**[materialized array/object]**) to core hot-path diffs, not only to grammar
+work.
+
+> **Scope is part of the invariant.** These rules bind
+> `packages/core/src/ast/**` — including `serialize.ts`, `provenance.ts`, and
+> `extend/**` — as much as they bind the grammars. That was not true in
+> practice for five days after the `e96d1035d` regroup: the routing globs in
+> `CLAUDE.md` and the `perf-architecture` skill still named
+> `packages/*-parser/**` (moved to `packages/syntax/`) and
+> `packages/core/src/tree/**` (the legacy engine) while omitting
+> `packages/core/src/ast/**`. The incident above landed in that window. **A
+> guardrail pointed at a deleted directory is indistinguishable from a
+> guardrail that passed** — when a path here stops resolving, fix it in the same
+> change.
+
 ---
 
 ## Regression-fixture catalogue (reviewer must always catch)
