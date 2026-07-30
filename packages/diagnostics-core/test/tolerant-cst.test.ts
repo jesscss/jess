@@ -64,6 +64,21 @@ describe('collectTolerantDiagnostics', () => {
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.unknownProperties)).toBe(false);
   });
 
+  it('uses caller-provided CSS metadata for deprecated properties', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { project-old: red; project-new: blue; }',
+      language: 'css',
+      metadata: {
+        isKnownProperty: name => name === 'project-old' || name === 'project-new',
+        cssPropertyStatus: name => name === 'project-old' ? 'deprecated' : undefined
+      }
+    });
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.message])).toEqual([
+      [LINT_CODES.deprecatedProperties, 'Deprecated property: \'project-old\'']
+    ]);
+  });
+
   it('uses caller-provided CSS metadata for known property values', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { display: project-layout; }',
@@ -257,6 +272,27 @@ describe('collectTolerantDiagnostics', () => {
       'Unknown value "1px" for property "animation-duration"',
       'Unknown value "linear-gradient(red, blue)" for property "background-color"'
     ]);
+  });
+
+  it('reports deprecated CSS properties from web custom data', () => {
+    const source = '.a { clip: auto; color: red; -ms-filter: none; }';
+    const result = collectTolerantDiagnostics({ source, language: 'css' });
+    const deprecatedProperties = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.deprecatedProperties
+    );
+
+    expect(deprecatedProperties.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Deprecated property: \'clip\'', source.indexOf('clip'), source.indexOf('clip') + 'clip'.length]
+    ]);
+  });
+
+  it('does not report deprecated properties in dialect files before CSS property facts exist', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { clip: auto; }',
+      language: 'less'
+    });
+
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.deprecatedProperties)).toBe(false);
   });
 
   it('does not report unknown property values in dialect files before value facts exist', () => {

@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 45;
+export const STABLE_LINT_RULE_SET_VERSION = 46;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -10,6 +10,7 @@ export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestio
 export const LINT_RULE_NAMES = {
   emptyRules: 'block-no-empty',
   unknownProperties: 'property-no-unknown',
+  deprecatedProperties: 'property-no-deprecated',
   unknownPropertyValues: 'declaration-property-value-no-unknown',
   unknownAtRules: 'at-rule-no-unknown',
   unknownAtRuleDescriptors: 'at-rule-descriptor-no-unknown',
@@ -77,6 +78,7 @@ export interface StableLintRule {
 const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.emptyRules]: LINT_CODES.emptyRules,
   [LINT_RULE_NAMES.unknownProperties]: LINT_CODES.unknownProperties,
+  [LINT_RULE_NAMES.deprecatedProperties]: LINT_CODES.deprecatedProperties,
   [LINT_RULE_NAMES.unknownPropertyValues]: LINT_CODES.unknownPropertyValues,
   [LINT_RULE_NAMES.unknownAtRules]: LINT_CODES.unknownAtRules,
   [LINT_RULE_NAMES.unknownAtRuleDescriptors]: LINT_CODES.unknownAtRuleDescriptors,
@@ -131,6 +133,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
 const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.emptyRules]: LINT_RULE_NAMES.emptyRules,
   [LINT_CODES.unknownProperties]: LINT_RULE_NAMES.unknownProperties,
+  [LINT_CODES.deprecatedProperties]: LINT_RULE_NAMES.deprecatedProperties,
   [LINT_CODES.unknownPropertyValues]: LINT_RULE_NAMES.unknownPropertyValues,
   [LINT_CODES.unknownAtRules]: LINT_RULE_NAMES.unknownAtRules,
   [LINT_CODES.unknownAtRuleDescriptors]: LINT_RULE_NAMES.unknownAtRuleDescriptors,
@@ -185,6 +188,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
 const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.emptyRules]: 'warn',
   [LINT_RULE_NAMES.unknownProperties]: 'warn',
+  [LINT_RULE_NAMES.deprecatedProperties]: 'warn',
   [LINT_RULE_NAMES.unknownPropertyValues]: 'warn',
   [LINT_RULE_NAMES.unknownAtRules]: 'warn',
   [LINT_RULE_NAMES.unknownAtRuleDescriptors]: 'warn',
@@ -269,6 +273,7 @@ const COMPARISON_RULES: Record<string, LintRuleSetting> = {
 
 const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.duplicateSelectors]: 'off',
+  [LINT_RULE_NAMES.deprecatedProperties]: 'off',
   [LINT_RULE_NAMES.unknownPropertyValues]: 'off',
   [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: 'off',
   [LINT_RULE_NAMES.propertyIgnoredDueToDisplay]: 'off',
@@ -313,6 +318,16 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     comparison: 'stylelint-near',
     stylelintRule: 'property-no-unknown',
     notes: 'Uses Jess language metadata and suppresses dialect variables, custom properties, vendor-prefixed properties, and interpolated names.'
+  },
+  {
+    diagnosticCode: LINT_CODES.deprecatedProperties,
+    ruleName: LINT_RULE_NAMES.deprecatedProperties,
+    title: 'Deprecated properties',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'stylelint-near',
+    stylelintRule: 'property-no-deprecated',
+    notes: 'Flags CSS properties marked obsolete or deprecated in VSCode web custom data; nonstandard and vendor-prefixed properties are not treated as deprecated.'
   },
   {
     diagnosticCode: LINT_CODES.unknownPropertyValues,

@@ -410,7 +410,7 @@ type MdnRef = { name: string; url: string };
 type Baseline = { status?: 'high' | 'low' | false; baseline_low_date?: string; baseline_high_date?: string };
 type Enrich = { syntax?: string; references?: MdnRef[]; baseline?: Baseline };
 type AtDirectiveEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
-type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }>; restrictions?: string[] } & Enrich;
+type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; status?: string; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }>; restrictions?: string[] } & Enrich;
 type PseudoEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
 type WebCssData = {
   atDirectives?: AtDirectiveEntry[];
@@ -773,6 +773,7 @@ export function createEngine(): JessLanguageServiceEngine {
      */
     [LINT_CODES.emptyRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.deprecatedProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownPropertyValues]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownAtRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownAtRuleDescriptors]: DiagnosticSeverity.Warning,
@@ -1829,6 +1830,16 @@ export function createEngine(): JessLanguageServiceEngine {
       if (tree) {
         const cstDiagnostics = cstLintDiagnostics(tree, text, tracked.lang, {
           isKnownProperty: name => CSS_PROPERTY_SET.has(name) || PROPERTIES_MAP.has(name),
+          cssPropertyStatus: (name) => {
+            const status = PROPERTIES_MAP.get(name)?.status;
+            return status === 'standard'
+              || status === 'experimental'
+              || status === 'nonstandard'
+              || status === 'obsolete'
+              || status === 'deprecated'
+              ? status
+              : undefined;
+          },
           isKnownAtRule: name => AT_RULES_MAP.has(`@${name}`)
         }, undefined, cstDoc.errors.length > 0 || cstDoc.unconsumedFrom !== null);
         for (const diagnostic of cstDiagnostics) {

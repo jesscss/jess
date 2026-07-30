@@ -60,8 +60,11 @@ export interface CssPropertyValueFact {
   readonly functionName?: string;
 }
 
+export type CssFeatureStatus = 'standard' | 'experimental' | 'nonstandard' | 'obsolete' | 'deprecated';
+
 export interface CssDiagnosticMetadata {
   isKnownProperty(name: string): boolean;
+  cssPropertyStatus?(name: string): CssFeatureStatus | undefined;
   isKnownPropertyValue(name: string, value: CssPropertyValueFact): boolean | undefined;
   isKnownAtRule(name: string): boolean;
   isKnownAtRuleDescriptor(atRuleName: string, descriptorName: string): boolean | undefined;

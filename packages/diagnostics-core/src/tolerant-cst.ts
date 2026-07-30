@@ -18,6 +18,7 @@ import type {
 export const LINT_CODES = {
   emptyRules: 'lint/empty-rules',
   unknownProperties: 'lint/unknown-property',
+  deprecatedProperties: 'lint/property-no-deprecated',
   unknownPropertyValues: 'lint/unknown-property-value',
   unknownAtRules: 'lint/unknown-at-rule',
   unknownAtRuleDescriptors: 'lint/at-rule-descriptor-no-unknown',
@@ -3668,6 +3669,9 @@ function metadataWithDefaults(metadata?: Partial<CssDiagnosticMetadata>): CssDia
     isKnownProperty(name) {
       return metadata?.isKnownProperty?.(name) ?? defaultCssDiagnosticMetadata.isKnownProperty(name);
     },
+    cssPropertyStatus(name) {
+      return metadata?.cssPropertyStatus?.(name) ?? defaultCssDiagnosticMetadata.cssPropertyStatus?.(name);
+    },
     isKnownPropertyValue(name, value) {
       return metadata?.isKnownPropertyValue?.(name, value) ?? defaultCssDiagnosticMetadata.isKnownPropertyValue(name, value);
     },
@@ -4273,11 +4277,23 @@ export function cstLintDiagnostics(
           || lower.includes('@{')
           || lower.includes('${');
         const nameStart = start + slice.indexOf(name);
+        const propertyStatus = language === 'css' && descriptor?.status === undefined && !skip
+          ? cssData.cssPropertyStatus?.(lower)
+          : undefined;
         if (descriptor !== null && descriptor.status === false) {
           push(
             LINT_CODES.unknownAtRuleDescriptors,
             'warning',
             `Unknown descriptor "${name}" for at-rule "@${descriptor.atRuleName}"`,
+            spanAtOrContaining(node, nameStart, nameStart + name.length)
+          );
+        } else if (
+          propertyStatus === 'obsolete' || propertyStatus === 'deprecated'
+        ) {
+          push(
+            LINT_CODES.deprecatedProperties,
+            'warning',
+            `Deprecated property: '${name}'`,
             spanAtOrContaining(node, nameStart, nameStart + name.length)
           );
         } else if (
