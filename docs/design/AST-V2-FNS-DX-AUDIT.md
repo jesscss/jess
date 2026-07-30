@@ -437,7 +437,7 @@ shape fixes are pending.
    needed. Plain property-read compatibility is not evidence that canonical
    Jess nodes should become classes.
 
-### P2: Public function-author ergonomics
+### Implemented P2: Public function-author ergonomics
 
 1. Document the AST-vs-value lane split: AST leaves have `src`, value objects
    have `bytes`.
