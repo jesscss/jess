@@ -1201,10 +1201,10 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('constructs static CSS at-rule facts directly, including nested documented media blocks', () => {
-    const staticQuery = run(jessAstGrammar.StaticAtQuery, '(min-width: 48rem)', { trivia: jessAstGrammar.whitespace });
-    expect(staticQuery.ok && staticQuery.unconsumedFrom === null).toBe(true);
-    for (const staticSource of [
+  it('constructs CSS at-rule facts directly, including nested documented media blocks', () => {
+    const query = run(jessAstGrammar.QueryFeature, '(min-width: 48rem)', { trivia: jessAstGrammar.whitespace });
+    expect(query.ok && query.unconsumedFrom === null).toBe(true);
+    for (const source of [
       '@media screen { .card { color: blue; } }',
       '@media (min-width: 48rem) { .card { color: blue; } }',
       '@media ( min-width : 48rem ) { .card { color: blue; } }',
@@ -1213,8 +1213,8 @@ describe('Jess AST grammar facts', () => {
       '.card { @media screen { color: blue; } }',
       '.card { @media screen { @supports (display: grid) { display: grid; } } }'
     ]) {
-      const staticResult = run(jessAstGrammar.Stylesheet, staticSource, { trivia: jessAstGrammar.whitespace });
-      expect(staticResult.ok && staticResult.unconsumedFrom === null, staticSource).toBe(true);
+      const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
     }
     const source = [
       '@charset "UTF-8";',

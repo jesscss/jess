@@ -165,15 +165,6 @@ function publicGrammarType(grammarType: string, rawChildren: readonly unknown[])
   if (grammarType === 'TopLevelCompoundSelector') {
     return 'CompoundSelector';
   }
-  if (grammarType === 'ContainerPrelude') {
-    return 'QueryPrelude';
-  }
-  if (grammarType === 'ContainerQueryPrelude') {
-    return 'QueryPrelude';
-  }
-  if (grammarType === 'ContainerQueryClause') {
-    return 'QueryClause';
-  }
   return grammarType;
 }
 
