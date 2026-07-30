@@ -1239,7 +1239,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [
         { type: 'AtRuleStatement', name: '@charset', prelude: { type: 'Quoted', value: 'UTF-8' } },
-        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', value: 'theme.css' } },
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Any', src: '"theme.css"' } },
         {
           type: 'Ruleset',
           rules: [
@@ -1267,7 +1267,7 @@ describe('Jess AST grammar facts', () => {
     expect(parse(compilerBeforeLiteral)).toMatchObject({
       rules: [
         { type: 'StyleImport', mode: 'import', path: { type: 'Quoted', value: 'legacy.less' } },
-        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Url', value: { type: 'Keyword', src: 'theme.css' } } }
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Any', src: 'url(theme.css)' } }
       ]
     });
 
@@ -1282,7 +1282,10 @@ describe('Jess AST grammar facts', () => {
       '.card { color: blue; } @IMPORT "theme.css";',
       '@charset "$[encoding]";',
       '@import "$[path]";',
-      '@import url($path);'
+      '@import "${path}.css";',
+      '@import url($path);',
+      '@import url(${path});',
+      '@import "theme.css" $media;'
     ]) {
       const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
@@ -1379,51 +1382,26 @@ describe('Jess AST grammar facts', () => {
       rules: [{ type: 'AtRuleBlock', name: '@position-try', prelude: { type: 'Keyword', src: '--foo' }, rules: [{ type: 'Declaration', name: 'top' }] }]
     });
 
-    /*
-     * The functional `@import` conditions — css-cascade-5 §2.1. `supports(...)`
-     * reuses the typed `@supports` condition rather than restating it.
-     */
+    // CSS imports preserve their static prelude as one CSS-owned opaque value.
     expect(parse('@import "a.css" supports(display: grid);').rules[0]).toMatchObject({
       type: 'AtRuleStatement',
       name: '@import',
-      prelude: {
-        type: 'SpacedValue',
-        parts: [
-          { type: 'Quoted', value: 'a.css' },
-          { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] }
-        ]
-      }
+      prelude: { type: 'Any', src: '"a.css" supports(display: grid)' }
     });
     expect(parse('@import "a.css" layer(base);').rules[0]).toMatchObject({
-      prelude: { parts: [{ type: 'Quoted' }, { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'base' }] }] }
+      prelude: { type: 'Any', src: '"a.css" layer(base)' }
     });
     expect(parse('@import "a.css" SUPPORTS(display: grid) LaYeR(base);').rules[0]).toMatchObject({
-      prelude: { parts: [
-        { type: 'Quoted' },
-        { type: 'FunctionCall', name: 'SUPPORTS' },
-        { type: 'FunctionCall', name: 'LaYeR' }
-      ] }
+      prelude: { type: 'Any', src: '"a.css" SUPPORTS(display: grid) LaYeR(base)' }
     });
     expect(parse('@import "a.css" supports((display: grid) and (color));').rules[0]).toMatchObject({
-      prelude: { parts: [
-        { type: 'Quoted' },
-        { type: 'FunctionCall', name: 'supports', args: [{ type: 'SpacedValue' }] }
-      ] }
+      prelude: { type: 'Any', src: '"a.css" supports((display: grid) and (color))' }
     });
     expect(parse('@import "a.css" supports(not (display: grid));').rules[0]).toMatchObject({
-      prelude: { parts: [
-        { type: 'Quoted' },
-        { type: 'FunctionCall', name: 'supports', args: [{ type: 'SpacedValue' }] }
-      ] }
+      prelude: { type: 'Any', src: '"a.css" supports(not (display: grid))' }
     });
     expect(parse('@import "a.css" supports (display: grid);').rules[0]).toMatchObject({
-      prelude: { parts: [
-        { type: 'Quoted' },
-        { type: 'SpacedValue', parts: [
-          { type: 'Keyword', src: 'supports' },
-          { type: 'Block' }
-        ] }
-      ] }
+      prelude: { type: 'Any', src: '"a.css" supports (display: grid)' }
     });
 
     /*
@@ -2073,14 +2051,14 @@ describe('Jess AST grammar facts', () => {
     ]) {
       const cst = parseJessCst(invalid);
       const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), invalid).toBeGreaterThan(0);
+      expect(!cst.ok || cst.errors.length + Number(cst.unconsumedFrom !== null) > 0, invalid).toBe(true);
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
   });
 
-  it('constructs structured Jess interpolation in ordinary and CSS-import url targets', () => {
-    const source = '$path: "images/icon.svg"; $file: "hero"; @import url(${path}) print; @import url(styles/${file}.css); .asset { direct: url(${path}); joined: url(images/${file}.svg); quoted: url("assets/${file}.svg"); }';
+  it('constructs structured Jess interpolation in ordinary URL value targets', () => {
+    const source = '$path: "images/icon.svg"; $file: "hero"; .asset { direct: url(${path}); joined: url(images/${file}.svg); quoted: url("assets/${file}.svg"); }';
     const cst = parseJessCst(source);
     const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
 
@@ -2093,8 +2071,6 @@ describe('Jess AST grammar facts', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'path' },
         { type: 'VariableDeclaration', name: 'file' },
-        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'SpacedValue', parts: [{ type: 'Url', value: { type: 'Interpolation' } }, { type: 'Keyword', src: 'print' }] } },
-        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: 'styles/' }, { ref: { type: 'VariableReference', name: 'file' }, unquote: true }, { lit: '.css' }] } } },
         { type: 'Ruleset', rules: [
           { type: 'Declaration', name: 'direct', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'path' }, unquote: true }] } } },
           { type: 'Declaration', name: 'joined', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: 'images/' }, { ref: { type: 'VariableReference', name: 'file' }, unquote: true }, { lit: '.svg' }] } } },
@@ -2103,12 +2079,12 @@ describe('Jess AST grammar facts', () => {
       ]
     });
     expect(serialize(parse(source))).toEqual({
-      css: '@import url(images/icon.svg) print;\n@import url(styles/hero.css);\n.asset {\n  direct: url(images/icon.svg);\n  joined: url(images/hero.svg);\n  quoted: url("assets/hero.svg");\n}\n'
+      css: '.asset {\n  direct: url(images/icon.svg);\n  joined: url(images/hero.svg);\n  quoted: url("assets/hero.svg");\n}\n'
     });
 
     let missingPath: unknown;
     try {
-      void serialize(parse('@import url(${path}); $path: "images/icon.svg";'));
+      void serialize(parse('.asset { image: url(${path}); }'));
     } catch (error) {
       missingPath = error;
     }
@@ -2121,10 +2097,10 @@ describe('Jess AST grammar facts', () => {
     if (!(missingPath instanceof JessError) || !missingPath.node) {
       throw new Error('expected a JessError with parser provenance');
     }
-    expect(sourceSpanOf(missingPath.node)).toEqual({ start: 12, end: 19 });
+    expect(sourceSpanOf(missingPath.node)).toEqual({ start: 20, end: 27 });
 
     expect(parse('@import url();')).toMatchObject({
-      rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Url', value: { type: 'Any', src: '' } } }]
+      rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Any', src: 'url()' } }]
     });
   });
 
@@ -2154,11 +2130,10 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
-  it('rejects unsupported dynamic CSS url bodies rather than falling through to FunctionCall', () => {
+  it('rejects unsupported dynamic CSS URL bodies rather than falling through to FunctionCall', () => {
     for (const source of [
       '.asset { image: url($path); }',
       '.asset { image: url(images/$[path] icon.svg); }',
-      '@import url($path);',
       '.asset { image: url("images/icon.svg"; }'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
@@ -2171,7 +2146,7 @@ describe('Jess AST grammar facts', () => {
      * arithmetic/expression form is admitted there alongside the $[…] accessor —
      * unlike identifier-like slots (selectors, property names) which stay accessor-only.
      */
-    for (const source of ['.asset { image: url($(path)); }', '@import url($(path));']) {
+    for (const source of ['.asset { image: url($(path)); }']) {
       const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
     }

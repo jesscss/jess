@@ -40,7 +40,7 @@ test('macro-compiled Jess call components retain modern CSS slash separators str
   ]) {
     const cst = parseJessCst(invalid);
     const result = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
-    expect(cst.errors.length + Number(cst.unconsumedFrom !== null), invalid).toBeGreaterThan(0);
+    expect(!cst.ok || cst.errors.length + Number(cst.unconsumedFrom !== null) > 0, invalid).toBe(true);
     expect(result.ok && result.unconsumedFrom === null, invalid).toBe(false);
   }
 });

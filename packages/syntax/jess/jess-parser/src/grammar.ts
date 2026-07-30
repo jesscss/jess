@@ -18,7 +18,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when, word } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, composeLeaf, dispatch, endsWith, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -76,12 +76,11 @@ type JessRules = {
   Dimension: Combinator<Dimension>;
   Color: Combinator<Color>;
   Url: Combinator<Url>;
-  InterpolatedUrl: Combinator<Url>;
   UrlInterpolatedValue: Combinator<Interpolation>;
   CallComponent: Combinator<ValueSlot>;
   CallArgument: Combinator<ValueSlot>;
   VarCall: Combinator<FunctionCall>;
-  Call: Combinator<FunctionCall>;
+  IdentifierOrFunction: Combinator<ValueNode>;
   CollectionEntry: Combinator<CollectionEntry>;
   Collection: Combinator<Collection>;
   ValueAtom: Combinator<ValueNode>;
@@ -90,7 +89,7 @@ type JessRules = {
   Value: Combinator<ValueSlot>;
   Important: Combinator<true>;
   CustomPropertyValue: Combinator<Keyword>;
-  CustomPropertyName: Combinator<string | Interpolation>;
+  InterpolatedCustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<unknown>;
   CustomInnerPart: Combinator<unknown>;
   CustomParen: Combinator<readonly unknown[]>;
@@ -183,8 +182,6 @@ type JessRules = {
   SupportsInParens: Combinator<ValueNode>;
   SupportsCondition: Combinator<ValueNode>;
   ImportTarget: Combinator<Quoted | Url>;
-  ImportSupportsArgument: Combinator<ValueNode>;
-  ImportTailFunction: Combinator<FunctionCall>;
   ImportPrelude: Combinator<ValueNode>;
   Charset: Combinator<AtRuleStatement>;
   ImportStatement: Combinator<AtRuleStatement>;
@@ -1039,6 +1036,23 @@ function isReferenceCall(value: unknown): value is Reference {
 
 function isQuoted(value: unknown): value is Quoted {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Quoted';
+}
+
+function isUrl(value: unknown): value is Url {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Url'
+    && 'value' in value
+    && isValueNode(value.value);
+}
+
+function urlFromChildren(children: readonly unknown[]): Url {
+  if (children.length === 2) {
+    return url(any(''));
+  }
+  const body = children[1];
+  return isValueNode(body) ? url(body) : url(any(requireToken(body).value));
 }
 
 function requirePlainQuoted(value: unknown): Quoted {
@@ -2358,8 +2372,9 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * Static CSS at-rule headers use this closed URL production. Dynamic URL
-   * segments are admitted only by the value and CSS-import productions below.
+   * Static CSS at-rule headers use this closed URL production. Value-position
+   * URLs route through IdentifierOrFunction below, where dynamic Jess segments
+   * are a deliberate override of this static CSS leaf.
    */
   const Url = node<Url>(
     'Url',
@@ -2371,30 +2386,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       )),
       literal(')')
     ),
-    (children) => {
-      if (children.length === 2) {
-        return url(any(''));
-      }
-      const body = children[1];
-      return isValueNode(body) ? url(body) : url(any(requireToken(body).value));
-    }
-  );
-
-  /*
-   * Ordinary Jess value URLs retain `$[…]` as typed interpolation, instead of
-   * lowering it to opaque URL text or a generic function call.
-   */
-  const InterpolatedUrl = node<Url>(
-    'InterpolatedUrl',
-    sequence(
-      g.UrlOpen,
-      choice(
-        g.Quoted,
-        g.UrlInterpolatedValue
-      ),
-      literal(')')
-    ),
-    children => url(requireValueNode(children[1]))
+    urlFromChildren
   );
 
   /*
@@ -2937,10 +2929,35 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     }
   );
 
-  const callOpen = token(noTrivia(sequence(
-    g.Identifier,
-    literal('(')
+  /*
+   * Value-position identifiers and glued function openers are one CSS family.
+   * Route the consumed spelling exactly once: `url(` keeps its dedicated body,
+   * `var(` retains its comma rule, generic functions own Call, and a bare
+   * identifier remains a Keyword. This prevents a malformed known URL from
+   * falling through to GenericCall after its URL production rejects.
+   */
+  const CustomPropertyValue = node<Keyword>(
+    'CustomPropertyValue',
+    g.CustomPropertyName,
+    children => keyword(requireToken(children[0]).value)
+  );
+  const identifierOrFunction = token(noTrivia(sequence(
+    choice(
+      g.CustomPropertyName,
+      g.Identifier
+    ),
+    optional(literal('('))
   )));
+  const RoutedCustomPropertyValue = node<Keyword>(
+    'CustomPropertyValue',
+    routed(),
+    children => keyword(requireToken(children[0]).value)
+  );
+  const KeywordValue = node<Keyword>(
+    'Keyword',
+    routed(),
+    children => keyword(requireToken(children[0]).value)
+  );
   const VarCall = node<FunctionCall>(
     'VarCall',
     sequence(
@@ -2984,13 +3001,38 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       children.slice(1, -1).filter(isValueSlotValue)
     )
   );
-  const Call = dispatch(
-    callOpen,
+  const UrlFunction = node<Url>(
+    'Url',
+    sequence(
+      routed(),
+      optional(choice(
+        g.Quoted,
+        g.UrlInterpolatedValue,
+        g.PlainUrlInner
+      )),
+      literal(')')
+    ),
+    urlFromChildren
+  );
+  const IdentifierOrFunction = dispatch(
+    identifierOrFunction,
+    caseInsensitiveWhen(
+      'url(',
+      UrlFunction
+    ),
     caseInsensitiveWhen(
       'var(',
       VarCall
     ),
-    otherwise(GenericCall)
+    when(
+      endsWith('('),
+      GenericCall
+    ),
+    when(
+      startsWith('--'),
+      RoutedCustomPropertyValue
+    ),
+    otherwise(KeywordValue)
   );
 
   /*
@@ -3208,46 +3250,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * A CSS custom-property token is an ordinary component value (`var(--accent)`),
-   * not a Jess declaration name. It is not a CSS ident, so it cannot reach the
-   * Keyword leaf; give it its own arm just ahead of Keyword, which shares the
-   * leading `-` but can never match a second one.
-   */
-  const CustomPropertyValue = node<Keyword>(
-    'CustomPropertyValue',
-    g.CustomPropertyName,
-    children => keyword(requireToken(children[0]).value)
-  );
-  const keywordToken = choice(
-    token(g.CustomPropertyName),
-    token(g.Identifier)
-  );
-  const RoutedCustomPropertyValue = node<Keyword>(
-    'CustomPropertyValue',
-    routed(),
-    children => keyword(requireToken(children[0]).value)
-  );
-  const KeywordValue = node<Keyword>(
-    'Keyword',
-    routed(),
-    children => keyword(requireToken(children[0]).value)
-  );
-
-  /*
-   * Custom-property values and ordinary identifiers are both value keywords once
-   * reduced. Route the already-read token so the `--*` special case does not sit
-   * beside a second identifier-shaped keyword arm in value atoms.
-   */
-  const KeywordLikeValue = dispatch(
-    keywordToken,
-    when(
-      startsWith('--'),
-      RoutedCustomPropertyValue
-    ),
-    otherwise(KeywordValue)
-  );
-
-  /*
    * A value-position interpolation may carry an authored literal tail — the unit
    * in `$(20)px`, a suffix in `$[name]-suffix`. That tail is grammar structure
    * (one more Interpolation part), never a re-scan of the interpolation's bytes.
@@ -3302,13 +3304,10 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     g.ExpressionLambda,
     g.InterpolatedValue,
     g.SelectorCapture,
-    g.Url,
-    g.InterpolatedUrl,
-    g.Call,
+    g.IdentifierOrFunction,
     g.Quoted,
     g.Color,
-    g.Dimension,
-    KeywordLikeValue
+    g.Dimension
   );
   const ValueAtom = node<ValueNode>(
     'ValueAtom',
@@ -4171,126 +4170,42 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     'ImportTarget',
     choice(
       g.PlainQuoted,
-      sequence(
-        g.UrlOpen,
-        literal(')')
-      ),
-      sequence(
-        g.UrlOpen,
-        choice(
-          g.Quoted,
-          g.UrlInterpolatedValue,
-          g.PlainUrlInner
-        ),
-        literal(')')
-      )
+      g.Url
     ),
     (children) => {
-      if (children.length === 1) {
-        return requirePlainQuoted(children[0]);
+      const target = children[0];
+      if (!isQuoted(target) && !isUrl(target)) {
+        throw new TypeError('Jess CSS import lost its static target.');
       }
-      if (children.length === 2) {
-        return url(any(''));
-      }
-      const inner = children.find(isValueNode);
-      return url(inner ?? keyword(requireToken(children[1]).value));
+      return target;
     }
   );
 
   /*
-   * The two functional `@import` conditions — `supports(<condition>)` and
-   * `layer(<layer-name>)`, css-cascade-5 §2.1. Neither is an ordinary media
-   * query term, so the at-rule prelude term could not recognize either and a
-   * conditional import lost the whole stylesheet. `supports(...)` reuses the
-   * typed `@supports` condition this grammar already owns rather than restating
-   * it, and both reduce to the `FunctionCall` scss produces for the same tail.
-   * Kept local to the import tail: the general at-rule value grammar is not
-   * widened, so no other header gains a function-call spelling here.
+   * A bare Jess `@import` is CSS only. The target is the existing static CSS
+   * quoted/URL family and its tail is the existing CSS-shaped opaque prelude;
+   * top-level `$` remains a sentinel, so compiler values cannot be flattened
+   * into an authored import. Compiler loading is explicitly `@-import`.
    */
-  const importTailFunctionOpen = token(noTrivia(sequence(
-    g.Identifier,
-    literal('(')
-  )));
-  const ImportSupportsArgument = node<ValueNode>(
-    'ImportSupportsArgument',
-    choice(
-      sequence(
-        g.SupportsCondition,
-        literal(')')
-      ),
-      sequence(
-        optional(rawWhitespace),
-        g.Identifier,
-        optional(rawWhitespace),
-        literal(':'),
-        optional(rawWhitespace),
-        g.SupportsAtom,
-        optional(rawWhitespace),
-        literal(')')
-      ),
-      sequence(
-        optional(rawWhitespace),
-        g.Identifier,
-        optional(rawWhitespace),
-        literal(')')
-      )
-    ),
-    (children) => {
-      if (isValueNode(children[0])) {
-        return children[0];
-      }
-      return reduceColonFeature(
-        children,
-        'Jess import supports argument lost its property name.'
-      );
-    }
-  );
-  const ImportTailFunction = node<FunctionCall>(
-    'ImportTailFunction',
-    dispatch(
-      importTailFunctionOpen,
-
-      /*
-       * The routed value is the glued CSS function opener. Nested/logical
-       * supports arguments reuse `SupportsCondition`; declaration-shaped
-       * `supports(display: grid)` is owned by `ImportSupportsArgument`.
-       */
-      caseInsensitiveWhen(
-        'supports(',
-        sequence(
-          routed(),
-          g.ImportSupportsArgument
-        )
-      ),
-      caseInsensitiveWhen(
-        'layer(',
-        sequence(
-          routed(),
-          g.Keyword,
-          literal(')')
-        )
-      )
-    ),
-    children => funcCall(
-      functionOpenName(children[0]),
-      [requireValueNode(children.find(isValueNode))]
-    )
-  );
   const ImportPrelude = node<ValueNode>(
     'ImportPrelude',
-    noTrivia(sequence(
+    sequence(
       g.ImportTarget,
-      many(sequence(
-        regex(/[ \t\n\r\f]+/),
-        choice(
-          g.ImportTailFunction,
-          g.AtRulePreludeTerm
-        )
-      ))
-    )),
+      g.OpaqueAtPrelude
+    ),
     (children) => {
-      const values = children.filter(isValueNode);
-      return values.length === 1 ? values[0]! : spaced(values);
+      const target = children[0];
+      if (!isQuoted(target) && !isUrl(target)) {
+        throw new TypeError('Jess CSS import lost its static target.');
+      }
+      const tail = children[1];
+      if (tail !== null && typeof tail !== 'string') {
+        throw new TypeError('Jess CSS import lost its opaque tail.');
+      }
+      const targetText = target.type === 'Quoted'
+        ? target.src
+        : `url(${expressionSource(target.value)})`;
+      return any(tail === null ? targetText : `${targetText} ${tail}`);
     }
   );
   const ImportStatement = node<AtRuleStatement>(
@@ -4656,8 +4571,8 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
    * the custom-property leaf, or that leaf's `--` prefix followed by `$[…]`
    * segments.
    */
-  const CustomPropertyName = node<string | Interpolation>(
-    'CustomPropertyName',
+  const InterpolatedCustomPropertyName = node<string | Interpolation>(
+    'InterpolatedCustomPropertyName',
     choice(
       noTrivia(sequence(
         literal('--'),
@@ -4755,7 +4670,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
      * declaration tail below.
      */
     sequence(
-      g.CustomPropertyName,
+      g.InterpolatedCustomPropertyName,
       literal(':'),
       g.CustomValue,
       optional(g.Important),
@@ -5727,8 +5642,6 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     SupportsInParens,
     SupportsCondition,
     ImportTarget,
-    ImportSupportsArgument,
-    ImportTailFunction,
     ImportPrelude,
     UrlInterpolatedValue,
     Charset,
@@ -5749,11 +5662,10 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     Dimension,
     Color,
     Url,
-    InterpolatedUrl,
     CallComponent,
     CallArgument,
     VarCall,
-    Call,
+    IdentifierOrFunction,
     CollectionEntry,
     Collection,
     InterpolatedValue,
@@ -5763,7 +5675,7 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
     Value,
     Important,
     CustomPropertyValue,
-    CustomPropertyName,
+    InterpolatedCustomPropertyName,
     CustomPart,
     CustomInnerPart,
     CustomParen,

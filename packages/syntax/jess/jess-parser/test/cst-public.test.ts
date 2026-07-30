@@ -158,19 +158,27 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(stats(plain.tree).grammarTypes.get('DollarBrace')).toBeUndefined();
   });
 
-  it('uses structural interpolation nodes in ordinary and @import url targets', () => {
-    const result = parseJessCst('@import url(${path}) print; .asset { image: url(images/${file}.svg); }');
+  it('keeps CSS import targets static while ordinary value URLs retain interpolation', () => {
+    const result = parseJessCst('@import url(theme.css) supports(display: grid); .asset { image: url(images/${file}.svg); }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(stats(result.tree).grammarTypes.get('ImportStatement')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('ImportPrelude')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('ImportTarget')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('InterpolatedUrl')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('Url')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('UrlInterpolatedValue')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('CssImport')).toBeUndefined();
-    expect(stats(result.tree).grammarTypes.get('CssImportPrelude')).toBeUndefined();
-    expect(stats(result.tree).grammarTypes.get('CssImportTarget')).toBeUndefined();
+  });
+
+  it('rejects runtime values in a bare CSS @import', () => {
+    for (const source of [
+      '@import url(${path});',
+      '@import "${path}.css";',
+      '@import "theme.css" $media;'
+    ]) {
+      const result = parseJessCst(source);
+      expect(result.errors.length + Number(result.unconsumedFrom !== null), source).toBeGreaterThan(0);
+    }
   });
 
   it('keeps documented expression arithmetic in the public CST route', () => {
