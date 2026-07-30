@@ -1027,8 +1027,8 @@ const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
 /*
  * Grammar-local copies of the leading pseudo-colon, hex-color and number
  * recognizers (byte-identical to the shared PseudoSelectorColon /
- * CssSyntaxHexColor / CssSyntaxNumber). Leading a choice arm with a
- * cross-composition `g.CssSyntax*` reference leaves that arm's first-set
+ * HexColor / NumberToken). Leading a choice arm with a
+ * cross-composition shared `g.*` reference leaves that arm's first-set
  * unresolved (`any`) across the composeLeaf artifact boundary, so the compiler
  * enters the PseudoSelector / Color / Dimension node frame SPECULATIVELY at every simple
  * selector and value atom. A grammar-local leading recognizer lets the compiler
@@ -1041,7 +1041,7 @@ const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)
 
 /*
  * Grammar-local block/line comment recognizers (byte-identical to the shared
- * CssSyntaxBlockComment / ScssSyntaxLineComment). Both open on `/`, so a
+ * BlockCommentToken / ScssSyntaxLineComment). Both open on `/`, so a
  * local copy lets the statement-comment arm resolve its first-set to `/` and be
  * first-char-gated in the body-prefix choice instead of entering the comment
  * node frame speculatively at every rule/at-statement position.
@@ -1068,7 +1068,7 @@ const scssScanSkipSingleString = noTrivia(sequence(
 
 /*
  * Grammar-local CSS bubbling-at-rule keyword recognizers (byte-identical to the
- * shared CssSyntax*AtKeyword leaves). Every nested at-statement arm must have
+ * shared CSS at-keyword leaves). Every nested at-statement arm must have
  * a resolvable first-set for the whole `@`-cluster choice to first-char-gate: the
  * mixin/control-flow arms already lead with local `@…` regexes, so spelling these
  * CSS block keywords locally too resolves the cluster's first-set to `@` and lets
@@ -1295,7 +1295,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const CustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
-    g.CssSyntaxCustomProperty,
+    g.CustomPropertyName,
     children => keyword(requireToken(children[0]).value)
   );
   const Color = node<Color>(
@@ -1311,14 +1311,14 @@ export const scssFactory = (g: ScssInputRules) => {
    */
   const UnicodeRange = node<ValueNode>(
     'UnicodeRange',
-    g.CssSyntaxUnicodeRange,
+    g.UnicodeRangeToken,
     children => any(requireToken(children[0]).value)
   );
   const Dimension = node<Dimension>(
     'Dimension',
     noTrivia(sequence(
       numberValue,
-      optional(g.CssSyntaxDimensionUnit)
+      optional(g.DimensionUnit)
     )),
     (children) => {
       const numberText = requireToken(children[0]).value;
@@ -1811,7 +1811,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'Important',
     sequence(
       literal('!'),
-      g.CssSyntaxImportant
+      g.ImportantToken
     ),
     (children) => {
       if (children.length !== 2 || requireToken(children[0]).value !== '!') {
@@ -1875,7 +1875,7 @@ export const scssFactory = (g: ScssInputRules) => {
           g.SassInterpolation
         ))
       )),
-      g.CssSyntaxCustomProperty
+      g.CustomPropertyName
     ),
     (children) => {
       if (!children.some(isInterpolation)) {
@@ -1928,20 +1928,20 @@ export const scssFactory = (g: ScssInputRules) => {
   );
   const CustomInnerPart: Combinator<unknown> = choice(
     g.SassInterpolation,
-    g.CssSyntaxCustomInnerContent,
+    g.CustomInnerContent,
     blockComment,
-    g.CssSyntaxCustomSingleQuoted,
-    g.CssSyntaxCustomDoubleQuoted,
+    g.CustomSingleQuoted,
+    g.CustomDoubleQuoted,
     g.CustomParen,
     g.CustomSquare,
     g.CustomCurly
   );
   const CustomPart: Combinator<unknown> = choice(
     g.SassInterpolation,
-    g.CssSyntaxCustomOuterContent,
+    g.CustomOuterContent,
     blockComment,
-    g.CssSyntaxCustomSingleQuoted,
-    g.CssSyntaxCustomDoubleQuoted,
+    g.CustomSingleQuoted,
+    g.CustomDoubleQuoted,
     g.CustomParen,
     g.CustomSquare,
     g.CustomCurly
@@ -2150,7 +2150,7 @@ export const scssFactory = (g: ScssInputRules) => {
      * interpolation-bearing targets remain their existing structural arms.
      */
     sequence(
-      g.CssSyntaxUrlOpen,
+      g.UrlOpen,
       optional(choice(
         g.Quoted,
         staticUrlInner
@@ -3704,7 +3704,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.StaticAtPreludeSquare,
       g.StaticAtPreludeDoubleQuoted,
       g.StaticAtPreludeSingleQuoted,
-      g.CssSyntaxBlockComment,
+      g.BlockCommentToken,
       g.ScssSyntaxLineComment,
       staticAtPreludeText
     ),
@@ -3731,7 +3731,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.StaticAtPreludeSquare,
       g.StaticAtPreludeDoubleQuoted,
       g.StaticAtPreludeSingleQuoted,
-      g.CssSyntaxBlockComment,
+      g.BlockCommentToken,
       g.ScssSyntaxLineComment,
       staticStatementPreludeText
     ))),
@@ -4038,7 +4038,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'PageMarginBox',
     sequence(
       g.MarginAtKeyword,
-      many(g.CssSyntaxBlockComment),
+      many(g.BlockCommentToken),
       literal('{'),
       many(choice(
         g.Comment,
@@ -4098,7 +4098,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'FontFeatureValueBlock',
     sequence(
       g.FontFeatureValueAtKeyword,
-      many(g.CssSyntaxBlockComment),
+      many(g.BlockCommentToken),
       literal('{'),
       many(choice(
         g.Comment,
@@ -4407,7 +4407,7 @@ export const scssFactory = (g: ScssInputRules) => {
    */
   const Simple = node<SimpleSelector>(
     'Simple',
-    g.CssSyntaxSimple,
+    g.SimpleSelectorToken,
     children => simpleSelector(requireToken(children[0]).value)
   );
   const InterpolatedSimple = node<SimpleSelector>(
@@ -4530,7 +4530,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.StaticPseudoGroup,
         g.StaticPseudoSquare,
         staticValueQuoted,
-        g.CssSyntaxBlockComment,
+        g.BlockCommentToken,
         staticPseudoChunk
       )),
       literal(')')
@@ -4545,7 +4545,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.StaticPseudoGroup,
         g.StaticPseudoSquare,
         staticValueQuoted,
-        g.CssSyntaxBlockComment,
+        g.BlockCommentToken,
         staticPseudoChunk
       )),
       literal(']')
@@ -4558,7 +4558,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.StaticPseudoGroup,
       g.StaticPseudoSquare,
       staticValueQuoted,
-      g.CssSyntaxBlockComment,
+      g.BlockCommentToken,
       staticPseudoChunk
     )),
     joinSourceText
@@ -4577,7 +4577,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.StaticPseudoGroup,
       g.StaticPseudoSquare,
       staticValueQuoted,
-      g.CssSyntaxBlockComment,
+      g.BlockCommentToken,
       staticSelectorPseudoChunk
     )),
     joinSourceText

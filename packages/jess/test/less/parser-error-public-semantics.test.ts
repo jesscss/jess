@@ -267,7 +267,7 @@ describe('Less parser errors through the public AST route', () => {
       column: 9,
       file: { source }
     });
-    expect(result.errors[0]?.reason).not.toContain('CssSyntaxNumber');
+    expect(result.errors[0]?.reason).not.toContain('NumberToken');
     expect(result.errors[0]?.reason).not.toContain('not(peek)');
   });
 

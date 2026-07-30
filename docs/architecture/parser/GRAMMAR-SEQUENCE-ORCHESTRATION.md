@@ -837,7 +837,7 @@ Superseded failed probe, 2026-07-25: a standalone AST-only cleanup tried two
 variants before the AST factory extraction:
 
 1. Rename `CssAstColor`/`CssAstDimension` to `Color`/`Dimension` and switch the
-   leading leaves to `g.CssSyntaxHexColor`/`g.CssSyntaxNumber`.
+   leading leaves to `g.HexColor`/`g.NumberToken`.
 2. Keep CSS's local `hexColor`/`numberValue` leading leaves, but still rename the
    AST rule keys and local `g.` references.
 

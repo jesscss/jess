@@ -276,17 +276,17 @@ type LessInputRules = LessRules & typeof lessSyntax;
 type SharedCssSyntax = {
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
-  CssSyntaxHexColor: Combinator<string>;
-  CssSyntaxUnicodeRange: Combinator<string>;
+  HexColor: Combinator<string>;
+  UnicodeRangeToken: Combinator<string>;
   NthExpression: Combinator<unknown>;
   NthChildPseudoSelectorName: Combinator<string>;
   NthTypePseudoSelectorName: Combinator<string>;
   NthPseudoSelectorName: Combinator<string>;
   NthOfKeyword: Combinator<string>;
-  CssSyntaxNumber: Combinator<string>;
-  CssSyntaxDimensionUnit: Combinator<string>;
-  CssSyntaxInterpolatedPropertyStart: Combinator<unknown>;
-  CssSyntaxInterpolatedPropertyTail: Combinator<unknown>;
+  NumberToken: Combinator<string>;
+  DimensionUnit: Combinator<string>;
+  InterpolatedPropertyStart: Combinator<unknown>;
+  InterpolatedPropertyTail: Combinator<unknown>;
   Identifier: Combinator<string>;
   SupportsAtKeyword: Combinator<unknown>;
   KeyframesAtKeyword: Combinator<unknown>;
@@ -298,8 +298,8 @@ type SharedCssSyntax = {
   QueryAndOr: Combinator<unknown>;
   QueryComparisonOperator: Combinator<unknown>;
   QueryFunctionName: Combinator<unknown>;
-  CssSyntaxImportant: Combinator<unknown>;
-  CssSyntaxBlockComment: Combinator<unknown>;
+  ImportantToken: Combinator<unknown>;
+  BlockCommentToken: Combinator<unknown>;
 };
 
 function requireToken(value: unknown): Token {
@@ -2569,12 +2569,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const Color = node<ValueNode>(
     'Color',
-    g.CssSyntaxHexColor,
+    g.HexColor,
     children => color(requireToken(children[0]).value)
   );
   const Dimension = node<ValueNode>(
     'Dimension',
-    noTrivia(sequence(g.CssSyntaxNumber, optional(g.CssSyntaxDimensionUnit))),
+    noTrivia(sequence(g.NumberToken, optional(g.DimensionUnit))),
     (children, _fields, span) => {
       const numberText = requireToken(children[0]).value;
       const unit = children.length > 1 ? requireToken(children[1]).value : '';
@@ -2589,7 +2589,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // rejects `U+0-7F + 1` rather than applying numeric operations to the range.
   const UnicodeRange = node<Any>(
     'UnicodeRange',
-    g.CssSyntaxUnicodeRange,
+    g.UnicodeRangeToken,
     children => any(requireToken(children[0]).value)
   );
   // CSS declaration hacks such as `#000 \\9` are a real one-token value
@@ -3151,7 +3151,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'ImportantValue',
     // Priority syntax is token structure, not one glued source string: Less
     // accepts `!important`, `! important`, and `!/*comment*/important`.
-    sequence(g.ValueList, literal('!'), g.CssSyntaxImportant),
+    sequence(g.ValueList, literal('!'), g.ImportantToken),
     children => important(requireValueSlot(children[0]))
   );
   // Left-factored value/priority: parse the value tower ONCE, then an optional
@@ -3167,7 +3167,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(
       not(literal('{')),
       g.ValueList,
-      optional(sequence(literal('!'), g.CssSyntaxImportant))
+      optional(sequence(literal('!'), g.ImportantToken))
     ),
     (children) => {
       const value = requireValueSlot(children[0]);
@@ -3283,7 +3283,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       g.CustomPropertyName,
       literal(':'),
       g.CustomValue,
-      optional(sequence(literal('!'), g.CssSyntaxImportant))
+      optional(sequence(literal('!'), g.ImportantToken))
     ),
     (children) => {
       const name = children[0];
@@ -3305,7 +3305,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     choice(
-      noTrivia(sequence(optional(literal('*')), optional(literal('-')), optional(g.CssSyntaxInterpolatedPropertyStart), g.Interpolation, many(choice(g.CssSyntaxInterpolatedPropertyTail, g.Interpolation)))),
+      noTrivia(sequence(optional(literal('*')), optional(literal('-')), optional(g.InterpolatedPropertyStart), g.Interpolation, many(choice(g.InterpolatedPropertyTail, g.Interpolation)))),
       noTrivia(sequence(literal('--'), optional(choice(g.LessSyntaxInterpolatedCustomPropertyStart, g.LessSyntaxInterpolatedCustomPropertyDash)), g.Interpolation, many(choice(g.LessSyntaxInterpolatedCustomPropertyTail, g.Interpolation))))
     ),
     children => interpolation(interpolationPartsFrom(children, false))
@@ -4349,7 +4349,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const generalEnclosedRaw = node<string>(
     'GeneralEnclosedRaw',
-    noTrivia(choice(g.CssSyntaxBlockComment, generalEnclosedText)),
+    noTrivia(choice(g.BlockCommentToken, generalEnclosedText)),
     children => requireToken(children[0]).value
   );
   const GeneralEnclosedQuoted = node<Interpolation>(
