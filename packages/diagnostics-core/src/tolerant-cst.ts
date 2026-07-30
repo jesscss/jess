@@ -42,6 +42,7 @@ export const LINT_CODES = {
   vendorPrefix: 'lint/vendor-prefix',
   compatibleVendorPrefixes: 'lint/compatible-vendor-prefixes',
   unknownVendorSpecificProperties: 'lint/unknown-vendor-specific-property',
+  importStatement: 'lint/import-statement',
   invalidImportPosition: 'lint/no-invalid-position-at-import-rule',
   duplicateAtImportRules: 'lint/no-duplicate-at-import-rules',
   duplicateModuleLoads: 'lint/no-duplicate-module-load',
@@ -3998,6 +3999,14 @@ export function cstLintDiagnostics(
     }
 
     if (IMPORT_RULE_TYPES.has(gt)) {
+      if (language === 'css') {
+        push(
+          LINT_CODES.importStatement,
+          'warning',
+          'Avoid @import because it can block parallel stylesheet loading',
+          node.span
+        );
+      }
       const importKey = normalizedImportKey(source, node);
       if (importKey !== null) {
         const previous = seenImports.get(importKey.key);

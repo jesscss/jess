@@ -837,6 +837,37 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('importStatement (lint/import-statement)', () => {
+      it('stays quiet by default because VSCode marks importStatement opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '@import url("a.css");');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/import-statement');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/import-statement', 'warning'));
+        const doc = createDocument('css', '@import url("a.css");');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/import-statement');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe(
+          '@import url("a.css");'
+        );
+      });
+
+      it('does not fire in dialect files before import graph facts exist', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/import-statement', 'warning'));
+        const doc = createDocument('less', '@import "theme.less";');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/import-statement');
+      });
+    });
+
     describe('boxModel (lint/box-model)', () => {
       it('stays quiet by default because VSCode marks boxModel opt-in', () => {
         const engine = createEngine();

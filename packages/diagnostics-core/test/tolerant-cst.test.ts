@@ -979,6 +979,19 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('reports opt-in CSS @import statement policy facts', () => {
+    const source = '@import url("a.css");\n.a { color: red; }';
+    const result = collectTolerantDiagnostics({
+      source,
+      language: 'css'
+    });
+    const imports = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.importStatement);
+
+    expect(imports.map(diagnostic => [diagnostic.message, diagnostic.start, diagnostic.end])).toEqual([
+      ['Avoid @import because it can block parallel stylesheet loading', 0, '@import url("a.css");'.length]
+    ]);
+  });
+
   it('reports @import rules after style rules or blocking at-rules', () => {
     const source = '@charset "utf-8";\n@layer reset;\n@import "ok.css";\n@namespace svg url(http://www.w3.org/2000/svg);\n@import "late-at.css";\n@layer theme { .x { color: red; } }\n@import "late-layer.css";\n.a { color: red; }\n@import "late-rule.css";';
     const result = collectTolerantDiagnostics({
@@ -1006,6 +1019,8 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.duplicateAtImportRules)).toBe(false);
     expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.duplicateAtImportRules)).toBe(false);
+    expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.importStatement)).toBe(false);
+    expect(scss.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.importStatement)).toBe(false);
   });
 
   it('normalizes protocol-relative @import urls without treating // as a comment', () => {

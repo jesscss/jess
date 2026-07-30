@@ -84,10 +84,11 @@ comparable; a qualifier ("names only", "no context") flags shallow support.
 | `emptyRules` | ✓ (Warning) | ✓ shared diagnostic default Warning | At parity | — |
 | `duplicateProperties` | ✓ | ✓ shared diagnostic default Warning | At parity plus Stylelint-compatible lint naming | — |
 | `hexColorLength` / `argumentsInColorFunction` | ✓ (Error) | ✓ shared diagnostics default to Error | At parity for hex length and rgb()/rgba()/hsl()/hsla() definite argument errors | — |
-| `vendorPrefix` / `compatibleVendorPrefixes` / `unknownVendorSpecificProperties` | ✓ | ✗ | Missing | P2 |
+| `vendorPrefix` / `compatibleVendorPrefixes` / `unknownVendorSpecificProperties` | ✓ | ✓ shared diagnostics; `compatibleVendorPrefixes` and `unknownVendorSpecificProperties` opt-in | At parity for CSS declarations/keyframes; dialect semantic facts remain future work | — |
 | `propertyIgnoredDueToDisplay`, `fontFaceProperties` | ✓ (Warning) | ✓ shared diagnostics default to Warning | At parity for CSS @font-face required descriptors and display/property interactions | — |
 | `boxModel` | ✓ (Ignore by default) | ✓ shared diagnostic, opt-in | At parity for definite CSS width/height plus padding/border size risks | — |
-| `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `ieHack`, `importStatement` | ✓ (mostly default-Ignore, opt-in) | ✗ | Missing | P2 |
+| `universalSelector`, `zeroUnits`, `important`, `float`, `idSelector`, `importStatement` | ✓ (mostly default-Ignore, opt-in) | ✓ shared diagnostics; opinionated rules remain opt-in | At parity for CSS source facts | — |
+| `ieHack` | ✓ (Ignore by default) | ✗ | Missing: current tolerant CST does not expose `*property` as a declaration; do not add a source scan or parser change just for this rule | P3 |
 | Configurable severities | ✓ per-rule | ✓ for semantic codes and shared lint diagnostic codes | Naming bridge from lint rule names into editor settings remains future polish | P2 |
 | **Semantic: undefined variable / mixin** | ✗ (MS does not resolve semantics this deeply) | ✓ `var/undefined`, `mixin/undefined` + escalate-to-error when modern features present | **Jess AHEAD** | — |
 
@@ -237,8 +238,8 @@ MDN data behind it + lint*.
 
 - **MS lint rules that are style opinions** (`float`, `idSelector`,
   `universalSelector`, `ieHack`, `important`) default to *Ignore*
-  even in MS. Port the objective correctness rules first (unknown/duplicate/empty
-  /hex-color); treat the opinionated ones as opt-in P2, not parity-critical.
+  even in MS. Jess keeps the implemented opinion rules opt-in; `ieHack` waits
+  for real CST support for star-prefixed declarations.
 - **Jess-only language surface** — `.jess` control-flow (`$if`/`$for`/`${}`
   scope blocks), `@compose`/`@from`, cross-dialect function imports. MS has no
   concept of these; parity is one-directional (Jess must add its *own*
