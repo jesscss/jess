@@ -40,6 +40,21 @@ const AT_RULE_SET = new Set(
     .map(rule => stringField(rule, 'name')?.toLowerCase())
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
 );
+const AT_RULE_DESCRIPTOR_SET = new Map<string, Set<string>>();
+for (const property of arrayField(webCssData, 'properties')) {
+  const name = stringField(property, 'name')?.toLowerCase();
+  const atRule = stringField(property, 'atRule')?.toLowerCase();
+  if (name === undefined || atRule === undefined || name.length === 0 || atRule.length === 0) {
+    continue;
+  }
+  let descriptors = AT_RULE_DESCRIPTOR_SET.get(atRule);
+  if (descriptors === undefined) {
+    descriptors = new Set();
+    AT_RULE_DESCRIPTOR_SET.set(atRule, descriptors);
+  }
+  descriptors.add(name);
+}
+AT_RULE_DESCRIPTOR_SET.get('@font-face')?.add('font-family');
 const CSS_FUNCTION_SET = new Set(
   (Array.isArray(cssFunctions) ? cssFunctions : [])
     .map(fn => typeof fn === 'string' ? fn.toLowerCase() : undefined)
@@ -252,6 +267,11 @@ export const defaultCssDiagnosticMetadata: CssDiagnosticMetadata = {
   isKnownAtRule(name) {
     const lower = name.startsWith('@') ? name.toLowerCase() : `@${name.toLowerCase()}`;
     return AT_RULE_SET.has(lower);
+  },
+  isKnownAtRuleDescriptor(atRuleName, descriptorName) {
+    const lowerAtRule = atRuleName.startsWith('@') ? atRuleName.toLowerCase() : `@${atRuleName.toLowerCase()}`;
+    const descriptors = AT_RULE_DESCRIPTOR_SET.get(lowerAtRule);
+    return descriptors?.has(descriptorName.toLowerCase());
   },
   isKnownFunction(name) {
     return CSS_FUNCTION_SET.has(name.toLowerCase());

@@ -115,7 +115,9 @@ The current stable rule set is intentionally small and migration-friendly:
 | `block-no-empty` | `lint/empty-rules` | `block-no-empty` |
 | `property-no-unknown` | `lint/unknown-property` | near `property-no-unknown` |
 | `at-rule-no-unknown` | `lint/unknown-at-rule` | near `at-rule-no-unknown` |
+| `at-rule-descriptor-no-unknown` | `lint/at-rule-descriptor-no-unknown` | near `at-rule-descriptor-no-unknown` |
 | `declaration-block-no-duplicate-properties` | `lint/duplicate-property` | `declaration-block-no-duplicate-properties` |
+| `declaration-block-no-duplicate-custom-properties` | `lint/declaration-block-no-duplicate-custom-properties` | `declaration-block-no-duplicate-custom-properties` |
 | `color-no-invalid-hex` | `lint/hex-color-length` | `color-no-invalid-hex` |
 | `length-zero-no-unit` | `lint/zero-units` | `length-zero-no-unit` |
 | `custom-property-no-missing-var-function` | `lint/custom-property-no-missing-var-function` | `custom-property-no-missing-var-function` |
