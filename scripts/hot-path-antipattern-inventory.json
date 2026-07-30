@@ -207,6 +207,46 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-node-keyed-side-map",
+      "fingerprint": "7bd5bad85579da8d",
+      "ordinal": 0,
+      "snippet": "new WeakMap<TriviaMap, CommentTable>()",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "dd65be98e54d2b7f",
+      "ordinal": 0,
+      "snippet": "src.indexOf('/*', pos)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "dd65be98e54d2b7f",
+      "ordinal": 0,
+      "snippet": "src.indexOf('/*', pos)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-rescan-in-loop",
+      "fingerprint": "fae6073f359d5e2e",
+      "ordinal": 0,
+      "snippet": "src.indexOf('*/', open + 2)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "fae6073f359d5e2e",
+      "ordinal": 0,
+      "snippet": "src.indexOf('*/', open + 2)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-rescan-in-loop",
       "fingerprint": "e4af6a254550d9e2",
       "ordinal": 0,
@@ -234,46 +274,6 @@
       "rule": "no-source-text-rescan",
       "fingerprint": "4b7842b2b75eab52",
       "ordinal": 0,
-      "snippet": "run.src.indexOf('*/', start + 2)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "66f3b3f95b59a3fd",
-      "ordinal": 0,
-      "snippet": "run.src.slice(start, end + 2)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "e4af6a254550d9e2",
-      "ordinal": 1,
-      "snippet": "run.src.indexOf('/*', pos)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "e4af6a254550d9e2",
-      "ordinal": 1,
-      "snippet": "run.src.indexOf('/*', pos)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "4b7842b2b75eab52",
-      "ordinal": 1,
-      "snippet": "run.src.indexOf('*/', start + 2)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "4b7842b2b75eab52",
-      "ordinal": 1,
       "snippet": "run.src.indexOf('*/', start + 2)",
       "owner": "comment/trivia replay rewrite in flight"
     },
@@ -303,50 +303,26 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 0,
-      "snippet": "trivia.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-rescan-in-loop",
-      "fingerprint": "408766063633070b",
+      "fingerprint": "5e26f759d6474895",
       "ordinal": 0,
-      "snippet": "excludedSpans.some(span => run.start >= span.start && run.end <= span.end)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "d46599685d3f56bc",
-      "ordinal": 0,
-      "snippet": "blockCommentsIn(trailing)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 1,
-      "snippet": "trivia.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "0a5502d9d638d0bd",
-      "ordinal": 0,
-      "snippet": "blockCommentsIn(run)",
+      "snippet": "excludedSpans.some(span => runStart >= span.start && runEnd <= span.end)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "a41a444224e7b685",
+      "fingerprint": "29c5a9e3183f1ac5",
       "ordinal": 0,
-      "snippet": "run.src.charCodeAt(index)",
+      "snippet": "src.slice(table.commentStart[c]!, table.commentEnd[c]!)",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "26607e0439d6f596",
+      "ordinal": 0,
+      "snippet": "source.charCodeAt(index)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -415,26 +391,10 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "0a5502d9d638d0bd",
-      "ordinal": 1,
-      "snippet": "blockCommentsIn(run)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "39b0a37d1e5768f7",
-      "ordinal": 0,
-      "snippet": "blockCommentsIn(probe)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
-      "fingerprint": "fc9896dc7f8f96e4",
+      "fingerprint": "173b4cecf5056ccb",
       "ordinal": 0,
-      "snippet": "source.slice(widest.start, widest.end)",
+      "snippet": "source.slice(widestStart, widestEnd)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -451,38 +411,6 @@
       "fingerprint": "69650e8f65323a4d",
       "ordinal": 0,
       "snippet": "source.indexOf('*/', cursor + 2)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 2,
-      "snippet": "trivia.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "0a5502d9d638d0bd",
-      "ordinal": 2,
-      "snippet": "blockCommentsIn(run)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 3,
-      "snippet": "trivia.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "0a5502d9d638d0bd",
-      "ordinal": 3,
-      "snippet": "blockCommentsIn(run)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -559,42 +487,18 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 4,
-      "snippet": "trivia.commentRuns()",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "29c5a9e3183f1ac5",
+      "ordinal": 1,
+      "snippet": "src.slice(table.commentStart[c]!, table.commentEnd[c]!)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "0a5502d9d638d0bd",
-      "ordinal": 4,
-      "snippet": "blockCommentsIn(run)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 5,
-      "snippet": "trivia.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 6,
-      "snippet": "trivia.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 7,
-      "snippet": "trivia.commentRuns()",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "29c5a9e3183f1ac5",
+      "ordinal": 2,
+      "snippet": "src.slice(table.commentStart[c]!, table.commentEnd[c]!)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -639,22 +543,6 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 8,
-      "snippet": "trivia.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-source-text-rescan",
-      "fingerprint": "5e298b111ee4df7d",
-      "ordinal": 1,
-      "snippet": "source.slice(span.start, span.end)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-rescan-in-loop",
       "fingerprint": "621aae949d3278e1",
       "ordinal": 2,
@@ -667,22 +555,6 @@
       "fingerprint": "621aae949d3278e1",
       "ordinal": 2,
       "snippet": "source.indexOf('*/', index + 2)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 9,
-      "snippet": "trivia.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 10,
-      "snippet": "trivia.commentRuns()",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {
@@ -695,30 +567,6 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "664804f62f2f1c9e",
-      "ordinal": 0,
-      "snippet": "e.trivia?.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-rescan-in-loop",
-      "fingerprint": "00df0ef74b506f7a",
-      "ordinal": 0,
-      "snippet": "e.trivia?.commentRuns().find(run => run.start >= previous.end && run.end <= current.start && run.start >= span.start && run.end <= span.end)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "664804f62f2f1c9e",
-      "ordinal": 0,
-      "snippet": "e.trivia?.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-source-text-rescan",
       "fingerprint": "3356f12791af851d",
       "ordinal": 0,
@@ -727,34 +575,18 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 11,
-      "snippet": "trivia.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-loop-invariant-accessor",
-      "fingerprint": "2c2976baeb39b33a",
-      "ordinal": 12,
-      "snippet": "trivia.commentRuns()",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
-      "rule": "no-speculative-allocation-predicate",
-      "fingerprint": "0a5502d9d638d0bd",
-      "ordinal": 5,
-      "snippet": "blockCommentsIn(run)",
-      "owner": "comment/trivia replay rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-node-keyed-side-map",
       "fingerprint": "d003e963b6f7353c",
       "ordinal": 0,
       "snippet": "new WeakMap<Leaf[], string[]>()",
+      "owner": "comment/trivia replay rewrite in flight"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "29c5a9e3183f1ac5",
+      "ordinal": 3,
+      "snippet": "src.slice(table.commentStart[c]!, table.commentEnd[c]!)",
       "owner": "comment/trivia replay rewrite in flight"
     },
     {

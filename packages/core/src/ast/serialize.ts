@@ -5402,7 +5402,7 @@ interface Emit extends EvalCtx {
   hoistedCssImports: Set<ImportAtRule> | null;
 
   /** Block-comment trivia runs already replayed during this render. */
-  emittedBlockTrivia: Set<Trivia>;
+  emittedBlockTrivia: EmittedTrivia;
 }
 
 /**
@@ -5441,7 +5441,7 @@ function scratchEmit(e: EvalCtx): Emit {
     preparedImportsOwnedByCaller: false,
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
-    emittedBlockTrivia: new Set()
+    emittedBlockTrivia: new EmittedTrivia()
   };
 }
 
@@ -5531,22 +5531,175 @@ function put(e: Emit, s: string): void {
   }
 }
 
-function blockCommentsIn(run: Trivia): string[] {
-  const comments: string[] = [];
-  let pos = run.start;
-  while (pos < run.end) {
-    const start = run.src.indexOf('/*', pos);
-    if (start < 0 || start >= run.end) {
-      break;
+/**
+ * Columnar block-comment facts for ONE document's trivia map.
+ *
+ * `commentRuns()` hands back source-ordered runs, but every emit-time question
+ * ("does this run carry a comment?", "what text?") used to be answered by
+ * re-scanning the run's source bytes with `indexOf` and allocating a fresh
+ * `string[]`. The scan result is a property of the document, not of the
+ * statement being emitted, so it is computed ONCE here and addressed by index
+ * afterwards: emptiness becomes an integer compare, and text becomes a single
+ * `slice` taken at the moment of output.
+ *
+ * Comments are stored CSR-style — the comments of run `i` occupy
+ * `[commentAt[i], commentAt[i + 1])` in `commentStart`/`commentEnd`.
+ */
+interface CommentTable {
+  readonly runs: readonly Trivia[];
+  readonly runStart: Int32Array;
+  readonly runEnd: Int32Array;
+  readonly commentAt: Int32Array;
+  readonly commentStart: Int32Array;
+  readonly commentEnd: Int32Array;
+
+  /** Hoisted once; `undefined` only when the document has no comment runs. */
+  readonly src: string | undefined;
+
+  /**
+   * Ownership slot for each position: the FIRST index holding that same run
+   * object. `commentRuns()` may list one cached run object at several
+   * positions (9 such repeats occur in `tests-unit/comments/comments.less`
+   * alone), and the guard this replaces deduped on object identity. Keying
+   * the emitted-bits by the canonical slot rather than the raw position is
+   * what keeps identity semantics exact — indexing by position would let the
+   * second occurrence re-emit a comment the first already owned.
+   */
+  readonly canonical: Int32Array;
+}
+
+const commentTables = new WeakMap<TriviaMap, CommentTable>();
+
+function buildCommentTable(trivia: TriviaMap): CommentTable {
+  const runs = trivia.commentRuns();
+  const count = runs.length;
+  const runStart = new Int32Array(count);
+  const runEnd = new Int32Array(count);
+  const commentAt = new Int32Array(count + 1);
+  const canonical = new Int32Array(count);
+  const firstIndex = new Map<Trivia, number>();
+  const starts: number[] = [];
+  const ends: number[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const run = runs[i]!;
+    runStart[i] = run.start;
+    runEnd[i] = run.end;
+    commentAt[i] = starts.length;
+
+    const seen = firstIndex.get(run);
+    if (seen === undefined) {
+      firstIndex.set(run, i);
+      canonical[i] = i;
+    } else {
+      canonical[i] = seen;
     }
-    const end = run.src.indexOf('*/', start + 2);
-    if (end < 0 || end + 2 > run.end) {
-      break;
+
+    /*
+     * The one and only byte scan. Parseman labels a run as comment-BEARING but
+     * does not publish the bounds of each comment inside it, so those bounds
+     * are recovered here — once per document, never once per statement.
+     */
+    const src = run.src;
+    let pos = run.start;
+    while (pos < run.end) {
+      const open = src.indexOf('/*', pos);
+      if (open < 0 || open >= run.end) {
+        break;
+      }
+      const close = src.indexOf('*/', open + 2);
+      if (close < 0 || close + 2 > run.end) {
+        break;
+      }
+      starts.push(open);
+      ends.push(close + 2);
+      pos = close + 2;
     }
-    comments.push(run.src.slice(start, end + 2));
-    pos = end + 2;
   }
-  return comments;
+  commentAt[count] = starts.length;
+
+  return {
+    runs,
+    runStart,
+    runEnd,
+    commentAt,
+    commentStart: new Int32Array(starts),
+    commentEnd: new Int32Array(ends),
+    canonical,
+    src: runs[0]?.src
+  };
+}
+
+function commentTableOf(trivia: TriviaMap): CommentTable {
+  let table = commentTables.get(trivia);
+  if (table === undefined) {
+    table = buildCommentTable(trivia);
+    commentTables.set(trivia, table);
+  }
+  return table;
+}
+
+/** True when run `i` carries at least one block comment — an integer compare. */
+function runHasBlockComment(table: CommentTable, i: number): boolean {
+  return table.commentAt[i]! < table.commentAt[i + 1]!;
+}
+
+/**
+ * First run index whose `start` is >= `offset`, by binary search over the
+ * source-ordered run bounds.
+ *
+ * A forward-only cursor is NOT sound here: emit revisits earlier source
+ * offsets (mixin expansion replays a definition body, and deferred imports
+ * emit out of source order), which was measured at 231 backward windows on
+ * `benchmark.less` alone. The search is therefore the primary seek, and any
+ * cursor may only ever be a hint that is validated against it.
+ */
+function firstRunAtOrAfter(table: CommentTable, offset: number): number {
+  let low = 0;
+  let high = table.runStart.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (table.runStart[middle]! < offset) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return low;
+}
+
+/**
+ * Per-render ownership guard, replacing `Set<Trivia>` identity hashing with one
+ * bit per run. Semantics are UNCHANGED: a bit is keyed by a run's index in its
+ * own document table, which is exactly as discriminating as the run object it
+ * replaces (runs are cached per source position, so identity and index agree).
+ * Runs are NOT flattened to per-comment bits — overlapping runs exist (25 pairs
+ * across the Less corpus), and the containment marking at
+ * {@link declarationLeadingBlockCommentText} depends on whole-run ownership.
+ */
+class EmittedTrivia {
+  private readonly bits = new Map<CommentTable, Uint8Array>();
+
+  /** Read-only: never allocates. An absent bitset means nothing is owned yet. */
+  hasIndex(table: CommentTable, i: number): boolean {
+    if (i < 0) {
+      return false;
+    }
+    const owned = this.bits.get(table);
+    return owned !== undefined && owned[table.canonical[i]!] === 1;
+  }
+
+  addIndex(table: CommentTable, i: number): void {
+    if (i < 0) {
+      return;
+    }
+    let owned = this.bits.get(table);
+    if (owned === undefined) {
+      owned = new Uint8Array(table.runs.length);
+      this.bits.set(table, owned);
+    }
+    owned[table.canonical[i]!] = 1;
+  }
 }
 
 function inlineBlockCommentText(run: Trivia, trimLeadingWhitespace = false): string {
@@ -5636,28 +5789,46 @@ function emitBlockCommentTriviaBetween(
   if (trivia === undefined || start === undefined || end === undefined) {
     return 0;
   }
+  const table = commentTableOf(trivia);
+  const src = table.src;
+  if (src === undefined) {
+    return 0;
+  }
   let emitted = 0;
-  for (const run of trivia.commentRuns()) {
-    if (run.start < start) {
-      continue;
-    }
-    if (run.start > end) {
+
+  /*
+   * Seek straight to the window instead of skipping the whole prefix. The old
+   * walk started at run 0 on every call and `continue`d past everything before
+   * `start`; on `benchmark.less` that was 357,447 of 366,778 iterations spent
+   * re-skipping already-passed runs.
+   */
+  for (let i = firstRunAtOrAfter(table, start); i < table.runs.length; i++) {
+    const runStart = table.runStart[i]!;
+    if (runStart > end) {
       break;
     }
-    if (run.end > end || e.emittedBlockTrivia.has(run)) {
+    const runEnd = table.runEnd[i]!;
+    if (runEnd > end || e.emittedBlockTrivia.hasIndex(table, i)) {
       continue;
     }
-    if (excludedSpans.some(span => run.start >= span.start && run.end <= span.end)) {
+
+    /*
+     * `excludedSpans` is the root replay's statement list. It is bounded and
+     * small (556 span tests across the entire Less corpus, 0 on benchmark.less),
+     * so the linear scan stays as-is rather than growing an index for it.
+     */
+    if (excludedSpans.some(span => runStart >= span.start && runEnd <= span.end)) {
       continue;
     }
-    const comments = blockCommentsIn(run);
-    if (comments.length === 0) {
+    const from = table.commentAt[i]!;
+    const to = table.commentAt[i + 1]!;
+    if (from === to) {
       continue;
     }
-    e.emittedBlockTrivia.add(run);
-    for (const text of comments) {
+    e.emittedBlockTrivia.addIndex(table, i);
+    for (let c = from; c < to; c++) {
       put(e, indent);
-      put(e, text);
+      put(e, src.slice(table.commentStart[c]!, table.commentEnd[c]!));
       put(e, '\n');
       emitted++;
     }
@@ -5665,21 +5836,10 @@ function emitBlockCommentTriviaBetween(
   return emitted;
 }
 
-/** Find a comment-bearing trivia range that starts at one exact source offset. */
-function commentTriviaAfter(trivia: TriviaMap, offset: number): Trivia | undefined {
-  const runs = trivia.commentRuns();
-  let low = 0;
-  let high = runs.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (runs[middle]!.start < offset) {
-      low = middle + 1;
-    } else {
-      high = middle;
-    }
-  }
-  const run = runs[low];
-  return run?.start === offset ? run : undefined;
+/** Index of the comment-bearing run starting at one exact offset, or -1. */
+function commentRunStartingAt(table: CommentTable, offset: number): number {
+  const at = firstRunAtOrAfter(table, offset);
+  return at < table.runs.length && table.runStart[at] === offset ? at : -1;
 }
 
 function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
@@ -5688,29 +5848,32 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   if (trivia === undefined || span === undefined) {
     return;
   }
+  const table = commentTableOf(trivia);
+  const source = table.src;
+  if (source === undefined) {
+    return;
+  }
 
   /* This path only emits comments. A general trivia-boundary lookup forces a
    * legacy Parseman root map for all whitespace gaps; comment runs are already
    * sparse and source ordered. */
-  const trailing = commentTriviaAfter(trivia, span.end);
-  if (trailing !== undefined && !e.emittedBlockTrivia.has(trailing) && blockCommentsIn(trailing).length > 0) {
-    e.emittedBlockTrivia.add(trailing);
-    put(e, inlineBlockCommentText(trailing));
+  const trailing = commentRunStartingAt(table, span.end);
+  if (trailing >= 0 && !e.emittedBlockTrivia.hasIndex(table, trailing) && runHasBlockComment(table, trailing)) {
+    e.emittedBlockTrivia.addIndex(table, trailing);
+    put(e, inlineBlockCommentText(table.runs[trailing]!));
     return;
   }
-  for (const run of trivia.commentRuns()) {
-    if (run.start < span.start) {
-      continue;
-    }
-    if (run.start > span.end) {
+  for (let i = firstRunAtOrAfter(table, span.start); i < table.runs.length; i++) {
+    if (table.runStart[i]! > span.end) {
       break;
     }
-    if (run.end > span.end || e.emittedBlockTrivia.has(run) || blockCommentsIn(run).length === 0) {
+    const runEnd = table.runEnd[i]!;
+    if (runEnd > span.end || e.emittedBlockTrivia.hasIndex(table, i) || !runHasBlockComment(table, i)) {
       continue;
     }
-    let index = run.end;
+    let index = runEnd;
     while (index < span.end) {
-      const char = run.src.charCodeAt(index);
+      const char = source.charCodeAt(index);
       if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
         break;
       }
@@ -5719,12 +5882,8 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
     if (index !== span.end) {
       continue;
     }
-    e.emittedBlockTrivia.add(run);
-    put(e, inlineBlockCommentText(run));
-    return;
-  }
-  const source = trivia.commentRuns()[0]?.src;
-  if (source === undefined) {
+    e.emittedBlockTrivia.addIndex(table, i);
+    put(e, inlineBlockCommentText(table.runs[i]!));
     return;
   }
   let end = span.end;
@@ -5828,40 +5987,47 @@ function declarationHeadTriviaText(node: Declaration, e: Emit): string {
   }
   let text = '';
   let cursor = span.start;
-  const runs = trivia.commentRuns();
-  for (let index = 0; index < runs.length; index++) {
-    const run = runs[index]!;
-    if (run.start < span.start) {
+  const table = commentTableOf(trivia);
+  const runs = table.runs;
+  for (let index = firstRunAtOrAfter(table, span.start); index < runs.length; index++) {
+    const runStart = table.runStart[index]!;
+    if (runStart < cursor) {
       continue;
     }
-    if (run.start < cursor) {
-      continue;
-    }
-    if (run.start >= colon) {
+    if (runStart >= colon) {
       break;
     }
-    if (run.end > colon || run.src !== source || blockCommentsIn(run).length === 0) {
+    if (table.runEnd[index]! > colon || runs[index]!.src !== source || !runHasBlockComment(table, index)) {
       continue;
     }
-    let widest = run;
+
+    /*
+     * Runs may overlap and share a start offset; the widest one that still ends
+     * before the colon owns the text, and every run it contains is marked so the
+     * same comment cannot be replayed through another path.
+     */
+    let widest = index;
     let probeIndex = index + 1;
-    while (probeIndex < runs.length) {
-      const probe = runs[probeIndex]!;
-      if (probe.start !== run.start) {
-        break;
-      }
-      if (probe.end <= colon && probe.src === source && blockCommentsIn(probe).length > 0 && probe.end > widest.end) {
-        widest = probe;
+    while (probeIndex < runs.length && table.runStart[probeIndex] === runStart) {
+      if (table.runEnd[probeIndex]! <= colon
+        && runs[probeIndex]!.src === source
+        && runHasBlockComment(table, probeIndex)
+        && table.runEnd[probeIndex]! > table.runEnd[widest]!) {
+        widest = probeIndex;
       }
       probeIndex++;
     }
-    for (const contained of runs) {
-      if (contained.src === source && contained.start >= widest.start && contained.end <= widest.end) {
-        e.emittedBlockTrivia.add(contained);
+    const widestStart = table.runStart[widest]!;
+    const widestEnd = table.runEnd[widest]!;
+    for (let contained = firstRunAtOrAfter(table, widestStart);
+      contained < runs.length && table.runStart[contained]! <= widestEnd;
+      contained++) {
+      if (table.runEnd[contained]! <= widestEnd) {
+        e.emittedBlockTrivia.addIndex(table, contained);
       }
     }
-    text += source.slice(widest.start, widest.end);
-    cursor = widest.end;
+    text += source.slice(widestStart, widestEnd);
+    cursor = widestEnd;
   }
   return text;
 }
@@ -5889,15 +6055,13 @@ function markCustomValueBlockTrivia(source: string, span: AstSourceSpan, e: Emit
   if (trivia === undefined) {
     return;
   }
-  for (const run of trivia.commentRuns()) {
-    if (run.start < span.start) {
-      continue;
-    }
-    if (run.start > span.end) {
+  const table = commentTableOf(trivia);
+  for (let i = firstRunAtOrAfter(table, span.start); i < table.runs.length; i++) {
+    if (table.runStart[i]! > span.end) {
       break;
     }
-    if (run.src === source && run.end <= span.end && blockCommentsIn(run).length > 0) {
-      e.emittedBlockTrivia.add(run);
+    if (table.runs[i]!.src === source && table.runEnd[i]! <= span.end && runHasBlockComment(table, i)) {
+      e.emittedBlockTrivia.addIndex(table, i);
     }
   }
 }
@@ -5913,14 +6077,13 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
   }
   let source: string | undefined;
   let sawComment = false;
-  for (const run of trivia.commentRuns()) {
-    if (run.start < span.start) {
-      continue;
-    }
-    if (run.start > span.end) {
+  const valueTable = commentTableOf(trivia);
+  for (let i = firstRunAtOrAfter(valueTable, span.start); i < valueTable.runs.length; i++) {
+    const run = valueTable.runs[i]!;
+    if (valueTable.runStart[i]! > span.end) {
       break;
     }
-    if (run.end > span.end || blockCommentsIn(run).length === 0) {
+    if (valueTable.runEnd[i]! > span.end || !runHasBlockComment(valueTable, i)) {
       continue;
     }
     source = run.src;
@@ -5979,15 +6142,13 @@ function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
   if (trivia === undefined || span === undefined) {
     return;
   }
-  for (const run of trivia.commentRuns()) {
-    if (run.start < span.start) {
-      continue;
-    }
-    if (run.start > span.end) {
+  const table = commentTableOf(trivia);
+  for (let i = firstRunAtOrAfter(table, span.start); i < table.runs.length; i++) {
+    if (table.runStart[i]! > span.end) {
       break;
     }
-    if (run.end <= span.end && blockCommentsIn(run).length > 0) {
-      e.emittedBlockTrivia.add(run);
+    if (table.runEnd[i]! <= span.end && runHasBlockComment(table, i)) {
+      e.emittedBlockTrivia.addIndex(table, i);
     }
   }
 }
@@ -5999,7 +6160,7 @@ function bodySpanForTriviaReplay(owner: object, e: Emit): ReplaySpan | undefined
   }
   const trivia = e.trivia;
   const span = sourceSpanOf(owner);
-  const source = trivia?.commentRuns()[0]?.src;
+  const source = trivia === undefined ? undefined : commentTableOf(trivia).src;
   if (span === undefined || source === undefined) {
     return undefined;
   }
@@ -6023,17 +6184,21 @@ function bodyBlockCommentTexts(owner: object, e: Emit): string[] {
     return [];
   }
   const out: string[] = [];
-  for (const run of trivia.commentRuns()) {
-    if (run.start < body.start) {
-      continue;
-    }
-    if (run.start > body.end) {
+  const table = commentTableOf(trivia);
+  const src = table.src;
+  if (src === undefined) {
+    return out;
+  }
+  for (let i = firstRunAtOrAfter(table, body.start); i < table.runs.length; i++) {
+    if (table.runStart[i]! > body.end) {
       break;
     }
-    if (run.end > body.end) {
+    if (table.runEnd[i]! > body.end) {
       continue;
     }
-    out.push(...blockCommentsIn(run));
+    for (let c = table.commentAt[i]!; c < table.commentAt[i + 1]!; c++) {
+      out.push(src.slice(table.commentStart[c]!, table.commentEnd[c]!));
+    }
   }
   return out;
 }
@@ -6053,27 +6218,24 @@ function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
   /* `commentRuns()` is already source ordered. Going through a boundary lookup
    * at offset zero makes legacy Parseman materialize every root whitespace gap
    * merely to discover that a stylesheet begins with authored content. */
-  const run = trivia.commentRuns()[0];
-  if (run?.start !== 0) {
+  const table = commentTableOf(trivia);
+  const src = table.src;
+  if (src === undefined || table.runStart[0] !== 0) {
     return;
   }
-  if (e.emittedBlockTrivia.has(run)) {
+  if (e.emittedBlockTrivia.hasIndex(table, 0) || !runHasBlockComment(table, 0)) {
     return;
   }
-  const comments = blockCommentsIn(run);
-  if (comments.length === 0) {
-    return;
-  }
-  e.emittedBlockTrivia.add(run);
-  for (const text of comments) {
+  e.emittedBlockTrivia.addIndex(table, 0);
+  for (let c = table.commentAt[0]!; c < table.commentAt[1]!; c++) {
     put(e, indent);
-    put(e, text);
+    put(e, src.slice(table.commentStart[c]!, table.commentEnd[c]!));
     put(e, '\n');
   }
 }
 
 function triviaSource(trivia: TriviaMap | undefined): string | undefined {
-  const commentSource = trivia?.commentRuns()[0]?.src;
+  const commentSource = trivia === undefined ? undefined : commentTableOf(trivia).src;
   if (commentSource !== undefined) {
     return commentSource;
   }
@@ -6090,11 +6252,24 @@ function emittedTriviaRunForRange(e: Emit, start: number, end: number): Trivia |
   if (trivia === undefined) {
     return undefined;
   }
-  for (const run of trivia.commentRuns()) {
-    if (run.start <= start && run.end >= end) {
-      return e.emittedBlockTrivia.has(run) ? run : undefined;
+
+  /*
+   * PRE-EXISTING PREFIX SCAN, not converted. This wants the FIRST run enclosing
+   * the range, so it must walk every run before `start` — the `break` below is a
+   * termination condition, NOT a cost bound: the cost is O(runs before `start`),
+   * and both callers sit inside `emitTopLevelBlockCommentsBetween`'s per-comment
+   * loop, making that path O(comments x runs). The rewind argument that forces a
+   * binary search in `emitBlockCommentTriviaBetween` does NOT apply here — that
+   * caller's index is strictly monotonic, so a local cursor threaded through
+   * both helpers would make this O(1) amortized. Left for a follow-up because it
+   * is a caller-side change, not this lane's one-function scope.
+   */
+  const table = commentTableOf(trivia);
+  for (let i = 0; i < table.runs.length; i++) {
+    if (table.runStart[i]! <= start && table.runEnd[i]! >= end) {
+      return e.emittedBlockTrivia.hasIndex(table, i) ? table.runs[i] : undefined;
     }
-    if (run.start > start) {
+    if (table.runStart[i]! > start) {
       break;
     }
   }
@@ -6106,12 +6281,14 @@ function markTriviaRunForRange(e: Emit, start: number, end: number): void {
   if (trivia === undefined) {
     return;
   }
-  for (const run of trivia.commentRuns()) {
-    if (run.start <= start && run.end >= end && blockCommentsIn(run).length === 1) {
-      e.emittedBlockTrivia.add(run);
+  const table = commentTableOf(trivia);
+  for (let i = 0; i < table.runs.length; i++) {
+    if (table.runStart[i]! <= start && table.runEnd[i]! >= end
+      && table.commentAt[i + 1]! - table.commentAt[i]! === 1) {
+      e.emittedBlockTrivia.addIndex(table, i);
       return;
     }
-    if (run.start > start) {
+    if (table.runStart[i]! > start) {
       return;
     }
   }
@@ -6255,17 +6432,23 @@ function authoredSliceWithTrivia(node: object, e: Emit): string | null {
   if (trivia === undefined || span === undefined) {
     return null;
   }
-  let source: string | undefined;
-  for (const run of trivia.commentRuns()) {
-    if (run.start >= span.start && run.end <= span.end) {
-      source = run.src;
-      break;
+  return spanContainsCommentRun(trivia, span.start, span.end)
+    ? commentTableOf(trivia).src!.slice(span.start, span.end).trim()
+    : null;
+}
+
+/** True when some comment run sits wholly inside `[start, end]`. */
+function spanContainsCommentRun(trivia: TriviaMap, start: number, end: number): boolean {
+  const table = commentTableOf(trivia);
+  for (let i = firstRunAtOrAfter(table, start); i < table.runs.length; i++) {
+    if (table.runStart[i]! > end) {
+      return false;
+    }
+    if (table.runEnd[i]! <= end) {
+      return true;
     }
   }
-  if (source === undefined) {
-    return null;
-  }
-  return source.slice(span.start, span.end).trim();
+  return false;
 }
 
 function firstBlockOpen(source: string, start: number, end: number): number {
@@ -6307,29 +6490,16 @@ function keyframesPreludeWithTrivia(node: AtRuleBlock, e: Emit): string | null {
     return null;
   }
 
-  let source: string | undefined;
-  for (const run of trivia.commentRuns()) {
-    if (run.start >= span.start && run.end <= span.end) {
-      source = run.src;
-      break;
-    }
-  }
-  if (source === undefined) {
+  if (!spanContainsCommentRun(trivia, span.start, span.end)) {
     return null;
   }
+  const source = commentTableOf(trivia).src!;
 
   const open = firstBlockOpen(source, span.start, span.end);
   if (open < 0) {
     return null;
   }
-  let hasHeaderComment = false;
-  for (const run of trivia.commentRuns()) {
-    if (run.start >= span.start && run.end <= open) {
-      hasHeaderComment = true;
-      break;
-    }
-  }
-  if (!hasHeaderComment) {
+  if (!spanContainsCommentRun(trivia, span.start, open)) {
     return null;
   }
 
@@ -6368,17 +6538,20 @@ function authoredSelectorHeaderWithTrivia(node: SelectorList, rendered: readonly
   for (let index = 1; index < rendered.length; index++) {
     const previous = branchSpans[index - 1]!;
     const current = branchSpans[index]!;
-    const source = e.trivia?.commentRuns().find(run =>
-      run.start >= previous.end && run.end <= current.start && run.start >= span.start && run.end <= span.end)?.src;
+    const table = commentTableOf(trivia);
+    const gapStart = Math.max(previous.end, span.start);
+    const gapEnd = Math.min(current.start, span.end);
+    const first = firstRunAtOrAfter(table, gapStart);
+    const source = spanContainsCommentRun(trivia, gapStart, gapEnd) ? table.src : undefined;
     const comma = source === undefined ? -1 : source.indexOf(',', previous.end);
     let beforeCommaComments = '';
     let afterCommaComments = '';
-    for (const run of trivia.commentRuns()) {
-      if (run.start >= previous.end && run.end <= current.start && run.start >= span.start && run.end <= span.end) {
-        if (comma >= 0 && run.end <= comma) {
-          beforeCommaComments += inlineBlockCommentText(run);
+    for (let i = first; i < table.runs.length && table.runStart[i]! <= gapEnd; i++) {
+      if (table.runEnd[i]! <= gapEnd) {
+        if (comma >= 0 && table.runEnd[i]! <= comma) {
+          beforeCommaComments += inlineBlockCommentText(table.runs[i]!);
         } else {
-          afterCommaComments += inlineBlockCommentText(run, true);
+          afterCommaComments += inlineBlockCommentText(table.runs[i]!, true);
         }
       }
     }
@@ -6399,8 +6572,12 @@ function hasBodyBlockCommentTrivia(owner: object, e: Emit): boolean {
   if (trivia === undefined || body === undefined) {
     return false;
   }
-  for (const run of trivia.commentRuns()) {
-    if (run.start >= body.start && run.end <= body.end && blockCommentsIn(run).length > 0) {
+  const table = commentTableOf(trivia);
+  for (let i = firstRunAtOrAfter(table, body.start); i < table.runs.length; i++) {
+    if (table.runStart[i]! > body.end) {
+      break;
+    }
+    if (table.runEnd[i]! <= body.end && runHasBlockComment(table, i)) {
       return true;
     }
   }
@@ -7028,7 +7205,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     preparedImportsOwnedByCaller: false,
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
-    emittedBlockTrivia: new Set(),
+    emittedBlockTrivia: new EmittedTrivia(),
     scopedFunctionNames: scopedFunctionNames(rootFns),
     lambdaFunctionNames: new Set(),
     fnScopeVersion: 0,
@@ -7103,7 +7280,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined,
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
-    emittedBlockTrivia: new Set(),
+    emittedBlockTrivia: new EmittedTrivia(),
     scopedFunctionNames: scopedFunctionNames(rootFns), // absent idle ⇒ fn-dispatch walk skipped
     lambdaFunctionNames: new Set(), // [lambda-fn] empty idle ⇒ user-`@function` lookup skipped
     fnScopeVersion: 0,
@@ -7965,29 +8142,25 @@ function addLeaf(
 
 /** Sparse body-comment cursor used only while replaying a callable body. */
 interface BodyTriviaReplay {
-  readonly runs: readonly Trivia[];
+  readonly table: CommentTable;
   readonly end: number;
   index: number;
 }
 
 function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined {
   const body = bodySpanForTriviaReplay(owner, e);
-  const runs = e.trivia?.commentRuns();
-  if (body === undefined || runs === undefined || runs.length === 0) {
+  const trivia = e.trivia;
+  if (body === undefined || trivia === undefined) {
     return undefined;
   }
-  let low = 0;
-  let high = runs.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (runs[middle]!.start < body.start) {
-      low = middle + 1;
-    } else {
-      high = middle;
-    }
+  const table = commentTableOf(trivia);
+  if (table.runs.length === 0) {
+    return undefined;
   }
-  const run = runs[low];
-  return run !== undefined && run.start < body.end ? { runs, end: body.end, index: low } : undefined;
+  const low = firstRunAtOrAfter(table, body.start);
+  return low < table.runs.length && table.runStart[low]! < body.end
+    ? { table, end: body.end, index: low }
+    : undefined;
 }
 
 function queueBodyTriviaBefore(
@@ -8001,21 +8174,32 @@ function queueBodyTriviaBefore(
     return;
   }
   const comments: string[] = [];
-  while (replay.index < replay.runs.length) {
-    const run = replay.runs[replay.index]!;
-    if (run.start >= end || run.start >= replay.end) {
+  const table = replay.table;
+  while (replay.index < table.runs.length) {
+    const i = replay.index;
+    if (table.runStart[i]! >= end || table.runStart[i]! >= replay.end) {
       break;
     }
     replay.index++;
-    if (run.end <= replay.end && !e.emittedBlockTrivia.has(run)) {
-      const texts = blockCommentsIn(run);
-      if (texts.length > 0) {
-        e.emittedBlockTrivia.add(run);
-        comments.push(...texts);
-      }
+    if (table.runEnd[i]! <= replay.end && !e.emittedBlockTrivia.hasIndex(table, i)) {
+      pushRunComments(table, i, comments, e);
     }
   }
   queueLeafBlockComments(group, comments);
+}
+
+/** Append run `i`'s comment texts and take ownership, if it carries any. */
+function pushRunComments(table: CommentTable, i: number, into: string[], e: Emit): void {
+  const from = table.commentAt[i]!;
+  const to = table.commentAt[i + 1]!;
+  if (from === to) {
+    return;
+  }
+  const src = table.src!;
+  e.emittedBlockTrivia.addIndex(table, i);
+  for (let c = from; c < to; c++) {
+    into.push(src.slice(table.commentStart[c]!, table.commentEnd[c]!));
+  }
 }
 
 function queueBodyTriviaTail(
@@ -8028,18 +8212,15 @@ function queueBodyTriviaTail(
     return;
   }
   const comments: string[] = [];
-  while (replay.index < replay.runs.length) {
-    const run = replay.runs[replay.index]!;
-    if (run.start >= replay.end) {
+  const table = replay.table;
+  while (replay.index < table.runs.length) {
+    const i = replay.index;
+    if (table.runStart[i]! >= replay.end) {
       break;
     }
     replay.index++;
-    if (run.end <= replay.end && !e.emittedBlockTrivia.has(run)) {
-      const texts = blockCommentsIn(run);
-      if (texts.length > 0) {
-        e.emittedBlockTrivia.add(run);
-        comments.push(...texts);
-      }
+    if (table.runEnd[i]! <= replay.end && !e.emittedBlockTrivia.hasIndex(table, i)) {
+      pushRunComments(table, i, comments, e);
     }
   }
   const target = partition?.encounteredContainer === true && partition.lastLeadingGroup !== undefined
