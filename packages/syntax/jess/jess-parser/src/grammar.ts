@@ -1586,12 +1586,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal('('),
       parser(
         { trivia: whitespace },
-        optional(sequence(
+        optional(oneOrMoreSep(
           g.ExpressionCallArgument,
-          many(sequence(
-            literal(','),
-            g.ExpressionCallArgument
-          ))
+          literal(',')
         ))
       ),
       optional(rawWhitespace),
@@ -3056,12 +3053,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal('('),
       parser(
         { trivia: whitespace },
-        optional(sequence(
+        optional(oneOrMoreSep(
           g.MixinCallArgument,
-          many(sequence(
-            literal(','),
-            g.MixinCallArgument
-          ))
+          literal(',')
         ))
       ),
       optional(rawWhitespace),
@@ -4867,12 +4861,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'MixinParams',
     sequence(
       literal('('),
-      optional(sequence(
+      optional(oneOrMoreSep(
         g.MixinParam,
-        many(sequence(
-          literal(','),
-          g.MixinParam
-        ))
+        literal(',')
       )),
       literal(')')
     ),
@@ -4909,12 +4900,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         mixinNameToken
       )),
       literal('('),
-      optional(sequence(
+      optional(oneOrMoreSep(
         g.MixinCallArgument,
-        many(sequence(
-          literal(','),
-          g.MixinCallArgument
-        ))
+        literal(',')
       )),
       literal(')'),
       optional(literal(';'))
@@ -4972,7 +4960,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       mixinNameToken,
       g.MixinParams,
       optional(sequence(
-        regex(/when(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('when'),
         literal('('),
         g.MixinGuard,
         literal(')')

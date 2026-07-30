@@ -2662,6 +2662,7 @@ describe('Jess AST grammar facts', () => {
     );
 
     for (const invalid of [
+      'm() WHEN (true) {}',
       'm($value) when ($value = true and $value = false) {}',
       'm() when ((true) and (false) or (true)) {}',
       'm() when (default(1)) {}',

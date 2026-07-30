@@ -4868,3 +4868,34 @@ parser-shared; `pnpm run check:macro` reported parser-shared, CSS, Less, SCSS,
 and Jess all fully compiled with 0 interpreter fallbacks; `pnpm run
 verify:compose-integrity` passed; and `git diff --check` passed. This slice
 makes no speed claim.
+
+Jess mixin-guard keyword cleanup, 2026-07-30: `MixinDef` now uses the same
+case-sensitive `syntaxWord('when')` helper as Jess `$for` range `to` / `step`
+instead of a hand-spelled keyword regex. Jess syntax keywords are not CSS
+at-keywords, so they should stay case-sensitive unless a deliberate Less 4.x
+compatibility adapter proves and owns a different Less-only lowering policy.
+The AST guard test rejects uppercase `WHEN` to pin that boundary.
+
+Jess call/parameter separated-list cleanup, 2026-07-30: Jess
+`ExpressionReferenceCallTail`, `ReferenceCallTail`, `MixinParams`, and
+`MixinCall` now use `optional(oneOrMoreSep(..., literal(',')))` for optional
+non-empty comma lists instead of spelling `item, many(',' item)` at each call
+site. This is a separated-list cleanup: the list delimiter carries no special
+semantic fact in these four contexts, and each reducer already filters the
+typed `ExpressionCallArgument`, `MixinCallArgument`, or `Param` payloads.
+Expression operator chains, authored value spacing, slash/comma value layout,
+selector target lists, and `$apply` / `$extend` target lists were intentionally
+left for separate review because their separators carry precedence, layout, or
+target semantics.
+
+Evidence for the Jess mixin-guard keyword and call/parameter separated-list
+cleanup: `pnpm --filter @jesscss/jess-parser test --
+test/ast-grammar.test.ts --reporter=dot` passed with 1 file and 105 tests;
+`pnpm --filter @jesscss/jess-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 119
+tests; `pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+parser-shared; `pnpm run check:macro` reported parser-shared, CSS, Less, SCSS,
+and Jess all fully compiled with 0 interpreter fallbacks; `pnpm run
+verify:compose-integrity` passed; and `git diff --check` passed. This slice
+makes no speed claim.
