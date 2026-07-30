@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 30;
+export const STABLE_LINT_RULE_SET_VERSION = 31;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -302,7 +302,7 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'warn',
     comparison: 'stylelint-equivalent',
     stylelintRule: 'declaration-block-no-duplicate-properties',
-    notes: 'Flags duplicate declaration names in the same parsed block.'
+    notes: 'Flags duplicate declaration names in the same parsed block; supports Stylelint-compatible ignore: ["consecutive-duplicates"] filtering through lint policy.'
   },
   {
     code: LINT_CODES.shorthandPropertyOverrides,
@@ -662,7 +662,8 @@ export function stylelintComparisonDiagnostics(): Record<string, LintSeverity> {
 
 function diagnosticPoliciesForRules(rules: Record<string, LintRuleSetting>): Record<string, LintSeverity> {
   const diagnostics: Record<string, LintSeverity> = {};
-  for (const [ruleName, severity] of Object.entries(rules)) {
+  for (const [ruleName, setting] of Object.entries(rules)) {
+    const severity = Array.isArray(setting) ? setting[0] : setting;
     if (severity === null || severity === 'off') {
       continue;
     }

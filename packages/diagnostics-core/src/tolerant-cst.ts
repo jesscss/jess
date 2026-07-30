@@ -3049,7 +3049,8 @@ function diagnostic(
   defaultSeverity: DiagnosticSeverityName,
   message: string,
   span: DiagnosticSpan,
-  filePath?: string
+  filePath?: string,
+  qualifiers?: readonly string[]
 ): SourceDiagnostic {
   const start = Number(span.start);
   const end = Number(span.end);
@@ -3067,7 +3068,8 @@ function diagnostic(
     line: span.startLine,
     column: span.startColumn,
     endLine: span.endLine,
-    endColumn: span.endColumn
+    endColumn: span.endColumn,
+    qualifiers
   };
 }
 
@@ -3219,7 +3221,8 @@ export function cstLintDiagnostics(
     code: string,
     severity: DiagnosticSeverityName,
     message: string,
-    span: DiagnosticSpan
+    span: DiagnosticSpan,
+    qualifiers?: readonly string[]
   ) => {
     const start = Number(span.start);
     const end = Number(span.end);
@@ -3228,7 +3231,7 @@ export function cstLintDiagnostics(
       return;
     }
     emitted.add(key);
-    out.push(diagnostic(code, severity, message, span, filePath));
+    out.push(diagnostic(code, severity, message, span, filePath, qualifiers));
   };
 
   const visit = (node: CssCstNode, context: VisitContext) => {
@@ -3777,6 +3780,7 @@ export function cstLintDiagnostics(
     let nonNoneFloatDeclarations: CssCstNode[] | undefined;
     let verticalAlignDeclarations: CssCstNode[] | undefined;
     let boxModelFacts: BoxModelFacts | undefined;
+    let previousDeclarationKey: string | undefined;
     for (const child of cstChildrenOf(node)) {
       if (!isCstNode(child)) {
         continue;
@@ -3806,7 +3810,8 @@ export function cstLintDiagnostics(
           }
           seenProps ??= new Map();
           if (seenProps.has(key)) {
-            push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${name}'`, child.span);
+            const qualifiers = previousDeclarationKey === key ? ['consecutive-duplicate'] : undefined;
+            push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${name}'`, child.span, qualifiers);
           }
           const prefix = vendorPrefixOfName(key);
           const overriddenProperties = SHORTHAND_OVERRIDE_PROPERTIES.get(unprefixedName(key));
@@ -3826,7 +3831,14 @@ export function cstLintDiagnostics(
             }
           }
           seenProps.set(key, name);
+          previousDeclarationKey = key;
+        } else {
+          previousDeclarationKey = undefined;
         }
+      } else if (CUSTOM_DECLARATION_TYPES.has(childGrammarType)) {
+        previousDeclarationKey = undefined;
+      } else if (RULESET_TYPES.has(childGrammarType) || ATRULE_TYPES.has(childGrammarType)) {
+        previousDeclarationKey = undefined;
       }
       if (CUSTOM_DECLARATION_TYPES.has(childGrammarType)) {
         const childStart = absoluteStart(child);

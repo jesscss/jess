@@ -22,6 +22,19 @@ describe('collectTolerantDiagnostics', () => {
     });
   });
 
+  it('marks consecutive duplicate properties as a shared diagnostic qualifier', () => {
+    const result = collectTolerantDiagnostics({
+      source: '.a { color: red; color: blue; margin: 0; color: green; }',
+      language: 'css'
+    });
+    const duplicates = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.duplicateProperties);
+
+    expect(duplicates.map(diagnostic => [diagnostic.message, diagnostic.qualifiers ?? []])).toEqual([
+      ['Duplicate property \'color\'', ['consecutive-duplicate']],
+      ['Duplicate property \'color\'', []]
+    ]);
+  });
+
   it('uses caller-provided CSS metadata for known properties', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { colr: red; }',

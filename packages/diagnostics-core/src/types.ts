@@ -19,6 +19,7 @@ export interface SourceDiagnostic {
   readonly column?: number;
   readonly endLine?: number;
   readonly endColumn?: number;
+  readonly qualifiers?: readonly string[];
 }
 
 export type CssMediaFeatureValueKind =

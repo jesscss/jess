@@ -87,6 +87,7 @@ export default {
     reportSyntax: true,
     rules: {
       'property-no-unknown': 'error',
+      'declaration-block-no-duplicate-properties': ['warn', { ignore: ['consecutive-duplicates'] }],
       'length-zero-no-unit': 'warn',
       'jess/unsupported-sass-form': 'warn'
     }
@@ -95,7 +96,8 @@ export default {
 ```
 
 Rule severity values are `off`, `warn`, and `error`; `null` also disables a
-rule.
+rule. Rules that support secondary options can use a Stylelint-like tuple:
+`['warn', { ...options }]`.
 
 ## What Jess Checks Today
 

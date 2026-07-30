@@ -52,6 +52,12 @@ interface StylesConfig {
   };
   input?: InputOptions | InputOptions[];
   output?: OutputOptions | OutputOptions[];
+  lint?: {
+    files?: string | string[];
+    ignoreFiles?: string | string[];
+    reportSyntax?: boolean;
+    rules?: Record<string, LintRuleSetting>;
+  };
   language?: {
     less?: LessOptions;
     scss?: Record<string, any>;
@@ -76,6 +82,9 @@ interface OutputOptions {
   sourceMap?: boolean;
   // ... any output options to override
 }
+
+type LintSeverity = 'off' | 'warn' | 'error';
+type LintRuleSetting = LintSeverity | null | readonly [LintSeverity | null, { ignore?: readonly string[] }];
 ```
 
 ### Example Configuration
@@ -101,6 +110,13 @@ export default {
     // Override for minified builds
     { file: '**/*.min.css', compress: true, sourceMap: false }
   ],
+  lint: {
+    files: ['src/**/*.{css,less,scss,jess}'],
+    rules: {
+      'property-no-unknown': 'error',
+      'declaration-block-no-duplicate-properties': ['warn', { ignore: ['consecutive-duplicates'] }]
+    }
+  },
   language: {
     less: {
       strictImports: false

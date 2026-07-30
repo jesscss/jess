@@ -102,7 +102,7 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.invalidTypedCustomPropertyValue,
       LINT_RULE_NAMES.unsupportedSassForm
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(30);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(31);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.zeroUnits]).toBe('warn');
@@ -293,6 +293,28 @@ describe('lintText', () => {
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.keyframeDuplicateSelectors, 'warning'],
       [LINT_CODES.customPropertyMissingVarFunction, 'error']
+    ]);
+  });
+
+  it('supports Stylelint-compatible duplicate-property secondary options', async () => {
+    const result = await lintText(
+      {
+        source: '.a { color: red; color: blue; margin: 0; color: green; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.duplicateProperties]: ['warn', { ignore: ['consecutive-duplicates'] }]
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.message])).toEqual([
+      [LINT_CODES.duplicateProperties, 'Duplicate property \'color\'']
     ]);
   });
 

@@ -395,7 +395,18 @@ export interface OutputOptions extends FileMatchOptions {
 }
 
 export type LintSeverity = 'off' | 'warn' | 'error';
-export type LintRuleSetting = LintSeverity | null;
+export interface LintRuleOptions {
+  /**
+   * Stylelint-compatible ignore switches for rules that support secondary
+   * options.
+   */
+  ignore?: readonly string[];
+
+  /** Allow rule-specific options without forcing every rule into a shared shape. */
+  [key: string]: unknown;
+}
+
+export type LintRuleSetting = LintSeverity | null | readonly [LintSeverity | null, LintRuleOptions?];
 
 export interface LintConfig {
   /**
@@ -420,6 +431,8 @@ export interface LintConfig {
    * Per-rule policy. Jess uses Stylelint-familiar rule names where the rule
    * intent matches, and names Jess-only diagnostics under Jess-owned namespaces.
    * `null` and `off` suppress a rule; `warn` and `error` set its severity.
+   * Tuple settings accept secondary rule options in a Stylelint-like shape,
+   * for example `['warn', { ignore: ['consecutive-duplicates'] }]`.
    */
   rules?: Record<string, LintRuleSetting>;
 
