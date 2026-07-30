@@ -1399,11 +1399,12 @@ const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
 const generalTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 
 /*
- * An unquoted Jess URL keeps literal URL-token bytes and `$[…]` segments as
- * separate grammar facts. Whitespace, quotes, parentheses, and any other `$`
- * form remain outside this closed URL slice rather than becoming raw payload.
+ * An unquoted Jess URL keeps literal URL-token bytes and `${…}` segments as
+ * separate grammar facts. `$foo` and `$[…]` stay ordinary URL bytes; whitespace,
+ * quotes, parentheses, and `$(…)` remain outside this closed URL slice.
  */
 const urlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const unquotedUrlLiteralText = regex(/(?:[^"'()\\$ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\$(?!\{)|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
  * Jess's compiler namespace: the `@-\u2026` names a module directive lowers to. They
@@ -2338,14 +2339,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'UrlInterpolatedValue',
     noTrivia(sequence(
       optional(urlInterpolatedText),
-      choice(
-        g.DollarBrace,
-        g.Expression
-      ),
+      g.DollarBrace,
       many(choice(
         urlInterpolatedText,
-        g.DollarBrace,
-        g.Expression
+        g.DollarBrace
       ))
     )),
     (children) => {
@@ -2371,7 +2368,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.CssSyntaxUrlOpen,
       optional(choice(
         g.StaticQuoted,
-        g.CssSyntaxStaticUrlInner
+        unquotedUrlLiteralText
       )),
       literal(')')
     ),
@@ -2385,8 +2382,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * Ordinary Jess value URLs retain `$[…]` as typed interpolation, instead of
-   * lowering it to opaque URL text or a generic function call.
+   * Ordinary Jess value URLs retain `${…}` as typed interpolation. The
+   * unquoted body intentionally leaves `$foo` and `$[…]` as literal URL syntax
+   * and rejects `$(…)`; the universal Jess `Quoted` override owns expression
+   * interpolation inside quoted URL bodies.
    */
   const InterpolatedUrl = node<Url>(
     'InterpolatedUrl',
@@ -2436,15 +2435,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * Cheap superset lookahead so an ordinary `.card` simple selector does not
-   * consume its `[.#]`+text run, fail the required `$[…]`, and backtrack a
+   * Cheap `${…}` lookahead so an ordinary `.card` simple selector does not
+   * consume its `[.#]`+text run, fail the required interpolation, and backtrack a
    * re-parse through Simple. The predicate mirrors this arm's own
    * leading shape (optional class/id sigil + selector-text run) and requires an
    * interpolation opener immediately after it, so the opener is bound to THIS
    * simple selector and a sibling selector's interpolation never falsely admits
    * a plain one.
    */
-  const interpolatedSimpleAhead = peek(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
+  const interpolatedSimpleAhead = peek(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$\{/));
   const InterpolatedSimple = node<SimpleSelector>(
     'InterpolatedSimple',
     noTrivia(sequence(
@@ -2472,7 +2471,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           child.parts.forEach(append);
         } else {
           /*
-           * The superset lookahead emits a throwaway match token (`…$[`). Real
+           * The lookahead emits a throwaway match token (`…${`). Real
            * selector-text chunks never contain `$`, so this content check drops
            * only that throwaway, independent of its position.
            */
@@ -2488,18 +2487,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * `&` glued to a `$[…]` template is ONE parent-suffix selector atom, not a
+   * `&` glued to a `${…}` template is ONE parent-suffix selector atom, not a
    * parent reference followed by a second compound member. Only the fused shape
    * distributes the concatenation per parent; a split one would resolve the bare
    * `&` to `:is(parents)` first and then append to that.
    *
    * The literal run between `&` and the template is a template FRAGMENT, not a
    * completed identifier, so the fused terminal's identifier rule does not apply
-   * to it: `&-$[tone]` is the authored spelling of `&-primary`. The lookahead is
+   * to it: `&-${tone}` is the authored spelling of `&-primary`. The lookahead is
    * the same fast reject `InterpolatedSimple` uses, so an ordinary `&`
    * compound member never pays a failed template scan.
    */
-  const interpolatedParentSuffixAhead = peek(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/));
+  const interpolatedParentSuffixAhead = peek(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$\{/));
   const InterpolatedParentSuffix = node<SimpleSelector>(
     'InterpolatedParentSuffix',
     noTrivia(sequence(
@@ -2993,6 +2992,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     caseInsensitiveWhen(
       'var(',
       VarCall
+    ),
+    caseInsensitiveWhen(
+      'url(',
+      g.Url
     ),
     otherwise(GenericCall)
   );
@@ -4188,7 +4191,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         choice(
           g.Quoted,
           g.UrlInterpolatedValue,
-          g.CssSyntaxStaticUrlInner
+          unquotedUrlLiteralText
         ),
         literal(')')
       )

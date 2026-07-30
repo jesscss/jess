@@ -19,7 +19,7 @@ test('canonical Jess AST grammar macro-fuses recognition with no runtime import'
     expect(transformed?.code).toContain('ExpressionProduct');
     expect(transformed?.code).toContain('CallComponent');
     expect(transformed?.code).toContain('ImportTarget');
-    expect(transformed?.code).toContain('CssSyntaxStaticUrlInner');
+    expect(transformed?.code).toContain('unquotedUrlLiteralText');
   } finally {
     await server.close();
   }
@@ -40,7 +40,7 @@ test('macro-compiled Jess call components retain modern CSS slash separators str
   ]) {
     const cst = parseJessCst(invalid);
     const result = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
-    expect(cst.errors.length + Number(cst.unconsumedFrom !== null), invalid).toBeGreaterThan(0);
+    expect(cst.ok && cst.unconsumedFrom === null, invalid).toBe(false);
     expect(result.ok && result.unconsumedFrom === null, invalid).toBe(false);
   }
 });

@@ -1276,8 +1276,7 @@ describe('Jess AST grammar facts', () => {
       '.card { color: blue; } @CHARSET "UTF-8";',
       '.card { color: blue; } @IMPORT "theme.css";',
       '@charset "$[encoding]";',
-      '@import "$[path]";',
-      '@import url($path);'
+      '@import "$[path]";'
     ]) {
       const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
@@ -1633,10 +1632,13 @@ describe('Jess AST grammar facts', () => {
       '@namespace svg url("http://www.w3.org/2000/svg");\n@document url(site.css) {\n  .icon {\n    color: blue;\n  }\n}\n'
     );
 
-    for (const dynamic of [
-      '@namespace svg url($[path]);',
-      '@document url("$[path]") { .icon { color: blue; } }'
-    ]) {
+    expect(parse('@namespace svg url($[path]);')).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', name: '@namespace', prelude: { type: 'SpacedValue', parts: [
+        { type: 'Keyword', src: 'svg' }, { type: 'Url', value: { type: 'Any', src: '$[path]' } }
+      ] } }]
+    });
+
+    for (const dynamic of ['@document url("$[path]") { .icon { color: blue; } }']) {
       expect(() => parse(dynamic), dynamic).toThrow(SyntaxError);
     }
   });
@@ -2068,7 +2070,7 @@ describe('Jess AST grammar facts', () => {
     ]) {
       const cst = parseJessCst(invalid);
       const rejected = run(jessAstGrammar.Stylesheet, invalid, { trivia: jessAstGrammar.whitespace });
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), invalid).toBeGreaterThan(0);
+      expect(cst.ok && cst.unconsumedFrom === null, invalid).toBe(false);
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -2149,34 +2151,43 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
-  it('rejects unsupported dynamic CSS url bodies rather than falling through to FunctionCall', () => {
+  it('keeps unquoted URL dollar bytes literal and rejects only unsupported URL syntax', () => {
+    expect(parse('.asset { image: url($path); }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [{ value: { type: 'Url', value: { type: 'Any', src: '$path' } } }] }]
+    });
+    expect(parse('@import url($path);')).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', prelude: { type: 'Url', value: { type: 'Keyword', src: '$path' } } }]
+    });
+
     for (const source of [
-      '.asset { image: url($path); }',
       '.asset { image: url(images/$[path] icon.svg); }',
-      '@import url($path);',
+      '.asset { image: url($(path)); }',
+      '@import url($(path));',
       '.asset { image: url("images/icon.svg"; }'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
   });
 
-  it('admits $(…) expression interpolation in url bodies as a value position', () => {
+  it('admits $(…) expression interpolation only in quoted URL bodies', () => {
     /*
-     * A url body is a value position (like a quote interior), so the $(…)
-     * arithmetic/expression form is admitted there alongside the $[…] accessor —
-     * unlike identifier-like slots (selectors, property names) which stay accessor-only.
+     * A quoted URL body uses Jess's universal `Quoted` override. That is a
+     * string/value position, so it admits the expression form; unquoted URLs
+     * reserve `$` bytes for literal paths and only recognize `${…}`.
      */
-    for (const source of ['.asset { image: url($(path)); }', '@import url($(path));']) {
+    for (const source of ['.asset { image: url("$(path)"); }', '@import url("$(path)");']) {
       const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
     }
-    const rule = parse('.asset { image: url($(path)); }').rules[0];
+    const rule = parse('.asset { image: url("$(path)"); }').rules[0];
     expect(rule).toMatchObject({
       type: 'Ruleset',
       rules: [{
         type: 'Declaration', name: 'image',
         value: { type: 'Url', value: { type: 'Interpolation', parts: [
-          { ref: { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'path' } }, unquote: true }
+          { lit: '"' },
+          { ref: { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'path' } }, unquote: true },
+          { lit: '"' }
         ] } }
       }]
     });
@@ -2302,7 +2313,30 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
-  it('fuses a parent selector with a glued $[…] template into one selector atom', () => {
+  it('keeps $[…] value-only while ${…} remains selector interpolation', () => {
+    const value = run(
+      jessAstGrammar.Stylesheet,
+      '.card { tone: $[theme]; }',
+      { trivia: jessAstGrammar.whitespace }
+    );
+    expect(value.ok).toBe(true);
+    expect(value.unconsumedFrom).toBeNull();
+
+    for (const selector of ['.card-$[theme] { tone: blue; }', '&-$[theme] { tone: blue; }']) {
+      const rejected = run(jessAstGrammar.Stylesheet, selector, { trivia: jessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null, selector).toBe(false);
+    }
+
+    const interpolatedSelector = run(
+      jessAstGrammar.Stylesheet,
+      '.card-${theme} { tone: blue; }',
+      { trivia: jessAstGrammar.whitespace }
+    );
+    expect(interpolatedSelector.ok).toBe(true);
+    expect(interpolatedSelector.unconsumedFrom).toBeNull();
+  });
+
+  it('fuses a parent selector with a glued ${…} template into one selector atom', () => {
     /*
      * A split representation would resolve the bare `&` to `:is(parents)` first
      * and append to that; only the fused atom distributes per parent.
