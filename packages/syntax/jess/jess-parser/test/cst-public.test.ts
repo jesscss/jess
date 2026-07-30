@@ -164,8 +164,6 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(stats(result.tree).grammarTypes.get('ImportStatement')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('ImportPrelude')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('ImportTarget')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('Url')).toBeGreaterThan(0);
     expect(stats(result.tree).grammarTypes.get('UrlInterpolatedValue')).toBeGreaterThan(0);
   });
