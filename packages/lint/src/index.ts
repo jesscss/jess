@@ -29,6 +29,7 @@ import {
 
 export type { LintConfig, LintRuleOptions, LintRuleSetting, LintSeverity };
 export type { CssDiagnosticMetadata } from '@jesscss/diagnostics-core';
+export { SEMANTIC_CODES } from '@jesscss/diagnostics-core';
 export {
   LINT_RULE_NAMES,
   PARSE_SYNTAX_ERROR_CODE,
@@ -129,9 +130,17 @@ function rulesFromDiagnostics(diagnostics: Record<string, LintSeverity> | undefi
   }
   const rules: Record<string, LintRuleSetting> = {};
   for (const [code, severity] of Object.entries(diagnostics)) {
-    rules[ruleNameForDiagnostic(code)] = severity;
+    const ruleName = lintRuleNameForDiagnostic(code);
+    if (ruleName !== undefined) {
+      rules[ruleName] = severity;
+    }
   }
   return rules;
+}
+
+function lintRuleNameForDiagnostic(code: string): string | undefined {
+  const ruleName = ruleNameForDiagnostic(code);
+  return ruleName === code ? undefined : ruleName;
 }
 
 function settingSeverity(setting: LintRuleSetting | LintSeverity | undefined): LintSeverity | null | undefined {
@@ -307,8 +316,8 @@ function applyPolicy(
     if (config.reportSyntax === false && diagnostic.phase === 'parse') {
       continue;
     }
-    const policy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
-      ?? config.rules?.[diagnostic.code]
+    const ruleName = lintRuleNameForDiagnostic(diagnostic.code);
+    const policy = (ruleName !== undefined ? config.rules?.[ruleName] : undefined)
       ?? config.diagnostics?.[diagnostic.code];
     const severityPolicy = settingSeverity(policy);
     if (severityPolicy === null || severityPolicy === 'off') {
@@ -317,15 +326,13 @@ function applyPolicy(
     if (severityPolicy === undefined && diagnostic.phase !== 'parse') {
       continue;
     }
-    const rulePolicy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
-      ?? config.rules?.[diagnostic.code];
+    const rulePolicy = ruleName !== undefined ? config.rules?.[ruleName] : undefined;
     if (shouldSuppressByRuleOptions(diagnostic, rulePolicy, source)) {
       continue;
     }
-    const ruleName = ruleNameForDiagnostic(diagnostic.code);
     out.push({
       ...diagnostic,
-      ruleName: ruleName === diagnostic.code ? undefined : ruleName,
+      ruleName,
       severity: severityPolicy === 'error'
         ? 'error'
         : severityPolicy === 'warn'

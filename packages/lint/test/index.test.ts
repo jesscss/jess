@@ -6,6 +6,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import {
   LINT_RULE_NAMES,
   PARSE_SYNTAX_ERROR_CODE,
+  SEMANTIC_CODES,
   STABLE_LINT_RULES,
   STABLE_LINT_RULE_SET_VERSION,
   STYLELINT_COMPARISON_LINT_CONFIG,
@@ -392,8 +393,8 @@ describe('lintText', () => {
       }
     );
 
-    expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
-      [LINT_CODES.zeroUnits, 'error']
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.zeroUnits, LINT_CODES.zeroUnits, 'error']
     ]);
   });
 
@@ -428,6 +429,53 @@ describe('lintText', () => {
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([PARSE_SYNTAX_ERROR_CODE]);
     expect(result.diagnostics[0]?.ruleName).toBeUndefined();
     expect(result.diagnostics[0]?.severity).toBe('error');
+  });
+
+  it('surfaces semantic diagnostics by diagnostic code without treating them as lint rules', async () => {
+    const input = {
+      source: '@used: red;\n.a { color: @used; background: @missing; .missing(); }',
+      filePath: '/tmp/input.less'
+    };
+    const defaults = await lintText(input, {
+      stylesConfig: {}
+    });
+    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)).toBe(false);
+    expect(defaults.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)).toBe(false);
+
+    const configuredAsRules = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          rules: {
+            [SEMANTIC_CODES.undefinedVariable]: 'error',
+            [SEMANTIC_CODES.undefinedMixin]: 'warn'
+          }
+        }
+      }
+    });
+    expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedVariable)).toBe(false);
+    expect(configuredAsRules.diagnostics.some(diagnostic => diagnostic.code === SEMANTIC_CODES.undefinedMixin)).toBe(false);
+
+    const configured = await lintText(input, {
+      stylesConfig: {
+        lint: {
+          diagnostics: {
+            [SEMANTIC_CODES.undefinedVariable]: 'error',
+            [SEMANTIC_CODES.undefinedMixin]: 'warn'
+          }
+        }
+      }
+    });
+
+    expect(configured.diagnostics.map(diagnostic => [
+      diagnostic.ruleName,
+      diagnostic.code,
+      diagnostic.phase,
+      diagnostic.severity,
+      diagnostic.message
+    ])).toEqual([
+      [undefined, SEMANTIC_CODES.undefinedVariable, 'eval', 'error', 'Undefined variable @missing'],
+      [undefined, SEMANTIC_CODES.undefinedMixin, 'eval', 'warning', 'Undefined mixin .missing']
+    ]);
   });
 
   it('routes SCSS inputs through shared diagnostics policy', async () => {

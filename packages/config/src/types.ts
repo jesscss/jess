@@ -455,8 +455,10 @@ export interface LintConfig {
   rules?: Record<string, LintRuleSetting>;
 
   /**
-   * @deprecated Use `rules`. This compatibility alias accepts Jess diagnostic
-   * codes and maps them to the corresponding lint rule when one exists.
+   * Diagnostic-code policy for parser/compiler-style diagnostics and a
+   * compatibility alias for lint rules. When a code maps to a lint rule, `rules`
+   * is preferred; codes without lint rule names, such as `var/undefined`, stay
+   * here.
    */
   diagnostics?: Record<string, LintSeverity>;
 }

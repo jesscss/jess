@@ -65,6 +65,8 @@ to a stable lint rule. Comparison labels describe parity only. A
 code, but the implementation may be a VSCode-data-backed or Jess-native subset
 and can stay out of matched benchmark mode until its behavior is comparable
 enough.
+Comparison kind never replaces either name: stable lint findings keep the lint
+rule name for configuration and the diagnostic code for shared tooling identity.
 
 | Rule | Diagnostic code | Kind |
 | --- | --- | --- |
@@ -153,7 +155,7 @@ and lint rules in one report. That does not mean they all live in lint.
 | --- | --- | --- | --- |
 | Parser/source validity | Unclosed blocks, malformed strings, invalid grammar forms | Dialect/parser options | Always an error. |
 | Config and module resolution | Missing import, disallowed load path, module cycle | `styles.config` and resolver options | The project cannot be understood. |
-| Compiler/evaluator semantics | Definite unresolved variable, no matching mixin/function, unknown named argument | Compile options and language semantics | The source does not compile. |
+| Compiler/evaluator semantics | Definite unresolved variable, no matching mixin/function, unknown named argument | Compile options and language semantics, surfaced through `lint.diagnostics` by diagnostic code | The source does not compile. |
 | Compatibility diagnostics | Parsed SCSS migration forms, Less leakage patterns | Dialect/migration/strictness options | This may compile differently than expected. |
 | Conditional compatibility lint | Less leakage patterns when leakage is enabled | Compile option plus rule config | This compiles only because compatibility mode permits it. |
 | Lint rules | Empty blocks, duplicate selectors, naming patterns, broad extends, unused variables, project style contracts | `lint.rules` | Team preference or maintainability warning. |
@@ -307,9 +309,9 @@ the language service because they are often the most useful author feedback.
 
 | Diagnostic | Owner | Notes |
 | --- | --- | --- |
-| Definite unresolved variable | Compiler/evaluator | Partial editor analysis may downgrade when imports/config are missing. |
+| Definite unresolved variable | Compiler/evaluator | Initial shared same-file CST diagnostic landed as `var/undefined` for Less/SCSS/Jess variable references; strict SCSS `@use` and Less/Jess `@from`/`@compose` syntax defaults to error. Resolver/import-aware certainty remains future work. |
 | Missing import or module cycle | Resolver/compiler | Report the path and config context. |
-| No matching mixin/function overload | Compiler/evaluator | `CallSignature` and `OverloadSet` facts can improve the message. |
+| No matching mixin/function overload | Compiler/evaluator | Initial shared same-file Less mixin diagnostic landed as `mixin/undefined`; `CallSignature` and `OverloadSet` facts can later handle functions, namespaces, arguments, guards, imports, and richer overload messages. |
 | Unknown named argument | Compiler/evaluator | Same ownership as call resolution. |
 | Private member access | Compiler later | Language rule, not style preference. |
 | Readonly assignment | Compiler later | Language rule, not style preference. |

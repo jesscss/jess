@@ -17,6 +17,7 @@ import {
   type CssDiagnosticMetadata,
   type CssPropertyValueFact,
   LINT_CODES,
+  SEMANTIC_CODES,
   type SourceDiagnostic
 } from '@jesscss/diagnostics-core';
 import * as colorUtils from './color-utils.js';
@@ -763,25 +764,6 @@ function asStringName(value: unknown): string {
   return String(value ?? '');
 }
 
-function formatVarName(lang: JessLang, rawName: string): string {
-  const trimmed = rawName.trim();
-  if (!trimmed) {
-    return trimmed;
-  }
-
-  // Already has a sigil / prefix.
-  if (trimmed.startsWith('@') || trimmed.startsWith('$') || trimmed.startsWith('--')) {
-    return trimmed;
-  }
-  if (lang === 'less') {
-    return `@${trimmed}`;
-  }
-  if (lang === 'scss') {
-    return `$${trimmed}`;
-  }
-  return `--${trimmed}`;
-}
-
 /** Small CST/source formatter for editor requests. It deliberately formats only
  * structural punctuation; semantic rendering belongs to the compiler. */
 function formatStyleSource(source: string): string {
@@ -836,6 +818,20 @@ function formatStyleSource(source: string): string {
     }
   }
   return out.trimEnd();
+}
+
+function undefinedVariableDeclarationName(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('@{') && trimmed.endsWith('}') && trimmed.length > 3) {
+    return trimmed.slice(2, -1);
+  }
+  if (trimmed.startsWith('#{$') && trimmed.endsWith('}') && trimmed.length > 4) {
+    return trimmed.slice(3, -1);
+  }
+  if ((trimmed.startsWith('$') || trimmed.startsWith('@')) && trimmed.length > 1) {
+    return trimmed.slice(1);
+  }
+  return trimmed || 'var';
 }
 
 export function createEngine(): JessLanguageServiceEngine {
@@ -923,8 +919,8 @@ export function createEngine(): JessLanguageServiceEngine {
   const importedDocs = new Map<string, TrackedDoc>();
   let semanticDiagnosticSeverities: Record<string, DiagnosticSeverity> = {
     /* eslint-disable @typescript-eslint/naming-convention */
-    'var/undefined': DiagnosticSeverity.Warning,
-    'mixin/undefined': DiagnosticSeverity.Warning,
+    [SEMANTIC_CODES.undefinedVariable]: DiagnosticSeverity.Warning,
+    [SEMANTIC_CODES.undefinedMixin]: DiagnosticSeverity.Warning,
 
     /*
      * Shared diagnostics. Keys match diagnostics-core `LINT_CODES`, not the
@@ -2141,67 +2137,18 @@ export function createEngine(): JessLanguageServiceEngine {
           if (typeof configured !== 'number') {
             continue;
           }
+          const effectiveSeverity = diagnostic.code === SEMANTIC_CODES.undefinedVariable
+            && diagnostic.defaultSeverity === 'error'
+            && configured === DiagnosticSeverity.Warning
+            ? DiagnosticSeverity.Error
+            : configured;
           diagnostics.push({
             code: diagnostic.code,
             source: diagnostic.source,
             message: diagnostic.message,
-            severity: configured,
+            severity: effectiveSeverity,
             range: diagnosticRange(diagnostic.start, diagnostic.end)
           });
-        }
-
-        /*
-         * Undefined-name diagnostics are editor heuristics, not compiler
-         * evaluation. Keep them CST/source-grounded: declarations come from the
-         * tolerant tree and every occurrence retains its exact source span.
-         */
-        if (tracked.lang !== 'css') {
-          const declared = cstDeclaredSymbols(tree, doc);
-          const modern = tracked.lang === 'scss'
-            ? /@use\s+/.test(text)
-            : tracked.lang === 'less' && /@(from|compose)\s+/.test(text);
-          const severity = (code: string) => {
-            const configured = semanticDiagnosticSeverities[code];
-            return typeof configured === 'number' ? configured : null;
-          };
-          const variable = /(?:@|\$)\{?\s*([\w-]+)\s*\}?/g;
-          let match: RegExpExecArray | null;
-          while ((match = variable.exec(text)) !== null) {
-            const name = match[1]!;
-            const after = text[match.index + match[0]!.length];
-            if (after === ':' || ['import', 'media', 'use', 'mixin', 'include', 'function', 'from', 'compose'].includes(name) || declared.vars.has(name)) {
-              continue;
-            }
-            const configured = severity('var/undefined');
-            if (configured !== null) {
-              diagnostics.push({
-                code: 'var/undefined',
-                source: 'jess',
-                message: `Undefined variable ${formatVarName(tracked.lang, name)}`,
-                severity: modern ? DiagnosticSeverity.Error : configured,
-                range: diagnosticRange(match.index, match.index + match[0]!.length)
-              });
-            }
-          }
-          if (tracked.lang === 'less') {
-            const mixin = /[.#]([\w-]+)\s*\(/g;
-            while ((match = mixin.exec(text)) !== null) {
-              const name = match[1]!;
-              if (declared.mixins.has(name)) {
-                continue;
-              }
-              const configured = severity('mixin/undefined');
-              if (configured !== null) {
-                diagnostics.push({
-                  code: 'mixin/undefined',
-                  source: 'jess',
-                  message: `Undefined mixin ${match[0]!.trim().replace(/\($/, '')}`,
-                  severity: configured,
-                  range: diagnosticRange(match.index, match.index + match[0]!.lastIndexOf('('))
-                });
-              }
-            }
-          }
         }
       }
 
@@ -2309,19 +2256,19 @@ export function createEngine(): JessLanguageServiceEngine {
 
       for (const diag of diagnostics) {
         const code = String(diag?.code ?? '');
-        if (code === 'var/undefined') {
+        if (code === SEMANTIC_CODES.undefinedVariable) {
           /*
            * The undefined name is carried by the diagnostic message (produced by
            * getDiagnostics), so no AST node lookup is needed.
            */
           const raw = String(diag?.message ?? '').match(/Undefined variable\s+(.+)$/)?.[1] ?? '';
-          const name = raw.trim() || 'var';
+          const name = undefinedVariableDeclarationName(raw);
 
           const insertText = tracked.lang === 'scss'
-            ? `$${name.replace(/^[$@]/, '')}: ;\n`
+            ? `$${name}: ;\n`
             : tracked.lang === 'less'
-              ? `@${name.replace(/^[$@]/, '')}: ;\n`
-              : `--${name.replace(/^[$@]/, '')}: ;\n`;
+              ? `@${name}: ;\n`
+              : `--${name}: ;\n`;
 
           const edit: WorkspaceEdit = {
             changes: {
@@ -2341,7 +2288,7 @@ export function createEngine(): JessLanguageServiceEngine {
           pushDidYouMean(diag, name.replace(/^[$@]/, ''), declaredVars);
         }
 
-        if (code === 'mixin/undefined') {
+        if (code === SEMANTIC_CODES.undefinedMixin) {
           // The undefined mixin name is carried by the diagnostic message.
           let name = String(diag?.message ?? '').match(/Undefined mixin\s+(.+)$/)?.[1] ?? '';
           name = name.trim() || '.mixin';

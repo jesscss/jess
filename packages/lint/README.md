@@ -148,11 +148,16 @@ export default {
       'jess/no-leaky-scope-dependence': 'warn',
       'jess/no-ambiguous-mixin-call': 'warn',
       'jess/no-impossible-guard': 'warn',
+      'jess/no-unused-default-branch': 'warn',
       'jess/no-duplicate-module-load': 'warn',
       'jess/no-unbounded-extend': 'warn',
       'jess/no-dead-extend': 'warn',
       'jess/no-suspicious-map-key-access': 'warn',
       'jess/unsupported-sass-form': 'warn'
+    },
+    diagnostics: {
+      'var/undefined': 'warn',
+      'mixin/undefined': 'warn'
     }
   }
 }
@@ -162,6 +167,19 @@ Severity values are `off`, `warn`, and `error`; `null` also disables a rule.
 Rules can also use a Stylelint-like tuple, `['warn', { ...options }]`, when a
 rule supports secondary options. Jess uses Stylelint rule names where the rule
 intent is familiar and Jess-native names for Jess-only diagnostics.
+
+Every stable lint rule has two names: a public `lint.rules` key and a shared
+Jess diagnostic `code`. Jess uses Stylelint rule names when that helps
+migration, while JSON output preserves both `ruleName` and `code`.
+`stylelint-near` in the rule table is only a parity label: the rule name is
+stable, but detection may intentionally be a Jess-native or VSCode-data-backed
+subset.
+
+Compiler-style diagnostics are configured by diagnostic code under
+`lint.diagnostics`. They are not lint rules and do not appear in
+`STABLE_LINT_RULES` unless Jess intentionally adds a lint rule alias for them,
+but `jess lint` can report them in the same compact and JSON outputs.
+`SEMANTIC_CODES` exports the current shared semantic diagnostic codes.
 
 `block-no-empty` warns on empty rulesets by default. Add
 `['warn', { include: ['mixins'] }]` when empty Less, SCSS, or Jess mixin bodies

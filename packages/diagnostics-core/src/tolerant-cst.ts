@@ -1,5 +1,5 @@
 import { parseCssDiagnosticCst, parseCssDiagnosticDoc, type CssCstChild, type CssCstNode, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser';
-import { namedColor } from '@jesscss/core';
+import { namedColor, type Phase } from '@jesscss/core';
 import { parseJessDiagnosticCst, parseJessDiagnosticDoc } from '@jesscss/jess-parser/cst';
 import { parseLessDiagnosticCst, parseLessDiagnosticDoc } from '@jesscss/less-parser/cst';
 import { parseScssDiagnosticCst, parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst';
@@ -87,6 +87,11 @@ export const LINT_CODES = {
   deadExtends: 'lint/no-dead-extend',
   suspiciousMapKeyAccess: 'lint/no-suspicious-map-key-access',
   unsupportedSassForm: 'unsupported/sass-form'
+} as const;
+
+export const SEMANTIC_CODES = {
+  undefinedVariable: 'var/undefined',
+  undefinedMixin: 'mixin/undefined'
 } as const;
 
 const LENGTH_UNITS = new Set([
@@ -593,6 +598,12 @@ type LessFixedMixinCallFact = {
   readonly name: string;
   readonly display: string;
   readonly arity: number;
+  readonly span: DiagnosticSpan;
+};
+
+type MixinReferenceFact = {
+  readonly name: string;
+  readonly display: string;
   readonly span: DiagnosticSpan;
 };
 
@@ -3127,6 +3138,15 @@ function ownedMixinGuardNode(node: CssCstNode): CssCstNode | null {
   return firstChildNodeOf(signature, 'MixinGuard') ?? null;
 }
 
+function isVariableNameChar(code: number): boolean {
+  return code === 45
+    || code === 95
+    || code >= 128
+    || (code >= 48 && code <= 57)
+    || (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122);
+}
+
 function authoredVariableNameOf(source: string, start: number, end: number): { name: string; start: number; end: number } | null {
   let nameStart = start;
   while (nameStart < end) {
@@ -3145,15 +3165,7 @@ function authoredVariableNameOf(source: string, start: number, end: number): { n
   }
   let nameEnd = nameStart + 1;
   while (nameEnd < end) {
-    const code = source.charCodeAt(nameEnd);
-    if (
-      code === 45
-      || code === 95
-      || code >= 128
-      || (code >= 48 && code <= 57)
-      || (code >= 65 && code <= 90)
-      || (code >= 97 && code <= 122)
-    ) {
+    if (isVariableNameChar(source.charCodeAt(nameEnd))) {
       nameEnd++;
       continue;
     }
@@ -3163,6 +3175,22 @@ function authoredVariableNameOf(source: string, start: number, end: number): { n
     return null;
   }
   return { name: source.slice(nameStart, nameEnd), start: nameStart, end: nameEnd };
+}
+
+function authoredLessInterpolationVariableNameOf(source: string, start: number, end: number): string | null {
+  let nameStart = start;
+  while (nameStart < end) {
+    const code = source.charCodeAt(nameStart);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      break;
+    }
+    nameStart++;
+  }
+  let nameEnd = nameStart;
+  while (nameEnd < end && isVariableNameChar(source.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  return nameEnd > nameStart ? source.slice(nameStart, nameEnd) : null;
 }
 
 function variableDeclarationOf(source: string, node: CssCstNode, language: JessLanguage): VariableDeclarationFact | null {
@@ -3322,6 +3350,17 @@ function lessFixedMixinCallOf(source: string, node: CssCstNode): LessFixedMixinC
         display: name.display,
         arity: countDescendantNodesOf(call, 'PositionalMixinArgument'),
         span: name.span
+      };
+}
+
+function lessSimpleMixinCallFactOf(source: string, node: CssCstNode): MixinReferenceFact | null {
+  const call = lessFixedMixinCallOf(source, node);
+  return call === null
+    ? null
+    : {
+        name: call.name,
+        display: call.display,
+        span: call.span
       };
 }
 
@@ -3550,6 +3589,22 @@ function variableReferenceNameOf(source: string, node: CssCstNode, language: Jes
 
 function variableReferenceFactOf(source: string, node: CssCstNode, language: JessLanguage): VariableReferenceFact | null {
   if (language === 'css') {
+    return null;
+  }
+  if (node.grammarType === 'VariableInterpolation') {
+    const start = absoluteStart(node);
+    const end = absoluteEnd(node);
+    if (language === 'less' && source.charCodeAt(start) === 64 /* @ */ && source.charCodeAt(start + 1) === 123 /* { */) {
+      const name = authoredLessInterpolationVariableNameOf(source, start + 2, end);
+      if (name === null) {
+        return null;
+      }
+      return {
+        name: normalizedVariableName(`@${name}`, language),
+        display: source.slice(start, end),
+        span: node.span
+      };
+    }
     return null;
   }
   if (node.grammarType !== 'VariableReference' && node.grammarType !== 'Reference') {
@@ -4761,13 +4816,14 @@ function diagnostic(
   message: string,
   span: DiagnosticSpan,
   filePath?: string,
-  qualifiers?: readonly string[]
+  qualifiers?: readonly string[],
+  phase?: Phase
 ): SourceDiagnostic {
   const start = Number(span.start);
   const end = Number(span.end);
   return {
     code,
-    phase: code.startsWith('parse/') ? 'parse' : 'lint',
+    phase: phase ?? (code.startsWith('parse/') ? 'parse' : 'lint'),
     source: 'jess',
     message,
     reason: '',
@@ -4954,8 +5010,10 @@ export function cstLintDiagnostics(
   const customPropertyReferences: CustomPropertyReference[] = [];
   const variableDeclarations: VariableDeclarationFact[] = [];
   const variableReferences = new Set<string>();
+  const variableReferenceFacts: VariableReferenceFact[] = [];
   const mixinDefinitions: MixinDefinitionFact[] = [];
   const mixinReferences = new Set<string>();
+  const lessMixinReferenceFacts: MixinReferenceFact[] = [];
   const functionDefinitions: FunctionDefinitionFact[] = [];
   const functionReferences = new Set<string>();
   const functionDefinitionNames = new Set<string>();
@@ -4963,14 +5021,16 @@ export function cstLintDiagnostics(
   const ruleSelectorKeys = new Set<string>();
   const exactExtendTargets: ExactExtendTargetFact[] = [];
   let hasExternalSources = false;
+  let hasStrictVariableResolution = false;
   const cssData = metadataWithDefaults(metadata);
   const dialectAtRules = DIALECT_AT_RULES[language];
-  const push = (
+  const pushDiagnostic = (
     code: string,
     severity: DiagnosticSeverityName,
     message: string,
     span: DiagnosticSpan,
-    qualifiers?: readonly string[]
+    qualifiers?: readonly string[],
+    phase?: Phase
   ) => {
     const start = Number(span.start);
     const end = Number(span.end);
@@ -4979,7 +5039,16 @@ export function cstLintDiagnostics(
       return;
     }
     emitted.add(key);
-    out.push(diagnostic(code, severity, message, span, filePath, qualifiers));
+    out.push(diagnostic(code, severity, message, span, filePath, qualifiers, phase));
+  };
+  const push = (
+    code: string,
+    severity: DiagnosticSeverityName,
+    message: string,
+    span: DiagnosticSpan,
+    qualifiers?: readonly string[]
+  ) => {
+    pushDiagnostic(code, severity, message, span, qualifiers);
   };
 
   const visit = (node: CssCstNode, context: VisitContext) => {
@@ -4990,6 +5059,12 @@ export function cstLintDiagnostics(
     }
     const gt = node.grammarType;
     hasExternalSources ||= EXTERNAL_SOURCE_TYPES.has(gt);
+    if (language !== 'css' && source.charCodeAt(start) === 64 /* @ */) {
+      const atRuleName = atRuleNameOf(source, start, end);
+      hasStrictVariableResolution ||= (language === 'scss' && atRuleName === 'use')
+        || (language === 'less' && (atRuleName === 'from' || atRuleName === 'compose' || atRuleName === '-from' || atRuleName === '-compose'))
+        || (language === 'jess' && (atRuleName === '-from' || atRuleName === '-compose'));
+    }
     const declarationName = DECLARATION_TYPES.has(gt)
       ? propNameOf(source.slice(start, end)).toLowerCase()
       : null;
@@ -5141,9 +5216,10 @@ export function cstLintDiagnostics(
       }
     }
 
-    const variableReference = variableReferenceNameOf(source, node, language);
+    const variableReference = variableReferenceFactOf(source, node, language);
     if (variableReference !== null) {
-      variableReferences.add(variableReference);
+      variableReferences.add(variableReference.name);
+      variableReferenceFacts.push(variableReference);
     }
 
     const mixinDefinition = mixinDefinitionOf(source, node, language);
@@ -5153,6 +5229,10 @@ export function cstLintDiagnostics(
 
     for (const mixinReference of mixinCallNamesOf(source, node, language)) {
       mixinReferences.add(mixinReference);
+    }
+    const lessMixinReference = language === 'less' ? lessSimpleMixinCallFactOf(source, node) : null;
+    if (lessMixinReference !== null) {
+      lessMixinReferenceFacts.push(lessMixinReference);
     }
 
     const functionDefinition = functionDefinitionOf(source, node, language);
@@ -6123,6 +6203,37 @@ export function cstLintDiagnostics(
   }
 
   if (language !== 'css') {
+    const variableDeclarationNames = new Set(variableDeclarations.map(declaration => declaration.name));
+    const undefinedVariableSeverity = hasStrictVariableResolution ? 'error' : 'warning';
+    for (const reference of variableReferenceFacts) {
+      if (!variableDeclarationNames.has(reference.name)) {
+        pushDiagnostic(
+          SEMANTIC_CODES.undefinedVariable,
+          undefinedVariableSeverity,
+          `Undefined variable ${reference.display}`,
+          reference.span,
+          undefined,
+          'eval'
+        );
+      }
+    }
+
+    if (language === 'less') {
+      const mixinDefinitionNames = new Set(mixinDefinitions.map(definition => definition.name));
+      for (const reference of lessMixinReferenceFacts) {
+        if (!mixinDefinitionNames.has(reference.name)) {
+          pushDiagnostic(
+            SEMANTIC_CODES.undefinedMixin,
+            'warning',
+            `Undefined mixin ${reference.display}`,
+            reference.span,
+            undefined,
+            'eval'
+          );
+        }
+      }
+    }
+
     for (const declaration of variableDeclarations) {
       if (!declaration.configurable && !functionDefinitionNames.has(declaration.name) && !variableReferences.has(declaration.name)) {
         push(

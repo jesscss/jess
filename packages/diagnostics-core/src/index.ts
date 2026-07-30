@@ -1,5 +1,6 @@
 export {
   LINT_CODES,
+  SEMANTIC_CODES,
   collectTolerantDiagnostics,
   cstLintDiagnostics,
   parseDocForLanguage
