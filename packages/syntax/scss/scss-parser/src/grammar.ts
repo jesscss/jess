@@ -147,7 +147,6 @@ type ScssRules = {
   AtRulePreludeDoubleQuoted: Combinator<Token>;
   AtRulePreludeSingleQuoted: Combinator<Token>;
   AtRuleStatement: Combinator<AtRuleStatement>;
-  AtRootPrelude: Combinator<ValueNode | null>;
   AtRootFilterPrelude: Combinator<ValueNode>;
   AtRootBlock: Combinator<AtRuleBlock>;
   AtRootFilter: Combinator<AtRuleBlock>;
@@ -223,6 +222,9 @@ function isToken(value: unknown): value is Token {
 }
 
 function sourceText(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map(sourceText).join('');
+  }
   if (typeof value === 'string') {
     return value;
   }
@@ -3690,43 +3692,32 @@ export const scssFactory = (g: ScssInputRules) => {
       optionalValue(children[1])
     )
   );
-  const AtRootPrelude = node<ValueNode | null>(
-    'AtRootPrelude',
-    optional(scanTo(
-      literal('{'),
-      { skip: [balanced('(', ')')] }
-    )),
-    (children) => {
-      const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
-      return text === '' ? null : any(text);
-    }
-  );
+
+  /*
+   * SCSS supports only a parenthesized `with` / `without` filter here. The
+   * bare form has no prelude at all, so do not scan arbitrary bytes toward its
+   * block opener. `balanced` owns the actual filter delimiters and inherits the
+   * grammar-level quote/comment skipping policy for nested selector syntax.
+   */
   const AtRootFilterPrelude = node<ValueNode>(
     'AtRootFilterPrelude',
-    sequence(
-      literal('('),
-      scanTo(
-        literal('{'),
-        { skip: [balanced('(', ')')] }
-      )
-    ),
-    children => any(children.map(requireToken).map(token => token.value).join('').trim())
+    noTrivia(balanced('(', ')')),
+    children => any(joinSourceText(children).trim())
   );
   const AtRootBlock = node<AtRuleBlock>(
     'AtRootBlock',
     sequence(
       routed(),
-      g.AtRootPrelude,
       literal('{'),
       nestedBody,
       literal('}')
     ),
     children => atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      null,
       statementChildren(
         children.slice(
-          3,
+          2,
           -1
         ),
         true
@@ -5072,7 +5063,6 @@ export const scssFactory = (g: ScssInputRules) => {
     AtRulePreludeDoubleQuoted,
     AtRulePreludeSingleQuoted,
     AtRuleStatement,
-    AtRootPrelude,
     AtRootFilterPrelude,
     AtRootBlock,
     AtRootFilter,

@@ -507,7 +507,7 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
-  it('uses the ambient quoted-span skipper in opaque SCSS scans', () => {
+  it('uses ambient quoted-span skipping for opaque query arguments and structural @at-root filters', () => {
     const queryFunction = run(
       scssGrammar.QueryFunction,
       'selector([data-state=")"])',
@@ -520,12 +520,19 @@ describe('SCSS canonical-AST grammar', () => {
     });
 
     for (const [rule, source, expected] of [
-      [scssGrammar.AtRootPrelude, ' "{" {', '"{"'],
       [scssGrammar.AtRootFilterPrelude, '(with: ".scope {") {', '(with: ".scope {")']
     ] as const) {
       const result = run(rule, source, { trivia: scssGrammar.whitespace });
       expect(result.ok, source).toBe(true);
       expect(result.value, source).toMatchObject({ type: 'Any', src: expected });
+    }
+
+    for (const source of [
+      '@at-root .scope { .item { color: red; } }',
+      '@at-root "{" { .item { color: red; } }'
+    ]) {
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(false);
     }
   });
 
