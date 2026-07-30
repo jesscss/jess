@@ -752,6 +752,35 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('unknownVendorSpecificProperties (lint/unknown-vendor-specific-property)', () => {
+      it('stays quiet by default because VSCode marks unknownVendorSpecificProperties opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { -webkit-made-up: x; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-vendor-specific-property');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/unknown-vendor-specific-property', 'warning'));
+        const doc = createDocument('css', '.a { -webkit-made-up: x; -webkit-transform: rotate(0); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/unknown-vendor-specific-property');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('-webkit-made-up');
+      });
+
+      it('does not fire in dialect files before property facts exist', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/unknown-vendor-specific-property', 'warning'));
+        const doc = createDocument('less', '.a { -webkit-made-up: x; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-vendor-specific-property');
+      });
+    });
+
     describe('boxModel (lint/box-model)', () => {
       it('stays quiet by default because VSCode marks boxModel opt-in', () => {
         const engine = createEngine();

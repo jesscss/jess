@@ -106,6 +106,7 @@ export default {
       'font-face-no-missing-required-properties': 'warn',
       'property-ignored-due-to-display': 'warn',
       'vendor-prefix': 'warn',
+      'unknown-vendor-specific-properties': 'off',
       'box-model': 'off',
       'float': 'off',
       'color-function-no-invalid-arguments': 'error',
@@ -161,6 +162,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `box-model` | `lint/box-model` | VSCode `boxModel` parity, opt-in |
 | `float` | `lint/float` | VSCode `float` parity, opt-in |
 | `vendor-prefix` | `lint/vendor-prefix` | VSCode `vendorPrefix` parity |
+| `unknown-vendor-specific-properties` | `lint/unknown-vendor-specific-property` | VSCode `unknownVendorSpecificProperties` parity, opt-in |
 | `no-invalid-position-at-import-rule` | `lint/no-invalid-position-at-import-rule` | `no-invalid-position-at-import-rule` |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | `no-duplicate-at-import-rules` |
 | `no-unknown-animations` | `lint/no-unknown-animations` | near `no-unknown-animations` |
