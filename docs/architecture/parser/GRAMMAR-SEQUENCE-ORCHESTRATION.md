@@ -4492,7 +4492,7 @@ than a direct parser mode. This is a source-only naming alignment: no grammar
 branch, CST/AST node label, regex body, reducer shape, or comment trivia
 behavior changed. The touched sites were not dispatch candidates; they are
 zero-width context predicates that keep ordinary selector/property arms from
-entering interpolation-only productions unless a `$[` or `${` opener appears
+entering interpolation-only productions unless a `${` opener appears
 in the same syntactic span.
 
 Evidence for the Jess parser-local interpolation-guard vocabulary follow-up:
@@ -5067,7 +5067,7 @@ This is an exact later-continuation decision inside one selector atom, so it is
 owned by the production itself rather than a `dispatch(...)` route: no one
 consumed token can distinguish the static `Parent` sibling until the required
 interpolation starts. `InterpolatedSimple` and `InterpolatedProperty` retain
-their separate preflight classifications because their broad first sets cover
+their separate `${...}`-only preflight classifications because their broad first sets cover
 the common non-interpolated selector/declaration paths; do not treat this local
 removal as permission to delete them without a routed or left-factored shape and
 an A/B result.
@@ -5126,3 +5126,13 @@ custom-property keyword branch; `var(--name)` remains owned by the CSS-shaped
 gone. Parser-shared then Jess builds, the focused AST/CST tests, the full Jess
 parser suite, `check:macro` (zero interpreter fallbacks), and
 `verify:compose-integrity` passed. No performance claim was made.
+
+Jess value-only `$[...]` boundary, 2026-07-30: the selector and property
+interpolation preflights now recognize `${` only. Their bodies consume
+`DollarBrace`, so treating `$[` as an opener could only enter a doomed
+non-value path before failing. The change leaves the preflights in place for
+the real `${...}` continuation, but removes that stale route for direct lookup
+syntax. `$[...]` remains legal only as a value/expression lookup; it is not a
+selector, declaration-name, custom-property-name, or quoted-string
+interpolation form. Parser-shared then Jess builds and the focused Jess AST/CST
+suite (2 files / 121 tests) passed. No performance claim was made.

@@ -407,7 +407,7 @@ describe('Jess AST grammar facts', () => {
       ] }]
     });
 
-    // Base-less `$[...]` remains interpolation, not a Reference chain.
+    // Base-less `$[...]` remains a value-only lookup, not a Reference chain.
     expect(parse('.card { name: $[key]; }').rules[0]).toMatchObject({
       type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'Interpolation' } }]
     });
@@ -1010,7 +1010,7 @@ describe('Jess AST grammar facts', () => {
     }
 
     /*
-     * An `$[…]`-interpolated pseudo argument is NOT a static `SelectorList`, so it
+     * An `$[…]` lookup is invalid in a pseudo argument, which is not a static `SelectorList`, so it
      * never reaches the structured path: it stays opaque exactly as before (the
      * Jess selector chain has no typed interpolation for pseudo args yet, so the
      * rule does not fully parse).
@@ -2429,7 +2429,7 @@ describe('Jess AST grammar facts', () => {
     );
   });
 
-  it('constructs structural Jess key and expression interpolation in values and quoted strings', () => {
+  it('constructs Jess value lookups and expressions, plus string interpolation', () => {
     const source = '$tone: blue; $gap: 2px; $key: $[tone]; $quoted-key: $["theme"]; $single-quoted-key: $[\'theme\']; $math: $(1 + 2 * $gap); $compare: $(1  +  2 = 3); $quoted-compare: $("a-${tone}" = foo); .card { content: "tone-${tone}-$(1 + 2)"; color: rgb($[tone], $(1 + 2), blue); }';
     const legacy = parseJessCst(source);
     const result = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
@@ -2454,7 +2454,7 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
-  it('keeps bare and quoted key interpolation as distinct direct-AST lookups through render', () => {
+  it('keeps bare and quoted key lookups distinct through direct AST render', () => {
     const document = parse('$tone: teal; .card { color: blue; bare: $[tone]; quoted: $["color"]; }');
 
     expect(document).toMatchObject({
