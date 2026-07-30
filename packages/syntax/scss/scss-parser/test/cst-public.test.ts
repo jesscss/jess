@@ -88,6 +88,17 @@ describe('@jesscss/scss-parser/cst', () => {
     expect([...grammarTypes.keys()].some(type => type.startsWith('SupportsGeneralTemplate'))).toBe(false);
   });
 
+  it('matches CSS semantic labels for static at-rule prelude fragments', () => {
+    const result = parseScssCst('@layer theme (wide) [brand] "local" { .a { color: red; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AtRulePreludeGroup')).toBe(2);
+    expect(grammarTypes.get('AtRulePreludeQuoted')).toBe(1);
+    expect([...grammarTypes.keys()].some(type => /^AtRulePrelude(?:Paren|Square|DoubleQuoted|SingleQuoted)$/.test(type))).toBe(false);
+  });
+
   it('accepts an ASCII-case-insensitive declaration priority through the public parser', () => {
     const result = parseScssCst('.card { color: blue !IMPORTANT; }');
 

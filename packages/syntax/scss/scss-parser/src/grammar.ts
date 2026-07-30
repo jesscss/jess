@@ -134,10 +134,8 @@ type ScssRules = {
   /** CSS-compatible generic header capture for known passthrough blocks. */
   AtRulePrelude: Combinator<ValueNode | null>;
   AtRulePreludeAtom: Combinator<Token>;
-  AtRulePreludeParen: Combinator<Token>;
-  AtRulePreludeSquare: Combinator<Token>;
-  AtRulePreludeDoubleQuoted: Combinator<Token>;
-  AtRulePreludeSingleQuoted: Combinator<Token>;
+  AtRulePreludeGroup: Combinator<Token>;
+  AtRulePreludeQuoted: Combinator<Token>;
   AtRuleStatement: Combinator<AtRuleStatement>;
   AtRootFilterPrelude: Combinator<ValueNode>;
   SassDirective: Combinator<AtRuleBlock | For | If | MixinCall | MixinDefinition | VariableDeclaration>;
@@ -3534,49 +3532,33 @@ export const scssFactory = (g: ScssInputRules) => {
    * until they have an interpolation-bearing prelude model.
    */
   const atRulePreludeText = regex(/(?:[^#()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?!\*))+/);
-  const AtRulePreludeDoubleQuoted = node<Token>(
-    'AtRulePreludeDoubleQuoted',
-    sequence(
-      literal('"'),
-      doubleQuotedText,
-      literal('"')
+
+  /*
+   * SCSS keeps CSS's semantic at-rule-prelude group/quoted names. Its only
+   * local behavior is the template/trivia policy; delimiters are disjoint
+   * spellings of the same authored header fragment.
+   */
+  const AtRulePreludeGroup = node<Token>(
+    'AtRulePreludeGroup',
+    choice(
+      sequence(literal('('), many(g.AtRulePreludeAtom), literal(')')),
+      sequence(literal('['), many(g.AtRulePreludeAtom), literal(']'))
     ),
     joinTokenValue
   );
-  const AtRulePreludeSingleQuoted = node<Token>(
-    'AtRulePreludeSingleQuoted',
-    sequence(
-      literal('\''),
-      singleQuotedText,
-      literal('\'')
-    ),
-    joinTokenValue
-  );
-  const AtRulePreludeParen = node<Token>(
-    'AtRulePreludeParen',
-    sequence(
-      literal('('),
-      many(g.AtRulePreludeAtom),
-      literal(')')
-    ),
-    joinTokenValue
-  );
-  const AtRulePreludeSquare = node<Token>(
-    'AtRulePreludeSquare',
-    sequence(
-      literal('['),
-      many(g.AtRulePreludeAtom),
-      literal(']')
+  const AtRulePreludeQuoted = node<Token>(
+    'AtRulePreludeQuoted',
+    choice(
+      sequence(literal('"'), doubleQuotedText, literal('"')),
+      sequence(literal('\''), singleQuotedText, literal('\''))
     ),
     joinTokenValue
   );
   const AtRulePreludeAtom = node<Token>(
     'AtRulePreludeAtom',
     choice(
-      g.AtRulePreludeParen,
-      g.AtRulePreludeSquare,
-      g.AtRulePreludeDoubleQuoted,
-      g.AtRulePreludeSingleQuoted,
+      g.AtRulePreludeGroup,
+      g.AtRulePreludeQuoted,
       g.BlockCommentToken,
       g.LineComment,
       atRulePreludeText
@@ -3600,10 +3582,8 @@ export const scssFactory = (g: ScssInputRules) => {
   const StatementPrelude = node<ValueNode | null>(
     'StatementPrelude',
     noTrivia(many(choice(
-      g.AtRulePreludeParen,
-      g.AtRulePreludeSquare,
-      g.AtRulePreludeDoubleQuoted,
-      g.AtRulePreludeSingleQuoted,
+      g.AtRulePreludeGroup,
+      g.AtRulePreludeQuoted,
       g.BlockCommentToken,
       g.LineComment,
       statementPreludeText
@@ -4993,10 +4973,8 @@ export const scssFactory = (g: ScssInputRules) => {
     MediaPrelude,
     AtRulePrelude,
     AtRulePreludeAtom,
-    AtRulePreludeParen,
-    AtRulePreludeSquare,
-    AtRulePreludeDoubleQuoted,
-    AtRulePreludeSingleQuoted,
+    AtRulePreludeGroup,
+    AtRulePreludeQuoted,
     AtRuleStatement,
     AtRootFilterPrelude,
     SassDirective,

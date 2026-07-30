@@ -5396,3 +5396,10 @@ recognition shape. Jess additionally retains `GeneralQuotedTemplate` with its
 own group/quoted children because only quoted subtemplates admit `$(...)`
 expressions; that recursion-policy difference is real language structure, not
 a reason to restore five delimiter-specific wrappers per chain.
+
+SCSS at-rule-prelude alignment, 2026-07-30: SCSS's static known-block header
+capture retains its local Sass comment and interpolation-reservation policy,
+but its parenthesis/square and quote delimiter wrappers are unchanged CSS
+structure. They now use the CSS-aligned `AtRulePreludeGroup` and
+`AtRulePreludeQuoted` CST labels, each with a first-set-disjoint `choice(...)`,
+instead of four delimiter-provenance productions.
