@@ -1142,7 +1142,8 @@ describe('Jess AST grammar facts', () => {
        * argument content, not the argument's close.
        */
       ['.x:future-thing("b(c)") { color: red; }', ':future-thing("b(c)")'],
-      ['.x:future-thing([d]) { color: red; }', ':future-thing([d])']
+      ['.x:future-thing([d]) { color: red; }', ':future-thing([d])'],
+      ['.x:future-thing(/* nested ) */ [d]) { color: red; }', ':future-thing(/* nested ) */ [d])']
     ] as const) {
       expect(parse(source), source).toMatchObject({
         rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: '.x' }, { text }] }] } }]

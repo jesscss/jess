@@ -164,10 +164,13 @@ function-condition branch probe, statement-position mixin/ruleset/property
 ambiguity, and the larger opaque-helper design, not local string/comment skip
 duplication. The function-condition probe must not settle as a cosmetic
 `peek(...)` rewrite; it needs a structural condition-argument boundary or value-sensitive
-combinator shape. SCSS `QueryFunction` and Jess generic pseudo raw arguments are
-separate follow-ups: SCSS has ambient scan skips but also routes through
-composed quoted syntax, while Jess currently lacks a root `scanSkip` policy and
-must decide that grammar shape before shrinking the pseudo scanner.
+combinator shape. SCSS `QueryFunction` remains a separate follow-up: it has
+ambient scan skips but also routes through composed quoted syntax. Jess generic
+pseudo raw arguments now inherit one root `scanSkip` policy for comments and
+static quoted strings; their local scanner keeps only the genuinely local
+nested-paren and nested-bracket exceptions. The quoted skippers reject Jess
+`$` forms, so the opaque pseudo path still cannot flatten structural
+interpolation.
 
 SCSS conditional-at-rule dispatch probe, 2026-07-29: CSS already owns the
 `@container` rule through `ContainerPrelude`; do not invent a second local
