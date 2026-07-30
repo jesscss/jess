@@ -4484,6 +4484,31 @@ build` passed; `pnpm run check:macro` reported parser-shared, CSS, Less, SCSS,
 and Jess all fully compiled and 0 interpreter fallbacks; and `pnpm run
 verify:compose-integrity` passed.
 
+Jess keyword-terminal combinator cleanup, 2026-07-29: Jess-local keyword-shaped
+terminals now use Parseman's `word(...)`, `keywords(...)`, or a local
+`makeWord(...)` factory instead of hand-spelled keyword regexes. This covers
+the CSS-compatible `@charset` / `@import` / `@supports` / `@property` /
+`@scope` leaves, the compiler namespace exclusion set, keyframe `from` / `to`,
+module `as` / `import` / `@-use` / `@-from` / `@-compose` / `@-export` /
+`@-import`, and `$for` range `to` / `step`. Boundary strings retain the old
+Unicode identifier stop set, and case sensitivity follows the previous regex
+flags: CSS-compatible at-keywords and keyframe endpoints stay
+case-insensitive, while module directive spellings and `$for` separators stay
+case-sensitive. This is not the final module-at-keyword dispatch cleanup; the
+same-opener `StyleImport` / `ModuleImport` branch choices remain a separate
+routed-shape review surface.
+
+Evidence for the Jess keyword-terminal combinator cleanup: `rg` finds no
+remaining Jess-local keyword regexes for `as`, module/compiler at-keywords,
+CSS-compatible at-keyword leaves, keyframe endpoints, or `$for` `to` / `step`;
+`pnpm --filter @jesscss/jess-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 119
+tests; `pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; `pnpm run check:macro` reported parser-shared, CSS, Less,
+SCSS, and Jess all fully compiled and 0 interpreter fallbacks; and `pnpm run
+verify:compose-integrity` passed.
+
 SCSS custom/declaration rule name cleanup, 2026-07-29: the SCSS declaration and
 custom-property grammar keys now use semantic AST/CST-aligned labels
 (`InterpolatedProperty`, `CustomPropertyName`, `CustomPart`, `CustomInnerPart`,

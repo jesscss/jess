@@ -13,7 +13,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, field, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, composeLeaf, dispatch, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -1400,7 +1400,10 @@ const urlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7
  * or captured as opaque bytes \u2014 their own typed productions own them, and a
  * malformed one must report its own error rather than silently degrade.
  */
-const compilerAtRuleName = regex(/@-(?:use|compose|export|import|from)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const compilerAtRuleName = keywords(
+  ['@-use', '@-compose', '@-export', '@-import', '@-from'],
+  { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
+);
 
 /*
  * The exclusion list is dispatch, not vocabulary: every name here HAS a typed
@@ -1413,16 +1416,20 @@ const compilerAtRuleName = regex(/@-(?:use|compose|export|import|from)(?![-_a-zA
  * (`@-webkit-anything`, `@-moz-document`) is plain unknown CSS and passes.
  */
 const genericAtRuleName = regex(/@(?!(?:charset|import|supports|property|media|container|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
-const charsetAtRuleName = regex(/@charset(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const importAtRuleName = regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const supportsAtRuleName = regex(/@supports(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const propertyAtRuleName = regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const scopeAtRuleName = regex(/@scope(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const charsetAtRuleName = word('@charset', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const importAtRuleName = word('@import', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const supportsAtRuleName = word('@supports', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const propertyAtRuleName = word('@property', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const scopeAtRuleName = word('@scope', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const keyframeEndpoint = keywords(
+  ['from', 'to'],
+  { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
+);
 const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 
 export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const caseInsensitiveWhen = makeWhen({ caseInsensitive: true });
+  const syntaxWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF');
 
   const VariableReference = node<VariableReference>(
     'VariableReference',
@@ -2043,11 +2050,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    */
   const moduleBindingName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const moduleAsClause = sequence(
-    regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/),
+    syntaxWord('as'),
     moduleBindingName
   );
   const styleImportAsClause = sequence(
-    regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/),
+    syntaxWord('as'),
     choice(
       literal('*'),
       moduleBindingName
@@ -2057,18 +2064,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'StyleImport',
     choice(
       sequence(
-        regex(/@-compose(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('@-compose'),
         g.Quoted,
         optional(styleImportAsClause),
         optional(literal(';'))
       ),
       sequence(
-        regex(/@-export(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('@-export'),
         g.Quoted,
         optional(literal(';'))
       ),
       sequence(
-        regex(/@-import(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('@-import'),
         g.Quoted,
         optional(literal(';'))
       )
@@ -2118,15 +2125,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'ModuleImport',
     choice(
       sequence(
-        regex(/@-use(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('@-use'),
         g.Quoted,
         optional(styleImportAsClause),
         optional(literal(';'))
       ),
       sequence(
-        regex(/@-from(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('@-from'),
         g.Quoted,
-        regex(/import(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('import'),
         choice(
           sequence(
             literal('*'),
@@ -5133,11 +5140,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       optional(literal('>')),
       g.ForRangeBound,
-      regex(/to(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('to'),
       optional(literal('<')),
       g.ForRangeBound,
       optional(sequence(
-        regex(/step(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('step'),
         g.ForRangeBound
       ))
     ),
