@@ -1096,6 +1096,11 @@ describe('Jess AST grammar facts', () => {
       '.x:not(2n+1) { color: red; }',
       '.x:is(2n+1) { color: red; }',
       '.x:has(2n+1) { color: red; }',
+      '.x:nth-child(+ n) { color: red; }',
+      '.x:nth-child(+ n-5) { color: red; }',
+      '.x:nth-child(1 - n) { color: red; }',
+      '.x:nth-child(2 n + 2) { color: red; }',
+      '.x:nth-child(- 2n) { color: red; }',
       '.x:totally-made-up($name) { color: red; }'
     ]) {
       const rejected = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });

@@ -8769,6 +8769,11 @@ describe('Less AST grammar facts', () => {
     for (const invalid of [
       '.card:nth-child(2n +) { color: blue; }',
       '.card:nth-child(1.5) { color: blue; }',
+      '.card:nth-child(+ n) { color: blue; }',
+      '.card:nth-child(+ n-5) { color: blue; }',
+      '.card:nth-child(1 - n) { color: blue; }',
+      '.card:nth-child(2 n + 2) { color: blue; }',
+      '.card:nth-child(- 2n) { color: blue; }',
       '.card:nth-of-type(2n +) { color: blue; }',
       '.card:nth-last-of-type(1.5) { color: blue; }',
       '.card:nth-of-type(2n of .item) { color: blue; }',
