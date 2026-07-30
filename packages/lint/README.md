@@ -129,6 +129,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `unit-no-unknown` | `lint/unit-no-unknown` | near `unit-no-unknown` |
 | `function-no-unknown` | `lint/function-no-unknown` | near `function-no-unknown` |
 | `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | near `media-feature-name-no-unknown` |
+| `media-feature-name-value-no-unknown` | `lint/media-feature-name-value-no-unknown` | near `media-feature-name-value-no-unknown` |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | near `selector-pseudo-class-no-unknown` |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | near `selector-pseudo-element-no-unknown` |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | near `selector-type-no-unknown` |

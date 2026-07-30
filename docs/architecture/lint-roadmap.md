@@ -69,6 +69,7 @@ a `jess/` prefix.
 | `unit-no-unknown` | `lint/unit-no-unknown` | Stylelint-near |
 | `function-no-unknown` | `lint/function-no-unknown` | Stylelint-near |
 | `media-feature-name-no-unknown` | `lint/media-feature-name-no-unknown` | Stylelint-near |
+| `media-feature-name-value-no-unknown` | `lint/media-feature-name-value-no-unknown` | Stylelint-near |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | Stylelint-near |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | Stylelint-near |
 | `selector-type-no-unknown` | `lint/selector-type-no-unknown` | Stylelint-near |
@@ -135,8 +136,8 @@ comparison config:
 
 | Path | Median |
 | --- | --- |
-| Jess lint comparison config | `20.84 ms/op` |
-| Stylelint comparable rules | `27.42 ms/op` |
+| Jess lint comparison config | `21.63 ms/op` |
+| Stylelint comparable rules | `28.52 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -166,8 +167,7 @@ can detect over authored source.
 | Landed | Selector validity | `selector-type-no-unknown` | Flags unknown CSS type selectors from HTML, SVG, and MathML metadata; custom elements and dialect selectors are skipped until rule options and selector facts exist. |
 | Landed | Units | `unit-no-unknown` | Flags unknown Dimension units; URL values and resolution `x` contexts are suppressed. |
 | Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
-| Landed | Media feature names | `media-feature-name-no-unknown` | Flags unknown CSS `@media` feature names; dialect media facts and value validation remain future work. |
-| P2 | Function/value validity | `media-feature-name-value-no-unknown` | Better once value facts exist. |
+| Landed | Media feature names and values | `media-feature-name-no-unknown`, `media-feature-name-value-no-unknown` | Flags unknown CSS `@media` feature names and definite invalid static values; dialect media facts remain future work. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |
 | P2 | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Project-policy heavy; opt-in only. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |

@@ -39,6 +39,7 @@ const STYLELINT_RULES = {
   'unit-no-unknown': true,
   'function-no-unknown': true,
   'media-feature-name-no-unknown': true,
+  'media-feature-name-value-no-unknown': true,
   'selector-pseudo-class-no-unknown': true,
   'selector-pseudo-element-no-unknown': true,
   'selector-type-no-unknown': true

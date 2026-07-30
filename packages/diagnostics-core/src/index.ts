@@ -16,6 +16,8 @@ export type {
   CollectDiagnosticsInput,
   CollectDiagnosticsResult,
   CssDiagnosticMetadata,
+  CssMediaFeatureValueFact,
+  CssMediaFeatureValueKind,
   DiagnosticSeverityName,
   JessLanguage,
   SourceDiagnostic
