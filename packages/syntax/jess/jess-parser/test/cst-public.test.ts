@@ -99,7 +99,7 @@ describe('@jesscss/jess-parser/cst', () => {
   });
 
   it('uses semantic CST labels for CSS at-rule preludes and headers', () => {
-    const result = parseJessCst('@media screen and (width >= 1px) { .a { color: red; } } @container card (width > 1px) { .b { color: blue; } } @unknown screen;');
+    const result = parseJessCst('@media screen and (width >= 1px), print { .a { color: red; } } @container card (width > 1px) { .b { color: blue; } } @unknown screen;');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
@@ -110,7 +110,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(grammarTypes.get('QueryComparisonFeature')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryFeatureName')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryValue')).toBeGreaterThan(0);
-    expect(grammarTypes.get('QueryClause')).toBe(1);
+    expect(grammarTypes.get('QueryClause')).toBe(2);
     expect(grammarTypes.get('QueryPrelude')).toBeGreaterThan(0);
     expect(grammarTypes.get('AtRuleStatementHeader')).toBe(1);
     expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);

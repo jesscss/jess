@@ -5265,3 +5265,12 @@ exclude execution forms without inventing a second public vocabulary. Every
 affected node continues to emit `Quoted`, `ValueAtom`, `Value`, `CallArgument`,
 or `Call` in CST mode. This is a horizontal private-name cleanup across the two
 interpolating dialects; it does not change the grammar's accepted language.
+
+Jess query-list separator alignment, 2026-07-30: Jess's local `QueryPrelude`
+now uses `oneOrMoreSep(QueryClause, ',')`, matching the CSS and Less list
+frame. Jess still owns its `QueryClause` only because it changes the contained
+header-value leaf; the comma-list structure itself is unchanged CSS. The AST
+reducer continues to discard separator tokens and emit the same single value or
+comma list. The CST test exercises two media clauses and asserts the shared
+semantic `QueryClause` count. Parser-shared then Jess builds and the focused
+AST/CST/public/macro/compose suite passed. No performance claim was made.

@@ -3710,16 +3710,9 @@ export const jessFactory = (g: JessRules & SharedSyntax) => {
       return startsWithOnly ? spaced([keyword('only'), ...values]) : values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const queryPrelude = sequence(
-    g.QueryClause,
-    many(sequence(
-      literal(','),
-      g.QueryClause
-    ))
-  );
   const QueryPrelude = node<ValueNode>(
     'QueryPrelude',
-    queryPrelude,
+    oneOrMoreSep(g.QueryClause, literal(',')),
     (children) => {
       const values = children.filter(isValueNode);
       return values.length === 1 ? values[0]! : list(values, ',');
