@@ -1957,7 +1957,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       genericFunctionOpen,
       optional(sequence(
-        not(peek(literal(')'))),
+        not(literal(')')),
         oneOrMoreSep(
           g.VarFallbackItem,
           varFallbackComma
@@ -2293,7 +2293,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const NonIdentifierPunctuationValue = node(
     'NonIdentifierPunctuationValue',
     sequence(
-      not(peek(identOrFunction)),
+      not(identOrFunction),
       g.PunctuationValue
     ),
     children => firstValue(children)

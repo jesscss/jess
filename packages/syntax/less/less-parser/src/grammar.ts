@@ -5047,7 +5047,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       atRuleBlockBody
     )),
     sequence(
-      not(peek(regex(/[ \t\n\r\f]*:/))),
+      not(regex(/[ \t\n\r\f]*:/)),
       g.AtRulePrelude,
       atRuleBlockBody
     )
@@ -5095,7 +5095,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
     'OpaqueAtRuleBlock',
     sequence(
       atRuleName,
-      not(peek(regex(/[ \t\n\r\f]*:/))),
+      not(regex(/[ \t\n\r\f]*:/)),
       noTrivia(sequence(
         g.OpaqueAtPrelude,
         literal('{'),
@@ -5155,7 +5155,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
               literal(';')
             )),
             sequence(
-              not(peek(regex(/[ \t\n\r\f]*:/))),
+              not(regex(/[ \t\n\r\f]*:/)),
               g.AtRulePrelude,
               literal(';')
             )
