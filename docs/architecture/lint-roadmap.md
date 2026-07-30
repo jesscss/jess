@@ -65,6 +65,7 @@ a `jess/` prefix.
 | `font-family-no-missing-generic-family-keyword` | `lint/font-family-no-missing-generic-family-keyword` | Stylelint-near |
 | `no-duplicate-at-import-rules` | `lint/no-duplicate-at-import-rules` | Stylelint-equivalent |
 | `unit-no-unknown` | `lint/unit-no-unknown` | Stylelint-near |
+| `function-no-unknown` | `lint/function-no-unknown` | Stylelint-near |
 | `selector-pseudo-class-no-unknown` | `lint/selector-pseudo-class-no-unknown` | Stylelint-near |
 | `selector-pseudo-element-no-unknown` | `lint/selector-pseudo-element-no-unknown` | Stylelint-near |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess-only support diagnostic |
@@ -124,15 +125,12 @@ pnpm --filter @jesscss/lint bench:stylelint
 ```
 
 Current CSS benchmark evidence on `packages/jess/benchmark/benchmark.css`
-using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 204-finding rule set:
+using Node `v25.9.0`, Stylelint `17.14.1`, and the matched 236-finding rule set:
 
 | Path | Median |
 | --- | --- |
-| Jess lint stable rules | `22.56 ms/op` |
-| Stylelint comparable rules | `21.74 ms/op` |
-| Normal CSS CST parse | `8.85 ms/op` |
-| Line-tracked CSS diagnostic CST parse | `10.60 ms/op` |
-| Diagnostics walk only | `3.70 ms/op` |
+| Jess lint stable rules | `20.71 ms/op` |
+| Stylelint comparable rules | `23.43 ms/op` |
 
 The current optimization target is diagnostic CST parse/build object cost, not
 the lint walk.
@@ -156,7 +154,8 @@ can detect over authored source.
 | Landed | Selector pseudos | `selector-pseudo-class-no-unknown`, `selector-pseudo-element-no-unknown` | Uses CSS metadata and suppresses custom, vendor, and dialect pseudos. |
 | P2 | Selector validity | `selector-type-no-unknown` | Needs element/custom-element metadata and dialect escapes. |
 | Landed | Units | `unit-no-unknown` | Flags unknown Dimension units; URL values and resolution `x` contexts are suppressed. |
-| P2 | Function/value validity | `function-no-unknown`, `media-feature-name-no-unknown` | Better once value facts exist. |
+| Landed | CSS functions | `function-no-unknown` | Flags unknown CSS declaration functions with `css-functions-list`; dialect callable checks wait for semantic facts. |
+| P2 | Function/value validity | `media-feature-name-no-unknown` | Better once value facts exist. |
 | P2 | Modern notations | `color-function-notation`, `alpha-value-notation`, `hue-degree-notation` | Convention rules; likely formatter-adjacent. |
 | P2 | Naming conventions | `selector-class-pattern`, `custom-property-pattern`, `keyframes-name-pattern` | Project-policy heavy; opt-in only. |
 | P3 | Formatting/stylistic legacy | Deprecated Stylelint stylistic rules | Do not chase whitespace rules before formatter/autofix work. |

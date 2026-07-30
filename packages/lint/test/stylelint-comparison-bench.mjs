@@ -36,6 +36,7 @@ const STYLELINT_RULES = {
   'font-family-no-missing-generic-family-keyword': true,
   'no-duplicate-at-import-rules': true,
   'unit-no-unknown': true,
+  'function-no-unknown': true,
   'selector-pseudo-class-no-unknown': true,
   'selector-pseudo-element-no-unknown': true
 };

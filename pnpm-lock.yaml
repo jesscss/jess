@@ -304,6 +304,9 @@ importers:
       '@vscode/web-custom-data':
         specifier: ^0.6.2
         version: 0.6.2
+      css-functions-list:
+        specifier: ~3.3.3
+        version: 3.3.3
       known-css-properties:
         specifier: ~0.37.0
         version: 0.37.0
@@ -10926,7 +10929,6 @@ packages:
   /css-functions-list@3.3.3:
     resolution: {integrity: sha512-8HFEBPKhOpJPEPu70wJJetjKta86Gw9+CCyCnB3sui2qQfOvRyqBy4IKLKKAwdMpWb2lHXWk9Wb4Z6AmaUT1Pg==}
     engines: {node: '>=12'}
-    dev: true
 
   /css-has-pseudo@7.0.3(postcss@8.5.23):
     resolution: {integrity: sha512-oG+vKuGyqe/xvEMoxAQrhi7uY16deJR3i7wwhBerVrGQKSqUC5GiOVxTpM9F9B9hw0J+eKeOWLH7E9gZ1Dr5rA==}
