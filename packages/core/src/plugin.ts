@@ -34,6 +34,12 @@ export type ParsedDocument = Stylesheet;
 
 export type SafeParseOptions = {
   /**
+   * Select a line-aware compiled grammar artifact for callers that need parser
+   * spans with line/column facts. Omitted callers use the normal artifact.
+   */
+  trackLines?: boolean;
+
+  /**
    * The compile-level option bag threaded to a plugin's `safeParse` (the caller
    * passes the render {@link Context}'s `opts`). Includes `allowExtendSelectors`,
    * which lives on the per-tree {@link TreeContextOptions} rather than the base.

@@ -29,6 +29,25 @@ const simpleComplex = (text: string) => simpleSelector(text);
 const compoundComplex = (...value: object[]) => compoundSelector(...value);
 
 describe('public Less parse()', () => {
+  it('attaches line facts when parse() selects the line-aware artifact', () => {
+    try {
+      parse('.card {}\n@media', { trackLines: true });
+      throw new Error('expected parse() to reject an incomplete at-rule');
+    } catch (error) {
+      expect(error).toBeInstanceOf(LessParseError);
+      expect(error).toMatchObject({ line: 2 });
+    }
+  });
+
+  it('attaches line facts to CST spans when parseLessCst() selects the line-aware artifact', () => {
+    const result = parseLessCst('.card {\n  width: 1px;\n}', 'Stylesheet', {
+      trackLines: true
+    });
+
+    expect(result.span.startLine).toBe(1);
+    expect(result.span.endLine).toBe(3);
+  });
+
   it('constructs boundary-complete CSS named colors as Color values', () => {
     const document = parse(
       '@tone: ReD; .card { color: lighten(@tone, 10%); enabled: iscolor(blue); plain: redder; current: currentColor; }'

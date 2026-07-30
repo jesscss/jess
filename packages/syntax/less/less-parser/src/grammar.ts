@@ -2064,8 +2064,8 @@ const functionConditionNot = word(
   { caseInsensitive: true }
 );
 // Built on `mixinGuardOperator` rather than re-spelling the guard comparison
-// alternation: this is only ever consumed inside `not(not(…))`, so the extra frames
-// roll back and contribute no child. The keyword arm keeps its own regex — it is a
+// alternation: this is only ever consumed inside zero-width lookahead, so the
+// extra frames roll back and contribute no child. The keyword arm keeps its own regex — it is a
 // `scanTo` sentinel, so it lands at arbitrary offsets and needs the LEADING
 // `(?<![-\w])` boundary a token-position terminal does not carry.
 const functionConditionAhead = choice(mixinGuardOperator, regex(/(?<![-\w])(?:and|or|not)(?![-\w])/i));
@@ -2723,7 +2723,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   const FunctionArgument = node<ValueSlot>(
     'FunctionArgument',
     choice(
-      sequence(not(not(sequence(scanTo(choice(functionConditionAhead, regex(/[,;)]/))), functionConditionAhead))), g.FunctionCondition),
+      sequence(peek(sequence(scanTo(choice(functionConditionAhead, regex(/[,;)]/))), functionConditionAhead)), g.FunctionCondition),
       g.FunctionScalarArgument,
       g.ArgumentValueSequence
     ),
@@ -3846,9 +3846,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
       const tails = children.filter(isMixinPathTail);
       const terminal = tails.at(-1);
       const call = mixinCall(terminal?.selector ?? head, mixinArgumentsFromChildren(children));
-      const withPath = tails.length === 0
-        ? call
-        : { ...call, path: [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)] as MixinCall['path'] };
+      const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
+      const withPath = tails.length === 0 ? call : { ...call, path };
       const hasCall = children.some(child => isTerminalText(child, '('));
       const raw = `${head}${tails.map(tail => `${tail.combinator}${tail.selector}`).join('')}${hasCall ? `(${withPath.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` : ''}`;
       return { call: withPath, raw };
@@ -4085,7 +4084,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
   // of three failed name re-scans. The gate only ever over-accepts (a
   // parenthesized-pseudo ruleset such as `.a:not(.b){}` still falls through to
   // the ruleset arm), so PEG priority and output stay identical.
-  const mixinStatementAhead = not(not(regex(/[.#][^{};]*[(;]/)));
+  const mixinStatementAhead = peek(regex(/[.#][^{};]*[(;]/));
   const UnsupportedDashOnlyMixin = node<never>(
     'UnsupportedMixinName',
     noTrivia(choice(
@@ -6099,8 +6098,23 @@ const lessGrammarFactory = (g: LessInputRules & SharedCssSyntax) => {
 export const lessGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, lessGrammarFactory)]);
 export const lessAstGrammar = lessGrammar;
 
+export const lessLineGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], trackLines: true }, lessGrammarFactory)]);
+export const lessAstLineGrammar = lessLineGrammar;
+
 /** Public Less CST artifact: the same grammar factory compiled in CST mode. */
 export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst' }, lessGrammarFactory)]);
 
 /** Diagnostic Less CST artifact: CST mode with Parseman line tracking enabled. */
 export const lessDiagnosticCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst', trackLines: true }, lessGrammarFactory)]);
+
+export type LessGrammarOptions = {
+  readonly cst?: boolean;
+  readonly trackLines?: boolean;
+};
+
+export function lessGrammarFor(options: LessGrammarOptions = {}) {
+  if (options.cst) {
+    return options.trackLines ? lessDiagnosticCstGrammar : lessCstGrammar;
+  }
+  return options.trackLines ? lessAstLineGrammar : lessAstGrammar;
+}

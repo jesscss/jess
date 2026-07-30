@@ -101,4 +101,10 @@ describe('Jess custom properties', () => {
       rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] }]
     });
   });
+
+  it('keeps the CSS-defined empty var() fallback without relaxing trailing commas elsewhere', () => {
+    expect(() => parse('a { font-family: var(--family,); }')).not.toThrow();
+    expect(() => parse('a { font-family: 1,2,; }')).toThrow(SyntaxError);
+    expect(() => parse('a { font-family: fn(1,); }')).toThrow(SyntaxError);
+  });
 });

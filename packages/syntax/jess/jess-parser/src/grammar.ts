@@ -78,6 +78,7 @@ type JessRules = {
   UrlInterpolatedValue: Combinator<Interpolation>;
   CallComponent: Combinator<ValueSlot>;
   CallArgument: Combinator<ValueSlot>;
+  VarCall: Combinator<FunctionCall>;
   Call: Combinator<FunctionCall>;
   CollectionEntry: Combinator<CollectionEntry>;
   Collection: Combinator<Collection>;
@@ -2915,40 +2916,60 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     }
   );
 
+  const callOpen = token(noTrivia(sequence(
+    g.CssSyntaxKeyword,
+    literal('(')
+  )));
+  const VarCall = node<FunctionCall>(
+    'VarCall',
+    sequence(
+      routed(),
+      g.CustomPropertyValue,
+      optional(sequence(
+        literal(','),
+        optional(rawWhitespace),
+        optional(g.Value)
+      )),
+      literal(')')
+    ),
+    children => funcCall(
+      functionOpenName(children[0]),
+      children.filter(isValueSlotValue)
+    )
+  );
+
   /*
    * A direct call owns its argument boundaries and recursive call shape. Its
    * components retain the existing Jess value-term contract, including
    * variable-led expressions (documented function arguments); the new slash
    * separator does not make `/` available as bare Jess arithmetic. Dynamic
    * `$[...]` interpolation and named arguments remain outside this slice until
-   * they have typed reductions.
+   * they have typed reductions. `var()` is the one CSS-defined exception that
+   * permits the comma without a following value, so it routes before the
+   * generic continuation instead of relaxing every function call.
    */
-  const Call = node<FunctionCall>(
+  const GenericCall = node<FunctionCall>(
     'Call',
     sequence(
-      not(regex(/url(?=\()/i)),
-      g.CssSyntaxKeyword,
-      literal('('),
+      routed(),
       optional(sequence(
         g.CallComponent,
         many(g.CallArgument)
       )),
       literal(')')
     ),
-    (children) => {
-      if (children.length < 3 || requireToken(children[1]).value !== '(' || requireToken(children.at(-1)).value !== ')') {
-        throw new TypeError('Jess call produced unexpected children.');
-      }
-      const args: ValueSlot[] = [];
-      for (let index = 2; index < children.length - 1; index += 1) {
-        const value = children[index];
-        args.push(Array.isArray(value) ? value : requireValueNode(value));
-      }
-      return funcCall(
-        requireToken(children[0]).value,
-        args
-      );
-    }
+    children => funcCall(
+      functionOpenName(children[0]),
+      children.slice(1, -1).filter(isValueSlotValue)
+    )
+  );
+  const Call = dispatch(
+    callOpen,
+    caseInsensitiveWhen(
+      'var(',
+      VarCall
+    ),
+    otherwise(GenericCall)
   );
 
   /*
@@ -5714,6 +5735,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     InterpolatedUrl,
     CallComponent,
     CallArgument,
+    VarCall,
     Call,
     CollectionEntry,
     Collection,
@@ -5790,6 +5812,13 @@ export const jessGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssP
 
 export const jessAstGrammar = jessGrammar;
 
+export const jessLineGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+  { trivia: whitespace, trackLines: true },
+  jessFactory
+)]);
+
+export const jessAstLineGrammar = jessLineGrammar;
+
 export const jessCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, hostMode: 'cst' },
   jessFactory
@@ -5799,3 +5828,15 @@ export const jessDiagnosticCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleReco
   { trivia: whitespace, hostMode: 'cst', trackLines: true },
   jessFactory
 )]);
+
+export type JessGrammarOptions = {
+  readonly cst?: boolean;
+  readonly trackLines?: boolean;
+};
+
+export function jessGrammarFor(options: JessGrammarOptions = {}) {
+  if (options.cst) {
+    return options.trackLines ? jessDiagnosticCstGrammar : jessCstGrammar;
+  }
+  return options.trackLines ? jessAstLineGrammar : jessAstGrammar;
+}

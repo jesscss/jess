@@ -1,5 +1,5 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult } from './cst.js';
-import { cssCstGrammar, cssDiagnosticCstGrammar } from './grammar.js';
+import { cssDiagnosticCstGrammar, cssGrammarFor } from './grammar.js';
 import type { ParseDoc } from 'parseman';
 
 export type { ParseDoc } from 'parseman';
@@ -9,8 +9,9 @@ export function parseCssCst(
   startRule = 'Stylesheet',
   options?: CssCstParseOptions
 ): CssCstParseResult {
+  const grammar = cssGrammarFor({ cst: true, trackLines: options?.trackLines });
   return parseCst(
-    cssCstGrammar as Record<string, unknown>,
+    grammar as Record<string, unknown>,
     input,
     startRule,
     options
@@ -31,9 +32,13 @@ export function parseCssDiagnosticCst(
 }
 
 /** Incremental (`.edit()`-able) CSS document — see {@link parseDocCst}. */
-export function parseCssDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
+export function parseCssDoc(
+  input: string,
+  startRule = 'Stylesheet',
+  options?: Pick<CssCstParseOptions, 'trackLines'>
+): ParseDoc<CssCstNode> {
   return parseDocCst(
-    cssCstGrammar as Record<string, unknown>,
+    cssGrammarFor({ cst: true, trackLines: options?.trackLines }) as Record<string, unknown>,
     input,
     startRule
   );

@@ -110,8 +110,8 @@ importers:
         specifier: ^2.6.1
         version: 2.6.1
       parseman:
-        specifier: ^0.42.1
-        version: 0.42.1
+        specifier: ^0.43.0
+        version: 0.43.0
       puppeteer:
         specifier: ^19.10.1
         version: 19.11.1(typescript@7.0.1-rc)
@@ -675,8 +675,8 @@ importers:
   packages/parser-shared:
     devDependencies:
       parseman:
-        specifier: ^0.42.1
-        version: 0.42.1
+        specifier: ^0.43.0
+        version: 0.43.0
       tsdown:
         specifier: ~0.21.7
         version: 0.21.7(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(typescript@7.0.1-rc)
@@ -717,8 +717,8 @@ importers:
         specifier: workspace:*
         version: link:../../../_shared
       parseman:
-        specifier: ^0.42.1
-        version: 0.42.1
+        specifier: ^0.43.0
+        version: 0.43.0
       postcss:
         specifier: 8.5.23
         version: 8.5.23
@@ -745,8 +745,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.5
       parseman:
-        specifier: ^0.42.1
-        version: 0.42.1
+        specifier: ^0.43.0
+        version: 0.43.0
 
   packages/syntax/jess/jess-plugin-jess:
     dependencies:
@@ -828,8 +828,8 @@ importers:
         specifier: ^4.6.3
         version: 4.6.3
       parseman:
-        specifier: ^0.42.1
-        version: 0.42.1
+        specifier: ^0.43.0
+        version: 0.43.0
       postcss-less:
         specifier: ~6.0.0
         version: 6.0.0(postcss@8.5.23)
@@ -865,8 +865,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.42.1
-        version: 0.42.1
+        specifier: ^0.43.0
+        version: 0.43.0
       sass-spec:
         specifier: github:sass/sass-spec
         version: github.com/sass/sass-spec/67c3b83a26fd3f9772dd0d3e318fe32aefb38eef(@babel/core@7.29.7)(eslint@9.39.2)
@@ -2490,6 +2490,7 @@ packages:
   /@babel/runtime@7.28.6:
     resolution: {integrity: sha512-05WQkdpL9COIMz4LjTxGpPNCdlpyimKppYNoJ5Di5EUObifl8t4tuLuUBBZEpoLYOmfvIWrsp9fCl0HoPRVTdA==}
     engines: {node: '>=6.9.0'}
+    dev: true
 
   /@babel/runtime@7.29.7:
     resolution: {integrity: sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw==}
@@ -3607,7 +3608,7 @@ packages:
       '@babel/preset-env': 7.28.6(@babel/core@7.28.6)
       '@babel/preset-react': 7.28.5(@babel/core@7.28.6)
       '@babel/preset-typescript': 7.28.5(@babel/core@7.28.6)
-      '@babel/runtime': 7.28.6
+      '@babel/runtime': 7.29.7
       '@babel/runtime-corejs3': 7.28.6
       '@babel/traverse': 7.28.6
       '@docusaurus/logger': 3.8.1
@@ -5713,7 +5714,7 @@ packages:
   /@manypkg/find-root@1.1.0:
     resolution: {integrity: sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA==}
     dependencies:
-      '@babel/runtime': 7.28.6
+      '@babel/runtime': 7.29.7
       '@types/node': 12.20.55
       find-up: 4.1.0
       fs-extra: 8.1.0
@@ -18421,8 +18422,8 @@ packages:
     dependencies:
       entities: 6.0.1
 
-  /parseman@0.42.1:
-    resolution: {integrity: sha512-CTSWBFpALwFlAkUtexOAzjC6kuWjaXj3tF/Yn8r6CrYdjRbDgmTyC4F5/+5zLe62ZGYonmHQ9tCreDgsi+UR+Q==}
+  /parseman@0.43.0:
+    resolution: {integrity: sha512-rM9gBIt4TYxigGvXaRW+B7S7JbCDCpM1fzzhY4orwXcNudiI/M4UtFE2imy6iasxIaFLPETDLO0pHYJNQxJPYw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     dependencies:
       magic-string: 0.30.21
@@ -19805,7 +19806,7 @@ packages:
       react-loadable: '*'
       webpack: '>=4.41.1 || 5.x'
     dependencies:
-      '@babel/runtime': 7.28.6
+      '@babel/runtime': 7.29.7
       react-loadable: /@docusaurus/react-loadable@6.0.0(react@19.1.4)
       webpack: 5.104.1
 
@@ -19815,7 +19816,7 @@ packages:
       react: '>=15'
       react-router: '>=5'
     dependencies:
-      '@babel/runtime': 7.28.6
+      '@babel/runtime': 7.29.7
       react: 19.1.4
       react-router: 5.3.4(react@19.1.4)
 
@@ -19824,7 +19825,7 @@ packages:
     peerDependencies:
       react: '>=15'
     dependencies:
-      '@babel/runtime': 7.28.6
+      '@babel/runtime': 7.29.7
       history: 4.10.1
       loose-envify: 1.4.0
       prop-types: 15.8.1
@@ -19838,7 +19839,7 @@ packages:
     peerDependencies:
       react: '>=15'
     dependencies:
-      '@babel/runtime': 7.28.6
+      '@babel/runtime': 7.29.7
       history: 4.10.1
       hoist-non-react-statics: 3.3.2
       loose-envify: 1.4.0

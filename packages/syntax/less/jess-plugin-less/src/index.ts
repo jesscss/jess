@@ -524,8 +524,7 @@ export class LessPlugin extends AbstractPlugin {
   }
 
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
-    void parseOptions;
-    return safeParseLess(filePath, source);
+    return safeParseLess(filePath, source, parseOptions);
   }
 }
 
