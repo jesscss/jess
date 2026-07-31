@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, classifiedTrivia, choice, composeLeaf, dispatch, endsWith, expect, label, literal, makeWhen, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, composeLeaf, dispatch, endsWith, expect, label, literal, makeWhen, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -760,6 +760,12 @@ function referenceKeyRaw(node: ValueNode): string {
   return 'src' in node && typeof node.src === 'string' ? node.src : '';
 }
 
+/** `map.get` is the `sass:map` module spelling of the global `map-get`. Both are
+ *  the same function, so both lower to the same accessor read — a grammar that
+ *  accepted only one spelling into the accessor form would emit two different
+ *  trees for one semantics. */
+const MAP_GET_SPELLINGS = new Set(['map-get', 'map.get']);
+
 /** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
  *  whose single BracketLookup step carries the key. A `$var` key selects the
  *  variable-namespace lookup; every other key is a value-equality member lookup
@@ -800,7 +806,7 @@ function reduceScssCall(name: string, children: readonly unknown[], minArgumentI
     name,
     args
   );
-  if (call.name === 'map-get' && args.length === 2 && isValue(args[0]) && isValue(args[1])) {
+  if (MAP_GET_SPELLINGS.has(call.name) && args.length === 2 && isValue(args[0]) && isValue(args[1])) {
     return lowerMapGet(
       args[0],
       args[1]
@@ -1468,10 +1474,21 @@ const scssFactory = (g: ScssInputRules) => {
      * Identifier/function values share the same glued opener. Parse it once, then
      * route the owned token to the dedicated URL, generic function, or keyword /
      * identifier-led interpolation branch without reparsing the identifier.
+     *
+     * SCSS adds the `@use` namespace qualifier to the SAME opener rather than a
+     * sibling arm that would restart from `Identifier`: `ns.fn(` and `ns.$var`
+     * are glued (`ns . fn(` is not one member), so the qualifier is part of the
+     * routed token and the branch is still decided by the token's own suffix.
+     * A bare `ns.name` with neither `(` nor `$` is deliberately NOT admitted:
+     * it is not a Sass member form, and admitting it would silently reinterpret
+     * plain identifier-dot-identifier value text as a namespace read.
+     * `token(...)` collapses every arm to one string, so the unequal arm widths
+     * here are never indexed positionally.
      */
-  const identOrFunction = token(noTrivia(sequence(
-    g.Identifier,
-    optional(literal('('))
+  const identOrFunction = token(noTrivia(choice(
+    sequence(g.Identifier, literal('.'), literal('$'), scssVarName),
+    sequence(g.Identifier, literal('.'), g.Identifier, literal('(')),
+    sequence(g.Identifier, optional(literal('(')))
   )));
   const UrlFunction = node<ValueNode>(
     'Url',
@@ -1530,10 +1547,45 @@ const scssFactory = (g: ScssInputRules) => {
       return keyword(children.map(child => requireToken(child).value).join(''));
     }
   );
+
+  /*
+   * `ns.$var` is a member READ, not a call, so it lowers to the shared `$[…]`
+   * accessor Reference the same way `map-get` already does — a `DotLookup` step
+   * would drop the `$` and stop telling a variable member from a property
+   * member. The base is the authored namespace token as written: the parser has
+   * no binding table and must not invent a `$ns` variable reference. `raw` is
+   * the authored bytes exactly, so an unresolved chain re-emits verbatim.
+   */
+  const NamespacedVariable = node<Reference>(
+    'NamespacedVariable',
+    routed(),
+    (children) => {
+      const raw = requireToken(children[0]).value;
+      const dot = raw.indexOf('.');
+      return reference(
+        keyword(raw.slice(
+          0,
+          dot
+        )),
+        [{ type: 'BracketLookup', key: variableReference(raw.slice(dot + 2), 'live'), keyKind: 'var' }],
+        raw
+      );
+    }
+  );
+
+  /*
+   * A namespaced CALL keeps its authored callee path in the `FunctionCall` name
+   * (`color.mix`). That is the lossless store: the parser cannot know whether a
+   * qualifier names a built-in `sass:` module or a `@use`d file, and splitting
+   * it into a typed namespace base would both invent that fact and require the
+   * arguments to be re-serialized into a Reference `raw`. Resolution derives the
+   * split; the grammar records the bytes.
+   */
   const IdentifierOrFunction = dispatch(
     identOrFunction,
     caseInsensitive('url(', UrlFunction),
     when(endsWith('('), Call),
+    when(matches(/\.\$/), NamespacedVariable),
     otherwise(KeywordOrInterpolatedValue)
   );
 

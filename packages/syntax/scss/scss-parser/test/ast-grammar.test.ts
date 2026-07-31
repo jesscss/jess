@@ -2265,6 +2265,44 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
+  it('keeps the authored callee path of a @use-namespaced function call', () => {
+    /*
+     * The parser has no binding table: it cannot know whether `color` names a
+     * built-in `sass:` module or a `@use`d file, so it records the authored
+     * callee path verbatim and leaves the namespace/member split to resolution.
+     */
+    expect(parse('a { b: color.mix(red, blue); }').rules[0]).toMatchObject({
+      rules: [{ value: { type: 'FunctionCall', name: 'color.mix', args: [{ type: 'Keyword' }, { type: 'Keyword' }] } }]
+    });
+
+    // `map.get` is the module spelling of `map-get`; one semantics, one tree.
+    expect(parse('a { b: map.get($m, k); }').rules[0]).toMatchObject({
+      rules: [{ value: { type: 'Reference', base: { type: 'VariableReference', name: 'm' }, raw: '$m[k]' } }]
+    });
+  });
+
+  it('lowers a @use-namespaced variable read to the shared $[…] accessor', () => {
+    expect(parse('a { b: theme.$primary; }').rules[0]).toMatchObject({
+      rules: [{
+        value: {
+          type: 'Reference',
+          base: { type: 'Keyword', src: 'theme' },
+          steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'primary', lookup: 'live' }, keyKind: 'var' }],
+          raw: 'theme.$primary'
+        }
+      }]
+    });
+  });
+
+  it('does not admit a bare identifier-dot-identifier value as a namespace read', () => {
+    /*
+     * `ns.name` with neither a glued `(` nor a `$` is not a Sass member form.
+     * Admitting it would silently reinterpret plain CSS value text, so the
+     * qualifier arms require the deciding suffix and this stays a rejection.
+     */
+    expect(() => parse('a { b: foo.bar; }')).toThrow();
+  });
+
   it('lowers a user SCSS @function to a $var-bound anonymous mixin whose @return is result:', () => {
     /*
      * A zero-parameter function lowers completely: `$two: @() > { result: 2 }`.

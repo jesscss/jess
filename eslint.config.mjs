@@ -96,7 +96,14 @@ export const grammarSourceRules = {
    * A grammar recognises input through combinators. An ad-hoc regex is
    * invisible to the macro compiler and to first-set computation.
    */
-  'grammar/no-regex-outside-combinator': 'error',
+  /*
+   * `matches(...)` is parseman's own dispatch-arm selector and takes a RegExp
+   * by contract: it tests the ALREADY-ROUTED token value, so it is neither an
+   * ad-hoc recognizer nor part of any first set, and `check:macro` reports zero
+   * interpreter fallbacks with one present. Allowing it here keeps the rule
+   * aimed at hand-rolled recognition instead of at a documented combinator.
+   */
+  'grammar/no-regex-outside-combinator': ['error', { combinators: ['regex', 'matches'] }],
 
   /*
    * Keeps the file macro-buildable: no factories, no spreads into

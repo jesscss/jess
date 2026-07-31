@@ -174,16 +174,20 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     ['namespaced variable read', 'a { b: ns.$var }'],
     ['namespaced map read', 'a { b: map.get($m, k) }'],
     ['namespaced colour helper', 'a { b: color.mix(red, blue) }']
-  ])('PINNED DEFECT — rejects Sass module-system member access (%s)', (_label, source) => {
+  ])('accepts Sass module-system member access (%s)', (_label, source) => {
     /*
      * `map.get(...)` is the modern spelling of `map-get(...)` under
-     * `@use "sass:map"`, and the hyphenated legacy form IS covered
+     * `@use "sass:map"`, and the hyphenated legacy form was already covered
      * (ast-grammar.test.ts, "lowers SCSS map-get to the shared $[…] accessor
-     * read"). The dotted namespaced form has no grammar at all — the suites
-     * only ever exercised the legacy spelling, which is exactly how this got
-     * missed.
+     * read") while the dotted namespaced form had no grammar at all — the
+     * suites only ever exercised the legacy spelling, which is exactly how
+     * this got missed. Both spellings are now admitted; the resulting trees
+     * are asserted in ast-grammar.test.ts ("keeps the authored callee path of
+     * a @use-namespaced function call" and "lowers a @use-namespaced variable
+     * read to the shared $[…] accessor"), so this case guards recognition
+     * only.
      */
-    expect(() => parse(source)).toThrow();
+    expect(() => parse(source)).not.toThrow();
   });
 
   it('PINNED DEFECT — rejects a namespaced variable assignment', () => {
