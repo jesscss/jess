@@ -462,6 +462,39 @@ each. **Direct confirmation of the model: the prize is transitive subtree ×
 use count, and css's was already zero here.** Do not port a win between
 grammars without re-measuring.
 
+### 2.4d Negative result: promoting less `blockItem` is now a LOSS, +539 B
+
+Promoting `blockItem` to a named `g.BlockItem` — the exact H1 shape §2.8
+describes, referenced twice from `blockBody` and `rulesetBody`, each copy
+nominally dragging the whole statement-body closure — **cost** `ast.js` +539 B
+and `cst.js` +539 B. Not landed.
+
+Measured on `origin/dev` `209a9e3a5`, parseman 0.46.0, both sides built in one
+directory, each figure reproduced by a second clean build:
+
+| | base | candidate | delta |
+| --- | ---: | ---: | ---: |
+| `lib/grammar/ast.js` | 2,733,719 | 2,734,258 | **+539** |
+| `lib/grammar/cst.js` | 2,719,566 | 2,720,105 | **+539** |
+
+**Cause: the by-const promotion sweep (§2.4-0) already took this prize.** After
+the sweep, `blockItem`'s arms are themselves `g.` references —
+`atStatement` is a choice of eleven `g.` refs, `mixinStatement` two — so its
+closure is now SHALLOW and the two inline copies cost almost nothing. Naming it
+pays a full rule's overhead to save a pointer. This is the same finding as css
+`typedIdentOrFunction` and scss `propertyIdentifier` in §2.4-0: **a shallow
+leaf is cheaper inlined than named, and reference count does not predict the
+sign.**
+
+**The lesson is about ORDER, not about this rule.** Measured against
+`131cd9d1b` before the sweep, the identical one-line change was worth
+**−356,978 B (−9.06%)**. The same edit, unchanged, went from a 9% win to a small
+loss purely because another lane shared the closure underneath it first. **A
+size result is only valid against the base it was measured on; re-measure before
+landing anything authored more than a few commits back**, and state the
+denominator (§1a).
+
+
 ### 2.4c css leverage map — 90× between regions
 
 | region | source | artifact | expansion |
