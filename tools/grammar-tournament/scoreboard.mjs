@@ -154,14 +154,34 @@ async function main() {
       ?? (grammarRel === undefined ? undefined : grammarRel.replace(/^src\//, 'lib/').replace(/\.ts$/, '.js'));
     console.log(`\n--- grading ${label} (${srcPkg}${grammarRel ? ` # ${grammarRel}` : ''}) ---`);
     const dir = snapshot(label, srcPkg);
-    const bytes = artifactBytes(dir);
+    const bytes = artifactBytes(dir, entryRel ?? null);
 
-    const pre = checkEntry(dir, bytes.rank.raw, baseBytes.rank.raw);
-    if (!pre.ok) {
-      const why = pre.fallback.ok ? pre.floor.reason : pre.fallback.reason;
+    /*
+     * UNATTENDED INVARIANT. A row that declared its grammar lives elsewhere,
+     * yet was measured on the stock rank artifact, is a contradiction and can
+     * never be a legitimate state — it means the entry path was dropped
+     * somewhere between argument parsing and measurement, which is exactly the
+     * bug this replaces. Refuse the row rather than print a number about the
+     * wrong file. It fires with nobody watching.
+     */
+    if (entryRel !== undefined && entryRel !== RANK_ARTIFACT && bytes.measured === RANK_ARTIFACT) {
+      const why = `--grammar-entry ${entryRel} was supplied but bytes were measured on ${RANK_ARTIFACT}`;
       console.log(`  REFUSED: ${why}`);
       rows.push({ label, refused: why, bytes });
       continue;
+    }
+
+    const pre = checkEntry(dir, bytes.rank.raw, baseBytes.rank.raw);
+    if (!pre.ok) {
+      const why = pre.fallback.ok ? `rank artifact missing at ${bytes.measured}` : pre.fallback.reason;
+      console.log(`  REFUSED: ${why}`);
+      rows.push({ label, refused: why, bytes });
+      continue;
+    }
+    if (!pre.floor.ok) {
+      console.log(`  SMALL ARTIFACT: ${pre.floor.reason}`);
+      console.log('                  NOT a refusal — the exact checks decide. goal-2 (4x source) is 13.7% of');
+      console.log('                  the incumbent, so a passing rewrite is SUPPOSED to land here.');
     }
 
     let renames = {};
@@ -194,6 +214,23 @@ async function main() {
     const id = compareBuilds({ base: baseSurfaces, candidate: surfaces, corpus, renames, repo });
     const realTrees = id.checked - id.bothThrew - (id.illusory?.length ?? 0);
     console.log(`  identity: ${id.verdict.toUpperCase()}  ${id.checked} pairs / ${realTrees} real trees / ${id.bothThrew} identical-throw`);
+
+    /*
+     * A no-verdict was previously SILENT — the reason lived in `undigested`
+     * and nothing printed it, so the run showed a verdict with no cause and
+     * the board rendered it as FAIL(0). "The tool could not answer" and "the
+     * grammar moved" are different facts and must never share a rendering.
+     */
+    if (id.undigested?.length > 0) {
+      const reasons = new Map();
+      for (const u of id.undigested) {
+        reasons.set(u.error, (reasons.get(u.error) ?? 0) + 1);
+      }
+      console.log(`  NO VERDICT: ${id.undigested.length} pair(s) could not be compared —`);
+      for (const [reason, n] of [...reasons].slice(0, 5)) {
+        console.log(`    ${String(n).padStart(4)} x ${reason}`);
+      }
+    }
 
     /*
      * Reported BEFORE the tree divergences, because a short parse explains
@@ -310,7 +347,7 @@ async function main() {
     }
     console.log(
       pad(r.label, 12)
-      + pad(r.identity === 'pass' ? 'PASS' : r.identity === 'baseline' ? '—' : `FAIL(${r.divergences})`, 11)
+      + pad(r.identity === 'pass' ? 'PASS' : r.identity === 'baseline' ? '—' : r.identity === 'no-verdict' ? 'NO-VERDICT' : `FAIL(${r.divergences})`, 11)
       + pad(num(r.bytes.rank.raw), 14)
       + pad(num(r.bytes.rank.gzip), 11)
       + pad(num(r.bytes.totalRaw), 14)
@@ -319,6 +356,13 @@ async function main() {
       + pad(r.re.spanningCount, 6)
       + `${r.ref.ok ? `${r.ref.defective} defective / ${r.ref.emittedTwice} twice` : 'n/a'}`
     );
+    /*
+     * The measured path, under every row. Two rows with identical bytes must
+     * be readable as "the same file was measured twice" rather than as a
+     * coincidence — that ambiguity is what let the incumbent be ranked as a
+     * candidate for a full round.
+     */
+    console.log(`${' '.repeat(12)}measured: ${r.bytes.measured}`);
   }
 
   console.log('\nNOTES');
@@ -331,7 +375,7 @@ async function main() {
   console.log(`    column rank authoring accident, not grammar design.`);
   console.log(`  * gzip is reported, never ranked: raw and gzip have already moved in opposite directions.`);
 
-  const disq = rows.filter(r => r.identity === 'fail' || r.refused);
+  const disq = rows.filter(r => r.identity === 'fail' || r.identity === 'no-verdict' || r.refused);
   process.exit(disq.length > 0 ? 1 : 0);
 }
 

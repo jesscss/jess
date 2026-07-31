@@ -47,11 +47,28 @@ export const ARTIFACTS = Object.freeze([
 
 export const RANK_ARTIFACT = 'lib/grammar/ast.js';
 
-export function artifactBytes(pkgDir) {
+/**
+ * Bytes of the artifacts a candidate actually emits.
+ *
+ * `entryRel` is NOT optional decoration. A candidate whose grammar compiles to
+ * `lib/terminal-up.js` still has a stock `lib/grammar/ast.js` sitting in its
+ * snapshot, so ranking on the constant measured THE INCUMBENT TWICE and printed
+ * two byte-identical rows that read as a coincidence rather than a bug
+ * (Candidate B diagnosed it; Candidate A reported it against its own interest,
+ * since it made an 8x-smaller entry look identical to the baseline).
+ *
+ * Note the existing `catch` guard could never have caught this: it defends
+ * against a MISSING artifact, and the failure mode is the PRESENCE OF THE WRONG
+ * ONE. The guard was on the wrong axis, so `measured` is now returned and
+ * printed — identical bytes across two rows must be readable as "same file".
+ */
+export function artifactBytes(pkgDir, entryRel = null) {
+  const rankRel = entryRel ?? RANK_ARTIFACT;
+  const set = entryRel === null ? ARTIFACTS : [...new Set([entryRel, ...ARTIFACTS])];
   const out = {};
   let totalRaw = 0;
   let totalGzip = 0;
-  for (const rel of ARTIFACTS) {
+  for (const rel of set) {
     const p = resolve(pkgDir, rel);
     let raw = null;
     let gzip = null;
@@ -66,7 +83,14 @@ export function artifactBytes(pkgDir) {
     }
     out[rel] = { raw, gzip };
   }
-  return { perArtifact: out, totalRaw, totalGzip, rank: out[RANK_ARTIFACT] };
+  return {
+    perArtifact: out,
+    totalRaw,
+    totalGzip,
+    rank: out[rankRel],
+    /* The path the rank column actually came from. Printed, never inferred. */
+    measured: rankRel
+  };
 }
 
 /**

@@ -24,7 +24,7 @@
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFileSync, mkdirSync, readFileSync, cpSync, rmSync } from 'node:fs';
-import { loadSurfaces, compareBuilds, formatDivergence } from './src/identity.mjs';
+import { loadSurfaces, loadSurfacesFromModule, compareBuilds, formatDivergence } from './src/identity.mjs';
 import { loadCssCorpus, isMalformed } from './src/corpus.mjs';
 import { detectInterpreterFallback } from './src/preconditions.mjs';
 
@@ -204,6 +204,49 @@ async function main() {
   const check1 = r1.verdict === 'pass';
   console.log(check1 ? '\nCHECK 1 OK — identical builds compare identical.' : '\nCHECK 1 FAILED — the harness reports divergence between two copies of one build.');
 
+  // ---- CHECK 3 ---------------------------------------------------------
+  /*
+   * CHECK 1 exercises `loadSurfaces` — the INCUMBENT path, and the path of any
+   * entry graded without `--grammar-module`. It says nothing about
+   * `loadSurfacesFromModule`, which is the path EVERY candidate submission
+   * takes. A green CHECK 1 certified half the harness while the candidate half
+   * threw on a `lib/parse-with.js` that is not emitted (Candidate B found it).
+   *
+   * So: build a bare module that re-exports the incumbent's own two compiled
+   * grammars, grade it through the module path, and require the same PASS.
+   * Same grammar, different loader — any divergence is the loader's.
+   */
+  heading('SELF-CHECK 3 — candidate MODULE path (must PASS, zero divergences)');
+  const modDir = resolve(pkg, 'entries/module-path');
+  rmSync(modDir, { recursive: true, force: true });
+  cpSync(baseDir, resolve(modDir, 'lib'), { recursive: true });
+  writeFileSync(
+    resolve(modDir, 'lib/candidate-entry.js'),
+    'export { cssGrammar } from \'./grammar/ast.js\';\nexport { cssCstGrammar } from \'./grammar/cst.js\';\n'
+  );
+
+  let check3 = false;
+  try {
+    const viaModule = await loadSurfacesFromModule(resolve(modDir, 'lib'), 'candidate-entry.js');
+    console.log(`surfaces       ${viaModule.map(s => s.name).join(', ')}`);
+    if (viaModule.length !== base.length) {
+      console.log(`CHECK 3 FAILED — module path exposes ${viaModule.length} surface(s), incumbent exposes ${base.length}.`);
+    } else {
+      const r3 = compareBuilds({ base, candidate: viaModule, corpus, renames: {}, repo });
+      console.log(`pairs compared ${r3.checked}`);
+      console.log(`verdict        ${r3.verdict.toUpperCase()}  divergences=${r3.divergenceCount ?? r3.divergences.length}`);
+      for (const u of (r3.undigested ?? []).slice(0, 3)) {
+        console.log(`  - ${u.surface} ${u.id}: ${u.error}`);
+      }
+      check3 = r3.verdict === 'pass';
+      console.log(check3
+        ? '\nCHECK 3 OK — the candidate module path grades the same grammar identically.'
+        : '\nCHECK 3 FAILED — the module loader changes the result for an unchanged grammar.');
+    }
+  } catch (e) {
+    console.log(`CHECK 3 FAILED — module path threw: ${e.message}`);
+  }
+
   // ---- CHECK 2 ---------------------------------------------------------
   heading('SELF-CHECK 2 — current vs BROKEN (must FAIL and NAME THE SITE)');
   const results = [];
@@ -254,7 +297,8 @@ async function main() {
   for (const r of results) {
     console.log(`CHECK 2 (${r.label}) : ${r.ok ? `OK — ${r.count} divergences` : 'FAILED'}${r.named ? ' [site named]' : ''}`);
   }
-  const allOk = check1 && results.every(r => r.ok);
+  console.log(`CHECK 3 (candidate module path -> pass) : ${check3 ? 'OK' : 'FAILED'}`);
+  const allOk = check1 && check3 && results.every(r => r.ok);
   console.log(`\nHARNESS ${allOk ? 'TRUSTWORTHY' : 'NOT TRUSTWORTHY'}`);
   process.exit(allOk ? 0 : 1);
 }

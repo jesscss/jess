@@ -33,6 +33,7 @@
  * its own breakage in the vocabulary of a grammar regression does not degrade,
  * it lies.
  */
+import { readFileSync } from 'node:fs';
 import { digest, firstDivergence, describe, assertInjective } from './canonical.mjs';
 import { isMalformed } from './corpus.mjs';
 
@@ -63,9 +64,52 @@ export async function loadSurfaces(libDir) {
  * snapshot's own `lib/`, which keeps the host, the trivia policy and the error
  * projection identical to the baseline's.
  */
+/**
+ * Get the package's own `parseWith` out of a BUILT `lib/`.
+ *
+ * There is no `lib/parse-with.js`. Only `lib/parse-with.d.ts` exists — a
+ * types-only near-miss that makes the directory listing look right — and the
+ * implementation lives in a rolldown chunk whose exports are MANGLED to single
+ * letters (`n`, `t`). Importing the chunk and guessing a name yields
+ * `undefined`, which fails as "parseWith is not a function" or, worse, silently
+ * if anything optional-chains it. Candidate B measured this.
+ *
+ * So the alias is resolved from `lib/index.js`'s own import statement, which is
+ * the authority on which mangled binding is which:
+ *
+ *     import { n as CssParseError, t as parseWith } from "./chunks/parse-with.js";
+ *
+ * This needs NO build change, so it works against a candidate's existing `lib/`.
+ * It also cannot degrade quietly: every failure path throws with the reason,
+ * and the result is type-checked before it is returned.
+ */
+async function resolveParseWith(libDir) {
+  try {
+    const direct = await import(`${libDir}/parse-with.js`);
+    if (typeof direct.parseWith === 'function') {
+      return direct.parseWith;
+    }
+  } catch { /* expected today: the module is not emitted */ }
+
+  const indexSrc = readFileSync(`${libDir}/index.js`, 'utf8');
+  for (const m of indexSrc.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"](\.[^'"]+)['"]/g)) {
+    const alias = /(\w+)\s+as\s+parseWith/.exec(m[1]);
+    if (alias === null) {
+      continue;
+    }
+    const chunk = await import(`${libDir}/${m[2].replace(/^\.\//, '')}`);
+    const fn = chunk[alias[1]];
+    if (typeof fn !== 'function') {
+      throw new Error(`lib/index.js aliases '${alias[1]}' as parseWith, but ${m[2]} exports no such function (exports: ${Object.keys(chunk).join(', ')})`);
+    }
+    return fn;
+  }
+  throw new Error('cannot resolve parseWith: no lib/parse-with.js, and lib/index.js has no `… as parseWith` import');
+}
+
 export async function loadSurfacesFromModule(libDir, moduleRel) {
   const mod = await import(`${libDir}/${moduleRel.replace(/^lib\//, '')}`);
-  const parseWith = (await import(`${libDir}/parse-with.js`)).parseWith;
+  const parseWith = await resolveParseWith(libDir);
   const host = await import(`${libDir}/cst-host.js`);
 
   const astGrammar = mod.cssGrammar ?? mod.astGrammar ?? mod.grammar;
