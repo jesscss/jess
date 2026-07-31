@@ -97,6 +97,38 @@ describe('SCSS operator adjacency', () => {
  * to be a STATED policy on the selector production, not a side effect of
  * whether some regex happened to list the comment alternative.
  */
+/*
+ * The wider defect the operator cases are only a symptom of.
+ *
+ * css-syntax-3 §4 makes a comment valid ANYWHERE whitespace is valid, and
+ * css-values-4 §10.1's whitespace requirement is on `+`/`-` only. So every
+ * case below is valid CSS. All four dialects get this wrong, each differently:
+ *
+ *   position                     css    less   scss   jess
+ *   leading edge  calc(/**\/1px …)  rej    rej    ACC    rej
+ *   trailing edge calc(… 2px/**\/)  rej    rej    ACC    rej
+ *   around `*`    calc(1px/**\/*…)  rej    ACC    rej    rej
+ *   around `-`    calc(1px/**\/-…)  rej    rej    rej    rej
+ *
+ * SCSS is the exact inverse of Less: it is the only dialect that admits a
+ * comment at the calc EDGES, and it rejects them around the operators where
+ * Less admits them. Nobody chose that; it is what two independent sets of
+ * hand-spelled boundaries add up to.
+ */
+describe('SCSS comments inside calc()', () => {
+  it('accepts a comment at the edges of calc()', () => {
+    accepts('a { b: calc(/**/1px + 2px) }');
+    accepts('a { b: calc(1px + 2px/**/) }');
+    accepts('a { b: calc(1px + 2px /**/) }');
+    accepts('a { b: calc((1px)/**/) }');
+  });
+
+  it('PINNED DEFECT — rejects a comment around a calc() operator', () => {
+    rejects('a { b: calc(1px* /**/ 2) }');
+    rejects('a { b: calc(1px /**/ * /**/ 2) }');
+  });
+});
+
 describe('SCSS selector adjacency', () => {
   it.each([
     ['between two compound parts', '.e/*y*/.f { g: h }'],

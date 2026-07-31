@@ -88,3 +88,40 @@ describe('Less operator adjacency', () => {
     accepts('a { b: calc(1px*2) }');
   });
 });
+
+/*
+ * The wider defect the operator cases are only a symptom of.
+ *
+ * css-syntax-3 §4 makes a comment valid ANYWHERE whitespace is valid. The
+ * whitespace REQUIREMENT of css-values-4 §10.1 applies to `+`/`-` only, and it
+ * requires whitespace to be PRESENT — it is not a licence to reject comments
+ * elsewhere. So every case below is valid CSS.
+ *
+ * All four dialects get this wrong, and each differently — four accept sets
+ * for one question, no two agreeing and none matching the spec:
+ *
+ *   position                     css    less   scss   jess
+ *   leading edge  calc(/**\/1px …)  rej    rej    ACC    rej
+ *   trailing edge calc(… 2px/**\/)  rej    rej    ACC    rej
+ *   around `*`    calc(1px/**\/*…)  rej    ACC    rej    rej
+ *   around `-`    calc(1px/**\/-…)  rej    rej    rej    rej
+ *
+ * Less is the only dialect that admits a comment around a calc OPERATOR, and
+ * the only one that then rejects it at the calc EDGES. That inversion is not a
+ * policy anyone chose.
+ */
+describe('Less comments inside calc()', () => {
+  it.each([
+    ['leading edge', 'a { b: calc(/**/1px + 2px) }'],
+    ['trailing edge, glued', 'a { b: calc(1px + 2px/**/) }'],
+    ['trailing edge, spaced', 'a { b: calc(1px + 2px /**/) }'],
+    ['after a nested paren', 'a { b: calc((1px)/**/) }']
+  ])('PINNED DEFECT — rejects a comment at a calc() edge (%s)', (_label, source) => {
+    rejects(source);
+  });
+
+  it('accepts a comment around a calc() product operator', () => {
+    accepts('a { b: calc(1px* /**/ 2) }');
+    accepts('a { b: calc(1px /**/ * /**/ 2) }');
+  });
+});

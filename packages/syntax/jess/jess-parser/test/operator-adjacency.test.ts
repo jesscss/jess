@@ -102,3 +102,39 @@ describe('Jess operator adjacency', () => {
     accepts('a { b: calc(1px - 2px) }');
   });
 });
+
+/*
+ * The wider defect the operator cases are only a symptom of.
+ *
+ * css-syntax-3 §4 makes a comment valid ANYWHERE whitespace is valid, and
+ * css-values-4 §10.1's whitespace requirement is on `+`/`-` only. So every
+ * case below is valid CSS. All four dialects get this wrong, each differently:
+ *
+ *   position                     css    less   scss   jess
+ *   leading edge  calc(/**\/1px …)  rej    rej    ACC    rej
+ *   trailing edge calc(… 2px/**\/)  rej    rej    ACC    rej
+ *   around `*`    calc(1px/**\/*…)  rej    ACC    rej    rej
+ *   around `-`    calc(1px/**\/-…)  rej    rej    rej    rej
+ *
+ * Jess and CSS reject a comment in EVERY position inside `calc()`, which means
+ * the calc region is not consulting the dialect trivia table at all — the
+ * hand-spelled operator regexes are the only boundary it has. This is the
+ * clearest statement of the defect in the file: the productions did not merely
+ * spell trivia badly, they replaced it.
+ */
+describe('Jess comments inside calc()', () => {
+  it.each([
+    ['leading edge', 'a { b: calc(/**/1px + 2px) }'],
+    ['trailing edge, glued', 'a { b: calc(1px + 2px/**/) }'],
+    ['trailing edge, spaced', 'a { b: calc(1px + 2px /**/) }'],
+    ['after a nested paren', 'a { b: calc((1px)/**/) }'],
+    ['around the product operator', 'a { b: calc(1px* /**/ 2) }']
+  ])('PINNED DEFECT — rejects a comment inside calc() (%s)', (_label, source) => {
+    rejects(source);
+  });
+
+  it('accepts calc() with no comment at all', () => {
+    accepts('a { b: calc(1px) }');
+    accepts('a { b: calc(1px + 2px) }');
+  });
+});
