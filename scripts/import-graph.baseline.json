@@ -9,12 +9,13 @@
     ],
     "externals": [
       "@ungap/set-methods",
+      "big.js",
       "bitset",
       "chalk",
       "color-name",
       "lodash-es"
     ],
-    "bytes": 717610
+    "bytes": 743038
   },
   "@jesscss/core/ast": {
     "modules": [
@@ -69,7 +70,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 7417701
+    "bytes": 7417792
   },
   "@jesscss/css-parser/cst-host": {
     "modules": [
