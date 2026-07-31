@@ -15,7 +15,7 @@
       "color-name",
       "lodash-es"
     ],
-    "bytes": 743038
+    "bytes": 743083
   },
   "@jesscss/core/ast": {
     "modules": [
@@ -41,21 +41,21 @@
     "externals": [
       "color-name"
     ],
-    "bytes": 20101
+    "bytes": 20146
   },
   "@jesscss/css-parser": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/nodes.js",
+      "packages/syntax/css/css-parser/lib/chunks/parse-with.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/css/css-parser/lib/grammar/ast.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast/positions.js",
       "packages/syntax/css/css-parser/lib/index.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 7322499
+    "bytes": 3893596
   },
   "@jesscss/css-parser/cst": {
     "modules": [
@@ -64,13 +64,12 @@
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/css/css-parser/lib/cst-host.js",
       "packages/syntax/css/css-parser/lib/cst.js",
-      "packages/syntax/css/css-parser/lib/grammar/cst.js",
-      "packages/syntax/css/css-parser/lib/grammar/cst/positions.js"
+      "packages/syntax/css/css-parser/lib/grammar/cst.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 7417792
+    "bytes": 3943681
   },
   "@jesscss/css-parser/cst-host": {
     "modules": [
@@ -81,6 +80,20 @@
       "parseman"
     ],
     "bytes": 536631
+  },
+  "@jesscss/css-parser/cst/positions": {
+    "modules": [
+      "packages/core/lib/ast.js",
+      "packages/core/lib/nodes.js",
+      "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/css/css-parser/lib/cst-host.js",
+      "packages/syntax/css/css-parser/lib/cst/positions.js",
+      "packages/syntax/css/css-parser/lib/grammar/cst/positions.js"
+    ],
+    "externals": [
+      "parseman"
+    ],
+    "bytes": 4032103
   },
   "@jesscss/css-parser/grammar/ast": {
     "modules": [
@@ -118,19 +131,33 @@
     "externals": [],
     "bytes": 3494409
   },
+  "@jesscss/css-parser/positions": {
+    "modules": [
+      "packages/core/lib/ast.js",
+      "packages/core/lib/nodes.js",
+      "packages/syntax/css/css-parser/lib/chunks/parse-with.js",
+      "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/css/css-parser/lib/grammar/ast/positions.js",
+      "packages/syntax/css/css-parser/lib/positions.js"
+    ],
+    "externals": [
+      "parseman"
+    ],
+    "bytes": 3981916
+  },
   "@jesscss/jess-parser": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/nodes.js",
+      "packages/syntax/jess/jess-parser/lib/chunks/parse-with.js",
       "packages/syntax/jess/jess-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/jess/jess-parser/lib/grammar/ast.js",
-      "packages/syntax/jess/jess-parser/lib/grammar/ast/positions.js",
       "packages/syntax/jess/jess-parser/lib/index.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 4637659
+    "bytes": 2570758
   },
   "@jesscss/jess-parser/cst": {
     "modules": [
@@ -140,13 +167,27 @@
       "packages/syntax/css/css-parser/lib/cst-host.js",
       "packages/syntax/jess/jess-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/jess/jess-parser/lib/cst.js",
-      "packages/syntax/jess/jess-parser/lib/grammar/cst.js",
+      "packages/syntax/jess/jess-parser/lib/grammar/cst.js"
+    ],
+    "externals": [
+      "parseman"
+    ],
+    "bytes": 2578357
+  },
+  "@jesscss/jess-parser/cst/positions": {
+    "modules": [
+      "packages/core/lib/ast.js",
+      "packages/core/lib/nodes.js",
+      "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/css/css-parser/lib/cst-host.js",
+      "packages/syntax/jess/jess-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/jess/jess-parser/lib/cst/positions.js",
       "packages/syntax/jess/jess-parser/lib/grammar/cst/positions.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 4650305
+    "bytes": 2630506
   },
   "@jesscss/jess-parser/grammar/ast": {
     "modules": [
@@ -184,22 +225,36 @@
     "externals": [],
     "bytes": 2092198
   },
+  "@jesscss/jess-parser/positions": {
+    "modules": [
+      "packages/core/lib/ast.js",
+      "packages/core/lib/nodes.js",
+      "packages/syntax/jess/jess-parser/lib/chunks/parse-with.js",
+      "packages/syntax/jess/jess-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/jess/jess-parser/lib/grammar/ast/positions.js",
+      "packages/syntax/jess/jess-parser/lib/positions.js"
+    ],
+    "externals": [
+      "parseman"
+    ],
+    "bytes": 2622589
+  },
   "@jesscss/less-parser": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/diagnostics.js",
       "packages/core/lib/diagnostics2.js",
       "packages/core/lib/nodes.js",
+      "packages/syntax/less/less-parser/lib/chunks/parse-with.js",
       "packages/syntax/less/less-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/less/less-parser/lib/grammar/ast.js",
-      "packages/syntax/less/less-parser/lib/grammar/ast/positions.js",
       "packages/syntax/less/less-parser/lib/index.js",
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 8513341
+    "bytes": 4516264
   },
   "@jesscss/less-parser/cst": {
     "modules": [
@@ -210,13 +265,28 @@
       "packages/syntax/less/less-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/less/less-parser/lib/cst.js",
       "packages/syntax/less/less-parser/lib/grammar/cst.js",
+      "packages/syntax/less/less-parser/lib/parse-error.js"
+    ],
+    "externals": [
+      "parseman"
+    ],
+    "bytes": 4508691
+  },
+  "@jesscss/less-parser/cst/positions": {
+    "modules": [
+      "packages/core/lib/ast.js",
+      "packages/core/lib/nodes.js",
+      "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/css/css-parser/lib/cst-host.js",
+      "packages/syntax/less/less-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/less/less-parser/lib/cst/positions.js",
       "packages/syntax/less/less-parser/lib/grammar/cst/positions.js",
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 8516451
+    "bytes": 4571616
   },
   "@jesscss/less-parser/grammar/ast": {
     "modules": [
@@ -258,19 +328,36 @@
     "externals": [],
     "bytes": 4033288
   },
+  "@jesscss/less-parser/positions": {
+    "modules": [
+      "packages/core/lib/ast.js",
+      "packages/core/lib/diagnostics.js",
+      "packages/core/lib/diagnostics2.js",
+      "packages/core/lib/nodes.js",
+      "packages/syntax/less/less-parser/lib/chunks/parse-with.js",
+      "packages/syntax/less/less-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/less/less-parser/lib/grammar/ast/positions.js",
+      "packages/syntax/less/less-parser/lib/parse-error.js",
+      "packages/syntax/less/less-parser/lib/positions.js"
+    ],
+    "externals": [
+      "parseman"
+    ],
+    "bytes": 4578393
+  },
   "@jesscss/scss-parser": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/nodes.js",
+      "packages/syntax/scss/scss-parser/lib/chunks/parse-with.js",
       "packages/syntax/scss/scss-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/scss/scss-parser/lib/grammar/ast.js",
-      "packages/syntax/scss/scss-parser/lib/grammar/ast/positions.js",
       "packages/syntax/scss/scss-parser/lib/index.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 4628137
+    "bytes": 2563527
   },
   "@jesscss/scss-parser/cst": {
     "modules": [
@@ -280,13 +367,27 @@
       "packages/syntax/css/css-parser/lib/cst-host.js",
       "packages/syntax/scss/scss-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/scss/scss-parser/lib/cst.js",
-      "packages/syntax/scss/scss-parser/lib/grammar/cst.js",
+      "packages/syntax/scss/scss-parser/lib/grammar/cst.js"
+    ],
+    "externals": [
+      "parseman"
+    ],
+    "bytes": 2576779
+  },
+  "@jesscss/scss-parser/cst/positions": {
+    "modules": [
+      "packages/core/lib/ast.js",
+      "packages/core/lib/nodes.js",
+      "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/css/css-parser/lib/cst-host.js",
+      "packages/syntax/scss/scss-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/scss/scss-parser/lib/cst/positions.js",
       "packages/syntax/scss/scss-parser/lib/grammar/cst/positions.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 4649563
+    "bytes": 2631362
   },
   "@jesscss/scss-parser/grammar/ast": {
     "modules": [
@@ -323,5 +424,19 @@
     ],
     "externals": [],
     "bytes": 2093054
+  },
+  "@jesscss/scss-parser/positions": {
+    "modules": [
+      "packages/core/lib/ast.js",
+      "packages/core/lib/nodes.js",
+      "packages/syntax/scss/scss-parser/lib/chunks/parse-with.js",
+      "packages/syntax/scss/scss-parser/lib/chunks/trivia-labels.js",
+      "packages/syntax/scss/scss-parser/lib/grammar/ast/positions.js",
+      "packages/syntax/scss/scss-parser/lib/positions.js"
+    ],
+    "externals": [
+      "parseman"
+    ],
+    "bytes": 2617511
   }
 }
