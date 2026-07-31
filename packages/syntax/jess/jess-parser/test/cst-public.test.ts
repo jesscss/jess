@@ -138,12 +138,17 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
     const { grammarTypes } = stats(result.tree);
     expect(grammarTypes.get('AtRulePrelude')).toBeGreaterThan(0);
-    expect(grammarTypes.get('AtRulePreludeTerm')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryFeature')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryComparisonFeature')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryFeatureName')).toBeGreaterThan(0);
     expect(grammarTypes.get('QueryValue')).toBeGreaterThan(0);
-    expect(grammarTypes.get('QueryClause')).toBe(2);
+
+    /*
+     * Two from the `@media` list, one from the `@unknown` prelude: a generic
+     * at-rule prelude is a `<media-query-list>`, so its clause is the same
+     * production and carries the same label.
+     */
+    expect(grammarTypes.get('QueryClause')).toBe(3);
     expect(grammarTypes.get('QueryPrelude')).toBeGreaterThan(0);
     expect(grammarTypes.get('ContainerQueryClause')).toBe(2);
     expect(grammarTypes.get('ContainerQueryPrelude')).toBe(1);

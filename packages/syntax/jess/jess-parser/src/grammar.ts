@@ -172,7 +172,6 @@ type JessRules = {
   QueryDashedIdentifier: Combinator<Keyword>;
   QueryClause: Combinator<ValueNode>;
   QueryPrelude: Combinator<ValueNode>;
-  AtRulePreludeTerm: Combinator<ValueNode>;
   AtRulePrelude: Combinator<ValueNode | null>;
   ContainerQueryClause: Combinator<ValueNode>;
   ContainerQueryPrelude: Combinator<ValueNode>;
@@ -4092,22 +4091,21 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return values.length === 1 ? values[0]! : list(values, ',');
     }
   );
-  const AtRulePreludeTerm = node<ValueNode>(
-    'AtRulePreludeTerm',
-    queryClause,
-    (children) => {
-      const values = children.filter(isValueNode);
-      const startsWithOnly = children.some(child => isToken(child) && requireToken(child).value.toLowerCase() === 'only');
-      return startsWithOnly ? spaced([keyword('only'), ...values]) : values.length === 1 ? values[0]! : spaced(values);
-    }
-  );
+  /*
+   * A generic at-rule prelude is a comma-separated `<media-query-list>`: the
+   * same clause production `QueryPrelude` lists, differing only in that a
+   * generic prelude may be absent entirely. It carried a second name —
+   * `AtRulePreludeTerm` — for its CALLER, which is exactly the naming that lets
+   * a byte-identical copy survive review; the clause is `QueryClause` here as
+   * it is there.
+   */
   const AtRulePrelude = node<ValueNode | null>(
     'AtRulePrelude',
     sequence(
-      optional(g.AtRulePreludeTerm),
+      optional(g.QueryClause),
       many(sequence(
         literal(','),
-        g.AtRulePreludeTerm
+        g.QueryClause
       ))
     ),
     (children) => {
@@ -5933,7 +5931,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     QueryDashedIdentifier,
     QueryClause,
     QueryPrelude,
-    AtRulePreludeTerm,
     AtRulePrelude,
     ContainerQueryClause,
     ContainerQueryPrelude,
