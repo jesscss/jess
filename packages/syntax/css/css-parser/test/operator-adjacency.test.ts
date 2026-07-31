@@ -128,3 +128,36 @@ describe('CSS comments inside calc()', () => {
     accepts('a { b: calc(1px + 2px) }');
   });
 });
+
+/*
+ * Selector position is the other place adjacency decides meaning, and CSS is
+ * the dialect that gets it right — recorded here so a conversion cannot
+ * regress it into agreement with the dialects that get it wrong.
+ *
+ * `.e` and `.f` with nothing between them are a COMPOUND selector (both
+ * classes on ONE element); with a separator they are a DESCENDANT pair. Those
+ * match different elements, so `.e/*y*\/.f` is not a formatting question.
+ *
+ * Measured, four engines, three answers:
+ *
+ *   lessc 4.x    `.e.f`        oracle
+ *   jess (css)   `.e.f`        <- asserted below
+ *   jess (less)  `.e.f`
+ *   jess (jess)  `.e .f`       pinned in packages/jess/test/jess/
+ *   dart-sass    `.e .f`
+ *   jess (scss)  parse error   pinned in the SCSS parser suite
+ *
+ * EXPECTED ANSWER, NOT YET RULED ON: `.e.f` in all four. css-syntax-3 §4
+ * removes comments during tokenisation, so nothing separates `.e` from `.f`
+ * by the time selector structure is decided. Trivia does not split a compound.
+ */
+describe('CSS selector adjacency across a block comment', () => {
+  it('keeps a compound selector compound across a comment', () => {
+    accepts('.e/*y*/.f { g: h }');
+  });
+
+  it('accepts a comment used as a descendant separator', () => {
+    accepts('a /* x */ b { c: d }');
+    accepts('a/*x*/ b { c: d }');
+  });
+});
