@@ -259,6 +259,65 @@ Run with `pnpm perf:gate:test`.
 
 ---
 
+## 10a. Gated cases, and the coverage hole that existed until 2026-07-31
+
+| case | dialect | comparator | gradable today |
+| --- | --- | --- | --- |
+| `css/ast/css-corpus` | css | postcss | **no** — `postcss` does not resolve |
+| `css/ast/test-data` | css | postcss | **no** — `postcss` does not resolve |
+| `less/ast/benchmark` | less | lessc | **no** — `WORKLOAD_INVALID` (`@import`, see §11) |
+| `less/ast/test-data` | less | lessc | **yes** — the only gradable case in the repo |
+| `scss/ast/css-corpus` | scss | dart-sass | **no** — `sass` does not resolve |
+| `jess/ast/css-corpus` | jess | postcss | **no** — `postcss` does not resolve |
+| `jess/ast/jess-fixtures` | jess | postcss | **no** — `postcss` does not resolve |
+
+Until 2026-07-31 the table held **only the four css/less cases**. Tiering selects
+cases by `spec.dialect`, so a commit touching `packages/syntax/scss/.../grammar.ts`
+selected the **empty set**, and the run then printed `perf-gate: PASS`. Every scss
+and jess grammar commit in this project's history was graded by a gate that had no
+case for its dialect.
+
+Two structural fixes, both proven against a deliberate regression in
+`scripts/__tests__/perf-gate.test.mjs`:
+
+1. **`assertDialectCoverage()`** runs on every full-tier gate invocation and
+   throws if any of css/less/scss/jess has no case. Deleting a dialect's last
+   case is now a hard error, not a silent coverage hole.
+2. **A run that grades zero cases can no longer print `PASS`.** It prints
+   `NOT A PASS - GRADED NOTHING` and names what stopped each case. Exiting zero
+   is unchanged and still deliberate (§1); what was wrong was the *word*, and the
+   last line is what humans and CI read.
+
+**The scss corpus problem is real and unsolved.** There are **zero committed
+`.scss` files** in this repo — the scss suite downloads sass-spec into a
+gitignored `.cache/`, which cannot back a gate that must run on a fresh clone.
+The scss and jess cases therefore run the shared, committed **CSS corpus**, which
+is legitimate (valid CSS is valid in every dialect, and all four parsers must
+accept it) but exercises no dialect-specific grammar. A dialect-native committed
+corpus for scss and jess is still owed.
+
+### Recommended default (owner decision — NOT changed here)
+
+**Recommendation: leave `PERF_GATE` defaulting to `off`, and fix the comparators
+instead.** Flipping the default to `report` today would change nothing except
+adding ~2.5 minutes to every hot-path push: six of seven cases cannot grade, and
+the seventh has no committed baseline. The binding constraint is not the mode, it
+is that **`postcss` and `sass` do not resolve in the workspace at all** — so even
+the two css cases that predate this work have never graded anything either.
+
+The ordered unblock is:
+
+1. Add `postcss` and `sass` as root dev dependencies. This alone moves five of
+   seven cases from `COMPARATOR_MISSING` to gradable.
+2. Run the null calibration (§4) and commit `nullBiasPct`.
+3. Commit a baseline with real owner sign-off.
+4. *Then* default to `report` — at which point it reports something.
+
+Defaulting to `report` before step 1 would institutionalise the exact failure
+this section documents: a scheduled, expensive, and permanently blind gate.
+
+---
+
 ## 11. Open seams
 
 | seam | consumed as | status |

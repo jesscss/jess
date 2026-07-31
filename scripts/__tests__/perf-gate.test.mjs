@@ -8,6 +8,7 @@ import { pairedRatio, driftVerdict, roundsToResolve } from '../perf-gate/stats.m
 import { classify } from '../perf-gate/index.mjs';
 import { parseTrailers, alarms } from '../perf-gate/chain.mjs';
 import { validate, historyIsAppendOnly } from '../perf-gate/baseline.mjs';
+import { CASES, GATED_DIALECTS, assertDialectCoverage } from '../perf-gate/measure.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const GATE = join(ROOT, 'scripts/perf-gate/index.mjs');
@@ -203,6 +204,49 @@ describe('perf-gate does not misfire', () => {
     const r = spawnSync(process.execPath, [GATE, '--force-tier=full'], {
       cwd: ROOT, encoding: 'utf8', env: { ...process.env, PERF_GATE: 'report' }
     });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  });
+});
+
+/**
+ * These guards exist because the gate was found reporting `perf-gate: PASS`
+ * having graded ZERO cases, and because scss and jess had no case in the table
+ * at all. Both are tested against a DELIBERATE regression: a guard that has
+ * never been shown to fire is not a guard.
+ */
+describe('perf-gate cannot report a pass over nothing', () => {
+  it('covers every gated dialect', () => {
+    const { covered } = assertDialectCoverage();
+    for (const d of GATED_DIALECTS) {
+      assert.ok(covered.includes(d), `no perf-gate case for dialect '${d}'`);
+    }
+  });
+
+  it('FAILS when a dialect loses its only case', () => {
+    // Deliberate regression: the exact state scss and jess were in until now.
+    const crippled = Object.fromEntries(
+      Object.entries(CASES).filter(([, spec]) => spec.dialect !== 'scss')
+    );
+    assert.throws(
+      () => assertDialectCoverage(crippled),
+      /no case for dialect\(s\): scss/,
+      'dropping every scss case must be a hard error, not a silent coverage hole'
+    );
+  });
+
+  it('never prints a bare PASS verdict when nothing was graded', () => {
+    const r = spawnSync(process.execPath, [GATE, '--force-tier=full'], {
+      cwd: ROOT, encoding: 'utf8', env: { ...process.env, PERF_GATE: 'report' }
+    });
+    if (/perf-gate: 0 PASS,/.test(r.stdout)) {
+      assert.match(r.stdout, /NOT A PASS - GRADED NOTHING/);
+      assert.doesNotMatch(
+        r.stdout,
+        /^perf-gate: PASS$/m,
+        'a run that graded zero cases must never emit a bare PASS verdict line'
+      );
+    }
+    // Exiting zero stays correct either way: a blind gate must not block a push.
     assert.equal(r.status, 0, r.stdout + r.stderr);
   });
 });

@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { pairedRatio, driftVerdict } from './stats.mjs';
 import { probe } from './comparators.mjs';
 import * as baselineStore from './baseline.mjs';
-import { CASES, runCase, parsemanEvidence, verifyBuild } from './measure.mjs';
+import { CASES, runCase, parsemanEvidence, verifyBuild, assertDialectCoverage } from './measure.mjs';
 import { accumulate, alarms, parseTrailers } from './chain.mjs';
 
 const repoRoot = process.cwd();
@@ -261,6 +261,13 @@ async function main() {
 
   say(`perf-gate: hot path touched -> full A/B (${hot.join(', ')})`);
 
+  /*
+   * Runtime, not just a unit test: a dialect that loses its only case selects
+   * the empty set and is graded over nothing. scss and jess sat in exactly that
+   * state for the project's entire history.
+   */
+  assertDialectCoverage();
+
   const baseline = baselineStore.load(repoRoot);
   if (!baseline.present) {
     say(`perf-gate: NO BASELINE at ${baseline.path}. Cannot measure drift from a fixed reference.`);
@@ -422,13 +429,44 @@ async function main() {
 
   const failing = results.filter(r => r.drift?.verdict === 'FAIL');
   const unresolved = results.filter(r => !r.drift || r.drift.verdict !== 'PASS');
+  const graded = results.length - unresolved.length;
 
   say('');
-  say(`perf-gate: ${results.length - unresolved.length} PASS, ${failing.length} FAIL, `
+  say(`perf-gate: ${graded} PASS, ${failing.length} FAIL, `
     + `${unresolved.length - failing.length} not graded`);
 
+  /*
+   * "PASS" over zero graded cases is the single most dangerous string this
+   * script can print, and it printed it routinely: with `postcss` and `sass`
+   * absent from the workspace and no null calibration recorded, every case
+   * degraded to UNRESOLVED and the run still ended with `perf-gate: PASS`.
+   * Readers and CI look at the last line.
+   *
+   * Exiting ZERO here is still correct and deliberate (docs/perf/PERF-DRIFT-GATE.md
+   * §1: a false alarm is worse than a missed regression, and every not-a-pass
+   * outcome exits zero). What was wrong was the WORD. A run that graded nothing
+   * now says so in the verdict line, and names what stopped each case, so the
+   * gate's own blindness is visible instead of being laundered into assurance.
+   */
+  if (graded === 0) {
+    say('perf-gate: NOT A PASS - GRADED NOTHING.');
+    say(`perf-gate: ${results.length} case(s) considered, 0 produced a verdict. Reasons:`);
+    const reasons = new Map();
+    for (const r of results) {
+      const why = r.skipped ?? r.drift?.verdict ?? 'NO_VERDICT';
+      reasons.set(why, [...(reasons.get(why) ?? []), r.caseName]);
+    }
+    for (const [why, names] of reasons) {
+      say(`perf-gate:   ${why}: ${names.join(', ')}`);
+    }
+    say('perf-gate: this says NOTHING about performance. It exits zero by design so a');
+    say('perf-gate: blind gate never teaches anyone to reach for --no-verify, but it must');
+    say('perf-gate: never be read as evidence that a change is clean.');
+    return 0;
+  }
+
   if (failing.length === 0) {
-    say('perf-gate: PASS');
+    say(`perf-gate: PASS (${graded} of ${results.length} case(s) graded)`);
     return 0;
   }
 

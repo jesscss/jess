@@ -49,8 +49,64 @@ export const CASES = {
     comparator: 'lessc',
     corpus: { dir: 'node_modules/@less/test-data/tests-unit', ext: '.less', recursive: true },
     jess: { pkg: 'packages/syntax/less/less-parser', module: 'lib/index.js', fn: 'parse' }
+  },
+
+  /*
+   * scss and jess were absent from this table entirely until 2026-07-31, which
+   * meant every scss and jess grammar commit in the project's history was graded
+   * by a gate that had no case for its dialect. The tiering in `index.mjs`
+   * selects cases by `spec.dialect`, so a touched `scss/.../grammar.ts` selected
+   * the empty set and the run reported a pass over nothing.
+   *
+   * Both cases run the SHARED CSS CORPUS rather than dialect-native fixtures.
+   * That is deliberate and it is the only corpus available: valid CSS is valid
+   * in every dialect (project invariant), the corpus is committed, and the
+   * dialect parsers must all accept it. There are ZERO committed `.scss` files
+   * in this repo -- the scss suite downloads sass-spec into a gitignored
+   * `.cache/`, which cannot back a gate that has to run on a fresh clone.
+   */
+  'scss/ast/css-corpus': {
+    dialect: 'scss',
+    comparator: 'dartSass',
+    corpus: { dir: 'packages/syntax/css/css-parser/test/css', ext: '.css', recursive: false },
+    jess: { pkg: 'packages/syntax/scss/scss-parser', module: 'lib/index.js', fn: 'parse' }
+  },
+  'jess/ast/css-corpus': {
+    dialect: 'jess',
+    comparator: 'postcss',
+    corpus: { dir: 'packages/syntax/css/css-parser/test/css', ext: '.css', recursive: false },
+    jess: { pkg: 'packages/syntax/jess/jess-parser', module: 'lib/index.js', fn: 'parse' }
+  },
+  'jess/ast/jess-fixtures': {
+    dialect: 'jess',
+    comparator: 'postcss',
+    corpus: { dir: 'packages/syntax/jess/jess-parser/test/data', ext: '.jess', recursive: false },
+    jess: { pkg: 'packages/syntax/jess/jess-parser', module: 'lib/index.js', fn: 'parse' }
   }
 };
+
+/**
+ * A case table that cannot lose a dialect silently.
+ *
+ * `index.mjs` selects cases by `spec.dialect`. If a dialect has no case, a
+ * commit touching that dialect's grammar selects the empty set and the run is
+ * graded over nothing. That is exactly how scss and jess went ungated. Asserting
+ * the covered set here makes deleting or renaming a case a loud failure instead
+ * of a silent coverage hole.
+ */
+export const GATED_DIALECTS = ['css', 'less', 'scss', 'jess'];
+
+export function assertDialectCoverage(cases = CASES) {
+  const covered = new Set(Object.values(cases).map(c => c.dialect));
+  const missing = GATED_DIALECTS.filter(d => !covered.has(d));
+  if (missing.length > 0) {
+    throw new Error(
+      `perf-gate case table has no case for dialect(s): ${missing.join(', ')}. `
+      + 'A dialect with no case is graded over the empty set and reports a pass over nothing.'
+    );
+  }
+  return { covered: [...covered].sort() };
+}
 
 function walk(dir, ext, recursive, out = []) {
   let entries;
