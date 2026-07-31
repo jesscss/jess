@@ -84,7 +84,58 @@ is dead for CSS.
 Less has its own `g.OpaqueAtRuleBlock` (`less-parser/src/grammar.ts:4184`) and
 is unaffected.
 
-## 4. Finding 3 — the loose tier's core primitive does not exist in parseman
+## 4. Finding 3 — `balanced()` detects crossed closures but cannot reject them
+
+> **This section was published in a stronger form and is corrected here.** The
+> original claim was that multi-kind balanced matching is not expressible. The
+> parseman lane read `scanTo.ts`/`expect.ts` and pushed back before building on
+> it, and they were right. The corrected finding is smaller, and the resulting
+> upstream ask is much more actionable. The superseded reasoning is kept below
+> the correction because the call-site pricing still depends on it.
+
+**Correction 1 — crossed closures ARE detected.** `balanced()`'s close is
+wrapped in `expect()`, which never fails: it returns
+`{ ok: true, value: ParseError }`, pushes onto `ctx._errors`, and reports a
+zero-width span. The original probe measured **consumption only**, so it could
+not distinguish acceptance from recovery. Re-run with errors surfaced
+(`probes/balanced-errors.mjs`):
+
+```
+"([a)]"  -> ok consumed=5/5 errors=1     <- DETECTED
+"({a)}"  -> ok consumed=5/5 errors=1     <- DETECTED
+"([a])"  -> ok consumed=5/5 errors=0
+```
+
+**Correction 2 — one expectation was fabricated.** `([a}])` was asserted to be
+malformed from a reading of "crossed", never checked against the incumbent.
+Verified against the built parser:
+
+```
+ACCEPT   a { b: var(--x, ([c}])) }
+REJECT   a { b: var(--x, ([c)]) }      REJECT   a { b: var(--x, ({c)}) }
+REJECT   a { b: var(--x, [c(d]) }      REJECT   a { b: var(--x, {c[d}) }
+```
+
+The incumbent **accepts** `([c}])`, so `errors=0` there is correct behaviour.
+Those five lines are the real acceptance set for anyone building a replacement.
+
+**The corrected finding.** `balanced()` is *unfailable once its opener is
+consumed*. The information needed to reject a crossed closure is already
+computed and sitting in `ctx._errors`; what is missing is a way to make it a
+**match failure**. The six `varFallback*Cross*` guards exist purely to perform
+that conversion by hand.
+
+**The corrected ask: a strict/failing mode for `balanced()`** —
+`balanced(open, close, { strict: true })` — not a shared-stack multi-kind
+primitive. Smaller, already-computed, and checkable against the five cases
+above. Worth **60 call sites, 6.7%** of the CSS grammar's call-site mass (§5).
+
+The escape hatch remains closed either way: `gate(predicate)` is zero-width over
+`ctx.state` only, so it cannot validate a captured span, and reducer-throw is
+explicitly wrong (grammar.ts:2805–2814 records a raw `Error` escaping `parse()`;
+the fix was to make the shape fail to match).
+
+### Superseded reasoning, kept for the record
 
 This is the finding that most constrains the approach, and it is the one the
 owner should decide on.
@@ -135,21 +186,64 @@ oversight; they are a necessary workaround for a missing primitive, and they
 are an O(n²) workaround — three delimiter kinds give six ordered pairs, a
 fourth kind would need twelve.
 
-What is missing is one combinator with one shared stack, e.g.
-`balanced([['(', ')'], ['[', ']'], ['{', '}']])`. Under the standing rule that
-*grammars are parseman's showcase — if correct is bigger or slower, that is a
-parseman bug* — this is a parseman gap, and it is the single highest-leverage
-upstream change for a loose-tier grammar.
+The `FAIL` rows above are what a consumption-only probe reports; per the
+correction, the two genuinely-crossed rows were being reported through
+`ctx._errors` all along, and the `([a}])` row was a bogus expectation. What
+survives from this reasoning is the *shape* of the workaround: the six guards
+are an O(n²) cross-product — three delimiter kinds give six ordered pairs, a
+fourth would need twelve — and they exist because the grammar needs a match
+failure where `balanced()` offers only a recovered error.
 
-The obvious in-grammar escape hatch is closed too: `gate(predicate)`
-(`node_modules/parseman/dist/combinators/gate.d.ts`) is a zero-width assertion
-over `ctx.state` only. It cannot see the matched text or position, so it cannot
-validate a just-captured span. And failing inside a reducer is explicitly the
-wrong mechanism — grammar.ts:2805–2814 records that a reducer throw let a raw
-`Error` escape `parse()` instead of producing a positioned `CssParseError`, and
-the fix was to make the *shape* fail to match.
+## 5. Pricing every boundary before building it
 
-## 5. Finding 4 — the keyword sets that must stay hot, and why
+`probes/callsite-price.mjs`. An independent count of the incumbent factory
+gives **900** combinator call sites against Candidate B's **904** — same method,
+two authors, no coordination.
+
+| boundary | consts | sites | % of factory |
+| --- | --- | --- | --- |
+| B0 dead code | 1 | 6 | 0.7% |
+| B2 flat-prelude scanners | 7 | 20 | 2.2% |
+| B3 query/supports/container | 30 | 142 | 15.8% |
+| B4 varFallback (blocked) | 16 | 104 | 11.6% |
+| — of which cross-guards | 6 | 60 | 6.7% |
+| **addressable total** | **54** | **272** | **30.2%** |
+
+**Bytes are not linear in call sites.** Candidate A measured a 13.69x spread
+between by-const and by-name sub-rule references on otherwise identical
+grammars. These figures therefore price each family *as the incumbent currently
+writes it* — an upper bound on what removal saves, not a prediction of what a
+replacement costs.
+
+## 6. Finding 5 — the incumbent inlines its body grammars
+
+`probes/inline-audit.mjs`, applying A's mechanism. A composite const referenced
+by bare const is inlined at every reference, transitively; one referenced
+through `g` is emitted once. **41 composite consts are referenced 2+ times and
+are not in the returned rules map.** The expensive ones are body grammars,
+whose transitive closure is the whole statement/declaration grammar:
+
+```
+RoutedAtRuleStatement       x11
+declarationListBlock        x7    (grammar.ts:3314, confirmed not in map)
+descriptorBodyBlock         x5
+pseudoArgumentContent       x5
+CustomPropertyValue         x5
+stylesheetBodyBlock         x4
+conditionalGroupBodyBlock   x3
+```
+
+This is a **baseline** property, not a candidate's: it belongs to whatever the
+tournament decides the incumbent baseline is.
+
+Two contamination bugs were found and fixed inside that probe before its
+numbers were reported. Slicing from line 0 counted imports, the `type` union of
+every node name, and helper functions; and counting through string literals let
+every `node('X', ...)` self-reference. Fixing both dropped A's second hazard
+class from **109 to 4**. The tell was an `OpaqueAtRuleBlock` row claiming eight
+references for a const already proven unreachable in §3.
+
+## 7. Finding 4 — the keyword sets that must stay hot, and why
 
 Candidate A flagged the shared at-keyword regexes as disambiguators. Verified,
 and the reason is sharper than "known-name check".
@@ -196,7 +290,7 @@ about, and they split:
 slot as a matter of shape, and whether `onlyé` is a *legal* media type is a
 vocabulary question the validator tier answers.
 
-## 6. The tier boundary, and why the gate reshapes it
+## 8. The tier boundary, and why the gate reshapes it
 
 Referee ruling R1: the identity gate hashes **all three shipping surfaces** —
 `parse` (ast), `parseCssCst` (cst), `parseCssDoc` (doc) — and a CST node carries
@@ -217,7 +311,7 @@ have to be *parseman productions*.
 
 - **Tier 1, hot, parseman combinators.** Structure only: statement and block
   boundaries, prelude spans, at-keyword routing with the boundary-policy
-  keyword set of §5, balanced delimiters.
+  keyword set of §7, balanced delimiters.
 - **Tier 2, plain TypeScript, lazy.** Materialises the prelude's node tree on
   demand with the incumbent production names and absolute spans derived from
   the captured span base; also owns diagnostics and keyword compliance.
