@@ -5,7 +5,7 @@
     "(run it with `pnpm run verify:jess-suite-ratchet`).",
     "",
     "It is a SET, never a count. A count cannot tell 'nothing changed' apart from",
-    "'you fixed one and broke another' — both read as 13. Each entry names one test,",
+    "'you fixed one and broke another' — both read as the same number. Each entry names one test,",
     "so the failure output and the git diff both say which test moved and which way.",
     "",
     "Shrinking is easy: delete the entry. The gate REQUIRES you to, and names the",
@@ -17,50 +17,6 @@
     "excuse — do not use it to silence a deterministic failure."
   ],
   "knownFailures": [
-    {
-      "test": "test/security-script-runtime.test.ts > Jess restricted script runtime integration @plugin-registered function runs and accesses process when in Node (pluginRegistry path)",
-      "reason": "pluginRegistry-registered @plugin function produces no output on the ast/ route; the test expects the sandboxed value to reach the declaration."
-    },
-    {
-      "test": "test/security-script-runtime.test.ts > Jess restricted script runtime integration loads file-based Less @plugin scripts through Deno when plugin-js is lazy-loaded",
-      "reason": "lazy-loaded plugin-js does not register file-based Less @plugin functions."
-    },
-    {
-      "test": "test/less/all-less-error.test.ts > Less error corpus (Jess must error where Less errors) tests-error/eval/detached-ruleset-5.less",
-      "reason": "ast/ engine renders instead of erroring; Less 4.x rejects this fixture."
-    },
-    {
-      "test": "test/less/all-less-error.test.ts > Less error corpus (Jess must error where Less errors) tests-error/eval/functions-5-color-2.less",
-      "reason": "ast/ engine renders instead of erroring; Less 4.x rejects this fixture."
-    },
-    {
-      "test": "test/less/all-less-error.test.ts > Less error corpus (Jess must error where Less errors) tests-error/eval/mixin-not-matched.less",
-      "reason": "unmatched mixin call does not raise an eval error on the ast/ route."
-    },
-    {
-      "test": "test/less/all-less-error.test.ts > Less error corpus (Jess must error where Less errors) tests-error/eval/mixin-not-matched2.less",
-      "reason": "unmatched mixin call does not raise an eval error on the ast/ route."
-    },
-    {
-      "test": "test/less/all-less-error.test.ts > Less error corpus (Jess must error where Less errors) tests-error/eval/namespace-property-not-found.less",
-      "reason": "namespace member miss resolves silently instead of erroring."
-    },
-    {
-      "test": "test/less/all-less-error.test.ts > Less error corpus (Jess must error where Less errors) tests-error/eval/namespace-variable-not-found.less",
-      "reason": "namespace member miss resolves silently instead of erroring."
-    },
-    {
-      "test": "test/less/all-less-error.test.ts > Less error corpus (Jess must error where Less errors) tests-error/eval/namespacing-2.less",
-      "reason": "namespace member miss resolves silently instead of erroring."
-    },
-    {
-      "test": "test/less/all-less-error.test.ts > Less error corpus (Jess must error where Less errors) tests-error/eval/namespacing-4.less",
-      "reason": "namespace member miss resolves silently instead of erroring."
-    },
-    {
-      "test": "test/less/all-less-error.test.ts > Less error corpus (Jess must error where Less errors) tests-error/eval/property-undefined.less",
-      "reason": "undefined property accessor resolves silently instead of erroring."
-    },
     {
       "test": "test/less/bootstrap-clean-repro.test.ts > bootstrap clean render renders and collects rejections",
       "reason": "Bootstrap 4.6 render is missing the `--breakpoint-*` custom properties the test asserts on."

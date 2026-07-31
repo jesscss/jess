@@ -59,6 +59,7 @@ Two files were reprieved on evidence:
 | [`TYPECHECK-BURNDOWN.md`](./TYPECHECK-BURNDOWN.md) | The `--noCheck` burn-down. Open: 15 package.json files still pass it. |
 | [`STATIC-IMPORT-PREP-DESIGN.md`](./STATIC-IMPORT-PREP-DESIGN.md) · [`ASSIGNABLE-CONTROL-NODES-PLAN.md`](./ASSIGNABLE-CONTROL-NODES-PLAN.md) · [`NODE-SLIM-FOLLOWONS.md`](./NODE-SLIM-FOLLOWONS.md) · [`STRINGS-OVER-NODES.md`](./STRINGS-OVER-NODES.md) | Node/import shape work. |
 | [`NON-ENGINE-BLOAT-INVENTORY.md`](./NON-ENGINE-BLOAT-INVENTORY.md) · [`WRONG-TESTDATA-AUDIT.md`](./WRONG-TESTDATA-AUDIT.md) · [`DOC-COVERAGE.md`](./DOC-COVERAGE.md) | Inventories and coverage matrices. |
+| [`LESS-4X-FEATURE-TRIAGE.md`](./LESS-4X-FEATURE-TRIAGE.md) | Feature-by-feature triage of Less 4.8.1 against jess, every row measured against `lessc` 4.8.1 run directly. States what it did not examine. Carries its measurement SHAs — re-measure before relying on a row. |
 | [`LESS-V5-CONTENT-PR-PLAN.md`](./LESS-V5-CONTENT-PR-PLAN.md) | Less-alpha content plan. |
 | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) · [`AST-REORG-EXECUTION.md`](./AST-REORG-EXECUTION.md) · [`GRAMMAR-RELOCATION-DESIGN.md`](./GRAMMAR-RELOCATION-DESIGN.md) · [`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`](./AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md) · [`GRAMMAR-AST-FUSION-DESIGN.md`](./GRAMMAR-AST-FUSION-DESIGN.md) | Five short docs stating one boundary rule from five angles. See below. |
 

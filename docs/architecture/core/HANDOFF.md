@@ -976,6 +976,7 @@ flow.
 | Direct parser AST construction and legacy-builder deletion | [`AST-REORG-EXECUTION.md`](./AST-REORG-EXECUTION.md) |
 | Parser recognition, interpolation, and scanner cleanup | [`GRAMMAR-RELOCATION-DESIGN.md`](./GRAMMAR-RELOCATION-DESIGN.md) |
 | Feature/eval closure | [`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`](./AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md) |
+| **"Is Less 4.x feature X implemented?"** — feature-by-feature triage derived from Less 4.8.1 itself, each row a measurement against `lessc` 4.8.1 run directly. Records the four gaps that are on no other list, and corrects three of the seven WIP areas the alpha CHANGELOG declares | [`LESS-4X-FEATURE-TRIAGE.md`](./LESS-4X-FEATURE-TRIAGE.md) |
 | Eval/render allocation, lookup, and traversal cuts | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) |
 | Deleting `packages/core/src/tree/` — public-surface inventory, `Context` decomposition, value-boundary options, extraction order | [`TREE-CUTOVER-SURFACE.md`](./TREE-CUTOVER-SURFACE.md) |
 | **The four-grammar rewrite** — the eight-to-four physical fold is complete; continue the spec/naming/documentation and current Parseman cleanup on the four surviving host-mode grammars. Start at its §0 | [`../../design/GRAMMAR-REBUILD-SPEC.md`](../../design/GRAMMAR-REBUILD-SPEC.md) |
