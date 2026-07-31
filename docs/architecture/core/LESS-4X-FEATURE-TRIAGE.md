@@ -518,3 +518,64 @@ Of the FIXED, nine are `tests-error/eval/*` entries — unmatched mixin calls,
 namespace member misses and undefined property accessors now raise eval errors
 where they previously rendered. That is a real capability gain and the reason
 this document does not treat "errors where Less errors" as an open area.
+
+### RC-2 and RC-3 — LANDED
+
+Both were in the Less parser's ruleset-body/extend classification, and they were
+one work item as predicted. Fixed in `packages/syntax/less/less-parser/src/grammar.ts`.
+
+**RC-2.** `isExtendInstruction` and `isExtendTargetFact` were byte-identical
+predicates, so `RulesetTail`'s `extensions` bucket — selected by
+`isExtendInstruction(v) && !isExtendTargetFact(v)` — could never be non-empty.
+Every body-form extend fell into `firstExtensions` and `ClassIdStatement`
+stamped `subject: selist(prefix.selector)` on it. The fix gives the body form its
+own reduced fact (`BodyExtendFact`, field `bodyExtensions`) instead of a bare
+`{target, partial}[]` that is indistinguishable from an inline extend's. Body
+extends now reach `extensions` carrying **no** `subject`, which is already the
+documented whole-rule contract on `ExtendInstruction` and already what
+`RulesetWithExtends` / `NestedRulesetWithExtends` produced on their own path.
+
+**RC-3.** `BodyStatement` now composes `nestedGuardedRuleset`, the same
+production the ordinary nested `blockItem` uses, rather than the absolute
+`guardedRuleset`. A detached-ruleset / `each()` body is evaluated in the
+caller's nesting context, so its rules are nested rules. `RelativeComplex` is a
+strict superset of `Complex` and reduces to the identical branch when no leading
+combinator is present, so this is a pure widening on the AST surface.
+
+**Ratchet: NEW 28 → 26** (`pnpm run verify:jess-suite-ratchet`). `all-less.test.ts`
+and `extend-exact-oracle.test.ts` both go green — `tests-unit/extend/extend.less`
+passes in both harnesses.
+
+**`bootstrap-memory-bisect.test.ts` does NOT go green, and RC-3 was not its only
+blocker.** The table above attributes 1 failure to RC-3; that attribution was
+optimistic. `mixins/_forms.less:88-91` now parses, and the test advances to a
+second, unrelated defect in `bootstrap-less-port/less/_navbar.less:256` —
+`each(map-keys(@grid-breakpoints), #(@breakpoint) { … })` reports "Missing
+closing parenthesis". `_navbar.less` is byte-identical between the pre- and
+post-fix parser in the byte-identity digest and holds the parse-failure hash in
+both, so this is pre-existing and untouched by RC-3. It needs its own root cause.
+
+**Byte-identity note.** `oracle-byte-identity.baseline.json` is stale: it is
+already red on unmodified `origin/dev` (709/709 shared entries moved, corpus
+gained 5 entries), so it could not gate this change. The differential taken
+instead was pre-fix build vs post-fix build in the same worktree, per entry:
+**18 of 714 AST entries and 11 of 714 CST entries moved.** Every AST-moved file
+contains `:extend` (RC-2); the CST-only moves are the predicted `RelativeComplex`
+wrapper appearing in detached-ruleset and `each()` bodies (RC-3). The parse-throw
+sentinel count went 26 → 22 — exactly the four RC-3 files (`_card.less`,
+`_tables.less`, `mixins/_forms.less`, `mixins/_table-row.less`). Rebaselining the
+oracle needs owner sign-off and is not done here.
+
+**Perf: NEUTRAL, and the run-to-run bias is the reason it can only be called
+that.** `ab-compare.mjs` (same worktree, git-toggled, interleaved) was run twice
+cleanly and disagreed in direction: at `4 3 8 25` every case read **+1.5%…+7.1%**
+median for the candidate; at `6 3 8 25` every case read **−2.9%…+0.6%** with
+win-rates at 7–12 of 18. The tell is the control: `css-corpus-ok` and
+`css-corpus-ok-joined` are plain CSS with no `:extend` and no detached ruleset,
+so neither fix can touch them structurally, and they moved by the same magnitude
+and sign as the Less corpora in both runs. That is cross-run bias, exactly the
+constraint [`GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md)
+§4 records (`3.864x → 3.564x` on identical code). Headline numbers below are the
+6-round run. A third, earlier run is discarded: it was contaminated by a
+concurrent `verify:types`, and its medians (−61% with a −1.5% min) are not a
+measurement.

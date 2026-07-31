@@ -1,5 +1,5 @@
 import { run } from 'parseman';
-import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
+import type { Ruleset, SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseLessCst, type LessCstChild } from '../src/cst.js';
 import { lessGrammar } from '../src/grammar.js';
@@ -2112,6 +2112,68 @@ describe('Less AST grammar facts', () => {
           ]
         }
       ]
+    });
+  });
+
+  it('gives a body extend on a comma list no subject, so every branch extends', () => {
+    const source = '.ext3, .ext4 { &:extend(.foo all); &:extend(.bar all); }';
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const [ruleset] = stylesheet(result.value).rules;
+    expect(ruleset).toMatchObject({
+      type: 'Ruleset',
+      selector: {
+        type: 'SelectorList',
+        selectors: [
+          { type: 'SimpleSelector', text: '.ext3' },
+          { type: 'SimpleSelector', text: '.ext4' }
+        ]
+      },
+      extendInstructions: [
+        { target: { type: 'SelectorList' }, partial: true },
+        { target: { type: 'SelectorList' }, partial: true }
+      ]
+    });
+
+    /*
+     * Absent subject is the whole-rule contract. A stamped subject here
+     * silently dropped `.ext4` from both extends.
+     */
+    for (const instruction of (ruleset as Ruleset).extendInstructions ?? []) {
+      expect(instruction.subject).toBeUndefined();
+    }
+  });
+
+  it('parses a leading-combinator nested rule inside a detached ruleset body', () => {
+    const source = '@r: { ~ .a { x: 1; } };';
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stylesheet(result.value).rules[0]).toMatchObject({
+      type: 'VariableDeclaration',
+      value: {
+        rules: [
+          {
+            type: 'Ruleset',
+            selector: {
+              type: 'SelectorList',
+              selectors: [
+                {
+                  type: 'RelativeSelector',
+                  value: ['~', { type: 'SimpleSelector', text: '.a' }]
+                }
+              ]
+            }
+          }
+        ]
+      }
     });
   });
 
