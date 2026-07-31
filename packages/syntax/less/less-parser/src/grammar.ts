@@ -199,6 +199,14 @@ type LessRules = {
   SupportsBlock: Combinator<AtRuleBlock>;
   QueryValue: Combinator<ValueNode>;
   QueryColonFeature: Combinator<ValueNode>;
+  /** A feature value, folding an authored `<ratio>` slash into one Operation. */
+  QueryFeatureValue: Combinator<ValueNode>;
+  /** A query keyword that is not the `only` modifier. */
+  QueryNonOnlyKeyword: Combinator<Keyword>;
+  /** One term of a query clause. */
+  QueryTerm: Combinator<ValueNode>;
+  /** One term of a media query clause, admitting Less interpolation. */
+  MediaQueryTerm: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryClause: Combinator<ValueNode>;
   ContainerStyleQuery: Combinator<FunctionCall>;
@@ -6391,6 +6399,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     SupportsBlock,
     QueryValue,
     QueryColonFeature,
+    QueryFeatureValue,
+    QueryNonOnlyKeyword,
+    QueryTerm,
+    MediaQueryTerm,
     QueryFeature,
     QueryClause,
     ContainerStyleQuery,
