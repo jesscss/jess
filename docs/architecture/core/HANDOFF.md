@@ -49,6 +49,71 @@
 These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
 Delete a row the moment it lands or is abandoned.
 
+### 2026-07-31 — orchestration state (dev at `cb8533ae7`)
+
+Every number below came from a command that was actually run. Anything not
+measured is labelled a hypothesis.
+
+**Parseman `release/0.46.0` (PR #102, head `be6111a`) — CI run `30601765592`.**
+Green: `release-gate`, `size-gate`, `choice-cost-gate`, `docs-verify`,
+`check:control-bytes` (the fourth raw NUL fell in `be6111a`). Two causes remain,
+and they are the only two:
+
+1. `test-matrix`, all three node versions — **zero test failures**. It is
+   exclusively `coverage:guard` against baseline `ed81612`: lines 92.92 vs
+   95.91 (−2.99pp), statements 89.03 vs 92.12 (−3.09pp), functions 93.96 vs
+   96.55 (−2.59pp), branches 82.16 vs 85.80 (−3.64pp), tolerance 0.5pp. The
+   uncovered surface is the new CLI/diagnostics/analysis code.
+2. `grammar-perf` and `workload-perf`:
+   - `rollback/dense` 16 probes/val — median **+24.3% … +25.2%**, min +24.9% …
+     +25.9%, won 1/12 0/12 0/12, breached 3/3
+   - `rollback/medium` 4 probes/val — median +5.0% … +7.8%, breached 3/3
+   - `expected/narrow` 1 opt/arm — min +11.3% … +12.3%, breached 2/3
+   - `less/mixins` 59 KB — median +1.1% … +5.3%, breached 3/3
+   - `expected/none` and `expected/wide` are clean.
+   Also logged: `[parseman] degraded [mk-inline-missed]`, 31 sites.
+
+   The regression scales with probe density (16 probes +24%, 4 probes +5%, 0
+   probes clean), which places it on the **rollback path as a per-execution
+   cost**, not a fixed startup cost. **Hypothesis, not yet confirmed:** commit
+   `0665871` (*share cold capture restores through hoisted helpers*) replaced
+   inline capture-restore code with calls to hoisted shared helpers and was
+   justified on a −5.42% `example/css` win; a helper call on the restore path is
+   a cost that multiplies with probe density. `15f33a6` (*hoist byte-identical
+   fused declarations*) is the second suspect. A lane is bisecting
+   `rollback/dense` commit-by-commit to attribute it with numbers. Do not act on
+   the hypothesis before that lands.
+
+   Per [[parseman-each-release-faster-than-last]] this is a **blocker**. Widening
+   a threshold or re-baselining to go green is not an available move; the only
+   outcomes are fix the cause, or document the deliberate trade for owner
+   sign-off.
+
+**Branches carrying unlanded fixes**, measured with `git rev-list --count
+origin/dev..<branch>`. A serialized lander owns these — landing must not run in
+parallel, since each push moves `dev`:
+
+| branch | commits | what |
+| --- | ---: | --- |
+| `fix/entry-import-edge` | 3 | keeps compiled grammar tables off package-entry import graphs, + a gate on every published entry point's eager import graph — directly on the grammar-size goal |
+| `fix/less-optional-trailing-semi` | 2 | final declaration in a block may omit its semicolon (4.x triage §4.1) |
+| `brave-jackson-baaa2d` | 1 | jess-parser accepts CSS `calc()` arithmetic |
+| `vigilant-pasteur-deb597` | 1 | model `name=value` call arguments as assignments |
+| `stoic-jang-518776` | 1 | stop `@import` option keywords leaking into emitted CSS |
+| `work/cst-collapse-set` | 1 | drop two CST collapse entries that can never fire |
+| `perf/css-value-identroute` | 1 | route the spaced paren bridge instead of racing it — needs a controlled A/B before landing |
+| `ban-json-stringify-on-ast` | 1 | lint rule banning `JSON.stringify` on AST/CST values |
+| `oracle-oom-fix` | 1 | docs: why the Less byte-identity gate returned no verdict |
+
+`cst-children-unify` (`02ae5b05a`) is **NOT** in that set. It is blocked on a
+language-service STOP — 264 → 60 failing against a byte-identical CST — and must
+not be landed opportunistically.
+
+**Deferred by the owner, not queued:** committing each parser's EBNF/railroad
+rendering as a fixture so a grammar edit that changes the accepted language
+surfaces as a *syntax diff* instead of a guessed-at downstream symptom. Sound
+idea, explicitly parked — do not start it.
+
 ### 2026-07-31 — I failed today. This is how, and this is the fix.
 
 **The failure: AST v2 was a compression of the representation, and it dropped
@@ -1109,11 +1174,13 @@ section is the authoritative full-scope companion to the compact task goal.
   `plugin-jess`. CSS is a Context-parsed/inlined document route, not a Jess CSS
   compiler merely because a CSS plugin exists. Delete only machinery proven
   unreachable after direct-route coverage; do not manufacture deletion work.
-- Current grammar/parser work targets published Parseman `0.41.x`. The active
-  follow-up is the Parseman `0.41.1` dispatch aggregate-elision candidate; adopt
-  it in Jess only after owner publication, registry install, macro/compose
-  proof, and matched parser measurements. Normal compiler/plugin/CLI parses
-  never enable coverage or trace.
+- **Corrected 2026-07-31:** this previously read "targets published Parseman
+  `0.41.x`" with a `0.41.1` dispatch aggregate-elision follow-up. Parseman
+  `0.45.0` is published and `0.46.0` is in flight as PR #102; the `0.41.x` text
+  was ten releases stale. The adoption rule is unchanged and still binding:
+  adopt a parseman version in Jess only after owner publication, registry
+  install, macro/compose proof, and matched parser measurements. Normal
+  compiler/plugin/CLI parses never enable coverage or trace.
 - Treat current direct-Less parsing performance as a release concern. Establish
   reproducible generated-bundle/hash baselines and investigate AST allocation,
   grammar choice/backtracking, metadata/trivia/provenance, emitted
