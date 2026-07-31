@@ -145,7 +145,7 @@ const cssFactory = (g: GrammarSelf) => {
   /** css-values-4 §4.2 — `<url>` / `<src>`, both the quoted and unquoted forms. */
   const Url = node(
     'Url',
-    sequence(g.UrlOpen, optional(choice(Quoted, g.UrlInner)), expect(literal(')'), ')')),
+    sequence(g.UrlOpen, optional(choice(g.Quoted, g.UrlInner)), expect(literal(')'), ')')),
     children => ({ kind: 'Url', children })
   );
 
@@ -205,7 +205,7 @@ const cssFactory = (g: GrammarSelf) => {
    * dispatching on the already-consumed opener replaces four independent
    * openers with one.
    */
-  const Component = FunctionNotation;
+  const Component = g.FunctionNotation;
 
   /*
    * css-syntax-3 §5.4.8 — `<declaration-value>` is a sequence of component
@@ -214,14 +214,14 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const Value = node(
     'Value',
-    choice(Color, Dimension, Quoted, Url, UnicodeRange, Component, Keyword),
+    choice(g.Color, g.Dimension, g.Quoted, g.Url, g.UnicodeRange, g.Component, g.Keyword),
     children => ({ kind: 'Value', children })
   );
 
   /** css-values-4 §2.2 — a comma-separated list of space-separated values. */
   const ValueList = node(
     'ValueList',
-    oneOrMoreSep(many(Value), literal(',')),
+    oneOrMoreSep(many(g.Value), literal(',')),
     children => ({ kind: 'ValueList', children })
   );
 
@@ -256,8 +256,8 @@ const cssFactory = (g: GrammarSelf) => {
   const Declaration = node(
     'Declaration',
     choice(
-      sequence(CustomProperty, literal(':'), CustomValue, optional(Important)),
-      sequence(node('Property', g.Identifier, children => ({ kind: 'Property', children })), literal(':'), ValueList, optional(Important))
+      sequence(g.CustomProperty, literal(':'), g.CustomValue, optional(g.Important)),
+      sequence(node('Property', g.Identifier, children => ({ kind: 'Property', children })), literal(':'), g.ValueList, optional(g.Important))
     ),
     children => ({ kind: 'Declaration', children })
   );
@@ -268,7 +268,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       literal('['),
       g.Identifier,
-      optional(sequence(g.AttributeOperator, choice(Quoted, g.Identifier), optional(g.AttributeModifier))),
+      optional(sequence(g.AttributeOperator, choice(g.Quoted, g.Identifier), optional(g.AttributeModifier))),
       expect(literal(']'), ']')
     ),
     children => ({ kind: 'AttributeSelector', children })
@@ -311,21 +311,21 @@ const cssFactory = (g: GrammarSelf) => {
   /** selectors-4 §4.3 — a compound selector is a run with no combinator. */
   const CompoundSelector = node(
     'CompoundSelector',
-    many(choice(BasicSelector, AttributeSelector, PseudoSelector, NestingSelector)),
+    many(choice(g.BasicSelector, g.AttributeSelector, g.PseudoSelector, g.NestingSelector)),
     children => ({ kind: 'CompoundSelector', children })
   );
 
   /** selectors-4 §4.4 — compounds joined by combinators. */
   const ComplexSelector = node(
     'ComplexSelector',
-    sequence(CompoundSelector, many(sequence(optional(keywords(['||', '>', '+', '~', '|'])), CompoundSelector))),
+    sequence(g.CompoundSelector, many(sequence(optional(keywords(['||', '>', '+', '~', '|'])), g.CompoundSelector))),
     children => ({ kind: 'ComplexSelector', children })
   );
 
   /** selectors-4 §3.2 — a comma-separated `<complex-selector-list>`. */
   const SelectorList = node(
     'SelectorList',
-    oneOrMoreSep(ComplexSelector, literal(',')),
+    oneOrMoreSep(g.ComplexSelector, literal(',')),
     children => ({ kind: 'SelectorList', children })
   );
 
@@ -340,8 +340,8 @@ const cssFactory = (g: GrammarSelf) => {
       literal('('),
       g.Identifier,
       optional(choice(
-        sequence(literal(':'), ValueList),
-        sequence(g.QueryComparisonOperator, Value)
+        sequence(literal(':'), g.ValueList),
+        sequence(g.QueryComparisonOperator, g.Value)
       )),
       expect(literal(')'), ')')
     ),
@@ -351,41 +351,41 @@ const cssFactory = (g: GrammarSelf) => {
   /** mediaqueries-5 §3.1 — `<media-condition>` terms. */
   const QueryTerm = node(
     'QueryTerm',
-    choice(QueryFeature, sequence(optional(g.QueryNot), g.Identifier)),
+    choice(g.QueryFeature, sequence(optional(g.QueryNot), g.Identifier)),
     children => ({ kind: 'QueryTerm', children })
   );
 
   /** mediaqueries-5 §3.1 — terms joined by `and` / `or`. */
   const QueryClause = node(
     'QueryClause',
-    sequence(optional(g.QueryOnly), QueryTerm, many(sequence(g.QueryAndOr, QueryTerm))),
+    sequence(optional(g.QueryOnly), g.QueryTerm, many(sequence(g.QueryAndOr, g.QueryTerm))),
     children => ({ kind: 'QueryClause', children })
   );
 
   /** mediaqueries-5 §2 — `<media-query-list>`. */
   const QueryPrelude = node(
     'QueryPrelude',
-    oneOrMoreSep(QueryClause, literal(',')),
+    oneOrMoreSep(g.QueryClause, literal(',')),
     children => ({ kind: 'QueryPrelude', children })
   );
 
   /** css-conditional-3 §4 — `<supports-in-parens>`. */
   const SupportsInParens = node(
     'SupportsInParens',
-    sequence(literal('('), choice(Declaration, g.SupportsCondition), expect(literal(')'), ')')),
+    sequence(literal('('), choice(g.Declaration, g.SupportsCondition), expect(literal(')'), ')')),
     children => ({ kind: 'SupportsInParens', children })
   );
 
   /** css-conditional-3 §4 — `<supports-condition>`. */
   const SupportsCondition = node(
     'SupportsCondition',
-    sequence(optional(g.QueryNot), SupportsInParens, many(sequence(g.QueryAndOr, SupportsInParens))),
+    sequence(optional(g.QueryNot), g.SupportsInParens, many(sequence(g.QueryAndOr, g.SupportsInParens))),
     children => ({ kind: 'SupportsCondition', children })
   );
 
   const SupportsPrelude = node(
     'SupportsPrelude',
-    SupportsCondition,
+    g.SupportsCondition,
     children => ({ kind: 'SupportsPrelude', children })
   );
 
@@ -410,7 +410,7 @@ const cssFactory = (g: GrammarSelf) => {
     'Block',
     sequence(
       literal('{'),
-      many(choice(Declaration, g.Ruleset, g.AtRule, literal(';'))),
+      many(choice(g.Declaration, g.Ruleset, g.AtRule, literal(';'))),
       expect(literal('}'), '}')
     ),
     children => ({ kind: 'Block', children })
@@ -419,14 +419,14 @@ const cssFactory = (g: GrammarSelf) => {
   /** css-syntax-3 §5.4.3 — a qualified rule: prelude then block. */
   const Ruleset = node(
     'Ruleset',
-    sequence(SelectorList, Block),
+    sequence(g.SelectorList, g.Block),
     children => ({ kind: 'Ruleset', children })
   );
 
   /** css-cascade-5 §2 — `@import` and the other statement at-rules. */
   const ImportStatement = node(
     'ImportStatement',
-    sequence(identWord('@import'), Prelude, expect(literal(';'), ';')),
+    sequence(identWord('@import'), g.Prelude, expect(literal(';'), ';')),
     children => ({ kind: 'ImportStatement', children })
   );
 
@@ -434,15 +434,15 @@ const cssFactory = (g: GrammarSelf) => {
   const KeyframeBlock = node(
     'KeyframeBlock',
     sequence(
-      oneOrMoreSep(choice(keywords(['from', 'to'], { caseInsensitive: true }), Dimension), literal(',')),
-      Block
+      oneOrMoreSep(choice(keywords(['from', 'to'], { caseInsensitive: true }), g.Dimension), literal(',')),
+      g.Block
     ),
     children => ({ kind: 'KeyframeBlock', children })
   );
 
   const Keyframes = node(
     'Keyframes',
-    sequence(g.KeyframesAtKeyword, g.Identifier, literal('{'), many(KeyframeBlock), expect(literal('}'), '}')),
+    sequence(g.KeyframesAtKeyword, g.Identifier, literal('{'), many(g.KeyframeBlock), expect(literal('}'), '}')),
     children => ({ kind: 'Keyframes', children })
   );
 
@@ -457,9 +457,9 @@ const cssFactory = (g: GrammarSelf) => {
     'AtRule',
     sequence(
       g.AtRuleKeyword,
-      Prelude,
+      g.Prelude,
       choice(
-        node('AtRuleBlock', Block, children => ({ kind: 'AtRuleBlock', children })),
+        node('AtRuleBlock', g.Block, children => ({ kind: 'AtRuleBlock', children })),
         node('AtRuleStatement', literal(';'), children => ({ kind: 'AtRuleStatement', children }))
       )
     ),
@@ -473,7 +473,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const Stylesheet = node(
     'Stylesheet',
-    many(choice(ImportStatement, Keyframes, AtRule, Ruleset)),
+    many(choice(g.ImportStatement, g.Keyframes, g.AtRule, g.Ruleset)),
     children => ({ kind: 'Stylesheet', children }),
     { trailingTrivia: true }
   );
