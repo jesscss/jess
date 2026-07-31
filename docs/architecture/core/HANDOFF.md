@@ -983,6 +983,7 @@ flow.
 | The per-`const` grammar review checklist and the naming law (item 14) | [`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md) |
 | Patch-shape review | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) |
 | Owner semantic/architecture questions and rulings | [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md) — the canonical OPEN/SETTLED decision ledger |
+| Less 4.x builtin-function coverage — all 92 registry names call-verified against 4.8.1, plus the `functionMode: 'preserve'` blind spot that makes an arity rejection indistinguishable from an unknown CSS function | [`../../state/less-4x-function-triage.md`](../../state/less-4x-function-triage.md) |
 | Non-engine surface carrying size/complexity cost | [`NON-ENGINE-BLOAT-INVENTORY.md`](./NON-ENGINE-BLOAT-INVENTORY.md) |
 | Lazy value materialization / memoization | [`VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md`](./VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md) |
 | Static-import preparation | [`STATIC-IMPORT-PREP-DESIGN.md`](./STATIC-IMPORT-PREP-DESIGN.md) |
