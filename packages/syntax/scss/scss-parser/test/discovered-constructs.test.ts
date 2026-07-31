@@ -57,12 +57,24 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     ['both sides', 'a { b: ( c ) }'],
     ['leading only', 'a { b: ( c) }'],
     ['trailing only', 'a { b: (c ) }']
-  ])('PINNED DEFECT — rejects whitespace inside a paren component value (%s)', (_label, source) => {
+  ])('accepts whitespace inside a paren component value (%s)', (_label, source) => {
     /*
-     * `(c)` parses and `( c )` does not: the paren-block grammar fails to
-     * admit its own trivia. Less accepts all three; its suite asserts that.
+     * `Paren` now spells its own interior padding. It has to: the value ladder
+     * runs with trivia cleared, so an interior that admits authored padding
+     * has to write it — and it has to write the comment-bearing `valueTrivia`,
+     * because the SCSS document trivia table names whitespace and `//` only, so
+     * a block comment is never ambient inside a value. Both columns below.
      */
-    expect(() => parse(source)).toThrow();
+    expect(() => parse(source)).not.toThrow();
+  });
+
+  it.each([
+    ['both sides', 'a { b: (/* c */ c /* c */) }'],
+    ['leading only', 'a { b: (/* c */ c) }'],
+    ['trailing only', 'a { b: (c /* c */) }'],
+    ['a comment holding the closer', 'a { b: (/* ) */ c) }']
+  ])('accepts a comment inside a paren component value (%s)', (_label, source) => {
+    expect(() => parse(source), source).not.toThrow();
   });
 
   it('drops a comment out of var() arguments rather than emitting its bytes', () => {

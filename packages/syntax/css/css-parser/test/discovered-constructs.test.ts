@@ -56,22 +56,36 @@ describe('CSS constructs discovered outside the parser suites', () => {
     ['both sides', 'a { b: ( c ) }'],
     ['leading only', 'a { b: ( c) }'],
     ['trailing only', 'a { b: (c ) }']
-  ])('PINNED DEFECT — rejects whitespace inside a paren component value (%s)', (_label, source) => {
+  ])('accepts whitespace inside a paren component value (%s)', (_label, source) => {
     /*
      * css-syntax-3 §5.4.7 consumes a simple block by balancing brackets; the
-     * whitespace tokens inside are ordinary component values. `(c)` parses and
-     * `( c )` does not, which is the paren-block grammar failing to admit its
-     * own trivia rather than any rule about the value. Less accepts all three.
+     * whitespace tokens inside are ordinary component values. `ParenValue` now
+     * spells its own interior padding — it has to, because the value ladder
+     * runs with trivia cleared, so an interior that admits authored padding has
+     * to write it.
      */
-    expect(() => parse(source)).toThrow();
+    expect(() => parse(source)).not.toThrow();
   });
 
-  it('PINNED DEFECT — leaks comment bytes into var() arguments as Any nodes', () => {
+  it.each([
+    ['both sides', 'a { b: (/* c */ c /* c */) }'],
+    ['leading only', 'a { b: (/* c */ c) }'],
+    ['trailing only', 'a { b: (c /* c */) }'],
+    ['a comment holding the closer', 'a { b: (/* ) */ c) }']
+  ])('accepts a comment inside a paren component value (%s)', (_label, source) => {
+    /* A comment is trivia wherever whitespace is trivia (css-syntax-3 §4), so
+     * the padding spells `cssValueTrivia` and not a bare whitespace run. */
+    expect(() => parse(source), source).not.toThrow();
+  });
+
+  it('drops a comment out of var() arguments rather than emitting its bytes', () => {
     /*
      * A comment is trivia. It must not survive into the value as content.
-     * SCSS and Less both drop it here and produce `[--x, e]`; CSS emits the
-     * `/*`, `c` and `*` + `/` bytes as Any/Keyword siblings, so the argument
-     * list is three nodes longer than the author wrote.
+     * This used to emit the `/*`, `c` and `*` + `/` bytes as Any/Keyword
+     * siblings, three nodes longer than the author wrote, because nothing
+     * consumed the comment as trivia and `VarFallbackPunctuation` took the `/`
+     * and `*` as value punctuation. SCSS and Less both produce `[--x, e]`, and
+     * so does CSS now.
      */
     expect(selectorTextsOf('a { b: var(--x, /* c */ e) }')).toMatchObject({
       rules: [{
@@ -81,12 +95,7 @@ describe('CSS constructs discovered outside the parser suites', () => {
           name: 'var',
           args: [
             { type: 'Keyword', src: '--x' },
-            [
-              { type: 'Any', src: '/*' },
-              { type: 'Keyword', src: 'c' },
-              { type: 'Any', src: '*/' },
-              { type: 'Keyword', src: 'e' }
-            ]
+            { type: 'Keyword', src: 'e' }
           ]
         }
       }]

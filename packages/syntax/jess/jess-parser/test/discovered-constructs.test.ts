@@ -76,15 +76,22 @@ describe('Jess constructs discovered outside the parser suites', () => {
     });
   });
 
-  it('PINNED DEFECT — rejects a comment inside var() arguments', () => {
+  it('drops a comment out of var() arguments rather than emitting its bytes', () => {
     /*
-     * A comment is trivia. CSS, Less and SCSS all parse this (CSS gets it
-     * wrong differently — it leaks the bytes in as Any nodes, pinned in its
-     * own suite). Jess fails outright at the comment offset.
+     * A comment is trivia wherever whitespace is trivia (css-syntax-3 §4), so
+     * it must neither be rejected nor reach the value. The comment leaves no
+     * trace in the args — the same shape the CSS suite asserts, where the old
+     * behaviour leaked the comment's bytes in as `Any` nodes.
      */
-    const failure = failureOf('a { b: var(--x, /* c */ e) }');
-
-    expect(failure.offset).toBe(16);
+    expect(firstRule('a { b: var(--x, /* c */ e) }')).toMatchObject({
+      rules: [{
+        value: {
+          type: 'FunctionCall',
+          name: 'var',
+          args: [{ type: 'Keyword', src: '--x' }, { type: 'Keyword', src: 'e' }]
+        }
+      }]
+    });
   });
 
   it.each([
