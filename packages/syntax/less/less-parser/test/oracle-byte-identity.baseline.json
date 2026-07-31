@@ -1,2855 +1,2879 @@
 {
   "format": 1,
   "harness": "e542b69ede393b0c90021c7c5710e3eab01a86f451fbd7124158f26e3721c0f0",
-  "entries": 709,
+  "entries": 715,
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929",
-      "threw": 120
+      "aggregate": "b97690c7885e8fe3c1211216780aa6c6cc20f6b778e08fff44153beb717cdd14",
+      "threw": 118
     },
     {
       "name": "cst",
-      "aggregate": "7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4",
+      "aggregate": "e4543e6cd85f86ba3d74481c791fb30b694d921eec1bdfdc4a4f5d2f431448e0",
       "threw": 0
     }
   ],
   "perEntry": {
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_alert.less": {
-      "ast": "cb6de24795f4ea35",
-      "cst": "b77665b258eca730"
+      "ast": "1226097a9d5e529f",
+      "cst": "e4ba4fc5ef840c1d"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_badge.less": {
-      "ast": "2ea3e911eb141345",
-      "cst": "7ad304cb2fa4bbe0"
+      "ast": "e28e5dd61cc1cc84",
+      "cst": "4b96c279be2b29dd"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_breadcrumb.less": {
-      "ast": "403ad04e7338f9e5",
-      "cst": "d3e6adaf535a7722"
+      "ast": "ee5f1617bbe2c775",
+      "cst": "94297181ba76b42f"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_button-group.less": {
-      "ast": "1d2fdbfce799c45f",
-      "cst": "0a4d47d9c5a393ea"
+      "ast": "3e5f1b85c106421d",
+      "cst": "94054d466ad25e98"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_buttons.less": {
-      "ast": "787266a9844ef20e",
-      "cst": "c53d232a1571bf6c"
+      "ast": "5a142b7aea4186aa",
+      "cst": "9e13926be9e1451f"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_card.less": {
-      "ast": "deffdc7416080957",
-      "cst": "41f242ff5805154e"
+      "ast": "2ec3f9d816ac2119",
+      "cst": "0957716c4c4eeaa4"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_carousel.less": {
-      "ast": "11cd434512838e95",
-      "cst": "0438245ff31f7422"
+      "ast": "f3e41e544cd8870b",
+      "cst": "90da9730e6b8d927"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_close.less": {
-      "ast": "e1b70f87ffae25a8",
-      "cst": "58ef474aa90bb66f"
+      "ast": "b4cedfea1d02f8ff",
+      "cst": "60f7dccbf00a3805"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_code.less": {
-      "ast": "18bf2b8f0c552ca9",
-      "cst": "bf6d05f414aeaded"
+      "ast": "6ebeb6ede1dec1cf",
+      "cst": "0c21c5d7f5010e58"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_custom-forms.less": {
-      "ast": "78a65c2867c95776",
-      "cst": "416d3846894be1ea"
+      "ast": "c6ea8db763105030",
+      "cst": "1d89859ca92b752d"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_dropdown.less": {
-      "ast": "46e90630f11f9b75",
-      "cst": "2d0806dfb0c94dca"
+      "ast": "b588aee535c1b998",
+      "cst": "2cca105f2372166d"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_forms.less": {
-      "ast": "99ea2a3ca1d60903",
-      "cst": "546ae0be180eac70"
+      "ast": "4b5eab3c63af6c6c",
+      "cst": "a4d052278207ca6d"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_functions.less": {
-      "ast": "c2c81439ba28f9a5",
-      "cst": "f9e1cf486c3b5df1"
+      "ast": "71d177c0ef86d66d",
+      "cst": "392b9ae1229ed748"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_grid.less": {
-      "ast": "05056b47e54f5a30",
-      "cst": "97039dcb1a3fb2e8"
+      "ast": "b55f214aa186edbe",
+      "cst": "bb22a36409eae56f"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_images.less": {
-      "ast": "2325f12ef6ceeebc",
-      "cst": "376aa2b7864bad28"
+      "ast": "a27375bdbf09c98e",
+      "cst": "8964d2ee11b4feaf"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_input-group.less": {
-      "ast": "d100fd079232b632",
-      "cst": "99433927bbdb986c"
+      "ast": "c63082cbdce3964f",
+      "cst": "b6cb2b2f09d30098"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_jumbotron.less": {
-      "ast": "179da7f384450d7e",
-      "cst": "60a6ad6499778082"
+      "ast": "90a0b753fc9cefa2",
+      "cst": "9a5c8c0197e5f52e"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_list-group.less": {
-      "ast": "a9cf6889ebc77e4b",
-      "cst": "fb6392c2c4cae655"
+      "ast": "2217662310ad6193",
+      "cst": "d50a4174e7c54b8d"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_media.less": {
-      "ast": "5f0f98cac7af3d4f",
-      "cst": "47cf568301753755"
+      "ast": "55cec76b59559e76",
+      "cst": "9f49c6852da4b815"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_mixins.less": {
-      "ast": "43f11f65af7effb1",
-      "cst": "a5f60c84ca1d0ef0"
+      "ast": "79a06598a7911f8f",
+      "cst": "26d36008ce4a8ccc"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_modal.less": {
-      "ast": "3f34089ae10c9228",
-      "cst": "a203463fa7fd152f"
+      "ast": "30a146eaa89a2f27",
+      "cst": "e27e3c802c463f15"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_nav.less": {
-      "ast": "73b4c629d5b742b5",
-      "cst": "94742f37f4136bd6"
+      "ast": "7eca7dc0f30eb02e",
+      "cst": "14187a804eb14edc"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_navbar.less": {
-      "ast": "8e2386f35d0ff0b9",
-      "cst": "a2ac098e199de257"
+      "ast": "733703c285609637",
+      "cst": "95b845d621f5bc46"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_pagination.less": {
-      "ast": "c5d27713434bfb20",
-      "cst": "1b528385a00f4b6e"
+      "ast": "24142474925f7682",
+      "cst": "2fd81fdafe1b4720"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_popover.less": {
-      "ast": "74bbbc34ac40a5fd",
-      "cst": "7062eadaddde5fc4"
+      "ast": "0b1c5b6461cd3409",
+      "cst": "1bbf4def0efc3f84"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_print.less": {
-      "ast": "0809d06de7d02396",
-      "cst": "b912606205419adc"
+      "ast": "219f208c00d6fee3",
+      "cst": "3035b6cc9d1497d9"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_progress.less": {
-      "ast": "53a286183e220cf1",
-      "cst": "50096974b7454ad3"
+      "ast": "98c80d564687cfe2",
+      "cst": "615dca2a4fdc76a6"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_reboot.less": {
-      "ast": "27c53f9cd24d0e00",
-      "cst": "b292285fdc86afdd"
+      "ast": "27263290b533bcbe",
+      "cst": "5350c285a140c9f8"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_root.less": {
-      "ast": "06c2f80559dd3bcd",
-      "cst": "02311e64d82627e9"
+      "ast": "71d13831f2c87bc4",
+      "cst": "ee3d9f17ba6e32ac"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_spinners.less": {
-      "ast": "dfe5dbacf96e8a86",
-      "cst": "00d1e2388ff892d0"
+      "ast": "3ad406d99ec7c807",
+      "cst": "af612965d072231f"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_tables.less": {
-      "ast": "eb825bc9a8cf5c75",
-      "cst": "e9ceacd360d3d43d"
+      "ast": "3abda946845238c7",
+      "cst": "253826b2b56980e4"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_toasts.less": {
-      "ast": "b4943eb15bbaec8c",
-      "cst": "8624c122c5be8c90"
+      "ast": "46c99416058ec888",
+      "cst": "96a6ee17205932cc"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_tooltip.less": {
-      "ast": "1f610858f4493cdc",
-      "cst": "cb6c87b2d1d96d0d"
+      "ast": "c71bf5b5a725ab56",
+      "cst": "22786c11056c0e9a"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_transitions.less": {
-      "ast": "b0a6c486ac564827",
-      "cst": "4954c30d9734627e"
+      "ast": "a24c0d44712777c7",
+      "cst": "d49ded6e1a80566b"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_type.less": {
-      "ast": "a3bd85f97ad5aeee",
-      "cst": "5437141be7403441"
+      "ast": "839a7ab2140499a4",
+      "cst": "bdc8c9e111ba8c87"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_utilities.less": {
-      "ast": "2960d56ae686c619",
-      "cst": "e455d48ca2f6a060"
+      "ast": "42aa30318646f00d",
+      "cst": "28b2ee0b2f8967b9"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_variables.less": {
-      "ast": "2712f086ee1fb153",
-      "cst": "46750ab244c9977d"
+      "ast": "3b5ab4ec1e2d7f93",
+      "cst": "64db04d00fcc0736"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/bootstrap-grid.less": {
-      "ast": "2d2d0e1ade427903",
-      "cst": "278d0e0963eac9f3"
+      "ast": "d4d454ef965da5a9",
+      "cst": "03d165cc3e908235"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/bootstrap-reboot.less": {
-      "ast": "fe5bac119c833ead",
-      "cst": "45530392724eec8c"
+      "ast": "7e079a4b7f675e50",
+      "cst": "fb413243262526dd"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/bootstrap.less": {
-      "ast": "741446cbc1fcb5a0",
-      "cst": "c559ad177647b9a2"
+      "ast": "0cbb7dc86e253d8e",
+      "cst": "4f171e97bf7575a7"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_alert.less": {
-      "ast": "22b5cb0024b79005",
-      "cst": "7c92f7fb90be01e7"
+      "ast": "aea58fc9b8f04a1f",
+      "cst": "ffae6c8f5d37d7a2"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_background-variant.less": {
-      "ast": "671c72b8eaf26c32",
-      "cst": "6f2e4c1964f5be28"
+      "ast": "676cbdd67bd784bf",
+      "cst": "b22adb89f0d83eca"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_badge.less": {
-      "ast": "99073baadae6a3d1",
-      "cst": "823843dd22c91370"
+      "ast": "a45712497b6858d4",
+      "cst": "16e91bbe892eed0b"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_border-radius.less": {
-      "ast": "3a71639a18db4446",
-      "cst": "7e88088b26ba448a"
+      "ast": "d52c9675c99cd98a",
+      "cst": "5aae1d7883127fad"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_box-shadow.less": {
-      "ast": "f988193c0f29c5c2",
-      "cst": "330b26433f221005"
+      "ast": "c39aa75f5e3648df",
+      "cst": "88bfda4ae3fb20f2"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_breakpoints.less": {
-      "ast": "aff079d7cfd8802b",
-      "cst": "90e81b948edb31e0"
+      "ast": "7043682ff6f01f4f",
+      "cst": "d8834441c0499839"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_buttons.less": {
-      "ast": "47df403a63f0ddad",
-      "cst": "e9a48425838f3135"
+      "ast": "10d8289d73c5e3d0",
+      "cst": "8cfceb38aa5dda99"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_caret.less": {
-      "ast": "877c96665e197188",
-      "cst": "995ebf103d63a4a3"
+      "ast": "3ed06735c33d9b3a",
+      "cst": "a650a470846a0c76"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_clearfix.less": {
-      "ast": "0d617699f872c99e",
-      "cst": "217693aef75db522"
+      "ast": "09eec68eef194d41",
+      "cst": "dc18e28cbef37a07"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_deprecate.less": {
-      "ast": "4abf435fc452ceb4",
-      "cst": "aeecdc4e30ab0bb7"
+      "ast": "6f733850d98c1b2a",
+      "cst": "cac7c5ff60672876"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_float.less": {
-      "ast": "2e1b34c2fc0c5089",
-      "cst": "051ae9751b65c69b"
+      "ast": "454ce6f924cf5f08",
+      "cst": "1ed3f8dcd443d170"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_forms.less": {
-      "ast": "2e87e07434acf6b0",
-      "cst": "b0c0d5375a272184"
+      "ast": "c9ba36d823d2d053",
+      "cst": "ee1e2bfc1ba24973"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_gradients.less": {
-      "ast": "5bdce2e6137c74bf",
-      "cst": "1e772421370268d4"
+      "ast": "f7bc3938d4846bff",
+      "cst": "baf4761a6e187ff1"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_grid-framework.less": {
-      "ast": "30b84f67feee68fc",
-      "cst": "799fd6e0a9fce58c"
+      "ast": "c7715628e31d9bd4",
+      "cst": "02b79f489cb2b9fc"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_grid.less": {
-      "ast": "735c923717d031db",
-      "cst": "d2d1766cffd37e91"
+      "ast": "8f98cc846e5dcc06",
+      "cst": "6489f0ceeaabf4c2"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_hover.less": {
-      "ast": "a97283d36a24e2dc",
-      "cst": "311f4869199f8f6e"
+      "ast": "5d853c1fc93b9f5b",
+      "cst": "0478ae9a2b4419d9"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_image.less": {
-      "ast": "03e7bc2f3258e05f",
-      "cst": "ce0a9d99f2121a6d"
+      "ast": "adf5410bfc8847e2",
+      "cst": "2692bf43b67edd06"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_list-group.less": {
-      "ast": "31543437576d6a23",
-      "cst": "0e39045840acb6b7"
+      "ast": "b0b85cacb9d44a62",
+      "cst": "70e6270418e28777"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_lists.less": {
-      "ast": "0384d1dc2d76f18f",
-      "cst": "ba6ce4500a8be3c6"
+      "ast": "e196205372732b2a",
+      "cst": "05991e5a33b37e5d"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_nav-divider.less": {
-      "ast": "0790f976c7fefb87",
-      "cst": "e48c6a239460d807"
+      "ast": "bf4304006cdd0b63",
+      "cst": "c2781bcf1e4b767f"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_pagination.less": {
-      "ast": "1aa0011d68945840",
-      "cst": "1732f43ee7a7c347"
+      "ast": "2517736c330717c3",
+      "cst": "97b0a400579ff2fb"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_reset-text.less": {
-      "ast": "b7f9d09721cedd70",
-      "cst": "13a1b464af795b49"
+      "ast": "4af9c9b8fa3675b5",
+      "cst": "c1742a6c82a732a4"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_resize.less": {
-      "ast": "7b0a0358cb74dcd1",
-      "cst": "04e521b383ef5f9d"
+      "ast": "9d0a10ab4f7a2e3d",
+      "cst": "2cd64add8a490610"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_screen-reader.less": {
-      "ast": "dc7c25831878b594",
-      "cst": "bf771acac5d5e70f"
+      "ast": "7fe2c65d2e28af4e",
+      "cst": "dd8316f9c3be2ff5"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_size.less": {
-      "ast": "43d1036c9a525299",
-      "cst": "3460f004906bec5e"
+      "ast": "b19bd3d6e25c81f8",
+      "cst": "ec923a50fc934d21"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_table-row.less": {
-      "ast": "7544cb92e015c9d2",
-      "cst": "afb661753190fb99"
+      "ast": "9fc45888acecd691",
+      "cst": "cafc7dc6a7b8929f"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_text-emphasis.less": {
-      "ast": "56899902c0e2d3da",
-      "cst": "84e3ffbde2346c14"
+      "ast": "e35bdf3c50362384",
+      "cst": "19e38764031dd48c"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_text-hide.less": {
-      "ast": "99329318f338813c",
-      "cst": "a008c9a43ca915d9"
+      "ast": "32558be7a8e91fe2",
+      "cst": "90a485555fde1a5d"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_text-truncate.less": {
-      "ast": "25dcbce82d996b07",
-      "cst": "d890e150d2ab1da2"
+      "ast": "e1123bdfb52d8786",
+      "cst": "571d37ae122c27c0"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_transition.less": {
-      "ast": "cce8ea3c96efefed",
-      "cst": "9fec075442c0eb6a"
+      "ast": "fbaf9450eab55062",
+      "cst": "cab91cd1ab12c973"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_visibility.less": {
-      "ast": "6fa3eaa6b2cba8ee",
-      "cst": "d90639f17dd8f38e"
+      "ast": "2f21264e78e5d690",
+      "cst": "2b156a932008a853"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_align.less": {
-      "ast": "2269d2bff5d830f1",
-      "cst": "e4c64e590b7c44a3"
+      "ast": "9765174a415d03a5",
+      "cst": "29ce13552f1de2c3"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_background.less": {
-      "ast": "7c6f08b56a058483",
-      "cst": "0650d90e2e595ec2"
+      "ast": "4fd29913f9bb550c",
+      "cst": "a7ec09c8aa5fdd3c"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_borders.less": {
-      "ast": "bfddaa41dc6d23c3",
-      "cst": "1e11d64bd17c1e9d"
+      "ast": "a438e84415ff917a",
+      "cst": "bcd7b73dc74ce63b"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_clearfix.less": {
-      "ast": "bbbe7cb985bc4430",
-      "cst": "b0ae3becf8db63b1"
+      "ast": "6036d9220940978c",
+      "cst": "050828e818f089ab"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_display.less": {
-      "ast": "b7818401b461bd83",
-      "cst": "fe9b2e199f9eed96"
+      "ast": "3fb04c07dee93ebc",
+      "cst": "539e3c102d43ea8c"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_embed.less": {
-      "ast": "2040dc5ad163b330",
-      "cst": "0dcd03927d5b1e32"
+      "ast": "fe9c0e6fd3137585",
+      "cst": "42a5dd780fd86581"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_flex.less": {
-      "ast": "1f9185fd98c4adb0",
-      "cst": "b225a6408008ddf5"
+      "ast": "9d178bef27e3b36c",
+      "cst": "d2411bdbfbac1d26"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_float.less": {
-      "ast": "200b8bd5156390fc",
-      "cst": "ac59d31b8744443c"
+      "ast": "a7670d0bc6a133ce",
+      "cst": "0def80452c33c2fb"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_interactions.less": {
-      "ast": "7d5a590c5e5547e2",
-      "cst": "e628cbdb9777d4c1"
+      "ast": "81e99a403c92d57f",
+      "cst": "665870e74978d7ab"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_overflow.less": {
-      "ast": "edfb994722772be3",
-      "cst": "f405a78547738e66"
+      "ast": "114d5c11d8d9c218",
+      "cst": "3f14b92fbb75348e"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_position.less": {
-      "ast": "14945f28c1331791",
-      "cst": "3f49c955925a4562"
+      "ast": "4c1fa8c45aa98008",
+      "cst": "63578571211f84c3"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_screenreaders.less": {
-      "ast": "3c0573ceb25b3b58",
-      "cst": "43e6e72f89901530"
+      "ast": "6ca1d73b72ca88ce",
+      "cst": "f3a04b2008ef1458"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_shadows.less": {
-      "ast": "3230ee991a483c97",
-      "cst": "a9dcc00e21e75d1c"
+      "ast": "09b5afccb950e03d",
+      "cst": "d6a15e764b9baa4a"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_sizing.less": {
-      "ast": "2a874ef397bb5f1d",
-      "cst": "9cf4868ea84786a0"
+      "ast": "3f6d1425dee0ed18",
+      "cst": "91490a0fe89b2b41"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_spacing.less": {
-      "ast": "2e5c8c96591a1962",
-      "cst": "c88c41e31e8cd02d"
+      "ast": "183c6bc88e35ad5d",
+      "cst": "6299fbd7d416791c"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_stretched-link.less": {
-      "ast": "ddbf2bba7c6b519f",
-      "cst": "57f4df34f73ca029"
+      "ast": "11cc931c9d13fcda",
+      "cst": "6467550a2c3160aa"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_text.less": {
-      "ast": "24f5bbfdc8ba7555",
-      "cst": "e2b9a712d75a8e7f"
+      "ast": "04a5aaa03c1aec0e",
+      "cst": "9c732639a550d9a7"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_visibility.less": {
-      "ast": "19a32e9b43bfe69a",
-      "cst": "cfa04c59ab97c6d5"
+      "ast": "37e5c4378b1c8889",
+      "cst": "e8d9ffb2aaa1bc78"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/vendor/_rfs.less": {
-      "ast": "4ffb6b114ed1ad53",
-      "cst": "2030c49b14c5969d"
+      "ast": "ae31d0858d07212b",
+      "cst": "f4e4d9cb1405d9d1"
     },
     "node_modules/@less/test-data/tests-config/3rd-party/bootstrap4.css": {
-      "ast": "39263e855e7a207a",
-      "cst": "65421255f5595ca8"
+      "ast": "ea443813cfca1e1e",
+      "cst": "0cca105310acb67e"
     },
     "node_modules/@less/test-data/tests-config/3rd-party/bootstrap4.less": {
-      "ast": "43c5940ed7f1883d",
-      "cst": "5612aeb1df9b8917"
+      "ast": "804a0239245afd78",
+      "cst": "9045700a5481bdc4"
     },
     "node_modules/@less/test-data/tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.css": {
-      "ast": "785526d4571947bc",
-      "cst": "5849c60a6ff9979a"
+      "ast": "d448e20c1941f9f7",
+      "cst": "c114937a3a85e844"
     },
     "node_modules/@less/test-data/tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less": {
-      "ast": "9a98f24b63928437",
-      "cst": "959950c482eda919"
+      "ast": "eff786f8ee13a85d",
+      "cst": "e1c4bb9d4d17c032"
     },
     "node_modules/@less/test-data/tests-config/at-rules-compressed/at-rules-compressed.css": {
-      "ast": "33bd0f6cfe118ccd",
-      "cst": "3620bdfa4462fcae"
+      "ast": "40f7afa59699c57c",
+      "cst": "0c59a8a28aad5ee9"
     },
     "node_modules/@less/test-data/tests-config/at-rules-compressed/at-rules-compressed.less": {
-      "ast": "33bd0f6cfe118ccd",
-      "cst": "e10229c9ffeaead3"
+      "ast": "d7ebf79158c4442a",
+      "cst": "ac990e7206dd761d"
     },
     "node_modules/@less/test-data/tests-config/compression/compression.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "7768c602e4f3df91"
+      "ast": "733703c285609637",
+      "cst": "9d8b63437c9f1175"
     },
     "node_modules/@less/test-data/tests-config/compression/compression.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "fc8e3f904190c51a"
+      "ast": "733703c285609637",
+      "cst": "666110d8709be3f6"
     },
     "node_modules/@less/test-data/tests-config/debug/all/linenumbers-all.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "2ad68895128a77fe"
+      "ast": "6d04afbf30e8ab5f",
+      "cst": "a37e436408efae56"
     },
     "node_modules/@less/test-data/tests-config/debug/all/linenumbers-all.less": {
-      "ast": "212c8b83aee9dcf0",
-      "cst": "b4e6e02ffbeb8313"
+      "ast": "c3b413cf7cbc8d7b",
+      "cst": "7b68ffccef3f4307"
     },
     "node_modules/@less/test-data/tests-config/debug/comments/linenumbers-comments.css": {
-      "ast": "3224a144ab747421",
-      "cst": "7094e98f79f74343"
+      "ast": "b8bf3b0cd3021046",
+      "cst": "aaf89eb990c6cd00"
     },
     "node_modules/@less/test-data/tests-config/debug/comments/linenumbers-comments.less": {
-      "ast": "212c8b83aee9dcf0",
-      "cst": "6e6b57a3d2be52c3"
+      "ast": "8fb0ed6423b8250f",
+      "cst": "b0857df956c6dd6d"
     },
     "node_modules/@less/test-data/tests-config/debug/import/test.less": {
-      "ast": "a9dec857e897e76e",
-      "cst": "48013f752701a2c3"
+      "ast": "ed2e5f1aa45852ad",
+      "cst": "a4d9d2556dd15ebe"
     },
     "node_modules/@less/test-data/tests-config/debug/linenumbers.less": {
-      "ast": "1f470dd2c8e4a34e",
-      "cst": "5bb1535d07caa2c5"
+      "ast": "33c3f62ea3c248dc",
+      "cst": "db01459d56db0cb4"
     },
     "node_modules/@less/test-data/tests-config/debug/mediaquery/linenumbers-mediaquery.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "a4ffa43232ecfcf7"
+      "ast": "6d04afbf30e8ab5f",
+      "cst": "29745de534ab42fc"
     },
     "node_modules/@less/test-data/tests-config/debug/mediaquery/linenumbers-mediaquery.less": {
-      "ast": "212c8b83aee9dcf0",
-      "cst": "19df98b84bf4ca17"
+      "ast": "0372c35f5a908a32",
+      "cst": "f79fb905a8cf82e0"
     },
     "node_modules/@less/test-data/tests-config/filemanagerPlugin/filemanager.css": {
-      "ast": "cd54d751fa0bf771",
-      "cst": "5c5703eecd9bacd7"
+      "ast": "c4857ce6c81307fe",
+      "cst": "8f3a4552948edce2"
     },
     "node_modules/@less/test-data/tests-config/filemanagerPlugin/filemanager.less": {
-      "ast": "f13e563e7476ce14",
-      "cst": "1e4743830d4bb667"
+      "ast": "f580e5e8a32a0e6a",
+      "cst": "f13a55cdec83f316"
     },
     "node_modules/@less/test-data/tests-config/functions-harness/functions-harness.css": {
-      "ast": "289379e47ebc0c7a",
-      "cst": "72283ff40e6efb19"
+      "ast": "02165e42e47ef9de",
+      "cst": "c5d57faf3a118e9d"
     },
     "node_modules/@less/test-data/tests-config/functions-harness/functions-harness.less": {
-      "ast": "6fc479472a456941",
-      "cst": "27bc75a65a3a2d4a"
+      "ast": "068d510efcf95530",
+      "cst": "fa9044741e44aea4"
     },
     "node_modules/@less/test-data/tests-config/globalVars/extended.css": {
-      "ast": "6318db67ad5b0932",
-      "cst": "d5f98a6e8cbb70bf"
+      "ast": "61874fd4e56657b1",
+      "cst": "dafb5ba1976ff034"
     },
     "node_modules/@less/test-data/tests-config/globalVars/extended.less": {
-      "ast": "fe4870fdb13e3553",
-      "cst": "44379e712699d65d"
+      "ast": "2560d3d3b5209b17",
+      "cst": "228a25ee5802f526"
     },
     "node_modules/@less/test-data/tests-config/globalVars/simple.css": {
-      "ast": "fb30d9a6f7208441",
-      "cst": "3a5e51caa330fa7e"
+      "ast": "19ad91438c943758",
+      "cst": "9e9ceab920a88603"
     },
     "node_modules/@less/test-data/tests-config/globalVars/simple.less": {
-      "ast": "630ee95e820286ce",
-      "cst": "d5fb96796c351106"
+      "ast": "61179bc5d81729fa",
+      "cst": "2f793a1e1643955b"
     },
     "node_modules/@less/test-data/tests-config/import-redirect/import-redirect.less": {
-      "ast": "63e6f9503981b0a8",
-      "cst": "d695a5cf454883a0"
+      "ast": "3c1d6eaf22d400e7",
+      "cst": "98b334baf6a27dd2"
     },
     "node_modules/@less/test-data/tests-config/include-path-string/include-path-string.css": {
-      "ast": "0ae4c22c722512f0",
-      "cst": "a02ed14a8f0dd4bd"
+      "ast": "7ac061c343a453dc",
+      "cst": "42f0a433c728d732"
     },
     "node_modules/@less/test-data/tests-config/include-path-string/include-path-string.less": {
-      "ast": "b04b4a03257b4ab8",
-      "cst": "6a8bcad15bf51661"
+      "ast": "6ec8bc1bbf070f3c",
+      "cst": "296f4b98ceabd6af"
     },
     "node_modules/@less/test-data/tests-config/include-path/import-test-e.less": {
-      "ast": "d1b4ff3364335a0a",
-      "cst": "d7040e6e75e72bed"
+      "ast": "fbf1f9ff390c32a3",
+      "cst": "15087040ccd24c40"
     },
     "node_modules/@less/test-data/tests-config/include-path/include-path.css": {
-      "ast": "8e03772ab3547e63",
-      "cst": "6681956cdb91d04e"
+      "ast": "eafaf954063ffee6",
+      "cst": "22361a1385b36f7a"
     },
     "node_modules/@less/test-data/tests-config/include-path/include-path.less": {
-      "ast": "2513ecd4e4534c88",
-      "cst": "78eb9351031dc0de"
+      "ast": "0f56a1474294de6d",
+      "cst": "9e23d8b02ebe8f11"
     },
     "node_modules/@less/test-data/tests-config/js-type-errors/js-type-error.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "3b23bd8d8134d736",
+      "cst": "cef84cacf3905c5c"
     },
     "node_modules/@less/test-data/tests-config/math-always/mixins-guards.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "b25b83cb59d4b0cd"
+      "ast": "05ff841cacec261a",
+      "cst": "ca4a78573391c703"
     },
     "node_modules/@less/test-data/tests-config/math-always/no-sm-operations.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "49944bf1c8777087"
+      "ast": "47a1783144848205",
+      "cst": "1b01298abf42b2ef"
     },
     "node_modules/@less/test-data/tests-config/math-parens-division/media-math.less": {
-      "ast": "d0ddfcb573617cf4",
-      "cst": "fef899e36f21403f"
+      "ast": "b8addfd6b0f2165d",
+      "cst": "a801683fa7d17a75"
     },
     "node_modules/@less/test-data/tests-config/math-parens-division/mixins-args.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "179e5d81d9cd0861"
+      "ast": "e74c46a3b37ed3a1",
+      "cst": "52cdb6ea7f683630"
     },
     "node_modules/@less/test-data/tests-config/math-parens-division/new-division.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "aa92fc9ce73a6224"
+      "ast": "733703c285609637",
+      "cst": "2bc5a437f05ae8bf"
     },
     "node_modules/@less/test-data/tests-config/math-parens-division/parens.less": {
-      "ast": "72cee8641fbfd17e",
-      "cst": "7e8914a947a0b963"
+      "ast": "c3451ce14c25a695",
+      "cst": "cb2a764aacb376fc"
     },
     "node_modules/@less/test-data/tests-config/math-strict/css.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "bd553dd25930ea84"
+      "ast": "733703c285609637",
+      "cst": "06e5174c1a5c9caf"
     },
     "node_modules/@less/test-data/tests-config/math-strict/media-math.less": {
-      "ast": "ae28a437bbcacb90",
-      "cst": "fd56b9fd1d2e11e3"
+      "ast": "a73bade8b9f698ef",
+      "cst": "03b59efd4dbbe2cc"
     },
     "node_modules/@less/test-data/tests-config/math-strict/mixins-args.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "179e5d81d9cd0861"
+      "ast": "e74c46a3b37ed3a1",
+      "cst": "52cdb6ea7f683630"
     },
     "node_modules/@less/test-data/tests-config/math-strict/parens.less": {
-      "ast": "72cee8641fbfd17e",
-      "cst": "7e8914a947a0b963"
+      "ast": "c3451ce14c25a695",
+      "cst": "cb2a764aacb376fc"
     },
     "node_modules/@less/test-data/tests-config/math/always/mixins-guards.css": {
-      "ast": "6c642b91a6c5460d",
-      "cst": "35913ed26c001ed1"
+      "ast": "f14411647e81d7d0",
+      "cst": "5474710794f116b7"
     },
     "node_modules/@less/test-data/tests-config/math/always/no-sm-operations.css": {
-      "ast": "be5424a32cd2f2ec",
-      "cst": "cf76905c8b2db127"
+      "ast": "87ed3a6ec3a38505",
+      "cst": "93e09e7ed8f53bfe"
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/media-math.css": {
-      "ast": "ac0c01a49a2748ca",
-      "cst": "2659fadc1d3a0649"
+      "ast": "4e4e7c097c3b57a6",
+      "cst": "711c6f0449bd4783"
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/mixins-args.css": {
-      "ast": "e12f2f349f735a02",
-      "cst": "40c5fa1be92a05d2"
+      "ast": "0bf8118d93497691",
+      "cst": "0b60ed5251e151b0"
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/new-division.css": {
-      "ast": "38a5983b7154a2af",
-      "cst": "5d5cbd842b120697"
+      "ast": "35a0396d8f67479f",
+      "cst": "c88c7edf917a5b3b"
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/parens.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "c5c383bfdadd161a"
+      "ast": "733703c285609637",
+      "cst": "7a76e4021254a296"
     },
     "node_modules/@less/test-data/tests-config/math/strict/css.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "ce34d104a5304990"
+      "ast": "733703c285609637",
+      "cst": "a30e428ee76ef47c"
     },
     "node_modules/@less/test-data/tests-config/math/strict/media-math.css": {
-      "ast": "46c0d7638654c6b8",
-      "cst": "e7f700e7dcb64a89"
+      "ast": "c05bff6857c4afa0",
+      "cst": "ec053a96c799a842"
     },
     "node_modules/@less/test-data/tests-config/math/strict/mixins-args.css": {
-      "ast": "b4af0582cb650ad2",
-      "cst": "7cfb57a20b209abf"
+      "ast": "e4c9d6c2b59ad5e8",
+      "cst": "7c3227dde5400a27"
     },
     "node_modules/@less/test-data/tests-config/math/strict/parens.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "206af0bbc20a834b"
+      "ast": "733703c285609637",
+      "cst": "523db1e225dcea11"
     },
     "node_modules/@less/test-data/tests-config/modifyVars/extended.css": {
-      "ast": "950a154ea8edf65e",
-      "cst": "5d5ce25e3b435cb3"
+      "ast": "bedea8af37557742",
+      "cst": "06698d46a266d556"
     },
     "node_modules/@less/test-data/tests-config/modifyVars/extended.less": {
-      "ast": "c75163264f37ae36",
-      "cst": "337fb79c0754a8d5"
+      "ast": "8276c6d5b3d5bf47",
+      "cst": "b971eefce98a5eac"
     },
     "node_modules/@less/test-data/tests-config/namespacing/imports/a-better-bootstrap.less": {
-      "ast": "bc729d8f639d85b9",
-      "cst": "d9ff1b6d7479b447"
+      "ast": "6b82b25f8ce91b4a",
+      "cst": "d5e8f579cbdd3488"
     },
     "node_modules/@less/test-data/tests-config/namespacing/imports/library.less": {
-      "ast": "bc17a58eb6eb4c20",
-      "cst": "c3b6c36f79cf7c12"
+      "ast": "5f1d960a55910963",
+      "cst": "5a214aef0b66bfdc"
     },
     "node_modules/@less/test-data/tests-config/namespacing/legacy/namespacing-7.css": {
-      "ast": "cafb24c20a925ffe",
-      "cst": "43d44fc0646ba585"
+      "ast": "a9df1302320f492a",
+      "cst": "f7777b412c8826fc"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-1.css": {
-      "ast": "23a63536a9b15b71",
-      "cst": "d0b45611c82656c6"
+      "ast": "4ba36b9cc1f9489b",
+      "cst": "41fb7fe9cbaa70af"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-1.less": {
-      "ast": "54eeabe00a5ad487",
-      "cst": "47cd8436b7eede08"
+      "ast": "7ceaae21a3d2c7b0",
+      "cst": "817e5c1f16c4b48b"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-2.css": {
-      "ast": "057a49f7822cf5b9",
-      "cst": "c52a4e3ede7f384e"
+      "ast": "f8aa424939443ec7",
+      "cst": "ea8b9d4731deb522"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-2.less": {
-      "ast": "de0c3d08a26e7a91",
-      "cst": "03d3f7fe1e241a31"
+      "ast": "f78dc00974d484d6",
+      "cst": "6cb3b94f5e196560"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-3.css": {
-      "ast": "520d6bba8654cebc",
-      "cst": "a5c5f650d5301896"
+      "ast": "80c6f9308dc030af",
+      "cst": "459d3c7e17207a07"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-3.less": {
-      "ast": "45d5c180a9432541",
-      "cst": "16a5f669b8908de5"
+      "ast": "f2c079b5d4439c4b",
+      "cst": "4ef8a02a6affe63e"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-4.css": {
-      "ast": "ae31dcc883e6f010",
-      "cst": "d43c0f6eddd532a1"
+      "ast": "8c59662529faca28",
+      "cst": "201c170e95e8dd53"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-4.less": {
-      "ast": "1b6cb702e720ebca",
-      "cst": "70ecc6a1a334884c"
+      "ast": "189caded1664545c",
+      "cst": "8f250bc989678016"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-5.css": {
-      "ast": "7b40c528645655cd",
-      "cst": "e319b73e0d9c5cd6"
+      "ast": "0bd71455e0fcf5f0",
+      "cst": "fcde10d548338f51"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-5.less": {
-      "ast": "025548c1c76a204a",
-      "cst": "88e2c18cc678596a"
+      "ast": "8cd8709367e638c3",
+      "cst": "39c0c2cf37c9d02a"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-6.css": {
-      "ast": "fec4e6cf4f4dafb0",
-      "cst": "0fa41d9c104c5a79"
+      "ast": "a337c87bb79ac6e8",
+      "cst": "b9559bbf6b93bb83"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-6.less": {
-      "ast": "da0a013dc1047dd7",
-      "cst": "b0268b06e4d86b53"
+      "ast": "8d4a0ddfb27f31af",
+      "cst": "936d80528d089ac0"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-7.css": {
-      "ast": "93a3a68a0b938322",
-      "cst": "fdcb56025ee94139"
+      "ast": "b9fbbcf7b542d4e7",
+      "cst": "98f54b32ec05978f"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-7.less": {
-      "ast": "2c60567de376555e",
-      "cst": "807c9afa41975c8f"
+      "ast": "755069d9d737fc7b",
+      "cst": "4b6fa0aba642088e"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.css": {
-      "ast": "a6b4580f33ea8d02",
-      "cst": "2e5573dec72b68cd"
+      "ast": "507be35b558061c9",
+      "cst": "018de477d7fd2070"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.less": {
-      "ast": "05a116103da9d92a",
-      "cst": "fddf203a1174fda2"
+      "ast": "10edfe6fa5093640",
+      "cst": "2c6e5916a0403e7c"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-functions.css": {
-      "ast": "3164a0424ebec43c",
-      "cst": "014fa6515e2daf51"
+      "ast": "7dc22db5571de737",
+      "cst": "993286baf2b293dc"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-functions.less": {
-      "ast": "07e10d08848dee09",
-      "cst": "4cbf34c247120660"
+      "ast": "22164d62de328ae7",
+      "cst": "a23d546dc20d42bb"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-media.css": {
-      "ast": "e096f9f1d4519ee4",
-      "cst": "65f934419ac26e6c"
+      "ast": "514bd73a7763f9cd",
+      "cst": "d41e1d9a9e168594"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-media.less": {
-      "ast": "8f6cdde1f23f57a5",
-      "cst": "a1fedefaccb96d26"
+      "ast": "a7a50ea957a2c922",
+      "cst": "5092cdc914b44e41"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-operations.css": {
-      "ast": "d5f979ed874b87dd",
-      "cst": "13d96942a312df5e"
+      "ast": "ea74afb7119c3a6d",
+      "cst": "e853d1987e100d40"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-operations.less": {
-      "ast": "e2ec512d756dfa11",
-      "cst": "4d4a6d04bd334ad5"
+      "ast": "464a535edc3f2abb",
+      "cst": "0e2aa8b38a492ad4"
     },
     "node_modules/@less/test-data/tests-config/no-js-errors/no-js-errors.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "3b23bd8d8134d736",
+      "cst": "d88a550851bd2ce0"
     },
     "node_modules/@less/test-data/tests-config/postProcessorPlugin/postProcessor.css": {
-      "ast": "2f6848e2171da07a",
-      "cst": "5aac60a8deae2bf4"
+      "ast": "ccfc6b1bc938c2df",
+      "cst": "b2f928cfccb4d0f5"
     },
     "node_modules/@less/test-data/tests-config/postProcessorPlugin/postProcessor.less": {
-      "ast": "139bca025cc3651a",
-      "cst": "3cea9bff815bc557"
+      "ast": "071bae5cab76558d",
+      "cst": "dead5691a1b9bb2b"
     },
     "node_modules/@less/test-data/tests-config/preProcessorPlugin/preProcessor.css": {
-      "ast": "cd54d751fa0bf771",
-      "cst": "5c5703eecd9bacd7"
+      "ast": "c4857ce6c81307fe",
+      "cst": "8f3a4552948edce2"
     },
     "node_modules/@less/test-data/tests-config/preProcessorPlugin/preProcessor.less": {
-      "ast": "f0d1414f8c884fd4",
-      "cst": "dd0ccf86fe7ec086"
+      "ast": "024396263803c6a2",
+      "cst": "3d2385b8bf49fd27"
     },
     "node_modules/@less/test-data/tests-config/process-imports/google.css": {
-      "ast": "abed295ba8404c6a",
-      "cst": "b9d15101e32c4ae0"
+      "ast": "aec7592cabfecc4e",
+      "cst": "7a0fd2cf17329aa6"
     },
     "node_modules/@less/test-data/tests-config/process-imports/google.less": {
-      "ast": "242578fbc1ff1842",
-      "cst": "75b2f971d0a4513b"
+      "ast": "e7bbfafc1fc0de2d",
+      "cst": "76448e951a9530fd"
     },
     "node_modules/@less/test-data/tests-config/rewrite-urls-all/folder/file.less": {
-      "ast": "f59557fbfdff7508",
-      "cst": "b5c8034164ca129a"
+      "ast": "a732f49bff8c97bb",
+      "cst": "ab25faacbde96fe6"
     },
     "node_modules/@less/test-data/tests-config/rewrite-urls-all/rewrite-urls-all.css": {
-      "ast": "4c6cdf7eb99bd60f",
-      "cst": "d634b6e578b4ce14"
+      "ast": "292e4eb7a4d282a9",
+      "cst": "8f75303d4e204489"
     },
     "node_modules/@less/test-data/tests-config/rewrite-urls-all/rewrite-urls-all.less": {
-      "ast": "e68f56607b71469c",
-      "cst": "9f6f4302c0b4c00a"
+      "ast": "1ab80537a3239030",
+      "cst": "529f5cab0da8b410"
     },
     "node_modules/@less/test-data/tests-config/rewrite-urls-local/folder/file.less": {
-      "ast": "f59557fbfdff7508",
-      "cst": "b5c8034164ca129a"
+      "ast": "a732f49bff8c97bb",
+      "cst": "ab25faacbde96fe6"
     },
     "node_modules/@less/test-data/tests-config/rewrite-urls-local/rewrite-urls-local.css": {
-      "ast": "35dc39777138429a",
-      "cst": "9bc98e055e7cf8ea"
+      "ast": "10e0a046cc035480",
+      "cst": "05621d462affad87"
     },
     "node_modules/@less/test-data/tests-config/rewrite-urls-local/rewrite-urls-local.less": {
-      "ast": "d3b34328330aa96e",
-      "cst": "eb90529e241099cf"
+      "ast": "586d31f91c7ffb6d",
+      "cst": "5fc7e301b391f797"
     },
     "node_modules/@less/test-data/tests-config/root-registry/file.less": {
-      "ast": "e2b2b028787bb952",
-      "cst": "d9b73ebf9a05b907"
+      "ast": "59a75349d915c10e",
+      "cst": "2738f68eac067bf2"
     },
     "node_modules/@less/test-data/tests-config/root-registry/root.less": {
-      "ast": "cc8a965ffe7b0593",
-      "cst": "27714877fec09672"
+      "ast": "504e6f71ed502208",
+      "cst": "2381e263dd5acf07"
     },
     "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-all/folder/file.less": {
-      "ast": "f59557fbfdff7508",
-      "cst": "b5c8034164ca129a"
+      "ast": "a732f49bff8c97bb",
+      "cst": "ab25faacbde96fe6"
     },
     "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-all/rootpath-rewrite-urls-all.css": {
-      "ast": "2cc944b3aa9dc684",
-      "cst": "a1ac28040dfb5827"
+      "ast": "00147ec6d6041337",
+      "cst": "cb450b901ea4ae8a"
     },
     "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-all/rootpath-rewrite-urls-all.less": {
-      "ast": "a2a890813a21d8c5",
-      "cst": "f5926b2bb107a128"
+      "ast": "417f6748ede0b820",
+      "cst": "ce24ede812eb9262"
     },
     "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-local/folder/file.less": {
-      "ast": "f59557fbfdff7508",
-      "cst": "b5c8034164ca129a"
+      "ast": "a732f49bff8c97bb",
+      "cst": "ab25faacbde96fe6"
     },
     "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-local/rootpath-rewrite-urls-local.css": {
-      "ast": "f9c8687c4e982704",
-      "cst": "d5c58804f6c794f1"
+      "ast": "2a83a5a6e1c87325",
+      "cst": "3d8dfec9668cb24e"
     },
     "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-local/rootpath-rewrite-urls-local.less": {
-      "ast": "4396d0a8a902f06a",
-      "cst": "a023bb4192cde256"
+      "ast": "baabe69af88d72c8",
+      "cst": "c0cd1de748a15944"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-basepath/sourcemaps-basepath.css": {
-      "ast": "db19f453b37aed91",
-      "cst": "01dc86b3cde5e322"
+      "ast": "a023835494255539",
+      "cst": "4d63aa797ce2944f"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-basepath/sourcemaps-basepath.less": {
-      "ast": "5086b41a01c4fb84",
-      "cst": "657221886b388c1a"
+      "ast": "17593df43aa5e1d6",
+      "cst": "64cb45a55c33ca87"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-disable-annotation/basic.less": {
-      "ast": "495348370aa15bfc",
-      "cst": "1d4df13e860f8898"
+      "ast": "74ab6c721f89fbf1",
+      "cst": "f00537b6b67ade63"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-empty/empty.less": {
-      "ast": "5037b9712f99a5d1",
-      "cst": "aca51345c271e5f2"
+      "ast": "25ca970d209b3edd",
+      "cst": "914e27c2de2054c0"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-empty/var-defs.less": {
-      "ast": "b256c1c2f3f8df4c",
-      "cst": "9a4b0d0f7914f8d6"
+      "ast": "71ba71918772187b",
+      "cst": "a119acd6219b3877"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-include-source/sourcemaps-include-source.css": {
-      "ast": "afd65ce771fdc45e",
-      "cst": "60fa4ab6042bf6b6"
+      "ast": "7fee31a13d454cff",
+      "cst": "0c353cde3ae3e649"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-include-source/sourcemaps-include-source.less": {
-      "ast": "82918ab56d1729cd",
-      "cst": "8153aa7aebac43f1"
+      "ast": "15d690799db68125",
+      "cst": "6192adb845dd0d71"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-rootpath/sourcemaps-rootpath.css": {
-      "ast": "973a6468a7803735",
-      "cst": "f67bb5fea47a4203"
+      "ast": "a21baae021261bba",
+      "cst": "b14cdb19c667e55d"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less": {
-      "ast": "215d97e5bd55c56f",
-      "cst": "7249461af4b146e0"
+      "ast": "b799bbc70f7c934b",
+      "cst": "83938b4c13499857"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-url/sourcemaps-url.css": {
-      "ast": "63fc8ba4d70cc27c",
-      "cst": "2dbe5a6ed852e1e1"
+      "ast": "cd04c22365598e29",
+      "cst": "fd15c06829eec993"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-url/sourcemaps-url.less": {
-      "ast": "a4345c3ccfbe16c9",
-      "cst": "05fd21d0903a47af"
+      "ast": "6ca139a89c2d6d48",
+      "cst": "866b4cb92d9c354f"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-variable-selector/basic.less": {
-      "ast": "de8d68f64f5bac50",
-      "cst": "67b3e603bdc81c38"
+      "ast": "3b75d9c8d870bdce",
+      "cst": "b0d6348ec429ca1f"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps-variable-selector/vars.less": {
-      "ast": "6eb56b02039090b3",
-      "cst": "5c6d2f6201226228"
+      "ast": "ef877721cdf1678d",
+      "cst": "39e099652852b509"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/basic.less": {
-      "ast": "76424727a58b919d",
-      "cst": "02783e3ecea1ef92"
+      "ast": "f84bbd465975f254",
+      "cst": "940b7105aaa61718"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/comprehensive/comprehensive.css": {
-      "ast": "be407a8e1c19a271",
-      "cst": "d1af8e1fed7c0ad6"
+      "ast": "8dca5af8c4127cfc",
+      "cst": "d409e5f74a6efb74"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/comprehensive/comprehensive.less": {
-      "ast": "c682216bdd531c03",
-      "cst": "b0d99bf848477558"
+      "ast": "3643b88eebbbc5f8",
+      "cst": "5f5342b3bda7c7d2"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/custom-props.less": {
-      "ast": "484e4019db295c17",
-      "cst": "d6463711236469c2"
+      "ast": "e2971fbc1f8ba258",
+      "cst": "5bb3dc629fef8ebd"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/imported.css": {
-      "ast": "7e46702c23819385",
-      "cst": "aa3be06747a7473a"
+      "ast": "63a52d031f95ebb3",
+      "cst": "7cd3c928aea953fe"
     },
     "node_modules/@less/test-data/tests-config/static-urls/urls.css": {
-      "ast": "8e4048e288f9443c",
-      "cst": "d0b971eb9f617841"
+      "ast": "36f6e571ede39be5",
+      "cst": "de322deb4fcfecd9"
     },
     "node_modules/@less/test-data/tests-config/static-urls/urls.less": {
-      "ast": "f724e72f14cbc999",
-      "cst": "f68fb76e0641cbd5"
+      "ast": "2a4692938bffd8ea",
+      "cst": "43cac98b8c191a45"
     },
     "node_modules/@less/test-data/tests-config/strict-imports/imported.less": {
-      "ast": "3993e86bc006982c",
-      "cst": "44b460228814e310"
+      "ast": "ec86daffcec16546",
+      "cst": "6ac1fe2d6670c27a"
     },
     "node_modules/@less/test-data/tests-config/strict-imports/legacy/strict-imports.css": {
-      "ast": "d7f29debb5632244",
-      "cst": "6cdf443aa74e1430"
+      "ast": "d3f6103fc1b96c73",
+      "cst": "2640e8253162e2b0"
     },
     "node_modules/@less/test-data/tests-config/strict-imports/strict-imports.css": {
-      "ast": "c5d6eb726ce21aea",
-      "cst": "13bf328de901c038"
+      "ast": "736aa13625a027dc",
+      "cst": "6e2ac2e469a94519"
     },
     "node_modules/@less/test-data/tests-config/strict-imports/strict-imports.less": {
-      "ast": "37e4220647300013",
-      "cst": "0a640c9a748a42dd"
+      "ast": "f920212ca4b2b890",
+      "cst": "1fa84e43ea1155f7"
     },
     "node_modules/@less/test-data/tests-config/units/no-strict/no-strict.css": {
-      "ast": "6867028de62ad956",
-      "cst": "3f12e4e1d3c75471"
+      "ast": "14a6475732f8207e",
+      "cst": "51cc1e96f28e973e"
     },
     "node_modules/@less/test-data/tests-config/units/no-strict/no-strict.less": {
-      "ast": "0ab8631985258933",
-      "cst": "815b12b547d1fe23"
+      "ast": "b879c82a488b9af2",
+      "cst": "8d94339c7d6f2fdb"
     },
     "node_modules/@less/test-data/tests-config/units/strict/strict-units.css": {
-      "ast": "4f93f1b034d9b89c",
-      "cst": "2ba04b78b69dde42"
+      "ast": "e5806b1d7460bd64",
+      "cst": "bfb09a0553858ce2"
     },
     "node_modules/@less/test-data/tests-config/units/strict/strict-units.less": {
-      "ast": "b3bd9ef2ec94569b",
-      "cst": "0e368d39c8cc54ee"
+      "ast": "702f2658ff231b5d",
+      "cst": "b441d7c5c0b0b8ce"
     },
     "node_modules/@less/test-data/tests-config/url-args/urls.css": {
-      "ast": "a9680df30881425c",
-      "cst": "8999970b1ba7cc5d"
+      "ast": "72c2cbf854f1c566",
+      "cst": "19aef323650456a8"
     },
     "node_modules/@less/test-data/tests-config/url-args/urls.less": {
-      "ast": "9e30162a486f0cee",
-      "cst": "e0fcf6b912c7ff89"
+      "ast": "3592e9736a0fa73a",
+      "cst": "67d5f19c11341d6e"
     },
     "node_modules/@less/test-data/tests-config/visitorPlugin/visitor.css": {
-      "ast": "cd54d751fa0bf771",
-      "cst": "5c5703eecd9bacd7"
+      "ast": "c4857ce6c81307fe",
+      "cst": "8f3a4552948edce2"
     },
     "node_modules/@less/test-data/tests-config/visitorPlugin/visitor.less": {
-      "ast": "f6ab9f817071f6d4",
-      "cst": "2c639ef0338f377d"
+      "ast": "1bac9f287bf0cd6a",
+      "cst": "cd1993bdf0b6f37f"
     },
     "node_modules/@less/test-data/tests-error/eval/add-mixed-units.less": {
-      "ast": "e682351e56f65e68",
-      "cst": "10e97c9169652f88"
+      "ast": "5c3e41da82bfaa89",
+      "cst": "ff0555ddffd6a69c"
     },
     "node_modules/@less/test-data/tests-error/eval/add-mixed-units2.less": {
-      "ast": "a58b89dd1f0b5214",
-      "cst": "6dfbd1e4512abdf2"
+      "ast": "6117b61634b39147",
+      "cst": "39113430810fd261"
     },
     "node_modules/@less/test-data/tests-error/eval/ampersand-merge-template-invalid.less": {
-      "ast": "81eec1fd2f422d11",
-      "cst": "a43deb6c64cc03ce"
+      "ast": "c3f1ffc4672418c3",
+      "cst": "da4e9a6c2683748d"
     },
     "node_modules/@less/test-data/tests-error/eval/at-rules-undefined-var.less": {
-      "ast": "80d501958b03db28",
-      "cst": "5a5501ffefaddd34"
+      "ast": "3bb8ca1d0bac3059",
+      "cst": "fbebb339b0e74ec1"
     },
     "node_modules/@less/test-data/tests-error/eval/color-func-invalid-color-2.less": {
-      "ast": "3bfa7d4f2902c7c4",
-      "cst": "fe5a4db99ae1c439"
+      "ast": "f96cb160df600d2a",
+      "cst": "482ec010c5612a3c"
     },
     "node_modules/@less/test-data/tests-error/eval/color-func-invalid-color.less": {
-      "ast": "8adf8785560deaf2",
-      "cst": "94a5bf1e59512f4c"
+      "ast": "519abd2affbdb026",
+      "cst": "589c33500f0c9288"
     },
     "node_modules/@less/test-data/tests-error/eval/css-guard-default-func.less": {
-      "ast": "73928d190f9e860e",
-      "cst": "57471819abcdda13"
+      "ast": "623c8f29a8d05893",
+      "cst": "1b0cb028f5359d2f"
     },
     "node_modules/@less/test-data/tests-error/eval/detached-ruleset-1.less": {
-      "ast": "dd77d61c154af7c4",
-      "cst": "40d5fb7b2a90aa87"
+      "ast": "9cbdcdd9eb753601",
+      "cst": "7ef370e78c862c32"
     },
     "node_modules/@less/test-data/tests-error/eval/detached-ruleset-2.less": {
-      "ast": "26892c923fd733a9",
-      "cst": "c19197a0e1627c30"
+      "ast": "5b53c694cca0eaad",
+      "cst": "a291e43f85a6b3e7"
     },
     "node_modules/@less/test-data/tests-error/eval/detached-ruleset-3.less": {
-      "ast": "59c3da868efefddb",
-      "cst": "7708e893f8bc5df1"
+      "ast": "323712cf525f26b2",
+      "cst": "fa86d2b99c56c3d5"
     },
     "node_modules/@less/test-data/tests-error/eval/detached-ruleset-5.less": {
-      "ast": "e1eb451e6012e9e5",
-      "cst": "29f61e8da3418d27"
+      "ast": "43f94b2cdf0e5ec0",
+      "cst": "5ca84221348682c4"
     },
     "node_modules/@less/test-data/tests-error/eval/divide-mixed-units.less": {
-      "ast": "4b9a488f715140d6",
-      "cst": "35ef61dde6c991b8"
+      "ast": "15f63398f50e8135",
+      "cst": "1dc6502cae9b8b95"
     },
     "node_modules/@less/test-data/tests-error/eval/extend-no-selector.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-1.less": {
-      "ast": "089ff11e0a2649ef",
-      "cst": "85cf998de4104ef1"
+      "ast": "3b6dee65df7a640b",
+      "cst": "662552f4dc54b72c"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-10-keyword.less": {
-      "ast": "cbf1c37a9e1157e8",
-      "cst": "e855d152c6b344c1"
+      "ast": "edd519a2a3260bb6",
+      "cst": "29793fdcb6de7d86"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-11-operation.less": {
-      "ast": "e8bd7b53b48a9d28",
-      "cst": "d621958c61e9a9dd"
+      "ast": "db26cce6ab27a6b7",
+      "cst": "a997d6f40880fdaf"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-12-quoted.less": {
-      "ast": "10bb71d06d7bb267",
-      "cst": "19c3a5d9fb8480a1"
+      "ast": "bc2ae7c7ab05fef1",
+      "cst": "02373d0659bac26d"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-13-selector.less": {
-      "ast": "04125e80ef95121e",
-      "cst": "1e180f8055f1fd47"
+      "ast": "04cb3c8149af3dac",
+      "cst": "98e06be450914a09"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-14-url.less": {
-      "ast": "e1d311b11b1e32cb",
-      "cst": "64e2fe6b2aba0253"
+      "ast": "6f0334cf52352057",
+      "cst": "e59ff8f6c6f392fc"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-15-value.less": {
-      "ast": "627ba2167e296204",
-      "cst": "219a6447cf243726"
+      "ast": "178a0d1ad75cb3f3",
+      "cst": "92aab9e527fae67c"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-3-assignment.less": {
-      "ast": "e96d73f5e680f339",
-      "cst": "eec098ba772bc4b4"
+      "ast": "f9352a9ed23bb50f",
+      "cst": "996dca5a7626ccfa"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-4-call.less": {
-      "ast": "f87b159be9822a5f",
-      "cst": "bc16267e4f81ccc1"
+      "ast": "73c44dd917210b33",
+      "cst": "03063dfef32ec0a1"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-5-color-2.less": {
-      "ast": "7dc10c26f6416a33",
-      "cst": "1938bacceee58592"
+      "ast": "84d76cbbf535f27f",
+      "cst": "0d30592120051454"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-5-color.less": {
-      "ast": "ce34fe5ec88beeee",
-      "cst": "68060ad9e0a66875"
+      "ast": "f6e9b10ed28d440b",
+      "cst": "4de62d0494763a9d"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-6-condition.less": {
-      "ast": "6bee95aa6efa78f0",
-      "cst": "567b835973649865"
+      "ast": "31409e428141dd94",
+      "cst": "182734deefc76cc5"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-7-dimension.less": {
-      "ast": "0c0e81ba2fde3eb7",
-      "cst": "32843105f25d74b3"
+      "ast": "c03878d5f1c17e12",
+      "cst": "7a536d1fde33bf87"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-8-element.less": {
-      "ast": "7a7a3c119fb6bbed",
-      "cst": "751361c00e748814"
+      "ast": "7bdb042d670d7128",
+      "cst": "8c9accf94cb00534"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-9-expression.less": {
-      "ast": "c62cc3347941caf1",
-      "cst": "a4ffd1914ac14915"
+      "ast": "067e13bc48c073f8",
+      "cst": "4f11e15dddb17dab"
     },
     "node_modules/@less/test-data/tests-error/eval/import-missing.less": {
-      "ast": "3097a89e427f57e4",
-      "cst": "d90697c1324408ed"
+      "ast": "48777a45a74adcee",
+      "cst": "12ee29c1ebf50c11"
     },
     "node_modules/@less/test-data/tests-error/eval/import-subfolder1.less": {
-      "ast": "0a5ea0b950f116ba",
-      "cst": "204c0acf98cb1acb"
+      "ast": "a319f5d7cf0df4f7",
+      "cst": "16409097cf22b881"
     },
     "node_modules/@less/test-data/tests-error/eval/imports/import-subfolder1.less": {
-      "ast": "6cee6b4ef7a8d49b",
-      "cst": "5d2f2570d440c039"
+      "ast": "ce2603b617a513b2",
+      "cst": "fb015c1c23cfacfe"
     },
     "node_modules/@less/test-data/tests-error/eval/imports/import-test.less": {
-      "ast": "9bc771d25e148590",
-      "cst": "e8fbe4de14ca85fb"
+      "ast": "fb2e7abf9d2e013c",
+      "cst": "6191b37528a328f8"
     },
     "node_modules/@less/test-data/tests-error/eval/imports/subfolder/mixin-not-defined.less": {
-      "ast": "00090ea4a9f37202",
-      "cst": "f5164825cec0b9de"
+      "ast": "bb96d5da2a362fcd",
+      "cst": "12c8c87bfefa0f98"
     },
     "node_modules/@less/test-data/tests-error/eval/javascript-undefined-var.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "3b23bd8d8134d736",
+      "cst": "9bb5ceab9d0a8cb8"
     },
     "node_modules/@less/test-data/tests-error/eval/mixin-not-defined-2.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "3f91b278b3987286"
+      "ast": "919242e7eec4bf5c",
+      "cst": "48451a105a55db15"
     },
     "node_modules/@less/test-data/tests-error/eval/mixin-not-defined.less": {
-      "ast": "a571ec5e75d819df",
-      "cst": "8e2ab186df88c66e"
+      "ast": "9709e61c7f9a1429",
+      "cst": "d622c78d7f3fde96"
     },
     "node_modules/@less/test-data/tests-error/eval/mixin-not-matched.less": {
-      "ast": "81aadf5634a39c6e",
-      "cst": "46e22b8511a23ce1"
+      "ast": "d0a88d7f0b57c90a",
+      "cst": "35fe174be15eb27c"
     },
     "node_modules/@less/test-data/tests-error/eval/mixin-not-matched2.less": {
-      "ast": "5a6fd4911e915a80",
-      "cst": "e22244f351588d8c"
+      "ast": "67d8af9b48185709",
+      "cst": "050a1a2b2f3139e4"
     },
     "node_modules/@less/test-data/tests-error/eval/mixin-not-visible-in-scope-1.less": {
-      "ast": "17cd7f8a5db858a6",
-      "cst": "6d72464c9429ff05"
+      "ast": "86bceefffb4676a2",
+      "cst": "5165d14cca846b1a"
     },
     "node_modules/@less/test-data/tests-error/eval/mixins-guards-default-func-1.less": {
-      "ast": "bec4f9dac59c0af8",
-      "cst": "2a20d7d2c181353f"
+      "ast": "42701304e3e14769",
+      "cst": "175ba2bae9c8a826"
     },
     "node_modules/@less/test-data/tests-error/eval/mixins-guards-default-func-2.less": {
-      "ast": "712508e2008cd446",
-      "cst": "319548ea920016df"
+      "ast": "9e66fed8584ff95b",
+      "cst": "7d2861856a3afa5c"
     },
     "node_modules/@less/test-data/tests-error/eval/mixins-guards-default-func-3.less": {
-      "ast": "b03cf9ba351fa7c0",
-      "cst": "553172ca59c5e563"
+      "ast": "673177e6d26fa9c4",
+      "cst": "2813ff4bfdb78960"
     },
     "node_modules/@less/test-data/tests-error/eval/multiple-guards-on-css-selectors.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "6fe6b89a11699ff9"
+      "ast": "733703c285609637",
+      "cst": "8295fcbd11d2dbc6"
     },
     "node_modules/@less/test-data/tests-error/eval/multiple-guards-on-css-selectors2.less": {
-      "ast": "1e97ba94bb3e9a55",
-      "cst": "a94fa22d3a98cd32"
+      "ast": "89cf366c8b7e197d",
+      "cst": "aad92a8bafa7bbc6"
     },
     "node_modules/@less/test-data/tests-error/eval/multiply-mixed-units.less": {
-      "ast": "8aff75bebb174394",
-      "cst": "531351cf6281b189"
+      "ast": "50310c0e9343af3c",
+      "cst": "c2c03bad9eb75e2b"
     },
     "node_modules/@less/test-data/tests-error/eval/namespace-property-not-found.less": {
-      "ast": "4030bb0dde28e67f",
-      "cst": "8fed3b6044243540"
+      "ast": "b194d6152a31961d",
+      "cst": "a84f544a6db36cb1"
     },
     "node_modules/@less/test-data/tests-error/eval/namespace-variable-not-found.less": {
-      "ast": "a0e5043008ffebe7",
-      "cst": "44bfaebcd7bdfe1a"
+      "ast": "99f48f5d46e24005",
+      "cst": "427709816df70a86"
     },
     "node_modules/@less/test-data/tests-error/eval/namespacing-2.less": {
-      "ast": "47a7c4e20d5f7cc2",
-      "cst": "560d2cae79b29cc8"
+      "ast": "99a2a832d66879f8",
+      "cst": "af01be63b0153dc1"
     },
     "node_modules/@less/test-data/tests-error/eval/namespacing-3.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "68990f945735587e"
+      "ast": "c75e09a3fa172f17",
+      "cst": "ec625fb35b8e4acf"
     },
     "node_modules/@less/test-data/tests-error/eval/namespacing-4.less": {
-      "ast": "e80ef611114e5c0f",
-      "cst": "03826680eba4e9c1"
+      "ast": "aff9fedec9b8a1bb",
+      "cst": "9077200dbda01663"
+    },
+    "node_modules/@less/test-data/tests-error/eval/percentage-css-var.less": {
+      "ast": "079647d98262de15",
+      "cst": "63d1c17e3d97c99b"
     },
     "node_modules/@less/test-data/tests-error/eval/percentage-non-number-argument.less": {
-      "ast": "e0ef21bf676542d1",
-      "cst": "44b1a4f627866621"
+      "ast": "855d548823cf7f9f",
+      "cst": "cc78e054608debb4"
     },
     "node_modules/@less/test-data/tests-error/eval/plugin-1.less": {
-      "ast": "41845076d63a34e8",
-      "cst": "1dbc3bebd895b83b"
+      "ast": "91a24d37dea4cb34",
+      "cst": "d42f1d83d847d48a"
     },
     "node_modules/@less/test-data/tests-error/eval/plugin-2.less": {
-      "ast": "cd7b5941ca9a752a",
-      "cst": "31f504cf181ecbe6"
+      "ast": "7e8936ddf6a781c0",
+      "cst": "d518aecae605f37a"
     },
     "node_modules/@less/test-data/tests-error/eval/plugin-3.less": {
-      "ast": "ab2ee618da19a858",
-      "cst": "b4d9d05bd4dab305"
+      "ast": "bb39b31a571c3a83",
+      "cst": "3dc6d3f076b7b6d3"
     },
     "node_modules/@less/test-data/tests-error/eval/property-in-root.less": {
-      "ast": "39adfd7b3bacf2c1",
-      "cst": "20261884a991e564"
+      "ast": "77af909ea426dc3d",
+      "cst": "1a44284de9c8de8f"
     },
     "node_modules/@less/test-data/tests-error/eval/property-in-root2.less": {
-      "ast": "c26bc4a3836244c1",
-      "cst": "6002095168a16e3c"
+      "ast": "1325496d93b7b27a",
+      "cst": "0a8431be0c0b4b06"
     },
     "node_modules/@less/test-data/tests-error/eval/property-in-root3.less": {
-      "ast": "b8949afc7101c886",
-      "cst": "4f045f7a959c774c"
+      "ast": "a1ff72b21a024dc0",
+      "cst": "229a9603449acfac"
     },
     "node_modules/@less/test-data/tests-error/eval/property-interp-not-defined.less": {
-      "ast": "00e81ab5e6478c80",
-      "cst": "0a9d98e5f7080b0c"
+      "ast": "8ff9e32751de1149",
+      "cst": "3a0135a5bef567de"
     },
     "node_modules/@less/test-data/tests-error/eval/property-undefined.less": {
-      "ast": "1fea8caaf0d8db26",
-      "cst": "ff1214534b0df4df"
+      "ast": "a74b03c39191c590",
+      "cst": "a7948f2e1f21082c"
     },
     "node_modules/@less/test-data/tests-error/eval/recursive-property.less": {
-      "ast": "a7a2b3d8d7926c10",
-      "cst": "af1ff1b1003c2fd1"
+      "ast": "c9a07d8d236fa8c2",
+      "cst": "5492f8169a7afa15"
     },
     "node_modules/@less/test-data/tests-error/eval/recursive-variable.less": {
-      "ast": "013ccb0f53f54458",
-      "cst": "f8dc9bd433206429"
+      "ast": "435e39970fbcae1a",
+      "cst": "1384098cd377077e"
     },
     "node_modules/@less/test-data/tests-error/eval/root-func-undefined-1.less": {
-      "ast": "efb4592c95b58094",
-      "cst": "9155b84feb3b5ca3"
+      "ast": "bd0d8f867ca5a3a4",
+      "cst": "ee595b895dcec4cf"
     },
     "node_modules/@less/test-data/tests-error/eval/root-func-undefined-2.less": {
-      "ast": "a32054ac48cbcfab",
-      "cst": "b89f4d49915cc7dc"
+      "ast": "8ac4f9984c25e644",
+      "cst": "026a63de75eaddc2"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient1.less": {
-      "ast": "76345245d11c148a",
-      "cst": "4eb19d344694a798"
+      "ast": "cbf6e61935a3d294",
+      "cst": "6abcd1530a317a84"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient2.less": {
-      "ast": "2d685c469b300dd1",
-      "cst": "8a6fae46381b29f9"
+      "ast": "9c2421bfd7878aba",
+      "cst": "a6df4303b27f565f"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient3.less": {
-      "ast": "63999c923d841e08",
-      "cst": "1f81bf073d5f7bfc"
+      "ast": "c4ee7dc12994dddd",
+      "cst": "a3ae753ab3dbf687"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient4.less": {
-      "ast": "742c605052124b64",
-      "cst": "c47f9a7426fe54cb"
+      "ast": "a9063862960739a2",
+      "cst": "0f9d950e1b7a8d48"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient5.less": {
-      "ast": "66e08db7338da9ba",
-      "cst": "95a384e1b054ceed"
+      "ast": "07c766c2212668a0",
+      "cst": "82c923366ef00c32"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient6.less": {
-      "ast": "5d4d5de224db9923",
-      "cst": "745daa2fd8063211"
+      "ast": "f45f73b9f0744056",
+      "cst": "42017dc837479435"
     },
     "node_modules/@less/test-data/tests-error/eval/unit-function.less": {
-      "ast": "ef7a041b6e43aea7",
-      "cst": "af45ce16ee24dad3"
+      "ast": "624e7164d5a9a5ad",
+      "cst": "9dd72bcc8a34c343"
     },
     "node_modules/@less/test-data/tests-error/parse/at-rules-unmatching-block.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "bbfec72f3968109d"
+      "ast": "43b1d2967181eb20",
+      "cst": "7354f6041e2d489e"
     },
     "node_modules/@less/test-data/tests-error/parse/bad-variable-declaration1.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/custom-property-unmatched-block-1.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/custom-property-unmatched-block-2.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/custom-property-unmatched-block-3.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/detached-ruleset-6.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/extend-not-at-end.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/import-malformed.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/import-no-semi.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/import-subfolder2.less": {
-      "ast": "d44cc45917532986",
-      "cst": "39531185d543597b"
+      "ast": "f60e374efa03112b",
+      "cst": "a5effcc0aaa7d484"
     },
     "node_modules/@less/test-data/tests-error/parse/imports/import-subfolder2.less": {
-      "ast": "228a9ec907fb61f1",
-      "cst": "0796860967b95c49"
+      "ast": "0d9b8b2066e0735f",
+      "cst": "ce67e7175d0c836e"
     },
     "node_modules/@less/test-data/tests-error/parse/imports/subfolder/parse-error-curly-bracket.less": {
-      "ast": "76a6a72be7cd55fa",
-      "cst": "26055f46e2f61408"
+      "ast": "f00ab629345123ea",
+      "cst": "b8a511d7cdf64974"
     },
     "node_modules/@less/test-data/tests-error/parse/invalid-color-with-comment.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/mixed-mixin-definition-args-1.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "250c3636537706be"
+      "ast": "e74c46a3b37ed3a1",
+      "cst": "fd69bcf468595dc7"
     },
     "node_modules/@less/test-data/tests-error/parse/mixed-mixin-definition-args-2.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "250c3636537706be"
+      "ast": "e74c46a3b37ed3a1",
+      "cst": "73f7f5b397cf9d08"
     },
     "node_modules/@less/test-data/tests-error/parse/mixins-guards-cond-expected.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/parens-error-1.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/parens-error-2.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/parens-error-3.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-curly-bracket.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "8ec7d67bb7df8995"
+      "ast": "733703c285609637",
+      "cst": "f5e966019dbac62e"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-media-no-block-1.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05875765c152f691",
+      "cst": "16fa7bc852fe6b1f"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-media-no-block-2.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05875765c152f691",
+      "cst": "86e7bacd5e3a290a"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-media-no-block-3.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "6d04afbf30e8ab5f",
+      "cst": "69af87583b6bdf27"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-missing-bracket.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-missing-parens.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05875765c152f691",
+      "cst": "95ce33b321556d9c"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-with-import.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "5c67c29e2199505e"
+      "ast": "733703c285609637",
+      "cst": "648a01efd3c745f2"
     },
     "node_modules/@less/test-data/tests-error/parse/percentage-missing-space.less": {
-      "ast": "48de200bfa6697b3",
-      "cst": "638241cbcc03de70"
+      "ast": "43b1d2967181eb20",
+      "cst": "7354f6041e2d489e"
     },
     "node_modules/@less/test-data/tests-error/parse/property-asterisk-only-name.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-error/parse/single-character.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.css": {
+      "ast": "14d1c08645ceb1c2",
+      "cst": "bfa7f19aaf475f37"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less": {
+      "ast": "3723f4512753fd7f",
+      "cst": "b6e22d0a81376044"
     },
     "node_modules/@less/test-data/tests-unit/at-rule-variable-interpolation/at-rule-variable-interpolation.css": {
-      "ast": "21df85570dec48e5",
-      "cst": "4099b5cd8f95c316"
+      "ast": "14d1c08645ceb1c2",
+      "cst": "bfa7f19aaf475f37"
     },
     "node_modules/@less/test-data/tests-unit/at-rule-variable-interpolation/at-rule-variable-interpolation.less": {
-      "ast": "660e36607555c2a2",
-      "cst": "9f73a445ee489616"
+      "ast": "7af8392034fdb529",
+      "cst": "062ccecfccd7e7d1"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-bubbling/at-rules-bubbling.css": {
-      "ast": "6ec5618f893303bc",
-      "cst": "74747bc39bdbb843"
+      "ast": "fbe05a639b28ea7d",
+      "cst": "45df74fe16f83c13"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-bubbling/at-rules-bubbling.less": {
-      "ast": "20d1a6a23e59bc7f",
-      "cst": "e8fe0101d235d2aa"
+      "ast": "a68bb7b4b1850601",
+      "cst": "62bc76d0a5717169"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-bubbling/legacy/at-rules-bubbling.css": {
-      "ast": "7f6a723143de8329",
-      "cst": "3e82a023aa58b571"
+      "ast": "c5f6ff51322315d8",
+      "cst": "9751c76eab35d84f"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-declarations/at-rules-declarations.css": {
-      "ast": "dd641cf846d88c81",
-      "cst": "3de546ca7a3cadcc"
+      "ast": "179c5dac77389d8a",
+      "cst": "b4e8dc32593ad1b1"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-declarations/at-rules-declarations.less": {
-      "ast": "dd641cf846d88c81",
-      "cst": "c2b74a3373a49a22"
+      "ast": "e28ce6c66b1e17b7",
+      "cst": "d70d4fe8d7d8a064"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-empty-block/at-rules-empty-block.css": {
-      "ast": "5037b9712f99a5d1",
-      "cst": "aca51345c271e5f2"
+      "ast": "25ca970d209b3edd",
+      "cst": "914e27c2de2054c0"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-empty-block/at-rules-empty-block.less": {
-      "ast": "29ade626ca1e7f49",
-      "cst": "1b999d8bc09cce26"
+      "ast": "68ba0057cdcd2054",
+      "cst": "aa903d0a54feeb79"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-empty/at-rules-empty.css": {
-      "ast": "5049a497f55adf4d",
-      "cst": "55175313751ecd66"
+      "ast": "b2b7181e4af27d3e",
+      "cst": "0a14ed6bc001cd88"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-empty/at-rules-empty.less": {
-      "ast": "5049a497f55adf4d",
-      "cst": "e3354834820751fd"
+      "ast": "15813bbf5f688b47",
+      "cst": "80633737ab783211"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.css": {
-      "ast": "7bfd23be217ebd2d",
-      "cst": "cd865b82354553e5"
+      "ast": "5d89a5ff47cda636",
+      "cst": "645a5fbc18829a5f"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less": {
-      "ast": "ba2d1379d2b14ea1",
-      "cst": "2388f53182af09b4"
+      "ast": "6009128b565d6619",
+      "cst": "8725f94a2696fea4"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-keyword-comments/legacy/at-rules-keyword-comments.css": {
-      "ast": "6a09c2402a3efb98",
-      "cst": "f9e241ecd815ff7d"
+      "ast": "1ef889e195c4835d",
+      "cst": "6ff6100bbe10785e"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-targeted/at-rules-targeted.css": {
-      "ast": "c6473e98a9640589",
-      "cst": "3b435b51a1f6f9d5"
+      "ast": "2b6305177f810270",
+      "cst": "1e1c28bf6566eac6"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-targeted/at-rules-targeted.less": {
-      "ast": "ad0f1e64e63e5609",
-      "cst": "41684c6a92e6d6b1"
+      "ast": "3afc46fd1320764f",
+      "cst": "4cd12f790e61a8c8"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-targeted/legacy/at-rules-targeted.css": {
-      "ast": "2e726fdc612a89a1",
-      "cst": "e8f32ba15440b773"
+      "ast": "0a9f40019fac8c29",
+      "cst": "f2470a9dc811e059"
     },
     "node_modules/@less/test-data/tests-unit/at-rules/at-rules.css": {
-      "ast": "33f2e0b1ea9bbe91",
-      "cst": "681de87fa14af990"
+      "ast": "64e647d29a5dd9e7",
+      "cst": "2ddfbb32e39cad9d"
     },
     "node_modules/@less/test-data/tests-unit/at-rules/at-rules.less": {
-      "ast": "11e4846b04a913c0",
-      "cst": "6eb2600b80a46053"
+      "ast": "888a517adb7b0caa",
+      "cst": "9a8be741b2149efa"
     },
     "node_modules/@less/test-data/tests-unit/at-rules/legacy/at-rules.css": {
-      "ast": "3343940a57261235",
-      "cst": "82300491605ecfa6"
+      "ast": "e873789cb6ab2b59",
+      "cst": "959c5aadf736fc6c"
     },
     "node_modules/@less/test-data/tests-unit/calc/calc.css": {
-      "ast": "0bf2fb517f860dfb",
-      "cst": "48d9c0d6532e4513"
+      "ast": "2a9eb7f3d9d75685",
+      "cst": "6fc171de2a04e680"
     },
     "node_modules/@less/test-data/tests-unit/calc/calc.less": {
-      "ast": "3ac7d28e40612f57",
-      "cst": "0dbce1fe350840e5"
+      "ast": "c1ea2663b3596eaa",
+      "cst": "33ef3ca350e5a28e"
     },
     "node_modules/@less/test-data/tests-unit/calc/legacy/calc.css": {
-      "ast": "f17f68f81b84fe34",
-      "cst": "dbc16402989a8b07"
+      "ast": "8222fe198e8acdc7",
+      "cst": "a470dc1f2a83e4dd"
     },
     "node_modules/@less/test-data/tests-unit/charsets/charsets.css": {
-      "ast": "3f52593529603a9e",
-      "cst": "a824d9932ef6fc20"
+      "ast": "1edde776f0f8dcd3",
+      "cst": "8356d3f9aa13c78d"
     },
     "node_modules/@less/test-data/tests-unit/charsets/charsets.less": {
-      "ast": "f06d164ee307d815",
-      "cst": "0e13f1d2aaa85b9e"
+      "ast": "a6181bc15f7aefe0",
+      "cst": "852feefaa697cae6"
     },
     "node_modules/@less/test-data/tests-unit/charsets/import/import-charset-test.less": {
-      "ast": "2e8fc3cc64fb78f2",
-      "cst": "b745e96bc7f1f217"
+      "ast": "875215657a8a1440",
+      "cst": "c7e96519d3aceb43"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/alpha.css": {
-      "ast": "9aa1c1d07d46f277",
-      "cst": "95e5ac052c14a8e2"
+      "ast": "875fe7df4fc50c35",
+      "cst": "77aa44f2485ee08c"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/alpha.less": {
-      "ast": "432626744eaf22f7",
-      "cst": "ebd903c5c88b1440"
+      "ast": "39bfc7b0f2978b16",
+      "cst": "e6dd4062d13b6bb7"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/basic.css": {
-      "ast": "e8c5a82cbf842b20",
-      "cst": "4cee3d431e91e4f9"
+      "ast": "9b600af93616a571",
+      "cst": "a3826412c0846a77"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/basic.less": {
-      "ast": "9b4770a61288f79d",
-      "cst": "42ebaaf433f43ffa"
+      "ast": "a7eb7ff17b3164af",
+      "cst": "ed5cb7d7bf35c027"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/comprehensive.css": {
-      "ast": "33e7ff8909fe9546",
-      "cst": "4dfc575d74fb669d"
+      "ast": "8290f0f88a1e4144",
+      "cst": "1fde265189dc644a"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/comprehensive.less": {
-      "ast": "3d4cc2955182a646",
-      "cst": "8b3fd9969b491656"
+      "ast": "f15e46fccb8f0a61",
+      "cst": "26c5089feb9c0a73"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/formats.css": {
-      "ast": "4245bf1ccbb20c60",
-      "cst": "d49c61fabe6abe85"
+      "ast": "ff4b4cf5bbb6a412",
+      "cst": "407c4e0a74110b70"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/formats.less": {
-      "ast": "6789c647a90f194f",
-      "cst": "1e8f0e2a36074d2a"
+      "ast": "1c66de182896b4ba",
+      "cst": "cee15f5a690277c6"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/basic.css": {
-      "ast": "b11e0d4ab1697bb5",
-      "cst": "4d2ae2da3c870441"
+      "ast": "231a7f300024b3f5",
+      "cst": "a7e5617a5a8efa36"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/comprehensive.css": {
-      "ast": "3d08662e43bc0fcb",
-      "cst": "57dfc259f4001fb2"
+      "ast": "4fc680481c62b762",
+      "cst": "3afd5463dfeb8091"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/modern-syntax.css": {
-      "ast": "c01cd584af8ac31d",
-      "cst": "75574cd741f5a459"
+      "ast": "065629a46486dbdb",
+      "cst": "149672fac5f532a1"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/operations.css": {
-      "ast": "28ea9a3672e59618",
-      "cst": "b4c51a6d4b71d30e"
+      "ast": "6be9070bc150cb72",
+      "cst": "6bc14c45b6b3568f"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/rgba.css": {
-      "ast": "d5d13fc20ad99e96",
-      "cst": "315dfac0d8447c25"
+      "ast": "216919fad1c54d31",
+      "cst": "55366e98f8b5970a"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/modern-syntax.css": {
-      "ast": "36d0ee60e6499961",
-      "cst": "23c495c7e2f04f42"
+      "ast": "80e0e0a9c554d1b4",
+      "cst": "c20e9e145d8f319b"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/modern-syntax.less": {
-      "ast": "36d0ee60e6499961",
-      "cst": "2bdbda60b44ca871"
+      "ast": "896e6f4ce85ef715",
+      "cst": "59999edee378a3ce"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/modern.css": {
-      "ast": "ae11ec72e3a30143",
-      "cst": "5e0b9e8026391c87"
+      "ast": "0591a2c0d205438c",
+      "cst": "37e28a4367005ddb"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/modern.less": {
-      "ast": "ae11ec72e3a30143",
-      "cst": "48bb99a09137a2a9"
+      "ast": "c6d99e351f6cbcd8",
+      "cst": "835ec62219a7b986"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/operations.css": {
-      "ast": "be44c46622173055",
-      "cst": "b117fe429e0603ea"
+      "ast": "f960eb90bf768b28",
+      "cst": "b75b6b7e06284a3c"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/operations.less": {
-      "ast": "ac5bb24a96d6305c",
-      "cst": "08c3a83752d10cba"
+      "ast": "14ee6668b5026dee",
+      "cst": "28198df36da22c39"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/rgba.css": {
-      "ast": "e6740af7e2f38ca6",
-      "cst": "3e95fc7c49030909"
+      "ast": "35b0a515329f975a",
+      "cst": "96de294df6cb58a8"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/rgba.less": {
-      "ast": "6f5985d2b4f2b7f6",
-      "cst": "6616af493493c6fb"
+      "ast": "d4e2670d5af4b95b",
+      "cst": "22a60543f4e54585"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments.css": {
-      "ast": "9a0339f000607bed",
-      "cst": "1dafb5882e3fbbd4"
+      "ast": "fcb3f2d6b1bc9f8e",
+      "cst": "0ad53b1f9bd5a4c6"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments.less": {
-      "ast": "ccbdda58451f702d",
-      "cst": "28389e607b217979"
+      "ast": "18f10e627421fe30",
+      "cst": "0ca6cb10b855b6fd"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments2.css": {
-      "ast": "5ca71ff685f64421",
-      "cst": "764c3ee072a6b452"
+      "ast": "14a9c16a4d76803b",
+      "cst": "461e3b23c5e42c36"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments2.less": {
-      "ast": "9bf7441619b68cc2",
-      "cst": "20ecbbf14cfbcad6"
+      "ast": "667e3f72db4adb49",
+      "cst": "4d118e2dc0f41f47"
     },
     "node_modules/@less/test-data/tests-unit/comments/legacy/comments.css": {
-      "ast": "17f0a9b4a521d934",
-      "cst": "be8a8c6fde712b8c"
+      "ast": "5801d9555b181033",
+      "cst": "dda7db9e77297e5d"
     },
     "node_modules/@less/test-data/tests-unit/comments/legacy/comments2.css": {
-      "ast": "f2bb52ee252d9eb0",
-      "cst": "0fed9235ce3914ca"
+      "ast": "17dbf7d919d162ab",
+      "cst": "f0a4f652387b6e53"
     },
     "node_modules/@less/test-data/tests-unit/container/container.css": {
-      "ast": "7422b631dff96c03",
-      "cst": "f426cb524691f9be"
+      "ast": "7ed98a655b3e3a21",
+      "cst": "eaebad1d3f4b7caf"
     },
     "node_modules/@less/test-data/tests-unit/container/container.less": {
-      "ast": "1904d7a586d525b8",
-      "cst": "6c22459d974a2304"
+      "ast": "8faff0ede0141de5",
+      "cst": "c5211574d10dd070"
     },
     "node_modules/@less/test-data/tests-unit/container/legacy/container.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "254f00f08fc26187"
+      "ast": "05875765c152f691",
+      "cst": "16968e8c9fd720c0"
     },
     "node_modules/@less/test-data/tests-unit/css-3/css-3.css": {
-      "ast": "b763f3ad46ad12d4",
-      "cst": "26bf0e313390d599"
+      "ast": "327ae5a9e9024836",
+      "cst": "6abfe412e284b58a"
     },
     "node_modules/@less/test-data/tests-unit/css-3/css-3.less": {
-      "ast": "4001565ce96f425a",
-      "cst": "d3c7ad520340dfae"
+      "ast": "427c1905077fbb93",
+      "cst": "6384b8d7b798ed6a"
     },
     "node_modules/@less/test-data/tests-unit/css-3/legacy/css-3.css": {
-      "ast": "82ea1e655d8f3626",
-      "cst": "f862d17859738444"
+      "ast": "299799e7508e182f",
+      "cst": "9cecb347c9329f27"
     },
     "node_modules/@less/test-data/tests-unit/css-escapes/css-escapes.css": {
-      "ast": "0913db1deb9c7e48",
-      "cst": "4a66cb8f55ca3a8f"
+      "ast": "5ef3795c62e08c12",
+      "cst": "e9f123f6764065cb"
     },
     "node_modules/@less/test-data/tests-unit/css-escapes/css-escapes.less": {
-      "ast": "b2837f4a7192fc12",
-      "cst": "308485d3008d075e"
+      "ast": "5fef355212d22426",
+      "cst": "5030df4ebb1dfb51"
     },
     "node_modules/@less/test-data/tests-unit/css-escapes/legacy/css-escapes.css": {
-      "ast": "0894d3484c554ad8",
-      "cst": "e16dbe6e6dbb2396"
+      "ast": "d66f0053f05578a9",
+      "cst": "37e2c298b7b83091"
     },
     "node_modules/@less/test-data/tests-unit/css-grid/css-grid.css": {
-      "ast": "5fb71f8ba1c9eb3b",
-      "cst": "d39ac50e86575a47"
+      "ast": "1fef905062791c19",
+      "cst": "26c0a94138b7c57c"
     },
     "node_modules/@less/test-data/tests-unit/css-grid/css-grid.less": {
-      "ast": "5fb71f8ba1c9eb3b",
-      "cst": "341ebab0a9a9728f"
+      "ast": "9b43a43583f1e588",
+      "cst": "62615fafacac3572"
     },
     "node_modules/@less/test-data/tests-unit/css-grid/legacy/css-grid.css": {
-      "ast": "3f38035808e2e7e0",
-      "cst": "4ebed50f8be4d246"
+      "ast": "6b9ab07a3fb8986e",
+      "cst": "1e900ea0db8768a0"
     },
     "node_modules/@less/test-data/tests-unit/css-guards/css-guards.css": {
-      "ast": "d970c0b8a81cc895",
-      "cst": "91429accb5c26031"
+      "ast": "4af81842ac229c59",
+      "cst": "fb27457dfa52f35c"
     },
     "node_modules/@less/test-data/tests-unit/css-guards/css-guards.less": {
-      "ast": "561d10ceac5d3fa0",
-      "cst": "08bc4ada243ff530"
+      "ast": "684f3363f6983b2e",
+      "cst": "94a787e283f719f0"
     },
     "node_modules/@less/test-data/tests-unit/detached-rulesets/detached-rulesets.css": {
-      "ast": "fdfe47145100836d",
-      "cst": "4d1e14de132ecdc3"
+      "ast": "5f68fa5ae819057b",
+      "cst": "79743305e9a49de7"
     },
     "node_modules/@less/test-data/tests-unit/detached-rulesets/detached-rulesets.less": {
-      "ast": "23ed8b5753ca6368",
-      "cst": "c340856ed3c7b9ff"
+      "ast": "ee0f833aaa868105",
+      "cst": "f9f80231d588c421"
     },
     "node_modules/@less/test-data/tests-unit/detached-rulesets/legacy/detached-rulesets.css": {
-      "ast": "4d4937ea50ccdadc",
-      "cst": "51f09df230055e90"
+      "ast": "c8729fe9c7251746",
+      "cst": "44e5c2f1e4c4299f"
     },
     "node_modules/@less/test-data/tests-unit/directives-bubbling/directives-bubbling.css": {
-      "ast": "6ec5618f893303bc",
-      "cst": "74747bc39bdbb843"
+      "ast": "fbe05a639b28ea7d",
+      "cst": "45df74fe16f83c13"
     },
     "node_modules/@less/test-data/tests-unit/empty/empty.css": {
-      "ast": "5037b9712f99a5d1",
-      "cst": "aca51345c271e5f2"
+      "ast": "25ca970d209b3edd",
+      "cst": "914e27c2de2054c0"
     },
     "node_modules/@less/test-data/tests-unit/empty/empty.less": {
-      "ast": "5037b9712f99a5d1",
-      "cst": "13b1d86875b3ad3a"
+      "ast": "09be8c9a416b0467",
+      "cst": "fc5da9f5e7d783a2"
     },
     "node_modules/@less/test-data/tests-unit/extend-chaining/extend-chaining.css": {
-      "ast": "74d45d55059cfc65",
-      "cst": "33bddcbadf619259"
+      "ast": "267f10e19568d7c3",
+      "cst": "41c0ac9b170bbf9a"
     },
     "node_modules/@less/test-data/tests-unit/extend-chaining/extend-chaining.less": {
-      "ast": "3c960f406045117a",
-      "cst": "7fd71ce98945cab9"
+      "ast": "589dc326a1929a3b",
+      "cst": "6a6fcea5922ebd0c"
     },
     "node_modules/@less/test-data/tests-unit/extend-chaining/legacy/extend-chaining.css": {
-      "ast": "a5fffb012745d13b",
-      "cst": "7151fc4e1121fdbb"
+      "ast": "00c7ada62f442bc1",
+      "cst": "ff2f201ae0214441"
     },
     "node_modules/@less/test-data/tests-unit/extend-clearfix/extend-clearfix.css": {
-      "ast": "89992b51663613df",
-      "cst": "f88daf06fb1629c8"
+      "ast": "8e8225e8ed28699f",
+      "cst": "92a9266930d01d79"
     },
     "node_modules/@less/test-data/tests-unit/extend-clearfix/extend-clearfix.less": {
-      "ast": "0552a74585e92a38",
-      "cst": "77a523df5261ac2d"
+      "ast": "fa8ac76554395e14",
+      "cst": "93a1400771eb88a4"
     },
     "node_modules/@less/test-data/tests-unit/extend-clearfix/legacy/extend-clearfix.css": {
-      "ast": "b172168cb23d3b7d",
-      "cst": "534785b79b3a99df"
+      "ast": "93fe2efe58f44432",
+      "cst": "7f278103114d85c3"
     },
     "node_modules/@less/test-data/tests-unit/extend-exact/extend-exact.css": {
-      "ast": "b4913a759f9d3546",
-      "cst": "f3776b38307b6de0"
+      "ast": "4bfeba767e308e32",
+      "cst": "da5f51772847ab71"
     },
     "node_modules/@less/test-data/tests-unit/extend-exact/extend-exact.less": {
-      "ast": "3e4acf570ebd712b",
-      "cst": "f48f9834100940d5"
+      "ast": "0ffa64b2068151de",
+      "cst": "c4f646ca0fc696bd"
     },
     "node_modules/@less/test-data/tests-unit/extend-exact/legacy/extend-exact.css": {
-      "ast": "1d66aba21c7839f6",
-      "cst": "7102809bcf97add2"
+      "ast": "3ed711e98505f324",
+      "cst": "627d9a33781e6e4a"
     },
     "node_modules/@less/test-data/tests-unit/extend-media/extend-media.css": {
-      "ast": "6bbc99abcdbbdd4f",
-      "cst": "137984feff78f0c6"
+      "ast": "4bf49699a179d81d",
+      "cst": "73caa1908b4a0e85"
     },
     "node_modules/@less/test-data/tests-unit/extend-media/extend-media.less": {
-      "ast": "3d208a48e39c96d1",
-      "cst": "74cadc4cc8924bac"
+      "ast": "c3267a86525e4c78",
+      "cst": "f03cde170f88af0e"
     },
     "node_modules/@less/test-data/tests-unit/extend-media/legacy/extend-media.css": {
-      "ast": "7b11504678d60bc1",
-      "cst": "e4a4411dbf8f6e77"
+      "ast": "4d3422a9c418765a",
+      "cst": "14b74536cf24488f"
     },
     "node_modules/@less/test-data/tests-unit/extend-nest/extend-nest.css": {
-      "ast": "0ed0da1100fe6f7b",
-      "cst": "e1a4ac877dbd7005"
+      "ast": "132eccef4435a3c1",
+      "cst": "dc2f67052a2b5aab"
     },
     "node_modules/@less/test-data/tests-unit/extend-nest/extend-nest.less": {
-      "ast": "4647a12dcf5fc97f",
-      "cst": "dcc51409009ca5c8"
+      "ast": "db5b42669246044d",
+      "cst": "2fea90cadeabd514"
     },
     "node_modules/@less/test-data/tests-unit/extend-nest/legacy/extend-nest.css": {
-      "ast": "77e25905ad71c54d",
-      "cst": "ebbab2c4b3814c48"
+      "ast": "f0f66eabd6ee822b",
+      "cst": "7a1f8182f62ba893"
     },
     "node_modules/@less/test-data/tests-unit/extend-selector/extend-selector.css": {
-      "ast": "2cf7b2e57b4da674",
-      "cst": "e6009e81c8d6b679"
+      "ast": "6a2791f0b398b77a",
+      "cst": "b37a434b806369ef"
     },
     "node_modules/@less/test-data/tests-unit/extend-selector/extend-selector.less": {
-      "ast": "de9ed468e052ae8c",
-      "cst": "bf411d5c69cd9e30"
+      "ast": "de6335969d66ef34",
+      "cst": "58683f794c890f1b"
     },
     "node_modules/@less/test-data/tests-unit/extend-selector/legacy/extend-selector.css": {
-      "ast": "e5669131a8cee1d8",
-      "cst": "d88a054dcdf91696"
+      "ast": "0da64b37eb162b17",
+      "cst": "c05794302f5a18e8"
     },
     "node_modules/@less/test-data/tests-unit/extend/extend.css": {
-      "ast": "655c1af14e7303fa",
-      "cst": "beb795d15d9aa577"
+      "ast": "668ff93cb25eefcb",
+      "cst": "0572e24cd8cfde95"
     },
     "node_modules/@less/test-data/tests-unit/extend/extend.less": {
-      "ast": "98326e548626bc13",
-      "cst": "e935d4f174ee45e6"
+      "ast": "c1c8a8a6fc667bd5",
+      "cst": "16b97d3cb381ca63"
     },
     "node_modules/@less/test-data/tests-unit/extend/legacy/extend.css": {
-      "ast": "83abbe94da19dabd",
-      "cst": "b8bead6d2899bae6"
+      "ast": "5a86ea5f9ec83f9a",
+      "cst": "d6d7787c87499011"
     },
     "node_modules/@less/test-data/tests-unit/extract-and-length/extract-and-length.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "5948bad88eb5ae67"
+      "ast": "733703c285609637",
+      "cst": "b1ac2d4368e07f89"
     },
     "node_modules/@less/test-data/tests-unit/extract-and-length/extract-and-length.less": {
-      "ast": "06b07a60ca6ca92f",
-      "cst": "9f8512a18c69b726"
+      "ast": "547c7ed9759ee5a4",
+      "cst": "a4c3bf25d844d8d0"
     },
     "node_modules/@less/test-data/tests-unit/extract-and-length/legacy/extract-and-length.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "83e39a4ff902547f"
+      "ast": "733703c285609637",
+      "cst": "d4a6b4e68a984797"
     },
     "node_modules/@less/test-data/tests-unit/functions-each/functions-each.css": {
-      "ast": "0529c0e4e5ca0e83",
-      "cst": "31b6db59fcf76ef9"
+      "ast": "26014f4516048cd0",
+      "cst": "3d63a45905b6cc5b"
     },
     "node_modules/@less/test-data/tests-unit/functions-each/functions-each.less": {
-      "ast": "874f4f83ac7f7495",
-      "cst": "a104ca1e89640aa0"
+      "ast": "df00a5dd40fb89eb",
+      "cst": "c5111843a94738b2"
     },
     "node_modules/@less/test-data/tests-unit/functions/functions.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-unit/functions/functions.less": {
-      "ast": "73822def233a6261",
-      "cst": "f7d804c07718c5ac"
+      "ast": "47a1783144848205",
+      "cst": "b7ce2872edc3d395"
     },
     "node_modules/@less/test-data/tests-unit/functions/legacy/functions.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-unit/functions/legacy/functions.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "f55c3293a1adaf82"
+      "ast": "47a1783144848205",
+      "cst": "88275c3180253bcc"
     },
     "node_modules/@less/test-data/tests-unit/ie-filters-REMOVED/legacy/ie-filters.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-unit/ie-filters-REMOVED/legacy/ie-filters.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "4723f1504447579b"
+      "ast": "733703c285609637",
+      "cst": "72d1c8cfc3b1ed17"
     },
     "node_modules/@less/test-data/tests-unit/impor/impor.css": {
-      "ast": "6f9f349d8cc276b6",
-      "cst": "6c45012dd3ebd5a9"
+      "ast": "4fc8168e64283719",
+      "cst": "aa7838ee8d06fa51"
     },
     "node_modules/@less/test-data/tests-unit/impor/impor.less": {
-      "ast": "6f9f349d8cc276b6",
-      "cst": "f438c4e8616bb045"
+      "ast": "8c0b30837efaa1ed",
+      "cst": "1657dfb32a3b95c0"
     },
     "node_modules/@less/test-data/tests-unit/import/import-inline.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "12199c52799af0f0"
+      "ast": "733703c285609637",
+      "cst": "015b7e18b776eb07"
     },
     "node_modules/@less/test-data/tests-unit/import/import-inline.less": {
-      "ast": "4a95e04e1a5efda1",
-      "cst": "c876199386910249"
+      "ast": "0fe68574ac25238f",
+      "cst": "a53c14e59f7e744b"
     },
     "node_modules/@less/test-data/tests-unit/import/import-interpolation.css": {
-      "ast": "e7f0247589f8139e",
-      "cst": "ae5786d9c2f86c7e"
+      "ast": "0d66f1b3ee707f09",
+      "cst": "4d1ca8c12cd8d0df"
     },
     "node_modules/@less/test-data/tests-unit/import/import-interpolation.less": {
-      "ast": "f57a1bfaf9e98ef7",
-      "cst": "0345a68e9762b092"
+      "ast": "82dce55bbe32fa57",
+      "cst": "e08d843428b518ca"
     },
     "node_modules/@less/test-data/tests-unit/import/import-module.css": {
-      "ast": "b3cc80894c171ada",
-      "cst": "9990aca77de28b76"
+      "ast": "9d93e089c9e6f710",
+      "cst": "ef08cb4edbc7e204"
     },
     "node_modules/@less/test-data/tests-unit/import/import-module.less": {
-      "ast": "d57734acaa3b417d",
-      "cst": "0e363c8dd52baefb"
+      "ast": "0448015f18e72277",
+      "cst": "829c2dde3a78a12c"
     },
     "node_modules/@less/test-data/tests-unit/import/import-once.css": {
-      "ast": "5580c625a9f0052c",
-      "cst": "a18d56cf8ad0fbb0"
+      "ast": "470cd70cd9de16f3",
+      "cst": "64f6030001bc6fad"
     },
     "node_modules/@less/test-data/tests-unit/import/import-once.less": {
-      "ast": "50e17202f249f2e6",
-      "cst": "c12a33bd10d2c85c"
+      "ast": "7bc288dc11390887",
+      "cst": "f46d2ba17a6ec885"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues.css": {
-      "ast": "ace571db1fb2e706",
-      "cst": "a51d4e348560bcea"
+      "ast": "617ae17cc7697e8c",
+      "cst": "617e788effb55c75"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues.less": {
-      "ast": "b5f96d04bea0f0b1",
-      "cst": "d14462ba3f88dfb3"
+      "ast": "c3855b9041459df4",
+      "cst": "5546b8c77560054e"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues/appender-reference-1968.less": {
-      "ast": "b4cffea6aca92ebf",
-      "cst": "f44d9051d7f8ffb7"
+      "ast": "cad9bd2aa4b54754",
+      "cst": "77ccc397b7ffd686"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues/comments-2991.less": {
-      "ast": "30b561a7b3623c9e",
-      "cst": "25eed1c27509ee08"
+      "ast": "f8aece333d3df7e9",
+      "cst": "cf910d4b242d31c3"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues/global-scope-import.less": {
-      "ast": "785605bb85111193",
-      "cst": "75b594bbcc21323c"
+      "ast": "223fee302879ec4f",
+      "cst": "4028096841944d4c"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues/global-scope-nested.less": {
-      "ast": "be191e94e39aebf7",
-      "cst": "1d77570fc4d09efc"
+      "ast": "1fdc3ebb1308d195",
+      "cst": "0c4709ec0657b901"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues/mixin-1968.less": {
-      "ast": "e29ec2db218c975c",
-      "cst": "fd539a73fef00605"
+      "ast": "3a6b5f57b6347be7",
+      "cst": "e5bc4bc7de012053"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues/multiple-import-nested.less": {
-      "ast": "a6bad91e705489f4",
-      "cst": "47dafeb52d81f4f4"
+      "ast": "e145711036358f1d",
+      "cst": "b36ed05826658053"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues/multiple-import.less": {
-      "ast": "3a560333bf23ad35",
-      "cst": "0070265ec27a32ff"
+      "ast": "f23670842cea890d",
+      "cst": "28101a05f5e306eb"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues/simple-mixin.css": {
-      "ast": "b114f3eb360cf54e",
-      "cst": "703fb5e3f4228bc9"
+      "ast": "7c0377f94252a6fc",
+      "cst": "468420f309f4d613"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference-issues/simple-ruleset-2162.less": {
-      "ast": "021afe3a2a927fee",
-      "cst": "dd3f1272b1563801"
+      "ast": "9e3ca45e370eb030",
+      "cst": "5dc35d126a101034"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "8872a2c55d9c7a8b"
+      "ast": "733703c285609637",
+      "cst": "4c9b48e1c857b26e"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference.less": {
-      "ast": "73c2b0fd2b60d1df",
-      "cst": "cf9c290cd256f888"
+      "ast": "457a780a3d3d7a91",
+      "cst": "b7dbeb2f9560979c"
     },
     "node_modules/@less/test-data/tests-unit/import/import-remote.css": {
-      "ast": "f2d34f898fabbc8c",
-      "cst": "b96f4abd806ba091"
+      "ast": "3c9e67f6c04b7b22",
+      "cst": "67fd4580902fd045"
     },
     "node_modules/@less/test-data/tests-unit/import/import-remote.less": {
-      "ast": "fecf0adce2075de6",
-      "cst": "b59a53c0814e414a"
+      "ast": "b0e0c07eebb956ac",
+      "cst": "a18037da3715681d"
     },
     "node_modules/@less/test-data/tests-unit/import/import.css": {
-      "ast": "47809c8b04af7e77",
-      "cst": "7cb5d21715e5df69"
+      "ast": "c274d672a83fb992",
+      "cst": "fb3aeef931db701d"
     },
     "node_modules/@less/test-data/tests-unit/import/import.less": {
-      "ast": "23ca3db8a8c95998",
-      "cst": "42cae8ba3804559a"
+      "ast": "dea4b7ee1d904a69",
+      "cst": "c27e96b38b777b86"
     },
     "node_modules/@less/test-data/tests-unit/import/import/css-import.less": {
-      "ast": "fa65f250055930fd",
-      "cst": "7d5d95dcc9dc64a0"
+      "ast": "7ff5a7d30eeecd20",
+      "cst": "84d943166ea19977"
     },
     "node_modules/@less/test-data/tests-unit/import/import/deeper/deeper-2/url-import-2.less": {
-      "ast": "bdd32bfbc4353a26",
-      "cst": "3dc1684a41b4efa1"
+      "ast": "6dd620b06a550897",
+      "cst": "c153982559dfa085"
     },
     "node_modules/@less/test-data/tests-unit/import/import/deeper/deeper-2/url-import.less": {
-      "ast": "ad388b9c2760345f",
-      "cst": "8ce1a01df4f91073"
+      "ast": "e537ff16d83bc9aa",
+      "cst": "69a2b26b8afe90aa"
     },
     "node_modules/@less/test-data/tests-unit/import/import/deeper/import-once-test-a.less": {
-      "ast": "a2d5f6677546d091",
-      "cst": "408b7531e9a7c14a"
+      "ast": "d856c73940cb6890",
+      "cst": "1eb5b3affb9fe2c7"
     },
     "node_modules/@less/test-data/tests-unit/import/import/deeper/url-import.less": {
-      "ast": "52f342725df6827f",
-      "cst": "39df11d836ad7079"
+      "ast": "9a056d945e0818bd",
+      "cst": "31070dd9452a4c66"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-and-relative-paths-test.less": {
-      "ast": "d2c4150cb00409be",
-      "cst": "9569350db170855b"
+      "ast": "8301976627902415",
+      "cst": "dd01d2acd64b68b4"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-charset-test.less": {
-      "ast": "2e8fc3cc64fb78f2",
-      "cst": "4857383cfb08c70c"
+      "ast": "b59c88cc13689cf4",
+      "cst": "5dbb006e475e7f59"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-inline-invalid-css.less": {
-      "ast": "5cfe5ca77f352ad6",
-      "cst": "fd7466683c7b1157"
+      "ast": "bd0c013f23a7f204",
+      "cst": "a57d4872afc79979"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-interpolation.less": {
-      "ast": "fefe571f8e4114a3",
-      "cst": "58e39df436a57217"
+      "ast": "dbaa541b73406766",
+      "cst": "a428ae10b0a6957e"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-interpolation2.less": {
-      "ast": "5a7b5a96c909c0f0",
-      "cst": "bb43623750f32a4d"
+      "ast": "00a8242f30c50aa5",
+      "cst": "2827c5fd5a58816e"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-once-test-c.less": {
-      "ast": "17d2b29f81ebe4d6",
-      "cst": "513f53634cc21dbd"
+      "ast": "ff0a357c385221e7",
+      "cst": "fad55d2e0ade34ec"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-reference.less": {
-      "ast": "0f04b22eb372309d",
-      "cst": "4477de3c90dcf73d"
+      "ast": "c003597444d26bab",
+      "cst": "a725951160c4e78c"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-test-a.less": {
-      "ast": "eb95d64f75251ed1",
-      "cst": "273edcde73bb626b"
+      "ast": "fc76b408bcde1c00",
+      "cst": "876bccccb90c8587"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-test-b.less": {
-      "ast": "47340e92c18855ef",
-      "cst": "ec24a72f55fb39a2"
+      "ast": "bddf116d1260a49c",
+      "cst": "2454ae97f030f627"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-test-c.less": {
-      "ast": "17d2b29f81ebe4d6",
-      "cst": "513f53634cc21dbd"
+      "ast": "ff0a357c385221e7",
+      "cst": "fad55d2e0ade34ec"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-test-d.css": {
-      "ast": "c1c6e6a715a6be66",
-      "cst": "f363fee45a02a14b"
+      "ast": "7bd1e29aa1092926",
+      "cst": "ebfb993af5c49781"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-test-e.less": {
-      "ast": "d1b4ff3364335a0a",
-      "cst": "d7040e6e75e72bed"
+      "ast": "fbf1f9ff390c32a3",
+      "cst": "15087040ccd24c40"
     },
     "node_modules/@less/test-data/tests-unit/import/import/import-test-f.less": {
-      "ast": "8714f793a1e52eca",
-      "cst": "0bb3feecd418eff3"
+      "ast": "ca1d1abe585f369f",
+      "cst": "99167d154b298835"
     },
     "node_modules/@less/test-data/tests-unit/import/import/imports/font.less": {
-      "ast": "f2462f7233923654",
-      "cst": "f17f6a32bebf6a11"
+      "ast": "dc17a0e33e6ed4ef",
+      "cst": "69c20a5147542e56"
     },
     "node_modules/@less/test-data/tests-unit/import/import/imports/logo.less": {
-      "ast": "1547fc860a7cbdcd",
-      "cst": "576b8def419daa7f"
+      "ast": "77dbd70e53c71244",
+      "cst": "398afe5485db33c3"
     },
     "node_modules/@less/test-data/tests-unit/import/import/interpolation-vars.less": {
-      "ast": "735ebb704fcdeff6",
-      "cst": "107ae3b04c40683a"
+      "ast": "90a5a1131a6857b3",
+      "cst": "3dc586e640981e07"
     },
     "node_modules/@less/test-data/tests-unit/import/import/invalid-css.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "node_modules/@less/test-data/tests-unit/import/import/json/index.less": {
-      "ast": "36fa2df6457047a3",
-      "cst": "ea5211303b585d70"
+      "ast": "b7b96a6f4591d495",
+      "cst": "303d9602f8354da4"
     },
     "node_modules/@less/test-data/tests-unit/import/import/layer-import-2.css": {
-      "ast": "a0e6be23cc07e9a3",
-      "cst": "9c12e4251992556a"
+      "ast": "d3b8346b961da368",
+      "cst": "d56f548d33e1e5bd"
     },
     "node_modules/@less/test-data/tests-unit/import/import/layer-import-3.css": {
-      "ast": "5037b9712f99a5d1",
-      "cst": "aca51345c271e5f2"
+      "ast": "25ca970d209b3edd",
+      "cst": "914e27c2de2054c0"
     },
     "node_modules/@less/test-data/tests-unit/import/import/layer-import-4.css": {
-      "ast": "a0e6be23cc07e9a3",
-      "cst": "9c12e4251992556a"
+      "ast": "d3b8346b961da368",
+      "cst": "d56f548d33e1e5bd"
     },
     "node_modules/@less/test-data/tests-unit/import/import/layer-import-5.css": {
-      "ast": "a0e6be23cc07e9a3",
-      "cst": "9c12e4251992556a"
+      "ast": "d3b8346b961da368",
+      "cst": "d56f548d33e1e5bd"
     },
     "node_modules/@less/test-data/tests-unit/import/import/layer-import.less": {
-      "ast": "a0e6be23cc07e9a3",
-      "cst": "9c12e4251992556a"
+      "ast": "d3b8346b961da368",
+      "cst": "d56f548d33e1e5bd"
     },
     "node_modules/@less/test-data/tests-unit/import/import/urls.less": {
-      "ast": "5037b9712f99a5d1",
-      "cst": "7ae895a10b00a852"
+      "ast": "5f6bd3b9e6a36978",
+      "cst": "f60feb419728e264"
     },
     "node_modules/@less/test-data/tests-unit/import/legacy/import-reference-issues.css": {
-      "ast": "ced469ad4e9a9148",
-      "cst": "bc25439d3aad5851"
+      "ast": "918e7799b8ccffd0",
+      "cst": "442fff169c86cbb8"
     },
     "node_modules/@less/test-data/tests-unit/import/legacy/import-reference.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "c3a172fedec38c9a"
+      "ast": "733703c285609637",
+      "cst": "807f99a439fea7d2"
     },
     "node_modules/@less/test-data/tests-unit/javascript-REMOVED/legacy/javascript.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "2eee671716daf609"
+      "ast": "733703c285609637",
+      "cst": "338ac99f8a9c70d9"
     },
     "node_modules/@less/test-data/tests-unit/javascript-REMOVED/legacy/javascript.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "a57153eeda962ff7"
+      "ast": "3b23bd8d8134d736",
+      "cst": "6a11d9f673178855"
     },
     "node_modules/@less/test-data/tests-unit/layer/assets/import/layer-import.less": {
-      "ast": "9dcd9ef56eaf67e8",
-      "cst": "54be5e0d969efe27"
+      "ast": "6a63bc0198872014",
+      "cst": "5a85a425263b2c89"
     },
     "node_modules/@less/test-data/tests-unit/layer/import/layer-import.less": {
-      "ast": "a0e6be23cc07e9a3",
-      "cst": "9c12e4251992556a"
+      "ast": "d3b8346b961da368",
+      "cst": "d56f548d33e1e5bd"
     },
     "node_modules/@less/test-data/tests-unit/layer/layer.css": {
-      "ast": "312297bb5f41b806",
-      "cst": "d9200bcc4493d595"
+      "ast": "3c547560cc92f855",
+      "cst": "8f712357e68b305d"
     },
     "node_modules/@less/test-data/tests-unit/layer/layer.less": {
-      "ast": "197b783f8c7dac4d",
-      "cst": "f17a54bff9bf8606"
+      "ast": "993ba546e2f9d225",
+      "cst": "f8f836f12d744ec2"
     },
     "node_modules/@less/test-data/tests-unit/layer/legacy/layer.css": {
-      "ast": "1e6d9c6ed5f6171f",
-      "cst": "8670061f8a8c7d23"
+      "ast": "ec8313c8d3e2ada1",
+      "cst": "27a343e4cfd6be85"
     },
     "node_modules/@less/test-data/tests-unit/lazy-eval/lazy-eval.css": {
-      "ast": "0373fbbffd4b1ab2",
-      "cst": "34acdd07c7eb3ae7"
+      "ast": "e95acd1a3d143819",
+      "cst": "127e11cf5b31422c"
     },
     "node_modules/@less/test-data/tests-unit/lazy-eval/lazy-eval.less": {
-      "ast": "026d66c3f91fe156",
-      "cst": "4434613722c57c8e"
+      "ast": "26651eb4290d204a",
+      "cst": "e3b0e0c7f1523c76"
+    },
+    "node_modules/@less/test-data/tests-unit/math-css-vars/math-css-vars.css": {
+      "ast": "be68775c672d43d7",
+      "cst": "c473adac5f0ed66c"
+    },
+    "node_modules/@less/test-data/tests-unit/math-css-vars/math-css-vars.less": {
+      "ast": "c0515499e380370c",
+      "cst": "1b1e05ae2e926288"
     },
     "node_modules/@less/test-data/tests-unit/media/legacy/media.css": {
-      "ast": "efa5579b4d87fda2",
-      "cst": "ecb230e8123870bc"
+      "ast": "ddec795a278c94b8",
+      "cst": "35b834fb29a95e15"
     },
     "node_modules/@less/test-data/tests-unit/media/media.css": {
-      "ast": "160848582d8b99da",
-      "cst": "30f47382057ee23c"
+      "ast": "0af01831324019ec",
+      "cst": "ee45982fc75bafa5"
     },
     "node_modules/@less/test-data/tests-unit/media/media.less": {
-      "ast": "6f3b3610ad579d5f",
-      "cst": "f4e5b60e0168f49e"
+      "ast": "1ce231d24a1960d6",
+      "cst": "9ce5a90694ea763f"
     },
     "node_modules/@less/test-data/tests-unit/merge/merge.css": {
-      "ast": "1c31063febacc6d4",
-      "cst": "562aede09c31dd77"
+      "ast": "fa941c07a1b51101",
+      "cst": "431f3735c68d1007"
     },
     "node_modules/@less/test-data/tests-unit/merge/merge.less": {
-      "ast": "6566666eb35cd07c",
-      "cst": "1244ba6ce8262b1a"
+      "ast": "556f111d5baa466c",
+      "cst": "87868d6c2791a300"
     },
     "node_modules/@less/test-data/tests-unit/mixin-noparens/legacy/mixin-noparens.css": {
-      "ast": "d8007e725f1e8cfd",
-      "cst": "fa6e854180e32a77"
+      "ast": "7c25dcdc568668c4",
+      "cst": "0c1552982f4f53b3"
     },
     "node_modules/@less/test-data/tests-unit/mixin-noparens/mixin-noparens.css": {
-      "ast": "5f32a964221c355a",
-      "cst": "f0e6e1f231e612fc"
+      "ast": "a589cd6f56811559",
+      "cst": "4071577e2ee0ea7e"
     },
     "node_modules/@less/test-data/tests-unit/mixin-noparens/mixin-noparens.less": {
-      "ast": "e1c68ec39f745ea1",
-      "cst": "6375867a3244e7e1"
+      "ast": "ab56d8b7a252958f",
+      "cst": "10a5cef71547fac8"
     },
     "node_modules/@less/test-data/tests-unit/mixins-closure/legacy/mixins-closure.css": {
-      "ast": "066371f4557f3449",
-      "cst": "551a548934fb2db0"
+      "ast": "6f562fccc2fcfab6",
+      "cst": "c118f01617a4b8d1"
     },
     "node_modules/@less/test-data/tests-unit/mixins-closure/mixins-closure.css": {
-      "ast": "6cd982e3ea09750b",
-      "cst": "ca5d77ed14e4c04c"
+      "ast": "4771f64ed47403d0",
+      "cst": "9a8df09d91a264de"
     },
     "node_modules/@less/test-data/tests-unit/mixins-closure/mixins-closure.less": {
-      "ast": "f57d31e6b22d9747",
-      "cst": "c18562c4547f7fcd"
+      "ast": "688a991ed08fc661",
+      "cst": "5e0327d055a68bbb"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards-default-func/legacy/mixins-guards-default-func.css": {
-      "ast": "fb1b112e01c5088c",
-      "cst": "c2d87c4da46f76ec"
+      "ast": "4f8ce5da5d58c0a6",
+      "cst": "b5949afda230e331"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards-default-func/mixins-guards-default-func.css": {
-      "ast": "21605fe5fd526b47",
-      "cst": "f1da568a7f65cce1"
+      "ast": "64b544a195f10ab2",
+      "cst": "526a518423b6281f"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards-default-func/mixins-guards-default-func.less": {
-      "ast": "505fcdde4dc8dcbe",
-      "cst": "0ea71bbfdf2d9cd4"
+      "ast": "9d872fdd73f7ecc7",
+      "cst": "5c12b7763ed497de"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards/legacy/mixins-guards.css": {
-      "ast": "f67f2b223bff2305",
-      "cst": "bffdc2921b42b7b6"
+      "ast": "6eccb21b0e4c116b",
+      "cst": "38df1eb084bf371c"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards/mixins-guards.css": {
-      "ast": "2a3afbaa8211c18b",
-      "cst": "f2a8a31015fe16da"
+      "ast": "34818aebb84a2145",
+      "cst": "c8a0704c62686a5d"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards/mixins-guards.less": {
-      "ast": "3ee823d87f06a4b6",
-      "cst": "af2276964a586c8a"
+      "ast": "6eda5880b4fbfaae",
+      "cst": "e5aca7d676326536"
     },
     "node_modules/@less/test-data/tests-unit/mixins-important/mixins-important.css": {
-      "ast": "470c62036a8059d8",
-      "cst": "26f7bb261bd58688"
+      "ast": "27331d5fdefba1da",
+      "cst": "18ff7cb25e4838d3"
     },
     "node_modules/@less/test-data/tests-unit/mixins-important/mixins-important.less": {
-      "ast": "cebfebc95b0d4424",
-      "cst": "42795ae21834c912"
+      "ast": "331836a06665aa9a",
+      "cst": "92258a377f63cbb5"
     },
     "node_modules/@less/test-data/tests-unit/mixins-interpolated/legacy/mixins-interpolated.css": {
-      "ast": "eccff3390a0b5195",
-      "cst": "cb407df623f868c3"
+      "ast": "0f47c7755039b6ea",
+      "cst": "7e8eafc44b7e64a2"
     },
     "node_modules/@less/test-data/tests-unit/mixins-interpolated/mixins-interpolated.css": {
-      "ast": "f9e112b7f0730cc9",
-      "cst": "834878eeb1160550"
+      "ast": "3afcd9a122774217",
+      "cst": "d6aa883ae229b0cd"
     },
     "node_modules/@less/test-data/tests-unit/mixins-interpolated/mixins-interpolated.less": {
-      "ast": "85c7481a17d5b5a7",
-      "cst": "94221fa6d0a475da"
+      "ast": "22433445ef561d18",
+      "cst": "faa263f7339406a0"
     },
     "node_modules/@less/test-data/tests-unit/mixins-named-args/mixins-named-args.css": {
-      "ast": "9db6292243b453e1",
-      "cst": "7b124de6f1751939"
+      "ast": "41ff98b64f9e6712",
+      "cst": "0fa2871947e10626"
     },
     "node_modules/@less/test-data/tests-unit/mixins-named-args/mixins-named-args.less": {
-      "ast": "93153610d3ac7c3d",
-      "cst": "9b40f5cf58bc2b83"
+      "ast": "0e8bcc855cca0e94",
+      "cst": "5bc10cff4a4de96c"
     },
     "node_modules/@less/test-data/tests-unit/mixins-nested/legacy/mixins-nested.css": {
-      "ast": "7cc8ea511d7c4463",
-      "cst": "b1d13d6ee17a114f"
+      "ast": "b2af2271f535c37f",
+      "cst": "c04fe769602239c2"
     },
     "node_modules/@less/test-data/tests-unit/mixins-nested/mixins-nested.css": {
-      "ast": "77e736aed7f3cccd",
-      "cst": "1bf21e270d4c3ff9"
+      "ast": "8a9499da5d034fad",
+      "cst": "a549ac87c5ddeca4"
     },
     "node_modules/@less/test-data/tests-unit/mixins-nested/mixins-nested.less": {
-      "ast": "edecfe643ebe6449",
-      "cst": "66b17a8f7224975c"
+      "ast": "0fe14af3fd9a8ccc",
+      "cst": "fd0deb480ed3f3f6"
     },
     "node_modules/@less/test-data/tests-unit/mixins-pattern/mixins-pattern.css": {
-      "ast": "91917d54532c4aa2",
-      "cst": "376525fa23e28e3e"
+      "ast": "27a7b98a458a485e",
+      "cst": "452bfbc0b8a020ff"
     },
     "node_modules/@less/test-data/tests-unit/mixins-pattern/mixins-pattern.less": {
-      "ast": "2a198b25ba2ae8be",
-      "cst": "90ccfaac33ef5e23"
+      "ast": "a49ad6117eed2af6",
+      "cst": "76afbcf526e17719"
     },
     "node_modules/@less/test-data/tests-unit/mixins/legacy/maps.css": {
-      "ast": "d4bd0cdfbb167e9b",
-      "cst": "bcfcc5897c951a8a"
+      "ast": "4dbe40dcc30491e1",
+      "cst": "c9467adc1ded7982"
     },
     "node_modules/@less/test-data/tests-unit/mixins/legacy/mixins.css": {
-      "ast": "a1f6bb90585ecb25",
-      "cst": "2a2d98e3ddd888c4"
+      "ast": "b543648284911682",
+      "cst": "dce793b823d7f77b"
     },
     "node_modules/@less/test-data/tests-unit/mixins/maps.css": {
-      "ast": "7428092f4cd22729",
-      "cst": "babdd1189635bc7b"
+      "ast": "63d84695b6679250",
+      "cst": "82b8b5724204b39c"
     },
     "node_modules/@less/test-data/tests-unit/mixins/maps.less": {
-      "ast": "082c878bcda64a91",
-      "cst": "8db5ebd398e0f64a"
+      "ast": "fd8762c3add25b62",
+      "cst": "3d1a2eb4d81568c9"
     },
     "node_modules/@less/test-data/tests-unit/mixins/mixins-advanced.css": {
-      "ast": "60befa2971c4d444",
-      "cst": "841520fcde813410"
+      "ast": "52c9e4fead55e7aa",
+      "cst": "e5ff5a71589d7557"
     },
     "node_modules/@less/test-data/tests-unit/mixins/mixins-advanced.less": {
-      "ast": "f32c90a80c0165e9",
-      "cst": "cfbfa3552e480004"
+      "ast": "71781dea6c666460",
+      "cst": "7b84a88fd30de769"
     },
     "node_modules/@less/test-data/tests-unit/mixins/mixins.css": {
-      "ast": "0fbfd6ae95fb4ba2",
-      "cst": "4be6b9766a9a54e4"
+      "ast": "5dcad958a96c8ac0",
+      "cst": "d8a01c311883362f"
     },
     "node_modules/@less/test-data/tests-unit/mixins/mixins.less": {
-      "ast": "16dd9cdfef3ae6d9",
-      "cst": "bac2599a10c3862c"
+      "ast": "09d3e0d9bad09971",
+      "cst": "07e766e2dad36941"
     },
     "node_modules/@less/test-data/tests-unit/namespace-targeted/namespace-targeted.css": {
-      "ast": "2e1a43cf299c5a0f",
-      "cst": "c0d033bcc229b50d"
+      "ast": "f188aedb99db90ca",
+      "cst": "79a49a8f5c7b0c7f"
     },
     "node_modules/@less/test-data/tests-unit/namespace-targeted/namespace-targeted.less": {
-      "ast": "7330ba9dd33ea9eb",
-      "cst": "8ad7020e17ed1ede"
+      "ast": "5e5a8f0a88a82e5f",
+      "cst": "4a1cc45687da8537"
     },
     "node_modules/@less/test-data/tests-unit/nesting/legacy/nesting.css": {
-      "ast": "544e99cd5866e920",
-      "cst": "0d0d8f198fe50df5"
+      "ast": "db069283f4cdffd0",
+      "cst": "3ad8b3a904773060"
     },
     "node_modules/@less/test-data/tests-unit/nesting/nesting-uncollapsed.css": {
-      "ast": "2bb49738f5dcad4b",
-      "cst": "2ed525ef91ae063a"
+      "ast": "64866bdd836ee801",
+      "cst": "9f7864b5493767ab"
     },
     "node_modules/@less/test-data/tests-unit/nesting/nesting.css": {
-      "ast": "7573da6b689e85b2",
-      "cst": "8fd1e561fe3618b5"
+      "ast": "0763415d37feebc4",
+      "cst": "d6479e8bce404f98"
     },
     "node_modules/@less/test-data/tests-unit/nesting/nesting.less": {
-      "ast": "73ff7f5a8b168716",
-      "cst": "e3ac526528de7dc4"
+      "ast": "5a3c8f9ab41e1a52",
+      "cst": "8880277c3525e79c"
     },
     "node_modules/@less/test-data/tests-unit/no-output/no-output.css": {
-      "ast": "5037b9712f99a5d1",
-      "cst": "aca51345c271e5f2"
+      "ast": "25ca970d209b3edd",
+      "cst": "914e27c2de2054c0"
     },
     "node_modules/@less/test-data/tests-unit/no-output/no-output.less": {
-      "ast": "648ab657c30fc7ed",
-      "cst": "768fb479d7d33181"
+      "ast": "659eeaddeae8b924",
+      "cst": "77a6f99f6b09dbfe"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations-advanced.css": {
-      "ast": "efdb1c10cf25260c",
-      "cst": "1c84e1b6379b3015"
+      "ast": "3e8b197942de9230",
+      "cst": "0bd53a617058e416"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations-advanced.less": {
-      "ast": "9461c86506cbf18c",
-      "cst": "a19c89fadc9d9afc"
+      "ast": "273129c119f90152",
+      "cst": "e9dddcbc4812d3d9"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations.css": {
-      "ast": "0b1b524d0d60050d",
-      "cst": "b9436691e8670cea"
+      "ast": "ab0f631fbb2f93ae",
+      "cst": "0239b50563927c64"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations.less": {
-      "ast": "1fe3b3351dc1a7ec",
-      "cst": "8c4ca8235ea9c650"
+      "ast": "d7c610344808b25b",
+      "cst": "f3c971c5d881fb78"
     },
     "node_modules/@less/test-data/tests-unit/parse-interpolation/legacy/parse-interpolation.css": {
-      "ast": "cc0cf64b37975367",
-      "cst": "870608f5a0e259a4"
+      "ast": "53067a3eea45833f",
+      "cst": "a8ab2e4bf48d1237"
     },
     "node_modules/@less/test-data/tests-unit/parse-interpolation/parse-interpolation.css": {
-      "ast": "33015ae59fb87027",
-      "cst": "9193cbd0a21f1f4e"
+      "ast": "ebf458eb52e1e633",
+      "cst": "f1f2cd36491286b7"
     },
     "node_modules/@less/test-data/tests-unit/parse-interpolation/parse-interpolation.less": {
-      "ast": "3a3652972d468263",
-      "cst": "aed6952328723929"
+      "ast": "f272f9e383f5f7ec",
+      "cst": "ba15e3c665fc2b38"
     },
     "node_modules/@less/test-data/tests-unit/parser-property-interp/parser-property-interp.css": {
-      "ast": "bbbac9f185f383a1",
-      "cst": "ec15dfb5ae3e9f83"
+      "ast": "019103e29c13d2e8",
+      "cst": "7cf286be84f017d2"
     },
     "node_modules/@less/test-data/tests-unit/parser-property-interp/parser-property-interp.less": {
-      "ast": "1ef6c9db44a38cd2",
-      "cst": "1ef62af0a8e42f9e"
+      "ast": "e6a78b0b9d9dd36a",
+      "cst": "9f502e7a6bccb504"
     },
     "node_modules/@less/test-data/tests-unit/parser-slashed-combinator/parser-slashed-combinator.css": {
-      "ast": "5037b9712f99a5d1",
-      "cst": "0a63495a13784163"
+      "ast": "9d5b1ed4674028e9",
+      "cst": "d6b72f44f0bb4f7d"
     },
     "node_modules/@less/test-data/tests-unit/parser-slashed-combinator/parser-slashed-combinator.less": {
-      "ast": "5037b9712f99a5d1",
-      "cst": "478674530a5d86ce"
+      "ast": "2d9a7b7b1c625c4a",
+      "cst": "4362dd27f6a93041"
     },
     "node_modules/@less/test-data/tests-unit/permissive-parse/permissive-parse.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "37a28f1833889ecd"
+      "ast": "ea8f2e3a52e6673f",
+      "cst": "2bd14241cd3fe8ff"
     },
     "node_modules/@less/test-data/tests-unit/permissive-parse/permissive-parse.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "3bfdfbf544a6aeb0"
+      "ast": "3723f4512753fd7f",
+      "cst": "b0d033c8b6c99053"
     },
     "node_modules/@less/test-data/tests-unit/plugi/plugi.css": {
-      "ast": "f5abfaf98304b639",
-      "cst": "3dd8124d68e755eb"
+      "ast": "461fb4b76f18ee98",
+      "cst": "b8b8675ef2ebd8c8"
     },
     "node_modules/@less/test-data/tests-unit/plugi/plugi.less": {
-      "ast": "f5abfaf98304b639",
-      "cst": "afa31e574b57e03b"
+      "ast": "69bbd48548cbfbdc",
+      "cst": "2d242a1073f39d16"
     },
     "node_modules/@less/test-data/tests-unit/plugin-module/plugin-module.css": {
-      "ast": "40670974751a13ea",
-      "cst": "4b8a059078a36813"
+      "ast": "59cc9453e3b72dbe",
+      "cst": "8916a755a717fd78"
     },
     "node_modules/@less/test-data/tests-unit/plugin-module/plugin-module.less": {
-      "ast": "31506901b9a5f382",
-      "cst": "96912e8666a9e2e9"
+      "ast": "eb731dba9a9563cb",
+      "cst": "4fd8b821fb02e814"
     },
     "node_modules/@less/test-data/tests-unit/plugin-preeval/plugin-preeval.css": {
-      "ast": "9e0415e649b61c41",
-      "cst": "184d736305072487"
+      "ast": "2040e05103b07bba",
+      "cst": "e7ed6dfb7fdd1567"
     },
     "node_modules/@less/test-data/tests-unit/plugin-preeval/plugin-preeval.less": {
-      "ast": "e6985b3fec90d61d",
-      "cst": "ab90c5121e2942ef"
+      "ast": "218c9a47a46b1b7c",
+      "cst": "1b68cc8d45e724e5"
     },
     "node_modules/@less/test-data/tests-unit/plugin/plugin.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "d3bf7735a41c5518"
+      "ast": "ab8cef48d114a9e6",
+      "cst": "06bb43c802529acc"
     },
     "node_modules/@less/test-data/tests-unit/plugin/plugin.less": {
-      "ast": "9c8e373ccb1cdc72",
-      "cst": "808a8fed1caa4794"
+      "ast": "141125b4bbe1aed7",
+      "cst": "2f39fc2c063af040"
     },
     "node_modules/@less/test-data/tests-unit/property-accessors/legacy/property-accessors.css": {
-      "ast": "071c65cd6b0f4089",
-      "cst": "21fbe6ada4ca2444"
+      "ast": "5373ab3410f86489",
+      "cst": "309c78ff8eda653b"
     },
     "node_modules/@less/test-data/tests-unit/property-accessors/property-accessors.css": {
-      "ast": "d23aecabd33ab097",
-      "cst": "c195d1bc94105ea1"
+      "ast": "c342d76e8bad1f8a",
+      "cst": "7ca3cf81a8e0afcc"
     },
     "node_modules/@less/test-data/tests-unit/property-accessors/property-accessors.less": {
-      "ast": "e063c2a6108ff925",
-      "cst": "3c51e49df55ac349"
+      "ast": "97cd55ea559935f3",
+      "cst": "2caea7aa92455579"
     },
     "node_modules/@less/test-data/tests-unit/property-name-interp/legacy/property-name-interp.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "f70bb45dba098624"
+      "ast": "733703c285609637",
+      "cst": "2bab6a918153988b"
     },
     "node_modules/@less/test-data/tests-unit/property-name-interp/property-name-interp.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "30427ac2b964cb77"
+      "ast": "733703c285609637",
+      "cst": "9debd876f0ccd754"
     },
     "node_modules/@less/test-data/tests-unit/property-name-interp/property-name-interp.less": {
-      "ast": "eee650e1b95b6be3",
-      "cst": "8a2de366adf21e22"
+      "ast": "9c6eb02dcf0ca31d",
+      "cst": "bd9c9ea4bb7bcccc"
     },
     "node_modules/@less/test-data/tests-unit/property-targeted/legacy/property-targeted.css": {
-      "ast": "f77bc99fd9ec1351",
-      "cst": "a0c95b8ea4638d86"
+      "ast": "c056291d41047c31",
+      "cst": "0ef02d9585e8b7a2"
     },
     "node_modules/@less/test-data/tests-unit/property-targeted/property-targeted.css": {
-      "ast": "b5b1fb187203fcea",
-      "cst": "d2e6884f95fd1e5a"
+      "ast": "2f3e72f42636108a",
+      "cst": "7ea468211ba8e5b7"
     },
     "node_modules/@less/test-data/tests-unit/property-targeted/property-targeted.less": {
-      "ast": "703a89cb358d48ec",
-      "cst": "2a14d94742cb3fea"
+      "ast": "2f18ab47277208a5",
+      "cst": "5e092e5c1923e956"
     },
     "node_modules/@less/test-data/tests-unit/rulesets/legacy/rulesets.css": {
-      "ast": "80d0002faca12833",
-      "cst": "b9112bec16f3e0d9"
+      "ast": "51aa2152d988f19c",
+      "cst": "d48fb7a96f8e898a"
     },
     "node_modules/@less/test-data/tests-unit/rulesets/rulesets.css": {
-      "ast": "b801fd7568f506d7",
-      "cst": "7fc556a1948738de"
+      "ast": "8699adfa33e70f74",
+      "cst": "22f616e44f4fdcec"
     },
     "node_modules/@less/test-data/tests-unit/rulesets/rulesets.less": {
-      "ast": "b801fd7568f506d7",
-      "cst": "105a874210b8ec6d"
+      "ast": "3435ddeaf31a359a",
+      "cst": "3c997d959b6dbc00"
     },
     "node_modules/@less/test-data/tests-unit/scope/legacy/scope.css": {
-      "ast": "6b41b0a3804c8130",
-      "cst": "96893813802bbae2"
+      "ast": "10f519059f959cb6",
+      "cst": "507fe948a1d68819"
     },
     "node_modules/@less/test-data/tests-unit/scope/scope.css": {
-      "ast": "2d580eeb95e728ed",
-      "cst": "cfdd2cb7d819f7f3"
+      "ast": "1e440113c0c935a3",
+      "cst": "fd335e92939d9e97"
     },
     "node_modules/@less/test-data/tests-unit/scope/scope.less": {
-      "ast": "edeebd620a67a748",
-      "cst": "4f9331032b486f89"
+      "ast": "85d07809171fbb54",
+      "cst": "91d712601c25c541"
     },
     "node_modules/@less/test-data/tests-unit/selectors/selectors.css": {
-      "ast": "d6de6abe1db71d2d",
-      "cst": "2481cc898ac9a176"
+      "ast": "f2518832a6d7a19b",
+      "cst": "a8a443c1e1caa25d"
     },
     "node_modules/@less/test-data/tests-unit/selectors/selectors.less": {
-      "ast": "4645e7b4a3a9edcd",
-      "cst": "5dfba000dea9ca98"
+      "ast": "b3fe8c103077e571",
+      "cst": "533ac2fe9794a66c"
     },
     "node_modules/@less/test-data/tests-unit/starting-style/starting-style.css": {
-      "ast": "120f13e720e261fb",
-      "cst": "e97e0da9d5266fd9"
+      "ast": "5ba136faf1183927",
+      "cst": "f8f775f8a9b1e5d4"
     },
     "node_modules/@less/test-data/tests-unit/starting-style/starting-style.less": {
-      "ast": "a73503e7a07a9040",
-      "cst": "a6d516beb1bd0a36"
+      "ast": "74886cda10fb961a",
+      "cst": "473e3126deb934c6"
     },
     "node_modules/@less/test-data/tests-unit/strings/strings.css": {
-      "ast": "7342e10e5e0a307d",
-      "cst": "a836616584492608"
+      "ast": "2c03a3b17a717365",
+      "cst": "3de59760670ddb81"
     },
     "node_modules/@less/test-data/tests-unit/strings/strings.less": {
-      "ast": "afc98d961b27ffa0",
-      "cst": "4190e4c6bd8ebff5"
+      "ast": "d3913388e23e60bf",
+      "cst": "16bba16f23f2bfc7"
     },
     "node_modules/@less/test-data/tests-unit/tailwind/tailwind.css": {
-      "ast": "cf63ab71c0d58769",
-      "cst": "2dc1de625aa737be"
+      "ast": "9c34cb1ce458a63c",
+      "cst": "d8bae19c47614c2f"
     },
     "node_modules/@less/test-data/tests-unit/tailwind/tailwind.less": {
-      "ast": "cf63ab71c0d58769",
-      "cst": "2dc1de625aa737be"
+      "ast": "9c34cb1ce458a63c",
+      "cst": "d8bae19c47614c2f"
     },
     "node_modules/@less/test-data/tests-unit/urls/actual.css": {
-      "ast": "a3dbdbf90151b7cd",
-      "cst": "bfb68db52125c6fe"
+      "ast": "05875765c152f691",
+      "cst": "afb3c3d9ca7ca2e8"
     },
     "node_modules/@less/test-data/tests-unit/urls/assets/nested-gradient-with-svg-gradient/mixin-consumer.less": {
-      "ast": "082307bc1134e513",
-      "cst": "72413bc2fc0a66b2"
+      "ast": "d3cfe10339eb9701",
+      "cst": "61ef4caf6510c556"
     },
     "node_modules/@less/test-data/tests-unit/urls/assets/nested-gradient-with-svg-gradient/svg-gradient-mixin.less": {
-      "ast": "c545196cb54aa9ff",
-      "cst": "f83e165d63286cec"
+      "ast": "944f9c2cce816a57",
+      "cst": "e5896833ad6d6f71"
     },
     "node_modules/@less/test-data/tests-unit/urls/css/background.css": {
-      "ast": "cc93056aa03d41d0",
-      "cst": "f77f748d30ba714f"
+      "ast": "b5f803cf12bd49e3",
+      "cst": "9874a1b2048ac887"
     },
     "node_modules/@less/test-data/tests-unit/urls/import/import-and-relative-paths-test.less": {
-      "ast": "900623bdfeedc205",
-      "cst": "6d156d8fdc377803"
+      "ast": "ed1e02f718bade2e",
+      "cst": "1f0a08c9483092cb"
     },
     "node_modules/@less/test-data/tests-unit/urls/import/import-test-d.css": {
-      "ast": "c1c6e6a715a6be66",
-      "cst": "f363fee45a02a14b"
+      "ast": "7bd1e29aa1092926",
+      "cst": "ebfb993af5c49781"
     },
     "node_modules/@less/test-data/tests-unit/urls/import/imports/font.less": {
-      "ast": "f2462f7233923654",
-      "cst": "f17f6a32bebf6a11"
+      "ast": "dc17a0e33e6ed4ef",
+      "cst": "69c20a5147542e56"
     },
     "node_modules/@less/test-data/tests-unit/urls/import/imports/logo.less": {
-      "ast": "8ad4754512167032",
-      "cst": "9170448d9225b3d5"
+      "ast": "6871c99af8cae0c7",
+      "cst": "efc89c285d2af1c4"
     },
     "node_modules/@less/test-data/tests-unit/urls/nested-gradient-with-svg-gradient/mixin-consumer.less": {
-      "ast": "03f114bc465ba050",
-      "cst": "191cefab4bd78dca"
+      "ast": "c6ff51598550307d",
+      "cst": "d8fac5db5f332678"
     },
     "node_modules/@less/test-data/tests-unit/urls/nested-gradient-with-svg-gradient/svg-gradient-mixin.less": {
-      "ast": "c545196cb54aa9ff",
-      "cst": "f83e165d63286cec"
+      "ast": "944f9c2cce816a57",
+      "cst": "e5896833ad6d6f71"
     },
     "node_modules/@less/test-data/tests-unit/urls/urls.css": {
-      "ast": "71476579db4ac3d6",
-      "cst": "d987c6976a297b07"
+      "ast": "5b99fc4731e46f21",
+      "cst": "d0d8b55c61b48cfe"
     },
     "node_modules/@less/test-data/tests-unit/urls/urls.less": {
-      "ast": "12a22de5b9ead437",
-      "cst": "d3e159760068d781"
+      "ast": "aaf76ccc96b47bea",
+      "cst": "a338f58ceb6e5332"
     },
     "node_modules/@less/test-data/tests-unit/variables-in-at-rules/variables-in-at-rules.css": {
-      "ast": "5eb48dcde21533fa",
-      "cst": "c752a56f623de702"
+      "ast": "40c5022c0a2c0e5b",
+      "cst": "d2347bbd37df9b2f"
     },
     "node_modules/@less/test-data/tests-unit/variables-in-at-rules/variables-in-at-rules.less": {
-      "ast": "da6390bf6bba3c35",
-      "cst": "c01737410fe4f40b"
+      "ast": "5b544cfb162e161c",
+      "cst": "0a35cf42e6e1989d"
     },
     "node_modules/@less/test-data/tests-unit/variables/legacy/variable-advanced.css": {
-      "ast": "2bb960e92c6ee758",
-      "cst": "3beeefc9a4d85099"
+      "ast": "05ee9d17f52fe240",
+      "cst": "f49a2fa572e842a3"
     },
     "node_modules/@less/test-data/tests-unit/variables/variable-advanced.css": {
-      "ast": "e92acab1c56ef32c",
-      "cst": "a546462e1b62821a"
+      "ast": "5b509e5c4ca8fc38",
+      "cst": "18ea639bf169e3d4"
     },
     "node_modules/@less/test-data/tests-unit/variables/variable-advanced.less": {
-      "ast": "ad94365a6c977919",
-      "cst": "b661a0bf4dbec180"
+      "ast": "e17183d4b08c6af5",
+      "cst": "cf50a05eac19f825"
     },
     "node_modules/@less/test-data/tests-unit/variables/variables.css": {
-      "ast": "d68071617e9f2592",
-      "cst": "144ac1086dfd3315"
+      "ast": "f75ab87dab09ea28",
+      "cst": "19789fd5303f0840"
     },
     "node_modules/@less/test-data/tests-unit/variables/variables.less": {
-      "ast": "cd453b66bb877ed1",
-      "cst": "ff6d10d5c8de7b67"
+      "ast": "66225b267dea8b76",
+      "cst": "9671168a7a46eca6"
     },
     "node_modules/@less/test-data/tests-unit/whitespace/legacy/whitespace.css": {
-      "ast": "4931fdd90e8ac233",
-      "cst": "2ee1a1ff1db02a52"
+      "ast": "edc5442631ffb077",
+      "cst": "c6d7dac24facd584"
     },
     "node_modules/@less/test-data/tests-unit/whitespace/whitespace.css": {
-      "ast": "92d72dbf73d976dd",
-      "cst": "b4a8bf7cdffbdca9"
+      "ast": "0c5cd06c77d222c8",
+      "cst": "3729cfe92f646fa3"
     },
     "node_modules/@less/test-data/tests-unit/whitespace/whitespace.less": {
-      "ast": "1cee087e75338381",
-      "cst": "cdde08b9b5cb55df"
+      "ast": "5855c29cd3f79acf",
+      "cst": "85760cf779027881"
     },
     "packages/jess/test/files/import-func.css": {
-      "ast": "54e838e78c04de7c",
-      "cst": "7c9fd90226096a3f"
+      "ast": "06db0880b7449d11",
+      "cst": "eaafbc213bc48e26"
     },
     "packages/jess/test/files/include.css": {
-      "ast": "cb0ff98c70822692",
-      "cst": "fa88bef03b6a5da2"
+      "ast": "f7cf88d0ad0463fe",
+      "cst": "36b6dd2a7ddc9234"
     },
     "packages/jess/test/files/mixin.css": {
-      "ast": "c76fce5a8ec1d693",
-      "cst": "e98ffb27ad632ea9"
+      "ast": "764a718c0e55b14e",
+      "cst": "7911e9b9eb70db14"
     },
     "packages/jess/test/files/nested.css": {
-      "ast": "261f43c2638a07e6",
-      "cst": "2784783ddfb11eaa"
+      "ast": "fda3f7a298fe7bc8",
+      "cst": "c3ead761f4aa72dc"
     },
     "packages/jess/test/files/simple.css": {
-      "ast": "54001f7f3486ff7a",
-      "cst": "85c5ecb893b42d1b"
+      "ast": "36415c7dbc6fb273",
+      "cst": "b93f31c02cb275b1"
     },
     "packages/jess/test/fixtures/invalid.less": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/jess/test/fixtures/warning.less": {
-      "ast": "df242571c1125410",
-      "cst": "4b7017af04361689"
+      "ast": "3d82afb4d3b905b6",
+      "cst": "63ad07a170a0c7e8"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/base.less": {
-      "ast": "a00d691ba68f0457",
-      "cst": "aacc576e169d4189"
+      "ast": "c087a99b8b7e41ef",
+      "cst": "179700384362d684"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/main.less": {
-      "ast": "61e9fd2fc69bb1c0",
-      "cst": "eb55e51448267e56"
+      "ast": "1c3e9fb0cc072570",
+      "cst": "ad7b6a5d35c8ec02"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/ref-base.less": {
-      "ast": "769ddc07f85a214e",
-      "cst": "622ef1eb9829bef2"
+      "ast": "f84b0da271de53e7",
+      "cst": "3a9f963e6808cee8"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/ref-main.less": {
-      "ast": "0b8961e38e87709c",
-      "cst": "e33f78b7b8135e1b"
+      "ast": "08c07344b5b51c25",
+      "cst": "543b6a7a0c35d148"
     },
     "packages/jess/test/less/fixtures/import-media-query/imported.less": {
-      "ast": "d1b4ff3364335a0a",
-      "cst": "4671d2cccd13e331"
+      "ast": "e3463fac769e0a5d",
+      "cst": "aaabeccd842c033d"
     },
     "packages/jess/test/less/fixtures/import-media-query/interpolated-main.less": {
-      "ast": "f3335de5ec9ed70a",
-      "cst": "61c4b5dfcf92b665"
+      "ast": "d966d18590fcaf11",
+      "cst": "64a4a7c16d79b250"
     },
     "packages/jess/test/less/fixtures/import-media-query/interpolated-media.less": {
-      "ast": "54bac2e6d0c553f6",
-      "cst": "b74585e74c0131b6"
+      "ast": "66ae25317fde1f45",
+      "cst": "e3a39bf39cc890a2"
     },
     "packages/jess/test/less/fixtures/import-media-query/main.less": {
-      "ast": "547a524ff386c0b9",
-      "cst": "33523830cf9aaf27"
+      "ast": "c96ccfcf787c5f0d",
+      "cst": "70ccf1a02347cf13"
     },
     "packages/jess/test/less/fixtures/merge-fallback-important.css": {
-      "ast": "fce8a19c8370495a",
-      "cst": "596d49494bebfadf"
+      "ast": "96f9cb34bab3ecb0",
+      "cst": "e97c5db090ff7476"
     },
     "packages/jess/test/less/fixtures/merge-fallback-important.less": {
-      "ast": "9b0e241e6b962a9e",
-      "cst": "dc2ecbc936c56ce3"
+      "ast": "7d4d58385ac44378",
+      "cst": "3a6fb6219cc0d5ce"
     },
     "packages/jess/test/less/test-import.less": {
-      "ast": "e403f2789abe4df8",
-      "cst": "9075eb1a99c7fe23"
+      "ast": "3ac97d9868f954cb",
+      "cst": "184811ca138ccdd6"
     },
     "packages/jess/test/less/test.css": {
-      "ast": "f5c0781caff58599",
-      "cst": "6815ab4c338dc043"
+      "ast": "d7b9194d7ce70879",
+      "cst": "7e80f90ff6442352"
     },
     "packages/jess/test/less/test.less": {
-      "ast": "f084d14fff2b7ec8",
-      "cst": "72043a96c18f5fae"
+      "ast": "38d98c421da9cc75",
+      "cst": "39909a161a5dd126"
     },
     "packages/syntax/css/css-parser/test/css/apply.css": {
-      "ast": "f2ff0661887390f5",
-      "cst": "801b630bcabe86e4"
+      "ast": "58c2a7bff63f73c8",
+      "cst": "4a6e5ea2fcd35394"
     },
     "packages/syntax/css/css-parser/test/css/atrule-decls.css": {
-      "ast": "5fe206e15022f8c6",
-      "cst": "88a299318a708ebb"
+      "ast": "5cb3d5a6efad2054",
+      "cst": "af2caef3872a265f"
     },
     "packages/syntax/css/css-parser/test/css/atrule-empty.css": {
-      "ast": "3f52593529603a9e",
-      "cst": "a824d9932ef6fc20"
+      "ast": "1edde776f0f8dcd3",
+      "cst": "8356d3f9aa13c78d"
     },
     "packages/syntax/css/css-parser/test/css/atrule-inside.css": {
-      "ast": "c1d3c971fbc10102",
-      "cst": "1dda9632904ddbb5"
+      "ast": "74a82d1cc724b1e9",
+      "cst": "14f40c16fdd5feea"
     },
     "packages/syntax/css/css-parser/test/css/atrule-no-params.css": {
-      "ast": "16700c46933109f8",
-      "cst": "9e4c3db90f3d2743"
+      "ast": "c7efd1ea7a1a434d",
+      "cst": "41530d6d31d42758"
     },
     "packages/syntax/css/css-parser/test/css/atrule-no-space.css": {
-      "ast": "2adb2c98ea723e37",
-      "cst": "85b2fd29d0314998"
+      "ast": "ce5a7d860839be96",
+      "cst": "dce48c6dec7e5322"
     },
     "packages/syntax/css/css-parser/test/css/atrule-params.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "dc0db8777be661f7",
+      "cst": "639ce3682120b6cc"
     },
     "packages/syntax/css/css-parser/test/css/atrule-rules.css": {
-      "ast": "52258b48178a9618",
-      "cst": "c86ea1207c99875e"
+      "ast": "f497e660c6c9807c",
+      "cst": "15584e4b52482e3a"
     },
     "packages/syntax/css/css-parser/test/css/atrule-unknown.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "5213a5bc264f162d",
+      "cst": "6ffb09d1002dac69"
     },
     "packages/syntax/css/css-parser/test/css/between.css": {
-      "ast": "15ededb243efd4ee",
-      "cst": "7ae84516df3e15fc"
+      "ast": "8e2c237e84f39ff1",
+      "cst": "d17b01d39fd1af01"
     },
     "packages/syntax/css/css-parser/test/css/colon-selector.css": {
-      "ast": "0db05ccf9c01d30b",
-      "cst": "64c8a37f6b96d500"
+      "ast": "1e85c2cb505e2e13",
+      "cst": "c9798f1c9921c063"
     },
     "packages/syntax/css/css-parser/test/css/comments.css": {
-      "ast": "bde00fa03b765fb3",
-      "cst": "c1d9b8ef5e747dcb"
+      "ast": "0ce8f3410c51e787",
+      "cst": "2afb66cde6c6ee7b"
     },
     "packages/syntax/css/css-parser/test/css/custom-properties.css": {
-      "ast": "99a63da4f741d3ee",
-      "cst": "5febac1349f30893"
+      "ast": "7011c9f40439f6d4",
+      "cst": "98e40b5518232423"
     },
     "packages/syntax/css/css-parser/test/css/decls.css": {
-      "ast": "af5823da09a01e35",
-      "cst": "39e0fbf26e740c33"
+      "ast": "a624564901627fed",
+      "cst": "6a23029f5e2160c0"
     },
     "packages/syntax/css/css-parser/test/css/empty.css": {
-      "ast": "5037b9712f99a5d1",
-      "cst": "aca51345c271e5f2"
+      "ast": "25ca970d209b3edd",
+      "cst": "914e27c2de2054c0"
     },
     "packages/syntax/css/css-parser/test/css/errors/atrule-no-semicolon.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "287505d2bb584a77"
+      "ast": "e546d77125a40475",
+      "cst": "1ebc6b1abd0df531"
     },
     "packages/syntax/css/css-parser/test/css/errors/atrule-numeric-name.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "47a1783144848205",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/calc-empty.css": {
-      "ast": "ccd58bf135399364",
-      "cst": "f108ba3d5965b39c"
+      "ast": "05875765c152f691",
+      "cst": "fc5b7fcdbf04ff3b"
     },
     "packages/syntax/css/css-parser/test/css/errors/calc-lone-operator.css": {
-      "ast": "d341682ff0aed9d3",
-      "cst": "86065bad2c2eade4"
+      "ast": "05875765c152f691",
+      "cst": "8f3a77cd343b0031"
     },
     "packages/syntax/css/css-parser/test/css/errors/charset.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "c99bca53da4d0590"
+      "ast": "e546d77125a40475",
+      "cst": "62c774cf5540d601"
     },
     "packages/syntax/css/css-parser/test/css/errors/comment-eof-unclosed.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af0c4dfe2e18ea03"
+      "ast": "733703c285609637",
+      "cst": "202bc7d89b517469"
     },
     "packages/syntax/css/css-parser/test/css/errors/declaration-empty-value.css": {
-      "ast": "75d0865e0cb1ae63",
-      "cst": "b0d4a7cf8adae1e4"
+      "ast": "ff23642d963f952f",
+      "cst": "e916c2e99dd34505"
     },
     "packages/syntax/css/css-parser/test/css/errors/declaration-missing-colon.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/declaration-numeric-name.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/declaration-star-property.css": {
-      "ast": "2552beb7159d681d",
-      "cst": "aeb0e6c29ee75ec8"
+      "ast": "c8887550d00e1e60",
+      "cst": "da59d299d6b376df"
     },
     "packages/syntax/css/css-parser/test/css/errors/declaration-starts-colon.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/import-empty.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/important-boundary.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/important-doubled.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/important-lone.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/important-misplaced.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/invalid-selector.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-bad-ident-selector.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-block-no-selector.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-dimension-selector.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-number-selector.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/media-decl.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05875765c152f691",
+      "cst": "95ce33b321556d9c"
     },
     "packages/syntax/css/css-parser/test/css/errors/media-empty.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05875765c152f691",
+      "cst": "95ce33b321556d9c"
     },
     "packages/syntax/css/css-parser/test/css/errors/media-no-selector.css": {
-      "ast": "fff140ae2aa26271",
-      "cst": "8b731ce2cbc5557d"
+      "ast": "016fd232a54a17fa",
+      "cst": "5df0b8d98b6a311c"
     },
     "packages/syntax/css/css-parser/test/css/errors/media-unclosed-block.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "6d04afbf30e8ab5f",
+      "cst": "f302197e8e01974f"
     },
     "packages/syntax/css/css-parser/test/css/errors/no-selector.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/root-declaration.css": {
-      "ast": "d185a46d7e788f8d",
-      "cst": "a6a85755087f7211"
+      "ast": "5f3512f8c8547ec8",
+      "cst": "3a9c33ba8ffbb8fc"
     },
     "packages/syntax/css/css-parser/test/css/errors/ruleset-unclosed.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-anb-dangling-sign.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-anb-noninteger.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-attribute-numeric-name.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-bare-colon.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-class-numeric.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-double-combinator.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-double-comma.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-leading.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-trailing.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-hash-noname.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-leading-combinator.css": {
-      "ast": "7084a672bcb6bcd3",
-      "cst": "d695531f52ae6eea"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-pseudo-element-noname.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-trailing-combinator.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-type-numeric.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-unclosed-attribute.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/supports-bare-ident.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/supports-no-condition.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/url-interior-whitespace.css": {
-      "ast": "a3dbdbf90151b7cd",
-      "cst": "5c2b05dddc4304a6"
+      "ast": "05875765c152f691",
+      "cst": "48e505cef257bc40"
     },
     "packages/syntax/css/css-parser/test/css/errors/url-token-bare-quote.css": {
-      "ast": "a3dbdbf90151b7cd",
-      "cst": "5c2b05dddc4304a6"
+      "ast": "05875765c152f691",
+      "cst": "48e505cef257bc40"
     },
     "packages/syntax/css/css-parser/test/css/errors/url-token-open-paren.css": {
-      "ast": "a3dbdbf90151b7cd",
-      "cst": "5c2b05dddc4304a6"
+      "ast": "05875765c152f691",
+      "cst": "48e505cef257bc40"
     },
     "packages/syntax/css/css-parser/test/css/errors/value-stray-close-bracket.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/value-stray-close-paren.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/value-unclosed-bracket.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/errors/value-unclosed-function.css": {
-      "ast": "48de200bfa6697b3",
-      "cst": "b2ae4afbbba144c6"
+      "ast": "43b1d2967181eb20",
+      "cst": "80cf39c355ff63be"
     },
     "packages/syntax/css/css-parser/test/css/errors/value-unterminated-string.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/escape.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/expressions.css": {
-      "ast": "a0e780ece3180c91",
-      "cst": "d1e9123361783bd4"
+      "ast": "cdc7e89dedb95333",
+      "cst": "95de24b49b7ea7ad"
     },
     "packages/syntax/css/css-parser/test/css/font-face.css": {
-      "ast": "cf77d53cbd609e03",
-      "cst": "92869a04c167f9f0"
+      "ast": "dc5972cc61bd6ab0",
+      "cst": "baecb94d8a3a5294"
     },
     "packages/syntax/css/css-parser/test/css/function.css": {
-      "ast": "9e13538d1c39d12d",
-      "cst": "6b7284b12a908b8d"
+      "ast": "a95118a45594de9c",
+      "cst": "812cf4407ff2c367"
     },
     "packages/syntax/css/css-parser/test/css/ie-progid.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "05ff841cacec261a",
+      "cst": "90f641fbded1b6b3"
     },
     "packages/syntax/css/css-parser/test/css/important.css": {
-      "ast": "17b885488164fc29",
-      "cst": "3e23befa6af3dca1"
+      "ast": "5eee05c4c5a5a582",
+      "cst": "9216d42c5e010192"
+    },
+    "packages/syntax/css/css-parser/test/css/keyframes.css": {
+      "ast": "03e2a80158422831",
+      "cst": "946a82fb268bec5c"
     },
     "packages/syntax/css/css-parser/test/css/legacy-prop.css": {
-      "ast": "23a89b6eff095e67",
-      "cst": "e98551becc695fc2"
+      "ast": "6ee2eb7e31db2687",
+      "cst": "cd33c895aee941a4"
     },
     "packages/syntax/css/css-parser/test/css/nesting-ident.css": {
-      "ast": "8725dbd5b148b785",
-      "cst": "cebcb36af84897ae"
+      "ast": "2950e9ac24f46b05",
+      "cst": "8d66f3f3d0632bd1"
     },
     "packages/syntax/css/css-parser/test/css/nesting.css": {
-      "ast": "2ea387a08eca34e2",
-      "cst": "ba44f91dbb4562ff"
+      "ast": "31d79e7b0136ff62",
+      "cst": "3ea64ccbffb6d3bf"
     },
     "packages/syntax/css/css-parser/test/css/prop.css": {
-      "ast": "23a89b6eff095e67",
-      "cst": "e98551becc695fc2"
+      "ast": "6ee2eb7e31db2687",
+      "cst": "cd33c895aee941a4"
     },
     "packages/syntax/css/css-parser/test/css/pseudo-selectors.css": {
-      "ast": "87e09e7eafea6373",
-      "cst": "bef84e696a3b6343"
+      "ast": "e1cd8e3acbf3f0eb",
+      "cst": "ac70ec3364526980"
     },
     "packages/syntax/css/css-parser/test/css/quotes.css": {
-      "ast": "936a4a3564570e60",
-      "cst": "5048ed7e8705f9bf"
+      "ast": "034ee6fb4fd8cb5a",
+      "cst": "465b8a038b7fb8e0"
     },
     "packages/syntax/css/css-parser/test/css/raw-decl.css": {
-      "ast": "fa8b583ea350fbff",
-      "cst": "af55acb1c6befe06"
+      "ast": "17dca6bad378ebb1",
+      "cst": "c95cb33159e7e7a9"
     },
     "packages/syntax/css/css-parser/test/css/rule-no-semicolon.css": {
-      "ast": "d851e4feee8571c9",
-      "cst": "79a67008d5460047"
+      "ast": "5da0fb74a792c21e",
+      "cst": "cfe1cb9550d23bb4"
     },
     "packages/syntax/css/css-parser/test/css/selector.css": {
-      "ast": "ba5919cee60f9cc1",
-      "cst": "d06e3cb676b92741"
+      "ast": "91d178ef3d4d2c1e",
+      "cst": "284a8c15dbd02bd6"
     },
     "packages/syntax/css/css-parser/test/css/semicolons.css": {
-      "ast": "d851e4feee8571c9",
-      "cst": "150e5f61c2e38660"
+      "ast": "e9d7fea547021ba9",
+      "cst": "79b569bcbbf9d7a3"
     },
     "packages/syntax/css/css-parser/test/css/star.css": {
-      "ast": "1bbcf13c5bdfbc7f",
-      "cst": "c11d9255b6b0ec2d"
+      "ast": "1d1f8f60b422b6e7",
+      "cst": "a80a31ae5b6a301c"
     },
     "packages/syntax/css/css-parser/test/css/tab.css": {
-      "ast": "d851e4feee8571c9",
-      "cst": "3d040eb89efc05b0"
+      "ast": "cf91baae675de0cf",
+      "cst": "0a45a65baded7332"
     }
   }
 }
