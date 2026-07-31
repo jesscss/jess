@@ -172,6 +172,67 @@ pair, the three-regression triage, the grammar-diagnostics pressure sweep, the
 serialized branch lander, optional-lookup grammar, the node-model audit, and one
 parseman coverage lane.
 
+### Grammar artifact size — the variant question (measured 2026-07-31)
+
+**Total shipped generated grammar: 45,859,971 B** across 4 dialects × 4 variants,
+measured on a built tree (`find . -path '*/lib/grammar/*' -name '*.js' | cat | wc -c`).
+
+| dialect | per variant | × 4 |
+| --- | ---: | ---: |
+| less | 3.94–4.01 MB | 15.9 MB |
+| css | 3.34–3.47 MB | 13.6 MB |
+| scss | 2.01–2.07 MB | 8.2 MB |
+| jess | 2.02–2.07 MB | 8.2 MB |
+
+`less/grammar/ast.js` gzips 3.94 MB → 478 KB (8.2:1), so wire cost is far below
+raw — but parse-and-compile cost tracks the raw bytes.
+
+**The four variants come from ONE factory and differ only by two flags**
+(`packages/syntax/less/less-parser/src/grammar.ts:6335-6344`): `lessGrammar`,
+`lessPositionsGrammar` (`trackLines: true`), `lessCstGrammar`
+(`hostMode: 'cst'`), `lessCstPositionsGrammar` (both). Every one is
+`composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules({…}, lessGrammarFactory)])`
+over the *same* `lessGrammarFactory`. **Two booleans cost 3× the artifact.**
+
+`ast.js` and `ast/positions.js` differ by **62 KB, 1.6%**.
+
+**DO NOT conclude from that 1.6% that the artifacts are 98% identical.** That
+exact inference was made earlier the same day and was wrong: when content
+overlap was actually measured, real dedup potential came out at **23.1% / 35.7%**,
+not the 75–97% the size similarity implies. Line tracking plausibly threads
+position ops through *many* rule bodies, changing each slightly, rather than
+adding one 62 KB block. Re-measure content overlap before designing against it.
+
+**Owner's design direction (2026-07-31), and it dissolves the speed-vs-size
+tension:** *"what chevrotain does is actually replace function paths… so i
+wonder if there's a way to compile grammars in a way where you can keep all the
+speed but substitute paths for other options."*
+
+The reason duplication was chosen is that parseman's speed comes from
+monomorphic, first-set-gated, inlined compiled functions — a runtime branch or
+indirection per node to select tracking would land on the hot path. But that
+argues only against **runtime** dispatch. Specializing **once at module init** —
+emit each rule body once with the variant-specific operations factored into a
+substitutable slot, then build the specialized closure set at load — shares the
+SOURCE while leaving the hot path exactly as monomorphic as it is today. The
+artifact shrinks; the steady-state code does not change.
+
+Open question for a parseman lane, and it must be answered with measurement, not
+argument: is a whole duplicate table the only way to keep the macro-compiled
+grammar fast? Prove or refute the init-time-substitution shape. If correct is
+slower, that is a PARSEMAN bug, not a licence to ship 45.86 MB.
+
+**A separate and independent jess-side defect:** each parser's default entry
+imports BOTH tables eagerly and picks one with a boolean —
+`packages/syntax/less/less-parser/src/index.ts:17-18` then `:63`
+(`options.trackLines ? lessPositionsGrammar : lessGrammar`), and the same shape
+in `src/cst.ts` across all four dialects. So every consumer pays ~4 MB for a
+table it does not use. That is ~4.0 MB of the 8.5 MB residual entry graph, and
+it is a jess bug regardless of what parseman does about variant emission. The
+`./grammar/ast/positions` subpath is already public in every exports map, so the
+fix needs no new API surface; `parse()` is sync, so a dynamic import is not
+available — a separate line-tracking entry is.
+
 **Deferred by the owner, not queued:** committing each parser's EBNF/railroad
 rendering as a fixture so a grammar edit that changes the accepted language
 surfaces as a *syntax diff* instead of a guessed-at downstream symptom. Sound
