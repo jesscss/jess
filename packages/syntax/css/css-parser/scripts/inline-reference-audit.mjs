@@ -232,6 +232,41 @@ function audit(path) {
 
   h1.sort((a, b) => b.references - a.references);
   h2.sort((a, b) => b.references - a.references);
+
+  /*
+   * LOCATOR SOUNDNESS. Both independent implementations of this audit have
+   * silently mis-located the factory body — one by taking the first `return {`
+   * inside a helper closure, one by truncating before the real map. A truncated
+   * body under-reports, and under-reporting is invisible.
+   *
+   * The check: a map key that is declared as a const SOMEWHERE in the file but
+   * whose declaration did not land inside the located body proves the body is
+   * wrong. Refuse rather than report — a number from a mis-located body is
+   * worse than no number, because it reads as a clean result.
+   */
+  const declaredInBody = new Set(
+    [...body.matchAll(/^ {2}const ([A-Za-z][A-Za-z0-9]*) = /gm)].map(match => match[1])
+  );
+  const strayed = [...mapKeys].filter((key) => {
+    if (declaredInBody.has(key)) {
+      return false;
+    }
+    return new RegExp(`^ {2}const ${key} = `, 'm').test(clean);
+  });
+  if (strayed.length > 0) {
+    throw new Error(
+      `${path}: factory body mis-located — ${strayed.length} map key(s) declared outside it `
+      + `(${strayed.slice(0, 5).join(', ')}). Refusing to report.`
+    );
+  }
+  if (mapKeys.size > composites) {
+    throw new Error(
+      `${path}: ${mapKeys.size} map keys but only ${composites} combinator-bound composites. `
+      + 'A grammar cannot export more rules than it declares; the combinator pattern is '
+      + 'missing an authoring form (SCSS/Jess write node<Type>(...)). Refusing to report.'
+    );
+  }
+
   return { path, composites, mapKeys: mapKeys.size, h1, h2 };
 }
 
