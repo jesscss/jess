@@ -1,6 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { defineFunction } from '@jesscss/core';
 import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js';
+import { subExact } from '../../util/decimal.js';
 
 /**
  * `color.fade-out(color, amount)` — the `transparentize` computation under Sass's
@@ -18,7 +19,7 @@ export const fadeOut: Fn = defineFunction('fade-out', {
   body: (c, amt, excess) => {
     noExcess(excess, 2);
     const color = requireColor(c);
-    return withAlpha(color, color.alpha - fractionAmount(amt));
+    return withAlpha(color, subExact(color.alpha, fractionAmount(amt)));
   }
 });
 

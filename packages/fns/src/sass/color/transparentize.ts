@@ -1,6 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { defineFunction } from '@jesscss/core';
 import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js';
+import { subExact } from '../../util/decimal.js';
 
 /**
  * `color.transparentize(color, amount)` — lower alpha by an absolute 0-1 amount.
@@ -23,7 +24,7 @@ export const transparentize: Fn = defineFunction('transparentize', {
   body: (c, amt, excess) => {
     noExcess(excess, 2);
     const color = requireColor(c);
-    return withAlpha(color, color.alpha - fractionAmount(amt));
+    return withAlpha(color, subExact(color.alpha, fractionAmount(amt)));
   }
 });
 

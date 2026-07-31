@@ -1,6 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { defineFunction } from '@jesscss/core';
 import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js';
+import { addExact } from '../../util/decimal.js';
 
 /**
  * `color.fade-in(color, amount)` — the `opacify` computation under Sass's other
@@ -21,7 +22,7 @@ export const fadeIn: Fn = defineFunction('fade-in', {
   body: (c, amt, excess) => {
     noExcess(excess, 2);
     const color = requireColor(c);
-    return withAlpha(color, color.alpha + fractionAmount(amt));
+    return withAlpha(color, addExact(color.alpha, fractionAmount(amt)));
   }
 });
 

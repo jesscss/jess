@@ -1,6 +1,7 @@
 import type { Fn } from '@jesscss/core';
 import { defineFunction } from '@jesscss/core';
 import { fractionAmount, noExcess, requireColor, withAlpha } from './kernels.js';
+import { addExact } from '../../util/decimal.js';
 
 /**
  * `color.opacify(color, amount)` — raise alpha by an absolute 0-1 amount.
@@ -22,7 +23,7 @@ export const opacify: Fn = defineFunction('opacify', {
   body: (c, amt, excess) => {
     noExcess(excess, 2);
     const color = requireColor(c);
-    return withAlpha(color, color.alpha + fractionAmount(amt));
+    return withAlpha(color, addExact(color.alpha, fractionAmount(amt)));
   }
 });
 
