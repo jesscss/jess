@@ -220,9 +220,55 @@ object, not just `.tree`.
 No movement corresponds to a detected regression: all four parser
 suites, `diagnostics-core`, and the throw classification are consistent
 (`tests-error/parse` 26 throw / 3 not; `tests-error/eval` 67 parse
-cleanly, which is correct for a parser). **The exact commit per movement
-was NOT bisected** — that needs a build at the old parseman floor.
-Do not rebaseline without owner sign-off.
+cleanly, which is correct for a parser).
+
+**Attributed — and the answer is not drift. The baseline is not
+reproducible from the commit that introduced it.** Measured by building
+at four points, each gated on `parse('a{color:red}')` succeeding BEFORE
+digesting and on the corpus entry count:
+
+| commit | parseman | ast aggregate | vs baseline |
+| --- | --- | --- | --- |
+| `59f695d4a` (wrote baseline) | 0.41 | *cannot build* | — |
+| `8083e2615` | 0.43 | `67fdc10e…` | 709/709 moved |
+| `824f99480` | 0.43 | `04cd8e15…` | 709/709 moved |
+| `f292fdd8f` | 0.44 | *cannot build* | — |
+| `131cd9d1b` (HEAD) | 0.45 | `86f420dc…` | 709/709 moved |
+
+1. The 0.44 root-trivia migration (`b2f888070`) is **NOT** the cause:
+   movement is already total at `824f99480`, hundreds of commits and one
+   parseman minor earlier.
+2. There is no single cause. Three coherent points give three distinct
+   aggregates, none equal to the baseline — accumulated drift over
+   **673 commits** and parseman 0.41→0.45.
+3. **At `59f695d4a` both the css and less AST parsers throw
+   `TypeError: withBodySpan is not a function` on every input.** Both
+   `grammar.ts` files import `withBodySpan` from `@jesscss/core/ast`;
+   nothing in the repo exports it. Both packages built with `--noCheck`
+   then (dropped later at `bc0415c85`/`adfacc87c`), so it was never
+   caught. The baseline records `ast threw=120`, not 714, so it cannot
+   have come from that tree.
+
+Two commits are not measurable points at all: `59f695d4a`, and
+`f292fdd8f` (bumps the floor to 0.44 while the code is still
+0.43-shaped; the adaptation lands separately at `b2f888070`).
+
+So this is not a gate that drifted — it is an artifact that never
+corresponded to a buildable state of the repo it was committed into.
+Re-deriving it is the only way to get a gate. Still needs owner
+sign-off; do not rebaseline unilaterally.
+
+### Oracle instrument notes
+
+- The `cst` surface digests the WHOLE result object (`parseLessCst(src)`),
+  not just `.tree`, so any change to `ok`/`errors`/`rootTrivia` moves every
+  entry. Recommend it digest `.tree` only, with `ok`/`unconsumedFrom`
+  asserted separately — otherwise every trivia change forces a rebaseline.
+- `loadCorpus` returns `{entries:[{id,source}]}` at parseman 0.43/0.44 and
+  `{ids, read}` in the local harness. Assert the entry count on BOTH sides
+  before comparing; a short corpus yields a clean digest over a subset.
+- The `@less/test-data` symlink is location-relative; under `/tmp` it
+  resolves short without erroring.
 
 ## Current Focus
 
