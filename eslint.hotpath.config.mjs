@@ -4,7 +4,7 @@
  *
  * WHY A SEPARATE CONFIG, and not a block in eslint.config.mjs:
  *
- * `pnpm lint` is a gate people run constantly. Adding five heuristic rules to
+ * `pnpm lint` is a gate people run constantly. Adding six heuristic rules to
  * it — three of which are explicitly advisory — would bury the rules that are
  * actually decidable under warnings nobody reads, and would make the default
  * pass noisy on an untouched checkout. A gate that is red on a clean tree is
@@ -95,7 +95,8 @@ export default tseslint.config([
       'hotpath/no-node-keyed-side-map': 'warn',
       'hotpath/no-rescan-in-loop': 'warn',
       'hotpath/no-loop-invariant-accessor': 'warn',
-      'hotpath/no-source-text-rescan': 'warn'
+      'hotpath/no-source-text-rescan': 'warn',
+      'hotpath/no-json-stringify-on-tree': 'warn'
     }
   },
 

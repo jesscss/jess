@@ -18,6 +18,8 @@ import { performance } from 'node:perf_hooks';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { digestJson } from './digest-json-stream.mjs';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stageMarker = 'jess-less-ast-compare-stage-v1\n';
 const stageName = 'jess-less-ast-compare-stage';
@@ -285,7 +287,19 @@ function measure(artifact, input) {
   return {
     parseMs: parsedAt - parseStarted,
     parseSerializeMs: finishedAt - parseStarted,
-    document: digestText(JSON.stringify(document)),
+
+    /*
+     * `digestJson` is byte-identical to the `digestText(JSON.stringify(…))`
+     * this replaced (proved in `scripts/__tests__/digest-json-stream.test.mjs`),
+     * but never assembles the string. That matters here specifically: this
+     * digest is the A/B CORRECTNESS ORACLE via `sampleEquivalent`, and the old
+     * form failed OPEN on exactly the documents worth checking — it threw on any
+     * node that kept a parent pointer, and materialized the whole tree per
+     * sample on the rest.
+     *
+     * `serialized` below stays as-is: it is already a CSS string, not a tree.
+     */
+    document: digestJson(document),
     output: digestText(serialized)
   };
 }

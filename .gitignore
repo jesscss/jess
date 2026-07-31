@@ -94,3 +94,6 @@ packages/core/.bmark-ast/
 # perf drift gate baseline proposals are never committed directly;
 # promoting one is an explicit owner action (docs/perf/PERF-DRIFT-GATE.md)
 *.baseline.json.new
+
+# Agent scratch space (worktree-local probes; never committed)
+.scratch/

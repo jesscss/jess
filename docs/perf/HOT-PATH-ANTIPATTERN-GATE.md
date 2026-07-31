@@ -58,6 +58,36 @@ pnpm test:hot-path-rules     # the rules' own unit tests
 | `no-source-text-rescan` | `indexOf`/`slice`/`split`/regex over raw source text in core | decidable *given naming* |
 | `no-rescan-in-loop` | whole-collection scan over a loop-invariant receiver, inside a loop | heuristic, advisory |
 | `no-loop-invariant-accessor` | zero-arg accessor re-invoked each iteration with a loop-invariant receiver | heuristic, advisory |
+| `no-json-stringify-on-tree` | `JSON.stringify` applied to an AST/CST value | heuristic, advisory |
+
+`no-json-stringify-on-tree` names three independent disqualifiers, any one of
+them fatal on its own: **cycles** throw `TypeError: Converting circular
+structure to JSON` on whatever input happens to carry a parent pointer;
+**stack depth** overflows, because it recurses with no guard; and
+**materialization** builds the entire tree as one string before anything can
+consume it — which is how the Less byte-identity oracle reached 8 GB and
+returned no verdict at all.
+
+The rationale is deliberately *not* that AST nodes are exotic. They are ordinary
+well-shaped objects: the ~75 node types realize only 16 monomorphic shapes in
+practice, and inline fields beat a `WeakMap` side table 40× on reads. The
+problem is that they are large, deep, and referential — which is exactly why a
+faster stringify library is not the fix. It still builds the string.
+
+The fix is to **remove the string, not replace the stringifier**:
+
+| Shape | Replacement |
+|---|---|
+| hashing / digest | stream a canonical traversal into `createHash('sha256')` via `hash.update(chunk)` — `scripts/digest-json-stream.mjs` does this and is byte-identical to the `JSON.stringify` it replaced |
+| comparison / equality | walk and compare, or compare digests; never build two strings to `===` them |
+| debug / diagnostics | `util.inspect(value, { depth, maxArrayLength })`, bounded explicitly, never on a hot path |
+| deterministic committed output | `safe-stable-stringify` (stable key order *and* cycle safety) — **not currently a workspace dependency** |
+| known-shape hot serialization | `fast-json-stringify` (schema-compiled) — **not currently a workspace dependency** |
+| cycles that must round-trip | `flatted` preserves them losslessly; `json-stringify-safe` only replaces them |
+
+None of those four libraries is in this workspace today, transitively or
+otherwise. Each is a real new dependency, so prefer the zero-dependency answers
+above until a site genuinely needs one.
 
 ### Why a named set and not a count
 
@@ -117,8 +147,25 @@ Stated plainly, because a gate that overstates its coverage is worse than none.
    (`lessTriviaEntryCount(triviaLog)` in a `for` condition) is missed.
 
 7. **Complexity class as such.** Nothing here measures anything. An O(n²)
-   algorithm written without any of these five syntactic shapes passes cleanly.
+   algorithm written without any of these six syntactic shapes passes cleanly.
    Invariant 4 remains a reviewer obligation backed by scaling budgets.
+
+8. **A tree bound to a generic name.** `no-json-stringify-on-tree` fires only on
+   positive tree evidence — an argument whose final name is a tree name
+   (`node`, `ast`, `cst`, `stylesheet`, `rules`, `selector`, …) or one that came
+   straight out of a `parse*`/`build*` call. `JSON.stringify(value)`,
+   `(data)`, `(result)`, `(payload)` are all silent by design, even though such
+   a binding may well hold a tree. That is a deliberate trade: a rule that fires
+   on `JSON.stringify(options)` is disabled within a week and then protects
+   nothing, which is the exact failure `c3db7e53e` was landed to end.
+
+9. **Everything outside the hot-path scope — including `scripts/**`.** This is
+   the sharpest limitation of `no-json-stringify-on-tree` and it should not be
+   glossed: the pass is scoped to `packages/core/src/ast/**` and the four parser
+   `src/` trees, so it does **not** lint `scripts/**`, where the oracle OOM
+   actually happened. The rule prevents the class from entering the hot path; it
+   does not police the tooling. Extending the scope is an owner decision with a
+   real inventory cost, and is listed in the enablement checklist below.
 
 ## Enablement checklist
 
@@ -142,7 +189,20 @@ gates that matter.
 5. **Add the catalogue row.** `docs/perf/V8-ARCHITECTURE.md` "Regression-fixture
    catalogue" gets an R8 row naming this incident, with this file as its
    detector, per that doc's own "extending enforcement" instruction.
-6. **Decide on the strong-globals knob.** `no-node-keyed-side-map` has an
+6. **Decide the scope of `no-json-stringify-on-tree`.** It seeds **zero** sites:
+   the only `JSON.stringify` anywhere in the hot-path scope is
+   `packages/syntax/less/less-parser/src/grammar.ts:1527`, which quotes a
+   `value: string` parameter into a `TypeError` message and correctly does not
+   fire. So this rule is already green and costs nothing to gate on — it is pure
+   forward protection.
+
+   The open question is whether to widen it. The site that motivated the rule
+   lives in `scripts/**`, which this pass does not lint at all. Widening to
+   `scripts/**` means accepting a fresh inventory there; widening to
+   `packages/core/src/tree/**` conflicts with item 5 above. Both are the owner's
+   call, and neither blocks gating the rule at its current scope.
+
+7. **Decide on the strong-globals knob.** `no-node-keyed-side-map` has an
    `includeStrongGlobals` option (off) that also flags module-global `Map`/`Set`
    used for per-node bookkeeping — those leak for the process lifetime rather
    than merely costing ephemeron marking. Turning it on is a separate,

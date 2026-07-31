@@ -178,3 +178,56 @@ test('no-source-text-rescan: fires on source-text scans, silent on structured re
     ]
   });
 });
+
+// --- no-json-stringify-on-tree -----------------------------------------------
+test('no-json-stringify-on-tree: fires on tree-valued arguments, silent on plain data', () => {
+  ts.run('no-json-stringify-on-tree', rules['no-json-stringify-on-tree'], {
+    valid: [
+      /*
+       * The load-bearing half. Plain-data arguments MUST stay silent: a rule
+       * that fires on these gets disabled, and then it protects nothing.
+       */
+      'const key = JSON.stringify(options);',
+      'const key = JSON.stringify(config);',
+      'writeFileSync(p, JSON.stringify(manifest, null, 2));',
+      'const line = JSON.stringify({ count, ms });',
+
+      // The real `grammar.ts` site: a `string` parameter quoted into an error.
+      'function f(value: string) { throw new TypeError(`lost ${JSON.stringify(value)}`); }',
+
+      // A FIELD of a node is not the node — `.name` is a string.
+      'const s = JSON.stringify(node.name);',
+      'const s = JSON.stringify(node.span.start);',
+
+      // `parse*` that returns a number rather than a tree.
+      'const s = JSON.stringify(parseInt(raw, 10));',
+      'const s = JSON.stringify(parseFloat(raw));',
+
+      // Generic names are deliberately NOT evidence — a documented false negative.
+      'const s = JSON.stringify(result);',
+      'const s = JSON.stringify(payload);',
+
+      // Configurable: emptying both signals disables the rule entirely.
+      { code: 'const s = JSON.stringify(node);', options: [{ treeNames: [], builderPrefixes: [] }] }
+    ],
+    invalid: [
+      { code: 'const s = JSON.stringify(node);', errors: [{ messageId: 'tree' }] },
+      { code: 'const s = JSON.stringify(ast);', errors: [{ messageId: 'tree' }] },
+      { code: 'const s = JSON.stringify(cst, null, 2);', errors: [{ messageId: 'tree' }] },
+      { code: 'const s = JSON.stringify(this.rules);', errors: [{ messageId: 'tree' }] },
+      { code: 'const s = JSON.stringify(sheet.children);', errors: [{ messageId: 'tree' }] },
+      { code: 'const s = JSON.stringify(parseStylesheet(src));', errors: [{ messageId: 'tree' }] },
+      { code: 'const s = JSON.stringify(buildAst(cst));', errors: [{ messageId: 'tree' }] },
+
+      // The TS wrappers are transparent.
+      { code: 'const s = JSON.stringify(node!);', errors: [{ messageId: 'tree' }] },
+
+      // Opt-in name.
+      {
+        code: 'const s = JSON.stringify(frag);',
+        options: [{ treeNames: ['frag'] }],
+        errors: [{ messageId: 'tree' }]
+      }
+    ]
+  });
+});
