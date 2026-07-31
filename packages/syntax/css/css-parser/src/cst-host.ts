@@ -45,9 +45,14 @@ export type CssCstParseResult = {
   readonly unconsumedFrom: number | null;
 };
 
+/*
+ * Line tracking is not an option here: it is a property of the compiled table,
+ * and the table is chosen by which entry the caller imports (`./cst` or
+ * `./cst/positions`). An option would force one module to name both tables,
+ * and Node executes every module it statically imports.
+ */
 export type CssCstParseOptions = {
   readonly collapse?: boolean;
-  readonly trackLines?: boolean;
 };
 
 type BuildHostArgs = Parameters<BuildHost>;

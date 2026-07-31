@@ -33,11 +33,12 @@ export type ISafeParseResult = {
 export type ParsedDocument = Stylesheet;
 
 export type SafeParseOptions = {
-  /**
-   * Select a line-aware compiled grammar artifact for callers that need parser
-   * spans with line/column facts. Omitted callers use the normal artifact.
+  /*
+   * There is no `trackLines` here. Line-aware parsing is a property of the
+   * compiled grammar table a parser package loads, chosen by importing that
+   * package's `./positions` entry; an option would force one module to name
+   * both tables, and Node executes every module it statically imports.
    */
-  trackLines?: boolean;
 
   /**
    * The compile-level option bag threaded to a plugin's `safeParse` (the caller

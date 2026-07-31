@@ -5,7 +5,6 @@ import {
   type UrlTransformRequest,
   ERR,
   type ISafeParseResult,
-  type SafeParseOptions,
   type PluginInterface,
   buildEvaluator
 } from '@jesscss/core';
@@ -523,8 +522,8 @@ export class LessPlugin extends AbstractPlugin {
     return jsDelivrPackageSpecifier(specifier) !== null;
   }
 
-  safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
-    return safeParseLess(filePath, source, parseOptions);
+  safeParse(filePath: string, source: string): ISafeParseResult {
+    return safeParseLess(filePath, source);
   }
 }
 

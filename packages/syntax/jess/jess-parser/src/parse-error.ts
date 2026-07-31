@@ -1,0 +1,38 @@
+/**
+ * The public Jess parse failure lives in its own module so that both AST
+ * entries — `.` and `./positions` — can export it without either one reaching
+ * the other's compiled grammar table. A class declared in an entry cannot be
+ * re-exported by a sibling entry without dragging that entry's imports along.
+ */
+
+/** Structured failure from the public direct Jess parser. */
+export class JessParseError extends SyntaxError {
+  readonly code = 'parse/syntax-error' as const;
+  readonly offset: number;
+  readonly expected: readonly string[];
+  readonly line?: number;
+  readonly column?: number;
+  readonly endLine?: number;
+  readonly endColumn?: number;
+
+  constructor(
+    offset: number,
+    expected: readonly string[],
+    options: {
+      line?: number;
+      column?: number;
+      endLine?: number;
+      endColumn?: number;
+    } = {}
+  ) {
+    const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
+    super(`Jess parser error.${detail}`);
+    this.name = 'JessParseError';
+    this.offset = offset;
+    this.expected = expected;
+    this.line = options.line;
+    this.column = options.column;
+    this.endLine = options.endLine;
+    this.endColumn = options.endColumn;
+  }
+}

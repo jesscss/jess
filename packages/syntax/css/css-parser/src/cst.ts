@@ -1,31 +1,21 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult } from './cst-host.js';
 import { cssCstGrammar } from './grammar/cst.js';
-import { cssCstPositionsGrammar } from './grammar/cst/positions.js';
 import type { ParseDoc } from 'parseman';
 
 export type { ParseDoc } from 'parseman';
 
+/**
+ * Parse CSS to a CST. Spans carry offsets only; for line/column facts import
+ * the same functions from `@jesscss/css-parser/cst/positions`, which binds the
+ * line-aware compiled table. This entry never loads that table.
+ */
 export function parseCssCst(
   input: string,
   startRule = 'Stylesheet',
   options?: CssCstParseOptions
 ): CssCstParseResult {
-  const grammar = (options?.trackLines ? cssCstPositionsGrammar : cssCstGrammar);
   return parseCst(
-    grammar as Record<string, unknown>,
-    input,
-    startRule,
-    options
-  );
-}
-
-export function parseCssDiagnosticCst(
-  input: string,
-  startRule = 'Stylesheet',
-  options?: CssCstParseOptions
-): CssCstParseResult {
-  return parseCst(
-    cssCstPositionsGrammar as Record<string, unknown>,
+    cssCstGrammar as Record<string, unknown>,
     input,
     startRule,
     options
@@ -35,19 +25,10 @@ export function parseCssDiagnosticCst(
 /** Incremental (`.edit()`-able) CSS document — see {@link parseDocCst}. */
 export function parseCssDoc(
   input: string,
-  startRule = 'Stylesheet',
-  options?: Pick<CssCstParseOptions, 'trackLines'>
+  startRule = 'Stylesheet'
 ): ParseDoc<CssCstNode> {
   return parseDocCst(
-    (options?.trackLines ? cssCstPositionsGrammar : cssCstGrammar) as Record<string, unknown>,
-    input,
-    startRule
-  );
-}
-
-export function parseCssDiagnosticDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
-  return parseDocCst(
-    cssCstPositionsGrammar as Record<string, unknown>,
+    cssCstGrammar as Record<string, unknown>,
     input,
     startRule
   );

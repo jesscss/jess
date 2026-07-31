@@ -14,7 +14,8 @@
  * modules Node eagerly loads and the external package names it reaches. Byte
  * totals move whenever a grammar is edited, so they are reported but not
  * gated; the module set is what encodes the intent — `@jesscss/less-parser`
- * loads the two Less AST grammar variants and nothing else.
+ * loads the offsets-only Less AST grammar variant and nothing else, and its
+ * line-aware sibling `@jesscss/less-parser/positions` loads only the other one.
  *
  *   node scripts/verify-import-graph.mjs           # check against the baseline
  *   node scripts/verify-import-graph.mjs --report   # print the current graphs
@@ -44,7 +45,9 @@ const ENTRIES = [
 for (const dialect of ['css', 'less', 'scss', 'jess']) {
   ENTRIES.push(
     `@jesscss/${dialect}-parser`,
+    `@jesscss/${dialect}-parser/positions`,
     `@jesscss/${dialect}-parser/cst`,
+    `@jesscss/${dialect}-parser/cst/positions`,
     `@jesscss/${dialect}-parser/grammar/ast`,
     `@jesscss/${dialect}-parser/grammar/ast/positions`,
     `@jesscss/${dialect}-parser/grammar/cst`,

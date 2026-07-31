@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { absolutizeCST } from 'parseman';
-import { parseCssCst, parseCssDiagnosticCst, parseCssDoc } from '../src/cst.js';
+import { parseCssCst, parseCssDoc } from '../src/cst.js';
+import { parseCssCst as parseCssCstWithLines } from '../src/cst/positions.js';
 import type { CssCstChild } from '../src/cst.js';
 
 /**
@@ -84,10 +85,10 @@ describe('@jesscss/css-parser/cst', () => {
     expectNoModeLabels(result.tree);
   });
 
-  it('keeps line tracking isolated to the diagnostic CST artifact', () => {
+  it('keeps line tracking isolated to the line-aware CST entry', () => {
     const source = '.entry {\n  width: 0px;\n}\n';
     const normal = parseCssCst(source);
-    const diagnostic = parseCssDiagnosticCst(source);
+    const diagnostic = parseCssCstWithLines(source);
     const normalDimension = nodesByGrammarType(normal.tree, 'Dimension')[0];
     const diagnosticDimension = nodesByGrammarType(diagnostic.tree, 'Dimension')[0];
 

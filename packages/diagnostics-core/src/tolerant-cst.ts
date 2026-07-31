@@ -1,8 +1,15 @@
-import { parseCssDiagnosticCst, parseCssDiagnosticDoc, type CssCstChild, type CssCstNode, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
+/*
+ * Diagnostics need line and column facts, which are a property of the compiled
+ * table rather than a parse option, so every import here is the `./cst/positions`
+ * entry. That entry loads the line-aware table and only that one; the
+ * offsets-only `./cst` tables never reach this module.
+ */
+import { type CssCstChild, type CssCstNode, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst-host';
+import { parseCssCst as parseCssDiagnosticCst, parseCssDoc as parseCssDiagnosticDoc } from '@jesscss/css-parser/cst/positions';
 import { namedColor, type Phase } from '@jesscss/core';
-import { parseJessDiagnosticCst, parseJessDiagnosticDoc } from '@jesscss/jess-parser/cst';
-import { parseLessDiagnosticCst, parseLessDiagnosticDoc } from '@jesscss/less-parser/cst';
-import { parseScssDiagnosticCst, parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst';
+import { parseJessCst as parseJessDiagnosticCst, parseJessDoc as parseJessDiagnosticDoc } from '@jesscss/jess-parser/cst/positions';
+import { parseLessCst as parseLessDiagnosticCst, parseLessDoc as parseLessDiagnosticDoc } from '@jesscss/less-parser/cst/positions';
+import { parseScssCst as parseScssDiagnosticCst, parseScssDoc as parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst/positions';
 import { defaultCssDiagnosticMetadata, VENDOR_PREFIXED_PROPERTY_VALUES } from './metadata.js';
 import type {
   CollectDiagnosticsInput,

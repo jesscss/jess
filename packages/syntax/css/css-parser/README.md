@@ -3,9 +3,26 @@
 The CSS package exposes Parseman CSS grammar, canonical AST v2 parsing, and
 explicit CST parsing:
 
-- `@jesscss/css-parser` — `parse()` to canonical AST v2 `Stylesheet`, grammar, and CST types.
+- `@jesscss/css-parser` — `parse()` to canonical AST v2 `Stylesheet`, and CST types.
+- `@jesscss/css-parser/positions` — the same `parse()` with line/column facts.
 - `@jesscss/css-parser/cst` — CST parsing entry.
+- `@jesscss/css-parser/cst/positions` — the same CST parsers with line/column facts.
 - `@jesscss/css-parser/grammar` — compiled CSS grammar (alias for `/grammar/ast`).
+
+### Line-aware entries
+
+`parse` and the CST parsers come in two bindings, one per compiled table, so an
+entry never loads a table it does not parse with:
+
+| Entry | Export | Tree | Positions |
+| --- | --- | --- | --- |
+| `@jesscss/css-parser` (`.`) | `parse` | AST | no |
+| `@jesscss/css-parser/positions` | `parse` | AST | yes |
+| `@jesscss/css-parser/cst` | `parseCssCst`, `parseCssDoc` | CST | no |
+| `@jesscss/css-parser/cst/positions` | `parseCssCst`, `parseCssDoc` | CST | yes |
+
+The `/positions` entries export the same names bound to the line-aware table:
+switching is a change of import specifier, not of call site.
 
 ### Choosing a grammar build
 
@@ -27,8 +44,10 @@ only, so importing it cannot pull the other three in. The main entry no longer
 re-exports compiled grammars — that would have made every `parse()` consumer
 load all four builds.
 
-Positions are the `trackLines` option: the variant sets `startLine`/`startColumn`
-on every span. Error tolerance is not a property of a build — the CST runner
+The positions variants set `startLine`/`startColumn` on every span. There is no
+`trackLines` option: an option would force one module to name both tables, and
+Node executes every module it statically imports, so the choice is which entry
+you import. Error tolerance is not a property of a build — the CST runner
 collects `result.errors` on either CST variant.
 
 The CST and grammar entries expose Parseman types and grammar values. They use

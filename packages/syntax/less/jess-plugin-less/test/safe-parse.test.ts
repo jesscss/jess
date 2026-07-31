@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import lessPlugin, { LessPluginResolver, prepareLessRootSource } from '../src/index.js';
+/*
+ * Line-aware parsing is an entry choice, not a plugin option: the plugin's
+ * `safeParse` loads the offsets-only Less table. This is the same `safeParse`
+ * bound to the line-aware table.
+ */
+import { safeParse as safeParseWithLines } from '@jesscss/less-parser/positions';
 
 describe("@jesscss/plugin-less", () => {
   it("returns a source-backed parser diagnostic for invalid Less", () => {
@@ -44,9 +50,9 @@ describe("@jesscss/plugin-less", () => {
     expect(result.errors[0]?.message).not.toContain("complete stylesheet");
   });
 
-  it('accepts line-aware parser selection through safeParse options', () => {
+  it('reports parser line facts when safeParse comes from the line-aware entry', () => {
     const source = '.entry {}\n@media';
-    const result = lessPlugin().safeParse!('entry.less', source, { trackLines: true });
+    const result = safeParseWithLines('entry.less', source);
 
     expect(result.document).toBeUndefined();
     expect(result.errors).toMatchObject([

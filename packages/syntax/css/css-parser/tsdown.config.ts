@@ -17,6 +17,8 @@ export default defineConfig([
     entry: {
       index: './src/index.ts',
       cst: './src/cst.ts',
+      positions: './src/positions.ts',
+      'cst/positions': './src/cst/positions.ts',
       [CST_HOST]: './src/cst-host.ts'
     },
     plugins: [parseman.rolldown()]

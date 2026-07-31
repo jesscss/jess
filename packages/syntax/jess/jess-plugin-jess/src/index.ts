@@ -13,9 +13,6 @@ import { parse, type JessParseOptions } from '@jesscss/jess-parser';
 function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions {
   const compilerOptions = options?.compilerOptions;
   return {
-    ...(options?.trackLines !== undefined
-      ? { trackLines: options.trackLines }
-      : {}),
     ...(compilerOptions?.allowApplySelectors !== undefined
       ? { allowApplySelectors: compilerOptions.allowApplySelectors }
       : {}),

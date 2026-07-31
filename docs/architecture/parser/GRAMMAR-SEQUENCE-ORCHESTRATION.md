@@ -725,6 +725,13 @@ property of the CST runner, available on either CST artifact. The redundant
 `./grammar` subpath. Do not reintroduce any of them as compatibility aliases:
 the grammar name is the stable concept, not an implementation mode.
 
+The public parse entries mirror that 2×2 for the same reason Node gives: `.` and
+`./cst` bind the offsets-only artifacts, `./positions` and `./cst/positions`
+bind the line-aware ones, and no entry names an artifact it does not parse with.
+The `parseXDiagnosticCst`/`parseXDiagnosticDoc` functions are gone with the
+`*DiagnosticCstGrammar` misnomer they were named after: they were `parseXCst`
+over the positions artifact, which is now what `./cst/positions` exports.
+
 Each artifact is its own build output — `lib/grammar/ast.js`,
 `lib/grammar/ast/positions.js`, `lib/grammar/cst.js`,
 `lib/grammar/cst/positions.js` — behind matching `./grammar/*` subpath exports,

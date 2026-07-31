@@ -89,6 +89,21 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | `@jesscss/scss-parser/grammar` | `scssGrammar` | The compiled SCSS AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
 | `@jesscss/scss-parser` (`.`) | `parse` | Parse SCSS directly to canonical AST v2 `Stylesheet`. It does not load the CST grammar. |
 
+### Line-aware entries
+
+`parse` and the CST parsers come in two bindings, one per compiled table, so an
+entry never loads a table it does not parse with:
+
+| Entry | Export | Tree | Positions |
+| --- | --- | --- | --- |
+| `@jesscss/scss-parser` (`.`) | `parse` | AST | no |
+| `@jesscss/scss-parser/positions` | `parse` | AST | yes |
+| `@jesscss/scss-parser/cst` | `parseScssCst`, `parseScssDoc` | CST | no |
+| `@jesscss/scss-parser/cst/positions` | `parseScssCst`, `parseScssDoc` | CST | yes |
+
+The `/positions` entries export the same names bound to the line-aware table:
+switching is a change of import specifier, not of call site.
+
 ### Choosing a grammar build
 
 Each compiled grammar is a standalone multi-megabyte artifact, so the four
@@ -107,8 +122,10 @@ source positions are tracked:
 shipping `parse()` route uses. It is not a barrel: it exposes the AST variant
 only, so importing it cannot pull the other three in.
 
-Positions are the `trackLines` option: the variant sets `startLine`/`startColumn`
-on every span. Error tolerance is not a property of a build — the CST runner
+The positions variants set `startLine`/`startColumn` on every span. There is no
+`trackLines` option: an option would force one module to name both tables, and
+Node executes every module it statically imports, so the choice is which entry
+you import. Error tolerance is not a property of a build — the CST runner
 collects `result.errors` on either CST variant.
 
 

@@ -14,7 +14,9 @@ export default defineConfig([
   parserEntryBuild({
     entry: {
       index: './src/index.ts',
-      cst: './src/cst.ts'
+      cst: './src/cst.ts',
+      positions: './src/positions.ts',
+      'cst/positions': './src/cst/positions.ts'
     },
     shared: SHARED,
     plugins: [parseman.rolldown()]

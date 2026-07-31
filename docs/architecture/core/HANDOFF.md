@@ -222,16 +222,22 @@ argument: is a whole duplicate table the only way to keep the macro-compiled
 grammar fast? Prove or refute the init-time-substitution shape. If correct is
 slower, that is a PARSEMAN bug, not a licence to ship 45.86 MB.
 
-**A separate and independent jess-side defect:** each parser's default entry
-imports BOTH tables eagerly and picks one with a boolean —
-`packages/syntax/less/less-parser/src/index.ts:17-18` then `:63`
-(`options.trackLines ? lessPositionsGrammar : lessGrammar`), and the same shape
-in `src/cst.ts` across all four dialects. So every consumer pays ~4 MB for a
-table it does not use. That is ~4.0 MB of the 8.5 MB residual entry graph, and
-it is a jess bug regardless of what parseman does about variant emission. The
-`./grammar/ast/positions` subpath is already public in every exports map, so the
-fix needs no new API surface; `parse()` is sync, so a dynamic import is not
-available — a separate line-tracking entry is.
+**A separate and independent jess-side defect — FIXED.** Each parser's default
+entry used to import BOTH tables eagerly and pick one with a boolean
+(`options.trackLines ? lessPositionsGrammar : lessGrammar`), with the same shape
+in `src/cst.ts` across all four dialects, so every consumer paid for a table it
+did not use. `parse()` is sync, so a dynamic import was never available; the
+line-aware binding now lives behind its own entry instead. Each dialect ships
+`.`/`./cst` bound to the offsets-only tables and `./positions`/`./cst/positions`
+bound to the line-aware ones, and `trackLines` is gone from `parse`,
+`parseXCst`, `CssCstParseOptions` and `SafeParseOptions`. Measured by
+`pnpm verify:import-graph`: less `8,513,341 -> 4,516,264 B`, less/cst
+`8,516,451 -> 4,508,691`, css `7,322,499 -> 3,893,596`, css/cst
+`7,417,792 -> 3,943,681`, scss `4,628,137 -> 2,563,527`, scss/cst
+`4,649,563 -> 2,576,779`, jess `4,637,659 -> 2,570,758`, jess/cst
+`4,650,305 -> 2,578,357` — 23.18 MB off the eight entry graphs, with all 16
+`grammar/*` graphs byte-identical as the control. The duplicate-emission
+question above is untouched by this and is still open.
 
 **Deferred by the owner, not queued:** committing each parser's EBNF/railroad
 rendering as a fixture so a grammar edit that changes the accepted language

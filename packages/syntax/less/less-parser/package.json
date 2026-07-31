@@ -17,10 +17,20 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
+    "./positions": {
+      "types": "./lib/positions.d.ts",
+      "import": "./lib/positions.js",
+      "require": "./lib/positions.cjs"
+    },
     "./cst": {
       "types": "./lib/cst.d.ts",
       "import": "./lib/cst.js",
       "require": "./lib/cst.cjs"
+    },
+    "./cst/positions": {
+      "types": "./lib/cst/positions.d.ts",
+      "import": "./lib/cst/positions.js",
+      "require": "./lib/cst/positions.cjs"
     },
     "./grammar": {
       "types": "./lib/grammar/ast.d.ts",

@@ -15,6 +15,14 @@ import {
   parse
 } from '@jesscss/less-parser';
 import { parseLessCst, parseLessDoc } from '@jesscss/less-parser/cst';
+/*
+ * Relative source imports, not the `/positions` package subpaths: vitest aliases
+ * only the BARE package name to `src`, so a subpath import would resolve to
+ * `lib` and put a second `LessParseError` class in the run — which is exactly
+ * what `toBeInstanceOf` below would then fail on.
+ */
+import { parse as parseWithLines } from '../src/positions.js';
+import { parseLessCst as parseLessCstWithLines } from '../src/cst/positions.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
 const simpleSelector = (text: string | null, extra: object = {}) => ({
@@ -31,9 +39,9 @@ const simpleComplex = (text: string) => simpleSelector(text);
 const compoundComplex = (...value: object[]) => compoundSelector(...value);
 
 describe('public Less parse()', () => {
-  it('attaches line facts when parse() selects the line-aware artifact', () => {
+  it('attaches line facts when parse() comes from the line-aware entry', () => {
     try {
-      parse('.card {}\n@media', { trackLines: true });
+      parseWithLines('.card {}\n@media');
       throw new Error('expected parse() to reject an incomplete at-rule');
     } catch (error) {
       expect(error).toBeInstanceOf(LessParseError);
@@ -41,10 +49,8 @@ describe('public Less parse()', () => {
     }
   });
 
-  it('attaches line facts to CST spans when parseLessCst() selects the line-aware artifact', () => {
-    const result = parseLessCst('.card {\n  width: 1px;\n}', 'Stylesheet', {
-      trackLines: true
-    });
+  it('attaches line facts to CST spans when parseLessCst() comes from the line-aware entry', () => {
+    const result = parseLessCstWithLines('.card {\n  width: 1px;\n}', 'Stylesheet');
 
     expect(result.span.startLine).toBe(1);
     expect(result.span.endLine).toBe(3);

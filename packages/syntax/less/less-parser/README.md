@@ -80,6 +80,21 @@ Pass a different `startRule` (any capitalized grammar rule, e.g. `'SelectorList'
 | `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
 | `@jesscss/less-parser` (`.`) | `parse` | Parse Less directly to canonical AST v2 `Stylesheet`. It does not load the CST grammar. |
 
+### Line-aware entries
+
+`parse` and the CST parsers come in two bindings, one per compiled table, so an
+entry never loads a table it does not parse with:
+
+| Entry | Export | Tree | Positions |
+| --- | --- | --- | --- |
+| `@jesscss/less-parser` (`.`) | `parse` | AST | no |
+| `@jesscss/less-parser/positions` | `parse` | AST | yes |
+| `@jesscss/less-parser/cst` | `parseLessCst`, `parseLessDoc` | CST | no |
+| `@jesscss/less-parser/cst/positions` | `parseLessCst`, `parseLessDoc` | CST | yes |
+
+The `/positions` entries export the same names bound to the line-aware table:
+switching is a change of import specifier, not of call site.
+
 ### Choosing a grammar build
 
 Each compiled grammar is a standalone multi-megabyte artifact, so the four
@@ -98,8 +113,10 @@ source positions are tracked:
 shipping `parse()` route uses. It is not a barrel: it exposes the AST variant
 only, so importing it cannot pull the other three in.
 
-Positions are the `trackLines` option: the variant sets `startLine`/`startColumn`
-on every span. Error tolerance is not a property of a build — the CST runner
+The positions variants set `startLine`/`startColumn` on every span. There is no
+`trackLines` option: an option would force one module to name both tables, and
+Node executes every module it statically imports, so the choice is which entry
+you import. Error tolerance is not a property of a build — the CST runner
 collects `result.errors` on either CST variant.
 
 
