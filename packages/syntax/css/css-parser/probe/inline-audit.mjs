@@ -128,7 +128,22 @@ function blankTypePositions(source) {
     );
 }
 
-const COMPOSITE = 'node|choice|sequence|dispatch|transform|oneOrMore|many|optional|oneOrMoreSep|sepBy|token|not|peek|label|field';
+/*
+ * Every combinator that can bind a composite const. The first version of this
+ * list omitted `otherwise`, `when`, `routed`, `noTrivia` and the scanners, so
+ * `const x = otherwise(choice(...))` was INVISIBLE to H1 — and this grammar is
+ * dispatch-heavy, so `otherwise(...)` is exactly the shape it uses for routed
+ * fallbacks. A too-narrow filter reports H1 0 and looks like a clean grammar,
+ * which is the same flattering-silence failure as every other instrument bug
+ * this session. Candidate B found it in his own copy while reconciling with C.
+ */
+const COMPOSITE = [
+  'node', 'choice', 'sequence', 'dispatch', 'transform', 'oneOrMore', 'many',
+  'optional', 'oneOrMoreSep', 'sepBy', 'token', 'not', 'peek', 'label', 'field',
+  'otherwise', 'when', 'routed', 'noTrivia', 'attempt', 'expect', 'balanced',
+  'scanTo', 'gate', 'leaf', 'parser', 'skip', 'trivia', 'literal', 'regex',
+  'keywords', 'word', 'ref'
+].join('|');
 
 /*
  * SCSS and Jess declare rules as `node<Quoted>(…)`. A pattern demanding
