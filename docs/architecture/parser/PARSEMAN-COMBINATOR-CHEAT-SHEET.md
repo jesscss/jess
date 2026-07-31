@@ -294,3 +294,52 @@ CSS ownership, horizontal cleanup, and at-rule cleanup rule:
   separators. Comments are trivia. A block comment that makes an otherwise empty
   Less ruleset renderable is a trivia-backed renderability fact over the body
   span, not a `Comment` child in the rules list.
+
+## Diagnosing a production that is structurally wrong
+
+Two rules, both earned by losing rounds to the alternative.
+
+**1. Check what the reducer RECEIVES before checking what the grammar
+CONSUMES.** Four consecutive defects in one rebuild were diagnosed from the
+child array and none from reading the combinators:
+
+| symptom | actual cause |
+| --- | --- |
+| `block(undefined, 'paren')` | an absent `optional()` contributes NO child slot and SHIFTS every later index |
+| every at-rule body empty, first statement in the prelude slot | `many()` SPREADS its matches into the children list; it is not one array child |
+| `a{b:c;d:e}` keeping only the first declaration | the same `many()` spreading, read as `children[1]` |
+| a compound losing its arity | `token()` collapses its span to one leaf |
+
+Positional reads are the common thread. **Never index a fixed position when any
+child combinator has variable arity** — `optional()`, `many()`, `oneOrMore()`,
+`transform()` and `oneOrMoreSep()` all move the indices under you.
+`oneOrMoreSep()` additionally hands the reducer its SEPARATORS, so a list
+reducer passing `children` straight through emits the separator twice: once as
+a phantom child and once as the list's own `sep`. Extract by identity — find
+the array, find the first node with a `type` — not by position.
+
+**2. When a production behaves differently in two contexts, ask what differs
+about the CALLERS before asking what differs about the whitespace.** A compound
+selector must forbid a gap between its own parts (`a .b` is two compounds) while
+permitting one at its left edge (`:has(> .b)` must skip the space after the
+combinator). Three consecutive attempts to express that by moving `noTrivia`
+all failed, and they failed as a single wrong frame rather than as three bad
+guesses: every hypothesis was a trivia-scoping hypothesis, and the distinction
+is **positional**. Trivia scoping cannot express it, because the same mechanism
+produces the wanted behaviour after a combinator and the bug between compounds.
+The left edge belongs to the caller.
+
+Measured, seven spellings against `a.b` / `a .b`: only `noTrivia(many(X))` as
+the WHOLE body gives correct compound semantics. `many(noTrivia(X))`,
+`sequence(X, many(noTrivia(X)))` and `sequence(X, noTrivia(many(X)))` all merge
+`a .b` and destroy the descendant combinator; `token(noTrivia(...))` also
+collapses the arity. The incumbent CSS grammar solves the real problem with
+nested trivia CLASSES rather than placement — `compoundTrivia` admits comments
+only (`grammar.ts:774`), with inner `parser(..., interstitialTrivia)` re-enables
+restoring whitespace inside `[a = b]` and `:not( .x )` — and keeps the leading
+combinator in a separate `RelativeComplexSelector` production entirely.
+
+**A corollary for the probes themselves:** a probe that omits the candidate you
+would most likely have picked reads as "none of these work" when it has simply
+not tested it. Enumerate the obvious answer explicitly, including the one you
+expect to win.
