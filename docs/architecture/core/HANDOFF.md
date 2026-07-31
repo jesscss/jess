@@ -476,9 +476,53 @@ symbol name and re-locate it with `grep`; treat the line number as a hint with a
   (`solve.ts:109`) calls `buildContribs(reachable)` **per subject**, so `composePath` and
   `collectBranchAtoms` are recomputed for every instruction on every admitted subject even
   though both depend only on the instruction — ~1.1-1.5% of profile, i.e. 2-3x the bitset
-  ceiling. Hoisting it is blocked on the `e.ext = true` / `e.hidden = true` mutation of the
-  composed extenders inside `buildContribs`, which currently relies on them being per-subject
-  fresh. That is a separate, better-evidenced defect than this row was.
+  ceiling. That is a separate, better-evidenced defect than this row was.
+- ~~**`buildContribs` recomputed per subject** (`solve.ts:109`).~~ **CLOSED — LANDED
+  2026-07-30.** The blocker named above (the `e.ext = true` / `e.hidden = true` mutation
+  "relies on them being per-subject fresh") **was not real**, and the investigation is the
+  result worth keeping. Both stamps are pure functions of the *instruction*
+  (`e.ext` unconditional; `e.hidden` iff `inst.extenderHidden`), so a per-subject recompute
+  produced identical flags every time — only the allocation was per-subject. Sharing the
+  composed branches across subjects was likewise already the engine's contract, not a new
+  constraint: `pushExtender` (`match.ts:190-201`) *documents* "the shared contrib branch is
+  never mutated" and clones before forcing `hidden`; `ir.ts:45-51` pins the same immutability
+  for the `Branch.key` memo. Audited every in-place `Branch` write under `ast/extend/`
+  (`solve.ts:47/49`, `match.ts:196`, `emit.ts:178/314/453`, `compose.ts:56/213/216`,
+  `ir.ts:121/184/187/190`): all land on freshly-constructed branches. `emit.ts:453` is the
+  only one over a caller-supplied list, and that list is `rawOf(s) = composePath(s.path)`,
+  a per-subject fresh compose that never contains a contrib. There are no `Branch`
+  object-identity comparisons and no `Set<Branch>`/`Map<Branch, …>` keys anywhere
+  (`emit.ts:365` is a string-array prefix loop; `sharedPrefixLen` compares plan `Level`
+  arrays, not branches).
+  **Fix:** a render-scoped `ContribMap` memo created in `computeExtends` and threaded
+  through `solveComposed` into `buildContribs(instructions, memo?)`, which now skips
+  instructions already present. Lazy, so a document whose subjects are all pruned by the
+  prefilter still composes nothing. `emit.ts:875` is deliberately NOT memoized — its
+  `relativizeExtender` instructions are rebuilt per subject and are genuinely not shared
+  (measured: 8 of 3414 compositions).
+  **Evidence (deterministic, primary).** On `benchmark.less`, `composePath` +
+  `collectBranchAtoms` calls from `buildContribs` drop **3414 → 34** (26 solve-side + 8
+  emit-side) — a **99.0% / 100.4x** reduction, exactly as predicted before implementing.
+  Call-site split before the fix was 3406 from `solve.ts:109` (131 admitted subjects x 26
+  instructions) vs 8 from `emit.ts:875`.
+  **Evidence (correctness).** Output byte-identical across **all 356** rendered
+  `tests-unit`/`tests-config` fixtures plus `benchmark.less`, verified by a controlled A/B
+  (memo threaded vs `undefined` — the latter is provably the original code path, since plan
+  instructions are never duplicated). `benchmark.less` SHA256 unchanged at
+  `1f041a1bf9c8592eb21c1d7354e49a5a02d1e1a888fc5e120a90b1f85f0a0561` (122,550 bytes).
+  **Timing: no claim made.** 1.1-1.5% sits below the ±4.9% noise floor, and this box ran at
+  load average 48-119 throughout; a wall-clock A/B here could not distinguish the change from
+  noise, so none is reported. The call-count reduction is the honest metric.
+  **Regression gate:** `extend-op-budget.test.ts` gains a fourth case pinning contrib
+  compositions CONSTANT as the admitted-subject count doubles (measured 1 vs 1 with the memo;
+  51 and 101 without, i.e. linear in subjects). Verified to fail with the memo removed.
+  **Aside — the `verify:jess-suite-ratchet` 28-vs-29 NEW discrepancy is a FLAKE, not a
+  regression.** Observed both counts on the SAME tree in this session (28 on the first two
+  runs, 29 on the next three). A controlled A/B with the contrib memo threaded vs removed
+  produced **identical 29-entry NEW sets**, so no extend change is involved. Which entry is
+  intermittent was not isolated (it needs a run that reproduces 28 while capturing the list).
+  Note this worktree resolves `@less/test-data` to the SHARED `~/git/oss/less.js` checkout,
+  a known cross-process flake surface.
 - **`jess-parser` still text-joins selector-bearing pseudo arguments.** The
   folded grammar still has `staticSelectorText`
   (`packages/syntax/jess/jess-parser/src/grammar.ts:385`, used by nth-`of` at `:2585` and

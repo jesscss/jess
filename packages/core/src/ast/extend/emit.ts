@@ -49,6 +49,7 @@ import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { collectPlan, documentHasExtend, reaches } from './plan.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 import { buildContribs, runFixpoint, solveComposed } from './solve.js';
+import type { ContribMap } from './solve.js';
 import type { Stylesheet, Ruleset, Statement } from '../nodes.js';
 
 export interface NestedRulePlan {
@@ -409,6 +410,15 @@ export function computeExtends(
     return null;
   }
 
+  /*
+   * Render-scoped `Contrib` memo. A contrib is a pure function of its instruction
+   * (composed extenders + target atoms — never the subject being solved), so each of
+   * the plan's instructions is composed AT MOST ONCE here instead of once per admitted
+   * subject. Lazily filled by `solveComposed`, so a document whose subjects are all
+   * pruned by the target-atom prefilter still composes nothing. See `buildContribs`'s
+   * sharing invariant for why the memoized branches are safe to share across subjects.
+   */
+  const contribMemo: ContribMap = new Map();
   const flatByRule = new Map<Ruleset, string[]>();
   const hiddenByRule = new Map<Ruleset, boolean[]>();
   const nestedPlan = new Map<Ruleset, NestedRulePlan>();
@@ -552,7 +562,7 @@ export function computeExtends(
     if (!candidate.has(s)) {
       continue;
     }
-    const { list: flat, changed } = solveComposed(rawOf(s), s, plan);
+    const { list: flat, changed } = solveComposed(rawOf(s), s, plan, contribMemo);
     flatBySubject.set(s, flat);
 
     /*

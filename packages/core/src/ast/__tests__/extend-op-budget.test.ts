@@ -74,6 +74,33 @@ const comparisonsFor = (n: number): number => {
   return counters['astExtend.match.branchComparisons'] ?? 0;
 };
 
+/**
+ * A CONTRIB-composition fixture: a FIXED instruction count (one `.x:extend(.base)`)
+ * against a GROWING number of admitted subjects — `n` rules nested inside `.base`.
+ * `.base` itself may-matches the target, and `mayMatch` is an INHERITED flag, so the
+ * emit candidate prune admits the whole nested subtree and every child runs the solve
+ * fixpoint. The instruction is EXACT (not `partial`), so emit's per-nested-subject
+ * `relativizeExtender` path — whose instructions are rebuilt per subject and are
+ * therefore genuinely not memoizable — contributes no compositions here, leaving the
+ * count a clean measure of the solve-side memo alone.
+ */
+const manySubjectDoc = (n: number): ReturnType<CoreAst['stylesheet']> => {
+  const children = [];
+  for (let i = 0; i < n; i++) {
+    children.push(ast.rule(`.s${i}`, [ast.decl('color', ast.keyword('blue'))]));
+  }
+  return ast.stylesheet([
+    ast.rule('.base', [ast.decl('color', ast.keyword('red')), ...children]),
+    ast.rule('.x', [], [{ target: ast.selist(ast.sel('.base')), partial: false }])
+  ]);
+};
+
+const contribComposesFor = (n: number): number => {
+  resetCounters();
+  serialize(manySubjectDoc(n), { collapseNesting: true });
+  return counters['astExtend.buildContribs.instructionsComposed'] ?? 0;
+};
+
 const DISCOVER = process.env.EXTEND_BUDGET_DISCOVER === 'true';
 
 describe('extend operation-counter budgets', () => {
@@ -157,5 +184,31 @@ describe('extend operation-counter budgets', () => {
       + `ceiling is x${GROWTH_CEILING}. A larger factor means the extend fixpoint stopped `
       + `folding same-target instructions and went back to re-scanning per instruction.`
     ).toBeLessThanOrEqual(GROWTH_CEILING);
+  });
+
+  it('composes each instruction contrib ONCE per render, not once per subject (#4 gate)', () => {
+    /*
+     * `buildContribs` runs `composePath(inst.extenderPath)` + `collectBranchAtoms(
+     * inst.target)`, both of which depend ONLY on the instruction. Calling it per
+     * ADMITTED SUBJECT recomputed the identical result for every subject that cleared
+     * the prefilter — measured on benchmark.less as 3,414 compositions for 26
+     * instructions (131 admitted subjects x 26), 1.1-1.5% of the render profile. The
+     * render-scoped contrib memo makes it once per instruction.
+     *
+     * This fixture holds the instruction count FIXED at 1 while doubling the admitted
+     * subject count, so the composition count must stay CONSTANT at 1. Without the memo
+     * it is measured at n+1 (51 and 101 at these two sizes) — linear in the subject
+     * count — so a regression to per-subject construction trips this gate.
+     */
+    const base = contribComposesFor(50);
+    const doubled = contribComposesFor(100);
+
+    expect(base).toBe(1);
+    expect(
+      doubled,
+      `contrib compositions grew from ${base} (50 admitted subjects) to ${doubled} (100); `
+      + `the document has ONE instruction, so both must equal it. A larger count means `
+      + `buildContribs went back to recomposing per subject instead of using the render memo.`
+    ).toBe(base);
   });
 });
