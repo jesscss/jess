@@ -75,14 +75,34 @@ and they are the only two:
 
    The regression scales with probe density (16 probes +24%, 4 probes +5%, 0
    probes clean), which places it on the **rollback path as a per-execution
-   cost**, not a fixed startup cost. **Hypothesis, not yet confirmed:** commit
-   `0665871` (*share cold capture restores through hoisted helpers*) replaced
-   inline capture-restore code with calls to hoisted shared helpers and was
-   justified on a −5.42% `example/css` win; a helper call on the restore path is
-   a cost that multiplies with probe density. `15f33a6` (*hoist byte-identical
-   fused declarations*) is the second suspect. A lane is bisecting
-   `rollback/dense` commit-by-commit to attribute it with numbers. Do not act on
-   the hypothesis before that lands.
+   cost**, not a fixed startup cost.
+
+   **CONFIRMED by bisect — this is no longer a hypothesis.** The cause is
+   `0665871` (*share cold capture restores through hoisted helpers*), and it
+   reproduces the whole effect alone: `--ref=0665871^ --head-ref=0665871` gives
+   `rollback/dense` median **+38.7 … +48.6%**, min **+50.2 … +52.3%**, **won
+   0/12, 0/12, 1/12** across 36 paired comparisons — against `won 6/12 4/12
+   10/12` self-vs-self on the same box. `less/stylesheet` min moved from
+   −6.9 … −4.3% to +14.2 … +28.3%. The shape is coherent with the mechanism:
+   restores sit on the rollback path, so `rollback/*` moves while `expected/*`
+   mostly does not, and among real workloads only speculation-heavy `less/*`
+   moves while `graphql` and `json` stay flat. `15f33a6` is exonerated.
+
+   **The commit predicted 1.4%, recorded that timing "could not resolve it on
+   this box", and was landed with `--no-verify`.** The actual cost is 10–30× the
+   prediction. That is the gate being bypassed, not the gate failing.
+
+   Three options are on the table and the choice is the owner's: revert, retune
+   `CR_SHARE_MIN`, or document the slowdown as a deliberate trade. A partial
+   result before the lane died: `not,dispatch` already clears `less/mixins`
+   (breached 0/3, won 5/12 7/12 5/12).
+
+   **Machine caveat, load-bearing.** Self-check noise floors measured median
+   **+21.1%** against a 6% threshold (grammar) and **+68.6%** against 5%
+   (workload), at load 55–170. Neither gate self-breached so the verdicts stand,
+   but the `median` column is not resolving anything on this box — every finding
+   above rests on `min` and paired win-rate, which are the robust columns. Do
+   not quote a median from this hardware as evidence.
 
    Per [[parseman-each-release-faster-than-last]] this is a **blocker**. Widening
    a threshold or re-baselining to go green is not an available move; the only
@@ -108,6 +128,49 @@ parallel, since each push moves `dev`:
 `cst-children-unify` (`02ae5b05a`) is **NOT** in that set. It is blocked on a
 language-service STOP — 264 → 60 failing against a byte-identical CST — and must
 not be landed opportunistically.
+
+**Jess suite ratchet — measured 2026-07-31 at `212f71221` on a correctly built
+tree** (`pnpm run verify:jess-suite-ratchet`):
+
+`tests: 1021   failing: 28   baseline (gating): 2   NEW: 26   STALE: 0`
+
+Read this before re-measuring: **the build script is `pnpm run build:release`.
+There is no `pnpm build`.** Running the wrong one leaves `lib/` stale, vitest
+resolves through `lib/`, and the ratchet reports a completely fabricated result —
+in this case 9 failures and 2 spurious STALE entries against a true 28 and 0.
+Confirm the build succeeded before trusting any number from this gate.
+
+The 26 NEW decompose as:
+- **16 × `min-max-dialect`** — NOT bugs. `packages/jess/test/min-max-dialect.test.ts:81-82`
+  states that "`.jess` has no dialect fns of its own yet and takes the Less set",
+  which encodes the language model the owner rejected. Stale expectations to be
+  rewritten against P17, not failures to be fixed.
+- **2 × `tests-unit/extend/extend.less`** (all-less + extend-exact-oracle) — long-known.
+- **1 × `namespace-public-semantics`** — deterministic `resolve/name-not-found` on an
+  interpolated mixin name, proven pre-existing on the dev tip by revert-and-rebuild.
+  Suspected (NOT measured) to be `cb8533ae7`.
+- **2 × `dialect-builtins` / `diagnostics`** — plausible fallout from `212f71221`'s
+  empty-registry design; unverified.
+- **2 × SCSS** (`scss-construct-support` implicit-`&` leading combinator,
+  `bootstrap-corpus`). A partial lane result, unconfirmed: *"both are
+  stale-inventory failures, not parser gaps — the construct now parses."*
+- **2 × `jess-render`** (`$extend &` policy, RC-4 `${…}` value-atom set), plus
+  `bootstrap-memory-bisect`.
+
+Known flake class, distinct from all of the above: `merge-fallback-contract`,
+`security-script-runtime` and css-parser's `macro-compiled` are **30 s-timeout
+flakes on a loaded box**, not assertion failures; each passes 3/3 in isolation.
+Do not enter them in the baseline.
+
+**Eleven lanes were terminated mid-flight 2026-07-31 by a monthly spend limit,
+not by failure.** Each had established something before dying; the partial
+results are recorded above where they are usable. Anything a halted lane
+"concluded" in its last line is UNVERIFIED and must be re-derived, not adopted.
+The halted work: the two-baseline ratchet entries, the 16 stale `min-max-dialect`
+expectations + `$(ceil(1.4))`, `.jess` tolerant parse errors (P18), the SCSS
+pair, the three-regression triage, the grammar-diagnostics pressure sweep, the
+serialized branch lander, optional-lookup grammar, the node-model audit, and one
+parseman coverage lane.
 
 **Deferred by the owner, not queued:** committing each parser's EBNF/railroad
 rendering as a fixture so a grammar edit that changes the accepted language
