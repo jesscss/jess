@@ -148,6 +148,98 @@ coordination.
 | parseman: rollback elision via `commitment.ts` | — | css −5.17%, less −4.06%, scss −6.68%, jess −5.73% | landed `9705159` |
 | parseman: `_cmlrg` root-trivia guard | — | css −1.20% | landed `1dc7613` |
 
+### 2.4a css: −30.98% artifact, 29.2× → 21.0× (landed)
+
+Branch `lane/css-grammar-shrink` from `origin/dev` `131cd9d1b`, **parseman
+0.45.0** (not comparable to 0.46.0 figures).
+
+| | source | `ast.js` | `cst.js` |
+| --- | ---: | ---: | ---: |
+| baseline | 114,446 | 3,341,439 | 3,385,629 |
+| final | 110,031 | 2,306,424 | 2,327,653 |
+| **delta** | **−3.86%** | **−30.98%** | **−31.25%** |
+
+1. `09ecb00fc` — deleted 11 parse-dead at-rule block twins. Source −3.94% /
+   artifact −2.96%. **Fails the ratio gate**; landed on correctness grounds
+   (unreachable productions), not on ratio.
+2. `17c699bb0` — dropped the `Routed` prefix, registered the 11 in the map,
+   converted references to `g.X`. Source +0.08% / artifact **−23.09%**.
+   **Carries +3.3% parse — PENDING OWNER DECISION.**
+3. `2a0ca1109` — six two-character edits converting the last by-const
+   references. Source +0.011% / artifact **−7.51% (−187,348 B)**. **~31 KB of
+   artifact per converted reference.**
+
+Oracle: 105 in-repo `.css` files + 54 synthetic at-rule vectors = 159 cases,
+hashing both `parse()` and `parseCssCst()`, failures hashed too. Aggregates
+unchanged across all three commits. **Negative control passed** — dropping
+`'layer'` from `mediaTypeKeywordReserved` moved both aggregates and localised
+to `vec:003:@media layer`.
+
+**The cause was FAN-OUT, not tightness.** Inline-only cycles: **0**, in both
+baseline and final — every cycle already carried a `g.*` edge, as it must or
+codegen would not terminate. The defect was one body inlined into 2–3 dispatch
+sites, each dragging its body-item closure. Inline edges 162 → 133;
+`declarationListDeclaration` 22→11, `declarationListItem` 11→6,
+`stylesheetBodyItem` 11→4, `declarationListBlock` 9→4.
+
+**Count is not prize.** The de-contaminated H2 count on css is **six**, not 86 —
+and those six were worth **187 KB**. A small count can carry a large prize and
+vice versa; always price by closure, never by count.
+
+### 2.4b Negative result: the less query win does NOT reproduce on css
+
+Building the css analogue of the less lane's four query promotions (`QueryValue`,
+`QueryTerm`, `QueryOnlyClause`, `QueryNonOnlyKeyword`, plus the four
+`Query*Feature` arms, named **and** `g.`-cut) **cost** `ast.js` +2,423 B and
+`cst.js` +2,416 B. Reverted.
+
+**Cause:** css's query spine was already cut where it matters — `QueryTerm`
+reaches the six parenthesized feature arms through `g.QueryFeature`, and
+`QueryValue` reaches the value grammar through `g.TypedValue`. With the
+expensive subtrees already shared, nine new names pay only their own ~900 B
+each. **Direct confirmation of the model: the prize is transitive subtree ×
+use count, and css's was already zero here.** Do not port a win between
+grammars without re-measuring.
+
+### 2.4c css leverage map — 90× between regions
+
+| region | source | artifact | expansion |
+| --- | ---: | ---: | ---: |
+| module scope (reducers, guards, terminals) | 33,528 B (30.5%) | 11,463 B (0.5%) | **0.34×** |
+| `rules()` factory | 75,343 B (68.5%) | 2,294,961 B (99.5%) | **30.46×** |
+
+**90×**, against 38× in less. css module scope is **sub-unity** — 33.5 KB of
+source becomes 11.5 KB of artifact. Spend nothing there.
+
+### 2.4d css at-rules: the loose-tier prize is ≈ 0 bytes
+
+Verified 65 consts in the contiguous at-rule/query region (2545–3296) plus the
+dispatch/case/block cluster ≈ 68. Three-bucket result matches less:
+
+- **Bucket 3 (vocabulary, relocatable): essentially empty.** The at-keyword
+  vocabulary is not in `css/src/grammar.ts` at all — it lives in
+  `parser-shared/src/recognition.ts` (`conditionalAtKeyword`,
+  `descriptorAtKeyword`, `documentAtKeyword`, `marginAtKeyword`,
+  `fontFeatureValueAtKeyword`, `keyframesAtKeyword`, …) and **every one is a
+  dispatch key** selecting which at-rule tail family parses. Pure shape.
+  There is no media-*type* allowlist to move — the grammar already accepts any
+  identifier as a media type.
+- **`mediaTypeKeywordReserved`** = `keywords(['only','layer'])` used only inside
+  `not(...)`, twice. It forces `only` into the `QueryOnlyClause` arm rather than
+  being eaten as a generic media type; `layer` is spec-reserved in
+  `<media-type>` (css-cascade-5). **SHAPE, stays** — proven by the negative
+  control above.
+- **`containerNameReserved`** = `not(keywords(['none']))` inside `containerName`.
+  Decides whether `none` is a container *name* or the start of a *query*;
+  `<container-name>` excludes `none` per css-contain-3. **SHAPE, stays.**
+- **Bucket 2 (structurally wrong) is already where the design wants it** —
+  `AtRulePreludeGroup` uses `balanced()`, `OpaqueAtRuleBlock` uses the shared
+  `opaqueAtRuleRecognition` capture.
+
+**The 68 consts are expensive because of fan-out into three dispatches, not
+because of tightness.** The loose-tier lead is a near-zero byte prize on both
+css and less.
+
 ### 2.5 Measurement discipline
 
 - **Noise floor on this machine: 5.144 vs 5.200 ms min-of-mins at a 6/15 win
@@ -402,6 +494,12 @@ existing collapses, which are part of the target and must be reproduced.
 - **Verify a committed tool from a clean clone or via `git show`, never from
   the working tree.** `git ls-tree` the commit and confirm every `import`
   resolves inside it.
+- **The shared scratchpad root is NOT safe for unnamespaced filenames.** A
+  scratchpad `cp` collided with another agent's file via **macOS
+  case-insensitivity** and overwrote `css/src/grammar.ts` with a *less*
+  grammar. Separately, a mask/restore regex in a bulk rewriter ate 443 lines.
+  Both were recovered from namespaced scratch copies without any destructive
+  git op. **Work under `scratchpad/<lane-name>/`, always.**
 
 ---
 
