@@ -3,7 +3,7 @@ import { readdirSync } from 'node:fs';
 import parseman from 'parseman/plugin';
 
 const probes = readdirSync(new URL('.', import.meta.url))
-  .filter(name => /^p\d+-.*\.ts$/.test(name))
+  .filter(name => /^(?:p\d+|s\d+)-.*\.ts$/.test(name))
   .map(name => name.replace(/\.ts$/, ''));
 
 export default defineConfig(probes.map(name => ({
