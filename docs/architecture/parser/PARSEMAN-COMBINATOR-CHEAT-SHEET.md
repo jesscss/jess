@@ -1,20 +1,293 @@
 # Parseman combinator cheat sheet
 
-> ⚠️ **This sheet is CUT AGAINST `parseman@0.43.0` AND IS ONE FLOOR STALE.** The repo moved
-> to `^0.45.0` in `75002c4a3` (2026-07-30) without the re-cut that this document's own rule —
-> and `HANDOFF.md`'s grammar router — require in the same change as a floor bump. Treat every
-> combinator signature below as needing verification against the installed 0.44 package until
-> someone re-cuts it. Flagged by the 2026-07-30 docs audit; the re-cut itself was not done
-> there because it needs a read of the 0.44 source, which is grammar-lane work.
-
-Jess grammar cleanup last targeted `parseman@0.43.0`.
-
-Source checked: `/Users/matthew/git/oss/parser-thing` at `b24c542`.
-Installed package checked at that time: `node_modules/.pnpm/parseman@0.43.0/node_modules/parseman`.
+Cut against **`parseman@0.45.0`**, the version this repo depends on
+(`node_modules/.pnpm/parseman@0.45.0/node_modules/parseman`). Every spread/arity
+contract below was established from that package's `dist/index.cjs` — by
+enumerating the nine call sites that push into the CST child buffer, and by
+running each combinator and counting the children the reducer actually received.
+Neither inference from the type signature nor the upstream working copy at
+`~/git/oss/parser-thing` (currently `0.46.0`, ahead of the installed floor) is a
+valid source for these contracts.
 
 This is the working grammar-authoring guide for the four host-mode grammar
 files. Use the language production name first, keep rules small, and prefer the
 Parseman combinator that states the ownership boundary directly.
+
+---
+
+## Spread and arity: read this first
+
+**This section is first because it has now cost six separate lanes a debugging
+round, and because every one of those defects was invisible to a parse-success
+check and to a green test suite.**
+
+### The one rule that explains all of it
+
+A reducer's `children` array is **not** the value array of the `sequence()` you
+passed to `node()`. It is an **ambient capture buffer**. Combinators do not
+"return children"; a small set of them *push* into that buffer as they match,
+and everything else is **transparent** — it contributes exactly the sum of what
+its own inner parsers pushed.
+
+In `parseman@0.45.0` exactly these combinators push, and each pushes **exactly
+one** child:
+
+> `literal` · `regex` · `keywords` · `word` · `makeWord` · `scanTo` · `routed` ·
+> `node` · `token` · `leaf`
+
+`peek`, `not`, and `gate` are zero-width and push **nothing**. **Every other
+combinator in the library is transparent.** That single fact is the whole
+defect class:
+
+```js
+sequence(literal('('), ident, literal(')'))   // 3 children — sequence pushes nothing itself
+many(item)          // matched 3 times -> 3 children, NOT one array child
+transform(seq3, fn) // 3 children — fn's return value NEVER reaches the parent
+node('X', seq3, fn) // 1 child — node() is the only structural combinator that groups
+```
+
+### The failure signature
+
+**The parse succeeds.** You get a plausible, well-typed tree. What you see is:
+
+- everything after the **first** element of a repeated group is missing; or
+- a child appears **one slot to the left** of where it belongs; or
+- a block comes out **empty** while its first statement turns up in the
+  *preceding* slot (a prelude, a name, a selector).
+
+### The diagnostic rule — three for three this session
+
+> **When a compound splits, check what the reducer RECEIVES before checking what
+> the grammar CONSUMES.**
+
+Whitespace-and-glue hypotheses have lost to arity hypotheses three separate
+times this session, and in every case the losing hypothesis was the intuitive
+one and cost a full round. Print `children.length` and the children *first*.
+Reach for `noTrivia` second, if at all.
+
+Confirmed instances:
+
+- **`a:is(.x,.y)` split at the compound boundary.** First diagnosis: trivia,
+  reach for `noTrivia`. Second: whitespace. Actual cause: `transform()` is
+  transparent, so the compound term never arrived as one child. `node()` fixed
+  it, one line.
+- **A five-defect chain from `many()`.** Every multi-declaration rule kept only
+  its first declaration, and at-rule bodies came out empty while the body's
+  first statement appeared in the prelude slot. **One root cause, five
+  symptoms, none of which looked like arity.**
+- A third instance was reported by the reviewing lane. Its write-up had not
+  arrived when this sheet was cut, so the details are deliberately not
+  reconstructed here — add them when that lane lands them.
+
+The reason this is worth stating as a rule rather than a caveat: the symptoms —
+missing trailing content, a child one slot left, an empty block — all look like
+*consumption* problems. Nothing about them points at the reducer's argument
+list, which is where the evidence actually is.
+
+### The headline case
+
+```js
+Block = node('Block', sequence(literal('{'), many(item), literal('}')),
+             children => children[1])
+run(Block, '{a:b;c:d}')   //  -> a single Declaration. NOT a list.
+```
+
+`children[1]` is the **first statement**, not the statement list. The children
+are `['{', decl, decl, '}']`, so `children[1]` is `decl#1` and `decl#2` sits at
+index 2 where the author expected `'}'`.
+
+**The fix is to wrap the group in `node()`,** which is the only structural
+combinator that collapses its subtree to one child:
+
+```js
+Block = node('Block', sequence(literal('{'), node('Body', many(item)), literal('}')),
+             children => children[1])   // now genuinely the body
+```
+
+**Cost fact, stated plainly:** `node()` measures **3,425 B per site against
+`transform()`'s 46 B — 74×**. The correct spelling for a grouped compound
+currently costs 74× the incorrect one. Pay it: do **not** use `transform()` as
+an economy where the tree needs `node()`. A codegen lane is separately tasked
+with itemising and reducing that 3,425 B; this number will be updated if it
+moves.
+
+### The same trap from the other side: variable arity shifts every later index
+
+```
+sequence(literal('('), optional(X), literal(')'))  on "(hover)" -> 3 children ['(','hover',')']
+                                                    on "()"     -> 2 children ['(',')']
+```
+
+`"()"` yields `[')' at index 1]` — **not** `[undefined, ')']`. A non-matching
+`optional()` contributes **nothing** and shifts every later index down. Any
+reducer indexing past an optional reads the wrong child, with no arity error and
+no exception. Confirmed live: `sequence(routed(), optional(prelude), Block)`
+read with `children[1], children[2]` put the **body in the prelude slot** for
+`@font-face{a:b}`.
+
+`literal()` matches are **NOT** dropped from the child array. That is the
+obvious single explanation for both symptoms, and it is **false** — verified
+above, where `'('` and `')'` are both present.
+
+> **The rule: do not read a fixed position when any preceding child combinator
+> has variable arity.** Put variable-arity combinators last, or destructure by
+> identity/type rather than by index.
+
+Two established fixes in this codebase, both preferred over indexing past an
+`optional()`:
+
+- **A node that always matches and may be empty.** `AtRuleStatement`
+  (`packages/syntax/css/css-parser/src/grammar.ts:2628`) uses `g.StatementPrelude`
+  rather than `optional(...)`, so the arity is fixed at 3.
+- **Wrap in `token(...)`.** `lessDeclarationProperty`
+  (`packages/parser-shared/src/recognition.ts:298`) is
+  `token(noTrivia(sequence(optional(literal('*')), cssIdentifier)))` — the
+  `optional` is variable-arity inside, but `token()` collapses the whole thing
+  to one leaf, so the caller sees fixed arity.
+
+### Why no test catches this
+
+A wrong positional read produces a **plausible, well-typed tree**. It parses, it
+type-checks, and the suite passes. The only instruments that see it are a
+byte-level tree diff against a known-good baseline, and asserting
+`span.end === source.length` — because `many()` succeeds on zero matches, so a
+root of `many(Item)` returns `ok=true` with `span={0,0}` on pure garbage.
+
+### Related: separated lists spread their separators too
+
+`sepBy` and `oneOrMoreSep` are transparent. On `a,b,c` the reducer receives
+**five** children `['a', ',', 'b', ',', 'c']`, not three items. Parseman's own
+duplication analyzer describes `sepBy` as yielding "a flat item list" — that
+describes the combinator's **value**, not the CST children. Do not read items
+by index off a separated list; wrap the items in `node()` or filter by type.
+
+---
+
+## Mechanical contract for all 95 runtime exports
+
+`parseman@0.45.0` has **95 runtime exports**. All 95 appear below, each with an
+explicit spread contract. The four contract values are:
+
+| Contract | Meaning |
+| --- | --- |
+| **ONE** | Pushes exactly one child into the parent's children, whatever its subtree did. |
+| **SPREADS** | Transparent. Contributes exactly the sum of what its inner parsers contributed — zero, one, or many. |
+| **ZERO** | Zero-width assertion. Contributes no child. |
+| **N/A** | Not a parse-time combinator; contributes nothing because it never participates in a parse. |
+
+### Terminals and grouping — contribute exactly ONE child (10)
+
+| Export | Contract | Use it when |
+| --- | --- | --- |
+| `literal` | **ONE** | A fixed spelling is syntax, punctuation, or glue. |
+| `regex` | **ONE** | The language genuinely needs a character pattern Parseman has no structured helper for. |
+| `keywords` | **ONE** | A fixed set should compile as one longest-first terminal with optional boundary and case policy. |
+| `word` | **ONE** | One keyword needs a trailing word-boundary guard. |
+| `makeWord` | **ONE** | Many words share the same boundary/case policy. Returns a `word`-shaped factory; each built word is ONE. |
+| `scanTo` | **ONE** | A bounded opaque run is permitted and has an explicit sentinel. Emits the whole run as a single leaf. |
+| `routed` | **ONE** | A selected dispatch branch should own the already-parsed value and span. |
+| `node` | **ONE** | A branch owns a public CST boundary or AST projection. **The only structural combinator that groups a subtree into one child.** |
+| `token` | **ONE** | A terminal span/value should be available as one leaf. Collapses variable-arity interiors to fixed arity. |
+| `leaf` | **ONE** | A value should be represented as a CST leaf. |
+
+### Structural — SPREAD into the parent's children (22)
+
+Every one of these is transparent. **None of them groups.** If you need a group,
+that is what `node()` is for.
+
+| Export | Contract | Use it when |
+| --- | --- | --- |
+| `sequence` | **SPREADS** | Several pieces must appear in order. Contributes the sum over its terms. |
+| `choice` | **SPREADS** | Alternatives are real alternatives. Contributes whatever the winning arm contributed. |
+| `many` | **SPREADS** | Zero or more repetitions and nullable is correct. **N matches contribute N children.** |
+| `oneOrMore` | **SPREADS** | At least one repetition is required. Implemented as `many(..., {min:1})`; same spread. |
+| `optional` | **SPREADS** | A local piece may be absent. Contributes its inner count on a hit and **zero on a miss** — the index-shift trap. |
+| `sepBy` | **SPREADS** | A separated list may be empty or needs min/trailing options. **Separators are children too.** |
+| `oneOrMoreSep` | **SPREADS** | A separated list cannot be empty. Implemented as `sepBy(..., {min:1})`; separators are children. |
+| `transform` | **SPREADS** | A value changes shape without needing a CST node boundary. **`fn`'s return value never reaches the parent's children** — only the inner parser's pushes do. |
+| `skip` | **SPREADS** | A main parser should ignore a specific skipped parser around it. Contributes main + skipped pushes. |
+| `noTrivia` | **SPREADS** | Pieces must be adjacent or must not skip ambient trivia. Thin `parser({trivia:null}, …)` wrapper. |
+| `parser` | **SPREADS** | A nested parser needs local trivia policy. Transparent to children. |
+| `attempt` | **SPREADS** | A speculative arm may consume before failing and must allow outer backtracking. |
+| `label` | **SPREADS** | Diagnostics need a clearer expected label. Rewrites `expected`, not children. |
+| `trivia` | **SPREADS** | A parser describes trivia for a grammar or nested parser mode. Rebinds inner `parse` unchanged. |
+| `classifiedTrivia` | **SPREADS** | Root trivia needs named arms. Built from `trivia(oneOrMore(choice(…)))`; inherits that spread. |
+| `withCtx` | **SPREADS** | A parser branch must read or adjust parse context explicitly. |
+| `field` | **SPREADS** | A semantic reducer needs a named captured child. Adds a **field** entry; the child still spreads positionally. |
+| `dispatch` | **SPREADS** | A parsed string value routes known/generic continuations without reparsing the opener. Contributes what the selected branch contributes. |
+| `ref` | **SPREADS** | A grammar references a rule by name outside the `rules()` proxy shape. |
+| `rules` | **SPREADS** | A grammar factory needs recursive named rules. Each named rule contributes per its own shape. |
+| `expect` | **SPREADS** | A missing delimiter needs a stronger diagnostic at a known point. Contributes its inner parser's children. |
+| `balanced` | **SPREADS** ⚠️ | A scanner must skip balanced delimiter pairs inside a bounded run. **See the defect note below — this one is a trap.** |
+
+> ⚠️ **`balanced` is inconsistent with its sibling `scanTo` and this is a
+> parseman defect, not a doc gap.** `scanTo` emits its whole run as ONE leaf.
+> `balanced` is declared `Combinator<string>` and its implementation ends in a
+> reassembly callback that concatenates the interior back into a single string —
+> but it is spelled
+> `transform(sequence(literal(open), many(choice(self, …)), expect(literal(close))), fn)`,
+> and because `transform` is transparent that reassembled string **never reaches
+> the parent's children**. Measured: `balanced('(', ')')` on `"(a(b)c)"`
+> contributes **7** children `['(','a','(','b',')','c',')']`, not one.
+> `token(...)` or `leaf(...)` in place of `transform(...)` would make it ONE and
+> match both its type and `scanTo`. Filed as **P19** in
+> `docs/architecture/core/DESIGN-DECISIONS.md`. Until it is fixed upstream,
+> **wrap every `balanced(...)` whose children you read in `token(...)`.**
+
+### Zero-width assertions — contribute NO child (3)
+
+| Export | Contract | Use it when |
+| --- | --- | --- |
+| `peek` | **ZERO** | The parser must assert a small required shape without consuming it. |
+| `not` | **ZERO** | The parser must assert a small forbidden shape without consuming it. |
+| `gate` | **ZERO** | A custom predicate is the smallest correct guard. Signature is `gate(predicate)` — it takes no inner combinator. |
+
+### Dispatch case descriptors — not parsers (6)
+
+These build case-table entries consumed by `dispatch(...)`. They never parse, so
+they contribute nothing themselves; the branch parser they carry contributes per
+its own contract.
+
+| Export | Contract | Use it when |
+| --- | --- | --- |
+| `when` | **N/A** (branch's own contract applies) | One dispatch branch matches an exact key or matcher. |
+| `otherwise` | **N/A** (branch's own contract applies) | The same routed token family has a generic fallback. |
+| `makeWhen` | **N/A** | Many dispatch branches share the same case policy. |
+| `startsWith` | **N/A** | A dispatch branch is selected by a routed value prefix. |
+| `endsWith` | **N/A** | A dispatch branch is selected by a routed value suffix, usually glued `(`. |
+| `matches` | **N/A** | A dispatch branch needs a regex predicate over the already-routed value. |
+
+### Grammar assembly and entry points — not combinators (7)
+
+| Export | Contract | Use it when |
+| --- | --- | --- |
+| `compose` | **N/A** | A grammar composes reusable grammar pieces under the same host-mode contract. |
+| `composeLeaf` | **N/A** | A grammar imports a terminal leaf rule, not a composable subtree. |
+| `compile` | **N/A** | A grammar is lowered to generated parser code. The compiled path emits the **same** per-combinator contracts as the interpreter. |
+| `parse` | **N/A** | A combinator should be run directly in tests or small tools. |
+| `run` | **N/A** | Document-style evaluation returning a `RunResult`. |
+| `parseDoc` | **N/A** | Functional/document-style Parseman evaluation outside the grammar files. |
+| `runWithGrammarCoverage` | **N/A** | A run should also record grammar coverage. |
+
+### Tooling, CST, analysis, coverage, source mapping — not combinators (47)
+
+None of these participate in a parse; all are **N/A** for spreading.
+
+| Exports | Contract | Use them when |
+| --- | --- | --- |
+| `analyzeGating`, `analyzeGatingRules`, `analyzeGrammarGating`, `formatGatingWarnings`, `firstSetToString` | **N/A** | Reviewing first-set quality, shared opener choices, and macro-buildability blockers. |
+| `analyzeDuplication`, `analyzeDuplicationRules`, `formatDuplicationFindings`, `duplicationFindingCount`, `siteToString`, `alternationGroups`, `keywordRegexShape`, `extractCharClasses`, `charClassMembers`, `keywordAlternationHazards` | **N/A** | Reviewing duplicate grammar structure, keyword-regex anti-patterns, and near-identical dialect copies. |
+| `diagnoseGrammar`, `formatGrammarDiagnosis` | **N/A** | Producing a whole-grammar diagnosis report. |
+| `grammarCoverageDefinitions`, `compiledGrammarCoverageDefinitions`, `composedGrammarCoverageDefinitions`, `createGrammarCoverageCollector`, `GRAMMAR_COVERAGE_DEFINITIONS` | **N/A** | Enumerating and collecting grammar coverage points. |
+| `createGrammarInstrumentationContext`, `createGrammarTraceSink` | **N/A** | Instrumenting or tracing a parse for diagnostics. |
+| `completionsAt`, `isParseError` | **N/A** | Editor diagnostics and completion-facing parser utilities. |
+| `cstBuildHost`, `createVisitor` | **N/A** | Supplying a CST build host or walking a built tree. |
+| `buildTriviaIndex`, `buildRootTriviaIndex`, `triviaEntries`, `triviaKindMask` | **N/A** | Reading trivia recorded during a parse. |
+| `buildLineIndex`, `createLineIndex`, `normalizeLineIndex`, `offsetToLineCol`, `recordLineRange` | **N/A** | Offset-to-line/column mapping. |
+| `annotateSpan`, `annotateTreeSpans`, `absoluteSpanAt`, `absoluteSpanCST` | **N/A** | Annotating spans with line/column information. |
+| `relativize`, `absolutize`, `relativizeCST`, `absolutizeCST`, `shiftAbsolute`, `applyEdit` | **N/A** | Relative/absolute span conversion and incremental edit support. |
+
+---
 
 ## The CSS-Family Choice
 
@@ -86,6 +359,10 @@ const Value = dispatch(
   otherwise(RoutedKeyword)
 );
 ```
+
+Note that `identOrFunction` above is wrapped in `token(...)` precisely because
+it contains an `optional(...)`: that makes it ONE leaf with fixed arity instead
+of a variable-arity pair.
 
 The routed combinator must consume the syntax that decides the branch. CSS and
 Less function names are glued to `(`, so `name(` belongs in the routed opener;
@@ -212,68 +489,14 @@ CSS ownership, horizontal cleanup, and at-rule cleanup rule:
   routed-at-keyword family first. Preserve it only with a written exception that
   names why the routed value cannot decide the branch.
 
-## Grammar Surface
-
-| Export | Use it when |
-| --- | --- |
-| `literal` | A fixed spelling is syntax, punctuation, or glue. |
-| `regex` | The language genuinely needs a character pattern that Parseman has no structured helper for. |
-| `keywords` | A fixed set should compile as one longest-first terminal with optional boundary and case policy. |
-| `word` | One keyword needs a trailing word-boundary guard. |
-| `makeWord` | Many words share the same boundary/case policy. |
-| `sequence` | Several pieces must appear in order. |
-| `choice` | Alternatives are real alternatives, especially disjoint or closed sets. |
-| `dispatch` | A parsed string value routes known/generic continuations without reparsing the opener. |
-| `when` | One dispatch branch matches an exact key or matcher. |
-| `makeWhen` | Many dispatch branches share the same case policy. |
-| `startsWith` | A dispatch branch is selected by a routed value prefix. |
-| `endsWith` | A dispatch branch is selected by a routed value suffix, usually glued `(`. |
-| `matches` | A dispatch branch needs a regex predicate over the already-routed value. |
-| `otherwise` | The same routed token family has a generic fallback. |
-| `routed` | A selected branch should own the already-parsed dispatch value and span. |
-| `attempt` | A speculative arm may consume before failing and must allow outer backtracking. |
-| `many` | Zero or more repetitions are allowed and nullable is correct. |
-| `oneOrMore` | At least one repetition is required. |
-| `optional` | A local piece may be absent without owning a separator or terminator. |
-| `sepBy` | A separated list may be empty or needs explicit min/trailing options. |
-| `oneOrMoreSep` | A separated list cannot be empty. |
-| `rules` | A grammar factory needs recursive named rules. |
-| `ref` | A grammar references a rule by name outside the `rules()` proxy shape. |
-| `not` | The parser must assert a small forbidden shape without consuming it. |
-| `peek` | The parser must assert a small required shape without consuming it. |
-| `node` | A branch owns a public CST boundary or AST projection. |
-| `transform` | A value changes shape without needing a CST node boundary. |
-| `skip` | A main parser should ignore a specific skipped parser around it. |
-| `trivia` | A parser describes trivia for a grammar or nested parser mode. |
-| `label` | Diagnostics need a clearer expected label. |
-| `field` | A semantic reducer needs a named captured child. |
-| `parse` | A combinator should be run directly in tests or small tools. |
-| `parser` | A nested parser needs local trivia policy. |
-| `noTrivia` | Pieces must be adjacent or must not skip ambient trivia. |
-| `token` | A terminal span/value should be available as one leaf. |
-| `leaf` | A value should be represented as a CST leaf. |
-| `scanTo` | A bounded opaque run is permitted and has an explicit sentinel. |
-| `balanced` | A scanner must skip balanced delimiter pairs inside a bounded run. |
-| `expect` | A missing delimiter needs a stronger diagnostic at a known point. |
-| `gate` | A custom predicate is the smallest correct guard. |
-| `guard` | Deprecated alias for `gate`; do not add new uses. |
-| `withCtx` | A parser branch must read or adjust parse context explicitly. |
-| `compose` | A grammar composes reusable grammar pieces under the same host-mode contract. |
-| `composeLeaf` | A grammar imports a terminal leaf rule, not a composable subtree. |
-| `compile` | A grammar is lowered to generated parser code. |
-
-## Tooling Surface
-
-| Export | Use it when |
-| --- | --- |
-| `analyzeGating`, `analyzeGatingRules`, `analyzeGrammarGating`, `formatGatingWarnings`, `firstSetToString` | Reviewing first-set quality, shared opener choices, and macro-buildability blockers. |
-| `analyzeDuplication`, `analyzeDuplicationRules`, `formatDuplicationFindings`, `duplicationFindingCount`, `siteToString`, `alternationGroups`, `keywordRegexShape`, `extractCharClasses`, `charClassMembers`, `keywordAlternationHazards` | Reviewing duplicate grammar structure, keyword-regex anti-patterns, and near-identical dialect copies. |
-| `parseDoc`, `run` | Functional/document-style Parseman evaluation helpers outside the grammar files. |
-| `completionsAt`, `isParseError` | Editor diagnostics and completion-facing parser utilities. |
-| `cstBuildHost`, `buildTriviaIndex`, `triviaEntries`, `walk`, `createVisitor`, `triviaKindMask`, `OffsetIndex`, `buildOffsetIndex`, `collectLeafSlots`, `gapText`, `lineBreaksIn`, `blankLinesIn`, `lineStartWithin`, `indentWidth`, `indentMixed`, `commentsIn`, `gapIsSignificant`, `relativize`, `absolutize`, `absoluteSpanAt`, `shiftAbsolute`, `applyEdit`, `relativizeCST`, `absolutizeCST`, `absoluteSpanCST`, `buildLineIndex`, `offsetToLineCol`, `annotateSpan` | CST, source mapping, trivia, and editor/runtime support code; ordinary grammar rewrite slices should not need them. |
-
 ## Anti-Patterns
 
+- **Do not read a fixed child index past a `many`, `optional`, `sepBy`,
+  `oneOrMoreSep`, `choice`, or `transform`.** Wrap the group in `node()`, or a
+  variable-arity terminal in `token()`, first. This is the top entry because it
+  is the most expensive recurring defect in the grammar lanes.
+- **Do not reach for `noTrivia` when a compound splits.** Print the reducer's
+  children first. Three separate lanes lost a round to this exact reflex.
 - Do not write keyword regexes such as `regex(/@page(?![-\w])/i)` when a
   routed at-keyword family should own the branch. Route the at-keyword once
   with `dispatch(...)` / `makeWhen(...)` / `routed()` instead of swapping one
@@ -295,67 +518,23 @@ CSS ownership, horizontal cleanup, and at-rule cleanup rule:
   Less ruleset renderable is a trivia-backed renderability fact over the body
   span, not a `Comment` child in the rules list.
 
-## Reducer children are POSITIONAL and combinator arity is VARIABLE
+## The reachability defects, for pattern recognition
 
-**This section exists because five distinct defects in one session came from it,
-every one invisible to a parse-success check and to a green test suite.**
-
-### `many()` SPREADS its matches into the children list
-
-It does **not** hand the reducer one array child.
-
-```js
-Block = node('Block', sequence(literal('{'), many(item), literal('}')),
-             children => children[1])
-run(Block, '{a:b;c:d}')   //  -> a single Declaration. NOT a list.
-```
-
-`children[1]` is the **first statement**, not the statement list. Measured
-consequence: **every multi-declaration rule dropped all but its first
-declaration**, and every at-rule body was empty while the body's first
-statement surfaced in the *prelude* slot.
-
-### A non-matching `optional()` contributes NOTHING and shifts every later index
-
-```
-sequence(literal('('), X, literal(')'))  on "(hover)" -> 3 children ['(','hover',')']
-                                          on "()"     -> 2 children ['(',')']
-```
-
-`"()"` yields `[')' at index 1]` — **not** `[undefined, ')']`. Any reducer
-indexing past an optional reads the wrong child, with no arity error and no
-exception. Confirmed live: `sequence(routed(), optional(prelude), Block)` with
-`children[1], children[2]` put the **body in the prelude slot** for
-`@font-face{a:b}`.
-
-`literal()` matches are **not** dropped from the child array — that is the
-obvious explanation for both symptoms and it is **false**.
-
-### The rule
-
-> **Do not read a fixed position when any preceding child combinator has
-> variable arity.** Put variable-arity combinators last, or destructure by
-> identity/type rather than by index.
-
-Established fix pattern in this codebase: `AtRuleStatement` uses
-`g.StatementPrelude` — a node that **always matches, possibly empty** — instead
-of `optional(...)`, so the arity is fixed. Prefer that.
-
-### Why no test catches this
-
-A wrong positional read produces a **plausible, well-typed tree**. It parses, it
-type-checks, and the suite passes. The only instruments that see it are a
-byte-level tree diff against a known-good baseline, and asserting
-`span.end === source.length` — because `many()` succeeds on zero matches, so a
-root of `many(Item)` returns `ok=true` with `span={0,0}` on pure garbage.
-
-### The five instances, for pattern recognition
+These shipped alongside the arity defects in the same session and share a
+general form:
 
 `,` reachable as a value component · `!` reachable as a value component ·
 `<`/`=`/`>` reachable as value punctuation (made `QueryComparisonFeature` and
-`QueryRangeFeature` **unreachable dead productions**) · positional reads past
-`optional()` · `many()` spreading.
+`QueryRangeFeature` **unreachable dead productions**).
 
 The general form: **a token that is structurally significant in some position
 must not sit in a terminal table that a greedy repetition can reach in that
 position.**
+
+## Keeping this sheet true
+
+This document is cut against a specific parseman version. **A parseman floor
+bump must re-cut it in the same change** — including re-running the arity probe,
+because a combinator switching between `transform(...)` and `token(...)`
+internally changes its published spread contract without changing its type
+signature. That is exactly how the `balanced` defect (P19) arose.
