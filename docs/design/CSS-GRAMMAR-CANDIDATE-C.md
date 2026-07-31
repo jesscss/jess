@@ -316,6 +316,54 @@ have to be *parseman productions*.
   demand with the incumbent production names and absolute spans derived from
   the captured span base; also owns diagnostics and keyword compliance.
 
+### The keystone, verified against real code
+
+The architecture rests on one claim that had to be checked rather than assumed:
+**can a plain-TypeScript tier produce CST nodes at all?** In `hostMode: 'cst'`
+the grammar's own reducers do not run — parseman builds each node by calling a
+`ctx.build` host. If that host were parseman-owned, the CST node set would be
+rigidly determined by the production set and this lane would be finished.
+
+It is not parseman-owned. **The host is user code, it lives in this repo, and
+it already does exactly what tier 2 needs.**
+`packages/syntax/css/css-parser/src/cst-host.ts`:
+
+- `cssCstBuildHost` (:408) is a locally-defined `BuildHost`; `buildCssCstNode`
+  (:332) constructs every node.
+- `publicGrammarType` **changes a node's type from its children** — one
+  `Numeric` production surfaces as `Percentage`, `Dimension`, or `Num`.
+- `publicTypeName` (:113) remaps grammar names through a `TYPE_NAMES` table, so
+  CST type names are already decoupled from production names.
+- Decisively, `publicChildren` (:290) **fabricates child nodes that no
+  production produced**: for `Url` (:305–315) it manufactures a new leaf
+  `` `${first.value}(` `` with a joined span, and for `Quoted` (:292) it emits a
+  shifted leaf.
+
+So a host synthesizing CST children from a captured span is established
+precedent in this exact file, not a new mechanism. An opaque-prelude production
+can expand, in the host, into the node tree the incumbent's productions would
+have produced.
+
+Two consequences worth stating before anyone reads a number:
+
+1. **The AST surface needs no tier 2 at all** for the 21 flat-prelude at-rules
+   (§2) — the reducer already wants only `any(text)`.
+2. **The host is called during the parse, not lazily.** Expanding eagerly would
+   make CST parse *slower* while AST parse gets faster. The fix is a CST node
+   whose `rules`/`children` are getters, materialising when walked — which
+   satisfies the `CssCstNode` type structurally.
+
+**That fix collides with a documented invariant, and it needs an owner
+decision rather than a quiet workaround.** `cst-host.ts:364–384` records that
+`buildCssCstNode`'s two return branches must realise exactly two hidden classes,
+with identical field order, measured with `%HaveSameMap` and guarded by
+`cst-shape-digest.mjs`; the comment records a ~2x floor cost for getting this
+wrong, paid by all four dialects. A getter-bearing node is a third shape. So
+lazy CST materialisation is *mechanically available* and *perf-gated*: it needs
+either a third stable shape accepted by `cst-shape-digest.mjs`, or eager
+expansion and an honest CST-parse regression. Both are reportable outcomes; the
+choice is the owner's.
+
 Why this can win on the rank key while staying identical: the harness walks the
 CST to hash it, which forces materialisation, so CST bytes match. The hot AST
 path never materialises, so parse speed improves. And the compiled artifact
