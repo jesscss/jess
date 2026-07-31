@@ -1,7 +1,7 @@
 {
   "provenance": {
-    "generatedAt": "2026-07-22T18:03:58.582Z",
-    "jessCommit": "393387594cbaf77ce42198cae4e56efeea3f9f2d",
+    "generatedAt": "2026-07-31T06:05:44.875Z",
+    "jessCommit": "5f9405787716c4e3a68f86ff5b833d6221cb5c39",
     "route": "src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts",
     "configuration": {
       "baseOutput": {
@@ -11,10 +11,8 @@
     },
     "testData": {
       "root": "/Users/matthew/git/oss/less.js/packages/test-data",
-      "commit": "805c89ea399ce88d180a32d1f79f724aafdf543e",
-      "scopedChanges": [
-        "M packages/test-data/package.json"
-      ]
+      "commit": "2f309b667df0fed192c83e1b32b4a72f045798f4",
+      "scopedChanges": []
     },
     "runner": {
       "node": "v24.11.1",
@@ -31,8 +29,7 @@
     {
       "file": "tests-unit/variables-in-at-rules/variables-in-at-rules.less",
       "kind": "render",
-      "outcome": "error",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 11."
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/variables/variables.less",
@@ -77,8 +74,7 @@
     {
       "file": "tests-unit/property-name-interp/property-name-interp.less",
       "kind": "render",
-      "outcome": "error",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 37."
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/property-accessors/property-accessors.less",
@@ -89,19 +85,19 @@
       "file": "tests-unit/plugin-preeval/plugin-preeval.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "File not found: ../../plugin/plugin-preeval (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-unit/plugin-preeval)"
+      "detail": "Plugin \"../../plugin/plugin-preeval\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-preeval.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-unit/plugin-preeval\""
     },
     {
       "file": "tests-unit/plugin-module/plugin-module.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Less @plugin require(\"./lib/clean\") is not supported in the Deno sandbox yet."
+      "detail": "Plugin \"clean-css\" could not be loaded: Less @plugin function \"index.js\" threw: Less @plugin require(\"./lib/clean\") is not supported in the Deno sandbox yet."
     },
     {
       "file": "tests-unit/plugin/plugin.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 2606."
+      "detail": "Plugin \"../../plugin/plugin-global\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-global.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-unit/plugin\""
     },
     {
       "file": "tests-unit/plugi/plugi.less",
@@ -112,7 +108,7 @@
       "file": "tests-unit/permissive-parse/permissive-parse.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 38."
+      "detail": "Bare @variable interpolation is not valid here."
     },
     {
       "file": "tests-unit/parser-slashed-combinator/parser-slashed-combinator.less",
@@ -132,7 +128,7 @@
     {
       "file": "tests-unit/operations/operations.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/operations/operations-advanced.less",
@@ -225,6 +221,11 @@
       "outcome": "mismatch"
     },
     {
+      "file": "tests-unit/math-css-vars/math-css-vars.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
       "file": "tests-unit/lazy-eval/lazy-eval.less",
       "kind": "render",
       "outcome": "pass"
@@ -238,13 +239,13 @@
       "file": "tests-unit/javascript-REMOVED/legacy/javascript.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 31."
+      "detail": "Inline backtick JavaScript is not supported."
     },
     {
       "file": "tests-unit/import/import.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "File not found: ../../plugin/plugin-simple (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-unit/import)"
+      "detail": "Plugin \"../../plugin/plugin-simple\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-simple.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-unit/import\""
     },
     {
       "file": "tests-unit/import/import-remote.less",
@@ -290,23 +291,24 @@
       "file": "tests-unit/ie-filters-REMOVED/legacy/ie-filters.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 33."
+      "detail": "Unexpected Less input after a complete stylesheet."
     },
     {
       "file": "tests-unit/functions-each/functions-each.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/functions/functions.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "This Less variable name is not supported."
     },
     {
       "file": "tests-unit/functions/legacy/functions.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 8790."
+      "detail": "This Less variable name is not supported."
     },
     {
       "file": "tests-unit/extract-and-length/extract-and-length.less",
@@ -341,7 +343,7 @@
     {
       "file": "tests-unit/extend/extend.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/empty/empty.less",
@@ -376,7 +378,7 @@
     {
       "file": "tests-unit/container/container.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/comments/comments2.less",
@@ -474,6 +476,17 @@
       "outcome": "pass"
     },
     {
+      "file": "tests-unit/at-rule-variable-interpolation/at-rule-variable-interpolation.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Bare @variable interpolation is not valid here."
+    },
+    {
       "file": "tests-config/visitorPlugin/visitor.less",
       "kind": "render",
       "outcome": "mismatch"
@@ -551,7 +564,7 @@
     {
       "file": "tests-config/process-imports/google.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/preProcessorPlugin/preProcessor.less",
@@ -572,17 +585,17 @@
     {
       "file": "tests-config/namespacing/namespacing-media.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/namespacing/namespacing-functions.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/namespacing/namespacing-8.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/namespacing/namespacing-7.less",
@@ -597,7 +610,7 @@
     {
       "file": "tests-config/namespacing/namespacing-5.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/namespacing/namespacing-4.less",
@@ -647,13 +660,13 @@
     {
       "file": "tests-config/functions-harness/functions-harness.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/filemanagerPlugin/filemanager.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "File not found: test.test (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-config/filemanagerPlugin)"
+      "detail": "Import not found"
     },
     {
       "file": "tests-config/debug/mediaquery/linenumbers-mediaquery.less",
@@ -674,7 +687,7 @@
       "file": "tests-config/compression/compression.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 232."
+      "detail": "Unexpected Less input after a complete stylesheet."
     },
     {
       "file": "tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less",
@@ -690,7 +703,7 @@
       "file": "tests-config/3rd-party/bootstrap4.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Direct Less function condition cannot preserve Interpolation."
+      "detail": "Unexpected Less input after a complete stylesheet."
     }
   ],
   "error": [
@@ -698,174 +711,175 @@
       "file": "tests-error/parse/single-character.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/property-asterisk-only-name.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/percentage-missing-space.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Missing closing parenthesis."
     },
     {
       "file": "tests-error/parse/parse-error-with-import.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 82."
+      "detail": "Unexpected Less input after a complete stylesheet."
     },
     {
       "file": "tests-error/parse/parse-error-missing-parens.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Missing closing parenthesis."
     },
     {
       "file": "tests-error/parse/parse-error-missing-bracket.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Missing closing brace."
     },
     {
       "file": "tests-error/parse/parse-error-media-no-block-3.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Missing closing brace."
     },
     {
       "file": "tests-error/parse/parse-error-media-no-block-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax. Expected valid Less syntax here."
     },
     {
       "file": "tests-error/parse/parse-error-media-no-block-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax. Expected valid Less syntax here."
     },
     {
       "file": "tests-error/parse/parse-error-curly-bracket.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 39."
+      "detail": "Unexpected Less input after a complete stylesheet."
     },
     {
       "file": "tests-error/parse/parens-error-3.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/parens-error-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/parens-error-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/mixins-guards-cond-expected.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/mixed-mixin-definition-args-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 50."
+      "detail": "Less comma-list mixin argument groups cannot use named or spread arguments."
     },
     {
       "file": "tests-error/parse/mixed-mixin-definition-args-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 50."
+      "detail": "Less comma-list mixin argument groups cannot use named or spread arguments."
     },
     {
       "file": "tests-error/parse/invalid-color-with-comment.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/import-subfolder2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 39."
+      "detail": "Unexpected Less input after a complete stylesheet."
     },
     {
       "file": "tests-error/parse/import-no-semi.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/import-malformed.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/extend-not-at-end.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/detached-ruleset-6.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/custom-property-unmatched-block-3.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unterminated string."
     },
     {
       "file": "tests-error/parse/custom-property-unmatched-block-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Missing closing bracket."
     },
     {
       "file": "tests-error/parse/custom-property-unmatched-block-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Missing closing bracket."
     },
     {
       "file": "tests-error/parse/bad-variable-declaration1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/parse/at-rules-unmatching-block.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 1."
+      "detail": "Missing closing parenthesis."
     },
     {
       "file": "tests-error/parse/imports/import-subfolder2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 39."
+      "detail": "Unexpected Less input after a complete stylesheet."
     },
     {
       "file": "tests-error/parse/imports/subfolder/parse-error-curly-bracket.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 39."
+      "detail": "Unexpected Less input after a complete stylesheet."
     },
     {
       "file": "tests-error/eval/unit-function.less",
@@ -906,27 +920,31 @@
       "file": "tests-error/eval/root-func-undefined-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes.js\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/root-func-undefined-1.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Function did not return a root node"
     },
     {
       "file": "tests-error/eval/recursive-variable.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Recursive reference"
     },
     {
       "file": "tests-error/eval/recursive-property.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Recursive reference"
     },
     {
       "file": "tests-error/eval/property-undefined.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/property-interp-not-defined.less",
@@ -956,19 +974,19 @@
       "file": "tests-error/eval/plugin-3.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: plugin/plugin-error-3 (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"plugin/plugin-error-3\" could not be loaded: Less @plugin function \"plugin-error-3.js\" threw: An error was here."
     },
     {
       "file": "tests-error/eval/plugin-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: plugin/plugin-error-2 (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"plugin/plugin-error-2\" could not be loaded: Less @plugin function \"plugin-error-2.js\" threw: An error was here."
     },
     {
       "file": "tests-error/eval/plugin-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: plugin/plugin-error (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"plugin/plugin-error\" could not be loaded: Less @plugin function \"plugin-error.js\" threw: Error"
     },
     {
       "file": "tests-error/eval/percentage-non-number-argument.less",
@@ -976,47 +994,57 @@
       "outcome": "accepted"
     },
     {
-      "file": "tests-error/eval/namespacing-4.less",
+      "file": "tests-error/eval/percentage-css-var.less",
       "kind": "error",
       "outcome": "accepted"
+    },
+    {
+      "file": "tests-error/eval/namespacing-4.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/namespacing-3.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 26."
+      "detail": "Invalid value."
     },
     {
       "file": "tests-error/eval/namespacing-2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/namespace-variable-not-found.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/namespace-property-not-found.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/multiply-mixed-units.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Multiple units in dimension. Correct the units or use the unit function"
+      "detail": "Invalid unit arithmetic"
     },
     {
       "file": "tests-error/eval/multiple-guards-on-css-selectors2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Guarded selector lists are not supported"
     },
     {
       "file": "tests-error/eval/multiple-guards-on-css-selectors.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 12."
+      "detail": "Unexpected Less input after a complete stylesheet."
     },
     {
       "file": "tests-error/eval/mixins-guards-default-func-3.less",
@@ -1045,12 +1073,14 @@
     {
       "file": "tests-error/eval/mixin-not-matched2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/mixin-not-matched.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/mixin-not-defined.less",
@@ -1062,13 +1092,13 @@
       "file": "tests-error/eval/mixin-not-defined-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 27."
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/javascript-undefined-var.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Inline backtick JavaScript is not supported."
     },
     {
       "file": "tests-error/eval/import-subfolder1.less",
@@ -1080,113 +1110,115 @@
       "file": "tests-error/eval/import-missing.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: file-does-not-exist.less (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Import not found"
     },
     {
       "file": "tests-error/eval/functions-9-expression.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-8-element.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-7-dimension.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-6-condition.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-5-color.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-5-color-2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Value node is not valid as a statement"
     },
     {
       "file": "tests-error/eval/functions-4-call.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-3-assignment.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-15-value.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-14-url.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-13-selector.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-12-quoted.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-11-operation.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-10-keyword.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/extend-no-selector.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
+      "detail": "Unexpected Less syntax."
     },
     {
       "file": "tests-error/eval/divide-mixed-units.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Multiple units in dimension. Correct the units or use the unit function"
+      "detail": "Invalid unit arithmetic"
     },
     {
       "file": "tests-error/eval/detached-ruleset-5.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/detached-ruleset-3.less",
@@ -1238,13 +1270,13 @@
       "file": "tests-error/eval/add-mixed-units2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Incompatible units. Change the units or use the unit function. Bad units: 'px' and 'em'."
+      "detail": "Invalid unit arithmetic"
     },
     {
       "file": "tests-error/eval/add-mixed-units.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Incompatible units. Change the units or use the unit function. Bad units: 'px' and 'em'."
+      "detail": "Invalid unit arithmetic"
     },
     {
       "file": "tests-error/eval/imports/import-test.less",

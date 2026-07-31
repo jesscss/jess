@@ -677,6 +677,12 @@ importers:
         specifier: ^5.0.0
         version: 5.8.3
 
+  packages/less-corpus-fixture-deps:
+    dependencies:
+      bootstrap-less-port:
+        specifier: 0.3.0
+        version: 0.3.0
+
   packages/lint:
     dependencies:
       '@jesscss/core':
@@ -9559,6 +9565,11 @@ packages:
 
   /boolbase@1.0.0:
     resolution: {integrity: sha512-JZOSA7Mo9sNGB8+UjSgzdLtokWAky1zbztM3WRLCbZ70/3cTANmQmOdR7y2g+J0e2WXywy1yS468tY+IruqEww==}
+
+  /bootstrap-less-port@0.3.0:
+    resolution: {integrity: sha512-08aP3FZ7QQ0muffrYguACtN06dfkYvPI6yZEmXSZ3T7VfPD0mVT60lcM4pEW0we3W7BTUlhqYHCGTXrUzWbYoA==}
+    engines: {node: '>=6'}
+    dev: false
 
   /bootstrap-less-port@2.5.1(less@3.13.1):
     resolution: {integrity: sha512-eLi89VSmdLiOWBKzOHlxN2SLLc1cVYiQ77Lvf/4ca1VwbCe0V4+w+7jB+3GwZTs7QgkGPLyllZNScUP8nA960g==}

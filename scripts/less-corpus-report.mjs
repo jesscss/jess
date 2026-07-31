@@ -3,9 +3,9 @@
  * Full Less corpus completeness report (reporting-only).
  *
  * Orchestrates the src-path renderer in `packages/jess/test/less/_corpus-slice.test.ts`.
- * Because adversarial `tests-error` fixtures can OOM or infinite-loop and the
- * built lib can't parse (parseman version skew), each slice runs in a SEPARATE,
- * killable `vitest` child (detached process group → SIGKILL on timeout). The
+ * Because adversarial `tests-error` fixtures can OOM or infinite-loop, each slice
+ * runs in a SEPARATE, killable `vitest` child (detached process group → SIGKILL on
+ * timeout); `vitest` is also what supplies the TS transform for the src path. The
  * child appends one JSONL result line per fixture, flushing after each, so a
  * killed child pinpoints the exact culprit (first fixture with no line); the
  * parent records it as a crash and resumes past it.
