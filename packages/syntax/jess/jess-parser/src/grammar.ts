@@ -1241,23 +1241,48 @@ function reduceSelectorList(children: readonly unknown[]): SelectorList {
  * operator token carries its own padding (calc's additive operators require
  * it), so the spelling is trimmed back to the bare operator.
  */
+function isCalcOperator(text: string): boolean {
+  return text === '+' || text === '-' || text === '*' || text === '/' || text === '%';
+}
+
+/*
+ * Operands and operator characters, in authored order, with the operators'
+ * padding interleaved. The pads are their own terms, so an operator no longer
+ * sits a constant distance from its operand and the fold reads the shape rather
+ * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
+ * defeat any attempt to recover the operator from the padded text.
+ */
 function foldCalcOperation(children: readonly unknown[]): ValueNode {
   const first = children.find(isValueNode);
   if (first === undefined) {
     throw new TypeError('Jess calc grammar requires an operand.');
   }
   let result = first;
-  for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
-    const operatorToken = children[index];
-    const right = children[index + 1];
-    if (operatorToken === undefined || !isValueNode(right)) {
-      throw new TypeError('Jess calc grammar lost an operator operand.');
+  let operator: string | undefined;
+  for (let index = children.indexOf(first) + 1; index < children.length; index += 1) {
+    const child = children[index];
+    if (isValueNode(child)) {
+      if (operator === undefined) {
+        throw new TypeError('Jess calc grammar lost an operator operand.');
+      }
+      result = operation(
+        operator,
+        result,
+        child
+      );
+      operator = undefined;
+      continue;
     }
-    result = operation(
-      requireToken(operatorToken).value.trim(),
-      result,
-      right
-    );
+    if (child === undefined || child === null) {
+      continue;
+    }
+    const text = requireToken(child).value;
+    if (isCalcOperator(text)) {
+      operator = text;
+    }
+  }
+  if (operator !== undefined) {
+    throw new TypeError('Jess calc grammar lost an operator operand.');
   }
   return result;
 }
@@ -1284,8 +1309,41 @@ const rawWhitespace = regex(/[ \t\n\r\f]+/);
  * bodies with Jess's typed reducers substituted; arm ORDER inside `CalcValue`
  * differs from CSS (first sets are disjoint, so the accept set is unchanged).
  */
-const calcProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
-const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
+/*
+ * `valueTrivia` is the padding every value interior admits. The value ladder
+ * runs under `noTrivia`, so an interior that admits authored padding has to
+ * spell it, and it must spell THIS rather than a bare `rawWhitespace` run:
+ * css-syntax-3 §4 makes a comment trivia wherever whitespace is trivia, so a
+ * bare whitespace run is never the right spelling in a trivia slot. Both Jess
+ * comment forms count, matching the document trivia table above.
+ *
+ * The operator pads keep the sum operator's whitespace REQUIREMENT
+ * (css-values-4 §10.1: real whitespace on both sides of `+`/`-`, which a comment
+ * does not supply), so the sum pad is `comment* ws+ (comment ws*)*` while the
+ * product pad, which needs no whitespace, is `ws* (comment ws*)*`. Both keep
+ * their comment and whitespace arms on disjoint first characters and no inner
+ * group matches empty, so the match stays linear.
+ *
+ * Each pad is its OWN term rather than part of the operator regex, so the
+ * operator token stays exactly the operator character. Folding the padding in
+ * would leave `foldCalcOperation` recovering the operator from bytes that can
+ * now contain a comment's own `/` and `*` — the parser handing core a value to
+ * re-parse. With the pads as terms the operator no longer sits a constant
+ * distance from its operand, so the fold reads the shape, not a fixed stride.
+ */
+const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)+/);
+const calcProductPad = regex(/[ \t\n\r\f]*(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
+const calcSumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)*[ \t\n\r\f]+(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
+const calcProductOperator = sequence(
+  calcProductPad,
+  regex(/[*/%]/),
+  calcProductPad
+);
+const calcSumOperator = sequence(
+  calcSumPad,
+  regex(/[-+]/),
+  calcSumPad
+);
 
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
@@ -3017,16 +3075,23 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       throw new TypeError('Jess call component produced unexpected children.');
     }
   );
+
+  /*
+   * An argument comma admits padding on BOTH sides. Unlike a value-list comma
+   * there is no competing punctuation reading inside an argument list, so
+   * `f(c , d)` and `f(c /* z *\/, d)` are plain padded separators.
+   */
   const CallArgument = node<ValueSlot>(
     'CallArgument',
     sequence(
+      optional(valueTrivia),
       literal(','),
-      optional(regex(/[ \t\n\r\f]+/)),
+      optional(valueTrivia),
       g.CallComponent
     ),
     (children) => {
-      if ((children.length !== 2 && children.length !== 3) || requireToken(children[0]).value !== ',') {
-        throw new TypeError('Jess call argument produced unexpected children.');
+      if (!children.some(child => isToken(child) && child.value === ',')) {
+        throw new TypeError('Jess call argument lost its comma.');
       }
       const value = children.at(-1);
       return Array.isArray(value) ? value : requireValueNode(value);
@@ -3055,11 +3120,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'VarCall',
     sequence(
       routed(),
+      optional(valueTrivia),
       g.CustomPropertyValue,
+      optional(valueTrivia),
       optional(sequence(
         literal(','),
-        optional(rawWhitespace),
-        optional(g.Value)
+        optional(valueTrivia),
+        optional(g.Value),
+        optional(valueTrivia)
       )),
       literal(')')
     ),
@@ -3083,10 +3151,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'Call',
     sequence(
       routed(),
+      optional(valueTrivia),
       optional(sequence(
         g.CallComponent,
         many(g.CallArgument)
       )),
+      optional(valueTrivia),
       literal(')')
     ),
     children => funcCall(
@@ -3137,9 +3207,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'CalcParen',
     noTrivia(sequence(
       literal('('),
-      many(rawWhitespace),
+      optional(valueTrivia),
       g.CalcSum,
-      many(rawWhitespace),
+      optional(valueTrivia),
       literal(')')
     )),
     children => block(requireValueNode(children.find(isValueNode)))
@@ -3171,9 +3241,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'CalcCall',
     noTrivia(sequence(
       routed(),
-      many(rawWhitespace),
+      optional(valueTrivia),
       g.CalcSum,
-      many(rawWhitespace),
+      optional(valueTrivia),
       literal(')')
     )),
     children => funcCall(
