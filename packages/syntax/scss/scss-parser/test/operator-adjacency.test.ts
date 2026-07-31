@@ -78,3 +78,34 @@ describe('SCSS operator adjacency', () => {
     accepts('a { b: calc(1px*2) }');
   });
 });
+
+/*
+ * Selector position is the other place adjacency decides meaning, and the one
+ * where the answer is genuinely contested. `.e` and `.f` written with nothing
+ * between them are a COMPOUND selector; written with a separator they are a
+ * DESCENDANT pair. So `.e/*y*\/.f` asks the adjacency question directly, and
+ * the engines disagree about it:
+ *
+ *   lessc 4.x      `.e.f`   — comments vanish at tokenisation, so ADJACENT
+ *   jess (less)    `.e.f`   — matches the oracle
+ *   jess (jess)    `.e .f`  — treats the comment as a separator
+ *   dart-sass      `.e .f`  — treats the comment as a separator
+ *   jess (scss)    parse error
+ *
+ * css-syntax-3 §4 removes comments during tokenisation, which makes `.e.f` the
+ * spec answer and dart-sass's `.e .f` a quirk. Whichever we settle on, it has
+ * to be a STATED policy on the selector production, not a side effect of
+ * whether some regex happened to list the comment alternative.
+ */
+describe('SCSS selector adjacency', () => {
+  it.each([
+    ['between two compound parts', '.e/*y*/.f { g: h }'],
+    ['as a descendant separator', 'a /* x */ b { c: d }'],
+    ['adjacent on one side only', 'a/*x*/ b { c: d }']
+  ])('PINNED DEFECT — rejects a block comment in a selector (%s)', (_label, source) => {
+    /* dart-sass accepts all three (`.e .f`, `a b`, `a b`), as do CSS, Less and
+     * Jess here. SCSS alone rejects them outright, so this is a recognition
+     * gap rather than a disagreement about what the comment means. */
+    rejects(source);
+  });
+});
