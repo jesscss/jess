@@ -11,6 +11,40 @@ is actually needed.
 
 ---
 
+## 0. Diagnostic quality — the metric this lane is uniquely scored on
+
+Measured on the built css parser,
+`packages/syntax/css/css-parser/probes/prelude-diagnostics.mjs`. The tier-2
+validator is ~40 lines of plain JS with one delimiter stack and **zero
+combinator call sites**, so it is free against the per-call-site cost model in
+`GRAMMAR-SIZE-FACTS` §2.1.
+
+| input | incumbent | tier 2 |
+| --- | --- | --- |
+| `@whatever (foo { color: red }` | **ACCEPTED, no diagnostic at all** | `unclosed '(' at offset 10` |
+| `@media (min-width: 5px { … }` | `CSS parser error.` **offset 0, `expected=[]`** | `unclosed '(' at offset 7` |
+| `@supports (display: grid { … }` | `CSS parser error.` **offset 0, `expected=[]`** | `unclosed '(' at offset 10` |
+| `@media ([min-width: 5px) ] { … }` | `CSS parser error.` **offset 0, `expected=[]`** | `crossed-close at 23: ')' closes '[' opened 2 chars in` |
+| `@media (min-width: "5px) { … }` | `CSS parser error.` **offset 0, `expected=[]`** | `unterminated double-quoted string at offset 19` |
+| `@media (min-width: 5px) { … }` **(control)** | accepted | **no fault found** |
+
+Two things this settles.
+
+**The incumbent's tight path localises nothing.** Every malformed prelude
+fails at `offset 0` with an empty `expected` set; `CssParseError` carries
+`line`/`column` fields that are `undefined`. The predicted failure mode — "a
+tight grammar that fails just backtracks and reports no-arm-matched at an
+offset" — is real and is worse than predicted, because the offset is 0.
+
+**It also qualifies the recorded counter-example.** `GRAMMAR-SIZE-FACTS` §2.6
+records that loose-then-validate *loses* on `@whatever (foo {`, reporting
+"Missing semicolon" for an unclosed paren. That measurement was taken against
+a loose route with **no validator tier** — which is what both dialects ship
+today. In css the same input is not merely mis-diagnosed, it is **silently
+accepted**. With the validator present, the captured span yields the exact
+offset and cause. The loss is a property of loose-*without*-validate, and it is
+the specific thing this lane adds.
+
 ## 1. The discriminator, in three buckets
 
 The owner split the original two-way discriminator into three. Every at-rule
@@ -353,16 +387,23 @@ Two consequences worth stating before anyone reads a number:
    whose `rules`/`children` are getters, materialising when walked — which
    satisfies the `CssCstNode` type structurally.
 
-**That fix collides with a documented invariant, and it needs an owner
-decision rather than a quiet workaround.** `cst-host.ts:364–384` records that
-`buildCssCstNode`'s two return branches must realise exactly two hidden classes,
-with identical field order, measured with `%HaveSameMap` and guarded by
-`cst-shape-digest.mjs`; the comment records a ~2x floor cost for getting this
-wrong, paid by all four dialects. A getter-bearing node is a third shape. So
-lazy CST materialisation is *mechanically available* and *perf-gated*: it needs
-either a third stable shape accepted by `cst-shape-digest.mjs`, or eager
-expansion and an honest CST-parse regression. Both are reportable outcomes; the
-choice is the owner's.
+That fix collides with a documented invariant. `cst-host.ts:364–384` records
+that `buildCssCstNode`'s two return branches must realise exactly two hidden
+classes, with identical field order, measured with `%HaveSameMap` and guarded
+by `cst-shape-digest.mjs`; the comment records a ~2x floor cost for getting
+this wrong, paid by all four dialects. A getter-bearing node is a third shape.
+
+**RULED (owner, recorded in `docs/state/GRAMMAR-SIZE-FACTS.md` §2.12): take
+eager expansion and accept the honest CST regression. Keep two hidden classes;
+do not introduce a third shape.** The reasoning is the owner's priority that
+**AST construction is the canonical performance measure**, with CST the
+convenience and IDE/diagnostics path where a slowdown is less visible. Eager
+expansion speeds the path that counts and slows the one that does not.
+
+**The CST regression is therefore a number this lane owes, not a footnote.**
+It will be reported as a named case (fixture × surface), never averaged with
+the AST surface — the recurring regression signature the drift gate exists to
+catch is exactly "AST neutral or faster while CST is slower".
 
 Why this can win on the rank key while staying identical: the harness walks the
 CST to hash it, which forces materialisation, so CST bytes match. The hot AST

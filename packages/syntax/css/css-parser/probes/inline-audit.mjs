@@ -81,7 +81,29 @@ for (const c of consts) {
   }
 }
 
-console.log(`consts: ${consts.length}   composites: ${consts.filter(c => c.composite).length}   in rules map: ${inMap.size}\n`);
+/*
+ * Consistency invariants (GRAMMAR-SIZE-FACTS §1 filters 5-6). These THROW
+ * rather than return a clean-looking number: every contaminated run this
+ * session returned a plausible figure, and an impossible ratio is the cheapest
+ * detector there is. `node<T>(...)` generics are why scss/jess need filter 5;
+ * css uses none (measured: css 0, less 0, scss 158, jess 178), so this probe
+ * is VALID FOR CSS ONLY until it is re-validated per file.
+ */
+const composites = consts.filter(c => c.composite).length;
+if (facIdx < 0) {
+  throw new Error('factory-start detection failed: no `const cssFactory =` line');
+}
+if (retIdx < 0) {
+  throw new Error('rules-map detection failed: no `  return {` line');
+}
+if (inMap.size > composites) {
+  throw new Error(`impossible: ${inMap.size} map rules exceed ${composites} composite consts -- the composite filter is broken`);
+}
+if (composites < consts.length / 2) {
+  throw new Error(`implausible: ${composites} composites of ${consts.length} consts -- likely a broken composite filter, not a clean grammar`);
+}
+
+console.log(`consts: ${consts.length}   composites: ${composites}   in rules map: ${inMap.size}\n`);
 console.log(`H1 -- composite, NOT in map, referenced 2+ times (emitted once per reference): ${h1.length}`);
 for (const r of h1.sort((a, b) => b.bare - a.bare).slice(0, 20)) {
   console.log(`   ${r.name.padEnd(34)} bare-refs=${r.bare}`);

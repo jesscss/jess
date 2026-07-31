@@ -169,6 +169,29 @@ coordination.
   fails the whole statement and points nowhere near the bad option. It **loses**
   on `@whatever (foo {`, where the loose route reports *"Missing semicolon"*
   for an unclosed paren.
+
+  **Qualified 2026-07-31 (Candidate C, measured on css):** that loss is a
+  property of loose-**without**-validate, which is what both dialects ship
+  today. Measured on the built css parser
+  (`packages/syntax/css/css-parser/probes/prelude-diagnostics.mjs`), the
+  incumbent's *tight* path is the weaker of the two, not the stronger:
+
+  | input | incumbent | tier-2 validator over the captured span |
+  | --- | --- | --- |
+  | `@whatever (foo { color: red }` | **ACCEPTED, no diagnostic** | `unclosed '(' at offset 10` |
+  | `@media (min-width: 5px { … }` | `CSS parser error.` **offset 0, expected=[]** | `unclosed '(' at offset 7` |
+  | `@supports (display: grid { … }` | `CSS parser error.` **offset 0, expected=[]** | `unclosed '(' at offset 10` |
+  | `@media ([min-width: 5px) ] { … }` | `CSS parser error.` **offset 0, expected=[]** | `crossed-close at 23: ')' closes '[' opened 2 chars in` |
+  | `@media (min-width: "5px) { … }` | `CSS parser error.` **offset 0, expected=[]** | `unterminated double-quoted string at offset 19` |
+  | `@media (min-width: 5px) { … }` (control) | accepted | **no fault found** |
+
+  Every incumbent tight-path failure reports `offset 0` with an empty
+  `expected` set — it localises nothing. `CssParseError` carries `offset`,
+  `line`, `column`, but `line`/`column` are `undefined` and `offset` is 0. The
+  validator is ~40 lines of plain JS with one delimiter stack and **zero
+  combinator call sites**, so it is free against the §2.1 per-call-site cost
+  model. STATUS: SINGLE-SOURCE (one author, css only; the original
+  `@whatever (foo {` observation was on less).
 - **Leverage is not uniform within a grammar file.** In less: module scope
   (reducers, type-guards) is 93,397 B of source → 57,843 B of artifact
   (**0.62×**); the `rules()` factory is 165,897 B → 3,882,775 B (**23.4×**).
