@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatNumber } from '../format-number.js';
 import { makeDimension } from '../value-factory.js';
-import { serializeDimension } from '../serialize-value.js';
 
 const bytes = (n: number, unit = ''): string => makeDimension(n, unit).bytes;
 
@@ -80,9 +79,17 @@ describe('serializeDimension under the policy', () => {
     expect(bytes(1.23456789e-9, 'px')).toBe('0.00000000123456789px');
   });
 
-  it('still spells non-finite dimensions the CSS way', () => {
-    expect(serializeDimension(makeDimension(Number.NaN, 'px'))).toBe('NaNpx');
-    expect(serializeDimension(makeDimension(Number.POSITIVE_INFINITY, 'px'))).toBe('infinitypx');
-    expect(serializeDimension(makeDimension(Number.NEGATIVE_INFINITY, 'px'))).toBe('-infinitypx');
+  /*
+   * Ledger V7. This used to assert `NaNpx` / `infinitypx` / `-infinitypx`, which is
+   * how `sqrt(-4)` wrote `x: NaN` into a stylesheet: none of the three is a CSS
+   * `<number>`, so the "CSS way" to spell them is not to. A non-finite computed
+   * number is an evaluation error, ruled once at the output boundary so no future
+   * NaN-producing path can leak either.
+   */
+  it('refuses to emit a non-finite dimension', () => {
+    expect(() => makeDimension(Number.NaN, 'px')).toThrow(RangeError);
+    expect(() => makeDimension(Number.POSITIVE_INFINITY, 'px')).toThrow(RangeError);
+    expect(() => makeDimension(Number.NEGATIVE_INFINITY, 'px')).toThrow(RangeError);
+    expect(() => formatNumber(Number.NaN)).toThrow(/not a finite number/);
   });
 });

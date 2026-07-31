@@ -48,8 +48,16 @@ const MAX_PRECISION = 17;
  * Serialize a computed number to CSS digits: shortest decimal within {@link TOLERANCE}
  * relative of `n`, never in scientific notation.
  *
- * Non-finite input is returned as its `String` form (`NaN` / `Infinity`); callers that
- * need the CSS spelling handle that themselves. The gate short-circuits it for free.
+ * A NON-FINITE computed number has no CSS spelling and is an EVALUATION ERROR (ledger
+ * **V7**) — `NaN`, `infinity` and `-infinity` are not `<number>` productions, so
+ * emitting them writes a stylesheet the browser drops. This is the one boundary every
+ * computed number crosses, so the guard is stated once here rather than per-function:
+ * `sqrt(-4)`, `asin(2)`, `pow(-1, .5)`, `mod(1, 0)` and `1e400 + 1` all reach output
+ * through this call. The check is free — a non-finite double is never an integer, so
+ * the fast path above has already returned for every value a stylesheet really holds.
+ *
+ * Un-operated source literals are NOT routed here, so `x: 1e999px` still emits its
+ * verbatim spelling under ledger V1.
  */
 export function formatNumber(n: number): string {
   const s = `${n}`;
@@ -62,6 +70,9 @@ export function formatNumber(n: number): string {
    */
   if (Number.isInteger(n)) {
     return s.indexOf('e') === -1 ? s : positional(s);
+  }
+  if (!Number.isFinite(n)) {
+    throw new RangeError(`${s} is not a finite number and has no CSS spelling`);
   }
   let sig = 0;
   let seenDigit = false;

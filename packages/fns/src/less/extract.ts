@@ -21,15 +21,16 @@ const extract = defineFunction('extract', {
     if (isValueGroupArray(index) || index.type !== 'Dimension') {
       throw new TypeError('extract() index must be numeric');
     }
+
+    /*
+     * No non-finite branch: ledger V7 makes a non-finite number unconstructible as
+     * a value, so `index.number` is finite by the time it gets here and `Math.trunc`
+     * keeps it that way. The singleton-passthrough special case this used to carry
+     * was reachable only from a `Dimension` holding `Infinity`.
+     */
     const normalized = Math.trunc(index.number);
     const target = args[0];
     const itemCount = groupItems(target).length;
-    if (!Number.isFinite(normalized)) {
-      if (itemCount === 1) {
-        return listValueAt(target, 0);
-      }
-      throw new TypeError('extract() index must be finite');
-    }
     try {
       return listValueAt(target, normalized - 1);
     } catch {

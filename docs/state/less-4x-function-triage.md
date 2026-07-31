@@ -205,6 +205,18 @@ dispatch.
 
 ## 4. THE SYSTEMIC FINDING — arity and type rejection is silent by default
 
+> **RECORDED AS A STANDING PROCESS RULE (2026-07-30).**
+> **`functionMode: 'preserve'` is the DEFAULT, and the default mode CANNOT be used
+> as a reachability test.** Under it, an arity rejection, a type rejection, an IO
+> file-not-found, and an unknown CSS function all render as byte-identical preserved
+> call text. There is no output difference to notice, so a registered-but-broken
+> function and a genuine CSS passthrough are indistinguishable — that is exactly what
+> hid the Sass `map-get`/`map-keys` non-dispatch. **Any future function audit MUST run
+> under `functionMode: 'error'`**, and must say in its method section that it did.
+> This is a rule about the audit, not a defect in `preserve`: `preserve` is the
+> correct default for users. Note also that it does not catch everything even when
+> enabled — see §7-A, where the function SUCCEEDED and returned a bad value.
+
 **OBSERVATION.** `packages/core/src/ast/evaluator.ts:107-123`: when a name IS in the
 registry but `dispatch` throws, the throw is caught and turned into
 `fallbackCall(name, args)` (`:31`) — a keyword holding the verbatim call bytes. The
@@ -274,6 +286,12 @@ DELIBERATELY-DIFFERENT with no work needed**; it is recorded here so nobody
 
 ## 7. Behavioural divergences with no ruling behind them
 
+> **ALL FOUR RULED AND LANDED 2026-07-30** (`docs/architecture/core/DESIGN-DECISIONS.md`):
+> §7-A → **V7** (SETTLED), §7-B → **V8** (OPEN, implemented on the defensible
+> reading), §7-C → **V10** (SETTLED). The §4 rejections were also ruled: **V9**
+> (OPEN) — five of the six are CORRECT rejections and were kept; `tint`/`shade`
+> were a real gap and were fixed. §7-D is untouched and remains open.
+
 ### 6-A. `NaN` leaks into emitted CSS
 
 **OBSERVATION**, default config, all five verified:
@@ -294,6 +312,19 @@ fix is a policy choice — reject (4.x), or emit `0`, or preserve the call verba
 and it belongs with the numeric-emit owner (ledger V4), since `format-number.ts` is
 the single output policy site.
 
+**RESOLVED — ledger V7, SETTLED, landed 2026-07-30.** Reject. The guard went in at
+`formatNumber` (`packages/core/src/ast/format-number.ts`), NOT in the five functions:
+stated over the construct ("a computed number"), it covers every path that can ever
+produce one, and it is free because the integer fast path has already returned for
+every value a stylesheet really holds. `serializeDimension`'s `NaN`/`infinity`
+spelling — which was the leak — is deleted. All five now fail the call, so
+`functionMode` decides: default `preserve` renders `sqrt(-4)` verbatim, `error` says
+`Invalid function call`. `1e400 + 1` is an arithmetic overflow rather than a call, so
+it is a hard eval error with no `functionMode` fallback. Un-operated `1e999px` is
+untouched (V1). Side effect: a non-finite `Dimension` is now unconstructible, which
+deleted `extract`'s non-finite-index branch and the three `packages/fns` tests that
+pinned the old spelling.
+
 ### 6-B. `round()` rounds negative halves the other way
 
 `packages/core/src/ast/round.ts:12` uses `Math.round`, which is half-toward-`+∞`. 4.x
@@ -307,6 +338,16 @@ opinion, Sass's `math.round` is half-away-from-zero, and `Math.round`'s asymmetr
 JS artifact rather than a decision. jess's own `round.ts` header calls itself "the
 ROUNDING KERNEL, not the output policy", which is exactly the right framing for
 putting a tie rule in it.
+
+**RESOLVED — ledger V8, OPEN row, implemented 2026-07-30.** Half-away-from-zero.
+`round(-1.5)` → `-2`, `round(-2.5)` → `-3`, `round(-1.55, 1)` → `-1.6`, `round(-0.5)`
+→ `-1`; positive values unchanged. The decisive argument is not 4.x parity but
+self-consistency: `Math.round` makes the kernel disagree with itself under negation
+(`round(-x) !== -round(x)` at every exact half). The lodash exponential-shift
+algorithm is kept — only the tie call site changed — so the kernel still beats
+`toFixed` on decimally-representable inputs. V4 is untouched: digits and tie
+direction are independent. Colour quantization reads the same kernel but its inputs
+are non-negative, so V5 is unaffected.
 
 ### 6-C. An alpha-adjusted colour that ends up opaque emits `rgb(...)`, not hex
 
@@ -322,6 +363,14 @@ so this looks like an unconsidered case rather than a decision. Narrow, cosmetic
 it is a computed colour (F5's verbatim rule does not apply) and every other computed
 opaque colour in the corpus emits hex (`lighten` → `#b3f075`, `mix` → `#800080`).
 
+**RESOLVED — ledger V10, SETTLED, landed 2026-07-30.** The retag now fires only when
+the RESULT is translucent, which is the rule `mixColors` in the same file already
+applied (`alpha < 1 ? RGB : c1.format`) — so this is one rule stated over the
+construct, not a second special case. `fade(#f00, 100%)` and `fade(#f00, 150%)` now
+emit `#ff0000`. `fadein(rgba(255,0,0,0.9), 50%)` still emits `rgb(255, 0, 0)`, NOT
+4.x's `#ff0000`: the input's authored `rgb` family is provenance and survives, the
+same way V1 keeps `1.0px`. That divergence is deliberate.
+
 ### 6-D. Missing-file IO errors are silent
 
 `image-size("missing.png")` / `image-width` / `image-height` → jess preserves the call
@@ -331,16 +380,22 @@ measured for this case. Listed because "your icon-sizing broke and the CSS said
 nothing" is a worse outcome than a compile error, and because the file-not-found case
 is *not* an argument-shape rejection, which is what `preserve` was designed for.
 
-## 8. Ledger / doc conflicts found (owner input needed)
+## 8. Ledger / doc conflicts found
 
-- **V2 vs F5 disagree about a Less variable inside `rgb()`.** V2 (SETTLED) says the
-  Less fn runs "when the value is operated OR args are Less-non-CSS (contain a Less
-  var/expr…)". F5 (SETTLED, later) says any 3+-slot `rgb`/`rgba`/`hsl`/`hsla` emits
-  authored bytes, with no var exception. Measured: `@g: 129; x: rgb(90, @g, 32)` →
-  `rgb(90, 129, 32)` — the var resolves to bytes and the call stays verbatim, i.e.
-  **F5's reading**. Not filed as a bug; filed so one of the two rows gets amended.
+- **V2 vs F5 disagreed about a Less variable inside `rgb()` — RESOLVED 2026-07-30 by
+  amending V2, the losing row.** V2 (SETTLED) said the Less fn runs "when the value is
+  operated OR args are Less-non-CSS (contain a Less var/expr…)". F5 (SETTLED, later)
+  says any 3+-slot `rgb`/`rgba`/`hsl`/`hsla` emits authored bytes, with no var
+  exception. Measured: `@g: 129; x: rgb(90, @g, 32)` → `rgb(90, 129, 32)` — the var
+  resolves to bytes and the call stays verbatim, i.e. **F5's reading**. **V2 was
+  amended, not F5**, for a reason beyond "F5 is later and matches measurement": a
+  resolved variable produces ordinary CSS bytes, so the construct is still valid CSS
+  and V2's own premise (CSS-superset verbatim pass-through) covers it. The clause
+  that survives in V2 is the historical-Less form, which is genuinely not CSS. F5
+  keeps its narrower jurisdiction over the 3+-slot colour constructors.
 - `isurl`'s absence is recorded only as a source comment. It should be an OPEN ledger
-  row (§6).
+  row (§6). **Not done in this pass** — it needs a `Url` value tag, i.e. a core value-
+  domain change, and is out of scope for the four function-layer defects.
 
 ## 9. What was NOT tested, and why
 

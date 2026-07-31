@@ -14,17 +14,20 @@ import { serializeColor } from './color.js';
 
 /**
  * Serialize a dimension: the shortest decimal within the output tolerance
- * ({@link formatNumber}) + unit; non-finite spelled `NaN`/`infinity`/`-infinity`.
+ * ({@link formatNumber}) + unit.
  *
  * This is the SINGLE number policy for every computed dimension, in every position —
  * there is deliberately no interpolation-splice variant that emits different digits
  * for the same value.
+ *
+ * It used to spell a non-finite number `NaN`/`infinity`/`-infinity` and emit it, so
+ * `sqrt(-4)` wrote `x: NaN` into the stylesheet. None of those are CSS `<number>`s;
+ * a non-finite computed number is an evaluation error, ruled once inside
+ * {@link formatNumber} (ledger **V7**) rather than re-decided per emit site.
  */
 export function serializeDimension(n: Dimension): string {
-  const { number, unit } = n;
-  const s = Number.isFinite(number)
-    ? formatNumber(number)
-    : Number.isNaN(number) ? 'NaN' : number > 0 ? 'infinity' : '-infinity';
+  const { unit } = n;
+  const s = formatNumber(n.number);
   return unit ? `${s}${unit}` : s;
 }
 

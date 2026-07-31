@@ -41,12 +41,20 @@ export const snapAlpha = (a: number): number => (Math.abs(a - 1) < 1e-12 ? 1 : a
  * `#rrggbbaa`); an opaque hex (`#rgb` / `#rrggbb`) turns to `rgba(…)` the moment
  * it becomes translucent (Less 4.x/v5 parity — e.g. `fadeout(#ff0, 50%)` →
  * `rgba(255, 255, 0, 0.5)`, but `fade(#5F59, 10%)` → `#55ff551a`).
+ *
+ * The retag fires ONLY when the result is actually translucent (ledger **V10**, the
+ * same `alpha < 1 ? RGB : <input format>` rule {@link mixColors} already applies).
+ * It used to fire unconditionally, so a round trip back to opaque left the value
+ * tagged `RGB` and `fade(#f00, 100%)` emitted `rgb(255, 0, 0)` where every other
+ * computed opaque colour — `lighten` → `#b3f075`, `mix` → `#800080` — emits hex.
+ * An opaque result has no alpha to carry, so there is nothing for the retag to say.
  */
 export function withAlpha(color: Color, newAlpha: number): Color {
   const node = color.src;
   const hexDigits = typeof node === 'string' && node.startsWith('#') ? node.length - 1 : 0;
   const preserveHex = color.format === HEX && (hexDigits === 4 || hexDigits === 8);
-  return makeColorRgb(colorRawRgb(color), newAlpha, preserveHex ? HEX : RGB, { modernSyntax: color.modernSyntax === true });
+  const format = newAlpha < 1 ? (preserveHex ? HEX : RGB) : color.format;
+  return makeColorRgb(colorRawRgb(color), newAlpha, format, { modernSyntax: color.modernSyntax === true });
 }
 
 /**
