@@ -248,6 +248,81 @@ factory expansion, ~2.17 MB of a 3.94 MB artifact.
 The biggest closure savings sit exactly where the parse cost is, so the
 remaining *safe* prize is smaller than the 13.69× headline suggests.
 
+### 2.10 Variant duplication — and why naive goal 4 defeats goal 2
+
+Same factory exported 1 / 2 / 4 ways (the jess `grammar.ts` shape):
+
+| variants in one module | 1 | 2 | 4 |
+| --- | ---: | ---: | ---: |
+| bytes | 63,966 | 130,674 | 267,965 |
+
+**4.19× — the four variants are fully duplicated inside the single lowered
+module, with zero sharing.** Each export is `/* @__PURE__ */`-annotated, so a
+per-entry build tree-shakes three away and **the downloaded artifact already
+pays 1×**.
+
+**Consequence: goal 4 done naively defeats goal 2.** One artifact holding all
+four variants and branching at run time costs 4.19×, which the goal-2 budget
+cannot absorb. The owner's design — tables parameterised by settings, built
+once per `(grammar, settings)` pair and cached, with `run` doing only a lookup
+— is not a nicety here; it is the only form of goal 4 compatible with goal 2.
+
+Folding variants is a **build and DX win, not an artifact win.** Report it as
+such; never let it into a per-dialect artifact figure.
+
+### 2.11 Byte census at depth 4 (const 57,043 B vs named 27,420 B)
+
+The named artifact is 6 functions, ~4,800 B per rule at 4 call sites each. The
+const artifact is 18 functions — **12 surplus `_pf` bodies** — and non-function
+module text rises from 18.2% to **48.4%** of the artifact.
+
+**Disproved hypothesis, recorded so it is not retried:** `emit()` at
+`codegen.ts:4113` excludes rule-map combinators from shared-subtree hoisting.
+Patching it to restore the override invariant on the direct-object path
+**changed nothing** — instrumentation showed `ctx.ruleNames` hits only 6 times
+(once per rule's own body), across 86 `emit()` calls producing 206 label copies.
+**The duplication is not `emit()` re-entry**, so the fix does not live at
+`codegen.ts:3889`/`4113`. It is `_pf` proliferation plus per-site module text.
+
+### 2.12 The CST host is grammar-owned, not parseman-owned
+
+In `hostMode: 'cst'` the grammar's reducers do not run; parseman builds each
+node through `ctx.build`. **That host is defined locally** at
+`packages/syntax/css/css-parser/src/cst-host.ts`, and it already:
+
+- changes a node's type *from its children* (`publicGrammarType` — one
+  `Numeric` production surfaces as `Percentage` / `Dimension` / `Num`)
+- remaps grammar names through `TYPE_NAMES` (`publicTypeName`), so CST names
+  are already decoupled from production names
+- **fabricates children no production produced** (`publicChildren`, `:290`) —
+  a joined `name(` leaf for `Url` (`:305–315`), a shifted leaf for `Quoted`
+
+Host-synthesised CST children are **established precedent in this file**, not a
+new mechanism.
+
+**Cost, stated rather than buried:** the host runs *during* the parse, not
+lazily. Eager expansion speeds AST parse and **slows CST parse**. The lazy fix
+— getter-backed `rules`/`children` — collides with a documented invariant:
+`cst-host.ts:364–384` requires exactly **two hidden classes with identical
+field order**, `%HaveSameMap`-measured, guarded by `cst-shape-digest.mjs`, at a
+recorded **~2× floor cost across all four dialects**. A getter node is a third
+shape.
+
+**Ruled** (owner: AST construction is canonical, CST is the convenience and
+IDE/diagnostics path): **take eager expansion and accept the honest CST
+regression.** Keep two hidden classes.
+
+### 2.13 `TYPE_NAMES` is already non-injective
+
+The baseline's production → CST-name map is **not** injective:
+`AtRuleBlock` and `AtRuleStatement` both → `AtRule`; `Declaration` and
+`CustomDeclaration` both → `Declaration`.
+
+**Ruled:** the tournament's injective-rename requirement binds a **candidate's
+own declared renames** — it may not collapse two of its productions into one
+name to hide a structural difference. It does **not** forbid the incumbent's
+existing collapses, which are part of the target and must be reproduced.
+
 ---
 
 ## 3. SINGLE-SOURCE — act on, but label as provisional
