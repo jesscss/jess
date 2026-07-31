@@ -106,6 +106,30 @@ describe('value-domain defineFunction', () => {
     expect(registry.dispatch('unnamed-positional', args, ctx)).toEqual(makeDimension(4, 'px'));
   });
 
+  it('applies the arity check on the registry route and feeds a rest parameter every trailing item', () => {
+    const ctx = {
+      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
+      stringify: emitValue
+    } as const;
+    const registry = createFnRegistry();
+    registry.registerAll([twice, collect]);
+
+    /*
+     * The positional array used to be built by mapping over `params`, which
+     * truncated every dispatch to the declared arity: the excess never reached
+     * `bindDirect`, so its `too many arguments` throw was unreachable from this
+     * route and a `rest` parameter only ever saw its own slot.
+     */
+    expect(() => registry.dispatch('twice', makeList([makeDimension(2, 'px'), makeDimension(3)], ','), ctx))
+      .toThrow('too many arguments');
+    expect(registry.dispatch('collect', makeList([
+      makeDimension(2, 'px'),
+      makeDimension(3),
+      makeDimension(4),
+      makeDimension(5)
+    ], ','), ctx)).toEqual(makeDimension(7, 'px'));
+  });
+
   it('infers typed value and lazy-thunk body arguments from the parameter tuple', () => {
     expectTypeOf(twice).toBeFunction();
     expectTypeOf(twice).parameter(0).toEqualTypeOf<{ type: 'Dimension'; number: number; unit: string; bytes: string }>();

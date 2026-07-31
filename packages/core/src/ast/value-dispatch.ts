@@ -252,16 +252,23 @@ export function defineFunction(
       }
 
       /*
-       * Keep evaluator invocation intentionally positional and permissive: its
-       * historical contract binds declared slots and lets a callable establish
-       * its own failure policy. A raw nested group is still one argument;
-       * `bindDirect` accepts it only for `type: 'any'` and rejects it for a
-       * typed scalar parameter. Flattening would destroy ordinary adjacency.
+       * Evaluator invocation stays positional: a raw nested group is still ONE
+       * argument, `bindDirect` accepts it only for `type: 'any'` and rejects it
+       * for a typed scalar parameter, and flattening would destroy ordinary
+       * adjacency.
+       *
+       * The array is built from the SUPPLIED items, never from `params`. Mapping
+       * over `params` silently truncated every call to the declared arity, which
+       * made `bindDirect`'s `too many arguments` throw unreachable from this
+       * route and starved a `rest` parameter of everything past its own slot.
+       * Each index is governed by its own parameter, or by the `rest` parameter
+       * once the declared slots run out, so `lazy` is honoured for rest items too.
        */
       const items = groupItems(value);
-      const positional = definition.params.map((param, index) => param.lazy
+      const restParam = definition.params.find(param => param.rest);
+      const positional = items.map((item, index) => (definition.params[index] ?? restParam)?.lazy
         ? () => items[index]!
-        : items[index]);
+        : item);
       return Reflect.apply(definition.body, undefined, bindDirect(name, definition.params, positional));
     }
     const inputs = args.map(toDirectInput);

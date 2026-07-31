@@ -441,11 +441,6 @@ here from the 2026-07-24 `e34bb24b3` pass had drifted, one row pointed at a file
 since been split into another package, and one row was already fixed. Anchor a row on the
 symbol name and re-locate it with `grep`; treat the line number as a hint with a date on it.
 
-- **Arity checking is dead on the evaluator route.** `packages/core/src/ast/value-dispatch.ts`
-  builds the positional argument array with `definition.params.map(...)` (`:262`), so any input
-  beyond the declared parameter count is silently dropped before `bindDirect` ever sees it. The
-  `too many arguments` throw (`:210`) therefore cannot fire from an evaluator call:
-  `length(a,b,c)` returns `1` instead of an arity error. Affects every fn in every dialect.
 - **P1.1 — serialize-then-reparse of structure.** `packages/core/src/ast/serialize.ts`
   `selectorAtoms` (`:1511`) serializes a structured compound to text and regex-tokenizes it
   back, un-memoized, at five call sites (`:1605/1617/1621/1659/1697`). Direct "parser owns
