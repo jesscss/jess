@@ -36,6 +36,12 @@ const GAPS = [
    * `@function a($b: 1)`) already parse and are excluded by lookbehind.
    */
   ['G19 named / spread call argument  f($x: 1), f($x...)', /(?<!@mixin\s)(?<!@function\s)(?<![\w$.-])[a-zA-Z_][\w.-]*\((?:[^()]|\([^()]*\))*?\$[-\w]+\s*(?::|\.\.\.)/g],
+  /*
+   * G20 also precedes G1: a namespaced WRITE is a different production from the
+   * namespaced READ that now parses, and it is not representable today —
+   * `VariableDeclaration.name` is a plain string with no namespace slot.
+   */
+  ['G20 namespaced variable ASSIGNMENT  ns.$v: x', /(?:^|[\n{;])\s*[a-zA-Z_][\w-]*\.\$[-\w]+\s*:/g],
   ['G1 namespaced member  ns.fn(…) / ns.$var', /(?<![\w$.-])[a-zA-Z_][\w-]*\.(?:[a-zA-Z_][\w-]*\s*\(|\$)/g],
   ['G2 @if/@else-if non-comparison condition', /@(?:if|else\s+if)[^\n{]*/g],
   ['G3 @use/@forward with(…) / show / hide', /@(?:use|forward)\b[^\n;{]*\b(?:with\s*\(|show\b|hide\b)/g],
