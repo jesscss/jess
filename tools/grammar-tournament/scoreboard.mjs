@@ -90,7 +90,13 @@ async function main() {
   console.log('CSS GRAMMAR TOURNAMENT — SCOREBOARD');
   console.log('='.repeat(96));
   console.log(`repo HEAD    ${head}`);
-  console.log(`parseman     ${parsemanVersion}   (PINNED — NOT 0.46.0; do not cross-quote into goal-2 expansion tracking)`);
+  /*
+   * The version is printed because artifact sizes are not comparable across
+   * parseman floors — do not cross-quote a byte number into goal-2 expansion
+   * tracking without it. This used to hard-code "NOT 0.46.0" against a 0.45
+   * floor, which read as a self-contradiction once `ff685793a` raised the pin.
+   */
+  console.log(`parseman     ${parsemanVersion}   (resolved; sizes are NOT comparable across floors — quote this version with every byte number)`);
   console.log(`rank key     ${RANK_ARTIFACT}  raw bytes, unminified, as tsdown emits`);
   console.log(`noise floor  ${NOISE_FLOOR_PCT}% — nothing under this is a speed result`);
 
