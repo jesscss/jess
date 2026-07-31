@@ -378,4 +378,45 @@ describe('public CSS parse()', () => {
       });
     }
   });
+
+  /*
+   * The value ladder runs under `ValueSequence`'s `noTrivia`, and parseman clears
+   * trivia for every rule reached through a `g.` reference, not only for the terms
+   * spelled inside the wrapper. So each of these interiors has to spell its own
+   * padding, and it has to spell the comment-bearing `cssValueTrivia`: the ones
+   * that spelled a bare `[ \t\n\r\f]` run rejected comments, and the ones that
+   * spelled nothing rejected whitespace too. Both columns are asserted together
+   * because a fix that restores only the comment column would leave `( c )` — the
+   * same defect, one character apart — still rejected.
+   */
+  it('admits authored whitespace and comments at every value-interior boundary', () => {
+    const templates = [
+      '(Tc)', '(cT)', '(TcT)', '(cTd)', '(cT,d)', '(c,Td)',
+      'f(Tc)', 'f(cT)', 'f(cT,d)', 'f(c,Td)',
+      'min(1pxT,2px)', 'min(1px,T2px)',
+      'var(T--x,e)', 'var(--xT,e)', 'var(--x,Te)', 'var(--x,eT)',
+      'calc(T1px + 2px)', 'calc(1px + 2pxT)', 'calc(1pxT*T2)', 'calc(1px T+T 2px)'
+    ];
+    for (const template of templates) {
+      for (const fill of [' ', '/* c */', '/* ) */']) {
+        const source = `a { b: ${template.replaceAll('T', fill)} }`;
+        expect(() => parse(source), source).not.toThrow();
+      }
+    }
+  });
+
+  /*
+   * css-values-4 §10.1 requires real whitespace on both sides of `+` and `-`, and
+   * a comment does not supply it. Widening the padding to admit comments must not
+   * quietly drop that, so the one-sided spellings stay rejected.
+   */
+  it('still requires whitespace, not a comment, on both sides of a calc sum operator', () => {
+    for (const source of [
+      'a { b: calc(1px+2px) }',
+      'a { b: calc(1px/* c */+ 2px) }',
+      'a { b: calc(1px +/* c */2px) }'
+    ]) {
+      expect(() => parse(source), source).toThrow();
+    }
+  });
 });

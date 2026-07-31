@@ -702,23 +702,48 @@ function valueSlotChildren(children: readonly unknown[]): ValueSlot[] {
   return values;
 }
 
+function isMathOperator(text: string): boolean {
+  return text === '+' || text === '-' || text === '*' || text === '/' || text === '%';
+}
+
+/*
+ * Operands and operator characters, in authored order, with the operators'
+ * padding interleaved. The fold reads the shape rather than a fixed stride: the
+ * pads are their own terms now, so an operator no longer sits a constant distance
+ * from its operand, and a pad can hold a comment whose own `/` and `*` would
+ * defeat any attempt to recover the operator from the padded text.
+ */
 function foldOperation(children: readonly unknown[]): ValueNode {
   const first = children.find(isValue);
   if (first === undefined) {
     throw new Error('CSS AST math grammar requires an operand');
   }
   let result = first;
-  for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
-    const operatorToken = children[index];
-    const right = children[index + 1];
-    if (operatorToken === undefined || !isValue(right)) {
-      throw new Error('CSS AST math grammar lost an operator operand');
+  let operator: string | undefined;
+  for (let index = children.indexOf(first) + 1; index < children.length; index++) {
+    const child = children[index];
+    if (isValue(child)) {
+      if (operator === undefined) {
+        throw new Error('CSS AST math grammar lost an operator operand');
+      }
+      result = operation(
+        operator,
+        result,
+        child
+      );
+      operator = undefined;
+      continue;
     }
-    result = operation(
-      tokenText(operatorToken).trim(),
-      result,
-      right
-    );
+    if (child === undefined || child === null) {
+      continue;
+    }
+    const text = tokenText(child);
+    if (isMathOperator(text)) {
+      operator = text;
+    }
+  }
+  if (operator !== undefined) {
+    throw new Error('CSS AST math grammar lost an operator operand');
   }
   return result;
 }
@@ -773,9 +798,40 @@ const interstitialTrivia = classifiedTrivia({
 });
 const compoundTrivia = classifiedTrivia({ blockComment });
 const commentTrivia = classifiedTrivia({ blockComment });
-const calcWhitespace = regex(/[ \t\n\r\f]+/);
-const calcProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
-const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
+
+/*
+ * The value ladder runs under `ValueSequence`'s `noTrivia`, and parseman scopes
+ * trivia dynamically — clearing it covers every rule reached through a `g.`
+ * reference, not just the terms written inside the wrapper. So every interior
+ * that admits authored padding has to spell it, and it must spell `cssValueTrivia`
+ * rather than a bare whitespace run: css-syntax-3 §4 makes a comment trivia
+ * wherever whitespace is trivia. The `[ \t\n\r\f]+` spellings these replaced are
+ * why `calc(1px /* c *\/ + 2px)` was rejected outright while `var(--x, /* c *\/ e)`
+ * silently mis-parsed the comment bytes into the value as punctuation.
+ *
+ * `*`, `/` and `%` take optional padding; `+` and `-` require real whitespace on
+ * both sides (css-values-4 §10.1), which a comment does not supply — hence the
+ * mandatory `[ \t\n\r\f]+` in the sum pad and its absence in the product one.
+ * Both pads are spelled `ws* (comment ws*)*` so the comment and whitespace arms
+ * have disjoint first characters and the match stays linear.
+ *
+ * The pad is its own term rather than part of the operator regex so the operator
+ * token stays exactly the operator character. Folding it in would leave the
+ * reducer re-deriving the operator from padded bytes that can contain `/` and `*`
+ * of their own, which is the parser handing core a value it has to re-parse.
+ */
+const calcProductPad = regex(/[ \t\n\r\f]*(?:\/\*(?:[^*]|\*(?!\/))*\*\/[ \t\n\r\f]*)*/);
+const calcSumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/)*[ \t\n\r\f]+(?:\/\*(?:[^*]|\*(?!\/))*\*\/[ \t\n\r\f]*)*/);
+const calcProductOperator = sequence(
+  calcProductPad,
+  regex(/[*/%]/),
+  calcProductPad
+);
+const calcSumOperator = sequence(
+  calcSumPad,
+  regex(/[-+]/),
+  calcSumPad
+);
 const genericIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 const genericFunctionIdentifier = regex(/(?!(?:calc|url|var)(?=\())-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 const genericFunctionOpen = noTrivia(sequence(
@@ -1083,13 +1139,30 @@ const cssFactory = (g: GrammarSelf) => {
       optional(cssValueTrivia)
     ))
   );
+
+  /*
+   * An argument comma also admits padding BEFORE it, which the value-list comma
+   * must not: at the top level `a , b` is a space-separated run whose middle
+   * component is the punctuation `,`, and widening `authoredValueComma` would
+   * re-cut every such value that parses today. Inside an argument list there is
+   * no competing punctuation reading, so `f(c , d)` and `f(c /* z *\/, d)` are
+   * plain padded separators.
+   */
+  const authoredArgumentComma = field(
+    'separator',
+    noTrivia(sequence(
+      optional(cssValueTrivia),
+      literal(','),
+      optional(cssValueTrivia)
+    ))
+  );
   const valueFunctionArguments = sepBy(
     g.TypedValueSequence,
-    authoredValueComma
+    authoredArgumentComma
   );
   const genericFunctionArguments = sepBy(
     g.ValueSequence,
-    authoredValueComma
+    authoredArgumentComma
   );
   const BasicSelector = node(
     'BasicSelector',
@@ -1712,9 +1785,9 @@ const cssFactory = (g: GrammarSelf) => {
     'CalcParen',
     noTrivia(sequence(
       literal('('),
-      many(calcWhitespace),
+      optional(cssValueTrivia),
       g.CalcSum,
-      many(calcWhitespace),
+      optional(cssValueTrivia),
       literal(')')
     )),
     children => block(firstValue(children))
@@ -1849,7 +1922,9 @@ const cssFactory = (g: GrammarSelf) => {
         varFallbackParenCrossBrace
       )),
       literal('('),
+      optional(cssValueTrivia),
       optional(g.VarFallback),
+      optional(cssValueTrivia),
       literal(')')
     ),
     children => block(valueSlotChildren(children)[0] ?? any(''))
@@ -1923,7 +1998,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       varFallbackComponent,
       many(sequence(
-        many(calcWhitespace),
+        optional(cssValueTrivia),
         varFallbackComponent
       ))
     ),
@@ -1942,7 +2017,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const varFallbackComma = sequence(
     literal(','),
-    many(calcWhitespace)
+    optional(cssValueTrivia)
   );
   const VarFallbackItem = node(
     'VarFallbackItem',
@@ -1990,14 +2065,17 @@ const cssFactory = (g: GrammarSelf) => {
     'VarCall',
     sequence(
       varOpen,
+      optional(cssValueTrivia),
       CustomPropertyValue,
+      optional(cssValueTrivia),
       optional(sequence(
         literal(','),
-        many(calcWhitespace),
+        optional(cssValueTrivia),
         choice(
           g.VarFallback,
           g.VarFallbackEmpty
-        )
+        ),
+        optional(cssValueTrivia)
       )),
       literal(')')
     ),
@@ -2054,9 +2132,9 @@ const cssFactory = (g: GrammarSelf) => {
     'CalcCall',
     noTrivia(sequence(
       calcOpen,
-      many(calcWhitespace),
+      optional(cssValueTrivia),
       g.CalcSum,
-      many(calcWhitespace),
+      optional(cssValueTrivia),
       literal(')')
     )),
     children => funcCall(
@@ -2071,11 +2149,18 @@ const cssFactory = (g: GrammarSelf) => {
    * productions. url()/var()/calc() stay owned by their strict branches;
    * genericFunctionOpen excludes those glued openers.
    */
+  /*
+   * The padding is spelled for the same reason `GenericFunction` spells it: this
+   * interior runs with trivia cleared, so without these terms `( c )` — and every
+   * comment form of it — was rejected as hard as `(/* c *\/ e)` was.
+   */
   const ParenValue = node(
     'ParenValue',
     sequence(
       literal('('),
+      optional(cssValueTrivia),
       optional(g.ValueList),
+      optional(cssValueTrivia),
       literal(')')
     ),
     children => block(valueSlotChildren(children)[0] ?? any(''))
@@ -2216,9 +2301,9 @@ const cssFactory = (g: GrammarSelf) => {
     'CalcCall',
     noTrivia(sequence(
       routed(),
-      many(calcWhitespace),
+      optional(cssValueTrivia),
       g.CalcSum,
-      many(calcWhitespace),
+      optional(cssValueTrivia),
       literal(')')
     )),
     children => funcCall(
@@ -2230,14 +2315,17 @@ const cssFactory = (g: GrammarSelf) => {
     'VarCall',
     sequence(
       routed(),
+      optional(cssValueTrivia),
       CustomPropertyValue,
+      optional(cssValueTrivia),
       optional(sequence(
         literal(','),
-        many(calcWhitespace),
+        optional(cssValueTrivia),
         choice(
           g.VarFallback,
           g.VarFallbackEmpty
-        )
+        ),
+        optional(cssValueTrivia)
       )),
       literal(')')
     ),
