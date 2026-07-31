@@ -49,6 +49,106 @@
 These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
 Delete a row the moment it lands or is abandoned.
 
+### 2026-07-31 (late) — parseman size/perf findings, measured
+
+**The perf red on PR #102 is a MEASUREMENT DEFECT, not a regression.** The gate
+run against the reference *by itself* — zero code difference — false-failed twice
+in three runs, one of them WORSE than the CI failure it was meant to explain
+(self-check `expected/narrow` min +8.1…+10.0%, breached 3/3, versus CI's min
++8.6…+9.3%, breached 2/3). Over 21 passes at the tree CI measured,
+`rollback/sparse` won 69.8% of pairs and never breached; `css/stylesheet` won
+70.2%. Root cause: the win-rate column carries a large PER-CASE bias and the
+sign test assumes it does not — `expected/narrow`'s null win rate is 25.9%
+against a 25% ceiling (no margin), `rollback/none`'s is 88.9% (blind). The
+ref/head alternation is balanced 6/6, so it is not that.
+
+Consequence: **`rollback/none` at −22.5…−11.4% after the revert was an artifact,
+not a speedup** — do not cite it. The `0665871` revert still stands on
+`rollback/dense` min +50.2…+52.3% winning 0/12, far outside any plausible bias.
+Fixes, both making the gate stricter (the gate's own doc prescribes the first):
+raise `passes` 3→5, and calibrate the per-case win-rate bias. Neither landed.
+
+**Grammar artifact size — measured on the reference pair** (parseman `58d1079`,
+jess `ebb5d6ada`): a clean rebuild totals **45,471,349 B** over 16 artifacts and
+reproduces the committed `lib/` bit-for-bit. Earlier figures of 45,859,971 and
+45,969,003 were measured elsewhere and are superseded.
+
+Expansion ratio, source `grammar.ts` → emitted `ast.js`:
+
+| dialect | source | emitted | rules | expansion |
+| --- | ---: | ---: | ---: | ---: |
+| css | 114,299 | 3,336,637 | 176 | **29.1×** |
+| less | 258,986 | 3,937,754 | 256 | 15.2× |
+| scss | 158,882 | 2,006,718 | 204 | 12.6× |
+| jess | 191,343 | 2,049,395 | 225 | **10.7×** |
+
+**css has the SMALLEST source and the LARGEST expansion**, and jess already meets
+the owner's `<10×` budget at 10.7× — so the budget is demonstrated, not
+aspirational. css's median rule (3,975 B) is SMALLER than jess's (5,278 B); the
+2× mean gap is a fat tail. **css's top 10 rules hold 53.5% of its rule bytes**
+(jess's top 10: 28.4%). The work list: `DeclarationListAtRule` 230,189 B,
+`StylesheetAtRule` 221,179 B, `TypedValueSequence` 214,731 B, `QueryClause`
+207,294 B, `ConditionalGroupAtRule` 148,191 B, `Value` 120,238 B,
+`PseudoSelector` 97,867 B, `VarFallbackBracket` 85,004 B. **Four at-rule rules =
+806,853 B = 29.5% of css's rule bytes**, sitting on the at-rule prelude
+structuring thread already queued at steps ②–⑥.
+
+Naming note: `DeclarationListAtRule` names its POSITION, not a construct — there
+is no "declaration list" at-rule. It and `StylesheetAtRule` are one at-rule
+production filtered by position. `InnerAtRule`/`OuterAtRule` is the better pair.
+Renaming buys no bytes (see below); fold it into the structuring work.
+
+**What the 806 KB is NOT:** name-driven duplication is **0.0–0.2%** across all
+four dialects, measured by emitted-body comparison (which sidesteps
+`payloadKey`'s three degradation paths), plus a second pass abstracting rule
+references that found nothing further. **But exact byte-identity is a poor
+duplication metric** — code that is 95% the same reports as 0% — so this rules
+out literal copy-paste and nothing more. Do not cite 0.0% as evidence against
+duplication.
+
+**The live candidate:** css's three at-rule bodies overlap **91–95%** pairwise
+while colliding byte-identically ZERO times — same vocabulary, different
+arrangement. `PseudoSelector`→`QueryClause` is 82%. Scaffolding is a ~41% floor
+present in every rule, so the discriminating test is to subtract the scaffolding
+families and re-run the overlap; above ~80% means real shared prelude machinery.
+**That test has not been run.** Distinct at-rule rules are CORRECT — sound
+parsing of specific at-rules is the point; collapsing them to one generic
+at-rule would be wrong.
+
+**Cross-artifact sharing: DEAD.** 55–59 of css's 176 rule bodies are identical
+in less/scss/jess — **1.1–3.5%** of an artifact — and **zero** differ only in
+gating, so "share the body, parameterise the guard" has no population. An
+earlier 51% shape-overlap figure was matching scaffolding FRAGMENTS inside
+functions that are not interchangeable.
+
+**Codegen sweep status.** Round 1 commit 1 (`f82d214`, lane branch, unpushed) routes
+all hand-rolled restore sites through one `emitRestore` funnel and is
+**byte-identical on all 16 artifacts, first try** — so it is proven inert and
+anything measured on top is attributable. The `0665871` autopsy: cause is the
+arity-only dedup key (`String(pairs.length)`), which made every parameter
+position polymorphic across `_cstLeaves` / `_cstRawChildren` / a hoisted local,
+plus 14-argument helpers V8 will not inline. Closure capture is ruled out (it
+already passed scalars) and wrapper-introduction is ruled out (the `__PURE__`
+IIFE is present in a zero-helper build). **"Restores are cold" is RETRACTED** —
+`codegen.ts:1050-1057` records that path running ~600×/KB with a six-store
+change costing +32% on `benchmark.less`.
+
+Untested and live: whether removing repetition that gzip already compresses at
+**8.2:1** delivers real wire value. Report raw AND gzipped for every
+configuration.
+
+**`node()` typing gap.** jess's 752 `verify:types` diagnostics are ONE upstream
+signature: `node<N, const Type extends string, …>` gives `Type` no default, and
+TypeScript has no partial type-argument inference, so `node<Foo>('Foo', …)`
+falls through to an overload where argument 0 must be a `Combinator` — emitting
+the `TS2345 string → Combinator` AND, via the untyped reducer, the `TS7006`
+implicit-any `children`. Patched with `= string`: jess 411→5, scss 342→4, of
+which exactly one is real debt. **No literal-preserving default exists** —
+proved, not assumed: defaults are filled, never inferred; a defaulted rest-tuple
+errors `TS2554`; a conditional default is evaluated. Only a curried call form
+(`node<N>()('X', …)`) preserves it, which changes the public surface — OWNER
+DECISION. css/less typecheck clean only because they spell it `node('X', …)`.
+
 ### 2026-07-31 — orchestration state (dev at `cb8533ae7`)
 
 Every number below came from a command that was actually run. Anything not
