@@ -504,7 +504,58 @@ tests themselves name the fix for. Nothing here belongs in §3 or §4.
 | --- | --- | --- | --- |
 | **RC-1 — the `.jess` dialect registers no value evaluator at all** (**CLOSED; the count and the classification below are both superseded — see the correction under this table**). `JessPlugin` never calls `context.registerValueEvaluator(…)`; both sibling plugins do. Every typed leaf degrades to a bare `Keyword` and every call is preserved verbatim, so `.jess` has no arithmetic and no builtins. | ~~**18**~~ → **3** measured (`jess-render` only; the 16 `min-max-dialect` are stale expectations, not this bug) | BUG (arithmetic half only) | missing call: `packages/syntax/jess/jess-plugin-jess/src/index.ts:26-39`; present at `packages/syntax/less/jess-plugin-less/src/index.ts:414` and `packages/syntax/scss/jess-plugin-scss/src/index.ts:71`. `registerValueEvaluator` is recent (`d32f6622d`) — the per-dialect-registry refactor wired Less and Sass and left `.jess` behind. Degradation sites `packages/core/src/ast/serialize.ts:2461,2483,4365,4503`. Direct check: `.jess` `$(1px + 2px)` → `1px + 2px`; `.less` `1px + 2px` → `3px`. Every one of the 16 min-max assertion messages names `.jess`; `.less` and `.scss` pass all 24. |
 | **RC-2 — body-form `&:extend()` keeps only the first branch of a comma-list rule.** `ExtendStatement` reduces to the same `{target, partial}` shape the inline-extend predicate tests for, so the body form is filed as a first-branch extend and stamped with `selector[0]` where it must carry the whole rule selector. | **2** | BUG | `packages/syntax/less/less-parser/src/grammar.ts:5872-5878`, predicate `:1678`, routing `:6065-6075`, stamp `:6128-6133`. Repro: `.foo{display:none} .a, .b { &:extend(.foo all); }` → `.foo, .a` — `.b` dropped. Hits `tests-unit/extend/extend.less:26-30` in two harnesses. |
-| **RC-3 — a detached-ruleset body rejects leading-combinator nested rules** (**CLOSED — `BodyStatement` now takes the same `nestedGuardedRuleset` arm `blockItem` takes**). The `ValueBlock` body used the absolute selector-list production; the ordinary nested body uses the relative one, which admits `>`/`+`/`~`. | **1** | BUG (fixed) | `.../less-parser/src/grammar.ts:4349` (was `guardedRuleset` → `g.RulesetWithExtends` → `selectorListWithExtends`; now `nestedGuardedRuleset` → `g.NestedRulesetWithExtends` → `relativeSelectorListWithExtends`). Regressed by `d10c7fd38`, which split the absolute/relative selector lists and moved only `blockItem`. Repro: `@r: { ~ .a { x: 1 } }` fails, `@r: { & ~ .a { x: 1 } }` and `.z { ~ .a { x: 1 } }` both pass. Unblocked `bootstrap-less-port/less/{_card,_tables,mixins/_forms,mixins/_table-row}.less`. `_navbar.less` stays blocked by a **separate** defect: a *root-level* leading combinator (`_navbar.less:251`), which `lessc` 4.x accepts and the v5 root deliberately rejects — an owner call, not this fix. |
+| **RC-3 — a detached-ruleset body rejects leading-combinator nested rules** (**CLOSED — `BodyStatement` now takes the same `nestedGuardedRuleset` arm `blockItem` takes**). The `ValueBlock` body used the absolute selector-list production; the ordinary nested body uses the relative one, which admits `>`/`+`/`~`. | **1** | BUG (fixed) | `.../less-parser/src/grammar.ts:4349` (was `guardedRuleset` → `g.RulesetWithExtends` → `selectorListWithExtends`; now `nestedGuardedRuleset` → `g.NestedRulesetWithExtends` → `relativeSelectorListWithExtends`). Regressed by `d10c7fd38`, which split the absolute/relative selector lists and moved only `blockItem`. Repro: `@r: { ~ .a { x: 1 } }` fails, `@r: { & ~ .a { x: 1 } }` and `.z { ~ .a { x: 1 } }` both pass. Unblocked `bootstrap-less-port/less/{_card,_tables,mixins/_forms,mixins/_table-row}.less`. Two things this fix deliberately did **not** touch are recorded under the table. |
+
+> **RC-3 — root-level leading combinators are `DELIBERATE`, a settled divergence
+> from lessc, not a gap.**
+>
+> `bootstrap-less-port/less/_navbar.less:251` opens
+> `> .container, > .container-fluid { … }` at the STYLESHEET ROOT, as its
+> documented workaround for emulating Sass placeholder selectors. `lessc` 4.x
+> tolerates this and emits ` > .container`. **jess rejects it, and that rejection is
+> correct.** Owner ruling: _"there's no rational reason to emit `> .container`
+> at the root"_ and _"the fact Less lets you write shit styles and emits shit
+> styles is not helpful to an author."_
+>
+> The reasoning, so this is not re-litigated:
+>
+> - A root-level leading combinator is meaningless CSS. There is no parent for
+>   the combinator to relate to, so it emits a selector no browser can match.
+> - Matching lessc on **valid** input is the contract. Reproducing its
+>   willingness to emit unmatched selectors would be inheriting a bug, not
+>   honouring compatibility. lessc's acceptance is evidence of lessc's
+>   permissiveness and of nothing else.
+> - A parse error naming the line serves the author better than a clean compile
+>   that produces dead CSS — especially in a Sass→Less port, where a root-level
+>   combinator is more plausibly translation noise than anything a Less author
+>   meant to write.
+>
+> So `d10c7fd38` making the stylesheet root an error was right, and
+> `_navbar.less` failing to parse is jess being correct. Nothing is owed here.
+> The nested contexts are the only place a leading combinator is legal, which is
+> exactly what RC-3 fixed. Guarded by
+> `less-parser/test/ast-grammar.test.ts` ("still rejects a leading-combinator
+> selector at the stylesheet root") and by
+> `css-parser/test/css/errors/selector-leading-combinator.css`.
+>
+> **RC-3a (open, real) — a leading-combinator selector cannot carry an inline
+> `:extend()`.** `.z { > td:extend(.x) { … } }` and
+> `@d: { > td:extend(.x) { … } };` both throw. This is a NESTED-context defect,
+> where a leading combinator IS legal, and must not be confused with the
+> root-level ruling above. Cause:
+> `relativeSelectorListWithExtends` (`.../less-parser/src/grammar.ts:5961`) is
+> `choice(SelectorBranch, node('SelectorBranch', g.RelativeComplex, …))`. The
+> extend-carrying arm, `SelectorBranch` (`:5916`), opens on `ExtendComplex`
+> (`:5852`), whose head is `InlineExtendSubjectCompound` — there is no leading
+> combinator slot in it at all, so `> td:extend(.x)` cannot match it. The
+> fallback arm, `g.RelativeComplex`, does admit the combinator but has no extend
+> tail and hard-codes `extensions: []`, so the `:extend(…)` is left unconsumed
+> and the whole parse fails rather than silently dropping the extend. Fixing it
+> means giving the relative branch the same extend tail the absolute one has,
+> which is the same three-level absolute/relative fork noted against these
+> consts. Pre-existing — RC-3 made the detached body behave identically to the
+> ordinary nested body, which is the point; it did not introduce this and did
+> not widen it.
 | **RC-4 — `${…}` is absent from the Jess value-atom set.** It works in selectors, `url()`, quoted strings, custom-property names and media preludes, but not in a plain value or a statement at-rule prelude. | **1** | BUG | `packages/syntax/jess/jess-parser/src/grammar.ts:3288-3299` is `choice(Expression, DollarInterp)` — `DollarBrace` (defined `:1533`) is missing; consumed at `:3331`. |
 | **`$extend &`** — the extend-target policy validator has no carve-out for the parent selector, so `&` is rejected under the default `['class']` policy. `&` is not a selector kind the option means to gate. | **1** | BUG | `packages/syntax/jess/jess-parser/src/index.ts:87,102-110,117-122` |
 | **RC-5 — leading-combinator (implicit `&`) SCSS selectors now parse.** Two baselines record it as a gap; the ratchet is firing on an *improvement* and both tests say so in their failure text. | **2** | stale expectation | `test/scss/bootstrap-corpus.test.ts:284` (31 parse now, baseline names 29 — add `_button-group.scss`, `_type.scss`); `test/scss/scss-construct-support.test.ts:240` |
