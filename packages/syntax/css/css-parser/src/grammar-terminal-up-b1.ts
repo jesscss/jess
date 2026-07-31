@@ -31,7 +31,7 @@
  * NOT covered, and the artifact number must be read with that stated.
  */
 import { pseudoSelector } from '@jesscss/core/ast';
-import { choice, composeLeaf, dispatch, endsWith, keywords, literal, many, noTrivia, node, oneOrMore, oneOrMoreSep, optional, otherwise, regex, routed, rules, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { choice, composeLeaf, dispatch, endsWith, keywords, literal, many, noTrivia, node, oneOrMore, oneOrMoreSep, optional, otherwise, regex, routed, rules, sequence, token, transform, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -49,6 +49,9 @@ import {
   quoted,
   rule,
   selist,
+  relativeSelector,
+  selectorBranchOf,
+  selectorTermOf,
   simpleSelector,
   spaced,
   stylesheet,
@@ -89,6 +92,37 @@ function text(child: unknown): string {
 function nodesOnly(children: readonly unknown[]): ValueNode[] {
   return children.filter((child): child is ValueNode =>
     typeof child === 'object' && child !== null && 'type' in child);
+}
+
+/**
+ * Turns a flat reducer child list into `{ combinator?, term }` segments.
+ *
+ * This replaces `selectorText()` string-joining in the selector productions.
+ * Joining was losing real data, not merely coarsening it: a functional pseudo's
+ * selector-list argument vanished entirely (`a:is(.x,.y)` reduced to the text
+ * `"a :is"`), and the descendant combinator was materialised into the string
+ * rather than carried as a field. Once the combinator is a field on the branch
+ * and the term is a node, both defects close together — so the acceptance test
+ * for this batch is that NO selector text is ever assembled by joining.
+ *
+ * `many()` spreads, so combinator leaves and compound terms arrive interleaved
+ * in one flat list; a leaf starts a new segment's combinator, a node closes it.
+ */
+function segmentsOf(children: readonly unknown[]): never {
+  const segments: Array<{ combinator?: string, term: unknown }> = [];
+  let pending: string | undefined;
+  for (const child of children) {
+    if (typeof child === 'object' && child !== null && 'value' in child && !('type' in child)) {
+      pending = text(child);
+      continue;
+    }
+    if (Array.isArray(child)) {
+      continue;
+    }
+    segments.push(pending === undefined ? { term: child } : { combinator: pending, term: child });
+    pending = undefined;
+  }
+  return segments as never;
 }
 
 /**
@@ -385,7 +419,9 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const RelativeSelector = node(
     'RelativeSelector',
     sequence(optional(relativeSelectorCombinator), g.ComplexSelector),
-    children => simpleSelector(children.map(selectorText).join(' '))
+    children => (typeof children[0] === 'object' && children[0] !== null && 'value' in children[0]
+      ? relativeSelector(text(children[0]) as never, segmentsOf(children.slice(1)))
+      : selectorBranchOf(segmentsOf(children)))
   );
 
   /** A comma-separated relative selector list. */
@@ -419,7 +455,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const NthChildPseudoSelector = node(
     'PseudoSelector',
     sequence(g.PseudoSelectorColon, g.NthChildPseudoSelectorName, literal('('), g.NthChildArgument, literal(')')),
-    children => pseudoSelector(text(children[1]), null, selectorText(children[3]))
+    children => pseudoSelector(text(children[1]), null, text(children[3]))
   );
 
   /** `:nth-of-type(…)` / `:nth-last-of-type(…)` — `<An+B>`, and NO `of` tail. */
@@ -477,7 +513,10 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const BasicSelector = node('BasicSelector', g.SimpleSelectorToken, children => simpleSelector(text(children[0])));
 
   /** Adjacent simple selectors with no combinator between them. */
-  const CompoundSelector = oneOrMore(choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector));
+  const CompoundSelector = transform(
+    oneOrMore(choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector)),
+    children => selectorTermOf(children as never)
+  );
 
   /**
    * Compound selectors joined by combinators or by descendant whitespace.
@@ -492,7 +531,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const ComplexSelector = node(
     'ComplexSelector',
     sequence(g.CompoundSelector, many(sequence(optional(combinator), g.CompoundSelector))),
-    children => simpleSelector(children.map(selectorText).join(' '))
+    children => selectorBranchOf(segmentsOf(children))
   );
 
   /** The comma-separated selector list that heads a ruleset. */
