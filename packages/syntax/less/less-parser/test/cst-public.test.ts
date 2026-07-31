@@ -443,7 +443,10 @@ describe('Less direct-AST closure CST contract', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(findNodes(result.tree, 'QueryIdentOrFunction')).toHaveLength(0);
     expect(findNodes(result.tree, 'Keyword').map(leafValues)).toContainEqual(['screen']);
-    expect(findNodes(result.tree, 'CalcCall').map(leafValues)).toContainEqual(['calc(', '10', 'px', ' + ', '1', 'px', ')']);
+
+    /* The sum operator leaf's value is the sign alone, matching the product
+     * operator's. Its authored padding is the leaf's span, not its value. */
+    expect(findNodes(result.tree, 'CalcCall').map(leafValues)).toContainEqual(['calc(', '10', 'px', '+', '1', 'px', ')']);
     expect(findNodes(result.tree, 'Call').map(leafValues)).toContainEqual(['feature(', '1', 'px', ', ', '2', 'px', ')']);
     expect(cstIssueCount(badUrl)).toBeGreaterThan(0);
   });
@@ -453,7 +456,7 @@ describe('Less direct-AST closure CST contract', () => {
       ['e("x");', 'Call', ['e(', '"', 'x', '"', ')']],
       ['.x { color: var(--accent); }', 'Call', ['var(', '--accent', ')']],
       ['.x { color: feature(1px, 2px); }', 'Call', ['feature(', '1', 'px', ', ', '2', 'px', ')']],
-      ['.x { color: calc(1px + 2px); }', 'CalcCall', ['calc(', '1', 'px', ' + ', '2', 'px', ')']],
+      ['.x { color: calc(1px + 2px); }', 'CalcCall', ['calc(', '1', 'px', '+', '2', 'px', ')']],
       ['.x { color: url(foo); }', 'Url', ['url(', 'foo', ')']],
       ['@supports selector(a:hover) { a { color: red; } }', 'GeneralEnclosedFunctionName', ['selector(']],
       ['@container style(--responsive: true) { .card { color: red; } }', 'ContainerStyleQuery', ['style(', '--responsive', ':', 'true', ')']]

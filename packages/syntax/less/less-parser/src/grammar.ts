@@ -2232,13 +2232,46 @@ const preservedSlashBoundary = leaf(
     };
   }
 );
-// CSS rule (kept, NOT widened for comments): `+`/`-` are ambiguous between a
-// binary operator and a leading sign, so — like CSS `calc()` — they require REAL
-// whitespace on both sides (or Less's glued-to-a-number form `1-2`). Comments do
-// NOT count as that whitespace (`1/**/-/**/2` is NOT math), unlike the unambiguous
-// `*`/`/`/`%` product operators above, which DO admit comment trivia. The three
-// arms are symmetric-ws | glued-to-number | asymmetric-reject guard.
-const sumOperator = regex(/(?:[ \t\n\r\f]+[-+][ \t\n\r\f]+|[-+](?=[0-9.])|[ \t\n\r\f]*[-+](?![0-9.])[ \t\n\r\f]*)/);
+/*
+ * CSS rule, KEPT: `+`/`-` are ambiguous between a binary operator and a leading
+ * sign, so — like CSS `calc()`, css-values-4 §10.1 — they require REAL
+ * whitespace on both sides (or Less's glued-to-a-number form `1-2`). A comment
+ * does not supply that whitespace, so `1/**\/-/**\/2` is still NOT math and
+ * `1 -2` is still a space list whose second item is the signed dimension.
+ *
+ * What changed is only that a comment may now sit ALONGSIDE the required
+ * whitespace, which is what the `*`/`/`/`%` product operators above already
+ * allowed: css-syntax-3 §4 makes a comment trivia wherever whitespace is
+ * trivia, so a bare whitespace run was never the right spelling for a slot that
+ * already required whitespace — it is why `calc(1px /* z *\/ + 2px)` was
+ * rejected outright. The pad is `comment* ws+ (comment ws*)*`, the same shape
+ * the CSS grammar's calc sum pad uses, and both Less comment forms count so it
+ * matches the document trivia table. The comment and whitespace arms open on
+ * disjoint characters and no inner group can match empty, so the match stays
+ * linear.
+ *
+ * ONLY the whitespace-REQUIRING arm is widened, and that boundary is measured,
+ * not stylistic. The glued arms below use `(?![0-9.])` as their proxy for "this
+ * sign is not glued to a number"; a comment defeats that proxy, because in
+ * `1/**\/-/**\/2` the lookahead sees `/` and not the `2` that is actually there.
+ * Widening those pads made `1/**\/-/**\/2` parse as math, contradicting the rule
+ * two lines up, so they keep their bare whitespace runs.
+ *
+ * The three arms remain symmetric-ws | glued-to-number | asymmetric-reject
+ * guard. The widened one is a `leaf()` for the same reason the product operators
+ * above are: the leaf's value is exactly the sign, so `foldOperation` still reads
+ * a flat operator stream and no CST arity moves. Folding the pad into the
+ * operator terminal instead would leave the reducer recovering the sign with
+ * `.trim()` from bytes that can now hold a comment's own `/` and `*` — the
+ * parser handing core a value to re-parse.
+ */
+const sumPadRequired = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)*[ \t\n\r\f]+(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
+const sumOperatorSpaced = leaf(
+  noTrivia(sequence(sumPadRequired, keywords(['-', '+']), sumPadRequired)),
+  children => children[1] as string
+);
+const sumOperatorGlued = regex(/[-+](?=[0-9.])|[ \t\n\r\f]*[-+](?![0-9.])[ \t\n\r\f]*/);
+const sumOperator = choice(sumOperatorSpaced, sumOperatorGlued);
 // Generic Less at-rule names are grammar terminals. This grammar keeps
 // their prelude/body semantic only where the existing canonical AST has a
 // truthful structured representation; it never captures a block as text.
@@ -3054,10 +3087,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return call;
     }
   );
+  // `calc(` owns its boundary gaps for the same reason `Paren` below does: the
+  // math ladder runs under `noTrivia`, so an interior that admits authored
+  // padding has to spell it. Without these terms `calc( 1px + 2px )` was
+  // rejected as hard as `calc(/* c */1px + 2px)` was, and `Paren`'s own padding
+  // was unreachable from inside a calc — `calc( (1px + 2px) )` failed too.
   const CalcFunction = node(
     'CalcCall',
-    noTrivia(sequence(routed(), g.MathSum, literal(')'))),
-    children => funcCall(functionNameFromOpener(children[0]), [requireValueNode(children[1])])
+    noTrivia(sequence(routed(), optional(whitespace), g.MathSum, optional(whitespace), literal(')'))),
+    children => funcCall(functionNameFromOpener(children[0]), [requireValueNode(children.find(isValueNode))])
   );
   const Identifier = node(
     'Identifier',

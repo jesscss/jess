@@ -1599,7 +1599,16 @@ describe('Less AST grammar facts', () => {
     expect(cstIssueCount(cst)).toBe(0);
     expect(findCstNodes(cst.tree, 'Call').map(cstLeafValues)).toEqual(
       expect.arrayContaining([
-        ['rgb(', 'from', 'blue', 'calc(', 'r', ' + ', '100', ')', 'g', 'b', ')'],
+        /*
+         * The sum operator's leaf value is the sign alone, exactly as the
+         * product operator's is on the next line. It used to carry its authored
+         * padding (`' + '`) because the operator was one whitespace-only regex;
+         * now that the padding may hold a comment, the operator owns the sign
+         * and the padding stays padding, so `+` and `/` finally spell the same
+         * kind of thing. The authored bytes are unchanged — they are the leaf's
+         * span, not its value.
+         */
+        ['rgb(', 'from', 'blue', 'calc(', 'r', '+', '100', ')', 'g', 'b', ')'],
         ['oklch(', 'from', '#0000FF', 'calc(', 'l', '/', '2', ')', 'c', 'h', ')']
       ])
     );
@@ -1777,6 +1786,53 @@ describe('Less AST grammar facts', () => {
         { rules: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
       ]
     });
+
+    /*
+     * A comment may sit ALONGSIDE the required whitespace. That is the whole of
+     * the widening: css-syntax-3 §4 makes a comment trivia wherever whitespace
+     * is trivia, and the pad already had to contain real whitespace, so nothing
+     * about the sign rule above changes.
+     */
+    const paddedSum = run(lessGrammar.Document, '.m { x: 1 /* z */- 2; }', {
+      trivia: lessGrammar.whitespace
+    });
+    expect(paddedSum.value).toMatchObject({
+      rules: [
+        { rules: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
+      ]
+    });
+
+    /* `1 -2` stays a space list whose second item is the signed dimension. */
+    const signList = run(lessGrammar.Document, '.m { x: 1 -2; }', {
+      trivia: lessGrammar.whitespace
+    });
+    expect(
+      JSON.stringify(signList.value ?? {}).includes('"operator":"-"')
+    ).toBe(false);
+  });
+
+  /*
+   * `calc(` owns its boundary gaps for the same reason `Paren` does: the math
+   * ladder runs under `noTrivia`, so an interior that admits authored padding
+   * has to spell it. Without those terms `calc( 1px + 2px )` was rejected as
+   * hard as its comment forms were, and `Paren`'s own padding was unreachable
+   * from inside a calc.
+   */
+  it('admits authored whitespace and comments at the calc boundary', () => {
+    for (const source of [
+      '.m { x: calc( 1px + 2px); }',
+      '.m { x: calc(1px + 2px ); }',
+      '.m { x: calc(/* c */1px + 2px); }',
+      '.m { x: calc(1px + 2px/* c */); }',
+      '.m { x: calc(1px + /* c */ 2px); }',
+      '.m { x: calc( (1px + 2px) ); }',
+      '.m { x: calc(( 1px + 2px )); }'
+    ]) {
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace
+      });
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+    }
   });
 
   it('keeps the comments2 variable/parens product on the same math route', () => {
