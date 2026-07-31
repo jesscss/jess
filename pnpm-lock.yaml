@@ -110,8 +110,8 @@ importers:
         specifier: ^2.6.1
         version: 2.6.1
       parseman:
-        specifier: ^0.44.0
-        version: 0.44.0
+        specifier: ^0.45.0
+        version: 0.45.0
       puppeteer:
         specifier: ^19.10.1
         version: 19.11.1(typescript@7.0.1-rc)
@@ -696,8 +696,8 @@ importers:
   packages/parser-shared:
     devDependencies:
       parseman:
-        specifier: ^0.44.0
-        version: 0.44.0
+        specifier: ^0.45.0
+        version: 0.45.0
       tsdown:
         specifier: ~0.21.7
         version: 0.21.7(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(typescript@7.0.1-rc)
@@ -738,8 +738,8 @@ importers:
         specifier: workspace:*
         version: link:../../../_shared
       parseman:
-        specifier: ^0.44.0
-        version: 0.44.0
+        specifier: ^0.45.0
+        version: 0.45.0
       postcss:
         specifier: 8.5.23
         version: 8.5.23
@@ -766,8 +766,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.5
       parseman:
-        specifier: ^0.44.0
-        version: 0.44.0
+        specifier: ^0.45.0
+        version: 0.45.0
 
   packages/syntax/jess/jess-plugin-jess:
     dependencies:
@@ -849,8 +849,8 @@ importers:
         specifier: ^4.6.3
         version: 4.6.3
       parseman:
-        specifier: ^0.44.0
-        version: 0.44.0
+        specifier: ^0.45.0
+        version: 0.45.0
       postcss-less:
         specifier: ~6.0.0
         version: 6.0.0(postcss@8.5.23)
@@ -886,8 +886,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.44.0
-        version: 0.44.0
+        specifier: ^0.45.0
+        version: 0.45.0
       sass-spec:
         specifier: github:sass/sass-spec
         version: github.com/sass/sass-spec/67c3b83a26fd3f9772dd0d3e318fe32aefb38eef(@babel/core@7.29.7)(eslint@9.39.2)
@@ -18439,8 +18439,8 @@ packages:
     dependencies:
       entities: 6.0.1
 
-  /parseman@0.44.0:
-    resolution: {integrity: sha512-3crgfrvTgVRltFGeKi98hiHNEjF9owWcwMhdQ93GpblCp2U5kC8DZx8M9GWvXsHQD2tVvh9BhlZhI5MTKljxqg==}
+  /parseman@0.45.0:
+    resolution: {integrity: sha512-KoQY9NN+mdBZjv5eqrpsOU8eA8TgtELPg3fslp2InElZzpRo/QkGAf9Q42EqVG2QTHJrsdqpAZJjWno+/arWGQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     dependencies:
       magic-string: 0.30.21

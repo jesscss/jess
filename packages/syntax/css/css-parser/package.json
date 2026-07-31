@@ -71,7 +71,7 @@
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*",
-    "parseman": "^0.44.0"
+    "parseman": "^0.45.0"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -82,7 +82,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "parseman": "^0.44.0",
+    "parseman": "^0.45.0",
     "postcss": "8.5.23",
     "tsx": "~4.21.0"
   },

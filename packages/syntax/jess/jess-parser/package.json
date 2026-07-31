@@ -69,7 +69,7 @@
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*",
-    "parseman": "^0.44.0"
+    "parseman": "^0.45.0"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -80,7 +80,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
     "@types/color-name": "^1.1.1",
-    "parseman": "^0.44.0"
+    "parseman": "^0.45.0"
   },
   "type": "module",
   "module": "lib/index.js"
