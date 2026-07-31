@@ -23,7 +23,7 @@ const CASES = [
 
 const entry = process.argv[2];
 const mod = await import(new URL(`./probe-lib/${entry}.js`, import.meta.url));
-const grammar = Object.values(mod)[0];
+const grammar = mod.cssGrammar ?? Object.values(mod)[0];
 
 /** Every `src`/`text`/`name` string anywhere in the tree, in encounter order. */
 function texts(node, out = []) {

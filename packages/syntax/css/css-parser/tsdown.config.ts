@@ -21,7 +21,16 @@ export default defineConfig([
       'cst/positions': './src/cst/positions.ts',
       [CST_HOST]: './src/cst-host.ts'
     },
+    /*
+     * `parse-with` must be a real top-level entry, not a shared chunk. As a
+     * chunk it emits at `lib/chunks/parse-with.js` with rolldown-mangled
+     * exports (`n`, `t`) and no `parseWith` binding, while `lib/parse-with.d.ts`
+     * still exists — so a directory listing looks correct and an importer of
+     * `lib/parse-with.js` fails. `less-parser/tsdown.config.ts:21` already uses
+     * `shared` for exactly this reason.
+     */
+    shared: ['parse-with'],
     plugins: [parseman.rolldown()]
   }),
-  ...grammarVariantBuilds({ plugins: [parseman.rolldown()] })
+  ...grammarVariantBuilds({ shared: ['parse-with'], plugins: [parseman.rolldown()] })
 ]);

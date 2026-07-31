@@ -15,7 +15,7 @@ const CASES = [
 
 const entry = process.argv[2];
 const mod = await import(new URL(`./probe-lib/${entry}.js`, import.meta.url));
-const grammar = Object.values(mod)[0];
+const grammar = mod.cssGrammar ?? Object.values(mod)[0];
 
 for (const [label, source] of CASES) {
   const result = run(grammar.Stylesheet, source);
