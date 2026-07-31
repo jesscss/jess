@@ -31,7 +31,7 @@
  * NOT covered, and the artifact number must be read with that stated.
  */
 import { pseudoSelector } from '@jesscss/core/ast';
-import { choice, composeLeaf, dispatch, endsWith, keywords, literal, many, noTrivia, node, oneOrMore, oneOrMoreSep, optional, otherwise, regex, routed, rules, sequence, token, transform, when } from 'parseman' with { type: 'macro' };
+import { choice, classifiedTrivia, composeLeaf, dispatch, endsWith, keywords, literal, many, noTrivia, node, oneOrMore, oneOrMoreSep, optional, otherwise, regex, routed, parser, rules, sequence, token, transform, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -210,6 +210,22 @@ const whitespace = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
 
 /** A block comment on its own, for the scanner skip set. */
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+
+/** Whitespace alone, for the interstitial scope. */
+const whitespaceRun = regex(/[ \t\n\r\f]+/);
+
+/**
+ * Inside a compound selector, WHITESPACE IS NOT TRIVIA — it is the descendant
+ * combinator. Comments still are. This is the scope that makes `a .b` stop the
+ * compound at `a` and surface the space to `ComplexSelector`, while a comment
+ * between two simple selectors still leaves them one compound. Candidate C
+ * diagnosed it: the fix is a trivia SCOPE, not
+ * a trivia rule, which is why three whitespace-shaped hypotheses all missed.
+ */
+const compoundTrivia = classifiedTrivia({ blockComment });
+
+/** Ordinary scope, re-enabled inside attribute and pseudo delimiters. */
+const interstitialTrivia = classifiedTrivia({ whitespace: whitespaceRun, blockComment });
 
 /**
  * The one identifier-or-function opener, consumed once for every position that
@@ -534,7 +550,11 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
    */
   const CompoundSelector = node(
     'CompoundSelector',
-    noTrivia(oneOrMore(choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector))),
+    noTrivia(parser({ trivia: compoundTrivia }, oneOrMore(choice(
+      parser({ trivia: interstitialTrivia }, g.AttributeSelector),
+      parser({ trivia: interstitialTrivia }, g.AnyPseudoSelector),
+      g.BasicSelector
+    )))),
     children => selectorTermOf(children as never)
   );
 
