@@ -328,6 +328,69 @@ different multiplicities.** The apparent 26,688-vs-558 gap was **variant count,
 not disagreement.** Before treating two counts as contradictory, check whether
 one is per-artifact and the other is per-package.
 
+### 2.4h Native-primitive bakeoff — they win microbenchmarks and vanish in situ
+
+Microbenchmarks (0.97 MiB real CSS, one process, interleaved, rotated order,
+checksums asserted equal):
+
+| candidate | rel | wins | mechanism |
+| --- | ---: | --- | --- |
+| `String.indexOf`, single stop | **0.232** | 61/61 | SIMD-accelerated |
+| object, **dense int keys** | **0.173** | 31/31 | elements store, not named-property IC |
+| plain Array | 0.183 | 31/31 | |
+| object, sparse int keys | 0.192 | 31/31 | |
+| Uint8Array LUT 64 KB | 0.874 | 60/61 | one memory read replaces a 7-term `\|\|` chain |
+| bitmask Int32Array indexed | 0.893 | 60/61 | |
+| Map, integer keys | 0.590 | 31/31 | |
+| **`Object.freeze(Array)`** | **0.594** | | **LOSES the fast elements kind — 3.4× slower. Anti-optimisation.** |
+| bitmask 4× SMI **branched** | 1.093 | 3/61 | 4 branches to *select* the mask is the whole cost |
+| sticky `/y` `exec()` | 3.068 | 0/61 | allocates a match array per position |
+
+**Elements kinds measured via `%DebugPrint`, not assumed**: only the plain Array
+is `PACKED`; a dense-int-keyed *object* is `HOLEY`; **nothing reached dictionary
+mode**, which is why sparse cost only 4% instead of collapsing.
+
+**Sticky regex inverts by run length** — loses 3× on short ident runs, wins
+27.5% on long delimiter runs.
+
+**In situ: −0.56% css raw bytes, speed at or below the noise floor and not
+claimed.** less raw −118 B but gzip **+10** — `indexOf` is shorter yet breaks
+the ubiquitous `while (_j < input.length && !(…)) _j++` run that gzip matches
+everywhere else.
+
+**The instrument is now self-calibrating, and this is the transferable part.**
+graphql and json convert zero sites and were `cmp`-verified byte-identical, so
+they were carried in every run as live controls: they read **1.0096 and 0.9999**
+at 24/51 and 26/51 wins. **That is the floor, measured in the same run rather
+than assumed.** An earlier harness measured those same byte-identical artifacts
+**7.8% apart**; batching parses per sample fixed it, and every in-situ number
+from before that fix was noise — including a css row that swung +7.9% → −1.9%
+between runs.
+
+### 2.4i Hot-path census — `_ctx.` field reads dominate, and `_map` is not hot
+
+On a real 241,068 B fused artifact:
+
+| | count |
+| --- | ---: |
+| `_ctx.` reads | **1,692** |
+| `input.charCodeAt(` | 550 |
+| `.get(` | **0** |
+| `new Map` | **0** |
+| bracket-index table reads | **0** |
+
+**`_map` occurs 8 times in 4,766 lines** — the literal, the `defineProperty`
+stamps, `return _map` — and **zero times inside any rule body.** Rule-to-rule
+calls are direct hoisted `_r_Name(input, pos, _ctx)` references (40 interior
+call sites, 0 through the map), and keys are full rule names, not ids.
+
+**So the 5.8× integer-key win cannot apply to `_map`, which is read once per
+parse.** It stays a live quantified datum for the G5 `g.` table *if* that table
+lands on a hot path.
+
+**The unexamined lead: `_ctx.` field access is 3× more common than
+`charCodeAt` and nobody has looked at it.**
+
 ### 2.5 Measurement discipline
 
 - **Noise floor on this machine: 5.144 vs 5.200 ms min-of-mins at a 6/15 win
