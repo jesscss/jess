@@ -127,7 +127,32 @@ function neutralise(source) {
     }
     i++;
   }
-  return out.join('');
+
+  /*
+   * TYPE POSITIONS. A rule name that collides with an imported AST type name
+   * also appears where no value is referenced. SCSS and Jess make this acute:
+   * they write `const Declaration = node<Declaration>(...)`, where the generic
+   * ARGUMENT is the same identifier as the rule. Counting bare occurrences and
+   * subtracting one for the declaration then leaves the generic argument
+   * looking like a real by-const reference.
+   *
+   * This is not independent of allowing generics in the combinator pattern.
+   * Allowing `node<T>(` WITHOUT blanking type positions is worse than allowing
+   * neither: it turns a silent zero into a confident wrong number, and it does
+   * so only in the grammars that use generics, which makes the resulting
+   * "finding" look like a real dialect difference.
+   */
+  let text = out.join('');
+  const blankRange = (source, pattern, group) => source.replace(pattern, (match, captured, offset) => {
+    const start = group ? match.indexOf(captured) : 0;
+    const head = match.slice(0, start);
+    const target = group ? captured : match;
+    return head + target.replace(/[^\n]/g, ' ') + match.slice(start + target.length);
+  });
+  text = blankRange(text, /(?<=[A-Za-z0-9_])(<[^<>;{}()\n]*>)/g, true);
+  text = blankRange(text, /\b(?:as|is)\s+([A-Z][A-Za-z0-9]*)/g, true);
+  text = blankRange(text, /\)\s*:\s*([A-Z][A-Za-z0-9]*)/g, true);
+  return text;
 }
 
 /** Locates the factory body and its returned rules map. */
