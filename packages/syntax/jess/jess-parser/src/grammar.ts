@@ -152,7 +152,6 @@ type JessRules = {
   ForSource: Combinator<ValueNode>;
   For: Combinator<For>;
   IfCondition: Combinator<GuardNode>;
-  IfGuardValue: Combinator<GuardNode>;
   IfGuardCompare: Combinator<GuardNode>;
   IfGuardPrimary: Combinator<GuardNode>;
   IfGuardAnd: Combinator<GuardNode>;
@@ -185,7 +184,6 @@ type JessRules = {
   GeneralTemplateQuoted: Combinator<Interpolation>;
   GeneralQuotedTemplate: Combinator<Interpolation>;
   GeneralQuotedTemplateGroup: Combinator<Interpolation>;
-  GeneralQuotedTemplateQuoted: Combinator<Interpolation>;
   GeneralEnclosed: Combinator<GeneralEnclosed>;
   SupportsNot: Combinator<Keyword>;
   SupportsLogical: Combinator<Keyword>;
@@ -4092,12 +4090,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     }
   );
   /*
-   * A generic at-rule prelude is a comma-separated `<media-query-list>`: the
-   * same clause production `QueryPrelude` lists, differing only in that a
-   * generic prelude may be absent entirely. It carried a second name —
-   * `AtRulePreludeTerm` — for its CALLER, which is exactly the naming that lets
-   * a byte-identical copy survive review; the clause is `QueryClause` here as
-   * it is there.
+   * A generic at-rule prelude is a comma-separated `<media-query-list>` that
+   * may also be absent, so its clause is `QueryClause` exactly as `QueryPrelude`'s
+   * is. It carried a second name for its CALLER, `AtRulePreludeTerm`, and that
+   * is what kept a byte-identical copy alive.
    */
   const AtRulePrelude = node<ValueNode | null>(
     'AtRulePrelude',
@@ -4354,6 +4350,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     templateInterpolationFromChildren
   );
+  /*
+   * The single door into the permissive chain, from EITHER side: a string body
+   * is permissive wherever the quote was written, so this rung is chain-
+   * independent and shared. Only the wrappers below actually differ.
+   */
   const GeneralTemplateQuoted = node<Interpolation>(
     'GeneralTemplateQuoted',
     choice(
@@ -4387,21 +4388,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     templateInterpolationFromChildren
   );
-  const GeneralQuotedTemplateQuoted = node<Interpolation>(
-    'GeneralQuotedTemplateQuoted',
-    choice(
-      sequence(literal('"'), g.GeneralQuotedTemplate, literal('"')),
-      sequence(literal('\''), g.GeneralQuotedTemplate, literal('\''))
-    ),
-    templateInterpolationFromChildren
-  );
   const GeneralQuotedTemplate = node<Interpolation>(
     'GeneralQuotedTemplate',
     many(choice(
       g.DollarBrace,
       g.Expression,
       g.GeneralQuotedTemplateGroup,
-      g.GeneralQuotedTemplateQuoted,
+      g.GeneralTemplateQuoted,
       generalTemplateText
     )),
     templateInterpolationFromChildren
@@ -5569,12 +5562,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * pure `or` trees. In particular, `default()` and `$type.*()` are mixin
    * dispatch syntax, not `$if` syntax. A comparison in an `and`/`or` chain
    * must be parenthesized and mixed chains must group explicitly.
+   *
+   * The divergence is in the LADDER, not every rung: a bare truth value is
+   * `GuardValue` in both, so `$if` shares that rung rather than mirroring it.
    */
-  const IfGuardValue = node<GuardNode>(
-    'IfGuardValue',
-    g.ExpressionSum,
-    reduceGuardTruth
-  );
   const IfGuardCompare = node<GuardNode>(
     'IfGuardCompare',
     noTrivia(sequence(
@@ -5598,7 +5589,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.IfGuard,
         literal(')')
       ),
-      g.IfGuardValue
+      g.GuardValue
     ),
     (children) => {
       if (children.length === 1) {
@@ -5944,7 +5935,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     GeneralTemplateQuoted,
     GeneralQuotedTemplate,
     GeneralQuotedTemplateGroup,
-    GeneralQuotedTemplateQuoted,
     GeneralEnclosed,
     SupportsNot,
     SupportsLogical,
@@ -6038,7 +6028,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ForRange,
     ForSource,
     For,
-    IfGuardValue,
     IfGuardCompare,
     IfGuardPrimary,
     IfGuardAnd,
