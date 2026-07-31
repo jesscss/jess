@@ -101,12 +101,29 @@ function blankTypePositions(source) {
     /* Generic argument lists: `Combinator<Interpolation>`, `node<Quoted>(`. */
     .replace(/(?<=[A-Za-z0-9_>])<[^<>()\n]*>/g, match => ' '.repeat(match.length))
 
-    /* `as Type` assertions. */
-    .replace(/\bas\s+[A-Za-z][A-Za-z0-9_.]*/g, match => ' '.repeat(match.length))
-
-    /* Annotations: `: Type` before `=>`, `=`, `,`, `)`, `;`, or end of line. */
+    /*
+     * `as Type` assertions and `is Type` predicates, including unions.
+     * The predicate form is how **css** exposes this class — `(value): value is
+     * Declaration | AtRuleBlock =>` at grammar.ts:3372 and :3654 made css
+     * `Declaration` read as an H2 site when it has zero by-const combinator
+     * references. Candidate B caught it; the earlier claim in this file that
+     * css does not collide was wrong, it collides through predicates rather
+     * than through generics.
+     */
     .replace(
-      /:\s*(?:readonly\s+)?[A-Za-z][A-Za-z0-9_.]*(?:\[\])?(?=\s*(?:=>|=[^=]|[,);]|$))/gm,
+      /\b(?:as|is)\s+[A-Za-z][A-Za-z0-9_.]*(?:\s*\|\s*[A-Za-z][A-Za-z0-9_.]*)*/g,
+      match => ' '.repeat(match.length)
+    )
+
+    /*
+     * Annotations: `: Type` before `=>`, `=`, `,`, `)`, `;`, or end of line.
+     * The type may carry an array suffix or an INDEXED ACCESS —
+     * `const interpolationParts: Interpolation['parts'] = []` at
+     * less-parser/src/grammar.ts:1165 was the last false positive in this
+     * script, and it survived because `[` was not in the lookahead set.
+     */
+    .replace(
+      /:\s*(?:readonly\s+)?[A-Za-z][A-Za-z0-9_.]*(?:\[[^\]\n]*\])*(?=\s*(?:=>|=[^=]|[,);]|$))/gm,
       match => ' '.repeat(match.length)
     );
 }
@@ -182,6 +199,7 @@ const viaProxy = new Set(
 let h1 = 0;
 let h2 = 0;
 const worst = [];
+const h2sites = [];
 
 for (const name of declared) {
   /* Subtract the declaration itself; map keys are outside `scan` already. */
@@ -190,8 +208,21 @@ for (const name of declared) {
     h1++;
     worst.push([name, bare, viaProxy.has(name)]);
   }
-  if (bare >= 1 && viaProxy.has(name)) {
+
+  /*
+   * H2 is membership of the returned rules MAP plus a by-const reference — the
+   * rule is emitted once as a named rule and again inlined at the const site.
+   * This previously tested `viaProxy`, i.e. "is referenced somewhere as g.X",
+   * which is a DIFFERENT set: a rule can be exported in the map and never
+   * referenced through the proxy at all. That is the case for eight of the ten
+   * real css sites, including the whole `AtRulePrelude*` cluster (declared
+   * 2658-2685, referenced by const 2695-2699, all in the map, none via g.),
+   * so the wrong set under-reported H2 by 8. Candidate B supplied the line
+   * numbers that exposed it.
+   */
+  if (bare >= 1 && mapKeys.has(name)) {
     h2++;
+    h2sites.push([name, bare]);
   }
 }
 
@@ -201,8 +232,11 @@ console.log(file);
 console.log('  composite consts declared             ', declared.size);
 console.log('  keys in the returned rules map        ', mapKeys.size);
 console.log('  H1  referenced by const 2+ times      ', h1, '<- that many transitive inline copies');
-console.log('  H2  referenced by const AND via g.    ', h2, '<- emitted twice');
-console.log('  top by-const reference counts:');
+console.log('  H2  in the rules map AND by const     ', h2, '<- emitted twice');
+for (const [name, count] of h2sites) {
+  console.log('        ', `${name}:${count}`);
+}
+console.log('  H1 top by-const reference counts:');
 for (const [name, count, proxied] of worst.slice(0, 12)) {
   console.log('   ', String(count).padStart(3), name, proxied ? '(also via g.)' : '');
 }

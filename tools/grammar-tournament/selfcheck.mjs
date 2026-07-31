@@ -24,9 +24,9 @@
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFileSync, mkdirSync, readFileSync, cpSync, rmSync } from 'node:fs';
-import { loadSurfaces, compareBuilds, formatDivergence } from './lib/identity.mjs';
-import { loadCssCorpus, isMalformed } from './lib/corpus.mjs';
-import { detectInterpreterFallback } from './lib/preconditions.mjs';
+import { loadSurfaces, compareBuilds, formatDivergence } from './src/identity.mjs';
+import { loadCssCorpus, isMalformed } from './src/corpus.mjs';
+import { detectInterpreterFallback } from './src/preconditions.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../..');
@@ -167,6 +167,22 @@ async function main() {
   const baseDir = resolve(pkg, 'entries/base/lib');
   const selfDir = resolve(pkg, 'entries/selfcheck/lib');
   const brokenDir = resolve(pkg, 'entries/broken/lib');
+
+  /*
+   * Make our own snapshots. `entries/` is gitignored build scratch, so it is
+   * absent on a fresh clone and the self-check must not depend on some earlier
+   * command having created it.
+   *
+   * Two DISTINCT paths, both inside the owning package: module identity is by
+   * path, which is what lets two builds of the same parser load in one process,
+   * and being inside the package is what keeps bare specifiers resolving.
+   */
+  const shipped = resolve(pkg, 'lib');
+  for (const d of [baseDir, selfDir]) {
+    rmSync(d, { recursive: true, force: true });
+    mkdirSync(dirname(d), { recursive: true });
+    cpSync(shipped, d, { recursive: true });
+  }
 
   // ---- CHECK 1 ---------------------------------------------------------
   heading('SELF-CHECK 1 — current vs ITSELF (must PASS, zero divergences)');
