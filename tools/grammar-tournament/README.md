@@ -110,7 +110,7 @@ invisible to call-site counts. Without this column, raw bytes rank authoring acc
 rather than grammar design.
 
 Four independent audits of the incumbent disagreed (39/2, 41/4, 8/4, and this harness's
-17/1) because all four hit the same three contamination classes. `lib/refshape.mjs`
+17/1) because all four hit the same three contamination classes. `src/refshape.mjs`
 corrects all three and the harness owns the one script:
 
 1. Scanning from line 0 counts imports, the 147-member `GrammarRuleName` union, and
@@ -130,15 +130,15 @@ locals (`values`, `name`, `args`) rank as the most-inlined "rules" in the gramma
 |---|---|
 | `scoreboard.mjs` | the one command |
 | `selfcheck.mjs` | proves the harness passes on identity and **fails on known-bad** |
-| `lib/canonical.mjs` | deterministic tagged serializer + structural first-divergence |
-| `lib/identity.mjs` | the pass/fail gate over all three surfaces |
-| `lib/corpus.mjs` | corpus roots; reuses the less oracle's proven walker |
-| `lib/metrics.mjs` | artifact/source bytes, combinators, regex share |
-| `lib/refshape.mjs` | the reference-shape audit |
-| `lib/preconditions.mjs` | interpreter-fallback + floor refusals |
-| `lib/bench.mjs` | interleaved min-of-mins with the noise floor built in |
-| `lib/fuzz.mjs` | corpus-seeded deterministic differential fuzzing |
-| `lib/coverage.mjs` | rule coverage, splitting *unreachable* from *missed* |
+| `src/canonical.mjs` | deterministic tagged serializer + structural first-divergence |
+| `src/identity.mjs` | the pass/fail gate over all three surfaces |
+| `src/corpus.mjs` | corpus roots; reuses the less oracle's proven walker |
+| `src/metrics.mjs` | artifact/source bytes, combinators, regex share |
+| `src/refshape.mjs` | the reference-shape audit |
+| `src/preconditions.mjs` | interpreter-fallback + floor refusals |
+| `src/bench.mjs` | interleaved min-of-mins with the noise floor built in |
+| `src/fuzz.mjs` | corpus-seeded deterministic differential fuzzing |
+| `src/coverage.mjs` | rule coverage, splitting *unreachable* from *missed* |
 
 ## Prior art reused, not reinvented
 

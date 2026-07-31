@@ -27,14 +27,14 @@
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, cpSync, rmSync, mkdirSync, existsSync } from 'node:fs';
-import { loadSurfaces, compareBuilds, formatDivergence } from './lib/identity.mjs';
-import { loadCssCorpus, isMalformed } from './lib/corpus.mjs';
-import { checkEntry } from './lib/preconditions.mjs';
-import { artifactBytes, sourceClosure, combinatorCounts, extractRegexLiterals, classifyRegexes, RANK_ARTIFACT, ARTIFACTS } from './lib/metrics.mjs';
-import { auditReferenceShape } from './lib/refshape.mjs';
-import { interleavedAB, classify, NOISE_FLOOR_PCT } from './lib/bench.mjs';
-import { fuzzDifferential } from './lib/fuzz.mjs';
-import { digest, firstDivergence, describe, assertInjective } from './lib/canonical.mjs';
+import { loadSurfaces, compareBuilds, formatDivergence } from './src/identity.mjs';
+import { loadCssCorpus, isMalformed } from './src/corpus.mjs';
+import { checkEntry } from './src/preconditions.mjs';
+import { artifactBytes, sourceClosure, combinatorCounts, extractRegexLiterals, classifyRegexes, RANK_ARTIFACT, ARTIFACTS } from './src/metrics.mjs';
+import { auditReferenceShape } from './src/refshape.mjs';
+import { interleavedAB, classify, NOISE_FLOOR_PCT } from './src/bench.mjs';
+import { fuzzDifferential } from './src/fuzz.mjs';
+import { digest, firstDivergence, describe, assertInjective } from './src/canonical.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../..');
