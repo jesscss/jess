@@ -287,15 +287,11 @@ type LessRules = {
   blockBody: Combinator<unknown>;
   BareVariableInterpolation: Combinator<unknown>;
   valuePiece: Combinator<unknown>;
-  MediaQueryTerm: Combinator<unknown>;
-  QueryTerm: Combinator<unknown>;
   pseudoArgumentInner: Combinator<unknown>;
-  QueryFeatureValue: Combinator<unknown>;
   queryLeaf: Combinator<unknown>;
   interpolatedValueTail: Combinator<unknown>;
   GenericFunction: Combinator<unknown>;
   CalcFunction: Combinator<unknown>;
-  QueryNonOnlyKeyword: Combinator<unknown>;
   FunctionArguments: Combinator<unknown>;
 };
 
@@ -6482,15 +6478,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     blockBody,
     BareVariableInterpolation,
     valuePiece,
-    MediaQueryTerm,
-    QueryTerm,
     pseudoArgumentInner,
-    QueryFeatureValue,
     queryLeaf,
     interpolatedValueTail,
     GenericFunction,
     CalcFunction,
-    QueryNonOnlyKeyword,
     FunctionArguments,
     whitespace,
     rw: whitespace
