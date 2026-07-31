@@ -204,26 +204,56 @@ export function auditReferenceShape(file, factoryName = 'cssFactory') {
     }
   }
 
+  /*
+   * FILTER 5 — TYPE POSITIONS. A name in a TYPE position is erased at compile
+   * time and costs nothing; counting it as a reference is a false positive.
+   *
+   * This is not optional and it is not independent of the generics fix above.
+   * Candidate A isolated that by toggling this filter alone: scss H2 reads 1
+   * with it and 14 without; jess reads 0 with and 25 without. The mechanism is
+   * that scss and jess write `node<Declaration>(...)`, so THE GENERIC ARGUMENT
+   * IS THE SAME IDENTIFIER AS THE RULE NAME — accepting `node<T>(` without
+   * blanking type positions converts a silent zero into a confident wrong
+   * number, and only in the grammars that use generics, so the artifact
+   * masquerades as a real dialect finding. That is exactly how "the two
+   * largest double-emission counts in the repo" were produced out of nothing.
+   *
+   * CSS EXPOSES IT TOO, via type predicates rather than generics — B's catch,
+   * which I verified at grammar.ts:3372 and :3654, both
+   * `(value): value is Declaration | AtRuleBlock =>`. Those two are the ONLY
+   * non-comment, non-string bare occurrences of `Declaration` in the css
+   * factory, so `Declaration` is NOT an H2 site and my reporting it as one was
+   * a false positive.
+   */
+  const typed = body
+    // Generic argument lists: `node<Declaration>(`, `Combinator<Declaration>`.
+    .replace(/<[^<>()\n]{1,120}>/g, '<>')
+    // Type predicates: `value is Declaration | AtRuleBlock`.
+    .replace(/\bis\s+[A-Za-z_$][\w$]*(?:\s*\|\s*[A-Za-z_$][\w$]*)*/g, 'is _')
+    // Casts: `as Declaration`.
+    .replace(/\bas\s+[A-Za-z_$][\w$]*(?:\s*\|\s*[A-Za-z_$][\w$]*)*/g, 'as _');
+
   const rows = [];
   for (const [name, at] of declared) {
-    // Bare-const references, excluding the declaration itself and `g.`-prefixed uses.
+    /*
+     * Count bare occurrences, then subtract the two that are not references:
+     * the declaration itself, and the rules-map key.
+     *
+     * The declaration is subtracted EXACTLY ONCE. The previous version both
+     * skipped it inside the loop AND subtracted one afterwards, so every
+     * single-reference site computed as zero — which is why the five-member
+     * `AtRulePreludeSegments` cluster (grammar.ts:2690-2700, five consecutive
+     * by-const references at 2695-2699, all five also in the map) reported as
+     * clean. Double-subtracting is invisible on multi-reference sites and
+     * total on single-reference ones, which is the worst possible shape for a
+     * counting bug.
+     */
     const bareRe = new RegExp(`(?<!\\.)\\b${name}\\b`, 'g');
-    let bare = 0;
-    let mm;
-    while ((mm = bareRe.exec(body)) !== null) {
-      if (mm.index === at + body.slice(at).indexOf(name)) {
-        continue;
-      }
-      bare++;
-    }
-    // Subtract the declaration occurrence itself.
-    bare = Math.max(0, bare - 1);
-
+    const bare = (typed.match(bareRe) ?? []).length;
     const byName = (body.match(new RegExp(`\\bg\\.${name}\\b`, 'g')) ?? []).length;
     const inMap = returned.has(name);
 
-    // Subtract the rules-map key occurrence, which is a bare name but not a reference.
-    const bareRefs = Math.max(0, bare - (inMap ? 1 : 0));
+    const bareRefs = Math.max(0, bare - 1 - (inMap ? 1 : 0));
 
     /*
      * TWO CLASSES, NEVER SUMMED — they have different costs and different fixes.
