@@ -1,0 +1,30 @@
+{
+  "note": "Measured with scripts/css-corpus-report.mjs. NOT a gate - see README.md.",
+  "measured_at": "2026-07-31",
+  "commit": "d948e2d75",
+  "total": 18245,
+  "dialects": {
+    "css": {
+      "correct": 17748,
+      "failing": 497,
+      "crashes": 3
+    },
+    "less": {
+      "correct": 17952,
+      "failing": 293,
+      "crashes": 0
+    },
+    "scss": {
+      "correct": 17889,
+      "failing": 356,
+      "crashes": 10
+    },
+    "jess": {
+      "correct": 17656,
+      "failing": 589,
+      "crashes": 0
+    }
+  },
+  "supersetViolations": 255,
+  "parseman": "0.46.0"
+}

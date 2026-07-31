@@ -1,0 +1,52 @@
+/* css-animations-1 §4: <keyframe-selector> = from | to | <percentage>.
+ * Only the REJECT half of this at-rule was covered (test/css/errors/keyframes-*.css),
+ * so a grammar that rejected every percentage selector passed the whole suite. */
+@keyframes slide {
+  from { opacity: 0 }
+  to { opacity: 1 }
+}
+@keyframes pulse {
+  0% { opacity: 0; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+@keyframes decimals {
+  .5% { opacity: 0 }
+  12.5% { opacity: 0.25 }
+  100.0% { opacity: 1 }
+}
+@keyframes selector-lists {
+  0%, 50% { opacity: 0 }
+  from, 75% { opacity: 0.5 }
+  25% , 60% , to { opacity: 1 }
+}
+@keyframes mixed-and-spaced {
+  from { opacity: 0 }
+  0% { opacity: 0 }
+  to { opacity: 1 }
+}
+@KEYFRAMES case-insensitive {
+  FROM { opacity: 0 }
+  TO { opacity: 1 }
+}
+@-webkit-keyframes vendor-prefixed {
+  0% { opacity: 0 }
+  100% { opacity: 1 }
+}
+@keyframes "quoted name" {
+  0% { opacity: 0 }
+}
+@keyframes empty-body {}
+@keyframes empty-keyframe-block {
+  0% {}
+}
+@media screen {
+  @keyframes nested-in-media {
+    0% { opacity: 0 }
+  }
+}
+@supports (opacity: 0) {
+  @keyframes nested-in-supports {
+    0% { opacity: 0 }
+  }
+}

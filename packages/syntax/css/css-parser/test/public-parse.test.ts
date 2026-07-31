@@ -31,7 +31,15 @@ function containsFunctionCall(value: unknown, name: string): boolean {
 describe('public CSS parse()', () => {
   it('accepts every positive public-CST fixture through the direct Stylesheet route', () => {
     const fixtureRoot = join(import.meta.dirname, 'css');
-    for (const filename of readdirSync(fixtureRoot).filter(name => name.endsWith('.css'))) {
+    const fixtures = readdirSync(fixtureRoot).filter(name => name.endsWith('.css'));
+
+    /*
+     * A directory-driven loop over an empty directory passes while asserting
+     * nothing, and reads exactly like a pass. Assert the count so the fixture
+     * set cannot shrink — or fail to resolve — in silence.
+     */
+    expect(fixtures.length).toBe(34);
+    for (const filename of fixtures) {
       const source = readFileSync(join(fixtureRoot, filename), 'utf8');
       const cst = parseCssCst(source);
       expect(cst.errors, filename).toHaveLength(0);
@@ -42,7 +50,9 @@ describe('public CSS parse()', () => {
 
   it('rejects every public-CST error fixture through the direct Stylesheet route', () => {
     const fixtureRoot = join(import.meta.dirname, 'css/errors');
-    for (const filename of readdirSync(fixtureRoot).filter(name => name.endsWith('.css'))) {
+    const fixtures = readdirSync(fixtureRoot).filter(name => name.endsWith('.css'));
+    expect(fixtures.length).toBe(53);
+    for (const filename of fixtures) {
       const source = readFileSync(join(fixtureRoot, filename), 'utf8');
       const cst = parseCssCst(source);
       expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), filename).toBeGreaterThan(0);
