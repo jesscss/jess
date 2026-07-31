@@ -59,7 +59,11 @@ an independent audit found 4 rules / 8 references.
 
    **Every grammar exposes some form of this**, including css — an earlier
    claim that "css does not expose it" was wrong; css collides through type
-   *predicates* at `grammar.ts:3372` and `:3654`.
+   *predicates* at `grammar.ts:3372` and `:3654`. The collisions are real and
+   named: less collides on `Interpolation`, `MixinGuard`, `SelectorBranch`,
+   `Declaration`, `Stylesheet` and `Url`, in `readonly guard?: MixinGuard`,
+   `(children): MixinGuard =>` and `Combinator<Interpolation>`. **Any probe
+   validated only on css will mis-rank every dialect grammar.**
 6a. **Never gate H1/H2 behind `bareRefs >= 2`.** It silently drops every
    single-reference double-emission site — which is most of them. Seven of
    css's ten H2 sites have exactly one reference.
@@ -91,9 +95,49 @@ an independent audit found 4 rules / 8 references.
    declares.** scss reported 38 composites against 143 map keys — impossible on
    its face. Assert this in any audit script.
 
+8. **Prefer a permissive include plus a SHORT NAMED EXCLUDE over an enumerated
+   include-list.** The two shapes fail in opposite directions and both were
+   observed: an enumerated include under-counts on combinators nobody
+   remembered to list (three scripts omitted `otherwise`, `when`, `routed`,
+   `noTrivia` and eleven more, so `const x = otherwise(choice(...))` was
+   invisible to H1 in a dispatch-heavy grammar — reporting H1 0 and reading as
+   a clean grammar); a fully permissive include over-counts on factory aliases
+   (below). **A forgotten exclusion is visible in a five-line list; a forgotten
+   inclusion is invisible in a forty-name one.** — Candidate B's rule,
+   implemented in `tools/grammar-tournament/src/refshape.mjs`.
+9. **`makeWhen(...)` / `makeWord(...)` aliases are NOT composites.** They return
+   a matcher *policy* applied per call site, not a parse table, so "inlined
+   transitively at each reference" does not describe their cost.
+   `cssCase` (`grammar.ts:1045`, 27 call sites) and `identWord` (`:1041`) were
+   counted as the most-inlined rules in the css grammar; both are factory
+   aliases and the authoring form is explicitly blessed by
+   `GRAMMAR-REBUILD-SPEC` §0.2. This was the largest single error in the css
+   refshape audit and it survived because **it produced a number that looked
+   structurally meaningful** — `cssCase` at 27 references read as a real
+   finding about a real hot path.
+
 A script that has not been shown to agree with an independently written one is
 not evidence. The tell that caught one contaminated run: a row claiming 8
 references for `OpaqueAtRuleBlock`, a const already proven unreachable.
+
+### The instrument rule, stated once
+
+**A guard that defends against ABSENCE is defeated by PRESENCE-OF-THE-WRONG-THING.**
+Nearly every broken instrument this session had this shape: `artifactBytes`
+caught a *missing* artifact and was defeated by the *wrong* one being present;
+`run()` caught a *failed* parse and was defeated by a *successful* parse of
+nothing; the const detector caught *absent* combinators and was defeated by
+*present* factory aliases.
+
+The corollary, which is the operative form:
+
+> **A resolver that finds a file is not evidence it found the right one.**
+
+And the reason these survive review: **a guard that is correct exactly on the
+tested path is indistinguishable from a working one until someone deviates.**
+The `--grammar-entry` resolvers disagreed on every spelling *except*
+`lib/grammar/ast.js` — the one everybody tested with. Test a guard on a path
+nobody has used yet, or it certifies only the case you already knew about.
 
 ---
 
@@ -706,8 +750,29 @@ them against gaps the gate can actually grade.
 
 | class | what | incumbent css count |
 | --- | --- | ---: |
-| **H1** | const referenced 2+ times, **NOT** in the rules map — inlined per reference, transitively | **39** |
-| **H2** | composite **both** in the rules map **and** referenced by const — emitted twice | **2** |
+| **H1** | const referenced 2+ times, **NOT** in the rules map — inlined per reference, transitively | **40** |
+| **H2** | composite **both** in the rules map **and** referenced by const — emitted twice | **10** |
+
+**Settled at H1 40 / H2 10 (2026-07-31).** Reconciled from opposite directions
+by two independently written scripts: C's harness audit read 42 and B's read
+38. The four-row gap was **two errors pointing opposite ways**, which is why
+neither count was right and averaging would have been wrong:
+
+- C over-counted by 2 — `cssCase` and `identWord` are `makeWhen`/`makeWord`
+  factory aliases (filter 9 above).
+- B under-counted by 2 — `urlOpen` (`noTrivia(sequence(...))`) and
+  `opaqueAtRuleOtherwise` (`otherwise(choice(...))`) were invisible to an
+  enumerated include-list missing those two combinator heads (filter 8).
+
+H2 = 10 was already agreed by both and hand-verified site by site.
+
+**RETRACTED hypothesis, recorded so it is not re-derived:** C proposed that
+B's `urlOpen` drop came from comment-stripping plus a declaration regex
+requiring a preceding newline. **Falsified** — `grammar.ts:1052` is
+`const importAtKeyword = …`, an ordinary statement, not a comment. The real
+cause was the missing `noTrivia` include, the same class as the missing
+`otherwise`. The hypothesis was precise and testable, and testing it is what
+killed it.
 
 Top H1 offenders: `RoutedAtRuleStatement` ×11, `declarationListBlock` ×7
 (`grammar.ts:3314` — `{ many(declarationListItem) }`, dragging the whole
