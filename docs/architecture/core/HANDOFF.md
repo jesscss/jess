@@ -380,10 +380,12 @@ byte-identity + minimal-diff gates let all of P1 through.
 - [~] **3. Extend matching redesign — PARTIALLY LANDED.** `0818e9dc7` introduced the structured
       crossable `:is()` IR + dual-cursor fork matcher; `2fb2bb566` unified whole-branch matching
       into one recursive OR-fork matcher. Verified 2026-07-24: `extend/match.ts` no longer
-      contains `.includes()` substring compares. NOT yet landed: the `O(1)` bitset fast-reject
-      from [[feedback-extend-fast-reject-not-full-scan]] — no bitset exists in
-      `packages/core/src/ast/extend/`; `solve.ts:25` documents only an `all`-rewrite skip as the
-      fixpoint's fast-reject. `branchText` remains the branch key (`emit.ts:216/538/558/572`).
+      contains `.includes()` substring compares. The `O(1)` bitset fast-reject from
+      [[feedback-extend-fast-reject-not-full-scan]] was **MEASURED AND DECLINED 2026-07-30** —
+      see the closed OPEN-DEFECTS row below; the standing rule is satisfied behaviourally by
+      the three-layer atom reject (`plan.ts` `mayMatch` → `emit.ts` candidate closure →
+      `solve.ts` prefilter → `match.ts:116`), not by a bitset. `branchText` remains the branch
+      key (`emit.ts:216/538/558/572`).
 - [~] **4. Extend Set/clone allocation.** `7d976c78c` made the fold a one-pass fixpoint
       (quadratic → linear). No measurement of the remaining `SymmetricDifference`/`CloneObjectIC`
       churn has been recorded since; treat the residual as *unverified since 2026-07-22*.
@@ -451,9 +453,37 @@ symbol name and re-locate it with `grep`; treat the line number as a hint with a
   `packages/core/src/tree/extend/spine-extend.ts` (`:1330`, called at `:1400/1444/1452`).
   *(The 2026-07-24 row said "six call sites" on the ast/ side; it is five at `991b315e0`.
   Whether one was removed or the count was wrong is unverified.)*
-- **Extend bitset fast-reject never landed.** `packages/core/src/ast/extend/` contains
-  `compose/conflict/emit/ir/match/plan/solve` and no bitset of any spelling. *(Re-confirmed
-  2026-07-30: a case-insensitive `bitset` grep over that directory returns nothing.)*
+- ~~**Extend bitset fast-reject never landed.**~~ **CLOSED — MEASURED AND DECLINED 2026-07-30**
+  (on `ef173125a`). The row's premise was wrong in substance: no *bitset* exists, but the
+  fast-reject the standing rule demands DOES, in three layers —
+  `plan.ts` `mayMatch` (inherited per-subject atom flag) → `emit.ts` candidate downward-closure
+  → `solve.ts` `solveComposed` prefilter → `match.ts:116` per-branch `branchSharesAtom`.
+  Nothing full-scans. Instrumented counters on `packages/jess/benchmark/benchmark.less`
+  (4446 lines, 26 `:extend`, 1360 subjects/render): the emit candidate prune admits 134 of
+  1360 subjects; of 5458 per-render branch comparisons **96.8% are atom-rejected**, and
+  `rewriteBranchPartial` returns null **0** times — i.e. zero wasted structural walks.
+  `--cpu-prof` over 50 renders, three independent runs: `computeExtends` inclusive
+  8.96/9.07/9.17% of profile, but `branchSharesAtom` inclusive only **0.46/0.36/0.64%**
+  (≈0.5% of render time). That is the entire cost of the reject predicate and therefore the
+  hard ceiling on any bitset; the project noise floor is ±4.9%, so the change is
+  unmeasurable by construction and a paired A/B could not produce a number a control
+  reproduces. A bitset would also add an intern table, an overflow rule, and a fourth
+  memo field on `Branch` (the `key`/`bnd` hidden-class discipline in `ir.ts:45-65`).
+  A constructed adversarial fixture (1200 subjects sharing the target's first atom but never
+  matching) does reach 100% wasted `rewriteBranchPartial`, worth ~2.8% of profile — the
+  cure there is a strictly stronger *predicate*, not a bitset: reject unless the target's
+  **plain-text** simples (NOT recursing into target `:is()` grafts, which are alternatives —
+  recursing there would be a false negative) are a subset of the branch's **graft-recursive**
+  atoms. That predicate already exists for the grafted-base case at `match.ts:399-411`.
+  It has no counterpart in the real corpus, so it is not worth landing until one appears.
+  The measured extend cost is in productive work: `runFixpoint` 3.6-3.8%, `applyInstruction`
+  2.3-2.7%, `composePath` 1.2-1.5%. The one real inefficiency found: `solveComposed`
+  (`solve.ts:109`) calls `buildContribs(reachable)` **per subject**, so `composePath` and
+  `collectBranchAtoms` are recomputed for every instruction on every admitted subject even
+  though both depend only on the instruction — ~1.1-1.5% of profile, i.e. 2-3x the bitset
+  ceiling. Hoisting it is blocked on the `e.ext = true` / `e.hidden = true` mutation of the
+  composed extenders inside `buildContribs`, which currently relies on them being per-subject
+  fresh. That is a separate, better-evidenced defect than this row was.
 - **`jess-parser` still text-joins selector-bearing pseudo arguments.** The
   folded grammar still has `staticSelectorText`
   (`packages/syntax/jess/jess-parser/src/grammar.ts:385`, used by nth-`of` at `:2585` and
