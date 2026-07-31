@@ -35,6 +35,20 @@ Also landed alongside, both flagged by this document: the `emitValueInterp` bypa
 (§3) is deleted — it contradicted ledger **V1** outright, rendering an authored
 `0.00000000123456789` as `0`.
 
+**Colour closed the inventory (2026-07-30).** `f42decf7f` routed the five
+`round(x, 8)` calls in `ast/color.ts` (`%` alpha, `%` channels, hue, s, l) through
+`formatNumber`, and `137cfa8fa` deleted `withAlpha`'s `round(newAlpha, 8)` in
+`fns/src/less/color-helper.ts`. Two consequences for the §"Value domain" table
+below, which describes the tree *as analysed* and is not re-written here:
+
+- The `ast/color.ts:118` "unintentional bypass" is no longer a bypass and no
+  longer depends on `fns` pre-rounding — both branches of `alphaText` read the
+  policy module, and the `fns` pre-round it leaned on is gone.
+- `packages/core/src/ast/*.ts` now has **zero** sites passing a literal `8`. The
+  only surviving `round` calls are the four bare integer ones (`color.ts:97` ×3,
+  `:105`), which are rgb-byte quantization at the output boundary and correct
+  under ledger **V5**. The GATE-READY precision lint can be landed at zero debt.
+
 The analysis below is preserved as written, including the two recommendations the
 owner overruled.
 

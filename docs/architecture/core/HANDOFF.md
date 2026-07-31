@@ -336,7 +336,7 @@ of it. Re-cut it in the same change as any parseman floor bump.
 | ~~**parseman `0.34.0` adoption + showcase survey**~~ | jess | **SUPERSEDED** — stage 1 of the four-grammar rewrite landed parseman 0.37.0 on `dev` (commit `6908e7b4f`, 2026-07-25); see the 2026-07-25 update above. |
 | ~~**Gates made reasonable**~~ | jess | **LANDED `c3db7e53e` + `e34bb24b3`** — see "Gate hygiene" below. |
 | ~~**fns per-dialect registry**~~ | jess | **LANDED** — `builtins/` and `builtinLessFns` deleted; registration derives from the composed dialect indexes (`less/index.ts` = `less/` + `shared/`, same for sass); per-dialect evaluators at module scope; exports map publishes `./less`, `./sass`, `./sass/{color,list,map,math,string}`, `./shared`, `./registry`, `./less/registry`, `./sass/registry`. Implements ledger C13. Specifier resolution for `#less` / `#sass/<module>` is NOT part of it — see "`#less` / `#sass` specifier resolution" below. |
-| **Numeric precision landing** | jess + less.js fixtures | Tolerance-trim, delete `emitValueInterp`, no-sci-notation guard, `ast/color.ts:118` alpha, integer fast path, `literal-tag.ts:104` fix, fixture graduation. Design: [`../../design/numeric-precision-policy.md`](../../design/numeric-precision-policy.md) — **nothing in it had landed as of `e34bb24b3`**. |
+| ~~**Numeric precision landing**~~ | jess + less.js fixtures | **LANDED IN FULL.** Tolerance-trim, `emitValueInterp` deleted, no-sci-notation guard, integer fast path, `literal-tag.ts` source-literal fix (`f0f005a27`) and fixture graduation had all landed by `ef173125a`; the colour holdouts closed in `f42decf7f` (`ast/color.ts` -> `formatNumber`) + `137cfa8fa` (`withAlpha` construction round). Design: [`../../design/numeric-precision-policy.md`](../../design/numeric-precision-policy.md). |
 | **parseman prefix-trie choice dispatch** | parseman repo | MEASURING FIRST; may conclude "don't build". |
 | **parseman docs voice sweep** | parseman repo | Removing changelog narrative from the docs. |
 | **`extend-exact` state contamination** | separate session | See the KNOWN RED section below. |
@@ -484,15 +484,17 @@ symbol name and re-locate it with `grep`; treat the line number as a hint with a
   (`packages/syntax/jess/jess-parser/src/grammar.ts:385`, used by nth-`of` at `:2585` and
   generic pseudo arguments at `:2715`). This is the remaining gap to always-structured
   pseudo arguments.
-- ~~**`literal-tag.ts:104`** applies the old 8-dp floor to un-operated SOURCE literals.~~
-  **FIXED — and the row was already wrong when it was written.** `literal-tag.ts` contains no
-  `round` call at all; `dimensionFromFields` (`:115`) does no rounding, and the comment at
-  `:109-111` records the removal of exactly the denoising rewrite this row describes. The fix
-  landed in `f0f005a27` (2026-07-17), a week *before* the 2026-07-24 pass asserted it was
-  still open. Ruling V1 is satisfied here.
-- **`packages/core/src/ast/color.ts` retains five `round(x, 8)` calls** at `:122` (alpha
-  percent), `:141` (`%` channels), `:153` (hue), `:154`/`:155` (S/L) — the last 8-dp holdouts.
-  (The coordinator's inventory said "4 sites"; it is 4 *concepts*, 5 calls.)
+- **The 8-dp holdouts are gone; the value domain has ONE number policy.** Both precision rows
+  that used to sit here are closed, so they are deleted rather than carried as strikethrough.
+  `literal-tag.ts` never had a `round` call by the time the row was written (the denoising
+  rewrite went in `f0f005a27`, 2026-07-17), and the five `round(x, 8)` calls in
+  `packages/core/src/ast/color.ts` now call `formatNumber` (`f42decf7f`), pinned by
+  `packages/core/src/ast/__tests__/color-precision.test.ts`. The only construction-time
+  quantization left in the colour path — `withAlpha`'s `round(newAlpha, 8)` in
+  `packages/fns/src/less/color-helper.ts` — went with it (`137cfa8fa`), which also closes
+  SEMANTIC-INVARIANTS **S6**. Rulings V1/V4/V5 are satisfied. The remaining `round(x)` calls
+  in `color.ts` (`:97` x3, `:105`) are bare integer rgb-byte quantization at output and are
+  correct under V5.
 - **`evalBytesInterp` never validates units.** `evalBytesInterp`
   (`packages/core/src/ast/serialize.ts:4642`) has no `validateValueGroupUnits` call, while the
   ordinary value path calls it at `:4622`. A unit error that is fatal in a declaration value is
@@ -1102,10 +1104,12 @@ made the suite 106/108 with no jess-side change at all.
 a bare red. Because that map *asserts* the failure, landing the precision fix will trip the entry
 and demand its own deletion — the debt is visible and can only move toward zero.
 
-| Fixture | Expected (v5, graduated) | Current jess output | Root cause |
-| --- | --- | --- | --- |
-| `tests-unit/css-3/css-3.less` | `rotate(-0.0000000001deg)` | `rotate(0deg)` | `literal-tag.ts:104` applies the 8-dp floor to un-operated SOURCE literals |
-| `tests-unit/variables/variable-advanced.less` | `add-px-2: 393.3527559px` | `393.35275591px` | 8-dp floor instead of the tolerance trim |
+**That debt is now zero (re-measured 2026-07-30 against jess `ef173125a` + less.js
+`2f309b66`).** Both fixtures PASS: `tests-unit/css-3/css-3.less` emits
+`rotate(-0.0000000001deg)` and `tests-unit/variables/variable-advanced.less` emits
+`add-px-2: 393.3527559px`, matching the graduated `.css`. The table that used to list them is
+deleted. `all-less` is 109/110 (80/81 unit + 30/30 config), the single red being the documented
+`tests-unit/extend/extend.less`.
 
 A third fixture, `import-remote.less`, is network-dependent and deliberately left gating; it is
 documented in `known-failures.json` so the next reader does not mistake it for a regression. It
