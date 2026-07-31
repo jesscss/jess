@@ -841,6 +841,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
    */
   const AtRule = dispatch(
     g.AtRuleKeyword,
+    when('@keyframes', g.Keyframes, { caseInsensitive: true }),
     otherwise(choice(AtRuleBlock, AtRuleStatement))
   );
 
@@ -855,6 +856,34 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
    * zero items, and the whole at-rule vanished from the tree while the parse
    * still reported ok.
    */
+  /*
+   * `@keyframes` — the sites-per-case measurement, css-animations-1 §4.
+   *
+   * Six coverage cases: `from`, `to`, `<percentage>`, a comma-separated
+   * selector list, an identifier name, and a string name. Written as the
+   * leanest shape that covers them, to test whether 3.6 sites/case is inherent
+   * to a coverage case or was incidental to how `@import` was written.
+   */
+  const KeyframeSelector = node(
+    'KeyframeSelector',
+    choice(keywords(['from', 'to']), Numeric),
+    children => simpleSelector(text(children[0]))
+  );
+
+  /** `from, 50% { … }` — a selector list and an ordinary declaration body. */
+  const KeyframeBlock = node(
+    'KeyframeBlock',
+    sequence(oneOrMoreSep(g.KeyframeSelector, literal(',')), g.Block),
+    children => rule(selist(...(nodesOnly(children).slice(0, -1) as never[])), bodyOf(children))
+  );
+
+  /** `@keyframes <name> { <keyframe-block>* }`. */
+  const Keyframes = node(
+    'Keyframes',
+    sequence(routed(), choice(g.Identifier, g.Quoted), literal('{'), many(g.KeyframeBlock), literal('}')),
+    children => atRuleBlock('keyframes', keyword(text(children[1])), nodesOnly(children).slice(1) as never)
+  );
+
   const ConditionalAtRule = dispatch(
     g.ConditionalAtKeyword,
 
@@ -886,6 +915,9 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
     Component,
     Quoted,
     Url,
+    KeyframeSelector,
+    KeyframeBlock,
+    Keyframes,
     CompoundSelector,
     BasicSelector,
     AttributeSelector,
