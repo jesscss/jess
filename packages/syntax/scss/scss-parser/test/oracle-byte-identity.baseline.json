@@ -1,16 +1,16 @@
 {
   "format": 1,
   "harness": "e542b69ede393b0c90021c7c5710e3eab01a86f451fbd7124158f26e3721c0f0",
-  "entries": 2491,
+  "entries": 2492,
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "141a926b8722e9cf22ff4a575f8654ce413c5843f7eb12ee1ec982ac78a9ccb9",
+      "aggregate": "5b9bf63739308ffa5f76f5b733c1baac87d1273753f39b9e2fc90ea262396bc4",
       "threw": 824
     },
     {
       "name": "cst",
-      "aggregate": "1ce1f88b7ea0ddda13bc05880d727f74781f66b72ffcf210ce8463384e9b8263",
+      "aggregate": "7a7027b6f2b098f97ffd7cf722c372308e1df72172286f23dca7a4b2ecbd7349",
       "threw": 0
     }
   ],
@@ -9978,6 +9978,10 @@
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/ffe4271ccebf6ba6.scss": {
       "ast": "cead993681f0231a",
       "cst": "0dd0df07f5d972c4"
+    },
+    "packages/syntax/scss/scss-parser/test/interpolated-pseudo-argument.scss": {
+      "ast": "cf38b29e311deba1",
+      "cst": "5bdd3b519010e684"
     }
   }
 }

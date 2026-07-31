@@ -532,6 +532,9 @@ export interface PseudoSelector extends SpanSlots {
   readonly name: string;
   readonly args: SelectorList | null;
   readonly crossable: boolean;
+
+  /** Serializer-owned memo of the args-carry-interpolation flag (lazy). */
+  _hasInterp?: boolean;
 }
 
 /** A single token inside a compound — a plain simple or a structured pseudo. */
@@ -561,12 +564,40 @@ export const compoundCanonical = (c: CompoundSelector): string => {
   return c._canon;
 };
 
+/**
+ * True iff a structured pseudo needs frame-dependent resolution — either the
+ * token itself is interpolated, or ANY member of its retained `args` is. The
+ * argument is a `SelectorList` like any other, so an interpolated member is an
+ * ordinary interpolated simple nested one level down; a gate that only read
+ * `p.interp` reported `:not(a#{$x})` as static and sent it down the static
+ * `pseudoCanonical` join, which drops the interpolated member entirely.
+ */
+export const pseudoHasInterp = (p: PseudoSelector): boolean => {
+  if (p._hasInterp === undefined) {
+    let has = p.interp !== null;
+    if (!has && p.args !== null) {
+      for (const branch of p.args.selectors) {
+        if (selectorBranchHasInterp(branch)) {
+          has = true;
+          break;
+        }
+      }
+    }
+    p._hasInterp = has;
+  }
+  return p._hasInterp;
+};
+
+/** True iff one simple token needs frame-dependent interpolation resolution. */
+export const simpleTokenHasInterp = (sim: SimpleToken): boolean =>
+  sim.type === 'PseudoSelector' ? pseudoHasInterp(sim) : sim.interp !== null;
+
 /** True iff any token needs frame-dependent interpolation resolution. */
 export const compoundHasInterp = (c: CompoundSelector): boolean => {
   if (c._hasInterp === undefined) {
     let has = false;
     for (const sim of c.value) {
-      if (sim.interp !== null) {
+      if (simpleTokenHasInterp(sim)) {
         has = true;
         break;
       }
@@ -576,24 +607,47 @@ export const compoundHasInterp = (c: CompoundSelector): boolean => {
   return c._hasInterp;
 };
 
+/** True iff a leaf token's retained text or interpolation template carries `&`. */
+const leafHasAmpersand = (sim: SimpleToken): boolean => {
+  if (sim.text?.includes('&') === true) {
+    return true;
+  }
+  if (sim.interp !== null) {
+    for (const part of sim.interp.parts) {
+      if ('lit' in part && part.lit.includes('&')) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+/**
+ * True iff a structured pseudo carries a literal `&`, decided by WALKING `args`
+ * rather than substring-scanning `pseudoCanonical`. Equivalent for a static
+ * argument — the join is exactly the concatenation of the leaf texts, and a
+ * pseudo NAME can never contain `&` — and correct for an interpolated one,
+ * where the join drops the member and the `&` inside it with it. This is the
+ * pseudo half of SEMANTIC-INVARIANTS incident **S5**: a structural fact decided
+ * by a byte scan over serialized text.
+ */
+export const pseudoHasAmpersand = (p: PseudoSelector): boolean => {
+  if (p.args === null) {
+    return leafHasAmpersand(p);
+  }
+  for (const branch of p.args.selectors) {
+    if (selectorBranchHasAmpersand(branch)) {
+      return true;
+    }
+  }
+  return false;
+};
+
 /** True iff any token carries a literal `&` (bare, fused, or in an interpolation template). */
 export const compoundHasAmpersand = (c: CompoundSelector): boolean => {
   for (const sim of c.value) {
-    if (sim.type === 'PseudoSelector') {
-      if (pseudoCanonical(sim).includes('&')) {
-        return true;
-      }
-      continue;
-    }
-    if (sim.text?.includes('&') === true) {
+    if (sim.type === 'PseudoSelector' ? pseudoHasAmpersand(sim) : leafHasAmpersand(sim)) {
       return true;
-    }
-    if (sim.interp !== null) {
-      for (const part of sim.interp.parts) {
-        if ('lit' in part && part.lit.includes('&')) {
-          return true;
-        }
-      }
     }
   }
   return false;
@@ -685,10 +739,27 @@ export const selectorBranchCanonical = (branch: SelectorBranch): string =>
  * with `, ` (normalized WS, one line) via the core-owned branch canonicalizer. The
  * grammar NEVER computes this — it only supplies `args` (structure) + trivia. The
  * degrade-to-opaque case (`args: null`) falls back to the retained `text`.
+ *
+ * STATIC ONLY: an interpolated member has `text: null` and contributes `''` here,
+ * so this join is correct only when {@link pseudoHasInterp} is false. Every EMIT
+ * path gates on that flag and resolves the argument per frame instead; the
+ * remaining callers are frame-free ANALYSIS (mixin-index keys, the `&` probe),
+ * where an unresolvable interpolation contributing nothing is the existing,
+ * symmetric behaviour of every other interpolated token.
  */
+/**
+ * The ONE spelling of the structured-pseudo argument join, over already-rendered
+ * branches. Both the static path ({@link pseudoCanonical}) and the per-frame
+ * resolving path in `serialize.ts` go through here, so the `, ` glue has a
+ * single owner and the two cannot drift — the failure mode SEMANTIC-INVARIANTS
+ * incident S3 is named for.
+ */
+export const pseudoJoin = (name: string, branches: readonly string[]): string =>
+  `${name}(${branches.join(', ')})`;
+
 export const pseudoCanonical = (p: PseudoSelector): string =>
   p.args !== null
-    ? `${p.name}(${p.args.selectors.map(selectorBranchCanonical).join(', ')})`
+    ? pseudoJoin(p.name, p.args.selectors.map(selectorBranchCanonical))
     : p.text ?? '';
 
 /** The canonical contributed text of one simple token: a structured pseudo emits
@@ -704,12 +775,11 @@ export const selectorTermHasAmpersand = (term: SelectorTerm): boolean =>
   term.type === 'CompoundSelector'
     ? compoundHasAmpersand(term)
     : term.type === 'PseudoSelector'
-      ? pseudoCanonical(term).includes('&')
-      : term.text?.includes('&') === true
-        || term.interp?.parts.some(part => 'lit' in part && part.lit.includes('&')) === true;
+      ? pseudoHasAmpersand(term)
+      : leafHasAmpersand(term);
 
 export const selectorTermHasInterp = (term: SelectorTerm): boolean =>
-  term.type === 'CompoundSelector' ? compoundHasInterp(term) : term.interp !== null;
+  term.type === 'CompoundSelector' ? compoundHasInterp(term) : simpleTokenHasInterp(term);
 
 export const complexHasAmpersand = (c: ComplexSelector): boolean => {
   if (c._hasAmp === undefined) {

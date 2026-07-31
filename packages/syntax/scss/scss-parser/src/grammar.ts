@@ -4614,25 +4614,20 @@ const scssFactory = (g: ScssInputRules) => {
    * `SelectorList` becomes structured `PseudoSelector.args`, never joined at parse.
    */
   /*
-   * A structured pseudo argument must stay interpolation-free, and after the
-   * selector-start fix that has to be SAID rather than fall out of a defect.
-   * `pseudoCanonical` is the static join over `PseudoSelector.args`, and an
-   * interp-only member has `text: null`, so `:not(#{$x})` would serialize to
-   * `:not()` — content dropped silently. Resolving it needs the per-frame
-   * `resolveSimpleText` path that serialize.ts documents pseudo args as NOT
-   * taking ("P0 pseudo args are STATIC").
-   *
-   * The scan is bounded to this argument's own parens, so it cannot reach past
-   * the pseudo. It is a rejection, never a consume — the argument is parsed
-   * exactly once, by the production below.
+   * An interpolated member (`:not(a#{$x})`) is an ordinary interpolated simple
+   * INSIDE the retained `SelectorList`: interpolation POSITIONS are dialect
+   * invariant, so the argument of a selector-valued pseudo admits interpolation
+   * exactly where a top-level selector does. Core resolves those members per
+   * frame (`resolveSimpleText` recurses through `PseudoSelector.args`); the
+   * static `pseudoCanonical` join is reserved for an interpolation-free
+   * argument. This production was briefly narrowed to reject interpolation
+   * outright while the serializer dropped it — see ledger row **P21**.
    */
-  const staticPseudoArgumentAhead = not(regex(/[^()]*#\{/));
   const SelectorOnlyPseudoArgument = node<SelectorList>(
     'SelectorOnlyPseudoArgument',
     parser(
       { trivia: whitespace },
       sequence(
-        staticPseudoArgumentAhead,
         g.RelativeComplex,
         many(sequence(
           literal(','),

@@ -9,7 +9,7 @@
 
 import { renderCombinator } from '../node.js';
 import type { Combinator } from '../node.js';
-import { selectorBranchHasInterp, simpleTokenText } from '../nodes.js';
+import { pseudoHasInterp, simpleTokenText } from '../nodes.js';
 import type { SelectorBranch, SelectorList, SelectorTerm, SimpleToken } from '../nodes.js';
 
 /* --------------------------------------------------------------------- types */
@@ -208,21 +208,28 @@ export function cloneBranch(b: Branch): Branch {
  *     text is only known in an entering frame the extend engine cannot access.
  *
  * The interp guard is load-bearing: an arg list that only resolves under
- * interpolation must stay opaque (each `@{…}` contributes `''`) rather than a
- * structured branch the matcher would treat as concrete atoms — the engine has no
- * frame to materialize it. Structuring is byte-transparent to serialization: a
- * `{ t: 'is' }` graft renders via `simpleText` to the same `:is(a, b)` join as
- * `pseudoCanonical`, so a document with no matching extend is unchanged.
+ * interpolation must stay opaque rather than a structured branch the matcher
+ * would treat as concrete atoms — the engine has no frame to materialize it.
+ * Structuring is byte-transparent to serialization: a `{ t: 'is' }` graft
+ * renders via `simpleText` to the same `:is(a, b)` join as `pseudoCanonical`,
+ * so a document with no matching extend is unchanged.
+ *
+ * An UNRESOLVED interpolated pseudo takes the SAME `''` as a plain interpolated
+ * token, and does not fall through to `simpleTokenText`. That fall-through was
+ * the static join, which drops the interpolated member and hands the matcher a
+ * well-formed-but-wrong `:not()` — a token that can MATCH, where the whole
+ * point of `''` is that an unresolvable interpolation matches nothing. The
+ * extend pre-pass normally resolves these before the IR is built; this is the
+ * path where it deliberately gave up (a guarded rule that is never emitted).
  */
 function simpleFromToken(sim: SimpleToken): Simple {
-  if (
-    sim.type === 'PseudoSelector'
-    && sim.crossable
-    && sim.args !== null
-    && sim.interp === null
-    && !sim.args.selectors.some(selectorBranchHasInterp)
-  ) {
-    return { t: 'is', branches: levelFromSelectorList(sim.args) };
+  if (sim.type === 'PseudoSelector' && sim.args !== null) {
+    if (pseudoHasInterp(sim)) {
+      return { t: 'text', text: '' };
+    }
+    if (sim.crossable) {
+      return { t: 'is', branches: levelFromSelectorList(sim.args) };
+    }
   }
   return { t: 'text', text: simpleTokenText(sim) };
 }

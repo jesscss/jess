@@ -1707,13 +1707,26 @@ describe('SCSS canonical-AST grammar', () => {
     });
 
     /*
-     * (3) An interpolation-bearing whitelisted pseudo arg is NOT structured — the
-     * static-arg lookahead fails on `#{`, so it degrades to the unchanged path
-     * (rejected today, still rejected). `:global` is not whitelisted, so it stays
-     * opaque SimpleSelector text.
+     * (3) An interpolation-bearing whitelisted pseudo arg IS structured: the
+     * argument is a retained `SelectorList` either way, and an interpolated
+     * member is an ordinary interpolated simple one level down. This used to
+     * assert rejection on the claim that the segments were "not represented in
+     * AST v2" — false; they are typed here. The real defect was in core, which
+     * joined `args` statically and dropped the member (ledger P21).
+     * `:global` is not whitelisted, so it stays opaque SimpleSelector text.
      */
     const interp = run(scssGrammar.Stylesheet, '.x:is(#{$sel}) { color: red; }', { trivia: scssGrammar.whitespace });
-    expect(interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)).toBe(false);
+    expect(interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)).toBe(true);
+    expect(interp.value).toMatchObject({
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
+        { type: 'SimpleSelector', text: '.x' },
+        { type: 'PseudoSelector', name: ':is', text: null, crossable: true, args: { type: 'SelectorList', selectors: [
+          { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+            { ref: { type: 'VariableReference', name: 'sel' } }
+          ] } }
+        ] } }
+      ] }] } }]
+    });
     const opaque = run(scssGrammar.Stylesheet, '.x:global(.a) { color: red; }', { trivia: scssGrammar.whitespace });
     expect(opaque.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
@@ -1761,17 +1774,29 @@ describe('SCSS canonical-AST grammar', () => {
     }
 
     /*
-     * `#{…}` interpolation and the sealed `:global`/`:local` keep their existing
-     * paths: interpolated selector-arg / nth args stay rejected (their segments
-     * are not yet represented in AST v2), `:global`/`:local` stay opaque.
+     * A SELECTOR-valued argument is a retained `SelectorList`, so an
+     * interpolated member is an ordinary interpolated simple one level down —
+     * fully represented, and resolved per frame by core. The claim these three
+     * used to carry ("their segments are not yet represented in AST v2") was
+     * false for the selector-valued pair; they were rejected because the
+     * SERIALIZER dropped the member, and the grammar had been narrowed to keep
+     * that out of the output. Both are fixed.
      */
     for (const source of [
       '.card:not(#{$x}) { color: blue; }',
-      '.card:is(#{$sel}) { color: blue; }',
-      '.card:nth-child(#{$n}) { color: blue; }'
+      '.card:is(#{$sel}) { color: blue; }'
     ]) {
-      expect(accepted(source), source).toBe(false);
+      expect(accepted(source), source).toBe(true);
     }
+
+    /*
+     * `:nth-child` is the genuinely-unrepresented one and stays rejected. Its
+     * argument is `<An+B>` — a static token grammar, not a selector list — so
+     * an interpolated An+B has no node to live in, and the `of S` tail is the
+     * only selector-valued part of it. Representing it needs an interpolation
+     * carrier on the nth argument, which does not exist.
+     */
+    expect(accepted('.card:nth-child(#{$n}) { color: blue; }')).toBe(false);
     for (const source of ['.x:global(.a) { color: blue; }', '.x:local(.a) { color: blue; }']) {
       expect(accepted(source), source).toBe(true);
     }
@@ -1871,13 +1896,31 @@ describe('SCSS canonical-AST grammar', () => {
     );
   });
 
-  it('rejects interpolation-bearing pseudo arguments until their segments are represented in AST v2', () => {
+  /*
+   * FLIPPED. This asserted rejection "until their segments are represented in
+   * AST v2" — the segments were already represented, and the failure was core
+   * joining `PseudoSelector.args` statically so an interpolated member
+   * (`text: null`) serialized away. Ledger P21; emitted-CSS gate lives in
+   * `packages/jess/test/scss/interpolated-pseudo-argument.test.ts`.
+   */
+  it('constructs interpolation-bearing pseudo arguments as typed selector members', () => {
     const source = '.card:not(#{$disabled}) { color: blue; }';
     const cst = parseScssCst(source);
-    expect(!cst.ok || cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
 
     const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(true);
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
+        { type: 'SimpleSelector', text: '.card' },
+        { type: 'PseudoSelector', name: ':not', text: null, crossable: false, args: { type: 'SelectorList', selectors: [
+          { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+            { ref: { type: 'VariableReference', name: 'disabled' } }
+          ] } }
+        ] } }
+      ] }] } }]
+    });
   });
 
   it('constructs static SCSS placeholder selectors as canonical selector simples', () => {

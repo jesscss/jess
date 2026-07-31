@@ -301,16 +301,19 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     ['after a static prefix', '.card:not(a#{$x}) { c: d }'],
     ['after a comma', '.card:not(.a, #{$x}) { c: d }'],
     ['after a combinator', '.x:has(> #{$a}) { c: d }']
-  ])('rejects an interpolated structured pseudo argument (%s)', (_label, source) => {
+  ])('accepts an interpolated structured pseudo argument (%s)', (_label, source) => {
     /*
-     * NOT a parse limitation — the tree is fully typed. `pseudoCanonical` is
-     * the STATIC join over `PseudoSelector.args`, an interp-only member has
-     * `text: null`, and the whole argument therefore SERIALIZES AWAY:
-     * `.card:not(a#{$x})` parsed on dev and emitted `.card:not()`. Rejecting is
-     * the honest answer until core resolves pseudo args per-frame; the
-     * dropping serializer is the defect to fix, and then these flip.
+     * FLIPPED. These were pinned rejecting because core's serializer DROPPED
+     * the interpolated member: `pseudoCanonical` is the static join over
+     * `PseudoSelector.args`, an interp-only member has `text: null`, and the
+     * argument serialized away (`.card:not(a#{$x})` → `.card:not(a)`). The
+     * grammar was narrowed rather than let one more spelling reach a dropping
+     * serializer. Core now resolves pseudo arguments per frame, so the
+     * narrowing is gone and interpolation POSITIONS are dialect invariant
+     * again. Emitted-CSS gate:
+     * `packages/jess/test/scss/interpolated-pseudo-argument.test.ts`.
      */
-    expect(() => parse(source)).toThrow();
+    expect(() => parse(source)).not.toThrow();
   });
 
   it('PINNED DEFECT — rejects a parent selector in value position', () => {

@@ -45,6 +45,8 @@ import {
   complexHasInterp,
   complexHasAmpersand,
   pseudoCanonical,
+  pseudoHasInterp,
+  pseudoJoin,
   selectorBranchCanonical,
   selectorBranchHasAmpersand,
   selectorBranchHasInterp,
@@ -77,6 +79,7 @@ import type {
   ModuleImport,
   Operation,
   PropertyReference,
+  PseudoSelector,
   Quoted,
   RawInline,
   Range,
@@ -1722,14 +1725,36 @@ function resolvedBranchAtoms(c: SelectorBranch, frame: Frame | null, e: EvalCtx)
   const out: string[] = [];
   for (const term of selectorBranchTerms(c)) {
     for (const sim of termTokens(term)) {
-      if (sim.type !== 'PseudoSelector' && sim.interp !== null) {
-        pushLeafAtoms(resolveSimpleTextSync(sim, frame, e), out);
-        continue;
-      }
-      pushTokenAtoms(sim, out);
+      pushResolvedTokenAtoms(sim, frame, e, out);
     }
   }
   return out;
+}
+
+/**
+ * [mixin-match] One token's atoms with its `@{…}` templates resolved. A
+ * structured pseudo recurses into `args` so an interpolated MEMBER
+ * (`.a:not(.@{x})`) contributes its resolved leaf; the static `pushTokenAtoms`
+ * would drop it (`text: null` contributes nothing), which is the same content
+ * loss the emit path had.
+ */
+function pushResolvedTokenAtoms(sim: SimpleToken, frame: Frame | null, e: EvalCtx, out: string[]): void {
+  if (sim.type === 'PseudoSelector' && sim.args !== null) {
+    pushLeafAtoms(sim.name, out);
+    for (const branch of sim.args.selectors) {
+      for (const term of selectorBranchTerms(branch)) {
+        for (const inner of termTokens(term)) {
+          pushResolvedTokenAtoms(inner, frame, e, out);
+        }
+      }
+    }
+    return;
+  }
+  if (sim.interp !== null) {
+    pushLeafAtoms(resolveSimpleTextSync(sim, frame, e), out);
+    return;
+  }
+  pushTokenAtoms(sim, out);
 }
 
 /** [mixin-match] The flat element-value atom list of a namespaced/compound mixin
@@ -5010,11 +5035,24 @@ function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx
 function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   /*
    * A structured pseudo's STRUCTURE lives in `args`; serialize it to the inline
-   * `:is(a, b)` form via the core-owned join. P0 pseudo args are STATIC (no
-   * per-frame resolution), so the static `pseudoCanonical` path suffices.
+   * `:is(a, b)` form via the core-owned join. An INTERPOLATION-FREE argument is
+   * frame-independent, so the memoised static `pseudoCanonical` path stands.
+   *
+   * An argument that carries interpolation is NOT static: its members are
+   * ordinary selector branches one level down, and each resolves in the SAME
+   * entering frame as the compound that contains the pseudo. Joining them
+   * statically drops every interpolated member (`text: null` contributes `''`),
+   * which is exactly how `:not(a#{$x})` emitted `:not(a)`.
    */
   if (sim.type === 'PseudoSelector') {
-    return pseudoCanonical(sim);
+    const args = sim.args;
+    if (args === null || !pseudoHasInterp(sim)) {
+      return pseudoCanonical(sim);
+    }
+    return combineAll(
+      args.selectors.map(branch => resolveSelectorBranch(branch, frame, e)),
+      values => pseudoJoin(sim.name, values)
+    );
   }
   const interp = sim.interp;
   if (interp === null) {
@@ -5189,7 +5227,7 @@ function resolveTokenAmp(sim: SimpleToken, parents: string[], sub: string, first
   if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
     return mapMaybe(
       resolveSelectorListAmp(sim.args, parents, frame, e),
-      branches => [`${sim.name}(${branches.join(', ')})`]
+      branches => [pseudoJoin(sim.name, branches)]
     );
   }
   return mapMaybe(resolveSimpleText(sim, frame, e), (text) => {
@@ -6872,8 +6910,16 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
    * caller's recovery path would then serialize that corruption.
    */
   const resolved: Array<{ index: number; text: string }> = [];
+  const pseudos: PseudoSelector[] = [];
   for (let i = 0; i < comp.value.length; i++) {
     const sim = comp.value[i]!;
+    if (sim.type === 'PseudoSelector' && sim.args !== null) {
+      if (pseudoHasInterp(sim)) {
+        probePseudoInterp(sim, frame, e);
+        pseudos.push(sim);
+      }
+      continue;
+    }
     if (sim.interp !== null) {
       resolved.push({ index: i, text: resolveSimpleTextSync(sim, frame, e) });
     }
@@ -6881,13 +6927,71 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
   for (const { index, text } of resolved) {
     comp.value[index] = simpleSelector(text);
   }
+  for (const p of pseudos) {
+    resolvePseudoInterpInPlace(p, frame, e);
+  }
   comp._hasInterp = false;
   comp._canon = undefined;
+}
+
+/**
+ * [extend/selector-interp] Resolve every interpolated leaf under a structured
+ * pseudo WITHOUT mutating anything, so a member that cannot resolve throws
+ * BEFORE the first write. {@link resolveSelectorBranchInterpInPlace} rewrites as
+ * it walks, so `:not(.#{$ok}, .#{$broken})` would otherwise leave branch one
+ * rewritten and branch two authored — exactly the half-state the staging
+ * comment above forbids, and the state the pre-pass's "leave the selector
+ * verbatim" recovery would then serialize.
+ */
+function probePseudoInterp(p: PseudoSelector, frame: Frame | null, e: EvalCtx): void {
+  const args = p.args;
+  if (args === null) {
+    return;
+  }
+  for (const branch of args.selectors) {
+    for (const term of selectorBranchTerms(branch)) {
+      for (const sim of termTokens(term)) {
+        if (sim.type === 'PseudoSelector') {
+          probePseudoInterp(sim, frame, e);
+          continue;
+        }
+        if (sim.interp !== null) {
+          resolveSimpleTextSync(sim, frame, e);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * [extend/selector-interp] Resolve a structured pseudo's interpolated ARGUMENT
+ * members in place. The pseudo itself stays a `PseudoSelector` — collapsing it
+ * to a flat `SimpleSelector` would discard `crossable`, and the extend IR forks
+ * a crossable `:is(…)` into a structured graft off exactly that field. Only the
+ * members below it are rewritten, so the token keeps its structure and loses its
+ * frame dependence.
+ */
+function resolvePseudoInterpInPlace(p: PseudoSelector, frame: Frame | null, e: EvalCtx): void {
+  const args = p.args;
+  if (args === null || !pseudoHasInterp(p)) {
+    return;
+  }
+  for (let i = 0; i < args.selectors.length; i++) {
+    args.selectors[i] = resolveSelectorBranchInterpInPlace(args.selectors[i]!, frame, e);
+  }
+  p._hasInterp = false;
 }
 
 function resolveSelectorTermInterpInPlace(term: SelectorTerm, frame: Frame | null, e: EvalCtx): SelectorTerm {
   if (term.type === 'CompoundSelector') {
     resolveCompoundInterpInPlace(term, frame, e);
+    return term;
+  }
+  if (term.type === 'PseudoSelector' && term.args !== null) {
+    if (pseudoHasInterp(term)) {
+      probePseudoInterp(term, frame, e);
+      resolvePseudoInterpInPlace(term, frame, e);
+    }
     return term;
   }
   return term.interp !== null ? simpleSelector(resolveSimpleTextSync(term, frame, e)) : term;
