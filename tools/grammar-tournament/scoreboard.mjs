@@ -26,6 +26,7 @@
  */
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, cpSync, rmSync, mkdirSync, existsSync } from 'node:fs';
 import { loadSurfaces, compareBuilds, formatDivergence } from './src/identity.mjs';
 import { loadCssCorpus, isMalformed } from './src/corpus.mjs';
@@ -78,7 +79,11 @@ function num(n) {
 
 async function main() {
   const parsemanVersion = JSON.parse(readFileSync(resolve(repo, 'node_modules/parseman/package.json'), 'utf8')).version;
-  const head = readFileSync(resolve(repo, '.git/HEAD'), 'utf8').trim();
+  // NOT readFileSync('.git/HEAD') — in a git worktree `.git` is a FILE, not a
+  // directory, so that read throws. Every tournament candidate works in a
+  // worktree, so the direct read made the scoreboard unrunnable for all of them
+  // while passing on the author's primary checkout.
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
 
   console.log('='.repeat(96));
   console.log('CSS GRAMMAR TOURNAMENT — SCOREBOARD');
