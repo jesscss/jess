@@ -217,14 +217,42 @@ export function auditReferenceShape(file, factoryName = 'cssFactory') {
   const FACTORY_HEAD = /^(?:makeWhen|makeWord)\s*\(/;
 
   const declared = new Map();
+  /*
+   * The initialiser is read with `slice`, NOT captured, and the pattern ends at
+   * `=\s*`. That is load-bearing: a capturing `([\s\S]{0,40})` would CONSUME 40
+   * characters past the `=`, advancing `lastIndex` beyond the start of the next
+   * declaration, and `matchAll`/`exec` would silently skip it. Candidate B
+   * measured exactly that — its `urlOpen` row was eaten by the preceding
+   * `importAtKeyword` declaration's 40-character capture, and every component
+   * check (classifier, declaration regex, reference count) passed while the row
+   * simply never appeared. This is filter 9.
+   */
   const declRe = /\n(\s{2,})const\s+([A-Za-z_$][\w$]*)\s*=\s*/g;
   let m;
+  let seen = 0;
   while ((m = declRe.exec(body)) !== null) {
+    seen++;
     const rhs = body.slice(m.index + m[0].length, m.index + m[0].length + 40);
     if (!COMBINATOR_HEAD.test(rhs) || FACTORY_HEAD.test(rhs)) {
       continue;
     }
     declared.set(m[2], m.index);
+  }
+
+  /*
+   * B's detection for the class above, made permanent: assert the number of
+   * declarations the scanner VISITED against an independent count of the same
+   * declarations. A skipped row is invisible in every per-row check and shows
+   * up only as a discrepancy here.
+   */
+  const independent = (body.match(/\n {2,}const [A-Za-z_$][\w$]*\s*=/g) ?? []).length;
+  if (seen !== independent) {
+    return {
+      ok: false,
+      reason: `declaration scan visited ${seen} consts but an independent count found ${independent} — `
+        + 'the scanner is skipping declarations (a consuming initialiser capture advances lastIndex past '
+        + 'the next one). These numbers are wrong; do not rank on them.'
+    };
   }
 
   /*

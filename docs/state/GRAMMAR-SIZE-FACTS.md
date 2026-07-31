@@ -116,6 +116,21 @@ an independent audit found 4 rules / 8 references.
    structurally meaningful** — `cssCase` at 27 references read as a real
    finding about a real hot path.
 
+9. **A consuming initialiser capture advances `lastIndex` past the next
+   declaration.** `/^ {2}const (\w+) = ([\s\S]{0,40})/gm` consumes 40 characters
+   beyond the `=`, so `exec`/`matchAll` resumes *inside* the following
+   declaration and skips it entirely. Measured by Candidate B: `urlOpen` was
+   eaten by the preceding `importAtKeyword` declaration's capture. **Every
+   per-row check passes** — the classifier returns true, the declaration regex
+   matches, the reference count is right — and the row simply never appears,
+   which is what makes it so hard to find from the outputs.
+   **Fix:** read the initialiser with a lookahead or a separate `slice`; never
+   capture it.
+   **Detection, now permanent in `refshape.mjs`:** assert the number of
+   declarations the scanner VISITED against an independent count of the same
+   declarations, and refuse to report if they differ. A skipped row is invisible
+   in every per-row check and shows up only in that discrepancy.
+
 A script that has not been shown to agree with an independently written one is
 not evidence. The tell that caught one contaminated run: a row claiming 8
 references for `OpaqueAtRuleBlock`, a const already proven unreachable.
@@ -760,19 +775,35 @@ neither count was right and averaging would have been wrong:
 
 - C over-counted by 2 — `cssCase` and `identWord` are `makeWhen`/`makeWord`
   factory aliases (filter 9 above).
-- B under-counted by 2 — `urlOpen` (`noTrivia(sequence(...))`) and
-  `opaqueAtRuleOtherwise` (`otherwise(choice(...))`) were invisible to an
-  enumerated include-list missing those two combinator heads (filter 8).
+- B under-counted by 2, **through two unrelated defects, not one**:
+  `opaqueAtRuleOtherwise` (`otherwise(choice(...))`) was invisible to an
+  enumerated include-list missing that combinator head (filter 8), and
+  `urlOpen` was skipped by `lastIndex` advancement (filter 10). B separated them
+  by running the fixes independently: the lookahead fix alone moved H1 38 → 39
+  (`urlOpen`), and the include/exclude fix moved 39 → 40
+  (`opaqueAtRuleOtherwise`).
 
 H2 = 10 was already agreed by both and hand-verified site by site.
 
-**RETRACTED hypothesis, recorded so it is not re-derived:** C proposed that
-B's `urlOpen` drop came from comment-stripping plus a declaration regex
-requiring a preceding newline. **Falsified** — `grammar.ts:1052` is
-`const importAtKeyword = …`, an ordinary statement, not a comment. The real
-cause was the missing `noTrivia` include, the same class as the missing
-`otherwise`. The hypothesis was precise and testable, and testing it is what
-killed it.
+**TWO RETRACTED hypotheses about the same row, both C's, recorded so neither is
+re-derived:**
+
+1. That B's `urlOpen` drop came from comment-stripping plus a declaration regex
+   requiring a preceding newline. **Falsified** — `grammar.ts:1052` is
+   `const importAtKeyword = …`, an ordinary statement, not a comment.
+2. That the cause was a missing `noTrivia` include. **Also falsified**, by B
+   testing its own classifier directly: `COMBINATOR.test('noTrivia(sequence(')`
+   returned **true**. `noTrivia` was never missing from B's list. The real cause
+   is filter 9.
+
+**The second retraction is the instructive one, and its error is an inference
+error rather than a measurement error.** C observed that *A's* script lacked a
+`noTrivia` include — true, and A confirmed it — then treated that as
+confirmation of the cause in *B's* script. Both scripts dropped the same row for
+**different** reasons. Per the standing rule, **observation transfers between
+implementations; interpretation does not.** The check that would have caught it
+is arithmetic: A's composite count was 189, matching B's post-fix count, so a
+missing include could not have been the whole story for both.
 
 Top H1 offenders: `RoutedAtRuleStatement` ×11, `declarationListBlock` ×7
 (`grammar.ts:3314` — `{ many(declarationListItem) }`, dragging the whole
