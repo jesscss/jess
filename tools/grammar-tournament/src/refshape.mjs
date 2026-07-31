@@ -190,14 +190,38 @@ export function auditReferenceShape(file, factoryName = 'cssFactory') {
    * numbers. It is here because the column is mandatory for every entry, and
    * the moment an entry writes `node<T>(...)` its composites would vanish.
    */
-  const COMBINATOR_HEAD = /^(?:node|choice|sequence|many|optional|oneOrMore|oneOrMoreSep|sepBy|literal|regex|keywords|word|token|noTrivia|parser|peek|not|expect|dispatch|routed|balanced|scanTo|endsWith|field|transform|classifiedTrivia|when|otherwise|makeWhen|makeWord)\s*(?:<[^>()]*>)?\s*\(/;
+  const COMBINATOR_HEAD = /^(?:node|choice|sequence|many|optional|oneOrMore|oneOrMoreSep|sepBy|literal|regex|keywords|word|token|noTrivia|parser|peek|not|expect|dispatch|routed|balanced|scanTo|endsWith|field|transform|classifiedTrivia|when|otherwise)\s*(?:<[^>()]*>)?\s*\(/;
+
+  /*
+   * FACTORY ALIASES ARE NOT COMBINATORS — a NAMED EXCLUSION, deliberately kept
+   * as a short deny-list rather than by pruning the include-list above.
+   *
+   * `makeWhen(...)` and `makeWord(...)` return a FACTORY: a matcher policy,
+   * applied per call site. They do not lower to a parse table, so "inlined
+   * transitively at each reference" does not describe their cost and the H1
+   * number does not mean what it means for every other row. Counting
+   * `cssCase` (:1045, `makeWhen({ caseInsensitive: true })`, 27 call sites) as
+   * the most-inlined rule in the css grammar was this file's largest single
+   * error, and `identWord` (:1041) the same. GRAMMAR-REBUILD-SPEC §0.2
+   * explicitly blesses this authoring form inside a `rules()` factory.
+   *
+   * The shape matters, and it is Candidate B's generalisation from the
+   * reconciliation: this audit and B's failed in OPPOSITE directions on one
+   * axis — an inclusive detector over-counts on factory aliases, an enumerated
+   * one under-counts on combinators nobody remembered to list (B's list was
+   * missing `otherwise`, which dropped a real site). A permissive include plus
+   * a SHORT NAMED EXCLUDE is the more robust composition, because a forgotten
+   * exclusion is visible in a five-line list while a forgotten inclusion is
+   * invisible in a forty-name one.
+   */
+  const FACTORY_HEAD = /^(?:makeWhen|makeWord)\s*\(/;
 
   const declared = new Map();
   const declRe = /\n(\s{2,})const\s+([A-Za-z_$][\w$]*)\s*=\s*/g;
   let m;
   while ((m = declRe.exec(body)) !== null) {
     const rhs = body.slice(m.index + m[0].length, m.index + m[0].length + 40);
-    if (!COMBINATOR_HEAD.test(rhs)) {
+    if (!COMBINATOR_HEAD.test(rhs) || FACTORY_HEAD.test(rhs)) {
       continue;
     }
     declared.set(m[2], m.index);

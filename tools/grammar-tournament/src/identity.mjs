@@ -33,7 +33,9 @@
  * its own breakage in the vocabulary of a grammar regression does not degrade,
  * it lies.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { digest, firstDivergence, describe, assertInjective } from './canonical.mjs';
 import { isMalformed } from './corpus.mjs';
 
@@ -48,22 +50,6 @@ export async function loadSurfaces(libDir) {
   ].filter(s => s.parse !== undefined);
 }
 
-/**
- * Build the three surfaces from a BARE GRAMMAR MODULE rather than the
- * package's public entry.
- *
- * A candidate grammar must not be wired in as an export of the shipping
- * `css-parser` package (owner ruling): that pollutes the package for a
- * tournament and makes the submission contract depend on shipping-surface
- * changes. The harness adapts instead.
- *
- * The wiring the package itself does is thin — `parse` is
- * `parseWith(cssGrammar, input)` and the CST entries are
- * `parseCst`/`parseDocCst` over `cssCstGrammar` — so the module only has to
- * export the two compiled artifacts. Everything else is reused from the
- * snapshot's own `lib/`, which keeps the host, the trivia policy and the error
- * projection identical to the baseline's.
- */
 /**
  * Get the package's own `parseWith` out of a BUILT `lib/`.
  *
@@ -107,15 +93,41 @@ async function resolveParseWith(libDir) {
   throw new Error('cannot resolve parseWith: no lib/parse-with.js, and lib/index.js has no `… as parseWith` import');
 }
 
-export async function loadSurfacesFromModule(libDir, moduleRel) {
-  const mod = await import(`${libDir}/${moduleRel.replace(/^lib\//, '')}`);
+/**
+ * Build the three surfaces from a BARE GRAMMAR MODULE rather than the
+ * package's public entry, so a candidate never has to wire its grammar in as
+ * an export of the shipping package (owner ruling). The wiring the package
+ * itself does is thin — `parse` is `parseWith(cssGrammar, input)`, the CST
+ * entries are `parseCst`/`parseDocCst` over `cssCstGrammar` — so the module
+ * only has to export those two compiled artifacts. Host, trivia policy and
+ * error projection all come from the snapshot's own `lib/`, identical to the
+ * baseline's.
+ *
+ * ONE BASE, ONE MEANING. `entryRel` is resolved against the PACKAGE ROOT, the
+ * same base as `--grammar-module src/...`, and nothing strips a leading `lib/`.
+ *
+ * The previous version resolved the entry against `lib/` here while
+ * `artifactBytes` resolved the same string against the package root. Both
+ * accept `lib/grammar/ast.js`, which is worse than either failing: the two
+ * agreed on the spelling everyone tested with and disagreed silently on every
+ * other one, so `terminal-up.js` LOADED from `lib/` and was MEASURED at the
+ * package root, where it does not exist. A candidate could be graded against a
+ * path its author did not mean.
+ */
+export async function loadSurfacesFromModule(pkgDir, entryRel) {
+  const entryAbs = resolve(pkgDir, entryRel);
+  if (!existsSync(entryAbs)) {
+    throw new Error(`grammar entry not found at ${entryAbs} (resolved from --grammar-entry '${entryRel}' against the package root; paths are package-root-relative, so use 'lib/…' not a bare filename)`);
+  }
+  const libDir = resolve(pkgDir, 'lib');
+  const mod = await import(pathToFileURL(entryAbs).href);
   const parseWith = await resolveParseWith(libDir);
-  const host = await import(`${libDir}/cst-host.js`);
+  const host = await import(`${pathToFileURL(libDir).href}/cst-host.js`);
 
   const astGrammar = mod.cssGrammar ?? mod.astGrammar ?? mod.grammar;
   const cstGrammar = mod.cssCstGrammar ?? mod.cstGrammar;
   if (astGrammar === undefined) {
-    throw new Error(`${moduleRel} exports no AST grammar (looked for cssGrammar, astGrammar, grammar)`);
+    throw new Error(`${entryRel} exports no AST grammar (looked for cssGrammar, astGrammar, grammar)`);
   }
 
   const surfaces = [{ name: 'ast', parse: src => parseWith(astGrammar, src) }];

@@ -227,7 +227,27 @@ async function main() {
 
   let check3 = false;
   try {
-    const viaModule = await loadSurfacesFromModule(resolve(modDir, 'lib'), 'candidate-entry.js');
+    const viaModule = await loadSurfacesFromModule(modDir, 'lib/candidate-entry.js');
+
+    /*
+     * ONE BASE, ONE MEANING — a regression test for a real ambiguity.
+     * `artifactBytes` resolved the entry against the package root while this
+     * loader resolved it against `lib/`. Both accepted `lib/grammar/ast.js`,
+     * so they agreed on the spelling everyone tested and disagreed silently on
+     * every other one. A bare `candidate-entry.js` must now FAIL, naming the
+     * path it tried, rather than quietly loading from a different base.
+     */
+    let baseAmbiguity = 'accepted a bare filename — the two resolvers disagree again';
+    try {
+      await loadSurfacesFromModule(modDir, 'candidate-entry.js');
+    } catch (e) {
+      baseAmbiguity = /not found at .*candidate-entry\.js/.test(e.message)
+        ? null
+        : `rejected, but not with the tried path: ${e.message}`;
+    }
+    console.log(baseAmbiguity === null
+      ? 'base check     OK — a bare filename fails, naming the path it tried'
+      : `base check     FAILED — ${baseAmbiguity}`);
     console.log(`surfaces       ${viaModule.map(s => s.name).join(', ')}`);
     if (viaModule.length !== base.length) {
       console.log(`CHECK 3 FAILED — module path exposes ${viaModule.length} surface(s), incumbent exposes ${base.length}.`);
@@ -238,7 +258,7 @@ async function main() {
       for (const u of (r3.undigested ?? []).slice(0, 3)) {
         console.log(`  - ${u.surface} ${u.id}: ${u.error}`);
       }
-      check3 = r3.verdict === 'pass';
+      check3 = r3.verdict === 'pass' && baseAmbiguity === null;
       console.log(check3
         ? '\nCHECK 3 OK — the candidate module path grades the same grammar identically.'
         : '\nCHECK 3 FAILED — the module loader changes the result for an unchanged grammar.');

@@ -173,7 +173,16 @@ async function main() {
 
     const pre = checkEntry(dir, bytes.rank.raw, baseBytes.rank.raw);
     if (!pre.ok) {
-      const why = pre.fallback.ok ? `rank artifact missing at ${bytes.measured}` : pre.fallback.reason;
+      /*
+       * "Not there" and "I looked somewhere you did not mean" are DIFFERENT
+       * failures and must not share a message — the resolver ambiguity this
+       * replaces surfaced as a bare "artifact missing" for a file that existed.
+       * Always print the absolute path that was tried, and the base it came
+       * from, so a mismatched spelling is self-diagnosing.
+       */
+      const why = pre.fallback.ok
+        ? `rank artifact not found at ${resolve(dir, bytes.measured)} (from ${entryRel === undefined ? 'the default rank artifact' : `--grammar-entry '${entryRel}'`}, resolved against the package root)`
+        : pre.fallback.reason;
       console.log(`  REFUSED: ${why}`);
       rows.push({ label, refused: why, bytes });
       continue;
@@ -201,7 +210,7 @@ async function main() {
     try {
       surfaces = entryRel === undefined
         ? await loadSurfaces(resolve(dir, 'lib'))
-        : await loadSurfacesFromModule(resolve(dir, 'lib'), entryRel);
+        : await loadSurfacesFromModule(dir, entryRel);
     } catch (e) {
       const why = `cannot load surfaces from ${entryRel ?? 'lib/index.js'}: ${e.message}`;
       console.log(`  REFUSED: ${why}`);
