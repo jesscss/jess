@@ -286,6 +286,48 @@ dispatch/token-keying spread is **2.4%** of css parse time.
 **Recorded as the mechanism's verdict, not the goal's** (G17). The goal is
 untouched and sits inside G14.
 
+### 2.4f Rollback-boundary census, all four shipping grammars
+
+Instrumented at the **emission point**, not at `alwaysConsumes`, splitting each
+fall-back into **cycle-caused** (an analysis artifact) versus **real** (a
+property of the construct):
+
+| grammar | emitted | converted | fell back | **cycle** | real |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| css | 26,688 | 9,824 (36.8%) | 16,864 | **96 (0.6%)** | 16,768 |
+| less | 15,328 | 5,664 (37.0%) | 9,664 | **608 (6.3%)** | 9,056 |
+| scss | 13,312 | 5,920 (44.5%) | 7,392 | **256 (3.5%)** | 7,136 |
+| jess | 10,720 | 4,992 (46.6%) | 5,728 | **480 (8.4%)** | 5,248 |
+
+**The `lazy` bucket is large but almost entirely NOT cycle-caused.** On css it
+falls back at 2,560 sites, of which **32 are cycles** — the other 2,528 are the
+resolved parser genuinely not always consuming. So a productivity fixpoint
+(optimistic cycle seed, iterate down) has a **ceiling of ~96 sites on css**,
+0.6% of boundaries. **Not built** — the hazard is that a seed failing to
+converge downward reports a non-consuming rule as consuming and deletes a
+rollback that fires, which is unsound in the dangerous direction. less/jess at
+6.3%/8.4% are more defensible; revisit only if a cheaper lever is exhausted.
+
+**Where the mass actually is (css):** `regex` 5,504, `many` 3,872, `expect`
+2,688, `optional` 736. `many`/`optional`/`not`/`expect` are genuinely
+zero-width — correct answers with **no headroom** — and `expect` is the
+38-mismatch trap. **The one unexplained bucket is css `regex`: 5,504 sites,
+zero converted**, unchanged by a structural precision fix. Unconfirmed whether
+that is genuine nullability (at-rule-prelude shapes like `[^;{]*`) or remaining
+imprecision.
+
+### 2.4g The calls-vs-sites discrepancy is CLOSED
+
+css-parser compiles ~6 grammar variants per package (`ast`, `positions`, `cst`,
+`cst/positions`, …). Per artifact: 26,688 / 6 ≈ **4,448 boundaries**,
+9,824 / 6 ≈ **1,637 converted** — against the design doc's **4,268 → 1,651**.
+Within 4%.
+
+**The doc's numbers and the instrumented numbers are the same measurement at
+different multiplicities.** The apparent 26,688-vs-558 gap was **variant count,
+not disagreement.** Before treating two counts as contradictory, check whether
+one is per-artifact and the other is per-package.
+
 ### 2.5 Measurement discipline
 
 - **Noise floor on this machine: 5.144 vs 5.200 ms min-of-mins at a 6/15 win
@@ -614,6 +656,23 @@ existing collapses, which are part of the target and must be reproduced.
   git op. **Work under `scratchpad/<lane-name>/`, always.**
 
 ---
+
+## 4a-bis. The two traps that have each fired THREE times
+
+**1. Calls versus sites.** `alwaysConsumes` was called 26,688 times against 558
+distinct boundaries; 767 emitted capture sites against 31,673 runtime events;
+a `regex` bucket of 5,504 *calls* read as 5,504 opportunities. Three wrong
+headlines, two different agents, one of whom had personally reconciled the
+confusion for someone else the round before. **Instrument distinct sites by
+default; derive call counts only if something needs them.**
+
+**2. Toy versus shipping artifact.** parseman's `examples/css` is 231,731 B with
+61 capture sites; the shipping css grammar is ~3.1 MB with 767 emitted sites
+and 31,673 runtime events. Conclusions drawn on the toy — "95% of capture sites
+are rollback-able", "20 distinct regexes, 0 genuinely nullable" — do not
+transfer, and the second could not be reconciled with a `converted=0` measured
+on the shipping grammar. **Measure on the shipping artifact or say which you
+used, every time.**
 
 ## 4b. A false win that passes EVERY gate
 
