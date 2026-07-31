@@ -81,11 +81,24 @@ const TYPE_NAMES: Record<string, CssCstType> = {
   QueryFeature: 'QueryFeature'
 };
 
-const COLLAPSIBLE_GRAMMAR_TYPES = new Set([
-  'Reference',
-  'NamedColor',
-  'InterpolatedSelector'
-]);
+/*
+ * Transparent wrappers: the grammar node exists only to name a single token,
+ * so a caller that opted into `collapse` reads the token directly. Parseman
+ * collapses on arity 1, so a production that is a `sequence` of two or more
+ * atoms can never appear here — an entry for one is dead weight until the day
+ * the production is left-factored, and a silent contract change after it.
+ *
+ * `Reference` was exactly that: every Less production carrying the name is a
+ * two-or-more-atom `sequence` (`@` + name, `@@` + name, `$` + ident), so the
+ * hook could never fire on it. `InterpolatedSelector` is not a grammar node
+ * name at all — it survives only as a legacy `core/src/tree/` type — so no CST
+ * node ever presents it.
+ *
+ * `NamedColor` is a Less-only node; css, scss and jess emit none, so collapse
+ * mode is a no-op for them. It is also a no-op under parseman 0.44, whose
+ * fused grammar only offers the hook on a node that carries no reducer.
+ */
+const COLLAPSIBLE_GRAMMAR_TYPES = new Set(['NamedColor']);
 
 function publicTypeName(grammarType: string): CssCstType {
   /*
