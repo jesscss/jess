@@ -2718,6 +2718,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // even though Value already recognizes the whole reference —
   // which is why the same value parsed in property position and not here.
   const mixinValueWithoutLookup = not(noTrivia(literal('[')));
+  // `;` separates block-list items, so the final item in a braced body may omit
+  // it — `.a { @o: 3 }` and `.a { o: 3 }` are both Less. The omission is allowed
+  // ONLY against the block's own `}`: `@o: 3` at end-of-stylesheet stays a parse
+  // error (`lessc` 4.8.1: "@o rule is missing block or ending semi-colon"), and
+  // a declaration still may not run into a following declaration or nested rule.
+  const declarationEnd = choice(
+    literal(';'),
+    peek(literal('}'))
+  );
   const variableName = node(
     'VariableName',
     noTrivia(sequence(literal('@'), lessVariableName)),
@@ -2725,7 +2734,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const VarDeclaration = node(
     'VarDeclaration',
-    sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), literal(';')),
+    sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), declarationEnd),
     (children, _fields, span) => {
       const name = requireTerminalText(children[0]).slice(1);
       const value = children[2];
@@ -4227,10 +4236,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'DeclarationItem',
     sequence(
       g.Declaration,
-      choice(
-        literal(';'),
-        peek(literal('}'))
-      )
+      declarationEnd
     ),
     (children) => {
       const declaration = children.find(isDeclaration);
@@ -4264,10 +4270,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'PunctuationMapDeclarationItem',
     sequence(
       PunctuationMapDeclaration,
-      choice(
-        literal(';'),
-        peek(literal('}'))
-      )
+      declarationEnd
     ),
     (children) => {
       const declaration = children.find(isDeclaration);

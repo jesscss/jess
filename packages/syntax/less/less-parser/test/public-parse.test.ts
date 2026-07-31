@@ -3082,3 +3082,32 @@ describe('public Less parse()', () => {
     ).toContain('p:');
   });
 });
+
+describe('final declaration without a trailing semicolon', () => {
+  const css = (source: string) =>
+    serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css;
+
+  it('accepts a variable declaration as the last statement in a block', () => {
+    expect(css('.a { @o: 3 }')).toBe('');
+    expect(css('.a { @o: 3; }')).toBe('');
+  });
+
+  it('accepts the idiomatic Less value-map forms', () => {
+    expect(css('.m()  { @o: 3 }  .x { b: .m()[@o]; }')).toBe('.x {\n  b: 3;\n}\n');
+    expect(css('@d: { @o: 3 };   .x { b: @d[@o]; }')).toBe('.x {\n  b: 3;\n}\n');
+    expect(css('#n()  { @o: 3 }  .x { b: #n[@o]; }')).toBe('.x {\n  b: 3;\n}\n');
+  });
+
+  it('still requires the semicolon at end of stylesheet', () => {
+    /* `lessc` 4.8.1: "@o rule is missing block or ending semi-colon". The `}` is
+     * what licenses the omission, so a root declaration has nothing to lean on. */
+    expect(() => parse('@o: 3')).toThrow(LessParseError);
+    expect(css('@o: 3;')).toBe('');
+  });
+
+  it('still rejects a declaration running into the next statement', () => {
+    expect(() => parse('.a { @o: 3 color: red; }')).toThrow(LessParseError);
+    expect(() => parse('.a { @o: 3 b { x: 1 } }')).toThrow(LessParseError);
+    expect(() => parse('.a { color: red b { x: 1 } }')).toThrow(LessParseError);
+  });
+});
