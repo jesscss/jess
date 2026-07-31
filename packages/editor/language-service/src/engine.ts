@@ -2772,7 +2772,6 @@ export function createEngine(): JessLanguageServiceEngine {
 
     getCodeActions(uri, _range, context) {
       void uri;
-      void _range;
       void context;
       return [];
     },

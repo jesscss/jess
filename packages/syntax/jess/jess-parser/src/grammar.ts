@@ -125,6 +125,7 @@ type JessRules = {
   PseudoSelector: Combinator<SimpleToken>;
   PseudoSelectorArgument: Combinator<SelectorList>;
   GenericPseudoText: Combinator<string>;
+  GenericPseudoComment: Combinator<string>;
   GenericPseudoEscape: Combinator<string>;
   GenericPseudoItem: Combinator<string>;
   GenericPseudoGroup: Combinator<string>;
@@ -410,6 +411,20 @@ function isExtendInstruction(value: unknown): value is ExtendInstruction {
   return typeof value === 'object' && value !== null
     && 'target' in value && 'partial' in value
     && typeof value.partial === 'boolean';
+}
+
+/*
+ * A `MixinParams` child: the only param-shaped reduction the grammar produces,
+ * distinguished from every AST node by carrying `name` without a `type` tag.
+ * The list form is what a lambda or mixin definition finds among its children,
+ * and an empty parameter list is still that list.
+ */
+function isParam(value: unknown): value is Param {
+  return typeof value === 'object' && value !== null && !('type' in value) && 'name' in value;
+}
+
+function isParamList(value: unknown): value is Param[] {
+  return Array.isArray(value) && value.every(isParam);
 }
 
 function isMixinCallArray(value: unknown): value is MixinCall[] {
@@ -1196,7 +1211,7 @@ function reduceLambda(children: readonly unknown[]): AnonymousMixin {
   if (bodyOpen < 0) {
     throw new TypeError('Jess grammar produced a lambda without a body.');
   }
-  const params = children.find(Array.isArray) as Param[] | undefined ?? [];
+  const params = children.find(isParamList) ?? [];
   return anonymousMixin(
     collectBodyStatements(
       children,
@@ -2895,7 +2910,22 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    */
   const GenericPseudoText = node<string>(
     'GenericPseudoText',
-    regex(/[^$()[\]{}'"\\]+/),
+    regex(/(?:[^$()[\]{}'"\\/]|\/(?!\*))+/),
+    children => requireToken(children[0]).value
+  );
+
+  /*
+   * The entry points scan opaque runs with `scanSkip: [blockComment, quoted…]`,
+   * so a `)` inside a comment or a string is argument content everywhere the
+   * scanner owns the run. This structured `<any-value>` argument replaces that
+   * scanner (a top-level `$` has to end it), so it owns the same three skips:
+   * quoted text below, groups below, and a block comment here. The comment is
+   * not semantic payload — it is a non-terminating byte of an opaque capture,
+   * retained because the capture is byte-preserving.
+   */
+  const GenericPseudoComment = node<string>(
+    'GenericPseudoComment',
+    regex(/\/\*(?:[^*]|\*(?!\/))*\*\//),
     children => requireToken(children[0]).value
   );
   const GenericPseudoEscape = node<string>(
@@ -2907,6 +2937,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'GenericPseudoItem',
     choice(
       g.GenericPseudoText,
+      g.GenericPseudoComment,
       g.GenericPseudoEscape,
       g.LiteralQuoted,
       g.GenericPseudoGroup
@@ -5037,7 +5068,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )),
       literal(')')
     ),
-    children => children.filter((child): child is Param => typeof child === 'object' && child !== null && !('type' in child) && 'name' in child)
+    children => children.filter(isParam)
   );
   const MixinCallArgument = node<JessMixinCallArgument>(
     'MixinCallArgument',
@@ -5147,7 +5178,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       }
       return mixinDef(
         requireToken(children[0]).value,
-        children.find(Array.isArray) as Param[] | undefined ?? [],
+        children.find(isParamList) ?? [],
         collectBodyStatements(
           children,
           bodyOpen + 1
@@ -5225,7 +5256,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )
     ),
     (children) => {
-      const params = children.find(Array.isArray) as Param[] | undefined ?? [];
+      const params = children.find(isParamList) ?? [];
       const value = children.at(-1);
       return anonymousMixin(
         [decl(
@@ -5847,6 +5878,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PseudoSelector,
     PseudoSelectorArgument,
     GenericPseudoText,
+    GenericPseudoComment,
     GenericPseudoEscape,
     GenericPseudoItem,
     GenericPseudoGroup,

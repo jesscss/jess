@@ -455,6 +455,7 @@ export interface ValueEvaluator {
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
+
     /** A caller-resolved scoped function; takes precedence over `scope`. */
     scopedFn?: Fn,
   ): MaybePromise<ValueGroup>;

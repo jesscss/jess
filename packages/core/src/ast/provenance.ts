@@ -318,7 +318,8 @@ export function createTriviaMapFromParseman(
         const labeledGaps = hasCommentKind && index.gapsWithKind !== undefined
           ? index.gapsWithKind(COMMENT_TRIVIA_KINDS)
           : undefined;
-        for (const gap of labeledGaps ?? index.gaps()) {
+        const gaps = labeledGaps ?? index.gaps();
+        for (const gap of gaps) {
           if (labeledGaps === undefined && !rangeHasComment(src, gap.start, gap.end)) {
             continue;
           }

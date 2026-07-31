@@ -10337,6 +10337,7 @@ function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: Select
   }
   const emit = (kept: Leaf[], merged = false): void => {
     const trailingBlockComments = takePendingLeafBlockComments(group);
+
     // [atrule] indent by the current block depth (0 at top level == prior behavior).
     const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
     const authoredHeader = parentKey === null && selector.length === selNode?.selectors.length

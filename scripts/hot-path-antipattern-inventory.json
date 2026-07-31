@@ -96,33 +96,9 @@
     {
       "file": "packages/core/src/ast/provenance.ts",
       "rule": "no-node-keyed-side-map",
-      "fingerprint": "7038687d6cd3795f",
-      "ordinal": 0,
-      "snippet": "new WeakMap<object, AstSourceSpan>()",
-      "owner": "provenance side-map rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/provenance.ts",
-      "rule": "no-node-keyed-side-map",
       "fingerprint": "89ff29b6d014688d",
       "ordinal": 0,
       "snippet": "new WeakMap<object, ValueLayout>()",
-      "owner": "provenance side-map rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/provenance.ts",
-      "rule": "no-node-keyed-side-map",
-      "fingerprint": "025e513b7973fd32",
-      "ordinal": 0,
-      "snippet": "new WeakMap<object, TriviaMap>()",
-      "owner": "provenance side-map rewrite in flight"
-    },
-    {
-      "file": "packages/core/src/ast/provenance.ts",
-      "rule": "no-node-keyed-side-map",
-      "fingerprint": "7038687d6cd3795f",
-      "ordinal": 1,
-      "snippet": "new WeakMap<object, AstSourceSpan>()",
       "owner": "provenance side-map rewrite in flight"
     },
     {
