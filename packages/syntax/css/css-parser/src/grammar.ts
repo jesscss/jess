@@ -3441,6 +3441,69 @@ const cssFactory = (g: GrammarSelf) => {
     '@-o-keyframes',
     '@-ms-keyframes'
   ];
+
+  /*
+   * At-rules whose recognition is identical whether they appear at the top level
+   * of a stylesheet or inside a declaration list. Only `@layer` and
+   * `@starting-style` differ between the two positions (nested variants carry a
+   * declaration-list body); every other at-rule below is position-independent, so
+   * its case arm is spelled once here and referenced by both dispatches. Each
+   * dispatch keeps its own name and its own position-specific arms.
+   */
+  const scopeAtRuleCase = cssCase(
+    '@scope',
+    choice(
+      RoutedAtRuleStatement,
+      RoutedScopeBlock
+    )
+  );
+  const descriptorAtRuleCase = cssCase(
+    [
+      '@font-face',
+      '@counter-style',
+      '@property',
+      '@color-profile',
+      '@font-palette-values',
+      '@position-try',
+      '@view-transition'
+    ],
+    choice(
+      RoutedAtRuleStatement,
+      RoutedDescriptorBlock
+    )
+  );
+  const pageAtRuleCase = cssCase(
+    '@page',
+    choice(
+      RoutedAtRuleStatement,
+      RoutedPageBlock
+    )
+  );
+  const keyframesAtRuleCase = cssCase(
+    keyframesAtRuleNames,
+    choice(
+      RoutedAtRuleStatement,
+      RoutedKeyframes
+    )
+  );
+  const fontFeatureValuesAtRuleCase = cssCase(
+    '@font-feature-values',
+    choice(
+      RoutedAtRuleStatement,
+      RoutedFontFeatureValuesBlock
+    )
+  );
+  const documentAtRuleCase = cssCase(
+    ['@document', '@-moz-document'],
+    choice(
+      RoutedAtRuleStatement,
+      RoutedDocumentBlock
+    )
+  );
+  const opaqueAtRuleOtherwise = otherwise(choice(
+    RoutedAtRuleStatement,
+    RoutedOpaqueAtRuleBlock
+  ));
   const StylesheetAtRule = dispatch(
     g.AtRuleKeyword,
     cssCase(
@@ -3457,60 +3520,13 @@ const cssFactory = (g: GrammarSelf) => {
         RoutedStartingStyleBlock
       )
     ),
-    cssCase(
-      '@scope',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedScopeBlock
-      )
-    ),
-    cssCase(
-      [
-        '@font-face',
-        '@counter-style',
-        '@property',
-        '@color-profile',
-        '@font-palette-values',
-        '@position-try',
-        '@view-transition'
-      ],
-      choice(
-        RoutedAtRuleStatement,
-        RoutedDescriptorBlock
-      )
-    ),
-    cssCase(
-      '@page',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedPageBlock
-      )
-    ),
-    cssCase(
-      keyframesAtRuleNames,
-      choice(
-        RoutedAtRuleStatement,
-        RoutedKeyframes
-      )
-    ),
-    cssCase(
-      '@font-feature-values',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedFontFeatureValuesBlock
-      )
-    ),
-    cssCase(
-      ['@document', '@-moz-document'],
-      choice(
-        RoutedAtRuleStatement,
-        RoutedDocumentBlock
-      )
-    ),
-    otherwise(choice(
-      RoutedAtRuleStatement,
-      RoutedOpaqueAtRuleBlock
-    ))
+    scopeAtRuleCase,
+    descriptorAtRuleCase,
+    pageAtRuleCase,
+    keyframesAtRuleCase,
+    fontFeatureValuesAtRuleCase,
+    documentAtRuleCase,
+    opaqueAtRuleOtherwise
   );
   const DeclarationListAtRule = dispatch(
     g.AtRuleKeyword,
@@ -3528,60 +3544,13 @@ const cssFactory = (g: GrammarSelf) => {
         RoutedNestedStartingStyleBlock
       )
     ),
-    cssCase(
-      '@scope',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedScopeBlock
-      )
-    ),
-    cssCase(
-      [
-        '@font-face',
-        '@counter-style',
-        '@property',
-        '@color-profile',
-        '@font-palette-values',
-        '@position-try',
-        '@view-transition'
-      ],
-      choice(
-        RoutedAtRuleStatement,
-        RoutedDescriptorBlock
-      )
-    ),
-    cssCase(
-      '@page',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedPageBlock
-      )
-    ),
-    cssCase(
-      keyframesAtRuleNames,
-      choice(
-        RoutedAtRuleStatement,
-        RoutedKeyframes
-      )
-    ),
-    cssCase(
-      '@font-feature-values',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedFontFeatureValuesBlock
-      )
-    ),
-    cssCase(
-      ['@document', '@-moz-document'],
-      choice(
-        RoutedAtRuleStatement,
-        RoutedDocumentBlock
-      )
-    ),
-    otherwise(choice(
-      RoutedAtRuleStatement,
-      RoutedOpaqueAtRuleBlock
-    ))
+    scopeAtRuleCase,
+    descriptorAtRuleCase,
+    pageAtRuleCase,
+    keyframesAtRuleCase,
+    fontFeatureValuesAtRuleCase,
+    documentAtRuleCase,
+    opaqueAtRuleOtherwise
   );
   const ConditionalGroupAtRule = dispatch(
     g.AtRuleKeyword,
