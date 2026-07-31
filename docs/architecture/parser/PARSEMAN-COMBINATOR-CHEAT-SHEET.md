@@ -1,9 +1,16 @@
 # Parseman combinator cheat sheet
 
-Jess grammar cleanup targets `parseman@0.43.0`.
+> ⚠️ **This sheet is CUT AGAINST `parseman@0.43.0` AND IS ONE FLOOR STALE.** The repo moved
+> to `^0.44.0` in `f292fdd8f` (2026-07-30) without the re-cut that this document's own rule —
+> and `HANDOFF.md`'s grammar router — require in the same change as a floor bump. Treat every
+> combinator signature below as needing verification against the installed 0.44 package until
+> someone re-cuts it. Flagged by the 2026-07-30 docs audit; the re-cut itself was not done
+> there because it needs a read of the 0.44 source, which is grammar-lane work.
+
+Jess grammar cleanup last targeted `parseman@0.43.0`.
 
 Source checked: `/Users/matthew/git/oss/parser-thing` at `b24c542`.
-Installed package checked: `/Users/matthew/git/oss/jess/node_modules/.pnpm/parseman@0.43.0/node_modules/parseman`.
+Installed package checked at that time: `node_modules/.pnpm/parseman@0.43.0/node_modules/parseman`.
 
 This is the working grammar-authoring guide for the four host-mode grammar
 files. Use the language production name first, keep rules small, and prefer the

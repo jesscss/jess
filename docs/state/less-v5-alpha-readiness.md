@@ -20,7 +20,7 @@ legacy-tree numbers measured different work and are not an A/B.
 
 | Phase | Protocol and identity | Result |
 | --- | --- | --- |
-| Direct parse | `packages/less-parser/lib/index.js`: SHA-256 `52d88a95557a821815d9f15f2d6ab05bbb5c64a55f0189fb97a050d7aea50285`, 1,797,831 bytes; `benchmark.less`, 106,802 bytes; Node v24.11.1 arm64; 20 warmups + 3×45 samples | 63.321 ms median (p25 61.776, p75 64.487); `Stylesheet` JSON SHA-256 `2ba996a1c46eb6d77ce8f1748b35d1135848c128104e00f46dadf7e9651c53bd` (957,390 bytes). |
+| Direct parse | `packages/syntax/less/less-parser/lib/index.js`: SHA-256 `52d88a95557a821815d9f15f2d6ab05bbb5c64a55f0189fb97a050d7aea50285`, 1,797,831 bytes; `benchmark.less`, 106,802 bytes; Node v24.11.1 arm64; 20 warmups + 3×45 samples | 63.321 ms median (p25 61.776, p75 64.487); `Stylesheet` JSON SHA-256 `2ba996a1c46eb6d77ce8f1748b35d1135848c128104e00f46dadf7e9651c53bd` (957,390 bytes). |
 | Public compiler | `node scripts/measure-less-hotpath.mjs --fixture packages/jess/benchmark/benchmark.less --iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json`; built Jess/Less-plugin chain | 77.492 ms round-median across 135 samples (usable 0.78% round RSD); CSS SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` (122,390 bytes). |
 
 The remaining benchmark blocker is evidence quality, not a timing threshold:
@@ -39,7 +39,7 @@ baseline only and never as a performance acceptance claim.
   errors and 319 warnings**. The warnings are tracked lint debt; there is no
   current ESLint-error blocker.
 - Parser dependency floor, verified 2026-07-28: the active grammar checkout
-  resolves published `parseman@0.41.0`; `pnpm run check:macro` and
+  resolves published `parseman@0.44.0`; `pnpm run check:macro` and
   `pnpm run verify:compose-integrity` pass with 0 interpreter fallbacks; and
   `pnpm run verify:less-alpha` passes. The full strict-type release chain still
   belongs to `pnpm run release:alpha:check` before publishing.
@@ -76,9 +76,9 @@ CSS/Less stability, the public Less fixture flow, and parser/eval error quality.
 The four parser dialects are folded to one `src/grammar.ts` each; do not
 recreate duplicate AST/CST grammar bodies to make a fixture pass.
 
-`parseman@0.41.0` is published and installed from the registry in the active
+`parseman@0.44.0` is published and installed from the registry in the active
 checkout; the root, `@jesscss/parser-shared`, and all four parser packages now
-depend on `^0.41.0`. A registry-backed dependency-order build completed, and
+depend on `^0.44.0`. A registry-backed dependency-order build completed, and
 `pnpm run check:macro` plus `pnpm run verify:compose-integrity` both pass with
 0 interpreter fallbacks.
 
@@ -112,7 +112,11 @@ dependency-ordered rebuild; and `pnpm run verify:less-alpha` passing. The alpha
 gate now builds the parser-shared/CSS/Less parser chain, core/fns/config
 packages, Less plugin stack, `@jesscss/compiler`, and `jess` before running
 package exports, the public Jess API, path resolution, and the Less test-data
-lanes (`tests-unit/`: 79 / 79, `tests-config/`: 29 / 29). The remote URL import
+lanes (`tests-unit/`: 79 / 79, `tests-config/`: 29 / 29 — **superseded
+2026-07-30**; `docs/architecture/core/HANDOFF.md:196` records the `all-less`
+lane at **109 / 110**, and this file also carries a conflicting `80 / 80`
+unit figure below. Do not quote any lane total from this document; take it
+from HANDOFF). The remote URL import
 fixture is deliberately excluded from the alpha lane until resolver network
 access has an explicit allowlist/security model.
 
@@ -456,7 +460,7 @@ The alpha blocks only on these advertised correctness and release-safety gates:
 - a release-note known-limitations section that links the complete
   [`less-v5-corpus-inventory.md`](./less-v5-corpus-inventory.md) and states the
   unsupported or not-yet-matched behavior honestly.
-- `[x]` **Strict source quality.** Published `parseman@0.41.0` is the current
+- `[x]` **Strict source quality.** Published `parseman@0.44.0` is the current
   parser dependency. `check:macro` and `verify:compose-integrity` pass with
   0 interpreter fallbacks, and the Less alpha verifier passes. Production ESLint
   and full strict-type release checks remain required by the release gate;
@@ -555,7 +559,8 @@ accidentally promise transitional internals.
 Current public entrypoint:
 
 - `packages/jess/package.json` exports only `.` and `./package.json`.
-- The package types currently come from `packages/jess/lib/index.d.ts`.
+- The package types currently come from `packages/jess/lib/index-public.d.ts`
+  (`packages/jess/package.json` → `exports["."].types`).
 - Source entrypoint is `packages/jess/src/index.ts`.
 
 Initial public candidate set:
@@ -600,7 +605,9 @@ Initial likely-internal or quarantine candidates:
 - `[x]` Jess-local diagnostic renderer quarantine: `outputDiagnostics` now lives
   in `@jesscss/compiler/diagnostics`; `jess` consumes the shared compiler host
   renderer instead of carrying `packages/jess/src/diagnostics.ts`.
-- `[?]` `packages/jess/src/visitor/index.ts` `Visitor`
+- `[x]` `packages/jess/src/visitor/index.ts` `Visitor` — **moot: the file does
+  not exist.** `packages/jess/src/` holds only `config.ts`, `index.ts`, and
+  `output.ts` (verified 2026-07-30). Nothing to quarantine.
 
 Implementation options to evaluate:
 
@@ -646,10 +653,16 @@ Current signal:
 - `packages/jess/test/less/all-less.test.ts` runs upstream
   `tests-unit/*/*.less` and selected `tests-config/*/*.less` through
   `Compiler.renderToResult(...)`.
-- `JESS_LESS_FIXTURE=tests-unit/ pnpm run test:less:test-data` currently covers
-  79 unit fixture cases in the readiness lane.
-- `JESS_LESS_FIXTURE=tests-config/ pnpm run test:less:test-data` covers 29
-  config fixture cases in the current readiness lane.
+- **Lane sizes below are superseded (marked 2026-07-30).** The `79` unit figure
+  conflicts with the `80 / 80` recorded later in this same file, and the
+  implied `108` lane total conflicts with the `109 / 109` recorded later still.
+  The current measurement is `all-less` **109 / 110** —
+  `docs/architecture/core/HANDOFF.md:196`. This audit does not attempt to
+  reconcile the three; re-measure before quoting.
+- `JESS_LESS_FIXTURE=tests-unit/ pnpm run test:less:test-data` covered
+  79 unit fixture cases *(as of 2026-07-28; superseded)*.
+- `JESS_LESS_FIXTURE=tests-config/ pnpm run test:less:test-data` covered 29
+  config fixture cases *(as of 2026-07-28; superseded)*.
 - Browser tests are intentionally out of scope for this tracker until the
   browser-build spec exists.
 
@@ -853,7 +866,9 @@ earlier, before a manual publish attempt.
   instead of counting it as "failed as expected". The focused
   `tests-unit/import/import.less` run still surfaces the
   `resolve/name-not-found` Linecraft diagnostic, and the full
-  `less/all-less.test.ts` lane passed 109 / 109.
+  `less/all-less.test.ts` lane passed 109 / 109. *(Dated entry; superseded
+  2026-07-30 by the `109 / 110` measurement at
+  `docs/architecture/core/HANDOFF.md:196`.)*
 - 2026-07-28: Repaired the Jess alpha fixture harness so
   `tests-unit/import/import.less` keeps surfacing its settled
   `resolve/name-not-found` expected failure instead of timing out at Vitest's
@@ -894,7 +909,10 @@ earlier, before a manual publish attempt.
   at `fb13eef67`. Verification on the committed tree passed `pnpm run
   check:macro` (0 interpreter fallbacks), `pnpm run verify:compose-integrity`,
   `pnpm run verify:package-exports`, and `pnpm run verify:less-alpha`
-  (`tests-unit/` 80 / 80 and `tests-config/` 29 / 29). The commits used
+  (`tests-unit/` 80 / 80 and `tests-config/` 29 / 29 — *dated entry; conflicts
+  with the `79 / 79` recorded earlier in this file, and superseded 2026-07-30 by
+  the `all-less` `109 / 110` measurement at
+  `docs/architecture/core/HANDOFF.md:196`*). The commits used
   `--no-verify` because the precommit hook is still blocked by style/lint
   hygiene debt; that debt is tracked as cleanup work, not alpha behavior
   evidence.

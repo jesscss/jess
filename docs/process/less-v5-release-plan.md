@@ -116,7 +116,12 @@ upstream fixture to the public alpha lane.
 - **Eval-path correctness cluster** (property/namespace lookup crashes, mixin
   "no matching", nested-render failures) — deferred to the **D-EVAL flip** (Phase
   B); the spine subsuming nested-render/lookup is expected to graduate many at once
-  rather than needing independent fixes. Tracked in `CUTOVER-STATUS.md`.
+  rather than needing independent fixes. **The `CUTOVER-STATUS.md` tracker is
+  retired** — it now lives at
+  `docs/architecture/core/archive/CUTOVER-STATUS-2026-07-18.md`, and
+  `docs/architecture/core/README.md` says archived files are for archaeology and
+  must never be cited as current. Use `docs/architecture/core/HANDOFF.md` as the
+  live entry point instead.
 - **Permissive `--*` custom-property parsing** (`permissive-parse.less`) —
   **owner-decided (2026-07-11): a real gap to FIX, not defer.** Custom-property
   values must accept arbitrary token streams (CSS-spec `<declaration-value>`),
@@ -124,5 +129,7 @@ upstream fixture to the public alpha lane.
   via grammar composition. (Fix dispatched — active, not deferred.)
 - **Bare selector capture `*[...]`** (`parse-interpolation.less`) — NOT a
   deprecation. A NEW feature already implemented in the `.jess` parser
-  (`jess-parser` `SelectorCapture`, `grammar.ts:369`); being **ported into `.less`**.
+  (`jess-parser` `SelectorCapture` — `packages/syntax/jess/jess-parser/src/grammar.ts`,
+  find it with `grep -n "const SelectorCapture" …/grammar.ts`); being
+  **ported into `.less`**.
   A real work item, not an owner decision. (Port dispatched.)

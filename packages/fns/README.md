@@ -21,14 +21,16 @@ another — a Sass function is never served the Less implementation.
 ```
 @jesscss/fns              → dialect namespaces (`less`, `sass`, `shared`) + registry helpers
 @jesscss/fns/less         → the Less dialect index (the Less built-in set)
+@jesscss/fns/less/registry→ `makeLessRegistry()`
 @jesscss/fns/sass         → the Sass dialect index (Sass globals)
+@jesscss/fns/sass/registry→ `makeSassRegistry()`
 @jesscss/fns/sass/color   → sass:color
 @jesscss/fns/sass/list    → sass:list
 @jesscss/fns/sass/map     → sass:map
 @jesscss/fns/sass/math    → sass:math
 @jesscss/fns/sass/string  → sass:string
 @jesscss/fns/shared       → functions whose behaviour is identical in Less and Sass
-@jesscss/fns/registry     → `makeLessRegistry()` / `makeSassRegistry()` / `registryOf(index)`
+@jesscss/fns/registry     → `fnsOf(index)` / `registryOf(index)`
 ```
 
 Adding a built-in is a new module in the dialect folder plus one line in that

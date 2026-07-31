@@ -7,7 +7,7 @@ first, the method, and the criteria that decide whether they succeeded.
 > **Status: `design/`, not `architecture/`.** The problem statement (§2), the
 > verification machinery in §8.2–§8.6, the traps (§7), and the structural causes
 > (§13) are present-tense and measured. The old hostMode release blocker is paid
-> as of `parseman@0.43.0`; the physical eight-to-four collapse is complete, and
+> as of `parseman@0.43.0` (the floor has since moved to `^0.44.0`, `f292fdd8f`); the physical eight-to-four collapse is complete, and
 > the active work is rebuilding/polishing the surviving grammar families until
 > they meet the naming, documentation, lint, and Parseman-shape bar. Sections that preserve
 > older 0.32/0.37/0.38 planning evidence are historical unless §0.2 or
@@ -71,9 +71,13 @@ Four consequences, none of them optional:
 
 ### 0.2 Current status
 
-**The parseman floor is paid.** parseman is now resolved to **0.43.0** from the
-registry; the root, `@jesscss/parser-shared`, and all four parser packages
-depend on `^0.43.0`. `hostMode` reaches the macro, 0.38 adds
+**The parseman floor is paid.** parseman resolves to **0.44.0** from the registry
+(`pnpm-lock.yaml:18442`, sole entry); the root, `@jesscss/parser-shared`, and all four
+parser packages depend on `^0.44.0` (`f292fdd8f`, with `b2f888070` migrating root trivia
+capture and `d22cdb54b` dropping the last `RunResult.triviaLog` reads). *(Corrected
+2026-07-30: this section and the §0 verification table below both asserted `0.43.0` /
+`^0.43.0`, which made the doc AGENTS.md points agents at FIRST self-falsifying against
+`package.json`.)* `hostMode` reaches the macro, 0.38 adds
 the keyword ergonomics this cleanup now uses:
 `word(str, { caseInsensitive: true })`,
 `word(str, boundary, { caseInsensitive: true })`, and
@@ -161,9 +165,9 @@ named-set split is
 
 | fact                                            | value at time of writing                                                                                          | how to re-check                                                                                                                                                                                                                                     |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| parseman version jess resolves                  | **0.43.0** from the registry; root + parser-shared + all four parser package dependency/peer ranges are `^0.43.0` | `node -p "require('./node_modules/parseman/package.json').version + ' ' + require('fs').realpathSync('./node_modules/parseman')"` and `rg -n '"parseman"' package.json packages/parser-shared/package.json packages/syntax/*/*-parser/package.json` |
-| parseman published `latest`                     | **0.43.0**                                                                                                        | `npm view parseman version`                                                                                                                                                                                                                         |
-| parseman `main`                                 | **0.43.0** at publication time                                                                                    | `git -C <parseman checkout> show origin/main:package.json \| grep version`                                                                                                                                                                          |
+| parseman version jess resolves                  | **0.44.0** from the registry; root + parser-shared + all four parser package dependency/peer ranges are `^0.44.0` (verified 2026-07-30 on `74b9fcb4d`) | `node -p "require('./node_modules/parseman/package.json').version + ' ' + require('fs').realpathSync('./node_modules/parseman')"` and `rg -n '"parseman"' package.json packages/parser-shared/package.json packages/syntax/*/*-parser/package.json` |
+| parseman published `latest`                     | **0.44.0** (re-check before relying on it)                                                                                                        | `npm view parseman version`                                                                                                                                                                                                                         |
+| parseman `main`                                 | **0.44.0** at publication time                                                                                    | `git -C <parseman checkout> show origin/main:package.json \| grep version`                                                                                                                                                                          |
 | `hostMode` first ships in                       | **0.37.0**                                                                                                        | parseman `CHANGELOG.md`, the 0.37.0 section                                                                                                                                                                                                         |
 | PRs #75, #76, #77, #80, #81, #82, #83, #84, #85 | **merged**                                                                                                        | `gh pr list --repo matthew-dean/parseman --state all`                                                                                                                                                                                               |
 | **PR #85 — `hostMode` reaching the macro**      | **merged**, on `dev` in jess via `6908e7b4f`                                                                      | `gh pr view 85 --repo matthew-dean/parseman`                                                                                                                                                                                                        |
@@ -198,7 +202,7 @@ when(...), otherwise(...))`: consume one broad token, route by the returned
 | `packages/parser-shared` (renamed from `internal-css-recognition`) | `packages/parser-shared/`, rename commit `a74131e8f`                                                                   |
 | `packages/syntax/` packages-by-syntax regroup                      | `packages/syntax/<lang>/<pkg>/`, move commit `e96d1035d`                                                               |
 | `packages/editor/` and `packages/docs/` sibling groups             | `packages/editor/<pkg>/`, `packages/docs/<pkg>/` — same commit `e96d1035d`                                             |
-| parseman 0.43.0 floor                                              | root, parser-shared, and all four parser package manifests use `^0.43.0`; parser package peer ranges require `^0.43.0` |
+| parseman floor                                                     | `^0.44.0` at `74b9fcb4d` (`f292fdd8f`) in root, parser-shared, and all four parser manifests incl. peer ranges — regenerate with `grep -rn '"parseman"' --include=package.json . \| grep -v node_modules` |
 | parseman/oracle byte-identity gate (Stage 2 of the rewrite)        | `packages/syntax/less/less-parser/test/oracle-byte-identity.mjs` + committed baseline at commit `a2911a491`            |
 | The un-awaited-assertion helper                                    | `test/expect-sync.ts` — repo root, **not** under `packages/` (§0.6.1)                                                  |
 | The `as any` detector                                              | `pnpm lint:absolute` (§0.6)                                                                                            |

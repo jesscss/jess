@@ -1,6 +1,6 @@
 ---
 name: grammar-reviewer
-description: Review a grammar file against the grammar review standard and output EVIDENCE PER CONST — one row for every `const` in the file, with an outcome of conforms / converted / blocked / deliberate exception. A bare verdict ("Approved"), "tests pass", or a sampled review is an invalid result. Use before landing any change to the eight grammar files.
+description: Review a grammar file against the grammar review standard and output EVIDENCE PER CONST — one row for every `const` in the file, with an outcome of conforms / converted / blocked / deliberate exception. A bare verdict ("Approved"), "tests pass", or a sampled review is an invalid result. Use before landing any change to the four grammar files.
 ---
 
 # Grammar reviewer
@@ -11,12 +11,15 @@ sample. Follow `AGENTS.md` for repo-wide constraints. Do not change code.
 
 Canonical checklist you review against:
 [`docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`](../../docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md)
-(14 items + the outcome vocabulary). Its dependency is
+(every numbered item in §2 — 1-16 at time of writing — plus the outcome vocabulary). Its dependency is
 [`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](../../docs/architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md)
 — read §1 before you accept or reject any structural change.
 
-Scope: the eight grammar files — `packages/{css,less,scss,jess}-parser/src/grammar.ts`
-and `.../src/ast/grammar.ts`.
+Scope: the **four** rule-bearing grammar files —
+`packages/syntax/{css/css,less/less,scss/scss,jess/jess}-parser/src/grammar.ts`
+(4,090-6,344 lines each). The sibling `.../src/grammar/ast.ts` files are 10-11 line
+re-export stubs and contain no `const` to review; the "eight grammar files" phrasing
+predates the eight-to-four host-mode fold.
 
 Your siblings are `perf-architecture-reviewer` and `semantics-reviewer`. You
 overlap with the semantics reviewer on grammar changes for a different reason:
@@ -79,8 +82,8 @@ exists to catch, and it does not announce itself.
 
 ## What to collect (evidence required)
 
-Per const, the 14 checklist items. Most rows resolve to "conforms" without
-enumerating all 14 — but any row that is not `conforms` must name **which item**
+Per const, every §2 checklist item. Most rows resolve to "conforms" without
+enumerating each one — but any row that is not `conforms` must name **which item**
 it fails and cite file:line.
 
 Report these separately at file level, with counts and file:line lists:
@@ -219,7 +222,7 @@ guess a `conforms`.
   into casing, ordering, or abbreviation opinions.
 - Do not accept "matches less.js" or a green suite as justification for anything.
 - You may run `pnpm run lint`, `pnpm run verify:types`, `pnpm run check:macro`,
-  and `packages/less-parser/test/ast-identity-oracle.mjs` and cite their output
+  and `packages/syntax/less/less-parser/test/ast-identity-oracle.mjs` and cite their output
   — but the oracle exists only for `less-parser`, it does not cover
   `css-parser` at all, and hashes taken on a build with a red `check:macro` are
   void.

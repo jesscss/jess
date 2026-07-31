@@ -20,14 +20,37 @@ changes.
 
 Common dependency shape:
 
-- leaves: `@jesscss/awaitable-pipe`, `@jesscss/shared`,
-  `@jesscss/patch-css`, `@jesscss/style-resolver`, `@jesscss/config`
-- core/parsers: `@jesscss/core`, `@jesscss/css-parser`,
-  `@jesscss/less-parser`, `@jesscss/scss-parser`, `@jesscss/fns`
-- app/plugins: `@jesscss/parser`, `@jesscss/jess-plugin`,
-  `@jesscss/plugin-node-modules`, `@jesscss/jess-plugin-less`,
-  `@jesscss/jess-plugin-scss`, `@jesscss/jess-plugin-less-compat`,
-  `@jesscss/language-service`, `@jesscss/jess`
+Regenerate this list rather than trusting it — it carried five wrong names until the
+2026-07-30 docs audit, including `@jesscss/parser`, which does not exist:
+
+```bash
+node -e "const fs=require('fs'),path=require('path');
+(function w(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){if(e.name==='node_modules')continue;
+const p=path.join(d,e.name); if(e.isDirectory()){
+if(fs.existsSync(path.join(p,'package.json'))){const j=JSON.parse(fs.readFileSync(path.join(p,'package.json')));
+console.log(j.name,'|',p,j.private?'(private)':'');} w(p);}}})('packages');" | sort
+```
+
+As of `74b9fcb4d` (31 workspace packages, 9 `private`, 22 publishable):
+
+- leaves: `@jesscss/awaitable-pipe`, `@jesscss/shared` (`packages/_shared`),
+  `@jesscss/patch-css`, `@jesscss/style-resolver`, **`styles-config`**
+  (`packages/config` — unscoped, deliberately)
+- core/parsers: `@jesscss/core`, `@jesscss/parser-shared`, and the four parsers
+  now under `packages/syntax/<lang>/`: `@jesscss/css-parser`,
+  `@jesscss/less-parser`, `@jesscss/scss-parser`, `@jesscss/jess-parser`;
+  plus `@jesscss/fns`
+- compiler/diagnostics: `@jesscss/compiler`, `@jesscss/compiler-preset`,
+  `@jesscss/diagnostics-core`, `@jesscss/lint`
+- app/plugins: `@jesscss/jess-plugin`, `@jesscss/plugin-node-modules`,
+  `@jesscss/plugin-js`, **`@jesscss/plugin-less`**, **`@jesscss/plugin-scss`**,
+  **`@jesscss/plugin-less-compat`**, **`@jesscss/plugin-jess`**,
+  `@jesscss/language-service` (`packages/editor/language-service`), `jess`
+
+*(Corrected 2026-07-30: the old list said `@jesscss/config`, `@jesscss/jess-plugin-less`,
+`@jesscss/jess-plugin-scss`, `@jesscss/jess-plugin-less-compat` — none of which is the
+declared `name` — and `@jesscss/parser`, which exists nowhere in the workspace. It also
+omitted `@jesscss/plugin-jess`, `@jesscss/jess-parser`, and the compiler/diagnostics tier.)*
 
 Practical example: after changing `packages/core`, build core before running
 Jess package fixture tests that import `@jesscss/core` from built output.
@@ -81,7 +104,8 @@ count, and do not inherit one from a doc without re-deriving it.
 This block used to list `verify:types` and `verify:baseline` as pre-existing
 reds. Both are fixed:
 
-- `pnpm run verify:types` — **GREEN, 22/22 configs.** The `less-parser`
+- `pnpm run verify:types` — **GREEN. The gate prints its own config count (25 at
+  `74b9fcb4d`); do not carry a number here — `22/22` was stale.** The `less-parser`
   `CssAstSyntaxUnicodeRange` diagnostic (introduced `c1782031e`) is gone.
 - `pnpm run verify:baseline` — no longer stops at `verify:node-copy-frontier`.
   The `unit.clone()` in `jess-plugin-js/src/runtime-worker.ts` belongs to the
@@ -156,9 +180,10 @@ No active debugging focus is recorded here.
 
 **Before starting anything, read the WORK IN FLIGHT table at the top of
 `docs/architecture/core/HANDOFF.md`.** Several lanes have a live agent or branch
-on them as of 2026-07-24 (parseman `0.34.0` adoption, gate classification, the
-fns per-dialect registry, and the numeric-precision landing). Coordinate rather
-than duplicating one.
+on them as of 2026-07-24 (gate classification, the fns per-dialect registry, and the
+numeric-precision landing). Coordinate rather than duplicating one. *(The "parseman
+`0.34.0` adoption" lane listed here is closed and was three floors stale: the repo is on
+`^0.44.0` as of `f292fdd8f`.)*
 
 For current implementation work, use the active handoffs listed at the top of
 this file. When a debugging session starts, fill in only these fields and delete

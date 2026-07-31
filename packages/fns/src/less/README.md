@@ -41,8 +41,17 @@ That registers it. There is no third place to update.
 ## Handled by core, not by a fn module
 
 `if`/`boolean`/`not`/`and`/`or`, `isdefined`, `isruleset` and `each` are
-special-formed during serialization (`core/src/ast/serialize.ts:3207`, `:3215`,
-`LOGICAL_FNS` at `:3326`). Fn modules for them were dead in the compiled path and
+special-formed during serialization, in `core/src/ast/serialize.ts` — the
+`isdefined` / `isruleset` branches live in `evalIntrospection`, and the
+`if`/`boolean`/`not`/`and`/`or` set is the `LOGICAL_FNS` constant. Locate them
+with:
+
+```bash
+grep -n "function evalIntrospection\|^const LOGICAL_FNS" packages/core/src/ast/serialize.ts
+```
+
+(Do not cite line numbers here — `serialize.ts` is ~13.6k lines and hard-coded
+line refs in this file have rotted twice.) Fn modules for them were dead in the compiled path and
 have been deleted — do not re-add one.
 
 Validate output against real Less 4.x / v5-alpha semantics; if an expected

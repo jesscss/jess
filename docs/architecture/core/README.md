@@ -9,9 +9,14 @@ claims belong in [`HANDOFF.md`](./HANDOFF.md),
 [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md), and
 [`../../state/PROJECT_STATE.md`](../../state/PROJECT_STATE.md).
 
-## The 2026-07-30 cleanup (`991b315e0`)
+## The 2026-07-30 cleanup (`0dbfc89f0`)
 
-62 files → **47**. Sixteen were moved, none deleted.
+63 files → **47**. Sixteen were moved, none deleted.
+
+*(Corrected 2026-07-30: this said `991b315e0`, which is a merge commit whose tree still
+held 62 files; the cleanup is `0dbfc89f0` "docs: archive self-declared-historical core
+docs". Its parent tree has 63 `.md` files, and 63 − 16 = 47, which is why the old
+"62 → 47, sixteen moved" arithmetic did not close.)*
 
 The signal that decided it was **each document's own header**. Fifteen files
 opened with some form of *"Historical design evidence — not an execution plan"*,
@@ -32,8 +37,14 @@ self-declared historical. Read the header, not the backlinks.
 
 Two files were reprieved on evidence:
 
-- **`TYPECHECK-BURNDOWN.md`** — live. `--noCheck` is still in **15** package.json
-  files, so the burn-down it defines is genuinely open.
+- **`TYPECHECK-BURNDOWN.md`** — still live, but barely. **Re-measured 2026-07-30 on
+  `74b9fcb4d`: `--noCheck` survives in exactly TWO package.json files** —
+  `packages/syntax/scss/scss-parser/package.json:59` and
+  `packages/syntax/jess/jess-parser/package.json:59`
+  (`grep -rn noCheck --include=package.json packages/`). The **15** recorded here was
+  7.5x too high and was the sole stated evidence for reprieving this doc from the
+  archive. The burn-down is ~87% done; whether two holdouts still warrant a live
+  document is an owner call.
 - **`AST-QUALITY-AUDIT.md`** — live. Present-tense audit criteria for
   `packages/core/src/ast`, explicitly scoped to exclude the deleted host/bridge
   paths.
@@ -56,7 +67,7 @@ Two files were reprieved on evidence:
 | [`EXTEND-SEMANTICS.md`](./EXTEND-SEMANTICS.md) · [`EXTEND-PORT-DESIGN.md`](./EXTEND-PORT-DESIGN.md) · [`EXTEND-REDESIGN.md`](./EXTEND-REDESIGN.md) · [`EXTEND-4TH-OPTION-SYNTHESIS.md`](./EXTEND-4TH-OPTION-SYNTHESIS.md) · [`R1-EXTEND-HANDOFF.md`](./R1-EXTEND-HANDOFF.md) · [`_R1_IMPL_BRIEF.md`](./_R1_IMPL_BRIEF.md) | The extend cluster. |
 | [`BENCHMARK-EXTEND-EVIDENCE.md`](./BENCHMARK-EXTEND-EVIDENCE.md) | Per-case adjudication of the benchmark extend shapes against real Less 4.6.7. Completed evidence, still valid. |
 | [`PSEUDO-ARGUMENT-CONSOLIDATION-DESIGN.md`](./PSEUDO-ARGUMENT-CONSOLIDATION-DESIGN.md) · [`PSEUDO-ARGUMENT-ALWAYS-STRUCTURE-DESIGN.md`](./PSEUDO-ARGUMENT-ALWAYS-STRUCTURE-DESIGN.md) · [`P0-PSEUDO-STRUCTURING-DESIGN.md`](./P0-PSEUDO-STRUCTURING-DESIGN.md) | Pseudo-argument structuring. |
-| [`TYPECHECK-BURNDOWN.md`](./TYPECHECK-BURNDOWN.md) | The `--noCheck` burn-down. Open: 15 package.json files still pass it. |
+| [`TYPECHECK-BURNDOWN.md`](./TYPECHECK-BURNDOWN.md) | The `--noCheck` burn-down. Open: **2** package.json files at `74b9fcb4d` (scss-parser, jess-parser); the `15` here was 7.5x too high. |
 | [`STATIC-IMPORT-PREP-DESIGN.md`](./STATIC-IMPORT-PREP-DESIGN.md) · [`ASSIGNABLE-CONTROL-NODES-PLAN.md`](./ASSIGNABLE-CONTROL-NODES-PLAN.md) · [`NODE-SLIM-FOLLOWONS.md`](./NODE-SLIM-FOLLOWONS.md) · [`STRINGS-OVER-NODES.md`](./STRINGS-OVER-NODES.md) | Node/import shape work. |
 | [`NON-ENGINE-BLOAT-INVENTORY.md`](./NON-ENGINE-BLOAT-INVENTORY.md) · [`WRONG-TESTDATA-AUDIT.md`](./WRONG-TESTDATA-AUDIT.md) · [`DOC-COVERAGE.md`](./DOC-COVERAGE.md) | Inventories and coverage matrices. |
 | [`LESS-4X-FEATURE-TRIAGE.md`](./LESS-4X-FEATURE-TRIAGE.md) | Feature-by-feature triage of Less 4.8.1 against jess, every row measured against `lessc` 4.8.1 run directly. States what it did not examine. Carries its measurement SHAs — re-measure before relying on a row. |
@@ -70,7 +81,7 @@ Also live and self-explanatory: [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATC
 
 > `PARSER-RECOGNIZER-GAP.md` carries **stale measurements** — its phase profile
 > was taken 2026-07-15 against parseman 0.32-era code, and the floor is now
-> `^0.43.0`. The Less-4.x-versus-Parseman gap it frames is still the live
+> `^0.44.0` (`f292fdd8f`). The Less-4.x-versus-Parseman gap it frames is still the live
 > question; its numbers are not current. Re-measure before citing.
 
 ## Consolidation note — five docs, one rule
@@ -91,5 +102,10 @@ of one rule for six rules.
 
 - [`archive/`](./archive/) — 36 files. Superseded history, including the 15
   moved on 2026-07-30. Read for archaeology; never cite as current.
-- [`spec/`](./spec/) — R-numbered specs (`R4`, `R5`, `R6`, `R7`,
-  `TREE2-EMITTING-GRAMMAR-PLAN`).
+- [`spec/`](./spec/) — R-numbered specs: `R2-value-eval`, `R3-live-bindings`,
+  `R4-interpolation-detached-merge-namespaces`, `R5-sourcemaps-trivia`,
+  `R6-plugins-compat-modules`, `R7-dialects-endgame`, `TREE2-EMITTING-GRAMMAR-PLAN`.
+  *(R2 and R3 were missing from this list until the 2026-07-30 docs audit.)*
+- [`proposed-alpha-corrections/`](./proposed-alpha-corrections/) — a `README.md` plus
+  proposed `.less`/`.css` fixture corrections awaiting owner adjudication. Missing from
+  this section until the 2026-07-30 docs audit.

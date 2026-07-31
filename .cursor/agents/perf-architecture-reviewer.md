@@ -45,7 +45,7 @@ found.
 
 ## What to collect (evidence required)
 
-For each of the 9 invariants (numbered as in the canonical doc), cite concrete
+For each numbered invariant in the canonical doc (1-11 at time of writing), cite concrete
 evidence:
 
 1. **Monomorphic node shapes** — for each hot call site the diff touches: does it

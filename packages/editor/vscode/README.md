@@ -1,4 +1,4 @@
-# `@jesscss/extension`
+# `@jesscss/vscode-extension`
 
 VS Code / Cursor extension that launches the Jess language server from `@jesscss/language-service`.
 

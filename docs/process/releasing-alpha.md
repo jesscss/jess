@@ -16,15 +16,24 @@ dispatch normally and malformed arities use the existing evaluator
 
 ## Initial publish scope
 
-The alpha stream publishes only allowlisted packages in `scripts/release/alpha-allowlist.json`:
+The alpha stream publishes only allowlisted packages in `scripts/release/alpha-allowlist.json`.
+**That file is the contract; this list is a copy and has drifted from it before.** Regenerate
+with `node -e "console.log(require('./scripts/release/alpha-allowlist.json').join('\n'))"`
+rather than trusting the transcription below.
+
+As of 2026-07-30 (`74b9fcb4d`) the allowlist holds:
 
 - `@jesscss/awaitable-pipe`
+- `@jesscss/compiler`
+- `@jesscss/compiler-preset`
 - `@jesscss/core`
 - `@jesscss/css-parser`
+- `@jesscss/diagnostics-core`
 - `@jesscss/jess-parser`
 - `@jesscss/less-parser`
 - `@jesscss/scss-parser`
 - `@jesscss/fns`
+- `@jesscss/lint`
 - `styles-config`
 - `@jesscss/style-resolver`
 - `@jesscss/plugin-jess`
@@ -33,9 +42,13 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 - `@jesscss/plugin-node-modules`
 - `@jesscss/plugin-js`
 - `@jesscss/plugin-less-compat`
-- `@jesscss/compiler`
 - `@jesscss/patch-css`
 - `jess`
+
+*(Corrected 2026-07-30: this list omitted `@jesscss/compiler-preset`,
+`@jesscss/diagnostics-core`, and `@jesscss/lint` — three packages that ship to npm and were
+undocumented here. The step below that requires updating this list when the allowlist changes
+was skipped when those three were added.)*
 
 > **Dialect closure.** `jess` statically registers the direct AST parser plugins
 > for `.jess`, `.less`, and `.scss`, so their parser/plugin dependency closures

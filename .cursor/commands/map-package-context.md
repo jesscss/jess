@@ -5,7 +5,7 @@ Use this when you want an evidence-based map of a single package (entrypoints, s
 ## Workflow
 
 1. **Pick the target package directory**
-   - Example: `packages/core`, `packages/jess`, `packages/less-parser`
+   - Example: `packages/core`, `packages/jess`, `packages/syntax/less/less-parser`
 
 2. **Run a cartography pass**
    - Use the `codebase-mapper` agent to produce:
