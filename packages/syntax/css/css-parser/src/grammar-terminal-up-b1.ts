@@ -103,6 +103,19 @@ function nodesOnly(children: readonly unknown[]): ValueNode[] {
     typeof child === 'object' && child !== null && 'type' in child);
 }
 
+/**
+ * Strips the fixed delimiters a routed dispatch opener carried into its branch.
+ *
+ * `routed()` hands the branch the WHOLE consumed opener, so a query feature
+ * arrives as `'(hover)'` or `'(min-width:'` rather than as its name. This is
+ * not re-deriving structure from bytes: the leading `(` and the single trailing
+ * delimiter are exactly the characters this grammar's own `queryFeatureOpen`
+ * put there, and nothing is being re-recognised. Candidate B found the leak.
+ */
+function insideParen(routedText: string): string {
+  return routedText.replace(/^\(/, '').replace(/[)::<>=]+$/, '').trim();
+}
+
 function selectorText(child: unknown): string {
   if (typeof child === 'object' && child !== null && 'text' in child && typeof child.text === 'string') {
     return child.text;
@@ -155,6 +168,9 @@ const identOrFunctionOpen = token(noTrivia(sequence(
  */
 const valuePunctuation = keywords(['/', '+', '-', '*', '=', '<', '>', '~', '|', '^', '$']);
 
+/** Query-position punctuation table: value punctuation minus the comparison operators. */
+const queryPunctuationTable = keywords(['/', '+', '-', '*', '~', '|', '^', '$']);
+
 /** Descendant/child/sibling combinators, one closed table. */
 const combinator = keywords(['||', '>', '+', '~', '|']);
 
@@ -192,7 +208,8 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
     noTrivia(sequence(g.NumberToken, optional(g.DimensionUnit))),
     children => dimension(
       Number.parseFloat(text(children[0])),
-      children[1] == null ? '' : text(children[1])
+      children[1] == null ? '' : text(children[1]),
+      children[1] == null ? text(children[0]) : `${text(children[0])}${text(children[1])}`
     )
   );
 
@@ -214,8 +231,8 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const Url = choice(UrlQuoted, UrlUnquoted);
 
   /** A parenthesised component group: `(` value `)` kept as a value, not structure. */
-  const Group = node(
-    'Group',
+  const ParenValue = node(
+    'ParenValue',
     sequence(literal('('), optional(g.ValueList), literal(')')),
     children => block(children[1] as ValueSlot, 'paren')
   );
@@ -231,7 +248,13 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   );
 
   /** Value-position punctuation kept verbatim, e.g. the `/` in `font`. */
-  const Punctuation = node('Punctuation', valuePunctuation, children => any(text(children[0])));
+  const PunctuationValue = node('PunctuationValue', valuePunctuation, children => any(text(children[0])));
+
+  /**
+   * Query-position punctuation: the same table MINUS `<`, `=`, `>`, which are
+   * the range comparison operators there. See `QueryComponent`.
+   */
+  const QueryPunctuation = node('PunctuationValue', queryPunctuationTable, children => any(text(children[0])));
 
   /**
    * The single component-value dispatch. One opener is consumed, and its value
@@ -254,7 +277,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
    * re-read as signed numbers. css-syntax-3 §4.3.9 makes `<urange>` its own
    * token precisely so its `+`/`-` are never operators. Candidate B found it.
    */
-  const Component = choice(UnicodeRange, IdentOrFunction, g.Quoted, Color, Numeric, Group, Punctuation);
+  const Component = choice(g.UnicodeRange, g.IdentOrFunction, g.Quoted, g.Color, g.Numeric, g.ParenValue, g.PunctuationValue);
 
   /** A space-separated run of components. */
   const ValueSequence = node(
@@ -383,25 +406,29 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
    */
   const queryFeatureOpen = token(sequence(
     literal('('),
-    g.ValueSequence,
+    g.QueryValueSequence,
     choice(literal(')'), literal(':'), g.QueryComparisonOperator)
   ));
 
   /** `(hover)` — a feature name and nothing else. */
-  const QueryBareFeature = node('QueryBareFeature', routed(), children => keyword(text(children[0])));
+  const QueryBareFeature = node(
+    'QueryBareFeature',
+    routed(),
+    children => keyword(insideParen(text(children[0])))
+  );
 
   /** `(min-width: 30em)` — the classic feature/value pair. */
   const QueryColonFeature = node(
     'QueryColonFeature',
     sequence(routed(), g.ValueList, literal(')')),
-    children => block(list([keyword(text(children[0])), children[1] as ValueNode], ':'), 'paren')
+    children => block(spaced([keyword(insideParen(text(children[0]))), children[1] as ValueNode]), 'paren')
   );
 
   /** `(width >= 600px)` — one comparison. */
   const QueryComparisonFeature = node(
     'QueryComparisonFeature',
-    sequence(routed(), g.ValueSequence, literal(')')),
-    children => block(spaced([keyword(text(children[0])), children[1] as ValueNode]), 'paren')
+    sequence(routed(), g.QueryValueSequence, literal(')')),
+    children => block(spaced([keyword(insideParen(text(children[0]))), children[1] as ValueNode]), 'paren')
   );
 
   /**
@@ -412,8 +439,8 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
    */
   const QueryRangeFeature = node(
     'QueryRangeFeature',
-    sequence(routed(), g.ValueSequence, g.QueryComparisonOperator, g.ValueSequence, literal(')')),
-    children => block(spaced(children.slice(0, 4) as ValueNode[]), 'paren')
+    sequence(routed(), g.QueryValueSequence, g.QueryComparisonOperator, g.QueryValueSequence, literal(')')),
+    children => block(spaced([keyword(insideParen(text(children[0]))), ...nodesOnly(children.slice(1))]), 'paren')
   );
 
   /** A `(…)` query feature in any of its four spellings. */
@@ -425,20 +452,56 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   );
 
   /**
-   * `<general-enclosed>` — a parenthesised form the grammar does not recognise
-   * but must still accept and preserve, per mediaqueries-5 §3.
+   * `<general-enclosed>` — a form the grammar does not recognise but must
+   * accept and preserve. mediaqueries-5 §3 and css-conditional-3 §4 define it
+   * as `<function-token> <any-value> )` **OR** `( <any-value> )`, so the
+   * function spelling is not optional: without it `@supports selector(a > b)`
+   * and `@media foo(bar)` are rejected rather than preserved. Candidate C
+   * found the missing arm.
    */
   const GeneralEnclosed = node(
     'GeneralEnclosed',
-    sequence(literal('('), g.ValueList, literal(')')),
-    children => block(children[1] as ValueSlot, 'paren')
+    choice(
+      sequence(identOrFunctionOpen, optional(g.ValueList), literal(')')),
+      sequence(literal('('), optional(g.ValueList), literal(')'))
+    ),
+    children => block(nodesOnly(children)[0] as ValueSlot, 'paren')
+  );
+
+  /**
+   * A component run in QUERY position, where `<`, `=`, and `>` are the range
+   * COMPARISON OPERATORS and must not be swallowed as punctuation components.
+   *
+   * `valuePunctuation` and `QueryComparisonOperator` both contain `<`, `=`,
+   * `>`. Because `ValueSequence` is a greedy `oneOrMore(Component)` and
+   * `Component` admits `Punctuation`, the ordinary value run ate the operator
+   * before `queryFeatureOpen`'s delimiter `choice` could ever see it — so
+   * `(width >= 600px)` ended on `)` and routed to `QueryBareFeature`, making
+   * `QueryComparisonFeature` and `QueryRangeFeature` UNREACHABLE while every
+   * fixture still "passed". Candidate B found it.
+   *
+   * This is the third instance of one root cause, after `,` and `!`: **a token
+   * that is structurally significant in some position must not sit in a
+   * terminal table that a greedy repetition can reach in that position.**
+   */
+  const QueryComponent = choice(g.UnicodeRange, g.IdentOrFunction, g.Quoted, g.Color, g.Numeric, g.ParenValue, g.QueryPunctuation);
+
+  /** The query-position component run. Scoped so operators stay operators. */
+  const QueryValueSequence = node(
+    'ValueSequence',
+    oneOrMore(g.QueryComponent),
+    children => spaced(nodesOnly(children))
   );
 
   /** A bare identifier in query position — a media type such as `screen`. */
-  const QueryIdent = node('QueryIdent', g.Identifier, children => keyword(text(children[0])));
+  const QueryNonOnlyKeyword = node(
+    'QueryNonOnlyKeyword',
+    g.Identifier,
+    children => keyword(text(children[0]))
+  );
 
   /** One queryable term: a feature, an unknown parenthesised form, or a keyword. */
-  const QueryTerm = choice(QueryFeature, g.GeneralEnclosed, g.QueryIdent);
+  const QueryTerm = choice(QueryFeature, g.GeneralEnclosed, g.QueryNonOnlyKeyword);
 
   /** `not (…)`, or a run of terms joined by `and` / `or`. */
   const QueryClause = node(
@@ -455,10 +518,10 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
    * number of `and`-joined features. `only` exists solely to hide the query
    * from CSS2 parsers and carries no meaning, but it is still syntax.
    */
-  const MediaQuery = node(
-    'MediaQuery',
+  const QueryOnlyClause = node(
+    'QueryOnlyClause',
     choice(
-      sequence(optional(choice(g.QueryOnly, g.QueryNot)), g.QueryIdent, many(sequence(g.QueryAndOr, g.QueryTerm))),
+      sequence(optional(choice(g.QueryOnly, g.QueryNot)), g.QueryNonOnlyKeyword, many(sequence(g.QueryAndOr, g.QueryTerm))),
       g.QueryClause
     ),
     children => spaced(children as ValueNode[])
@@ -467,7 +530,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   /** A comma-separated media-query list. The list owns its commas. */
   const QueryPrelude = node(
     'QueryPrelude',
-    oneOrMoreSep(MediaQuery, literal(',')),
+    oneOrMoreSep(g.QueryOnlyClause, literal(',')),
     children => list(nodesOnly(children), ',')
   );
 
@@ -498,16 +561,22 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   );
 
   /** `@media` / `@container` with a query-list prelude and a block. */
+  /**
+   * ONE block node for all three conditional group at-rules.
+   *
+   * The preludes genuinely differ — `@supports` admits a supports-condition
+   * and never a media-query list — and they stay separate productions. The
+   * BLOCK does not: the incumbent routes `@media`, `@container` and `@supports`
+   * through a single `ConditionalBlock` that `publicGrammarType` retypes to
+   * `QueryAtRuleBlock` and `TYPE_NAMES` then maps to `QueryAtRule`. A separate
+   * `SupportsBlock` production emits a separate node however it is named, so
+   * splitting it moved the tree even with a rename declared. Candidate C found
+   * this; keeping the preludes split and merging the block is their wording and
+   * it is right.
+   */
   const ConditionalBlock = node(
     'ConditionalBlock',
-    sequence(routed(), g.QueryPrelude, g.Block),
-    children => atRuleBlock(text(children[0]).slice(1), children[1] as ValueSlot, children[2] as Statement[])
-  );
-
-  /** `@supports` with a supports-condition prelude and a block. */
-  const SupportsBlock = node(
-    'SupportsBlock',
-    sequence(routed(), g.SupportsCondition, g.Block),
+    sequence(routed(), choice(g.SupportsCondition, g.QueryPrelude), g.Block),
     children => atRuleBlock(text(children[0]).slice(1), children[1] as ValueSlot, children[2] as Statement[])
   );
 
@@ -521,10 +590,24 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
    */
   const AtRule = dispatch(
     g.AtRuleKeyword,
-    when('@media', g.ConditionalBlock, { caseInsensitive: true }),
-    when('@container', g.ConditionalBlock, { caseInsensitive: true }),
-    when('@supports', SupportsBlock, { caseInsensitive: true }),
     otherwise(choice(AtRuleBlock, AtRuleStatement))
+  );
+
+  /**
+   * The conditional group at-rules, routed on their OWN keyword leaf.
+   *
+   * `AtRuleKeyword` cannot carry these. parser-shared/recognition.ts:217
+   * defines it with `(?!(?:import|media|container|supports)…)` — it is
+   * explicitly the router for what is left AFTER `@import` and the conditional
+   * groups are handled, so `when('@media', …)` on it was a case that could
+   * never fire. `@media` fell through to no route at all, `many(Item)` matched
+   * zero items, and the whole at-rule vanished from the tree while the parse
+   * still reported ok.
+   */
+  const ConditionalAtRule = dispatch(
+    g.ConditionalAtKeyword,
+
+    otherwise(g.ConditionalBlock)
   );
 
   /** A qualified rule: a selector list and a body. */
@@ -535,7 +618,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   );
 
   /** Either statement form. `@` against a selector start is a disjoint first set. */
-  const Item = choice(AtRule, Ruleset);
+  const Item = choice(ConditionalAtRule, AtRule, Ruleset);
 
   /** The document. */
   const Stylesheet = node('Stylesheet', many(g.Item), children => stylesheet(children as Statement[]));
@@ -554,11 +637,21 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
     CompoundSelector,
     ValueSequence,
     GeneralEnclosed,
-    QueryIdent,
+    QueryNonOnlyKeyword,
+    QueryPunctuation,
+    PunctuationValue,
+    UnicodeRange,
+    IdentOrFunction,
+    Color,
+    Numeric,
+    ParenValue,
+    QueryComponent,
+    QueryValueSequence,
     ConditionalBlock,
     QueryTerm,
     QueryClause,
     QueryPrelude,
+    QueryOnlyClause,
     SupportsCondition,
     SupportsInParens
   };

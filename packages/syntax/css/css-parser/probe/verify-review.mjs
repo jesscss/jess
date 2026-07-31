@@ -19,10 +19,11 @@ const grammar = Object.values(mod)[0];
 
 for (const [label, source] of CASES) {
   const result = run(grammar.Stylesheet, source);
+  const consumed = result.span?.end ?? 0;
   console.log(`\n=== ${label}`);
   console.log(`    ${source}`);
-  if (!result.ok) {
-    console.log(`    REJECTED at ${result.span?.start}`);
+  if (!result.ok || consumed < source.length) {
+    console.log(`    REJECTED consumed ${consumed}/${source.length}`);
     continue;
   }
   console.log(`    ${JSON.stringify(result.value).replace(/"_[se]":\{[^}]*\},?/g, '').slice(0, 460)}`);
