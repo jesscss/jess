@@ -254,7 +254,19 @@ None of the six below is in the CHANGELOG's WIP list, none is in
 `known-failures.json`, and none is caught by any fixture. Two of them (§4.5,
 §4.6) produce a hard parse error or silently wrong colour on ordinary Less.
 
-### 4.1 BUG — a variable declaration cannot be the last statement in a block without a trailing `;`
+### 4.1 FIXED — a variable declaration cannot be the last statement in a block without a trailing `;`
+
+Fixed in `a63d855f8`. `VarDeclaration` now ends on the same `declarationEnd`
+terminator the property-declaration item already used, so all three value-map
+forms below parse and render identically to `lessc` 4.8.1. Scope was fixed by
+measuring 4.8.1 rather than by matching it wholesale: `@o: 3` at
+end-of-stylesheet stays a parse error because 4.8.1 rejects it too, and the two
+shapes 4.8.1 only "accepts" by mis-parsing (`.a { @o: 3 color: red; }`, and
+`.a { @o: 3 b { x: 1 } }`, which emits a ruleset selected by `@o : 3 b`) stay
+rejected under the settled unterminated-declaration ruling. Regression coverage
+is in `packages/syntax/less/less-parser/test/public-parse.test.ts`; the
+byte-identity oracle was unmoved on both surfaces including the error channel.
+The original report follows.
 
 ```less
 .a { @o: 3 }        →  jess: parse/invalid-value "Invalid value." (1:5)   less4: (empty, valid)
