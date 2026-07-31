@@ -391,6 +391,90 @@ lands on a hot path.
 **The unexamined lead: `_ctx.` field access is 3× more common than
 `charCodeAt` and nobody has looked at it.**
 
+### 2.4j Tokenisation is 99.98% context-free — and it is ALL tail
+
+Measured on a real parse of `benchmark.css` (123,029 B) and `benchmark.less`
+(106,802 B), every grammar terminal boundary compared against a context-free
+css-syntax-3 §4 scanner. **PATH: CST** (leaf-complete; an AST reducer discards
+leaves and would flatter the result).
+
+| | core tokens | terminals | EXACT | MERGE | **SPLIT** | usable |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| benchmark.css | 49,530 | 30,388 | 85.50% | 14.48% | **6 (0.02%)** | **99.980%** |
+| benchmark.less | 41,286 | 28,068 | 89.74% | 10.19% | **20 (0.07%)** | **99.929%** |
+
+**MERGE** = the leaf is a run of ≥2 core tokens with both ends aligned — a blind
+scan is still usable, just finer-grained. **SPLIT** = a leaf boundary falls
+*strictly inside* a core token, the only genuine mode dependence.
+
+**There is no run-length distribution — there are FOUR runs per file.**
+
+- css: `30,748 / 4,208 / 4,168 / 10,406` tokens
+- less: `28,777 / 4,692 / 6,481 / 1,336` tokens
+
+**100% of both token streams lies inside a context-free run of ≥1,336 tokens.**
+There is no short-run population at all.
+
+The genuinely mode-dependent sites are exactly the ones the design predicted:
+css is 3× `:nth-child(-n+2)`; less is `px-1px` (ident-vs-subtraction, math mode)
+and `@{base-url}` interpolation inside strings.
+
+**The design rule this yields — it applies to the single-threaded token cursor
+(G14) regardless of threading:**
+
+> **A blind scanner must emit at the FINEST context-free grain and let the
+> consumer merge. Merging is reconstruction; splitting is a guess.** Every
+> greedy composite the scanner commits to is a place the parser must re-scan.
+
+That includes **not** attaching a leading `+`/`-` to a number — that single
+decision turns Less's math-mode ambiguity from a SPLIT into a MERGE.
+
+**Two instrument corrections that produced this rule.** A first cut emitted
+css-syntax-3's *composite* tokens (`10px` as one DIMENSION, `@white` as one
+AT_KEYWORD) and read the grammar's finer split as mode dependence — 86.5% /
+80.1%. A second kept strings whole where the grammar decomposes
+quote/body/quote — 98.6% / 98.4%. **Neither was mode dependence; both were the
+scanner being too greedy.**
+
+### 2.4k Parallel tokenisation: killed by Amdahl, not by any assumed mechanism
+
+| | min | p50 | p90 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| `Atomics.wait`/`notify` round trip (n=20,000) | 2,375 | **4,791** | 7,125 | 10,875 ns |
+| spin (busy poll) round trip | 41 | **125** | 209 | 292 ns |
+
+Token production: **9.3 ns/token** css, 11.9 ns/token less. Demand-driven
+break-even run-ahead: **515 tokens** (`Atomics.wait`), 13.4 (spin, burns a core).
+
+**Run-ahead is NOT the binding constraint** — 515 required against a *shortest*
+observed run of 1,336. Neither is message passing: SAB write cost is 0.991× a
+plain ArrayBuffer, and a **pooled warm whole-file handover measured 0.431 ms
+against a 0.498 ms same-thread reference — free.**
+
+**What kills it is Amdahl.** Interleaved, 31 rounds, one process, AST path:
+**the entire context-free scan is 8.0% of benchmark.css parse time (0.463 of
+5.766 ms) and 2.8% of benchmark.less (0.493 of 17.683 ms).** That is the ceiling
+before sync and before consumption cost.
+
+**And input size.** Cold worker startup is 11–13 ms against a 5.766 ms whole
+parse — ~2× the parse before doing any work; break-even ~2.9 MB in a single
+parse. Pooled break-even is ~1,380 B (p50) merely to reach *zero gain*.
+**Against 2,443 real `.less`/`.scss` files in this repo: median 58 B, p75 77 B,
+p90 104 B, p99 253 B. Over 99% of jess's actual inputs sit below the pooled
+break-even.**
+
+**`SharedArrayBuffer` deployment constraint:** Node v24 ungated, `Atomics.wait`
+permitted on the main thread. **Browsers expose it only under cross-origin
+isolation** (`COOP: same-origin` + `COEP: require-corp`) **and `Atomics.wait`
+throws on the main thread** — a playground would need the headers *and* the
+parser moved off the main thread. Bundler dev servers do not set COOP/COEP by
+default (flagged, not tested).
+
+**Recorded as evidence about the size of the prize, not about threading** (G17).
+The answer changes only if a token cursor moves substantially more char-level
+work into the scanner than a css-syntax-3 tokenizer does — measurable only once
+the cursor exists.
+
 ### 2.5 Measurement discipline
 
 - **Noise floor on this machine: 5.144 vs 5.200 ms min-of-mins at a 6/15 win
