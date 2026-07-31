@@ -108,6 +108,7 @@ type ScssRules = {
   IfBodyRule: Combinator<Ruleset>;
   IfBodyConditionalBlock: Combinator<AtRuleBlock>;
   IfRule: Combinator<If>;
+  QueryValue: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
   QueryInParens: Combinator<ValueNode>;
@@ -5099,6 +5100,7 @@ const scssFactory = (g: ScssInputRules) => {
     IfBodyRule,
     IfBodyConditionalBlock,
     IfRule,
+    QueryValue,
     QueryFeature,
     QueryFunction,
     QueryInParens,
