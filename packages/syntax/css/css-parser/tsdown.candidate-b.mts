@@ -47,4 +47,11 @@ export default defineConfig([
     fixedExtension: false, hash: false, clean: false,
     deps: { onlyBundle: false }, plugins: [parseman.rolldown()]
   }
+,
+  {
+    entry: { 'probe-trivia-scope': './src/probe-trivia-scope.ts' },
+    format: ['esm'], dts: false, outDir: './probe', platform: 'node',
+    fixedExtension: false, hash: false, clean: false,
+    deps: { onlyBundle: false }, plugins: [parseman.rolldown()]
+  }
 ]);
