@@ -305,12 +305,17 @@ export interface PreparedImports {
  * CSS-terminal imports are facts of the typed import node, not resolver work.
  * Every other eligible target goes through Context's existing plugin dispatcher;
  * Context itself keeps external identifiers terminal unless a plugin claims them.
+ *
+ * `(optional)` is deliberately NOT a terminal fact: it selects what happens when
+ * the load FAILS, so an optional import must still be attempted and — per Less
+ * 4.x — resolve normally when the file exists. A CSS-terminal import is never
+ * loaded at all, so `(optional)` on one is moot: `@import (css, optional) "nope"`
+ * and `@import (optional) "nope.css"` both stay CSS imports.
  */
 function canLoadImport(node: ImportAtRule, specifier: string, options: string | null): boolean {
   const optionWords = options === null ? [] : options.toLowerCase().split(',').map(word => word.trim());
   const explicitSourceImport = node.name.toLowerCase() === '@-import';
   return !optionWords.includes('inline')
-    && !optionWords.includes('optional')
     && !optionWords.includes('css')
     && node.alias === null
     && !(specifier.toLowerCase().endsWith('.css') && !optionWords.includes('less') && !explicitSourceImport);
@@ -383,8 +388,22 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     try {
       loaded = await context.loadImport(specifier, importHasOption(options, 'less') || explicitSourceImport ? { type: 'less' } : {});
     } catch (error) {
+      /*
+       * `(optional)` suppresses ONLY the missing-file diagnostic, and the import
+       * then contributes nothing at all — no rules and no CSS terminal. A file
+       * that exists but fails to parse still raises: `optional` means "may be
+       * absent", not "may be broken".
+       */
+      if (importHasOption(options, 'optional') && error instanceof JessError && error.code === 'import/not-found') {
+        return { document: null };
+      }
       importError(request, error);
     }
+
+    /*
+     * An unclaimed external specifier (`//host/x.css`, `https:…`) is a CSS
+     * terminal, not a failed load, so `(optional)` stays moot on it.
+     */
     if (loaded === undefined) {
       return undefined;
     }
@@ -10794,11 +10813,12 @@ function rootCssImportKey(node: ImportAtRule): string | null {
     || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(specifier);
 
   /*
-   * The current typed Less route already treats a media/layer tail as CSS
-   * terminal output. Preserve that established boundary while the later media
-   * wrapping import slice is still unimplemented.
+   * A media/layer tail is NOT what makes an import CSS terminal — only the
+   * target is. `@import "a.less" screen` loads `a.less` and wraps its rules in
+   * `@media screen`, which `emitImportAtRule` does from the typed tail; hoisting
+   * it here would emit the un-loaded import instead.
    */
-  if (!cssTarget && node.tail === null) {
+  if (!cssTarget) {
     return null;
   }
   if (node.tail !== null && node.tail.type !== 'Any') {
@@ -11127,16 +11147,21 @@ function importSpecifier(node: ImportAtRule, frame: Frame, e: Emit): string {
   }
 }
 
-/** Write the preserved CSS import syntax when no canonical document is loaded. */
+/**
+ * Write the preserved CSS import syntax when no canonical document is loaded.
+ *
+ * The parenthesized option clause is import machinery, not syntax: `(css)`,
+ * `(optional)` and friends select load behavior and have no CSS meaning, so no
+ * browser understands `@import (css) "a";`. `canLoadImport` and
+ * `importThroughContext` are the only readers of `node.options`; it never
+ * reaches output, matching Less 4.x.
+ */
 function emitCssImportAtRule(node: ImportAtRule, frame: Frame, e: Emit): void {
   const start = e.off;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
   }
   put(e, node.name);
-  if (node.options !== null) {
-    put(e, ` (${evalBytesSync(node.options, frame, e)})`);
-  }
   put(e, ' ');
   put(e, evalBytesSync(node.target, frame, e));
   if (node.alias !== null) {
