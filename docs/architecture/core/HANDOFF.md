@@ -42,6 +42,97 @@
 These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
 Delete a row the moment it lands or is abandoned.
 
+### 2026-07-31 — I failed today. This is how, and this is the fix.
+
+**The failure: AST v2 was a compression of the representation, and it dropped
+node MEANING. That was never licensed.** v2's mandate was one unified plain-data
+model, lazy materialization, `Word` eliminated. It was not a mandate to lose
+semantic distinctions the legacy engine could make. Where meaning was lost, that
+is a migration regression — including everywhere someone later wrote a comment
+presenting the loss as a design decision.
+
+**Two distinct defects. They are not the same failure and must not be conflated
+(I did, initially):**
+
+**(a) A builtin was declared impossible in a comment — no arrays involved.**
+`isurl(@addr)` where `@addr` is `url(https://example.com/)` receives a single
+value. There is no group, no array, nothing to guard against.
+
+**(b) SEPARATELY, a bare JS array can reach the value layer.**
+`isValueGroupArray` appears **95 times across 25 files** in `packages/fns/src` — 8 of them inside `types.ts`,
+  the predicates file itself — and throughout the test suite, which therefore
+  pins the workaround as correct in roughly 40 places. The guard exists because
+  a function argument may be a raw array rather than an AST node. A raw array
+  has no `.type`, so every function must defend against it before it can ask
+  anything.
+  Evidence for (b): `SpacedValue` and `List` are both in the
+  `ValueNode` union at `packages/core/src/ast/nodes.ts:454-458`. `1px 2px` has a
+  node representation. The function layer is handed a raw array instead of it.
+  Evidence for (a): `packages/fns/src/less/types.ts:5` states `isurl()` "deliberately has no AST-v2
+  value-domain export" because "`Url` is syntax, not a materialized Value tag"
+  and reimplementing it "would require sniffing output bytes." But `Url` is a
+  first-class node — `nodes.ts:89`, in the `ValueNode` union at `:454`,
+  constructor at `:1073`. Its five siblings are each one line
+  (`value.type === 'Color'`, `'Dimension'`, `'Quoted'`, `'Keyword'`). The
+  comment reads as a ruling and is an unexamined assumption.
+
+**The rule this violates, stated so it is not re-derived: the Less and Sass
+builtins are the REQUIREMENTS SPEC for the value model, not consumers of
+whatever it happens to expose.** If a function cannot be written, the node shape
+is wrong and the function is merely what noticed.
+
+**The acceptance test — a builtin is ONE EXPRESSION over `node.type` and the
+node's own fields:**
+
+```js
+body: node => makeBool(node.type === 'Url')
+```
+
+Anything more is the model failing, not the function:
+
+| symptom in a function body | what it actually means |
+| --- | --- |
+| a guard (`!isValueGroupArray(v) && …`) | a non-node reached the value layer |
+| unwrapping a group or wrapper | the dispatcher should have done it |
+| re-parsing, or reading `src` text | the node should carry the fact |
+| byte-sniffing | the meaning was dropped upstream |
+
+`type-of` is the sharpest single test of the model: Sass requires it to return
+exactly one of `number | string | color | list | map | bool | null | function |
+arglist`. Any of those the nodes cannot distinguish is a model gap, and every
+predicate sharing that distinction inherits it.
+
+**The fix, in order:**
+
+1. **Stop producing the bare array.** Find where it is constructed and make it a
+   `List`/`SpacedValue` node. Trace it with file:line; do not glob and predict.
+2. Then `isValueGroupArray` has **no callers**. Delete all 95 occurrences —
+   they become dead by construction, not by sweeping. Update the ~40 test sites;
+   they move because the fix landed, not because something regressed.
+3. **Sites that genuinely operate on multiple values** — `min-max`, `extract`,
+   `svg-gradient`, `format` — are not guards. They read a node and walk its
+   children afterwards. That is a real change to those functions and is where
+   the risk sits. Handle them explicitly rather than blanket-deleting.
+4. Write the four-line `isurl` and delete the comment at `types.ts:5`. Verify end
+   to end on `@addr: url(https://example.com/); @cond1: boolean(isurl(@addr));`.
+5. Audit every type-discriminating and structure-reading builtin against the
+   one-expression bar. Each failure names a specific missing distinction,
+   missing field, or lost node identity. **That list is the model's defect
+   inventory.**
+
+**Do not describe the broken shape in the type system.** Giving `params` a
+vocabulary for "this argument might be a bare array" legitimises the defect. The
+argument is a node, or the AST is wrong.
+
+**A related discipline this failure shares with the rest of the day:** a comment
+explaining why something is impossible is a **bug report**, not documentation.
+Five separate premises recorded in this file were disproved by measurement on
+2026-07-31 — the fns port backlog (absent, not unconverted), the extend bitset
+(already built, rejecting 96.8% with zero wasted walks), an artifact-duplication
+estimate (off ~4x), the `buildContribs` mutation blocker (stamps are pure
+functions of the instruction), and the byte-identity oracle's coverage of
+`css-parser` (zero). Verify a row before building on it.
+
 ### 2026-07-30 handoff — grammar statement routing and ordinary-path backtracking
 
 The active grammar goal remains: CSS is the structural base and Less, SCSS, and
