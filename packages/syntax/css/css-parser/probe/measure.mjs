@@ -24,7 +24,20 @@ function exportsOf(source) {
     : match[1].split(',').map(s => s.trim().split(/\s+as\s+/).pop()).filter(Boolean).join(' ');
 }
 
+/**
+ * A macro-fallback build is NOT AST-equivalent and is SMALLER, so a bytes
+ * report that cannot see one rewards it. Twice this session forward-reference
+ * ordering produced a misleading number here: a fake 37x "win" from the chain
+ * probes, and a depth-rule sweep that hard-failed `composeLeaf()`. A failure
+ * mode that recurs deserves a check, not a memory — so every row is marked and
+ * the process exits non-zero if any measured artifact fell back.
+ */
+function fellBack(source) {
+  return /\bfrom\s*["']parseman["']/.test(source);
+}
+
 console.log(`artifact dir: ${dir}\n`);
+let fallbacks = 0;
 
 for (const name of readdirSync(dir).sort()) {
   if (!name.endsWith('.js')) {

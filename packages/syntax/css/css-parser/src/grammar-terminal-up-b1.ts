@@ -514,20 +514,27 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
 
   /** Adjacent simple selectors with no combinator between them. */
   /*
-   * `noTrivia` must scope BETWEEN members, never around the whole repetition.
-   * Wrapping the `oneOrMore` blocked the leading trivia too, so after a
-   * relative combinator the space in `:has(> .b)` was never skipped and the
-   * whole selector failed — a regression Candidate B predicted from the shape
-   * before it existed. Adjacency is a property of the JOIN between simple
-   * selectors (`.a.b` is one compound, `.a .b` is two), not of the compound's
-   * left edge.
+   * `noTrivia(oneOrMore(...))` around the WHOLE body is the only spelling with
+   * correct compound semantics, measured by Candidate B across seven variants:
+   * `a.b` is one compound of two items, while `a .b` stops after one and
+   * leaves the space for the enclosing `ComplexSelector` to read as a
+   * descendant combinator. Every other spelling — `many(noTrivia(X))`,
+   * `sequence(X, noTrivia(many(X)))`, `token(noTrivia(...))` — merges `a .b`
+   * and DESTROYS the combinator; `token` additionally collapses `a.b.c` to one
+   * child and loses the compound's internal structure.
+   *
+   * The left edge is not this production's business. After a combinator the
+   * gap is insignificant and must be skipped; between two compounds the gap IS
+   * the descendant combinator and must not be. That distinction is positional
+   * and belongs to the CALLER — the preceding element in the sequence consumes
+   * the trivia, which is why `:has(> .b)` works here but the same production
+   * run standalone as an entry rule fails on leading space. Three of my
+   * diagnoses died on trying to express it with trivia scoping; it is not
+   * expressible that way.
    */
   const CompoundSelector = node(
     'CompoundSelector',
-    sequence(
-      choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector),
-      noTrivia(many(choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector)))
-    ),
+    noTrivia(oneOrMore(choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector))),
     children => selectorTermOf(children as never)
   );
 
