@@ -757,9 +757,21 @@ interpreter.
 The byte-identity oracle currently exists as `pnpm run
 oracle:less:byte-identity`, backed by the Less parser corpus under
 `packages/syntax/less/less-parser/test/`. There is no equivalent script for the
-other three dialects. A `css-parser` change is partly covered by the Less oracle
-because Less composes on the CSS base; say plainly which surfaces you actually
-hashed rather than implying full coverage.
+other three dialects.
+
+A `css-parser` change is **not** covered by the Less oracle. Less composes
+`cssSyntax` from `@jesscss/parser-shared/recognition`, not from
+`css-parser/src/grammar.ts`, and carries its own `Value`
+(`less-parser/src/grammar.ts:3110`) with its own `IdentifierOrFunction`. A
+change to CSS's value grammar therefore leaves every Less aggregate byte-
+identical while proving nothing. An unchanged oracle on a `css-parser` change
+is a null result, not a pass — say so rather than quoting it as evidence.
+
+Until a `css-parser` byte-identity script exists, an ad-hoc `digestInto`
+differential is the substitute, and it needs a **negative control**: mutate the
+production under review in a way that must change output, and show the digest
+moves. A corpus that never exercises the production returns "identical" for a
+correct change and a broken one alike. Report the control alongside the result.
 
 ### The drift gate — the CSS implementation
 
