@@ -91,7 +91,15 @@ export function parseWith(grammar: LessAstGrammar, input: string): Stylesheet {
     throw new LessParseError(result.span.start, result.expected, lineOptions(input, result.span));
   }
   if (result.unconsumedFrom !== null) {
-    if (result.unconsumedFrom > result.span.start) {
+    /*
+     * "after a complete stylesheet" has to be earned by actually having parsed
+     * something. Keyed on parsed rules, not on the consumed span: leading
+     * trivia advances the span end without producing a single rule, so a span
+     * test calls `"\n  !broken"` a complete stylesheet, which is simply false.
+     * Rules are also independent of whether a dialect's root span covers
+     * trailing trivia, which is a convention the four parsers do not share.
+     */
+    if (isStylesheet(result.value) && result.value.rules.length > 0) {
       throw new LessParseError(result.unconsumedFrom, [], {
         message: 'Unexpected Less input after a complete stylesheet.',
         reason:

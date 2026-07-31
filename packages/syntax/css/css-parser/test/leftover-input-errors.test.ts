@@ -60,6 +60,21 @@ describe('CSS leftover-input errors', () => {
     expect(failure.fix).toBeTruthy();
   });
 
+  it('does not claim a complete stylesheet when nothing was parsed', () => {
+    /*
+     * Leading trivia advances the consumed span without producing a single
+     * rule. Claiming "after a complete stylesheet" here would be false — there
+     * is no stylesheet — so this is the plain unrecognised-syntax case.
+     */
+    const source = '\n  !broken';
+    const failure = failureOf(source);
+
+    expect(failure.offset).toBe(3);
+    expect(failure.line).toBe(2);
+    expect(failure.column).toBe(3);
+    expect(failure.message).toBe('Unexpected CSS syntax.');
+  });
+
   it('does not collapse the two branches into one message', () => {
     const afterComplete = failureOf(AFTER_COMPLETE);
     const malformed = failureOf(MALFORMED);

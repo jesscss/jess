@@ -94,13 +94,19 @@ export function parseWith(grammar: CssAstGrammar, input: string): Stylesheet {
 
   /*
    * `unconsumedFrom` separates two problems that read very differently to an
-   * author, and the message must say which. Past the consumed span the parser
-   * already had a whole stylesheet and the trailing text is surplus; at the
-   * start of it the very first token was never recognised. Do not collapse
-   * these into one message.
+   * author, and the message must say which: the parser already had a whole
+   * stylesheet and the trailing text is surplus, versus the very first token
+   * was never recognised. Do not collapse these into one message.
+   *
+   * "after a complete stylesheet" has to be earned by actually having parsed
+   * something. Keyed on parsed rules, not on the consumed span: leading trivia
+   * advances the span end without producing a single rule, so a span test
+   * calls `"\n  !broken"` a complete stylesheet, which is simply false. Rules
+   * are also independent of whether a dialect's root span covers trailing
+   * trivia, which is a convention the four parsers do not share.
    */
   if (result.unconsumedFrom !== null) {
-    if (result.unconsumedFrom > result.span.start) {
+    if (isStylesheet(result.value) && result.value.rules.length > 0) {
       throw new CssParseError(result.unconsumedFrom, [], {
         message: 'Unexpected CSS input after a complete stylesheet.',
         reason:
