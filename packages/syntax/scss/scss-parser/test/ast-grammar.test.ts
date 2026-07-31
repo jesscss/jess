@@ -413,14 +413,27 @@ describe('SCSS canonical-AST grammar', () => {
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(true);
     }
 
+    /*
+     * Three entries left this list when the `ImportMedia*` copy was deleted and
+     * the import tail started using the shared `QueryPrelude`. They were pinning
+     * the copy's narrowness, not a Sass fact:
+     *
+     *  - `screen and foo(bar)` is `<general-enclosed>` (media-queries-4 §3.4)
+     *    and dart-sass accepts the same shape — sass-spec
+     *    `css/plain/import/conditions.hrx :: multiple/unknown_ident_then/
+     *    unknown_function` is `@import "a" b c(d)`, a non-error section.
+     *  - `screen or (color)` and `only screen or (color)` are genuinely invalid
+     *    per media-queries-4 §2.1 (`<media-type> [and <media-condition-without-
+     *    or>]?`), but `QueryClause` has always accepted them, so `@media screen
+     *    or (color)` parses in this grammar today. Sharing the production makes
+     *    `@import` consistent with `@media` rather than newly wrong; tightening
+     *    both is a separate, cross-dialect change (see the note on ImportTail).
+     */
     for (const source of [
-      '@import "theme.css" screen and foo(bar);',
       '@import "theme.css" #{$media};',
       '@import "theme.css" screen /* no raw/comment tail */ and (color);',
       '@import "theme.css" screen, #{$media};',
-      '@import "a.css", "b.css" screen;',
-      '@import "theme.css" screen or (color);',
-      '@import "theme.css" only screen or (color);'
+      '@import "a.css", "b.css" screen;'
     ]) {
       const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);

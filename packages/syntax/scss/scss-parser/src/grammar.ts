@@ -89,11 +89,6 @@ type ScssRules = {
   ImportDeclaration: Combinator<ValueNode>;
   ImportSupports: Combinator<FunctionCall>;
   ImportQualifier: Combinator<ValueNode>;
-  ImportMediaFeature: Combinator<ValueNode>;
-  ImportMediaInParens: Combinator<ValueNode>;
-  ImportMediaCondition: Combinator<ValueNode>;
-  ImportMediaClause: Combinator<ValueNode>;
-  ImportMediaPrelude: Combinator<ValueNode>;
   ImportTail: Combinator<ValueNode>;
   MixinParameter: Combinator<Param>;
   MixinParameters: Combinator<Param[]>;
@@ -2404,11 +2399,23 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * CSS import tails share the media-query *shape* used by conditional groups,
-   * but not their recovery branch: a query function there lowers an arbitrary
-   * payload to `Any`, which is not an AST import fact. This local family
-   * admits only the static values and boolean/query forms the canonical nodes
-   * already represent.
+   * css-cascade-5 §3.1 spells the import tail as
+   * `[ layer | layer(<layer-name>) ]? [ supports(...) ]? <media-query-list>?`,
+   * and `<media-query-list>` is the SAME media-queries-4 production a
+   * conditional group rule uses. It is one grammar, so it is one family here:
+   * the tail's media part is `QueryPrelude`, not a second spelling of it.
+   *
+   * The seven rules this used to carry (`ImportMediaFeature` through
+   * `ImportMediaPrelude`) were a copy of `Query*` taken to omit one arm — the
+   * `QueryFunction` recovery branch, which lowers an arbitrary payload to
+   * `FunctionCall(Any)`. The copy then drifted away from the thing it was
+   * copied from in three ways nobody intended, each NARROWING `@import` below
+   * plain CSS: the feature value was `SupportsAtom` (no `<ratio>`, so
+   * `@import "a" (aspect-ratio: 16/9)` was rejected while `@media` accepted
+   * it), the value-first `<mf-range>` arm was missing (`(100px < width)`), and
+   * the comma list was hand-rolled instead of `oneOrMoreSep`. That is the
+   * standing brief's case exactly: one differing arm does not license a
+   * parallel copy of the frame around it.
    */
   const ImportQualifier = node<ValueNode>(
     'ImportQualifier',
@@ -2424,145 +2431,40 @@ const scssFactory = (g: ScssInputRules) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const ImportMediaFeature = node<ValueNode>(
-    'ImportMediaFeature',
-    choice(
-      sequence(
-        literal('('),
-        propertyIdentifier,
-        literal(')')
-      ),
-      sequence(
-        literal('('),
-        propertyIdentifier,
-        literal(':'),
-        g.SupportsAtom,
-        literal(')')
-      ),
-      sequence(
-        literal('('),
-        propertyIdentifier,
-        g.QueryComparisonOperator,
-        g.SupportsAtom,
-        literal(')')
-      )
-    ),
-    (children) => {
-      const property = keyword(requireToken(children[1]).value);
-      if (children.length === 3) {
-        return block(property);
-      }
-      return block(operation(
-        requireToken(children[2]).value,
-        property,
-        requireValue(children[3])
-      ));
-    }
-  );
-  const ImportMediaInParens = node<ValueNode>(
-    'ImportMediaInParens',
-    choice(
-      sequence(
-        literal('('),
-        g.ImportMediaCondition,
-        literal(')')
-      ),
-      g.ImportMediaFeature
-    ),
-    children => children.length === 1 ? requireValue(children[0]) : block(requireValue(children[1]))
-  );
-  const ImportMediaCondition = node<ValueNode>(
-    'ImportMediaCondition',
-    choice(
-      sequence(
-        g.QueryNot,
-        g.ImportMediaInParens
-      ),
-      sequence(
-        g.ImportMediaInParens,
-        many(sequence(
-          g.QueryAndOr,
-          g.ImportMediaInParens
-        ))
-      )
-    ),
-    (children) => {
-      const values = keywordizeValues(children);
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
-  );
-  const ImportMediaNonOnlyKeyword = node<Keyword>(
-    'ImportMediaNonOnlyKeyword',
-    sequence(
-      not(g.QueryOnly),
-      g.Keyword
-    ),
-    children => requireKeyword(children.at(-1))
-  );
 
   /*
-   * A media *type* can only continue with `and`; `or` remains available in a
-   * condition made solely from parenthesized media features below.
+   * The ONE thing the import tail does not share with a conditional group's
+   * prelude, and the only survivor of the deleted `ImportMedia*` copy.
+   *
+   * `QueryFunction` is `<general-enclosed>` — media-queries-4 §3.4, any
+   * function token plus `<any-value>` — so it matches `supports(anything)`.
+   * css-cascade-5 §3.1 puts the `supports()` slot BEFORE `<media-query-list>`
+   * positionally, which means a media-query-list in an import tail can never
+   * legally begin with `supports(`. Without this boundary a `supports()` whose
+   * contents `ImportSupports` rejects does not fail: it falls through to the
+   * general-enclosed arm and is silently recovered as `FunctionCall(Any)`.
+   * sass-spec `css/plain/import/conditions.hrx`, section
+   * `error/supports/declaration/custom_prop/empty` (`@import url("a.css")
+   * supports(--a:);`) is exactly that case, and dart-sass rejects it.
+   *
+   * It is one glued nine-character opener at one call site, not a lookahead
+   * over the tail: `noTrivia` keeps `supports (` — which no import route
+   * accepts either — out of scope, and every other general-enclosed spelling
+   * (`b()`, `b(a !&$…)`, `b(#{$a})`, all accepted by dart-sass) still reaches
+   * the shared query family. The opener text is spelled out rather than
+   * hoisted because `ImportSupports` needs the same bytes and the macro
+   * constraint (GRAMMAR-REVIEW-STANDARD §3) requires literal duplication at
+   * each call site.
    */
-  const importMediaAnd = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-  const ImportMediaOnlyClause = node<ValueNode>(
-    'ImportMediaOnlyClause',
-    sequence(
-      g.QueryOnly,
-      ImportMediaNonOnlyKeyword,
-      many(sequence(
-        importMediaAnd,
-        g.ImportMediaInParens
-      ))
-    ),
-    children => spaced(keywordizeValues(children))
-  );
-  const ImportMediaClause = node<ValueNode>(
-    'ImportMediaClause',
-    choice(
-      ImportMediaOnlyClause,
-      sequence(
-        ImportMediaNonOnlyKeyword,
-        choice(
-          sequence(
-            importMediaAnd,
-            g.ImportMediaInParens
-          ),
-          g.ImportMediaInParens
-        )
-      ),
-      g.ImportMediaCondition,
-      ImportMediaNonOnlyKeyword
-    ),
-    (children) => {
-      const values = keywordizeValues(children);
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
-  );
-  const ImportMediaPrelude = node<ValueNode>(
-    'ImportMediaPrelude',
-    sequence(
-      g.ImportMediaClause,
-      many(sequence(
-        literal(','),
-        g.ImportMediaClause
-      ))
-    ),
-    (children) => {
-      const values = children.filter(isValue);
-      return values.length === 1
-        ? values[0]!
-        : list(
-            values,
-            ','
-          );
-    }
-  );
+  const importSupportsOpen = noTrivia(sequence(
+    regex(/supports(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+    literal('(')
+  ));
   const ImportTail = node<ValueNode>(
     'ImportTail',
     choice(
-      sequence(g.ImportQualifier, optional(g.ImportMediaPrelude)),
-      g.ImportMediaPrelude
+      sequence(g.ImportQualifier, optional(g.QueryPrelude)),
+      sequence(not(importSupportsOpen), g.QueryPrelude)
     ),
     (children) => {
       const values = children.filter(isValue).flatMap(value =>
@@ -5178,11 +5080,6 @@ const scssFactory = (g: ScssInputRules) => {
     ImportDeclaration,
     ImportSupports,
     ImportQualifier,
-    ImportMediaFeature,
-    ImportMediaInParens,
-    ImportMediaCondition,
-    ImportMediaClause,
-    ImportMediaPrelude,
     ImportTail,
     MixinParameter,
     MixinParameters,
