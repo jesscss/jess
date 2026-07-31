@@ -29,10 +29,12 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, Declaration, Collection, CollectionEntry, DeclarationReference, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
+type SourceSpan = { readonly start: number; readonly end: number };
+type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
@@ -273,6 +275,49 @@ function requireFields(fields: FieldMap | undefined, name: string): readonly Fie
 
 function isToken(value: unknown): value is Token {
   return typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string';
+}
+
+function isSpannedToken(value: unknown): value is SpannedToken {
+  return typeof value === 'object'
+    && value !== null
+    && 'value' in value
+    && 'span' in value
+    && typeof value.span === 'object'
+    && value.span !== null
+    && 'start' in value.span
+    && 'end' in value.span
+    && typeof value.span.start === 'number'
+    && typeof value.span.end === 'number';
+}
+
+/*
+ * The interior of a `{ ... }` body, taken from the brace tokens' own spans.
+ *
+ * This is the same helper css and less carry, and it exists for the renderer,
+ * not for diagnostics: trivia captured INSIDE a ruleset is replayed against the
+ * owner's BODY span, so a block-bearing node with no body span silently drops
+ * every comment authored inside it. Ported verbatim rather than re-derived —
+ * the four dialects must agree on where a body starts and ends.
+ */
+function bodySpanFromRaw(rawChildren: readonly unknown[]): SourceSpan | undefined {
+  let start: number | undefined;
+  let end: number | undefined;
+  for (const child of rawChildren) {
+    if (!isSpannedToken(child)) {
+      continue;
+    }
+    if (child.value === '{' && start === undefined) {
+      start = child.span.end;
+    } else if (child.value === '}') {
+      end = child.span.start;
+    }
+  }
+  return start === undefined || end === undefined || end < start ? undefined : { start, end };
+}
+
+function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[]): T {
+  const span = bodySpanFromRaw(rawChildren);
+  return span === undefined ? node : withBodySpan(node, span);
 }
 
 function jessCombinator(value: Token): JessComplexTail['combinator'] {
@@ -4582,14 +4627,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(atBlockStatement),
       literal('}')
     ),
-    children => atRuleBlock(
+    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValueNode(children[1]),
       collectBlockStatements(
         children,
         3
       )
-    )
+    ), rawChildren)
   );
 
   /*
@@ -4637,14 +4682,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(g.PropertyDescriptor),
       literal('}')
     ),
-    children => atRuleBlock(
+    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireKeyword(children[1]),
       requireStatements(children.slice(
         3,
         -1
       ))
-    )
+    ), rawChildren)
   );
 
   /*
@@ -4675,20 +4720,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )),
       literal('}')
     ),
-    (children) => {
+    (children, _fields, _span, rawChildren) => {
       const selectors = children.filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
         .map(selector => selector);
       const bodyOpen = children.findIndex(child => isToken(child) && child.value === '{');
       if (bodyOpen < 0) {
         throw new TypeError('Jess keyframe block lost its body boundary.');
       }
-      return rule(
+      return withBlockBody(rule(
         selist(...selectors),
         requireStatements(children.slice(
           bodyOpen + 1,
           -1
         ).filter(isDeclaration))
-      );
+      ), rawChildren);
     }
   );
   const Keyframes = node<AtRuleBlock>(
@@ -4703,14 +4748,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(g.KeyframeBlock),
       literal('}')
     ),
-    children => atRuleBlock(
+    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValueNode(children[1]),
       requireStatements(children.slice(
         3,
         -1
       ))
-    )
+    ), rawChildren)
   );
 
   /*
@@ -5029,19 +5074,19 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(atBlockStatement),
       literal('}')
     ),
-    (children) => {
+    (children, _fields, _span, rawChildren) => {
       const prelude = children[1];
       if (prelude !== null && typeof prelude !== 'string') {
         throw new TypeError('Jess scope at-rule lost its grammar-owned prelude.');
       }
-      return atRuleBlock(
+      return withBlockBody(atRuleBlock(
         requireToken(children[0]).value,
         prelude === null ? null : any(prelude),
         collectBlockStatements(
           children,
           2
         )
-      );
+      ), rawChildren);
     }
   );
   const AtRuleBlock = node<AtRuleBlock>(
@@ -5052,14 +5097,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(atBlockStatement),
       literal('}')
     ),
-    children => atRuleBlock(
+    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       requireJessAtRuleHeader(children[0]).name,
       requireJessAtRuleHeader(children[0]).prelude,
       collectBlockStatements(
         children,
         2
       )
-    )
+    ), rawChildren)
   );
   const AtRuleStatement = node<AtRuleStatement>(
     'AtRuleStatement',
@@ -5262,13 +5307,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(nestedBodyStatement),
       literal('}')
     ),
-    (children) => {
+    (children, _fields, _span, rawChildren) => {
       const bodyOpen = children.findIndex(child =>
         isToken(child) && child.value === '{');
       if (bodyOpen < 0) {
         throw new TypeError('Jess grammar produced a mixin definition without a body.');
       }
-      return mixinDef(
+      return withBlockBody(mixinDef(
         requireToken(children[0]).value,
         children.find(isParamList) ?? [],
         collectBodyStatements(
@@ -5276,7 +5321,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           bodyOpen + 1
         ),
         children.find((child): child is GuardNode => typeof child === 'object' && child !== null && 'g' in child)
-      );
+      ), rawChildren);
     }
   );
 
@@ -5779,7 +5824,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )),
       literal('}')
     ),
-    (children) => {
+    (children, _fields, _span, rawChildren) => {
       requireExactToken(
         children[1],
         '{'
@@ -5789,14 +5834,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         '}'
       );
       const extensions = children.filter(isExtendInstructionArray).flat();
-      return rule(
+      return withBlockBody(rule(
         requireSelectorList(children[0]),
         collectBlockStatements(
           children,
           2
         ),
         extensions.length ? extensions : undefined
-      );
+      ), rawChildren);
     }
   );
   const Stylesheet = node<Stylesheet>(
