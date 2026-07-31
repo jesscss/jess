@@ -885,6 +885,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
     ComplexSelector,
     Component,
     Quoted,
+    Url,
     CompoundSelector,
     BasicSelector,
     AttributeSelector,
