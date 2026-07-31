@@ -45,7 +45,15 @@ describe('lossless at-rule prelude segments', () => {
   test('does not accept dialect interpolation as a static-CSS segment', () => {
     const result = parseCssCst('@{theme}', 'AtRulePreludeSegments');
 
-    expect(result.ok).toBe(true);
+    /*
+     * `ok` is false because `{theme}` is left over, which is the point of this
+     * test: the static-CSS segment rule consumes `@` and refuses the rest.
+     * `ok` means "this tree accounts for the whole input" for every start rule,
+     * not just the document one — a caller that wants prefix semantics reads
+     * `unconsumedFrom`, which is exact. This previously read `true`, which is
+     * how a truncated stylesheet could report success with an empty `errors`.
+     */
+    expect(result.ok).toBe(false);
     expect(result.unconsumedFrom).toBe(1);
     expect(segmentText(result.tree)).toEqual([['AtRulePreludeText', '@']]);
   });

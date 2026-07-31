@@ -466,8 +466,34 @@ export function parseCst(
   const tree = isCssCstChild(result.value) && result.value._tag === 'node'
     ? result.value
     : emptyStyleSheet();
+
+  /*
+   * `ok` means "this tree accounts for the whole input", not "the entry rule
+   * returned without failing". The two come apart because `Stylesheet` is a
+   * `many()`, and `many()` succeeds on zero matches: on input it cannot
+   * recognize it stops, reports the leftover in `unconsumedFrom`, and still
+   * returns a well-formed (but truncated) tree with no entry in `errors`.
+   *
+   * Reporting that as `ok: true` is how a caller ends up holding a tree for
+   * the first 54 bytes of a 1,945-byte stylesheet and no indication that an
+   * entire at-rule is missing. Every AST entry already rejects leftover input
+   * (`parse-with.ts` in all four dialects tests `unconsumedFrom !== null`), so
+   * a CST that answered `ok: true` on the same bytes made the two surfaces
+   * disagree about whether one input parsed.
+   *
+   * `unconsumedFrom` stays the precise fact and is deliberately still set — the
+   * fix narrows `ok` rather than synthesizing an entry in `errors`, because
+   * `errors` carries genuine parseman recovery records. Fabricating one would
+   * invent an `expected`/`state` no rule produced, and would double-report in
+   * consumers that already handle both fields (`diagnostics-core`'s
+   * `tolerant-cst.ts` reports `errors` and `unconsumedFrom` separately).
+   *
+   * Tolerance is still available and unchanged: a tolerant caller reads the
+   * truncated `tree` exactly as before. What it can no longer do is mistake it
+   * for a complete one.
+   */
   return {
-    ok: result.ok,
+    ok: result.ok && result.unconsumedFrom === null,
     tree,
     span: result.span,
     expected: result.expected,

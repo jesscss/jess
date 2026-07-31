@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { absolutizeCST } from 'parseman';
 import { parseCssCst, parseCssDoc } from '../src/cst.js';
+import { parse } from '../src/index.js';
 import { parseCssCst as parseCssCstWithLines } from '../src/cst/positions.js';
 import type { CssCstChild } from '../src/cst.js';
 
@@ -365,6 +366,56 @@ describe('@jesscss/css-parser/cst — parseCssDoc structural parity', () => {
       expect(cstStructKey(abs), `mismatch for: ${JSON.stringify(input)}`).toEqual(cstStructKey(oneShot.tree));
       expectNoModeLabels(oneShot.tree);
       expectNoModeLabels(abs);
+    }
+  });
+});
+
+/*
+ * `Stylesheet` is a `many()`, and `many()` succeeds on zero matches. So on
+ * input it cannot recognize, the CST entry stops, keeps the prefix it did
+ * parse, and returns a well-formed tree. Before this was gated that came back
+ * as `ok: true` with an empty `errors` — a caller could hold 54 bytes of a
+ * 1,945-byte stylesheet with nothing indicating the rest had been dropped.
+ *
+ * `ok` is what most callers branch on, so these assert BOTH `ok` and the
+ * consumption fact: `many()` succeeding means `ok` alone never proved anything.
+ */
+describe('@jesscss/css-parser/cst — leftover input is never reported as success', () => {
+  it('reports ok:false and an offset when the entry rule truncates', () => {
+    /* `{X}` puts a brace where a declaration value belongs; the rule stops. */
+    const input = 'a{color:red}b{font-family:file{X}test}c{color:blue}';
+    const result = parseCssCst(input);
+
+    expect(result.ok).toBe(false);
+    expect(result.unconsumedFrom).not.toBeNull();
+    expect(result.unconsumedFrom).toBeLessThan(input.length);
+  });
+
+  it('reports ok:true and consumes everything on well-formed input', () => {
+    const input = 'a{color:red}b{color:blue}';
+    const result = parseCssCst(input);
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.tree.span.end).toBe(input.length);
+  });
+
+  it('agrees with the AST surface about whether an input parses', () => {
+    /* The two surfaces disagreeing on identical bytes is the contract break. */
+    const inputs = [
+      'a{color:red}',
+      '@media screen{a{color:red}}',
+      '@media -sass-debug-info{filename{font-family:x}}',
+      'a{font-family:file{X}test}'
+    ];
+    for (const input of inputs) {
+      let astOk = true;
+      try {
+        parse(input);
+      } catch {
+        astOk = false;
+      }
+      expect(parseCssCst(input).ok, `surfaces disagree for: ${JSON.stringify(input)}`).toBe(astOk);
     }
   });
 });
