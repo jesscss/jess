@@ -167,6 +167,22 @@
     },
     {
       "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "9a857e0c6c27698d",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(0)",
+      "owner": "mixin-match leaf tokenizer: bounded scan of ONE parser leaf, replacing the selectorAtoms regex round-trip (P1.1)"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
+      "rule": "no-source-text-rescan",
+      "fingerprint": "7b81f8b772b71d6a",
+      "ordinal": 0,
+      "snippet": "text.charCodeAt(i)",
+      "owner": "mixin-match leaf tokenizer: bounded scan of ONE parser leaf, replacing the selectorAtoms regex round-trip (P1.1)"
+    },
+    {
+      "file": "packages/core/src/ast/serialize.ts",
       "rule": "no-node-keyed-side-map",
       "fingerprint": "b586d25b3f67085a",
       "ordinal": 0,

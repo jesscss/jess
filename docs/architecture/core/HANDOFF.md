@@ -478,16 +478,23 @@ byte-identity + minimal-diff gates let all of P1 through.
       (numbered 1-11 at `facb641dd`; this row said 9 until the 2026-07-30 docs audit).
       Design record: `docs/architecture/llm-quality-enforcement-design.md`.
 - [ ] **No serialize-then-reparse of structure** — still prose, not a lint/assertion. The one
-      known live violation is P1.1 below.
+      known live violation on the shipping `ast/` route (P1.1, `selectorAtoms`) is fixed; the
+      remaining twin is in `packages/core/src/tree/`, which the hot-path gate scopes out as
+      code slated for deletion.
 
 ### P1 — EVAL/RENDER (see [[eval-render-perf-roadmap]])
 
-- [ ] **1. `selectorAtoms` regex round-trip — STILL OPEN.** Re-verified 2026-07-30 on
-      `facb641dd`: `packages/core/src/ast/serialize.ts:1514` still serializes a *structured*
-      compound to text and regex-tokenizes it back into atoms, un-memoized, at five call sites
-      (`:1608/1620/1624/1662/1700`). `packages/core/src/tree/extend/spine-extend.ts:1330`
-      carries the legacy twin (called at `:1400/1444/1452`). Direct "parser owns structure"
-      violation; read atoms off the parsed node. Full row in OPEN DEFECTS (P1.1) below.
+- [x] **1. `selectorAtoms` regex round-trip — FIXED.** The mixin-match atom path now walks the
+      parsed branch/term/token structure (`pushBranchAtoms`) and only tokenizes strings the
+      parser produced as bytes (`pushLeafAtoms`: a call/definition name, a namespace path
+      segment, an opaque `text`, an interpolation result). A structured pseudo recurses into
+      `args` instead of going through `pseudoCanonical`. Countable effect on
+      `packages/jess/benchmark/benchmark.less`, one render: regex executions 10,984 → 1,350
+      (-87.7%), bytes fed to the regex engine 117,449 → 13,446 (-88.6%). Emitted CSS unchanged
+      across all 314 `@less/test-data` fixtures (0 diffs, identical error set).
+      `packages/core/src/tree/extend/spine-extend.ts:1330` still carries an independent legacy
+      twin; it is deliberately left alone (legacy `tree/`, slated for deletion, and explicitly
+      out of scope for the hot-path gate).
 - [x] **2. `documentHasExtend` full-tree walk — symbol is gone from `packages/core/src`**
       (verified 2026-07-24 by workspace grep). Whether a parse-time flag replaced it, or the
       detection simply moved, is *unverified*.
@@ -556,14 +563,6 @@ here from the 2026-07-24 `e34bb24b3` pass had drifted, one row pointed at a file
 since been split into another package, and one row was already fixed. Anchor a row on the
 symbol name and re-locate it with `grep`; treat the line number as a hint with a date on it.
 
-- **P1.1 — serialize-then-reparse of structure.** `packages/core/src/ast/serialize.ts`
-  `selectorAtoms` (`:1514` at `facb641dd`) serializes a structured compound to text and
-  regex-tokenizes it back, un-memoized, at five call sites (`:1608/1620/1624/1662/1700`).
-  Direct "parser owns structure" (C2) violation. The legacy twin is `selectorAtoms` in
-  `packages/core/src/tree/extend/spine-extend.ts` (`:1330`, called at `:1400/1444/1452`).
-  *(The 2026-07-24 row said "six call sites" on the ast/ side; it has been five on both the
-  `991b315e0` and `facb641dd` passes. Whether one was removed or the count was wrong is
-  unverified.)*
 - ~~**Extend bitset fast-reject never landed.**~~ **CLOSED — MEASURED AND DECLINED 2026-07-30**
   (on `ef173125a`). The row's premise was wrong in substance: no *bitset* exists, but the
   fast-reject the standing rule demands DOES, in three layers —

@@ -1505,24 +1505,78 @@ function lookupCandidates(
 }
 
 /**
- * [mixin-match] Split a selector-token string into mixin-match ATOMS (`.foo` /
+ * [mixin-match] Split ONE PARSER LEAF spelling into mixin-match ATOMS (`.foo` /
  * `#bar`), dropping combinators and the parent-ref `&` — Less resolves a mixin
  * call/definition on element VALUES only (`Selector.mixinElements`), so
  * combinator (` ` vs `>` vs compound-`.`) is irrelevant to the match and `&`
- * contributes nothing. `&.support` → [`.support`]; `.a.b` and `.a .b` both →
- * [`.a`, `.b`]. */
-function selectorAtoms(text: string): string[] {
+ * contributes nothing. `&.support` → [`.support`].
+ *
+ * [C2] The argument must be a string the PARSER produced as bytes — a mixin
+ * call/definition name, a namespace path segment, an opaque (`args: null`)
+ * pseudo/simple `text`, or an interpolation RESULT. It is NEVER a re-serialized
+ * structured node: a parsed selector reaches its atoms through
+ * `pushBranchAtoms`, which walks the terms and tokens the parser already built.
+ */
+function pushLeafAtoms(text: string, out: string[]): void {
+  /*
+   * A parsed leaf is almost always ONE whole atom — `.foo`, `#bar`, `div`,
+   * `&`, `&-foo` — so scan it and push the string itself: no regex machinery
+   * and no match array. Only a leaf carrying non-atom bytes (an attribute
+   * selector, a functional pseudo, an escape) needs the general split.
+   */
+  const len = text.length;
+  if (len === 0) {
+    return;
+  }
+  const first = text.charCodeAt(0);
+  if (first === 0x26 /* & */) {
+    /* a bare `&` contributes nothing; a fused `&-foo` needs the general split */
+    if (len > 1) {
+      pushSplitLeafAtoms(text, out);
+    }
+    return;
+  }
+  const start = first === 0x2E /* . */ || first === 0x23 /* # */ ? 1 : 0;
+  if (start === len) {
+    /* a lone `.`/`#` carries no atom bytes */
+    return;
+  }
+  for (let i = start; i < len; i++) {
+    if (!isAtomByte(text.charCodeAt(i))) {
+      pushSplitLeafAtoms(text, out);
+      return;
+    }
+  }
+  out.push(text);
+}
+
+/** `\w` plus `-`: the bytes an element-value atom is made of. */
+function isAtomByte(code: number): boolean {
+  return (code >= 0x61 && code <= 0x7A) /* a-z */
+    || (code >= 0x41 && code <= 0x5A) /* A-Z */
+    || (code >= 0x30 && code <= 0x39) /* 0-9 */
+    || code === 0x5F /* _ */
+    || code === 0x2D; /* - */
+}
+
+/** The general split, for a leaf that is not a single atom. */
+function pushSplitLeafAtoms(text: string, out: string[]): void {
   const m = text.match(/[#.][\w-]+|&[\w-]*|[\w-]+/gu);
   if (!m) {
-    return [];
+    return;
   }
-  const out: string[] = [];
   for (const a of m) {
     if (a === '&') {
       continue;
     }
     out.push(a.charAt(0) === '&' ? a.slice(1) : a);
   }
+}
+
+/** [mixin-match] `pushLeafAtoms` as a fresh array, for a standalone leaf name. */
+function leafAtoms(text: string): string[] {
+  const out: string[] = [];
+  pushLeafAtoms(text, out);
   return out;
 }
 
@@ -1600,13 +1654,60 @@ function termIsBareAmp(term: SelectorTerm): boolean {
   return only.type === 'SimpleSelector' && only.interp === null && only.text === '&';
 }
 
+/**
+ * [mixin-match] [C2] The atoms of ONE parsed token, read off the STRUCTURE the
+ * parser built — never off a canonical join. A structured pseudo contributes its
+ * bare name (`:is` → `is`) then the atoms of each argument branch, which is
+ * exactly what the inline `:is(.a, .b)` spelling used to yield; an opaque token
+ * contributes its retained leaf `text`. An interp-only token (`text: null`)
+ * contributes nothing, matching `simpleTokenText`'s `''`.
+ */
+function pushTokenAtoms(sim: SimpleToken, out: string[]): void {
+  if (sim.type === 'PseudoSelector' && sim.args !== null) {
+    pushLeafAtoms(sim.name, out);
+    for (const branch of sim.args.selectors) {
+      pushBranchAtoms(branch, out);
+    }
+    return;
+  }
+  if (sim.text !== null) {
+    pushLeafAtoms(sim.text, out);
+  }
+}
+
+/** [mixin-match] Walk a parsed branch term-by-term, token-by-token. Combinators
+ * are skipped: they can contribute no atom. */
+function pushBranchAtoms(c: SelectorBranch, out: string[]): void {
+  for (const term of selectorBranchTerms(c)) {
+    for (const sim of termTokens(term)) {
+      pushTokenAtoms(sim, out);
+    }
+  }
+}
+
 /** [mixin-match] The element-value atom list of a selector branch, used to match
  * a namespaced/compound mixin call. */
 function selectorBranchAtoms(c: SelectorBranch): string[] {
   const out: string[] = [];
+  pushBranchAtoms(c, out);
+  return out;
+}
+
+/**
+ * [mixin-match] [C2] The atom list of an INTERPOLATED branch. Resolution turns a
+ * token's `@{…}` template into bytes, so the resolved LEAF is tokenized — but the
+ * branch/term/token structure still comes from the parser, so no joined selector
+ * is ever rebuilt and re-split.
+ */
+function resolvedBranchAtoms(c: SelectorBranch, frame: Frame | null, e: EvalCtx): string[] {
+  const out: string[] = [];
   for (const term of selectorBranchTerms(c)) {
-    for (const a of selectorAtoms(selectorTermCanonical(term))) {
-      out.push(a);
+    for (const sim of termTokens(term)) {
+      if (sim.type !== 'PseudoSelector' && sim.interp !== null) {
+        pushLeafAtoms(resolveSimpleTextSync(sim, frame, e), out);
+        continue;
+      }
+      pushTokenAtoms(sim, out);
     }
   }
   return out;
@@ -1617,13 +1718,9 @@ function selectorBranchAtoms(c: SelectorBranch): string[] {
 function callAtoms(call: MixinCall): string[] {
   const out: string[] = [];
   for (const p of call.path) {
-    for (const a of selectorAtoms(p.selector)) {
-      out.push(a);
-    }
+    pushLeafAtoms(p.selector, out);
   }
-  for (const a of selectorAtoms(call.name)) {
-    out.push(a);
-  }
+  pushLeafAtoms(call.name, out);
   return out;
 }
 
@@ -1659,7 +1756,7 @@ function findPathInScope(
   const st = scope.statements;
   const visit = (s: Statement, placement?: Frame): void => {
     if (s.type === 'MixinDefinition') {
-      const nEl = selectorAtoms(s.name);
+      const nEl = leafAtoms(s.name);
       if (nEl.length === 0 || !atomsArePrefix(nEl, remaining)) {
         return;
       }
@@ -1697,7 +1794,7 @@ function findPathInScope(
          * explicit mixin activation which supplied its parameters.
          */
         const selectorFrame = placement?.parent ?? scope;
-        const el = selectorBranchHasInterp(c) ? selectorAtoms(resolveSelectorBranchSync(c, selectorFrame, e)) : selectorBranchAtoms(c);
+        const el = selectorBranchHasInterp(c) ? resolvedBranchAtoms(c, selectorFrame, e) : selectorBranchAtoms(c);
         if (el.length === 0 || !atomsArePrefix(el, remaining)) {
           continue;
         }
