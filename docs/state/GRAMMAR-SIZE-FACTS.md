@@ -59,6 +59,26 @@ an independent audit found 4 rules / 8 references.
    probe tuned on css detected 21 and 20 composite consts in scss and jess
    against 300+ actual. A count far below the file's `const` count is a broken
    run, not a clean grammar.
+7. **Match `node<T>(...)` as well as `node(...)`. This is not an edge case —
+   scss and jess use the generic form EXCLUSIVELY.** Verified by direct count
+   on `dev`:
+
+   | grammar | `node(` | `node<T>(` |
+   | --- | ---: | ---: |
+   | css | 141 | **0** |
+   | less | 262 | **0** |
+   | scss | **0** | 158 |
+   | jess | **0** | 172 |
+
+   A probe demanding `node(` finds **literally nothing** in scss and jess and
+   reports a clean zero. This under-counts, so it fails the usual smell test of
+   "errors inflate flatteringly" — it looks like good news. Fixing it moved
+   **scss H2 from 0 → 15/32 and jess H2 from 0 → 28/51: the two largest
+   double-emission counts in the repo were hiding behind a clean zero.**
+
+   **Sanity check that catches it: a grammar cannot export more rules than it
+   declares.** scss reported 38 composites against 143 map keys — impossible on
+   its face. Assert this in any audit script.
 
 A script that has not been shown to agree with an independently written one is
 not evidence. The tell that caught one contaminated run: a row claiming 8
@@ -365,6 +385,23 @@ existing collapses, which are part of the target and must be reproduced.
 | "Fewest combinators" is a byte strategy | False. The 13.69×-smaller grammar has *more* named rules. |
 | Parameterless-const dedup is a major lever | 4.2%, terminals only. |
 | Composites referenced 2+ times get shared by the compiler | Falsified. |
+
+---
+
+## 4a. Tooling traps that make a green run meaningless
+
+- **`.gitignore` line 60 is a bare `lib`, which matches that directory name at
+  ANY depth.** Verified: `git check-ignore -v tools/grammar-tournament/lib/refshape.mjs`
+  → `.gitignore:60:lib`. Lines 61–62 are `!scripts/task-runtime/lib/`, so
+  someone hit this before and carved an exception rather than fixing the
+  pattern. **A tool committed with a `lib/` subdirectory silently ships without
+  it**, and self-checks pass for the author because their working tree has the
+  files — the same class as "build succeeded but the artifact references an
+  undefined identifier." **Rename the directory rather than adding a third
+  negation.**
+- **Verify a committed tool from a clean clone or via `git show`, never from
+  the working tree.** `git ls-tree` the commit and confirm every `import`
+  resolves inside it.
 
 ---
 
