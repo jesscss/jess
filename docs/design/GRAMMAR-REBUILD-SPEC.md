@@ -90,14 +90,17 @@ macro-compiled `dispatch(combinator, when(...), otherwise(...))` routing shape,
 case-insensitive `when(...)`, `makeWhen(...)`, matcher cases, and `routed()`,
 and 0.40.0 adds `node(..., { project: index })` for simple semantic projection
 without hiding CST ownership. Current package-local resolution checks report
-`0.43.0` from `/Users/matthew/git/oss/jess/node_modules/.pnpm/parseman@0.43.0/node_modules/parseman`.
-Macro
-probing has one important authoring boundary, and it is **not** about where the
-alias is declared. Measured against parseman `0.46.0`
+`0.46.0` from `node_modules/.pnpm/parseman@0.46.0/node_modules/parseman`
+(the repo pins `^0.46.0` since `ff685793a`).
+
+Macro probing has one important authoring boundary, and it is **not** about where
+the alias is declared. Two earlier statements of it here were wrong: the first
+claimed module-scope word-factory aliases do not lower, the second claimed being
+*inside* a `rules(...)` factory was what made an alias lower. Neither is the
+constraint, and the wrong wording cost at least two authors a working
+`dispatch(...)` they did not need to cut. Measured against parseman `0.46.0`
 (`lane/macro-lowering-defects`), module scope and inside a `rules(...)` factory
-behave identically in every case below; the earlier note claiming module-scope
-word-factory aliases do not lower was wrong, and cost at least two authors a
-working `dispatch(...)` they did not need to cut.
+behave identically in every case below.
 
 What the macro can lower is decided by **what the callee is**, not by its scope:
 
@@ -116,6 +119,18 @@ plain `const` re-binding, so both of those fall back to the interpreter with
 `rules(...) factory isn't statically evaluable`. Reach for `makeWord(...)` /
 `makeWhen(...)` — they exist precisely to be the lowerable form of an alias — and
 keep anything else on direct `word(...)` / `keywords(...)` / `when(...)`.
+
+The worked cases behind that table: `when(ciCase('url('), routed(...))` fails
+static evaluation with *"factory isn't statically evaluable"* — `ciCase` is a
+user-defined function — while `when('url(', g.Url, { caseInsensitive: true })`
+builds. **It is the callee, not the opener shape and not the declaration site,
+that decides.** `makeWhen({ caseInsensitive: true })` and
+`makeWord(chars, { caseInsensitive: true })` lower in all four grammars, whether
+declared at module scope or inside the factory.
+
+See `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md` for the
+measured combinator contract; the correction was first recorded as provisional
+at `docs/state/GRAMMAR-SIZE-FACTS.md:778-786`.
 
 **The physical four-grammar collapse is complete.** CSS, Less, SCSS, and Jess
 now ship AST and CST from one host-mode grammar source per dialect:

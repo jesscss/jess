@@ -1,13 +1,35 @@
 # Parseman combinator cheat sheet
 
-Cut against **`parseman@0.45.0`**, the version this repo depends on
-(`node_modules/.pnpm/parseman@0.45.0/node_modules/parseman`). Every spread/arity
-contract below was established from that package's `dist/index.cjs` — by
-enumerating the nine call sites that push into the CST child buffer, and by
-running each combinator and counting the children the reducer actually received.
-Neither inference from the type signature nor the upstream working copy at
-`~/git/oss/parser-thing` (currently `0.46.0`, ahead of the installed floor) is a
-valid source for these contracts.
+**Cut against `parseman@0.46.0`** — the version this repo pins (`^0.46.0`, root
+`package.json`, `parser-shared`, and all four `*-parser` packages, since
+`ff685793a`) and the version actually resolved in
+`node_modules/.pnpm/parseman@0.46.0`. Claims first measured against the previous
+`0.45.0` floor are marked as such inline and were re-run against 0.46 when the
+floor moved; the probes below all pass at 0.46.
+
+Every spread/arity contract below was established from that package's
+`dist/index.cjs` — by enumerating the nine call sites that push into the CST
+child buffer, and by running each combinator and counting the children the
+reducer actually received. Neither inference from the type signature nor an
+upstream working copy ahead of the installed floor (e.g.
+`/Users/matthew/git/oss/parser-thing`) is a valid source for these contracts —
+read the resolved package in `node_modules`.
+
+Every arity, nullability, and commit claim below is **measured**, not read off a
+docstring. The probes are committed at `scratchpad/cheat-sheet/` and are the
+regression test for this document — run them after any parseman floor bump:
+
+```
+node scratchpad/cheat-sheet/coverage.mjs           # export-coverage gap
+node scratchpad/cheat-sheet/probe-arity.mjs        # children contribution
+node scratchpad/cheat-sheet/probe-empty-commit.mjs # nullability + rollback
+node scratchpad/cheat-sheet/probe-balanced-expect.mjs
+node scratchpad/cheat-sheet/probe-zero-arity.mjs
+node scratchpad/cheat-sheet/probe-structural.mjs
+```
+
+Claims that are **not** measured are labelled `UNVERIFIED` at the point of use.
+That labelling is required, not optional.
 
 This is the working grammar-authoring guide for the four host-mode grammar
 files. Use the language production name first, keep rules small, and prefer the
@@ -29,7 +51,7 @@ passed to `node()`. It is an **ambient capture buffer**. Combinators do not
 and everything else is **transparent** — it contributes exactly the sum of what
 its own inner parsers pushed.
 
-In `parseman@0.45.0` exactly these combinators push, and each pushes **exactly
+In `parseman@0.46.0` exactly these combinators push (re-verified by `probe-arity.mjs` at this floor), and each pushes **exactly
 one** child:
 
 > `literal` · `regex` · `keywords` · `word` · `makeWord` · `scanTo` · `routed` ·
@@ -163,9 +185,9 @@ by index off a separated list; wrap the items in `node()` or filter by type.
 
 ---
 
-## Mechanical contract for all 95 runtime exports
+## Mechanical contract for all 107 runtime exports
 
-`parseman@0.45.0` has **95 runtime exports**. All 95 appear below, each with an
+`parseman@0.46.0` has **107 runtime exports**. All 107 appear below, each with an
 explicit spread contract. The four contract values are:
 
 | Contract | Meaning |
@@ -288,6 +310,35 @@ None of these participate in a parse; all are **N/A** for spreading.
 | `relativize`, `absolutize`, `relativizeCST`, `absolutizeCST`, `shiftAbsolute`, `applyEdit` | **N/A** | Relative/absolute span conversion and incremental edit support. |
 
 ---
+
+## Export coverage
+
+`parseman@0.46.0` has **107 runtime exports** (`Object.keys` of the package
+entry: 106 functions + 1 symbol); the previous `0.45.0` floor had 95. Verify with
+`node scratchpad/cheat-sheet/coverage.mjs`, which fails if any export is
+undocumented or any documented name is a phantom — it reports 107/107 documented,
+0 undocumented, 0 phantoms at this floor.
+
+Before this revision the sheet's two Surface
+tables named **13 identifiers that parseman does not export at all** — `guard`,
+`walk`, `OffsetIndex`, `buildOffsetIndex`, `collectLeafSlots`, `gapText`,
+`lineBreaksIn`, `blankLinesIn`, `lineStartWithin`, `indentWidth`, `indentMixed`,
+`commentsIn`, `gapIsSignificant` — and left **16 real exports unmentioned**.
+Worse, **zero** of the 95 had the mechanical contract (arity / empty / commit)
+written down anywhere; that is the gap this revision closes.
+
+`guard` is gone: use `gate`. The CST/offset helpers above were either renamed or
+never existed under those names; `createVisitor` and the `relativize`/
+`absolutize` family are the real surface.
+
+Previously undocumented, now listed below: `diagnoseGrammar`,
+`formatGrammarDiagnosis`, `examinedNothing`, `classifiedTrivia`,
+`annotateTreeSpans`, `buildRootTriviaIndex`, `createLineIndex`,
+`recordLineRange`, `normalizeLineIndex`, and the grammar-coverage family
+(`GRAMMAR_COVERAGE_DEFINITIONS`, `grammarCoverageDefinitions`,
+`compiledGrammarCoverageDefinitions`, `composedGrammarCoverageDefinitions`,
+`createGrammarCoverageCollector`, `createGrammarInstrumentationContext`,
+`createGrammarTraceSink`, `runWithGrammarCoverage`).
 
 ## The CSS-Family Choice
 
@@ -489,6 +540,29 @@ CSS ownership, horizontal cleanup, and at-rule cleanup rule:
   routed-at-keyword family first. Preserve it only with a written exception that
   names why the routed value cannot decide the branch.
 
+## Floor check: what the 0.46 floor unlocked
+
+The mechanical table above is the single source of truth for what each export is
+and when to use it. This section records what changed when the floor moved from
+`^0.45.0` to `^0.46.0` (`ff685793a`) — each verified by `Object.keys` on the
+resolved package entry, not by reading upstream source:
+
+| Export(s) | Status |
+| --- | --- |
+| `analyzeChoiceInventory`, `profileWastedWork`, `choiceSiteKey`, `armLabel`, `renderChoiceInventory`, `renderWastedWork`, `leftFactorPreview`, `checkWastedWork`, `buildWastedWorkBaseline` | **Now available.** All nine were absent from 0.45 and are present at 0.46. Choice-cost diagnostics: static shared-prefix inventory, interpreted-corpus wasted-work profile, and the gate policy over them. Quiet by default. |
+| `examinedNothing` | **Now available.** Separates "measured, and it is bad" from "could not measure" for `diagnoseGrammar`. |
+| `fuseInterpreted`, `isInterpretedFuse` | **Now available.** Interpreted-fuse predicates for `compose`. |
+| `guard` | **Removed — not an export at any version in play.** Use `gate`. |
+
+Two usage caveats that the contract column has no room for:
+
+- `diagnoseGrammar` is **the** diagnostic entry point. `compile()` reports nothing
+  by itself.
+- Use `analyzeGrammarGating` for a **composed** grammar. A `compose()` result holds
+  rule *functions*, not combinators, so `analyzeGatingRules` cannot walk it.
+- `run()` returns a `RunResult` — **check its `unconsumedFrom`.** A run that
+  consumed nothing still reports success without it.
+
 ## Anti-Patterns
 
 - **Do not read a fixed child index past a `many`, `optional`, `sepBy`,
@@ -518,6 +592,582 @@ CSS ownership, horizontal cleanup, and at-rule cleanup rule:
   Less ruleset renderable is a trivia-backed renderability fact over the body
   span, not a `Comment` child in the rules list.
 
+## THE MECHANICAL CONTRACT
+
+**This section exists because five distinct defects in one session came from it,
+every one invisible to a parse-success check and to a green test suite.** The
+prescriptive guidance above tells you which combinator states your language
+boundary. This section tells you what the combinator you picked actually *does*
+to your reducer. They are different questions and the second one is where the
+bugs are.
+
+Four questions per combinator:
+
+1. **Arity** — how many entries it contributes to the enclosing reducer's
+   `children` array, and when that count varies.
+2. **Empty** — can it succeed consuming nothing.
+3. **Commit** — can it fail *after* consuming, so the site needs rollback.
+4. **Trap** — what looks right and silently isn't.
+
+### Arity: measured contribution to `children`
+
+Measured by `node('P', X, children => children)` — `node()` captures exactly
+what its body contributed, so wrapping `X` alone measures what `X` hands to an
+enclosing children array. Source: `scratchpad/cheat-sheet/probe-arity.mjs`.
+
+| Combinator | Arity | Measured |
+| --- | --- | --- |
+| `literal` | **exactly 1** | `literal('a')` on `"a"` → 1 leaf. `literal('')` still contributes a slot (empty leaf). |
+| `regex` | **exactly 1** | 1 leaf |
+| `keywords` / `word` / `makeWord(...)(...)` | **exactly 1** | 1 leaf |
+| `token` / `leaf` | **exactly 1** | collapses its whole body to one leaf |
+| `scanTo` | **exactly 1** | the scanned span as one leaf |
+| `node` | **exactly 1** | the node, regardless of how many children *it* captured |
+| `sequence` | **SPREADS — one per term** | `sequence(a,b,a)` → **3**. **Nested sequences FLATTEN**: `sequence(a, sequence(b,a))` → **3**, not 2. |
+| `choice` | **VARIABLE — whatever the winning arm contributes** | `choice(a, sequence(b,a))` → **1** on `"a"`, **2** on `"ba"`. |
+| `many` | **SPREADS — 0..n** | `many(a)` → 0 / 1 / 3 for `""` / `"a"` / `"aaa"` |
+| `oneOrMore` | **SPREADS — 1..n** | `"aaa"` → 3 |
+| `optional` | **0 or 1** | present → 1, absent → **0** |
+| `sepBy` / `oneOrMoreSep` | **SPREADS — items *and separators*** | `sepBy(a, literal(','))` on `"a,a,a"` → **5**: `[a , a , a]`. The commas are children. |
+| `dispatch` | whatever the selected branch contributes | branch is usually a `node`, so 1 |
+| `routed` | 1, **only inside a dispatch branch** | outside one it fails (`expected: routed()`) |
+| `transform` | **PASS-THROUGH — spreads the body's arity** | `transform(sequence(a,b), fn)` → **2**, *not* 1 |
+| `attempt` / `noTrivia` / `label` / `field` / `withCtx` | **PASS-THROUGH** | body's arity unchanged |
+| `not` / `peek` / `gate` | **ZERO** | contribute no child at all |
+| `expect(X)` | **1 if `X` matched, ZERO if it did not** | shifts later indices exactly like `optional` |
+| `skip(main, skipped)` | **2** | the skipped parser contributes a leaf of its own |
+| `balanced(open, close)` | **SPREADS — 3** | `"(ab)"` → `['(', 'ab', ')']` |
+
+Two of these have already shipped bugs and are restated with their measured
+consequence below. Three more — `sequence` flattening, `choice` varying, and
+`sepBy` emitting separators — have the same failure mode and no incident yet.
+
+### `many()` SPREADS its matches into the children list
+
+It does **not** hand the reducer one array child.
+
+```js
+Block = node('Block', sequence(literal('{'), many(item), literal('}')),
+             children => children[1])
+run(Block, '{a:b;c:d}')   //  -> a single Declaration. NOT a list.
+```
+
+`children[1]` is the **first statement**, not the statement list. Measured
+consequence: **every multi-declaration rule dropped all but its first
+declaration**, and every at-rule body was empty while the body's first
+statement surfaced in the *prelude* slot.
+
+Measured directly: `sequence(literal('<'), many(a), literal('>'))` on `"<aaa>"`
+yields **5** children `['<','a','a','a','>']`.
+
+### A non-matching `optional()` contributes NOTHING and shifts every later index
+
+```
+sequence(literal('<'), X, literal('>'))  on "<a>" -> 3 children ['<','a','>']
+                                         on "<>"  -> 2 children ['<','>']
+```
+
+`"<>"` yields `['>' at index 1]` — **not** `[undefined, '>']`. Any reducer
+indexing past an optional reads the wrong child, with no arity error and no
+exception. Confirmed live: `sequence(routed(), optional(prelude), Block)` with
+`children[1], children[2]` put the **body in the prelude slot** for
+`@font-face{a:b}`.
+
+`expect(X)` behaves the same way when `X` does not match: **zero** children, and
+every later index shifts. That is a second, less obvious source of the identical
+defect.
+
+### The killed hypothesis: `literal()` matches are NOT dropped
+
+This is the obvious explanation for both symptoms above and it is **false**.
+Stated here so nobody re-derives it:
+
+```
+literal('a')                              on "a"     -> 1 child  ['a']
+sequence(literal('a'), literal('b'), literal('c'))
+                                          on "abc"   -> 3 children ['a','b','c']
+sequence(literal('('), ident, literal(')'))
+                                          on "(abc)" -> 3 children ['(','abc',')']
+```
+
+Punctuation occupies children slots. Every one of them.
+
+### `children` arity and the raw `parse()` value arity are DIFFERENT
+
+`not`, `peek`, `gate`, and a non-matching `expect` contribute **zero** children
+to a `node()` reducer, but they **do** occupy a slot in the value array that a
+raw `parse()` of a `sequence` returns:
+
+```
+node children  : sequence(M, not(...), N)   -> 2   ['<', '>']
+parse() value  : sequence(not(...), a)      -> 2   [null, 'a']
+parse() value  : sequence(gate(...), a)     -> 2   [null, 'a']
+parse() value  : sequence(expect(z), a)     -> 2   [ParseError, 'a']
+```
+
+So a reducer written against `children` and a test written against the raw parse
+value will disagree about positions. Grammar reducers see `children`. Do not
+port an index from one to the other.
+
+### Empty: can it succeed consuming nothing
+
+Source: `scratchpad/cheat-sheet/probe-empty-commit.mjs`.
+
+| Succeeds consuming ZERO | Cannot match empty |
+| --- | --- |
+| `many` (zero matches) | `literal`, `regex` (non-nullable pattern) |
+| `optional` (absent) | `keywords`, `word` |
+| `sepBy` (empty list) | `oneOrMore`, `oneOrMoreSep` |
+| `not` (assertion passes) | `sequence` of non-nullable terms |
+| `peek` (assertion passes) | `choice` of non-nullable arms |
+| `gate` (predicate true) | `node` / `transform` / `label` / `field` over a non-nullable body |
+| **`expect(X)` — even when `X` cannot**| `attempt` over a non-nullable body |
+| `regex(/a?/)` and any nullable pattern | `scanTo` (unless the sentinel is at `pos`) |
+| `regex(/(?=a)/)` — pure lookahead | `balanced` |
+| `scanTo` when the sentinel is immediate | |
+
+**`expect(X)` converts failure into a zero-width SUCCESS.** It returns
+`{ok: true, value: ParseError}` — measured `value._tag === 'parseError'`, span
+`{0,0}` — and pushes the error to the recovery channel. Measured: `expect` alone
+on input it cannot match returns `ok=true`, zero-width, one recovered error.
+
+Treating `expect(X)` as `matchesEmpty` produced **38 tree mismatches**. It is
+nullable regardless of whether its body is.
+
+**A pure-lookahead regex never matches the empty *string* yet always matches
+zero-width.** `/(?=a)/.exec('')` is `null`, but `/(?=a)/.exec('abc')` matches at
+index 0 with length 0. **A nullability check written as `exec('')` misses this
+entire class.** Measured: `parse(regex(/(?=a)/), 'abc')` → `ok=true`, span
+`{0,0}`.
+
+### The analyzer's nullability table DISAGREES with runtime
+
+parseman's internal `matchesEmpty` (`src/combinators/first-set.ts`) drives
+first-set gating, `choice` disjointness, and every fast-path guard. It is
+documented to err toward `true` when unsure. It does not always:
+
+| | analyzer says | runtime does | direction |
+| --- | --- | --- | --- |
+| `expect(X)` | **not nullable** (it delegates to `X`) | **always** zero-width succeeds | **UNSOUND — under-reports** |
+| `attempt(X)` | nullable (falls to `default`) | only if `X` is | over-reports (safe) |
+| `field(n, X)` | nullable (falls to `default`) | only if `X` is | over-reports (safe) |
+| `gate` | nullable (tag is `guard`, unlisted) | zero-width by nature | correct by accident |
+| `scanTo` | nullable (falls to `default`) | only if sentinel is immediate | over-reports (safe) |
+
+The `expect` row is the dangerous one and is the direct cause of the **38 tree
+mismatches**: a sequence's nullable-prefix walk stops at an `expect` term, so
+terms after it never contribute first characters, and a `choice` can be marked
+O(1)-dispatchable when an `expect`-led arm actually matches at every position.
+
+The over-reporting rows are safe but not free: **any arm wrapped in `attempt` or
+`field` is reported nullable regardless of its body**, which silently disables
+the O(1) dispatch the gating analysis exists to produce. If a `choice` you
+expected to be gated is not, look for an `attempt` or `field` wrapper before
+you look at the language.
+
+*(Analyzer table read from `first-set.ts` at parser-thing `bb2e587` (0.46) and
+cross-checked against measured runtime behaviour. The runtime column is
+measured; the analyzer column is read from source.)*
+
+Corollary: `many(expect(X))` is a no-progress construct. Measured on `"zzz"` it
+returns `ok=true`, span `{0,0}`, and **zero recovered errors** — the repetition's
+no-progress stop prevents the hang but also **silently discards the
+diagnostic** `expect` existed to produce. Never put `expect` directly under a
+repetition.
+
+### Commit: can it fail after consuming
+
+The question a call site actually needs answered: **do I need `attempt`?**
+
+| Combinator | Fails after consuming? | Raises `committed`? |
+| --- | --- | --- |
+| `literal`, `regex`, `keywords`, `word` | No — terminals fail at their start position | no |
+| `sequence` | **Yes** — a later term's failure leaves earlier terms consumed | propagates only |
+| `choice` | Inherits from its arms; a committed arm failure is **not** retried by the next arm | propagates only |
+| **`dispatch`** | **Yes — and it is the library's only true CUT** | **RAISES it** |
+| `attempt(X)` | Rolls back *position* for an uncommitted failure. **Does NOT clear `committed`.** | propagates |
+| `many` / `optional` / `sepBy` | **Do not swallow a *committed* body failure.** Totality holds **only when the body cannot commit.** | propagates |
+| `oneOrMore` / `oneOrMoreSep` | Yes, via the first item | propagates |
+| `not` / `peek` | No — assertions restore position, and they *swallow* a committed inner failure | swallows |
+| `expect` | **Never fails at all — it also ERASES commit** | erases |
+| `scanTo` | Fails clean at EOF unless `orEOF: true` | no |
+| `balanced` | Recovers rather than failing (see below) | no |
+
+### `dispatch()` is a hard cut, and `attempt()` does NOT undo it
+
+Once a dispatch branch is selected, **every** failure inside it comes back
+`committed: true`. Measured, on `"url("` where the selected branch then wants a
+missing `)`:
+
+```
+bare dispatch                             ok=false  committed=true
+attempt(dispatch)                         ok=false  committed=true   <-- NOT neutralised
+optional(dispatch)                        ok=false                   <-- optional FAILS
+many(dispatch)                            ok=false                   <-- many FAILS
+choice(dispatch, literal('url('))         ok=false                   <-- second arm NOT tried
+choice(attempt(dispatch), literal('url(')) ok=false                  <-- still not tried
+```
+
+Contrast an **uncommitted** failure (a plain `sequence` missing its second term):
+
+```
+bare sequence                             ok=false  committed=false
+attempt(sequence)                         ok=false  committed=false
+optional(sequence)                        ok=true                    <-- recovers
+choice(sequence, literal('a'))            ok=true                    <-- second arm tried
+```
+
+> **`attempt` is not a rollback guarantee.** It restores position for an
+> uncommitted failure; it does not make a committed failure recoverable. If you
+> wrapped a `dispatch` in `attempt` expecting the enclosing `choice` to try its
+> next arm, it will not. The only construct that erases commitment is `expect`,
+> and it does so *by accident* — by never failing at all.
+
+The design consequence is the one the prescriptive section already states from
+the language side: **do not commit on a branch before the grammar has enough
+syntax**, because after `dispatch` selects, there is no way back.
+
+The practical rule for the rest: **`optional(X)` and `many(X)` are only as total
+as `X` is uncommitted.** If `X` is a multi-term `sequence`, `optional(X)` can
+still fail the whole enclosing rule — and `attempt` fixes that case, just not
+the `dispatch` case.
+
+### Traps, per combinator
+
+What looks right and silently isn't. Read from parseman source at the pinned
+0.46 floor unless marked *measured*; where 0.46 changed behaviour from the
+previous 0.45 floor it is noted. **These are source reads, not tree dumps, except where marked.**
+
+| Combinator | Trap |
+| --- | --- |
+| `literal` | `caseInsensitive` is an **ASCII-only** fold. On the case-sensitive path the value is the declared string; on the CI path it is the *matched slice*. |
+| `regex` | The first-set analysis is **flag-agnostic**: `/i` combined with `u`/`v` degrades the first set to "any", **silently killing dispatch** on that arm. |
+| `keywords` | The reported `expected` is the literal string `'keyword'`, not your word list. |
+| `word` / `makeWord` | Overload hazard: `word(str, opts)` vs `word(str, boundary, opts)`. **Passing an options object as the second argument silently uses the DEFAULT boundary** `_0-9A-Za-z`. `makeWord` returns a *factory*, not a combinator. |
+| `sequence` | Nested sequences **flatten** into one children list *(measured)*. Under value-usage elision the value can be `undefined` instead of a tuple, so a reducer destructuring `[a, b]` breaks. |
+| `choice` | When no arm matches under a disjoint gate, it **re-runs every arm** to build `expected` — so arm side effects, including `expect()` pushes, happen twice. `disjoint` is computed at *construction* time, so a `ref` defined later leaves it stale. |
+| `dispatch` | The cut (above). `otherwise()` must be last and there can be only one. Duplicate keys throw at construction. |
+| `when` / `otherwise` / `startsWith` / `endsWith` / `matches` | These are **descriptor objects, not combinators** — they cannot be used outside a `dispatch`. `matches()` rejects `g`/`y` flags. Matcher arms are tried after exact keys, in declaration order. |
+| `routed` | Position-sensitive: if the branch is not at the routed item's start it silently takes the fallback or fails *(measured: fails outside a dispatch)*. Its first set is always "any", which **poisons an enclosing dispatch**. |
+| `many` / `oneOrMore` | A **zero-width item silently stops the loop** rather than looping forever — so a nullable body just yields zero items and you get a plausible empty list. `oneOrMore` parses its **first** item with no leading-trivia skip, asymmetric with items 2..n. |
+| `optional` | Its first-set skip is **not** gated on tolerant mode, unlike every sibling guard. |
+| `sepBy` / `oneOrMoreSep` | Separators **are children** *(measured)*. Default `trailing: 'forbid'` leaves a trailing separator **unconsumed** rather than failing — a classic silent-leftover source. Failure is anchored at the furthest position, not the list start. |
+| `not` / `peek` | Both **swallow a committed inner failure**. `peek`'s first set becomes "any" when its body is nullable, forfeiting the gate it exists to provide. `not(not(X))` is an anti-pattern — use `peek`. |
+| `attempt` | Does **not** clear `committed` *(measured)*. Reported nullable by the analyzer regardless of its body. |
+| `node` | Under a CST host **your `build` reducer is bypassed entirely**. `build` receives `undefined` for `fields`/`rawChildren`/`triviaLog` when arity gating decided you don't read them — a rest-param or untyped reducer fails open. A missing `type` outside `rules()` throws at *parse* time, not construction. |
+| `transform` | Shares `_meta` **by reference** with its inner combinator — mutating one mutates both. Contributes the body's arity, **not** 1 *(measured)*. |
+| `skip(main, skipped)` | **It does not skip anything.** The skipped parser's leaves **are captured as children** *(measured: arity 2)*; it appends an optional trailer to the span and discards only its *value*. |
+| `trivia` | Keeps the **inner's `_tag`** while `_def.tag` is `'trivia'`, so any `_tag`-based check misidentifies it. |
+| `classifiedTrivia` | Throws at construction unless every arm is non-nullable with a finite first set. Required by `run({ rootTrivia })`. |
+| `label` | Replaces `expected` but **keeps the inner's failure span** — your message, the inner's position. |
+| `field` | The field push is optional-chained: if `node()` decided it doesn't read fields, **the field is silently dropped**. Still occupies a positional children slot *(measured)*. |
+| `token` | Clears ambient trivia for its body. |
+| `leaf` | Unlike `token`, it does **not** clear trivia — the body still skips trivia *inside* your "leaf". |
+| `gate` | Its first set is "any", so as a leading term it **kills dispatch**. Its tag is `guard`, not `gate`. |
+| `withCtx` | **Spreads a fresh ctx object.** Array sinks survive by reference, but anything the inner *assigns* onto ctx is written to the copy and lost. |
+| `expect` | Erases `committed`; discards its diagnostic entirely if no error sink is installed (i.e. without `parse(..., { recover: true })`). |
+| `ref` | `_meta.firstSet` is "any" until `.define()`, and **combinators built over a ref bake that stale value in at construction**. `.define()` twice throws; use before define throws *(measured)*. |
+| `rules` | Stamps grammar-level metadata onto **every** rule's `_meta` — shared mutable metadata across composition. `trackLines: true` re-wraps every rule, changing its `_def.tag` to `'grammar'`. |
+| `parser` | `trivia: null` **clears**, `trivia: undefined` **inherits**. They are not the same. |
+| `noTrivia` | Must wrap the **whole** contiguous run: an enclosing `sequence` still skips trivia *before* the term. |
+| `parse` | `errors` / `furthestFail` exist **only** under `{ recover: true }`. Without it, `expect()` records nothing *(measured)*. |
+| `compose` | Composing trivia = the **last** item declaring `rules({ trivia })` wins, applied to inherited rules too. Refuses a `composeLeaf` result. |
+| `run` | `ok` ignores leftover input (below). `{ profile: true }` throws outright. |
+
+## `run()` reports success on input it never consumed
+
+```
+run(many(Item), 'zzz')                      -> ok=true  span={0,0}
+run(many(Item), '!!! not a stylesheet !!!') -> ok=true  span={0,0}
+run(many(Item), 'aazz')                     -> ok=true  span={0,2}
+```
+
+A root of `many(Item)` returns `ok=true` on pure garbage, because `many`
+succeeds on zero matches and `run()` does not require the root to reach EOF.
+
+> **Assert full consumption in every rig.** `ok=true` is not a parse result you
+> can trust on its own.
+
+`RunResult` carries the proper signal: **`unconsumedFrom`** — `null` when the
+parse reached the end, otherwise the offset where the leftover starts. It is
+trivia-aware in a way that a raw `span.end` comparison is not. Measured:
+
+```
+run(many(Item), 'aaa')  -> ok=true span={0,3} unconsumedFrom=null   <-- clean
+run(many(Item), 'aazz') -> ok=true span={0,2} unconsumedFrom=2
+run(many(Item), 'zzz')  -> ok=true span={0,0} unconsumedFrom=0
+```
+
+Prefer `assert(result.unconsumedFrom === null)`. Use
+`span.end === source.length` where you only have a `parse()` result, which has
+no `unconsumedFrom`.
+
+**On the in-flight change:** a parseman lane was said to be changing this
+default. **It has NOT landed, re-measured at the 0.46 floor.** `ok` is still
+literally the root's `ok`, independent of consumption, and `RunOptions` still has
+**no** full-consumption flag:
+
+```js
+run(literal('a'), 'a IGNORED TAIL')
+// -> ok: true, unconsumedFrom: 1     (13 bytes left, still ok)
+```
+
+**Treat the behaviour above as authoritative and keep the assertion.** This is
+the repo-side reason for `10c9fc7d8` ("don't claim a complete stylesheet when
+nothing was parsed") — the parsers must check `unconsumedFrom` themselves because
+parseman will not. When the floor moves again, re-run the snippet above and
+record the outcome rather than assuming either state.
+
+## `balanced()` DOES detect crossed closures
+
+Its close is wrapped in `expect()`, which never fails — so it **recovers and
+pushes to the error channel** instead of returning a failure. **A probe measuring
+*consumption* cannot distinguish acceptance from recovery**, and neither can one
+built on `parser({...}).parse(input)`: the error channel is populated only by
+the exported `parse(combinator, input, { recover: true })`.
+
+Measured with the error channel correctly wired, on
+`balanced('(', ')', { skip: [balanced('[',']'), balanced('{','}')] })`:
+
+| Input | ok | consumed | errors | reading |
+| --- | --- | --- | --- | --- |
+| `(abc)` | true | 5 | 0 | accepted |
+| `(a[b]c)` | true | 7 | 0 | accepted |
+| `([c}])` | true | 6 | **0** | **legitimately ACCEPTED** |
+| `(a[b)c]` | true | 7 | **1** (`expected ")"`) | **crossed — detected, recovered** |
+| `(unclosed` | true | 9 | **1** | detected, recovered |
+| `(a[b]` | true | 5 | **1** | detected, recovered |
+
+`([c}])` is **not** a crossed closure: with no `{`/`}` pair open, the `}` is an
+ordinary character inside `[...]`. **`var(--x, ([c}]))` is legitimately
+ACCEPTED** — measured `ok=true, errors=0`. **Building a grammar to reject it
+breaks CSS.** `(a[b)c]` is the genuinely crossed case, and `balanced` catches it.
+
+**Detection is conditional on the `skip` list.** A bare `balanced('(', ')')`
+with no `skip` has a stop set of only `(` and `)`, so `[c}]` is consumed as
+ordinary content and a crossed bracket is **not even noticed** — no error, full
+success. The other bracket type must be in `skip` for the interior to stop on
+it. So "balanced detects crossing" is true **only for the pairs you listed**.
+
+Note also that `balanced` never *fails* in either case: the outcome is always
+`ok=true`, with the difference visible solely in `errors`. And its span ends
+*before* the missing closer, so the reconstructed text silently omits it.
+
+The lesson generalises past `balanced`: **any construct whose close is wrapped
+in `expect` accepts everything and reports through the error channel.** If you
+are asking "does this grammar reject X", consumption is the wrong instrument —
+read `errors`.
+
+## Authoring hard-fails
+
+These throw at build or first use. Each has cost at least one round.
+
+**`composeLeaf()` is macro-only.** At runtime it throws unconditionally:
+
+```
+composeLeaf(): requires Parseman macro lowering; runtime composition is forbidden
+```
+
+Measured on the previous 0.45.0 floor: it threw for **every** argument shape —
+one leaf, two leaves, zero leaves, a hoisted plain string.
+
+**⚠️ This changed at the 0.46 floor.** Re-measured with `probe-structural.mjs`
+at `parseman@0.46.0`:
+
+| Shape | 0.45 | 0.46 |
+| --- | --- | --- |
+| `composeLeaf([oneLeaf])` (<2 leaves) | throws | **builds** |
+| `composeLeaf([leafA, leafB])` | throws | **builds** |
+| `composeLeaf([])` | throws | **builds** |
+| `composeLeaf` w/ hoisted plain string | throws | still fails, different message (`Cannot read properties of undefined (reading 'tag')`) |
+
+This is the lazy-interpreted-fuse change described in the version-divergence note
+below, now landed. **It is a behaviour change, not a fix:** the runtime no longer
+refuses composition, so a `composeLeaf` that should have been macro-lowered can
+now build quietly and fall back to the interpreter instead of hard-failing. The
+≥2-leaves requirement remains a macro-time check you cannot observe at runtime.
+It must still be reached through `import ... with { type: 'macro' }`. All 16 call
+sites in the four grammars use one shape:
+`composeLeaf([<leaf syntaxes...>, rules<XRules>({...}, factory)])`.
+
+The macro path's message is worded differently — `composeLeaf() must macro-fuse;
+runtime composition is forbidden` — and it appends a `causes:` list naming the
+precondition you actually missed. **Read the `causes:` lines**; the bare runtime
+message tells you nothing. The macro enforces eight preconditions: a static
+array literal; ≥2 elements; a local `rules()` map last; every pre-final element
+build-resolvable; the local map statically compilable; carried recognition IR
+materializable; every imported piece **proving** recognition-only
+(`hasDirectBuilders === false && isRecognitionOnly === true`); and no exception
+during fusion.
+
+> **Version divergence — now VERIFIED against the released 0.46 floor.** 0.46
+> (`compiler/linker.ts`) no longer throws at runtime; it builds a *lazy
+> interpreted fuse* that mutates shared ref slots in place and throws only on a
+> second conflicting fusion. Confirmed by re-running `probe-structural.mjs` after
+> `ff685793a` raised the floor — see the table above. The previously-unverified
+> prediction was correct.
+
+> **Build order consequence:** `packages/parser-shared` must be built **first**.
+> Building it late surfaces this same `composeLeaf` message, which reads like a
+> grammar defect and is neither — it is a stale-artifact symptom.
+
+**`rules()` factories must be named module-level consts taking the `g`
+parameter.** Measured: an inline arrow builds fine at runtime, so the runtime
+does not enforce this — it is a **macro-lowering** requirement. Current practice
+in all four grammars is a named const (`cssFactory`, `lessGrammarFactory`, …).
+
+**`ref()` used before `.define()`** throws `ref<T>() used before .define() was
+called`.
+
+## `dispatch` static evaluation: it is the CALLEE, not the opener and not the scope
+
+`when(ciCase('url('), routed(...))` fails static evaluation with *"factory isn't
+statically evaluable"*, while `when('url(', g.Url, { caseInsensitive: true })`
+builds. **It is what the callee is that decides** — not the opener shape, and not
+where the alias is declared.
+
+| Alias shape | Lowers? |
+| --- | --- |
+| `const kw = makeWord(boundary?, opts?)`, then `kw('url')` | yes, either scope |
+| `const ci = makeWhen(opts?)`, then `ci(key, parser)` | yes, either scope |
+| `const ident = regex(/[a-z]+/)` — a plain combinator const | yes, either scope |
+| `const ci = (k, p) => when(k, p, opts)` — a user-defined function | **no**, either scope |
+| `const w2 = word` — a bare re-binding of an imported constructor | **no**, either scope |
+
+A call lowers when its callee is a parseman constructor **named directly**, or a
+binding produced by `makeWord(...)` / `makeWhen(...)`. The macro does not call
+user-defined functions and does not follow a constructor through a plain `const`
+re-binding; both fall back to the interpreter with *"rules(...) factory isn't
+statically evaluable"*.
+
+Measured at runtime, re-confirmed at the 0.46 floor: `when('url(', X, { caseInsensitive: true })`
+builds, and so do `when(exact)`, `startsWith`, `endsWith`, `matches(/re/)`, and
+`makeWhen({ caseInsensitive: true })(...)`. **UNVERIFIED at runtime:** the
+`ciCase(...)` failure is a *macro-lowering* diagnostic and is not reproducible
+through the interpreter; `ciCase` does not exist in the parseman surface or
+anywhere in this repo's source — it names a shape that was attempted and
+withdrawn.
+
+**Two superseded statements, for anyone following an old thread.** This sheet and
+`GRAMMAR-REBUILD-SPEC.md` §0.2 have each carried a wrong version of this rule:
+first that module-scope word-factory aliases do not lower, then that being
+*inside* a `rules(...)` factory is what makes an alias lower. Measured against
+parseman `0.46.0` (`lane/macro-lowering-defects`), **scope is irrelevant in both
+directions** — module scope and inside the factory behave identically in every
+row of the table above. §0.2 now states the callee rule; this section and that
+one must not drift apart again.
+
+What is actually in use today, all working: `makeWhen({ caseInsensitive: true })`
+in all four grammars — `cssCase`, `caseOf`, `caseInsensitive`,
+`caseInsensitiveWhen` — plus `makeWord(chars, { caseInsensitive: true })` in css
+and less.
+
+## Bare-`choice()` consts cannot always be promoted to named rules
+
+When the inferred union is unspellable in an invariant `Combinator<T>` slot, the
+promotion does not compile. **The real blockers are:**
+
+- **`dispatch(...)` surfacing a tuple** `[routedValue, branchResult]`, and
+- **anonymous object types in the union.**
+
+**It is not union width.** Measured with `tsc --strict`
+(`scratchpad/cheat-sheet/tupleprobe.ts`, whose assignments deliberately fail so
+the compiler prints each inferred type):
+
+```
+dispatch(opener, when('url(', Url), otherwise(Kw))
+  -> Combinator<[string, unknown[]]>            <-- a TUPLE, and the branch is unknown[]
+
+choice(transform(a, () => ({kind, span})),
+       transform(b, () => ({kind, extra})))
+  -> Combinator<{ kind: string; span: number } | { kind: string; extra: boolean }>
+                                                <-- ANONYMOUS union, no name to write
+
+choice(a, b, c, d, e, f, g)   // seven arms
+  -> Combinator<string>                         <-- collapses; promotes trivially
+```
+
+The seven-member union collapses to `Combinator<string>` and promotes without
+complaint. **Do not spend a round splitting a wide choice** — look for the
+dispatch tuple or the anonymous object type instead. For the tuple, the fix is
+to give the branch a named node type; for the anonymous union, name both shapes
+or project through `node(...)` so the slot has a spellable type.
+
+## Known codegen divergence — do NOT author against it
+
+`DESIGN-DECISIONS.md` **G20** (SETTLED, owner 2026-07-31) rules that
+**equivalent grammars must emit equivalent artifacts**: two spellings accepting
+the same language, with the same boundary policy and the same tree output, must
+compile to substantially the same bytes. Where they do not, that is a **missing
+normalisation in codegen, not a fact about the spellings.**
+
+Measured violations, recorded canonically in `docs/state/GRAMMAR-SIZE-FACTS.md`
+§2.1–2.2 (that file is the source of record for these numbers):
+
+| Equivalent spellings | Bytes | Ratio |
+| --- | --- | --- |
+| `keywords([30 words])` vs 30 `word()` arms | 1,077 B vs 20,002 B | **18.6×** |
+| a rule referenced via `g.X` vs by-const | 276,023 B vs 3,777,733 B | **13.69×** |
+| `transform()` vs `node()`, per site | 46 B vs 3,425 B | **74×** |
+
+> **These are codegen defects being fixed. They are NOT authoring advice.**
+> G20's whole point is that the grammar author must not need to know which of
+> two equivalent forms is an order of magnitude smaller. Write the spelling that
+> states the language boundary; treat a spelling-differential as a gate on
+> codegen, not a tip for you. **Known divergence — do not rely on it.**
+
+## The generalised shape rule
+
+> **A token that is structurally significant in some position must not sit in a
+> terminal table that a greedy repetition can reach in that position.**
+
+Five instances, for pattern recognition:
+
+1. `,` reachable as a value component
+2. `!` reachable as a value component
+3. `<` / `=` / `>` reachable as value punctuation — this made
+   `QueryComparisonFeature` and `QueryRangeFeature` **unreachable dead
+   productions while every fixture passed**. *(Historical: both are reachable
+   today — css `grammar.ts:2853/:2878` and less `:4589/:4611` are referenced
+   from `QueryFeature`; jess defines only `QueryComparisonFeature` at `:3580`;
+   scss defines neither.)*
+4. positional reads past `optional()`
+5. `many()` spreading
+
+And the reducer-side rule that follows from the arity table:
+
+> **Do not read a fixed position when any preceding child combinator has
+> variable arity.** Put variable-arity combinators last, or destructure by
+> identity/type rather than by index.
+
+Variable-arity combinators, from the measured table: `sequence` (flattens),
+`choice` (winning-arm dependent), `many`, `oneOrMore`, `optional`, `sepBy`,
+`oneOrMoreSep`, `expect`, `balanced`, `transform` (inherits its body's).
+
+Established fix pattern in this codebase: `AtRuleStatement` uses
+`g.StatementPrelude` — a node that **always matches, possibly empty** — instead
+of `optional(...)`, so the arity is fixed. Prefer that.
+
+### Why no test catches any of this
+
+A wrong positional read produces a **plausible, well-typed tree**. It parses, it
+type-checks, and the suite passes. Four instruments see what a green suite does
+not:
+
+1. **A byte-level tree diff** against a known-good baseline.
+2. **A full-consumption assertion** — `run().unconsumedFrom === null`, or
+   `span.end === source.length` for a `parse()` result.
+3. **The error channel** — `parse(..., { recover: true })` and read `errors`.
+   Consumption alone cannot distinguish acceptance from recovery.
+4. **Grammar coverage** — `runWithGrammarCoverage` and the
+   `grammarCoverageDefinitions` family answer "was this production ever
+   entered", which is the only cheap way to catch a rule that has gone dead
+   while every fixture still passes. That is exactly how
+   `QueryComparisonFeature` and `QueryRangeFeature` hid.
+
+None of these are on by default. A grammar change that touches arity,
+nullability, or a terminal table should turn at least the first three on before
+claiming it is green.
 ## The reachability defects, for pattern recognition
 
 These shipped alongside the arity defects in the same session and share a
