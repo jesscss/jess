@@ -205,6 +205,7 @@ export function compareBuilds({ base, candidate, corpus, renames = {}, repo, lim
   const illusory = [];
   let checked = 0;
   let bothThrew = 0;
+  let wellFormedChecked = 0;
 
   for (const id of corpus.ids) {
     let src;
@@ -239,6 +240,7 @@ export function compareBuilds({ base, candidate, corpus, renames = {}, repo, lim
        * digest via the projected error.
        */
       if (!isMalformed(id)) {
+        wellFormedChecked++;
         const ae = a.threw ? null : consumedEnd(a.value);
         const be = b.threw ? null : consumedEnd(b.value);
         const aShort = ae !== null && ae !== src.length;
@@ -319,7 +321,7 @@ export function compareBuilds({ base, candidate, corpus, renames = {}, repo, lim
    * same vocabulary. It suppresses the verdict entirely.
    */
   if (undigested.length > 0) {
-    return { verdict: 'no-verdict', divergences, undigested, shortParses, baselineShort, illusory, checked, bothThrew };
+    return { verdict: 'no-verdict', divergences, undigested, shortParses, baselineShort, illusory, wellFormedChecked, checked, bothThrew };
   }
 
   /*
@@ -356,6 +358,7 @@ export function compareBuilds({ base, candidate, corpus, renames = {}, repo, lim
     shortParses,
     baselineShort,
     illusory,
+    wellFormedChecked,
     checked,
     bothThrew
   };

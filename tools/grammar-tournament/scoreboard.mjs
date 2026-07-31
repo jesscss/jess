@@ -248,6 +248,24 @@ async function main() {
      * cause is one unconsumed at-rule buries the finding under its own blast
      * radius.
      */
+    /*
+     * ALWAYS PRINTED, never only on failure. This exact check silently did
+     * nothing for a full round: `id.illusory` was undefined, `?? 0` swallowed
+     * it, and the run showed a clean PASS with no line at all. A check that is
+     * silent when it passes cannot be distinguished from one that did not run,
+     * so it reports the population it examined and refuses to imply zero when a
+     * bucket is missing.
+     */
+    const buckets = ['shortParses', 'illusory', 'baselineShort'];
+    const missing = buckets.filter(b => id[b] === undefined);
+    if (missing.length > 0 || id.wellFormedChecked === undefined) {
+      console.log(`  consumption: UNAVAILABLE — bucket(s) missing from the result: ${[...missing, ...(id.wellFormedChecked === undefined ? ['wellFormedChecked'] : [])].join(', ')}`);
+      console.log('               This is NOT a pass. The check did not report, so it did not run.');
+    } else {
+      console.log(`  consumption: ${id.wellFormedChecked} well-formed pairs checked — `
+        + `${id.shortParses.length} candidate-short, ${id.illusory.length} illusory, ${id.baselineShort.length} baseline-short`);
+    }
+
     if (id.shortParses?.length > 0) {
       console.log(`  SHORT PARSE (candidate): ${id.shortParses.length} well-formed input(s) the candidate did not fully consume`);
       console.log('               success is not consumption — many() succeeds on zero matches, so a whole');

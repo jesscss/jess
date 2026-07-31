@@ -107,52 +107,72 @@ an independent audit found 4 rules / 8 references.
    implemented in `tools/grammar-tournament/src/refshape.mjs`.
 9. **`makeWhen(...)` / `makeWord(...)` aliases are NOT composites.** They return
    a matcher *policy* applied per call site, not a parse table, so "inlined
-   transitively at each reference" does not describe their cost.
-   `cssCase` (`grammar.ts:1045`, 27 call sites) and `identWord` (`:1041`) were
-   counted as the most-inlined rules in the css grammar; both are factory
-   aliases and the authoring form is explicitly blessed by
-   `GRAMMAR-REBUILD-SPEC` §0.2. This was the largest single error in the css
-   refshape audit and it survived because **it produced a number that looked
-   structurally meaningful** — `cssCase` at 27 references read as a real
-   finding about a real hot path.
-
+   transitively at each reference" does not describe their cost. `cssCase`
+   (`grammar.ts:1045`, 27 call sites) and `identWord` (`:1041`) were ranked the
+   most-inlined rules in the css grammar; both are factory aliases and the
+   authoring form is blessed by `GRAMMAR-REBUILD-SPEC` §0.2. It survived
+   because **it produced a number that looked structurally meaningful** — 27
+   references reads as a real finding about a real hot path.
 9. **A consuming initialiser capture advances `lastIndex` past the next
    declaration.** `/^ {2}const (\w+) = ([\s\S]{0,40})/gm` consumes 40 characters
    beyond the `=`, so `exec`/`matchAll` resumes *inside* the following
-   declaration and skips it entirely. Measured by Candidate B: `urlOpen` was
-   eaten by the preceding `importAtKeyword` declaration's capture. **Every
-   per-row check passes** — the classifier returns true, the declaration regex
-   matches, the reference count is right — and the row simply never appears,
-   which is what makes it so hard to find from the outputs.
+   declaration and skips it. Measured: `urlOpen` was eaten by the preceding
+   `importAtKeyword` declaration's capture. **Every per-row check passes** — the
+   classifier returns true, the declaration regex matches, the reference count
+   is right — and the row simply never appears.
    **Fix:** read the initialiser with a lookahead or a separate `slice`; never
-   capture it.
-   **Detection, now permanent in `refshape.mjs`:** assert the number of
-   declarations the scanner VISITED against an independent count of the same
-   declarations, and refuse to report if they differ. A skipped row is invisible
-   in every per-row check and shows up only in that discrepancy.
+   capture it. **Detection:** assert declarations *visited* against an
+   independent `const` count and refuse to report on mismatch.
+
+**Prefer a permissive include plus a SHORT NAMED EXCLUDE over an enumerated
+include-list.** The two shapes fail in opposite directions and both were
+observed: an enumerated include under-counts on combinators nobody remembered
+to list (three scripts omitted `otherwise`, `when`, `routed`, `noTrivia` and
+more, so `const x = otherwise(choice(...))` was invisible to H1 in a
+dispatch-heavy grammar); a fully permissive include over-counts on factory
+aliases (filter 8). **A forgotten exclusion is visible in a five-line list; a
+forgotten inclusion is invisible in a forty-name one.**
 
 A script that has not been shown to agree with an independently written one is
 not evidence. The tell that caught one contaminated run: a row claiming 8
 references for `OpaqueAtRuleBlock`, a const already proven unreachable.
 
-### The instrument rule, stated once
+---
 
-**A guard that defends against ABSENCE is defeated by PRESENCE-OF-THE-WRONG-THING.**
-Nearly every broken instrument this session had this shape: `artifactBytes`
-caught a *missing* artifact and was defeated by the *wrong* one being present;
-`run()` caught a *failed* parse and was defeated by a *successful* parse of
-nothing; the const detector caught *absent* combinators and was defeated by
-*present* factory aliases.
+## 1c. The identity-check rule — ONE rule, five faces
 
-The corollary, which is the operative form:
+The nine filters above catch **measuring the wrong rows**. A's §1a denominator
+rule catches **measuring against the wrong base**. This catches the third and
+largest class: **measuring the wrong object.**
 
-> **A resolver that finds a file is not evidence it found the right one.**
+> **An identity check on the wrong key reports absence for something present.**
 
-And the reason these survive review: **a guard that is correct exactly on the
-tested path is indistinguishable from a working one until someone deviates.**
-The `--grammar-entry` resolvers disagreed on every spelling *except*
-`lib/grammar/ast.js` — the one everybody tested with. Test a guard on a path
-nobody has used yet, or it certifies only the case you already knew about.
+Every face below failed **silently and clean**, produced a result that read as
+normal, and **not one was caught by its author.** That combination is the
+signature: if a check can only fail by returning a plausible value, it needs an
+assertion that is not the check itself.
+
+| face | the wrong key | what it reported | detection it admits |
+| --- | --- | --- | --- |
+| **SHA-vs-content** | commit ancestry | "the facts file is not on `dev`" — it had been for hours; the commits were rebased to new SHAs | ask the tree, not the history: `git ls-tree <ref> -- <path>` |
+| **path-vs-artifact** | a hard-coded artifact path | the candidate's byte column, which was the *incumbent's* `lib/grammar/ast.js` sitting in the snapshot | print the resolved path beside every number; refuse if a declared entry was not the one measured |
+| **absence-vs-wrong-presence** | "file missing?" | a `catch` guard that defended against a *missing* artifact and was defeated by the *wrong one* being present | guard on identity, not existence |
+| **success-vs-consumption** | `ok === true` | a parse that consumed 54 of 1945 bytes and dropped a whole at-rule | assert `span.end === source.length` |
+| **freshness** | file contents | "399,168 B unchanged" for a build that had **failed** — it read the previous artifact | compare mtime before/after; refuse if not rewritten |
+
+**The general detection, and the only one that generalises:** an instrument must
+be able to demonstrate its own coverage. A count of what it *visited* is
+evidence; silence is not. Filter 9's declaration-count assertion, the
+`measured:` path line, the mtime freshness gate, and the visited-vs-independent
+check are all the same move — **make the instrument state what it looked at, and
+compare that against something derived differently.**
+
+### The reporting-end corollary
+
+**A check that prints nothing when it passes cannot be distinguished from a
+check that did not run.** `namecheck` was silent on success for three rounds;
+`id.illusory` was `undefined` and swallowed by `?? 0`, printing a clean PASS
+while doing nothing. Every check prints a count on success, never nothing.
 
 ---
 
@@ -695,6 +715,425 @@ candidate that those productions are wrong.** Mark them untested-by-construction
 and record them as a *corpus* gap, not merely a coverage one. Do not sequence
 them against gaps the gate can actually grade.
 
+### 2.4-sign Promotion has a SIGN, and the sign is set by sharing
+
+**The less-parser result in §2.4 is not a general rule and must not be read as
+one.** The same transformation — a composite promoted from bare const to a
+named map rule referenced via `g.` — has been measured with **opposite signs**:
+
+| grammar | promotion | result |
+| --- | --- | ---: |
+| less, 4 query productions | H1 sites collapsed | **−621,785 B** |
+| Candidate A, `Url` | H1 already 0 | **+11,939 B** |
+
+**The sign is determined by whether the reference was shared.** Promotion
+removes duplicated inline closures; where there is no duplication to remove, a
+named map entry is *pure addition* — a rule-table entry bought for nothing.
+Candidate A's grammar is H1 0 / H2 0, so the promotion lever is **exhausted**
+there and every further promotion costs.
+
+Corollary, and it is A's: **H1 0 does not mean composable.** A clean inlining
+audit says duplication has been removed, not that the grammar is cheap.
+
+### 2.4a css: −30.98% artifact, 29.2× → 21.0× (landed)
+
+Branch `lane/css-grammar-shrink` from `origin/dev` `131cd9d1b`, **parseman
+0.45.0** (not comparable to 0.46.0 figures).
+
+| | source | `ast.js` | `cst.js` |
+| --- | ---: | ---: | ---: |
+| baseline | 114,446 | 3,341,439 | 3,385,629 |
+| final | 110,031 | 2,306,424 | 2,327,653 |
+| **delta** | **−3.86%** | **−30.98%** | **−31.25%** |
+
+1. `09ecb00fc` — deleted 11 parse-dead at-rule block twins. Source −3.94% /
+   artifact −2.96%. **Fails the ratio gate**; landed on correctness grounds
+   (unreachable productions), not on ratio.
+2. `17c699bb0` — dropped the `Routed` prefix, registered the 11 in the map,
+   converted references to `g.X`. Source +0.08% / artifact **−23.09%**.
+   **Carries +3.3% parse — PENDING OWNER DECISION.**
+3. `2a0ca1109` — six two-character edits converting the last by-const
+   references. Source +0.011% / artifact **−7.51% (−187,348 B)**. **~31 KB of
+   artifact per converted reference.**
+
+Oracle: 105 in-repo `.css` files + 54 synthetic at-rule vectors = 159 cases,
+hashing both `parse()` and `parseCssCst()`, failures hashed too. Aggregates
+unchanged across all three commits. **Negative control passed** — dropping
+`'layer'` from `mediaTypeKeywordReserved` moved both aggregates and localised
+to `vec:003:@media layer`.
+
+**The cause was FAN-OUT, not tightness.** Inline-only cycles: **0**, in both
+baseline and final — every cycle already carried a `g.*` edge, as it must or
+codegen would not terminate. The defect was one body inlined into 2–3 dispatch
+sites, each dragging its body-item closure. Inline edges 162 → 133;
+`declarationListDeclaration` 22→11, `declarationListItem` 11→6,
+`stylesheetBodyItem` 11→4, `declarationListBlock` 9→4.
+
+**Count is not prize.** The de-contaminated H2 count on css is **six**, not 86 —
+and those six were worth **187 KB**. A small count can carry a large prize and
+vice versa; always price by closure, never by count.
+
+### 2.4b Negative result: the less query win does NOT reproduce on css
+
+Building the css analogue of the less lane's four query promotions (`QueryValue`,
+`QueryTerm`, `QueryOnlyClause`, `QueryNonOnlyKeyword`, plus the four
+`Query*Feature` arms, named **and** `g.`-cut) **cost** `ast.js` +2,423 B and
+`cst.js` +2,416 B. Reverted.
+
+**Cause:** css's query spine was already cut where it matters — `QueryTerm`
+reaches the six parenthesized feature arms through `g.QueryFeature`, and
+`QueryValue` reaches the value grammar through `g.TypedValue`. With the
+expensive subtrees already shared, nine new names pay only their own ~900 B
+each. **Direct confirmation of the model: the prize is transitive subtree ×
+use count, and css's was already zero here.** Do not port a win between
+grammars without re-measuring.
+
+### 2.4c css leverage map — 90× between regions
+
+| region | source | artifact | expansion |
+| --- | ---: | ---: | ---: |
+| module scope (reducers, guards, terminals) | 33,528 B (30.5%) | 11,463 B (0.5%) | **0.34×** |
+| `rules()` factory | 75,343 B (68.5%) | 2,294,961 B (99.5%) | **30.46×** |
+
+**90×**, against 38× in less. css module scope is **sub-unity** — 33.5 KB of
+source becomes 11.5 KB of artifact. Spend nothing there.
+
+### 2.4d css at-rules: the loose-tier prize is ≈ 0 bytes
+
+Verified 65 consts in the contiguous at-rule/query region (2545–3296) plus the
+dispatch/case/block cluster ≈ 68. Three-bucket result matches less:
+
+- **Bucket 3 (vocabulary, relocatable): essentially empty.** The at-keyword
+  vocabulary is not in `css/src/grammar.ts` at all — it lives in
+  `parser-shared/src/recognition.ts` (`conditionalAtKeyword`,
+  `descriptorAtKeyword`, `documentAtKeyword`, `marginAtKeyword`,
+  `fontFeatureValueAtKeyword`, `keyframesAtKeyword`, …) and **every one is a
+  dispatch key** selecting which at-rule tail family parses. Pure shape.
+  There is no media-*type* allowlist to move — the grammar already accepts any
+  identifier as a media type.
+- **`mediaTypeKeywordReserved`** = `keywords(['only','layer'])` used only inside
+  `not(...)`, twice. It forces `only` into the `QueryOnlyClause` arm rather than
+  being eaten as a generic media type; `layer` is spec-reserved in
+  `<media-type>` (css-cascade-5). **SHAPE, stays** — proven by the negative
+  control above.
+- **`containerNameReserved`** = `not(keywords(['none']))` inside `containerName`.
+  Decides whether `none` is a container *name* or the start of a *query*;
+  `<container-name>` excludes `none` per css-contain-3. **SHAPE, stays.**
+- **Bucket 2 (structurally wrong) is already where the design wants it** —
+  `AtRulePreludeGroup` uses `balanced()`, `OpaqueAtRuleBlock` uses the shared
+  `opaqueAtRuleRecognition` capture.
+
+**The 68 consts are expensive because of fan-out into three dispatches, not
+because of tightness.** The loose-tier lead is a near-zero byte prize on both
+css and less.
+
+### 2.4e Compile-time elision beats runtime deferral — measured
+
+Per-child read rate, measured by wrapping every builder's `children` argument in
+a read-counting Proxy on the **baseline** css artifact, one bootstrap4.css AST
+parse:
+
+| | |
+| --- | ---: |
+| builder calls | 33,541 |
+| children passed | 62,884 |
+| **children read** | **62,140 — 98.82%** |
+| whole-array consumers | 21,010 calls / 47,172 children |
+| partial (index-only) consumers | 12,531 calls / 15,712 children, 14,968 read (95.3%) |
+
+**Almost everything is read.** The lazy-view variant's entire upside is **744 of
+62,884 children (1.18%)**, and that is the *favourable* bound. Avoiding 5,841
+allocations already cost −6%; avoiding 744 cannot pay for itself.
+
+**The principle, which generalises past this lane:**
+
+> **"Don't build what nobody reads" is better served by NOT EMITTING the
+> builder than by deferring it.** Runtime deferral pays on the common path to
+> save on the rare one. Compile-time elision pays nothing and saves entirely.
+
+The capture tape is the counter-example in miniature: **32,756 tape writes to
+avoid 5,841 allocations**. Compare `commitment.ts`, which deleted the emission
+outright and paid −5 to −7% across all four dialects.
+
+Supporting: rollback is **17.5%** of parse cost against save's **4.2%** — the
+win is in not having to unwind, not in cheapening the mark. And the entire
+dispatch/token-keying spread is **2.4%** of css parse time.
+
+**Recorded as the mechanism's verdict, not the goal's** (G17). The goal is
+untouched and sits inside G14.
+
+### 2.4f Rollback-boundary census, all four shipping grammars
+
+Instrumented at the **emission point**, not at `alwaysConsumes`, splitting each
+fall-back into **cycle-caused** (an analysis artifact) versus **real** (a
+property of the construct):
+
+| grammar | emitted | converted | fell back | **cycle** | real |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| css | 26,688 | 9,824 (36.8%) | 16,864 | **96 (0.6%)** | 16,768 |
+| less | 15,328 | 5,664 (37.0%) | 9,664 | **608 (6.3%)** | 9,056 |
+| scss | 13,312 | 5,920 (44.5%) | 7,392 | **256 (3.5%)** | 7,136 |
+| jess | 10,720 | 4,992 (46.6%) | 5,728 | **480 (8.4%)** | 5,248 |
+
+**The `lazy` bucket is large but almost entirely NOT cycle-caused.** On css it
+falls back at 2,560 sites, of which **32 are cycles** — the other 2,528 are the
+resolved parser genuinely not always consuming. So a productivity fixpoint
+(optimistic cycle seed, iterate down) has a **ceiling of ~96 sites on css**,
+0.6% of boundaries. **Not built** — the hazard is that a seed failing to
+converge downward reports a non-consuming rule as consuming and deletes a
+rollback that fires, which is unsound in the dangerous direction. less/jess at
+6.3%/8.4% are more defensible; revisit only if a cheaper lever is exhausted.
+
+**Where the mass actually is (css):** `regex` 5,504, `many` 3,872, `expect`
+2,688, `optional` 736. `many`/`optional`/`not`/`expect` are genuinely
+zero-width — correct answers with **no headroom** — and `expect` is the
+38-mismatch trap. **The one unexplained bucket is css `regex`: 5,504 sites,
+zero converted**, unchanged by a structural precision fix. Unconfirmed whether
+that is genuine nullability (at-rule-prelude shapes like `[^;{]*`) or remaining
+imprecision.
+
+### 2.4g The calls-vs-sites discrepancy is CLOSED
+
+css-parser compiles ~6 grammar variants per package (`ast`, `positions`, `cst`,
+`cst/positions`, …). Per artifact: 26,688 / 6 ≈ **4,448 boundaries**,
+9,824 / 6 ≈ **1,637 converted** — against the design doc's **4,268 → 1,651**.
+Within 4%.
+
+**The doc's numbers and the instrumented numbers are the same measurement at
+different multiplicities.** The apparent 26,688-vs-558 gap was **variant count,
+not disagreement.** Before treating two counts as contradictory, check whether
+one is per-artifact and the other is per-package.
+
+### 2.4h Native-primitive bakeoff — they win microbenchmarks and vanish in situ
+
+Microbenchmarks (0.97 MiB real CSS, one process, interleaved, rotated order,
+checksums asserted equal):
+
+| candidate | rel | wins | mechanism |
+| --- | ---: | --- | --- |
+| `String.indexOf`, single stop | **0.232** | 61/61 | SIMD-accelerated |
+| object, **dense int keys** | **0.173** | 31/31 | elements store, not named-property IC |
+| plain Array | 0.183 | 31/31 | |
+| object, sparse int keys | 0.192 | 31/31 | |
+| Uint8Array LUT 64 KB | 0.874 | 60/61 | one memory read replaces a 7-term `\|\|` chain |
+| bitmask Int32Array indexed | 0.893 | 60/61 | |
+| Map, integer keys | 0.590 | 31/31 | |
+| **`Object.freeze(Array)`** | **0.594** | | **LOSES the fast elements kind — 3.4× slower. Anti-optimisation.** |
+| bitmask 4× SMI **branched** | 1.093 | 3/61 | 4 branches to *select* the mask is the whole cost |
+| sticky `/y` `exec()` | 3.068 | 0/61 | allocates a match array per position |
+
+**Elements kinds measured via `%DebugPrint`, not assumed**: only the plain Array
+is `PACKED`; a dense-int-keyed *object* is `HOLEY`; **nothing reached dictionary
+mode**, which is why sparse cost only 4% instead of collapsing.
+
+**Sticky regex inverts by run length** — loses 3× on short ident runs, wins
+27.5% on long delimiter runs.
+
+**In situ: −0.56% css raw bytes, speed at or below the noise floor and not
+claimed.** less raw −118 B but gzip **+10** — `indexOf` is shorter yet breaks
+the ubiquitous `while (_j < input.length && !(…)) _j++` run that gzip matches
+everywhere else.
+
+**The instrument is now self-calibrating, and this is the transferable part.**
+graphql and json convert zero sites and were `cmp`-verified byte-identical, so
+they were carried in every run as live controls: they read **1.0096 and 0.9999**
+at 24/51 and 26/51 wins. **That is the floor, measured in the same run rather
+than assumed.** An earlier harness measured those same byte-identical artifacts
+**7.8% apart**; batching parses per sample fixed it, and every in-situ number
+from before that fix was noise — including a css row that swung +7.9% → −1.9%
+between runs.
+
+### 2.4i Hot-path census — `_ctx.` field reads dominate, and `_map` is not hot
+
+On a real 241,068 B fused artifact:
+
+| | count |
+| --- | ---: |
+| `_ctx.` reads | **1,692** |
+| `input.charCodeAt(` | 550 |
+| `.get(` | **0** |
+| `new Map` | **0** |
+| bracket-index table reads | **0** |
+
+**`_map` occurs 8 times in 4,766 lines** — the literal, the `defineProperty`
+stamps, `return _map` — and **zero times inside any rule body.** Rule-to-rule
+calls are direct hoisted `_r_Name(input, pos, _ctx)` references (40 interior
+call sites, 0 through the map), and keys are full rule names, not ids.
+
+**So the 5.8× integer-key win cannot apply to `_map`, which is read once per
+parse.** It stays a live quantified datum for the G5 `g.` table *if* that table
+lands on a hot path.
+
+**The unexamined lead: `_ctx.` field access is 3× more common than
+`charCodeAt` and nobody has looked at it.**
+
+### 2.4j Tokenisation is 99.98% context-free — and it is ALL tail
+
+Measured on a real parse of `benchmark.css` (123,029 B) and `benchmark.less`
+(106,802 B), every grammar terminal boundary compared against a context-free
+css-syntax-3 §4 scanner. **PATH: CST** (leaf-complete; an AST reducer discards
+leaves and would flatter the result).
+
+| | core tokens | terminals | EXACT | MERGE | **SPLIT** | usable |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| benchmark.css | 49,530 | 30,388 | 85.50% | 14.48% | **6 (0.02%)** | **99.980%** |
+| benchmark.less | 41,286 | 28,068 | 89.74% | 10.19% | **20 (0.07%)** | **99.929%** |
+
+**MERGE** = the leaf is a run of ≥2 core tokens with both ends aligned — a blind
+scan is still usable, just finer-grained. **SPLIT** = a leaf boundary falls
+*strictly inside* a core token, the only genuine mode dependence.
+
+**There is no run-length distribution — there are FOUR runs per file.**
+
+- css: `30,748 / 4,208 / 4,168 / 10,406` tokens
+- less: `28,777 / 4,692 / 6,481 / 1,336` tokens
+
+**100% of both token streams lies inside a context-free run of ≥1,336 tokens.**
+There is no short-run population at all.
+
+The genuinely mode-dependent sites are exactly the ones the design predicted:
+css is 3× `:nth-child(-n+2)`; less is `px-1px` (ident-vs-subtraction, math mode)
+and `@{base-url}` interpolation inside strings.
+
+**The design rule this yields — it applies to the single-threaded token cursor
+(G14) regardless of threading:**
+
+> **A blind scanner must emit at the FINEST context-free grain and let the
+> consumer merge. Merging is reconstruction; splitting is a guess.** Every
+> greedy composite the scanner commits to is a place the parser must re-scan.
+
+That includes **not** attaching a leading `+`/`-` to a number — that single
+decision turns Less's math-mode ambiguity from a SPLIT into a MERGE.
+
+**Two instrument corrections that produced this rule.** A first cut emitted
+css-syntax-3's *composite* tokens (`10px` as one DIMENSION, `@white` as one
+AT_KEYWORD) and read the grammar's finer split as mode dependence — 86.5% /
+80.1%. A second kept strings whole where the grammar decomposes
+quote/body/quote — 98.6% / 98.4%. **Neither was mode dependence; both were the
+scanner being too greedy.**
+
+### 2.4k Parallel tokenisation: killed by Amdahl, not by any assumed mechanism
+
+| | min | p50 | p90 | p99 |
+| --- | ---: | ---: | ---: | ---: |
+| `Atomics.wait`/`notify` round trip (n=20,000) | 2,375 | **4,791** | 7,125 | 10,875 ns |
+| spin (busy poll) round trip | 41 | **125** | 209 | 292 ns |
+
+Token production: **9.3 ns/token** css, 11.9 ns/token less. Demand-driven
+break-even run-ahead: **515 tokens** (`Atomics.wait`), 13.4 (spin, burns a core).
+
+**Run-ahead is NOT the binding constraint** — 515 required against a *shortest*
+observed run of 1,336. Neither is message passing: SAB write cost is 0.991× a
+plain ArrayBuffer, and a **pooled warm whole-file handover measured 0.431 ms
+against a 0.498 ms same-thread reference — free.**
+
+**What kills it is Amdahl.** Interleaved, 31 rounds, one process, AST path:
+**the entire context-free scan is 8.0% of benchmark.css parse time (0.463 of
+5.766 ms) and 2.8% of benchmark.less (0.493 of 17.683 ms).** That is the ceiling
+before sync and before consumption cost.
+
+**And input size.** Cold worker startup is 11–13 ms against a 5.766 ms whole
+parse — ~2× the parse before doing any work; break-even ~2.9 MB in a single
+parse. Pooled break-even is ~1,380 B (p50) merely to reach *zero gain*.
+**Against 2,443 real `.less`/`.scss` files in this repo: median 58 B, p75 77 B,
+p90 104 B, p99 253 B. Over 99% of jess's actual inputs sit below the pooled
+break-even.**
+
+**`SharedArrayBuffer` deployment constraint:** Node v24 ungated, `Atomics.wait`
+permitted on the main thread. **Browsers expose it only under cross-origin
+isolation** (`COOP: same-origin` + `COEP: require-corp`) **and `Atomics.wait`
+throws on the main thread** — a playground would need the headers *and* the
+parser moved off the main thread. Bundler dev servers do not set COOP/COEP by
+default (flagged, not tested).
+
+**Recorded as evidence about the size of the prize, not about threading** (G17).
+The answer changes only if a token cursor moves substantially more char-level
+work into the scanner than a css-syntax-3 tokenizer does — measurable only once
+the cursor exists.
+
+### 2.12a The CST host encodes shape constraints the spec cannot tell you
+
+A from-scratch grammar built from the CSS spec **cannot discover these**, and
+the identity gate reports them as unexplained divergences rather than as the
+constraint they are.
+
+- **`Numeric` requires number and unit as TWO separate leaves, with the unit at
+  `leaves[1]`.** `publicGrammarType` reads *children*, not just the node name.
+  Gluing number+unit into one regex leaf — the natural terminal-up move —
+  silently turns **every dimension and percentage in the corpus into `Num`**.
+- **`dimension()` takes a THIRD argument**: the authored text. Passing two
+  diverges on every dimension and percentage.
+- **`publicChildren:305` replaces the `url` leaf AND the `(` leaf with a single
+  synthesised leaf carrying a JOINED span.** A grammar emitting two leaves is
+  byte-wrong in the CST while its AST looks perfect.
+- **The incumbent emits NO `Block` node** (verified, 0 matches) — block bodies
+  are non-node consts. Introducing one inserts a CST level everywhere.
+- **`@supports`, `@media` and `@container` all route through ONE
+  `ConditionalBlock` node** retyped to `QueryAtRule`. Splitting `@supports` out
+  is wrong about the block node even when it is right about the preludes.
+- **Only the `@supports` arm is wrapped in
+  `parser({ trivia: interstitialTrivia }, …)`** — a trivia-scope override that
+  moves span boundaries even when node names match.
+
+**Check a candidate production against the host, not only against the spec.**
+A mechanical checker must apply `publicGrammarType` and `TYPE_NAMES` **before**
+diffing, since the identity gate never sees the raw production name.
+
+### 2.12b Zero-corpus productions are UNTESTED BY CONSTRUCTION, not done
+
+`@scope` and `@font-feature-values` have **zero corpus entries**. They cannot
+move `--min-real` by a single tree, **and the identity gate can never tell a
+candidate that those productions are wrong.** Mark them untested-by-construction
+and record them as a *corpus* gap, not merely a coverage one. Do not sequence
+them against gaps the gate can actually grade.
+
+### 2.4-cost What a new production costs — and the answer to goal 2
+
+Measured on the **3.34 MB incumbent** by patch → build → measure → restore, two
+sizes per variant so the slope cancels fixed overhead. Probe at-keywords appear
+in no corpus input, so every variant is tree-identical by construction; the
+grammar was restored and `diff`-verified.
+
+| variant | per production | per site |
+| --- | ---: | ---: |
+| **heavy** — `sequence(routed(), g.AtRulePrelude, stylesheetBodyBlock)` | **16,408 B** | 5,469 B |
+| **light** — `sequence(routed(), g.AtRulePrelude, literal(';'))` | **7,972 B** | 1,993 B |
+
+**Both are new NAMED productions in the rules map, referenced once via `g.`** —
+the shape that was supposed to cost ~950 B/site. It does not, at either weight.
+The two differ in exactly one reference: `stylesheetBodyBlock` is a by-const H1
+site, so every production referencing it re-inlines the whole stylesheet-body
+closure. That is the entire 2.06× gap.
+
+**Cost per SITE is the wrong unit. Cost is dominated by what a new production
+REFERENCES**, not by how many combinators it contains. The ~950 B/site figure in
+§2.1 describes a *named rule already referenced via `g.`*; it does not describe
+*adding* coverage.
+
+**CONFIRMED — the first result this session to earn the word, and it is
+confirmed on the budget question, NOT on the 2.06× ratio, which remains open.**
+Two methods, two grammars, neither author reading the other's method first:
+
+| method | grammar | says |
+| --- | --- | --- |
+| patch/build/measure, per production | 3.34 MB incumbent | **~4.9 light productions** affordable in 39,442 B |
+| in-situ marginal ratio (175 B source/case × 23.4×) | 430 KB candidate | **~9.6 coverage cases** affordable in 39,442 B |
+
+Same direction, same order of magnitude. **99 outstanding gaps need ≈405,405 B
+against 39,442 B — a shortfall of ≈365,963 B, about 10× over.**
+
+> **Goal 2 is not reachable by writing grammar.** The gap must come from
+> codegen.
+
+**And the denominator escape route is closed:** the marginal ratio of writing
+coverage is **23.4×** against a 10.85× average, so **writing more source does
+not buy budget, it spends it faster.**
+
+The in-situ number is the better of the two — it is measured in the candidate's
+own grammar and does not inherit the incumbent's large-closure caveat. The
+incumbent absolutes should be re-measured per grammar before being spent; what
+is expected to transfer is the reference-weight finding, not the byte figures.
+
 ### 2.5 Measurement discipline
 
 - **Noise floor on this machine: 5.144 vs 5.200 ms min-of-mins at a 6/15 win
@@ -768,10 +1207,12 @@ them against gaps the gate can actually grade.
 | **H1** | const referenced 2+ times, **NOT** in the rules map — inlined per reference, transitively | **40** |
 | **H2** | composite **both** in the rules map **and** referenced by const — emitted twice | **10** |
 
-**Settled at H1 40 / H2 10 (2026-07-31).** Reconciled from opposite directions
-by two independently written scripts: C's harness audit read 42 and B's read
-38. The four-row gap was **two errors pointing opposite ways**, which is why
-neither count was right and averaging would have been wrong:
+**Settled at H1 40 / H2 10.** Two independently written scripts read 42 and 38.
+The four-row gap was **two errors pointing opposite ways**, so neither count was
+right and averaging would have been wrong: one over-counted 2 factory aliases
+(filter 8), the other under-counted `urlOpen` (filter 9, `lastIndex`) and
+`opaqueAtRuleOtherwise` (a missing `otherwise` include). H2 = 10 was agreed by
+both and hand-verified site by site.
 
 - C over-counted by 2 — `cssCase` and `identWord` are `makeWhen`/`makeWord`
   factory aliases (filter 9 above).
@@ -804,6 +1245,16 @@ confirmation of the cause in *B's* script. Both scripts dropped the same row for
 implementations; interpretation does not.** The check that would have caught it
 is arithmetic: A's composite count was 189, matching B's post-fix count, so a
 missing include could not have been the whole story for both.
+
+**Retracted, so it is not re-derived:** two successive hypotheses that B's
+missing `urlOpen` row came from (a) comment-stripping plus a newline-anchored
+declaration regex, and (b) a missing `noTrivia` include. Both falsified — (a) by
+reading `grammar.ts:1052`, (b) by B testing its own classifier, which returned
+`true` for `noTrivia(sequence(` before any fix. **The second is the instructive
+one and its error is an inference error, not a measurement error:** a true
+observation about *A's* script was transferred to *B's* as confirmation. Both
+dropped the same row for different reasons. **Observation transfers between
+implementations; interpretation does not.**
 
 Top H1 offenders: `RoutedAtRuleStatement` ×11, `declarationListBlock` ×7
 (`grammar.ts:3314` — `{ many(declarationListItem) }`, dragging the whole
