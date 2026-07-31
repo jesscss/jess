@@ -513,8 +513,9 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const BasicSelector = node('BasicSelector', g.SimpleSelectorToken, children => simpleSelector(text(children[0])));
 
   /** Adjacent simple selectors with no combinator between them. */
-  const CompoundSelector = transform(
-    oneOrMore(choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector)),
+  const CompoundSelector = node(
+    'CompoundSelector',
+    noTrivia(oneOrMore(choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector))),
     children => selectorTermOf(children as never)
   );
 
@@ -884,11 +885,16 @@ export const cssTerminalUpB1Grammar = composeLeaf([cssSyntax, cssPseudoSyntax, r
   terminalUpFactory
 )]);
 
-/** Alias under the harness's contract name for the AST artifact. */
-export const cssGrammar = composeLeaf([cssSyntax, cssPseudoSyntax, rules(
-  { trivia: whitespace, scanSkip: [blockComment] },
-  terminalUpFactory
-)]);
+/**
+ * Alias under the harness's contract name — a RE-EXPORT of the same binding.
+ *
+ * This was previously a second `composeLeaf(...)` with byte-identical
+ * arguments. `composeLeaf` is not memoised: each call compiles its own
+ * complete table, so the "alias" silently added a whole second copy of the AST
+ * table — 414,035 B of pure duplication. Candidate B measured it: all three
+ * exports 1,241,692 B against 414,035 B for one, closing to within 0.03%.
+ */
+export { cssTerminalUpB1Grammar as cssGrammar };
 
 /**
  * The CST artifact, compiled from the SAME factory with `hostMode: 'cst'`.
