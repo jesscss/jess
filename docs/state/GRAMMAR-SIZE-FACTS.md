@@ -503,6 +503,57 @@ existing collapses, which are part of the target and must be reproduced.
 
 ---
 
+## 4b. A false win that passes EVERY gate
+
+**The most dangerous result of the session.** The scss lane rewrote all 31
+`node<AstType>(` type arguments to test the H2 hypothesis. The result:
+
+- compiled clean
+- passed **322/322** tests
+- was **byte-identical on both surfaces**
+- showed a **−12.3 KB "win" indistinguishable from a real one**
+
+It was 29 mangled type annotations. **No gate we have would have caught it.**
+Tree identity cannot, because the trees genuinely do not move. The only defence
+is that the *edit* was nonsense on inspection.
+
+**Consequence: byte-identity is necessary and not sufficient.** A size win must
+also be explicable — if you cannot say which productions stopped being
+duplicated and why, the number is not evidence.
+
+## 4c. The build-order note in circulation is WRONG
+
+**`internal-css-recognition` NO LONGER EXISTS** — no directory, no
+`package.json` reference anywhere in the tree. It was renamed to
+**`packages/parser-shared`** at `a74131e8f`. Verified.
+
+The four parser packages import `@jesscss/parser-shared/{recognition,
+opaque-at-rule,pseudo-consts}`. **Build `packages/parser-shared` first.**
+Without it, `pnpm compile` dies with
+`composeLeaf() must macro-fuse; runtime composition is forbidden` — which reads
+like a grammar or plugin defect and is neither.
+
+Two further traps in the same flow, both safe to measure through:
+
+- `pnpm compile` exits **non-zero on the `.d.ts` step** unless `@jesscss/core`
+  is built, **but the macro fuse succeeds and `ast.js` is emitted.**
+- `packages/core`'s own build fails on a missing `@jesscss/awaitable-pipe`
+  while still emitting `lib/ast.js`, which is enough to run the AST path.
+
+## 4d. Gates confirmed to be checking nothing
+
+- **`pnpm perf:gate` defaults `PERF_GATE=off`**, and
+  `scripts/perf-gate/measure.mjs` `CASES` is **css×2 + less×2 — no scss case,
+  no jess case.** It reported `PASS` having graded **zero** cases. Every scss
+  and jess grammar commit in this project's history passed a gate that never
+  looked at them.
+- **`scoreboard.mjs:81` reads `.git/HEAD` directly**, so it cannot run in a
+  worktree — where every lane is required to work. In a worktree `.git` is a
+  *file*. Same class as the `.gitignore` bug: green on the author's checkout,
+  dead everywhere else. Fix: `git rev-parse HEAD`.
+
+---
+
 ## 5. Rules for adding to this file
 
 1. **One fact, one row, one source named.** "A lane found" is not a source.
