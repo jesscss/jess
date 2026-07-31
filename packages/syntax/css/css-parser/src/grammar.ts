@@ -2858,30 +2858,6 @@ const cssFactory = (g: GrammarSelf) => {
     g.OpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : tokenText(children[0])
   );
-  const OpaqueAtRuleBlock = node(
-    'OpaqueAtRuleBlock',
-    sequence(
-      g.GenericAtRuleName,
-      noTrivia(sequence(
-        g.OpaqueAtPrelude,
-        literal('{'),
-        g.OpaqueBody,
-        literal('}')
-      ))
-    ),
-    (children) => {
-      const prelude = children[1];
-      const rawBody = children[3];
-      if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
-        throw new TypeError('OpaqueAtRuleBlock lost its grammar-owned raw facts.');
-      }
-      return opaqueAtRuleBlock(
-        tokenText(children[0]!),
-        prelude,
-        rawBody
-      );
-    }
-  );
   const RoutedOpaqueAtRuleBlock = node(
     'OpaqueAtRuleBlock',
     sequence(
@@ -3513,6 +3489,12 @@ const cssFactory = (g: GrammarSelf) => {
       children.filter(isAtRuleBlock)
     ), rawChildren)
   );
+
+  /*
+   * `@scope` has the public declaration-list body model, so a nested scope
+   * retains the canonical AtRuleBlock reduction rather than being rejected or
+   * routed through an opaque body.
+   */
   const RoutedScopeBlock = node(
     'ScopeBlock',
     g.routedDeclarationListBody,
@@ -3711,32 +3693,6 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     otherwise(RoutedOpaqueAtRuleBlock)
   );
-  const LayerBlock = node(
-    'LayerBlock',
-    sequence(
-      g.LayerAtKeyword,
-      g.AtRulePrelude,
-      g.stylesheetBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      optionalValue(children[1]),
-      blockStatements(children)
-    ), rawChildren)
-  );
-  const NestedLayerBlock = node(
-    'NestedLayerBlock',
-    sequence(
-      g.LayerAtKeyword,
-      g.AtRulePrelude,
-      g.declarationListBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      optionalValue(children[1]),
-      rulesetStatements(children)
-    ), rawChildren)
-  );
 
   /*
    * `@page` accepts only declarations, empty statements, and its sixteen
@@ -3754,19 +3710,6 @@ const cssFactory = (g: GrammarSelf) => {
       tokenText(children[0]!),
       null,
       children.filter(isDeclaration)
-    ), rawChildren)
-  );
-  const PageBlock = node(
-    'PageBlock',
-    sequence(
-      g.PageAtKeyword,
-      g.AtRulePrelude,
-      pageBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      children.find(isValue) ?? null,
-      children.filter((value): value is Declaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
     ), rawChildren)
   );
   const keyframeSelector = node(
@@ -3795,21 +3738,6 @@ const cssFactory = (g: GrammarSelf) => {
       keyframeSelectorList(children),
       children.filter(isDeclaration)
     ), rawChildren), span)
-  );
-  const Keyframes = node(
-    'Keyframes',
-    sequence(
-      g.KeyframesAtKeyword,
-      g.AtRulePrelude,
-      keyframesBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => {
-      return withBlockBody(atRuleBlock(
-        tokenText(children[0]),
-        optionalValue(children[1]),
-        blockStatements(children)
-      ), rawChildren);
-    }
   );
   const Ruleset = node(
     'Ruleset',
@@ -3916,19 +3844,6 @@ const cssFactory = (g: GrammarSelf) => {
       ), rawChildren);
     }
   );
-  const DescriptorBlock = node(
-    'DescriptorBlock',
-    sequence(
-      g.DescriptorAtKeyword,
-      g.AtRulePrelude,
-      g.descriptorBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]),
-      children.find(isValue) ?? null,
-      children.filter(isDeclaration)
-    ), rawChildren)
-  );
 
   /*
    * `@font-feature-values` admits exactly seven named feature blocks, each
@@ -3945,77 +3860,6 @@ const cssFactory = (g: GrammarSelf) => {
       tokenText(children[0]!),
       null,
       children.filter(isDeclaration)
-    ), rawChildren)
-  );
-  const FontFeatureValuesBlock = node(
-    'FontFeatureValuesBlock',
-    sequence(
-      g.FontFeatureValuesAtKeyword,
-      g.AtRulePrelude,
-      fontFeatureValuesBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      children.find(isValue) ?? null,
-      children.filter(isAtRuleBlock)
-    ), rawChildren)
-  );
-  const ScopeBlock = node(
-    'ScopeBlock',
-    sequence(
-      g.ScopeAtKeyword,
-      g.AtRulePrelude,
-
-      /*
-       * `@scope` has the public declaration-list body model, so a nested
-       * scope retains the existing canonical AtRuleBlock reduction rather than
-       * being rejected or routed through an opaque body.
-       */
-      g.declarationListBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      optionalValue(children[1]),
-      rulesetStatements(children)
-    ), rawChildren)
-  );
-  const StartingStyleBlock = node(
-    'StartingStyleBlock',
-    sequence(
-      g.StartingStyleAtKeyword,
-      g.AtRulePrelude,
-      g.stylesheetBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]),
-      optionalValue(children[1]),
-      blockStatements(children)
-    ), rawChildren)
-  );
-  const NestedStartingStyleBlock = node(
-    'NestedStartingStyleBlock',
-    sequence(
-      g.StartingStyleAtKeyword,
-      g.AtRulePrelude,
-      g.declarationListBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]),
-      optionalValue(children[1]),
-      rulesetStatements(children)
-    ), rawChildren)
-  );
-  const DocumentBlock = node(
-    'DocumentBlock',
-    sequence(
-      g.DocumentAtKeyword,
-      g.AtRulePrelude,
-      g.stylesheetBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      children.find(isValue) ?? null,
-      blockStatements(children)
     ), rawChildren)
   );
   const Stylesheet = node(
@@ -4103,7 +3947,6 @@ const cssFactory = (g: GrammarSelf) => {
     StatementPrelude,
     OpaqueAtPrelude,
     OpaqueBody,
-    OpaqueAtRuleBlock,
     StylesheetAtRule,
     DeclarationListAtRule,
     ConditionalGroupAtRule,
@@ -4123,22 +3966,12 @@ const cssFactory = (g: GrammarSelf) => {
     SupportsInParens,
     SupportsCondition,
     SupportsPrelude,
-    LayerBlock,
-    NestedLayerBlock,
     ConditionalBlock,
     NestedConditionalBlock,
-    DescriptorBlock,
     FeatureValueBlock,
-    FontFeatureValuesBlock,
-    ScopeBlock,
-    StartingStyleBlock,
-    NestedStartingStyleBlock,
-    DocumentBlock,
     MarginAtRule,
-    PageBlock,
     keyframeSelector,
     KeyframeBlock,
-    Keyframes,
     Ruleset,
     TopLevelRuleset,
     stylesheetBodyBlock,
