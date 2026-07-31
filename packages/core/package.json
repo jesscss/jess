@@ -15,6 +15,12 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
+    "./diagnostics": {
+      "types": "./lib/diagnostics.d.ts",
+      "source": "./src/diagnostics.ts",
+      "import": "./lib/diagnostics.js",
+      "require": "./lib/diagnostics.cjs"
+    },
     "./value": {
       "types": "./lib/value.d.ts",
       "source": "./src/value.ts",

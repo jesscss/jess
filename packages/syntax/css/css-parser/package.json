@@ -18,9 +18,14 @@
       "require": "./lib/index.cjs"
     },
     "./cst": {
-      "types": "./lib/cst-css.d.ts",
+      "types": "./lib/cst.d.ts",
       "import": "./lib/cst.js",
       "require": "./lib/cst.cjs"
+    },
+    "./cst-host": {
+      "types": "./lib/cst-host.d.ts",
+      "import": "./lib/cst-host.js",
+      "require": "./lib/cst-host.cjs"
     },
     "./grammar": {
       "types": "./lib/grammar/ast.d.ts",

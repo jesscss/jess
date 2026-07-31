@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parse, parseCssCst } from '@jesscss/css-parser';
+import { parse } from '@jesscss/css-parser';
+import { parseCssCst } from '@jesscss/css-parser/cst';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

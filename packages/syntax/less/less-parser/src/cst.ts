@@ -1,10 +1,9 @@
-import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
+import { commentTriviaLabels } from './trivia-labels.js';
+import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst-host';
 import { lessCstGrammar } from './grammar/cst.js';
 import { lessCstPositionsGrammar } from './grammar/cst/positions.js';
 
-/* The Less grammar labels its document trivia arms `whitespace`,
- * `lineComment`, and `blockComment`; only the comment arms need a root entry. */
-export const commentTriviaLabels = ['lineComment', 'blockComment'] as const;
+export { commentTriviaLabels } from './trivia-labels.js';
 
 export function parseLessCst(
   input: string,
@@ -53,4 +52,4 @@ export type {
   CssCstParseOptions as LessCstParseOptions,
   CssCstParseResult as LessCstParseResult,
   CssCstType as LessCstType
-} from '@jesscss/css-parser/cst';
+} from '@jesscss/css-parser/cst-host';

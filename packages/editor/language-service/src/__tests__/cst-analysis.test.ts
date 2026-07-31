@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { SymbolKind } from 'vscode-languageserver-types';
-import { parseCssDoc } from '@jesscss/css-parser';
+import { parseCssDoc } from '@jesscss/css-parser/cst';
 import { parseLessDoc } from '@jesscss/less-parser/cst';
 import { parseScssDoc } from '@jesscss/scss-parser/cst';
 import { cstDocumentSymbols, buildCstIndex } from '../cst-analysis.js';

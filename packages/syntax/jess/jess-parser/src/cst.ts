@@ -1,10 +1,9 @@
-import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
+import { commentTriviaLabels } from './trivia-labels.js';
+import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst-host';
 import { jessCstGrammar } from './grammar/cst.js';
 import { jessCstPositionsGrammar } from './grammar/cst/positions.js';
 
-/* The Jess grammar labels its document trivia arms `whitespace` and `comment`;
- * only the comment arm needs a root entry. */
-export const commentTriviaLabels = ['comment'] as const;
+export { commentTriviaLabels } from './trivia-labels.js';
 
 export function parseJessCst(
   input: string,
@@ -63,4 +62,4 @@ export type {
   CssCstParseOptions as JessCstParseOptions,
   CssCstParseResult as JessCstParseResult,
   CssCstType as JessCstType
-} from '@jesscss/css-parser/cst';
+} from '@jesscss/css-parser/cst-host';

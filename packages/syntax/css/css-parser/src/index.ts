@@ -1,7 +1,13 @@
-export {
-  cssCstBuildHost, parseCst, parseDocCst, parseCssCst, parseCssDiagnosticCst, parseCssDiagnosticDoc, parseCssDoc,
-  type CssCstChild, type CssCstError, type CssCstLeaf, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type CssCstType, type ParseDoc
-} from './cst-css.js';
+/*
+ * CST parsing lives behind the `./cst` subpath, and the shared CST runtime
+ * behind `./cst-host`. Re-exporting the parse functions here would put the two
+ * compiled CST grammar tables on the static import graph of the package entry,
+ * where Node executes them for every consumer that only wants `parse`. The
+ * types are erased at build time, so they stay.
+ */
+export type {
+  CssCstChild, CssCstError, CssCstLeaf, CssCstNode, CssCstParseOptions, CssCstParseResult, CssCstType, ParseDoc
+} from './cst-host.js';
 import { run } from 'parseman';
 import type { Span } from 'parseman';
 import {
@@ -12,7 +18,7 @@ import {
 } from '@jesscss/core/ast';
 import { cssGrammar } from './grammar/ast.js';
 import { cssPositionsGrammar } from './grammar/ast/positions.js';
-import { commentTriviaLabels } from './cst.js';
+import { commentTriviaLabels } from './trivia-labels.js';
 
 export type CssParseOptions = {
   readonly trackLines?: boolean;

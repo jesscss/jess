@@ -1,6 +1,13 @@
 import { run } from 'parseman';
 import type { Span } from 'parseman';
-import { parserDiagnostic, type ISafeParseResult, type SafeParseOptions } from '@jesscss/core';
+import type { ISafeParseResult, SafeParseOptions } from '@jesscss/core';
+/*
+ * `parserDiagnostic` comes from the narrow `./diagnostics` entry, not the root:
+ * the root entry pulls the evaluator, functions, and legacy tree runtime onto
+ * this module's static import graph, and Node executes all of it for a caller
+ * that only wants `parse`.
+ */
+import { parserDiagnostic } from '@jesscss/core/diagnostics';
 import {
   createTriviaMapFromParseman,
   withSourceSpan,
@@ -10,7 +17,7 @@ import {
 import { lessGrammar } from './grammar/ast.js';
 import { lessPositionsGrammar } from './grammar/ast/positions.js';
 import { LessParseError } from './parse-error.js';
-import { commentTriviaLabels } from './cst.js';
+import { commentTriviaLabels } from './trivia-labels.js';
 
 export type LessParseOptions = {
   readonly trackLines?: boolean;

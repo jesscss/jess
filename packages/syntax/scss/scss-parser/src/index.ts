@@ -8,7 +8,7 @@ import {
 } from '@jesscss/core/ast';
 import { scssGrammar } from './grammar/ast.js';
 import { scssPositionsGrammar } from './grammar/ast/positions.js';
-import { commentTriviaLabels } from './cst.js';
+import { commentTriviaLabels } from './trivia-labels.js';
 
 export type ScssParseOptions = {
   readonly trackLines?: boolean;

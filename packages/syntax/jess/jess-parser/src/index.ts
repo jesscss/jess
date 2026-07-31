@@ -1,4 +1,10 @@
-export { parseJessCst, parseJessDiagnosticCst, parseJessDiagnosticDoc, parseJessDoc } from './cst.js';
+/*
+ * CST parsing lives behind the `./cst` subpath. Re-exporting the parse
+ * functions here would put the two compiled CST grammar tables on the static
+ * import graph of the package entry, where Node executes them for every
+ * consumer that only wants `parse`. The types are erased at build time, so
+ * they stay.
+ */
 export type {
   JessCstChild, JessCstError, JessCstLeaf, JessCstNode, JessCstParseResult, JessCstType
 } from './cst.js';
@@ -22,7 +28,7 @@ import {
 import type { ApplySelectorKind, ExtendSelectorKind } from '@jesscss/core';
 import { jessGrammar } from './grammar/ast.js';
 import { jessPositionsGrammar } from './grammar/ast/positions.js';
-import { commentTriviaLabels } from './cst.js';
+import { commentTriviaLabels } from './trivia-labels.js';
 
 export interface JessParseOptions {
   readonly trackLines?: boolean;

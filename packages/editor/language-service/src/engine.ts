@@ -1,4 +1,4 @@
-import { parseCssDoc, type CssCstChild, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
+import { parseCssDoc, type CssCstChild, type CssCstNode, type ParseDoc } from '@jesscss/css-parser/cst';
 
 /*
  * CST parsing is a language-service capability. Compiler/plugin imports use the
