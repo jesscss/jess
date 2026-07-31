@@ -48,6 +48,77 @@ export async function loadSurfaces(libDir) {
 }
 
 /**
+ * Build the three surfaces from a BARE GRAMMAR MODULE rather than the
+ * package's public entry.
+ *
+ * A candidate grammar must not be wired in as an export of the shipping
+ * `css-parser` package (owner ruling): that pollutes the package for a
+ * tournament and makes the submission contract depend on shipping-surface
+ * changes. The harness adapts instead.
+ *
+ * The wiring the package itself does is thin — `parse` is
+ * `parseWith(cssGrammar, input)` and the CST entries are
+ * `parseCst`/`parseDocCst` over `cssCstGrammar` — so the module only has to
+ * export the two compiled artifacts. Everything else is reused from the
+ * snapshot's own `lib/`, which keeps the host, the trivia policy and the error
+ * projection identical to the baseline's.
+ */
+export async function loadSurfacesFromModule(libDir, moduleRel) {
+  const mod = await import(`${libDir}/${moduleRel.replace(/^lib\//, '')}`);
+  const parseWith = (await import(`${libDir}/parse-with.js`)).parseWith;
+  const host = await import(`${libDir}/cst-host.js`);
+
+  const astGrammar = mod.cssGrammar ?? mod.astGrammar ?? mod.grammar;
+  const cstGrammar = mod.cssCstGrammar ?? mod.cstGrammar;
+  if (astGrammar === undefined) {
+    throw new Error(`${moduleRel} exports no AST grammar (looked for cssGrammar, astGrammar, grammar)`);
+  }
+
+  const surfaces = [{ name: 'ast', parse: src => parseWith(astGrammar, src) }];
+  if (cstGrammar !== undefined) {
+    surfaces.push(
+      { name: 'cst', parse: src => host.parseCst(cstGrammar, src, 'Stylesheet') },
+      { name: 'doc', parse: src => host.parseDocCst(cstGrammar, src, 'Stylesheet') }
+    );
+  }
+  return surfaces;
+}
+
+/**
+ * How many bytes of the input a parse actually consumed, or null when the
+ * surface does not say.
+ *
+ * This exists because SUCCESS IS NOT CONSUMPTION. `Stylesheet` is `many(Item)`
+ * and `many` succeeds on zero matches, so a parse can report `ok` while having
+ * read nothing:
+ *
+ *     run(Stylesheet, '@media (hover){a{b:c}}')  ->  ok=true span={0,0} rules=0
+ *
+ * A whole at-rule can vanish from the tree while the parse reports success —
+ * that hid a real routing bug for a full round while the fixtures read 9/9.
+ * Two empty trees also compare EQUAL, so an identity gate that only diffs
+ * trees cannot see this class at all.
+ *
+ * Surfaces report it three different ways: `unconsumedFrom` (cst/doc, null when
+ * complete), `span.end` (cst), and `_e` (the AST document's end offset).
+ */
+export function consumedEnd(value) {
+  if (value === null || typeof value !== 'object') {
+    return null;
+  }
+  if (typeof value.unconsumedFrom === 'number') {
+    return value.unconsumedFrom;
+  }
+  if (value.span !== null && typeof value.span === 'object' && typeof value.span.end === 'number') {
+    return value.span.end;
+  }
+  if (typeof value._e === 'number') {
+    return value._e;
+  }
+  return null;
+}
+
+/**
  * Run one surface and return either a value or a projected error.
  *
  * The absolute repo path is stripped from error messages: jess errors cite
@@ -73,6 +144,9 @@ export function compareBuilds({ base, candidate, corpus, renames = {}, repo, lim
 
   const divergences = [];
   const undigested = [];
+  const shortParses = [];
+  const baselineShort = [];
+  const illusory = [];
   let checked = 0;
   let bothThrew = 0;
 
@@ -96,6 +170,50 @@ export function compareBuilds({ base, candidate, corpus, renames = {}, repo, lim
       const a = runSurface(bs, src, repo);
       const b = runSurface(cs, src, repo);
       checked++;
+
+      /*
+       * CONSUMPTION IS CHECKED BEFORE THE TREES ARE COMPARED, and on each side
+       * independently, because two trees that are both empty compare EQUAL.
+       * Diffing alone would report a match for a candidate that parsed nothing
+       * at all. `--min-real` does not cover this: it catches an empty corpus,
+       * not a corpus that parses to nothing.
+       *
+       * Only well-formed inputs are held to it. A malformed fixture is
+       * SUPPOSED to stop early, and its stopping point is already part of the
+       * digest via the projected error.
+       */
+      if (!isMalformed(id)) {
+        const ae = a.threw ? null : consumedEnd(a.value);
+        const be = b.threw ? null : consumedEnd(b.value);
+        const aShort = ae !== null && ae !== src.length;
+        const bShort = be !== null && be !== src.length;
+
+        if (aShort && bShort && ae === be) {
+          /*
+           * BOTH truncate at the SAME offset. The trees still compare equal,
+           * and that equality is worth nothing: neither side read the rest of
+           * the file. This is the `--min-real` blind spot — the corpus is not
+           * empty, it just parses to nothing — so the pair is subtracted from
+           * the real-tree count rather than inflating it.
+           */
+          illusory.push({ id, surface: bs.name, consumed: ae, length: src.length });
+        } else if (aShort && !bShort) {
+          /*
+           * The BASELINE truncates and the candidate does not. Not the
+           * candidate's fault and not disqualifying — it cannot fix the
+           * incumbent — but it must be loud, because it means the baseline is
+           * the thing that is wrong on this input.
+           */
+          baselineShort.push({ id, surface: bs.name, consumed: ae, length: src.length });
+        } else if (bShort) {
+          /*
+           * The CANDIDATE truncates where the baseline did not, or truncates
+           * at a different offset. That is a real regression and it FAILS,
+           * including the case where both are short at different points.
+           */
+          shortParses.push({ id, surface: bs.name, consumed: be, baseConsumed: ae, length: src.length });
+        }
+      }
 
       let da;
       let db;
@@ -145,7 +263,7 @@ export function compareBuilds({ base, candidate, corpus, renames = {}, repo, lim
    * same vocabulary. It suppresses the verdict entirely.
    */
   if (undigested.length > 0) {
-    return { verdict: 'no-verdict', divergences, undigested, checked, bothThrew };
+    return { verdict: 'no-verdict', divergences, undigested, shortParses, baselineShort, illusory, checked, bothThrew };
   }
 
   /*
@@ -169,11 +287,19 @@ export function compareBuilds({ base, candidate, corpus, renames = {}, repo, lim
   });
   sized.sort((x, y) => x.size - y.size);
 
+  /*
+   * A short parse FAILS the gate on its own, even when both sides agree, and
+   * even when no tree diverged. That is the whole point: the defect it catches
+   * is invisible to a diff precisely because it makes both trees empty.
+   */
   return {
-    verdict: divergences.length === 0 ? 'pass' : 'fail',
+    verdict: divergences.length === 0 && shortParses.length === 0 ? 'pass' : 'fail',
     divergences: sized.slice(0, limitReports).map(s => ({ ...s.d, inputBytes: s.size })),
     divergenceCount: divergences.length,
     undigested,
+    shortParses,
+    baselineShort,
+    illusory,
     checked,
     bothThrew
   };

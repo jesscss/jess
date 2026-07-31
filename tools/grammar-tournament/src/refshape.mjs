@@ -138,6 +138,22 @@ function strip(src) {
  * @param file the `src/grammar.ts` to audit
  * @param factoryName the `const <name> = (g: ...) => {` that opens the factory
  */
+/**
+ * Find the `rules()` factory a grammar file defines.
+ *
+ * A candidate grammar module is not obliged to name its factory `cssFactory`,
+ * and a refshape audit that silently returns `{ ok: false }` on a name mismatch
+ * would report "no reference-shape data" for a grammar that has plenty — an
+ * absent column reads as clean, which is the failure mode this harness exists
+ * to prevent.
+ */
+export function detectFactoryName(file) {
+  const raw = readFileSync(file, 'utf8');
+  const direct = /const\s+(\w+)\s*=\s*\([^)]*\)\s*(?::[^=]+)?=>\s*\{/.exec(raw);
+  const named = /const\s+(\w*[Ff]actory)\b/.exec(raw);
+  return named?.[1] ?? direct?.[1] ?? null;
+}
+
 export function auditReferenceShape(file, factoryName = 'cssFactory') {
   const raw = readFileSync(file, 'utf8');
 

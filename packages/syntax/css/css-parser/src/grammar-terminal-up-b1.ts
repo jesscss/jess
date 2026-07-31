@@ -844,3 +844,21 @@ export const cssTerminalUpB1Grammar = composeLeaf([cssSyntax, cssPseudoSyntax, r
   { trivia: whitespace, scanSkip: [blockComment] },
   terminalUpFactory
 )]);
+
+/** Alias under the harness's contract name for the AST artifact. */
+export const cssGrammar = composeLeaf([cssSyntax, cssPseudoSyntax, rules(
+  { trivia: whitespace, scanSkip: [blockComment] },
+  terminalUpFactory
+)]);
+
+/**
+ * The CST artifact, compiled from the SAME factory with `hostMode: 'cst'`.
+ *
+ * Exporting this is not optional. The CST surface carries both `type` and
+ * `grammarType`, so it is the surface that pins the production set; an entry
+ * without it is graded on the easier half only.
+ */
+export const cssCstGrammar = composeLeaf([cssSyntax, cssPseudoSyntax, rules(
+  { trivia: whitespace, scanSkip: [blockComment], hostMode: 'cst' },
+  terminalUpFactory
+)]);
