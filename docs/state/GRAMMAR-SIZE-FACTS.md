@@ -475,6 +475,42 @@ The answer changes only if a token cursor moves substantially more char-level
 work into the scanner than a css-syntax-3 tokenizer does — measurable only once
 the cursor exists.
 
+### 2.12a The CST host encodes shape constraints the spec cannot tell you
+
+A from-scratch grammar built from the CSS spec **cannot discover these**, and
+the identity gate reports them as unexplained divergences rather than as the
+constraint they are.
+
+- **`Numeric` requires number and unit as TWO separate leaves, with the unit at
+  `leaves[1]`.** `publicGrammarType` reads *children*, not just the node name.
+  Gluing number+unit into one regex leaf — the natural terminal-up move —
+  silently turns **every dimension and percentage in the corpus into `Num`**.
+- **`dimension()` takes a THIRD argument**: the authored text. Passing two
+  diverges on every dimension and percentage.
+- **`publicChildren:305` replaces the `url` leaf AND the `(` leaf with a single
+  synthesised leaf carrying a JOINED span.** A grammar emitting two leaves is
+  byte-wrong in the CST while its AST looks perfect.
+- **The incumbent emits NO `Block` node** (verified, 0 matches) — block bodies
+  are non-node consts. Introducing one inserts a CST level everywhere.
+- **`@supports`, `@media` and `@container` all route through ONE
+  `ConditionalBlock` node** retyped to `QueryAtRule`. Splitting `@supports` out
+  is wrong about the block node even when it is right about the preludes.
+- **Only the `@supports` arm is wrapped in
+  `parser({ trivia: interstitialTrivia }, …)`** — a trivia-scope override that
+  moves span boundaries even when node names match.
+
+**Check a candidate production against the host, not only against the spec.**
+A mechanical checker must apply `publicGrammarType` and `TYPE_NAMES` **before**
+diffing, since the identity gate never sees the raw production name.
+
+### 2.12b Zero-corpus productions are UNTESTED BY CONSTRUCTION, not done
+
+`@scope` and `@font-feature-values` have **zero corpus entries**. They cannot
+move `--min-real` by a single tree, **and the identity gate can never tell a
+candidate that those productions are wrong.** Mark them untested-by-construction
+and record them as a *corpus* gap, not merely a coverage one. Do not sequence
+them against gaps the gate can actually grade.
+
 ### 2.5 Measurement discipline
 
 - **Noise floor on this machine: 5.144 vs 5.200 ms min-of-mins at a 6/15 win
