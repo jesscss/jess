@@ -1592,6 +1592,34 @@ Filter 5's real effect on less was **H2 5 → 0**: `MixinGuard` and
 `Interpolation` were the only true positives it removed, and both were pure
 annotation artifacts. **less's H2 count is 0.** — less lane
 
+**The "unpromotable bare-`choice()`" list is mostly wrong, and the real
+blocker is narrower than a wide union.** Inferred types captured with a
+`const _probe: null = X;` assignment probe and `tsc --noEmit` (probe reverted;
+tree clean):
+
+| const | inferred type | promotable? |
+| --- | --- | --- |
+| `mixinStatement` | `Combinator<Statement>` | **YES — trivially** |
+| `blockItem` | `Combinator<string \| Statement>` | **YES** — identical to the existing `BodyStatement` declaration |
+| `atStatement` | `Combinator<AtRuleBlock \| AtRuleStatement \| ImportAtRule \| OpaqueAtRuleBlock \| Plugin \| Reference \| VariableDeclaration>` | **YES** — a clean union of named types |
+| `queryLeaf` | `Combinator<[string, FunctionCall \| Keyword] \| ValueNode>` | **NO** |
+| `valuePiece` | `Combinator<string \| AnonymousMixin \| Any \| Assignment \| Block \| Collection \| Color \| Comment \| Condition \| …19 more… \| { … }>` | **NO** |
+
+**Union width is not the blocker.** `atStatement` has seven members and is
+fine. The two real blockers are:
+
+1. **`dispatch(...)` surfaces a TUPLE** `[routedValue, branchResult]` in the
+   inferred type (`queryLeaf`, via `QueryIdentOrFunction`). No semantic
+   `Combinator<ValueNode>` slot can accept it. **This is the finding the
+   variance lane should act on** — it will recur in every grammar that routes a
+   `dispatch(...)` through a value slot.
+2. **An anonymous object type in the union** (`valuePiece`), which has no name
+   to write down.
+
+`blockItem`, `atStatement`, and `mixinStatement` are all on the statement hot
+path, so they are governed by the held `blockitem.patch` decision rather than
+by any type blocker. — less lane
+
 ## 3. SINGLE-SOURCE — act on, but label as provisional
 - **`GRAMMAR-REBUILD-SPEC §0.2` is wrong**: it states that aliases declared
   *inside* a `rules()` factory lower cleanly. One was inside and still failed.
