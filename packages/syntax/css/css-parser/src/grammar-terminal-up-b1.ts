@@ -142,7 +142,7 @@ function preludeOf(children: readonly unknown[]): ValueSlot | null {
 }
 
 function insideParen(routedText: string): string {
-  return routedText.replace(/^\(/, '').replace(/[)::<>=]+$/, '').trim();
+  return routedText.replace(/^\(/, '').replace(/[):<>=]$/, '').trim();
 }
 
 function selectorText(child: unknown): string {
@@ -393,7 +393,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
     'Block',
     sequence(
       literal('{'),
-      many(choice(sequence(choice(g.CustomProperty, g.Declaration), optional(literal(';'))), g.Item)),
+      many(choice(sequence(choice(g.CustomProperty, g.Declaration), optional(literal(';'))), g.Item, literal(';'))),
       literal('}')
     ),
     children => nodesOnly(children) as unknown as never
@@ -494,7 +494,19 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
       sequence(identOrFunctionOpen, optional(g.ValueList), literal(')')),
       sequence(literal('('), optional(g.ValueList), literal(')'))
     ),
-    children => block(nodesOnly(children)[0] as ValueSlot, 'paren')
+
+    /*
+     * The function arm's NAME lives in the `identOrFunctionOpen` LEAF, which
+     * `nodesOnly` skips because a leaf has no `type` — so reducing both arms
+     * through `block(...)` silently discarded `selector` from
+     * `@supports selector(a > b)` and `foo` from `@media foo(bar)` while
+     * keeping their arguments. The two arms carry different facts and need
+     * different reductions: a function token has a name, a bare paren group
+     * does not.
+     */
+    children => (typeof children[0] === 'object' && children[0] !== null && 'value' in children[0]
+      ? funcCall(text(children[0]).slice(0, -1), [nodesOnly(children)[0] as ValueSlot])
+      : block(nodesOnly(children)[0] as ValueSlot, 'paren'))
   );
 
   /**
