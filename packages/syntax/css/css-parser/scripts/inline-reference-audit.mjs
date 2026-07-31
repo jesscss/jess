@@ -53,7 +53,20 @@ import { readFileSync } from 'node:fs';
  * map rules — a grammar cannot have fewer productions than it exports, and that
  * impossibility is the check worth keeping.
  */
-const COMBINATOR = /^(?:sequence|choice|many|oneOrMore|oneOrMoreSep|optional|literal|regex|node|field|token|noTrivia|keywords|word|peek|not|dispatch|sepBy|balanced|scanTo|expect|routed|classifiedTrivia)\s*(?:<[^;{}()]*>)?\s*\(/;
+const COMBINATOR = /^(?:sequence|choice|many|oneOrMore|oneOrMoreSep|optional|literal|regex|node|field|token|noTrivia|keywords|word|peek|not|dispatch|when|otherwise|routed|sepBy|balanced|scanTo|expect|attempt|gate|leaf|parser|skip|trivia|transform|classifiedTrivia)\s*(?:<[^;{}()]*>)?\s*\(/;
+
+/*
+ * NAMED EXCLUSIONS, not an omission from the list above.
+ *
+ * `makeWord(...)` and `makeWhen(...)` bind a matcher POLICY, not a parse table:
+ * they lower to a case/boundary rule that call sites apply, so "inlined
+ * transitively at each site" does not describe their cost and they are not H1
+ * sites. GRAMMAR-REBUILD-SPEC 0.2 blesses the authoring form inside a rules()
+ * factory. This is stated as an exclusion rather than left out of COMBINATOR
+ * because a short exclusion list is auditable, while an omission from a long
+ * inclusion list is invisible — which is exactly how `otherwise` went missing.
+ */
+const POLICY_BINDER = /^(?:makeWord|makeWhen)\s*\(/;
 
 /**
  * Replaces comments, string literals and regex literals with spaces, keeping
@@ -207,9 +220,20 @@ function audit(path) {
   const h2 = [];
   let composites = 0;
 
-  for (const declaration of body.matchAll(/^ {2}const ([A-Za-z][A-Za-z0-9]*) = ([\s\S]{0,40})/gm)) {
+  /*
+   * The initialiser is captured inside a LOOKAHEAD, which is load-bearing.
+   * Capturing it directly as `([\s\S]{0,40})` advances `matchAll`'s lastIndex 40
+   * characters past `= `, so any const declared within 40 characters of the
+   * previous one is silently skipped — never classified, never counted, and
+   * invisible in the output. `const importAtKeyword = identWord('@import');` is
+   * short enough to swallow the whole of the following `const urlOpen = `, which
+   * is how a real H1 site went missing while every component check on it passed.
+   * A lookahead reads the initialiser without consuming it.
+   */
+  for (const declaration of body.matchAll(/^ {2}const ([A-Za-z][A-Za-z0-9]*) = (?=([\s\S]{0,40}))/gm)) {
     const name = declaration[1];
-    if (!COMBINATOR.test(declaration[2].trimStart())) {
+    const initialiser = declaration[2].trimStart();
+    if (POLICY_BINDER.test(initialiser) || !COMBINATOR.test(initialiser)) {
       continue;
     }
     composites++;
