@@ -113,7 +113,7 @@ an independent audit found 4 rules / 8 references.
    authoring form is blessed by `GRAMMAR-REBUILD-SPEC` §0.2. It survived
    because **it produced a number that looked structurally meaningful** — 27
    references reads as a real finding about a real hot path.
-9. **A consuming initialiser capture advances `lastIndex` past the next
+10. **A consuming initialiser capture advances `lastIndex` past the next
    declaration.** `/^ {2}const (\w+) = ([\s\S]{0,40})/gm` consumes 40 characters
    beyond the `=`, so `exec`/`matchAll` resumes *inside* the following
    declaration and skips it. Measured: `urlOpen` was eaten by the preceding
@@ -139,9 +139,55 @@ references for `OpaqueAtRuleBlock`, a const already proven unreachable.
 
 ---
 
+### 1a. State the denominator, and whose it is — MANDATORY before any ratio
+
+The ten filters above catch measuring the wrong **rows**. This catches
+measuring against the wrong **base**, which is the same failure class one level
+up and has cost more.
+
+**Before computing any ratio, write down what the denominator is and whose it
+is.** Five instances in one session, every one of them arithmetic that was
+correct about the wrong quantity:
+
+| # | the computation | what was actually being measured |
+| --- | --- | --- |
+| 1 | `many()` reducer children | `many()` SPREADS its matches; `children[1]` was the first item, not the list |
+| 2 | `transform()` reducer children | same — `transform()` spreads its result too, so a compound term never arrived as one child |
+| 3 | bytes per call site | the binding constraint was call sites per coverage **case** (3.6), a denominator nobody was looking at |
+| 4 | the goal-2 budget | 457,784 B is 4× the **incumbent's** 114,446 B source. A replacement grammar's budget is 4× of **its own** source. Reporting 3.66× against someone else's denominator hid a true 10.85× |
+| 5 | "the facts file is unreachable" | checked whether a **commit** was an ancestor; the **content** had been on `origin/dev` for hours under a rebased SHA |
+
+The remedy is one sentence written before the division, not more care during
+it: *this ratio is X per Y, where Y is <whose> <what>.* Instances 1–3 were
+caught by peers, 4 by a coordinator, 5 by a coordinator. **None was caught by
+its author**, which is why it is a procedural rule rather than an instruction
+to be careful.
+
+Corollary, from instance 4: **report the ratio and the absolute together,
+always.** Only one of them can be improved by writing more source, so a ratio
+that improves because source grew is not progress and must be labelled as such.
+
+### 1b. `H1 0 / H2 0` does NOT mean the grammar is composable
+
+The refshape column counts composites referenced by bare const. A clean score is
+equally consistent with **a well-factored grammar** and **a maximally-inlined
+one**, and the column cannot distinguish them.
+
+Measured instance: a `Url` production scoring clean at H1 0 / H2 0 was a bare
+const inlined at its single use site, so `g.Url` was undefined and **every**
+other production that wanted the url form — `@import`, `@namespace`,
+`image-set()`, `src:` descriptors — failed macro fusion on it. Putting it in the
+rules map cost **+11,939 B of artifact for +9 B of source**.
+
+That is a ratio *worsening* produced by a correctness fix, and it is the mirror
+image of the gaming trap the two-gate rule exists to catch: neither gate alone
+tells you whether to take the change. It also means the depth rule ("a shallow
+composite at one reference is cheaper inlined") is true about bytes and silent
+about reusability — the two are in direct tension and the audit only sees one.
+
 ## 1c. The identity-check rule — ONE rule, five faces
 
-The nine filters above catch **measuring the wrong rows**. A's §1a denominator
+The ten filters above catch **measuring the wrong rows**. A's §1a denominator
 rule catches **measuring against the wrong base**. This catches the third and
 largest class: **measuring the wrong object.**
 
@@ -162,7 +208,7 @@ assertion that is not the check itself.
 
 **The general detection, and the only one that generalises:** an instrument must
 be able to demonstrate its own coverage. A count of what it *visited* is
-evidence; silence is not. Filter 9's declaration-count assertion, the
+evidence; silence is not. Filter 10's declaration-count assertion, the
 `measured:` path line, the mtime freshness gate, and the visited-vs-independent
 check are all the same move — **make the instrument state what it looked at, and
 compare that against something derived differently.**
