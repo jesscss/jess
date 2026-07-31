@@ -969,4 +969,47 @@ describe('@jesscss/scss-parser public parse API', () => {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
   });
+
+  /*
+   * The value ladder runs with trivia cleared, so each interior that admits
+   * authored padding has to spell it, and it has to spell the comment-bearing
+   * `valueTrivia`: the document trivia table names only whitespace and `//`, so
+   * a block comment is never ambient inside a value. Both columns are asserted
+   * together because a fix restoring only the comment column would leave
+   * `( c )` — the same defect, one character apart — still rejected.
+   */
+  it('admits authored whitespace and comments at every value-interior boundary', () => {
+    const templates = [
+      '(Tc)', '(cT)', '(TcT)', '(cTd)', '(c,Td)',
+      '[Tc]', '[cT]',
+      'f(Tc)', 'f(cT)', 'f(cT,d)', 'f(c,Td)',
+      'min(1pxT,2px)', 'min(1px,T2px)',
+      'var(T--x,e)', 'var(--xT,e)', 'var(--x,Te)', 'var(--x,eT)',
+      '(1pxT*T2)', '(1px T+T 2px)'
+    ];
+    for (const template of templates) {
+      for (const fill of [' ', '/* c */', '/* ) */']) {
+        const source = `a { b: ${template.replaceAll('T', fill)} }`;
+        expect(() => parse(source), source).not.toThrow();
+      }
+    }
+  });
+
+  /*
+   * Sass distinguishes arithmetic from a space list by the whitespace AROUND a
+   * sign: `1 -2` is a two-item list whose second item is a signed dimension,
+   * while `1 - 2` is a subtraction. That coupling is semantic, and widening the
+   * operator padding to admit comments must not quietly dissolve it.
+   */
+  it('keeps the whitespace-coupled boundary between Sass arithmetic and a space list', () => {
+    expect(bare(parse('a { b: 1 - 2 }'))).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'Operation', operator: '-' } }] }]
+    });
+    expect(bare(parse('a { b: 1 -2 }'))).toMatchObject({
+      rules: [{ rules: [{ value: [{ type: 'Dimension' }, { type: 'Dimension', number: -2 }] }] }]
+    });
+    expect(bare(parse('a { b: (1 /* c */ - 2) }'))).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'Block', value: { type: 'Operation', operator: '-' } } }] }]
+    });
+  });
 });

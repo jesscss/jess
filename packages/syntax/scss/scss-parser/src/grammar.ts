@@ -68,6 +68,7 @@ type ScssRules = {
   MathTopSum: Combinator<ValueNode>;
   ValueTerm: Combinator<ValueSlot>;
   ValuePair: Combinator<ScssValuePair>;
+  ArgumentPair: Combinator<ScssValuePair>;
   Value: Combinator<ValueSlot>;
   Important: Combinator<true>;
   InterpolatedProperty: Combinator<Interpolation>;
@@ -569,25 +570,49 @@ function customValue(children: readonly unknown[]): ValueNode {
   return any(parts.map(part => 'lit' in part ? part.lit : '').join(''));
 }
 
+function isArithmeticOperator(text: string): boolean {
+  return text === '+' || text === '-' || text === '*' || text === '/' || text === '%';
+}
+
 /** Fold a grammar-produced left-associative operator chain. Precedence belongs
- * to the caller's product/sum production, never to a source-text recovery. */
+ * to the caller's product/sum production, never to a source-text recovery.
+ *
+ * Operands and operator characters arrive in authored order with the operators'
+ * padding interleaved. The pads are their own terms, so an operator no longer
+ * sits a constant distance from its operand and the fold reads the shape rather
+ * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
+ * defeat any attempt to recover the operator from the padded text. */
 function foldOperation(children: readonly unknown[]): ValueNode {
   const first = children.find(isValue);
   if (first === undefined) {
     throw new TypeError('SCSS arithmetic grammar produced no operand.');
   }
   let result = first;
-  for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
-    const operatorToken = children[index];
-    const right = children[index + 1];
-    if (operatorToken === undefined || !isValue(right)) {
-      throw new TypeError('SCSS arithmetic grammar lost an operator operand.');
+  let operator: string | undefined;
+  for (let index = children.indexOf(first) + 1; index < children.length; index += 1) {
+    const child = children[index];
+    if (isValue(child)) {
+      if (operator === undefined) {
+        throw new TypeError('SCSS arithmetic grammar lost an operator operand.');
+      }
+      result = operation(
+        operator,
+        result,
+        child
+      );
+      operator = undefined;
+      continue;
     }
-    result = operation(
-      requireToken(operatorToken).value.trim(),
-      result,
-      right
-    );
+    if (child === undefined || child === null) {
+      continue;
+    }
+    const text = requireToken(child).value;
+    if (isArithmeticOperator(text)) {
+      operator = text;
+    }
+  }
+  if (operator !== undefined) {
+    throw new TypeError('SCSS arithmetic grammar lost an operator operand.');
   }
   return result;
 }
@@ -993,9 +1018,55 @@ const whitespace = classifiedTrivia({
  * A whitespace-before, no-whitespace-after minus (`1 -2`) remains a list whose
  * second item is the signed dimension, matching Dart Sass's current syntax.
  */
-const productOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
-const topProductOperator = regex(/[ \t\n\r\f]*[*%][ \t\n\r\f]*/);
-const sumOperator = regex(/(?:\+[ \t\n\r\f]*|-[ \t\n\r\f]*|[ \t\n\r\f]+\+[ \t\n\r\f]*|[ \t\n\r\f]+-[ \t\n\r\f]+)/);
+/*
+ * A comment is trivia wherever whitespace is trivia (css-syntax-3 §4), so an
+ * operator's padding is spelled `ws* (comment ws*)*` rather than a bare
+ * whitespace run — the bare run is why `1px /* c *\/ * 2` was rejected outright.
+ * The comment and whitespace arms open on disjoint characters, so the match
+ * stays linear. `sumPad` requires real whitespace, which a comment does not
+ * supply, and is the shape Sass's list-vs-math discrimination is written in.
+ */
+const productPad = regex(/[ \t\n\r\f]*(?:\/\*(?:[^*]|\*(?!\/))*\*\/[ \t\n\r\f]*)*/);
+const sumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/)*[ \t\n\r\f]+(?:\/\*(?:[^*]|\*(?!\/))*\*\/[ \t\n\r\f]*)*/);
+
+/*
+ * Each pad is its own term rather than part of the operator regex, so the
+ * operator token stays exactly the operator character: folding the pad in would
+ * leave the reducer recovering the operator from bytes that can now contain a
+ * comment's own `/` and `*`. With the pads as terms the operator no longer sits
+ * a constant distance from its operand, so `foldOperation` reads the shape.
+ *
+ * The three sum arms reproduce the coupled whitespace shape the single regex
+ * carried, and that coupling is semantic, not cosmetic: a whitespace-before,
+ * no-whitespace-after minus (`1 -2`) stays a space list whose second item is a
+ * signed dimension, so no arm admits it.
+ */
+const productOperator = sequence(
+  productPad,
+  regex(/[*/%]/),
+  productPad
+);
+const topProductOperator = sequence(
+  productPad,
+  regex(/[*%]/),
+  productPad
+);
+const sumOperator = choice(
+  noTrivia(sequence(
+    sumPad,
+    regex(/\+/),
+    productPad
+  )),
+  noTrivia(sequence(
+    sumPad,
+    regex(/-/),
+    sumPad
+  )),
+  noTrivia(sequence(
+    regex(/[-+]/),
+    productPad
+  ))
+);
 const space = regex(/[ \t\n\r\f]+/);
 const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
 const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
@@ -1377,22 +1448,33 @@ const scssFactory = (g: ScssInputRules) => {
    * an ordinary list. Try the fully structured arithmetic form first; the list
    * branch is deliberately separate so `(1 2)` stays a paren Block around a list
    * rather than being invented as math.
+   *
+   * The interior padding is spelled for the same reason `Map` above spells it:
+   * this ladder runs with trivia cleared, so an interior that admits authored
+   * padding has to write it, and it has to write the comment-bearing
+   * `valueTrivia` — the document trivia table names only whitespace and `//`,
+   * so a block comment is never ambient here. Without these terms `( c )` was
+   * rejected exactly as hard as `(/* c *\/ c)` was.
    */
   const Paren = node<ValueNode>(
     'Paren',
     choice(
       noTrivia(sequence(
         literal('('),
+        optional(valueTrivia),
         g.MathSum,
+        optional(valueTrivia),
         literal(')')
       )),
       noTrivia(sequence(
         literal('('),
+        optional(valueTrivia),
         g.Value,
+        optional(valueTrivia),
         literal(')')
       ))
     ),
-    children => block(requireValueSlot(children[1]))
+    children => block(requireValueSlot(children.find(isValueSlotValue)))
   );
 
   /*
@@ -1403,11 +1485,13 @@ const scssFactory = (g: ScssInputRules) => {
     'Square',
     noTrivia(sequence(
       literal('['),
+      optional(valueTrivia),
       g.Value,
+      optional(valueTrivia),
       literal(']')
     )),
     children => block(
-      requireValue(children[1]),
+      requireValue(children.find(isValue)),
       'square'
     )
   );
@@ -1522,7 +1606,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(valueTrivia),
       optional(sequence(
         g.ValueTerm,
-        many(g.ValuePair)
+        many(g.ArgumentPair)
       )),
       optional(valueTrivia),
       literal(')')
@@ -1782,6 +1866,33 @@ const scssFactory = (g: ScssInputRules) => {
         ? `,${requireToken(children[1]).value}`
         : ',';
       return { separator, value: requireValueSlot(children[children.length - 1]) };
+    }
+  );
+
+  /*
+   * An argument comma also admits padding BEFORE it, which the value-list comma
+   * must not: at declaration top level the space in `a , b` is already the list
+   * grammar's own boundary, and widening `ValuePair` would re-cut every such
+   * value that parses today. Inside an argument list there is no competing
+   * reading, so `f(c , d)` and `f(c /* z *\/, d)` are plain padded separators.
+   * The separator keeps the authored bytes in authored order, so an argument
+   * list that carried no leading pad records exactly what it recorded before.
+   */
+  const ArgumentPair = node<ScssValuePair>(
+    'ArgumentPair',
+    noTrivia(sequence(
+      optional(valueTrivia),
+      literal(','),
+      optional(valueTrivia),
+      g.ValueTerm
+    )),
+    (children) => {
+      const value = children[children.length - 1];
+      const separator = children.slice(0, -1).map(child => requireToken(child).value).join('');
+      if (!separator.includes(',')) {
+        throw new TypeError('ArgumentPair lost its comma.');
+      }
+      return { separator, value: requireValueSlot(value) };
     }
   );
   const Value = node<ValueSlot>(
@@ -4955,6 +5066,7 @@ const scssFactory = (g: ScssInputRules) => {
     MathTopSum,
     ValueTerm,
     ValuePair,
+    ArgumentPair,
     Value,
     Important,
     InterpolatedProperty,
