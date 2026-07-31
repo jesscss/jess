@@ -28,7 +28,7 @@
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly"
   },
   "devDependencies": {
-    "parseman": "^0.46.0",
+    "parseman": "^0.47.0",
     "tsdown": "~0.21.7"
   }
 }
