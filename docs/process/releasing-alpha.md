@@ -21,7 +21,7 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 with `node -e "console.log(require('./scripts/release/alpha-allowlist.json').join('\n'))"`
 rather than trusting the transcription below.
 
-As of 2026-07-30 (`74b9fcb4d`) the allowlist holds:
+As of 2026-07-30 (`facb641dd`) the allowlist holds:
 
 - `@jesscss/awaitable-pipe`
 - `@jesscss/compiler`

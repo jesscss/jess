@@ -163,10 +163,11 @@ whether it changed source. The three current assignments are:
 3. ~~after Parseman 0.44 is published, make a clean Jess dependency integration
    branch, prove the resolved package is 0.44, then run the Less comment/
    custom-property surface, macro/compose gates, and all-Less before proposing a
-   range update.~~ **DONE** — `f292fdd8f` bumped the floor to `^0.44.0`,
+   range update.~~ **DONE** — `f292fdd8f` bumped the floor to `^0.44.0` (and
+   `75002c4a3` has since taken it to `^0.45.0`),
    `b2f888070` migrated root trivia capture, `d22cdb54b` removed the last
-   `RunResult.triviaLog` reads; `pnpm-lock.yaml:18442` resolves `parseman@0.44.0`
-   and nothing else.
+   `RunResult.triviaLog` reads; `pnpm-lock.yaml:18442` resolves `parseman@0.45.0`
+   and nothing else (the floor moved on again in `75002c4a3`).
 
 The orchestrator owns merge ordering and the final `dev` gate only. It must not
 combine unreviewed experimental branches, push a red `dev`, or treat a passing
@@ -265,10 +266,10 @@ selected-root trivia scope exclusion (`rootCapture: 'opaque'`), keeps classified
 trivia through compose/IR lowering, rejects nullable or overlapping classified
 categories, and carries the document-root selection metadata rather than an
 inner parser's local labels. **That release is published and INTEGRATED
-(re-verified 2026-07-30 on `74b9fcb4d`):** `f292fdd8f` bumped the floor
+(re-verified 2026-07-30 on `facb641dd`):** `f292fdd8f` bumped the floor
 `0.43.0 -> 0.44.0`, `b2f888070` migrated root trivia capture, and `d22cdb54b`
 dropped the last `RunResult.triviaLog` reads. `pnpm-lock.yaml:18442` has
-`/parseman@0.44.0:` and no other parseman entry. The "do not claim a 0.44
+`/parseman@0.45.0:` and no other parseman entry. The "do not claim a 0.44
 integration" hold that stood here is discharged.
 
 The current Jess batch is intentionally in progress but buildable. Less mixin
@@ -335,7 +336,7 @@ The four parser dialects now ship from one host-mode `src/grammar.ts` each; the
 old `src/ast/grammar.ts` files are deleted. The grammar/parser floor was registry
 `parseman@0.41.0` on this date, resolved through `^0.41.0` ranges in the root,
 `@jesscss/parser-shared`, and the four parser packages. **It has since moved twice: the floor
-at `74b9fcb4d` is `^0.44.0` in all 10 declarations** (`f292fdd8f`). Regenerate with
+at `facb641dd` is `^0.45.0` in all 10 declarations** (`f292fdd8f`). Regenerate with
 `grep -rn '"parseman"' --include=package.json . | grep -v node_modules` rather than trusting
 this sentence. Evidence as of 2026-07-27:
 dependency-order parser/plugin/jess builds pass, `pnpm run check:macro` and
@@ -431,8 +432,8 @@ greenfield assessment, not a collapse-pass gate).
 **Stage 2.3 (combinator cheat-sheet)** — DONE and now maintained ahead of the
 0.37.0 target it was written for.
 [`../parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md`](../parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md)
-is cut against `parseman@0.43.0` — **one floor stale as of `74b9fcb4d`; the repo moved to
-`^0.44.0` in `f292fdd8f` without the required re-cut** — and was last updated by `3bb2b4225`, the same
+is cut against `parseman@0.43.0` — **one floor stale as of `facb641dd`; the repo moved to
+`^0.45.0` in `75002c4a3` without the required re-cut** — and was last updated by `3bb2b4225`, the same
 commit that banned statement-prefix wrapper routes — so it carries the
 `choice` / `dispatch` / `routed` / `attempt` ownership rules the statement-start
 railroad work is held to. Read it with `GRAMMAR-REVIEW-STANDARD.md`, not instead
@@ -457,7 +458,7 @@ carried forward. Rows marked *unverified* state the date they were last known tr
 
 **Process mandate:** every item is fixed via an adversarially-reviewed DESIGN change —
 reviewed against [`../../perf/V8-ARCHITECTURE.md`](../../perf/V8-ARCHITECTURE.md) (the canonical
-invariants, numbered 1-11 as of `74b9fcb4d` — count them in the file, several docs still say 9; this row previously cited an `INVARIANTS.md` that does not exist in the repo),
+invariants, numbered 1-11 as of `facb641dd` — count them in the file, several docs still say 9; this row previously cited an `INVARIANTS.md` that does not exist in the repo),
 the extend design, and the "parser owns structure"
 keystone — BEFORE implementation. The review must score *structure, dispatch cost,
 tree-walks, byte-re-derivation, duplication*, and "did this ignore an existing tuned
@@ -469,7 +470,7 @@ byte-identity + minimal-diff gates let all of P1 through.
 - [x] **LANDED `43eaf459f`, realigned `fdec1cd11`.** LLM quality-enforcement v1: deterministic
       teeth, the `perf-architecture-reviewer` (evidence per invariant, not a verdict), and
       advisory pins, all keyed to the canonical invariants in `docs/perf/V8-ARCHITECTURE.md`
-      (numbered 1-11 at `74b9fcb4d`; this row said 9 until the 2026-07-30 docs audit).
+      (numbered 1-11 at `facb641dd`; this row said 9 until the 2026-07-30 docs audit).
       Design record: `docs/architecture/llm-quality-enforcement-design.md`.
 - [ ] **No serialize-then-reparse of structure** — still prose, not a lint/assertion. The one
       known live violation is P1.1 below.
@@ -477,7 +478,7 @@ byte-identity + minimal-diff gates let all of P1 through.
 ### P1 — EVAL/RENDER (see [[eval-render-perf-roadmap]])
 
 - [ ] **1. `selectorAtoms` regex round-trip — STILL OPEN.** Re-verified 2026-07-30 on
-      `74b9fcb4d`: `packages/core/src/ast/serialize.ts:1514` still serializes a *structured*
+      `facb641dd`: `packages/core/src/ast/serialize.ts:1514` still serializes a *structured*
       compound to text and regex-tokenizes it back into atoms, un-memoized, at five call sites
       (`:1608/1620/1624/1662/1700`). `packages/core/src/tree/extend/spine-extend.ts:1330`
       carries the legacy twin (called at `:1400/1444/1452`). Direct "parser owns structure"
@@ -530,11 +531,11 @@ Root cause: the scannerless port re-expanded the Chevrotain 7-arm grouped `rule`
       remove `[...spread]` in hot reducers, single-value fast paths.
 - [x] **First-set gating swept all four parsers** (2026-07-23 perf run, ~30 commits from
       `3aa12414d` to `44eb1237f`), and `5cc69d791` retired the local first-set regex copies
-      once parseman `0.32.0` gated them natively. **Current floor is `^0.44.0`** (`f292fdd8f`),
+      once parseman `0.32.0` gated them natively. **Current floor is `^0.45.0`** (`75002c4a3`),
       declared in the root `package.json:39`, `packages/parser-shared/package.json:31`, and two
       declarations each in the four `packages/syntax/*/*-parser/package.json`. Regenerate the
       member list with `grep -rn '"parseman"' --include=package.json . | grep -v node_modules`;
-      do not carry a count. (Re-verified 2026-07-30 on `74b9fcb4d`; the `^0.43.0` text here was
+      do not carry a count. (Re-verified 2026-07-30 on `facb641dd`; the `^0.43.0` text here was
       one floor out of date, and the `0.32.0` text before it was two.)
       **Version-lock invariant: compiled parser artifacts must never cross parseman versions**;
       regenerate every one in the same change as the bump.
@@ -551,12 +552,12 @@ since been split into another package, and one row was already fixed. Anchor a r
 symbol name and re-locate it with `grep`; treat the line number as a hint with a date on it.
 
 - **P1.1 — serialize-then-reparse of structure.** `packages/core/src/ast/serialize.ts`
-  `selectorAtoms` (`:1514` at `74b9fcb4d`) serializes a structured compound to text and
+  `selectorAtoms` (`:1514` at `facb641dd`) serializes a structured compound to text and
   regex-tokenizes it back, un-memoized, at five call sites (`:1608/1620/1624/1662/1700`).
   Direct "parser owns structure" (C2) violation. The legacy twin is `selectorAtoms` in
   `packages/core/src/tree/extend/spine-extend.ts` (`:1330`, called at `:1400/1444/1452`).
   *(The 2026-07-24 row said "six call sites" on the ast/ side; it has been five on both the
-  `991b315e0` and `74b9fcb4d` passes. Whether one was removed or the count was wrong is
+  `991b315e0` and `facb641dd` passes. Whether one was removed or the count was wrong is
   unverified.)*
 - ~~**Extend bitset fast-reject never landed.**~~ **CLOSED — MEASURED AND DECLINED 2026-07-30**
   (on `ef173125a`). The row's premise was wrong in substance: no *bitset* exists, but the
@@ -586,7 +587,9 @@ symbol name and re-locate it with `grep`; treat the line number as a hint with a
   (`solve.ts:109`) calls `buildContribs(reachable)` **per subject**, so `composePath` and
   `collectBranchAtoms` are recomputed for every instruction on every admitted subject even
   though both depend only on the instruction — ~1.1-1.5% of profile, i.e. 2-3x the bitset
-  ceiling. That is a separate, better-evidenced defect than this row was.
+  ceiling. That was a separate, better-evidenced defect than this row was, **and it has since
+  been fixed (`facb641dd`) — see the next row.** Line numbers in this paragraph are as of the
+  2026-07-30 investigation and predate that fix; anchor on the symbol names.
 - ~~**`buildContribs` recomputed per subject** (`solve.ts:109`).~~ **CLOSED — LANDED
   2026-07-30.** The blocker named above (the `e.ext = true` / `e.hidden = true` mutation
   "relies on them being per-subject fresh") **was not real**, and the investigation is the
@@ -635,7 +638,7 @@ symbol name and re-locate it with `grep`; treat the line number as a hint with a
   a known cross-process flake surface.
 - **`jess-parser` still text-joins selector-bearing pseudo arguments.** The
   folded grammar still has `staticSelectorText`
-  (`packages/syntax/jess/jess-parser/src/grammar.ts:385` at `74b9fcb4d`, used by nth-`of` at
+  (`packages/syntax/jess/jess-parser/src/grammar.ts:385` at `facb641dd`, used by nth-`of` at
   `:2599` and generic pseudo arguments at `:2729`). This is the remaining gap to
   always-structured pseudo arguments.
 - **The 8-dp holdouts are gone; the value domain has ONE number policy.** Both precision rows
@@ -650,7 +653,7 @@ symbol name and re-locate it with `grep`; treat the line number as a hint with a
   in `color.ts` (`:97` x3, `:105`) are bare integer rgb-byte quantization at output and are
   correct under V5.
 - **`evalBytesInterp` never validates units.** `evalBytesInterp`
-  (`packages/core/src/ast/serialize.ts:4717` at `74b9fcb4d`) has no `validateValueGroupUnits`
+  (`packages/core/src/ast/serialize.ts:4717` at `facb641dd`) has no `validateValueGroupUnits`
   call, while the ordinary value path calls it at `:4697`. A unit error that is fatal in a
   declaration value is silently accepted inside an interpolation. Undecided which way it should
   go — it deserves its own commit and an owner ruling. The divergence is documented in code at
@@ -695,7 +698,7 @@ symbol name and re-locate it with `grep`; treat the line number as a hint with a
   `(ValueGroup, FnCtx)` route and the body threw, so the call was preserved verbatim while
   the three-argument nested form worked. On `dd22fef60` all seven globals dispatch.
 - **Those seven globals now dispatch, but three of them diverge from dart-sass on a MISS.**
-  Measured 2026-07-30 at `74b9fcb4d` with a full workspace build, each case run through
+  Measured 2026-07-30 at `facb641dd` with a full workspace build, each case run through
   `Compiler.renderString(src, { extension: '.scss' })` and the same source through
   dart-sass 1.101.0 `compileString`:
 
@@ -883,7 +886,7 @@ after those Less-alpha gates are genuinely green.
 glob and filters. **Do not carry a count from this paragraph.** Three numbers have been in
 flight here at once — this section said 32 registered / 21 selected / 108 cases (2026-07-24),
 `less-v5-corpus-inventory.md:30` says 26 registered, and the map actually holds **27** entries
-at `74b9fcb4d`. The lane size has also moved: the 2026-07-30 re-measurement below records
+at `facb641dd`. The lane size has also moved: the 2026-07-30 re-measurement below records
 `all-less` at **109/110**, superseding the `108/108` recorded here and at the Less-alpha gate
 section. Regenerate the registry membership from the map itself and the lane size from
 `pnpm run test:less:test-data`, and record the external less.js checkout SHA with it (see
@@ -1083,7 +1086,7 @@ section is the authoritative full-scope companion to the compact task goal.
   Less-compatible `lessc` command. The `jess` package provides only `jess` and
   must not claim Less CLI compatibility through a second bin or alias.
 - Node support is a rolling policy, not a permanently pinned release number.
-  **Corrected `e7a7cc037` (2026-07-24); re-measured 2026-07-30 on `74b9fcb4d`:** all 22
+  **Corrected `e7a7cc037` (2026-07-24); re-measured 2026-07-30 on `facb641dd`:** all 22
   publishable packages (31 workspace packages, 9 `private`) declare the same
   `"node": "^20.19.0 || >=22.12.0"` — three LTS lines (20, 22, 24), matching parseman. The
   range is where the toolchain already stops (oxc-parser, oxlint and vite each require exactly
@@ -1173,7 +1176,7 @@ flow.
 | Non-engine surface carrying size/complexity cost | [`NON-ENGINE-BLOAT-INVENTORY.md`](./NON-ENGINE-BLOAT-INVENTORY.md) |
 | Lazy value materialization / memoization | [`VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md`](./VALUE-MATERIALIZATION-MEMOIZATION-DESIGN.md) |
 | Static-import preparation | [`STATIC-IMPORT-PREP-DESIGN.md`](./STATIC-IMPORT-PREP-DESIGN.md) |
-| The `--noCheck` typecheck burn-down (open: **2** package.json files at `74b9fcb4d` —
+| The `--noCheck` typecheck burn-down (open: **2** package.json files at `facb641dd` —
 `packages/syntax/scss/scss-parser/package.json:59` and
 `packages/syntax/jess/jess-parser/package.json:59`; the `15` here was 7.5x too high) | [`TYPECHECK-BURNDOWN.md`](./TYPECHECK-BURNDOWN.md) |
 | Benchmark extend shapes adjudicated against real Less 4.6.7 | [`BENCHMARK-EXTEND-EVIDENCE.md`](./BENCHMARK-EXTEND-EVIDENCE.md) |
@@ -1190,7 +1193,7 @@ Every doc in that directory, so nothing gets rediscovered. The two rows above
 | Work | Read |
 | --- | --- |
 | Which combinator states which ownership boundary — `choice` vs `dispatch` vs `routed` vs `attempt`, first-set gating, the current idiom set. Its own header still says it is cut against `parseman@0.43.0`, which is one floor stale — the
-repo is on `^0.44.0` (`f292fdd8f`) and the doc's own rule is to re-cut it in the same change as
+repo is on `^0.45.0` (`75002c4a3`) and the doc's own rule is to re-cut it in the same change as
 a floor bump. Last updated by the wrapper-route ban `3bb2b4225` | [`../parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md`](../parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md) |
 | Sequencing the `css → less → scss → jess` cleanup, and why it is ordered that way. Orchestration decision, not a replacement for the spec | [`../parser/GRAMMAR-SEQUENCE-ORCHESTRATION.md`](../parser/GRAMMAR-SEQUENCE-ORCHESTRATION.md) |
 | The remaining named quality cleanup in the Less grammar after its fold — the working list for Less-side routing work | [`../parser/LESS-FOLD-HOTSPOT-REPORT.md`](../parser/LESS-FOLD-HOTSPOT-REPORT.md) |
@@ -1294,7 +1297,7 @@ alpha docs wholesale.
 Measured in a clean worktree after `pnpm install --frozen-lockfile` + `pnpm run build:release`.
 These are the numbers, not a narrative:
 
-- `pnpm run verify:types` — **GREEN. 25 build configs at `74b9fcb4d`** (the gate prints its own
+- `pnpm run verify:types` — **GREEN. 25 build configs at `facb641dd`** (the gate prints its own
   count; the `22/22` recorded here on 2026-07-24 is stale, and `PROJECT_STATE.md` repeated it).
   It was RED with one `less-parser`
   diagnostic (missing `CssAstSyntaxUnicodeRange`, introduced by `c1782031e`) from `13725f894`
@@ -1351,7 +1354,7 @@ Consequence a fresh agent must internalize: **a Less-corpus number is only meani
 with the less.js checkout state.** Record both SHAs, or the count is unfalsifiable.
 
 ~~The graduation commit states the landed constant as `1e-10` while the policy doc says
-`1e-12`.~~ **RECONCILED — verified 2026-07-30 on `74b9fcb4d`.** `numeric-precision-policy.md:6`
+`1e-12`.~~ **RECONCILED — verified 2026-07-30 on `facb641dd`.** `numeric-precision-policy.md:6`
 now opens with the owner ruling ("adopted job 1 with a relative tolerance of **`1e-10`**, not
 the `1e-12` this document recommended"), and §7 "Job 1, concretely" (`:459-468`) is explicitly
 labelled OVERRULED with "What actually landed: tolerance `1e-10`, gate 10". Code agrees:
@@ -2914,7 +2917,7 @@ involved.
   Jess Less behind Less and PostCSS, so this is one committed batch in the
   active performance goal, not completion.
 
-> **Docs-audit note (2026-07-30, `74b9fcb4d`).** A byte-identical duplicate of the LIVE
+> **Docs-audit note (2026-07-30, `facb641dd`).** A byte-identical duplicate of the LIVE
 > pass above was appended at the end of this section and has been deleted. Three further
 > `- Latest pass:` blocks (custom-property comment-trivia alignment, root-trivia map
 > elimination, compiler source-fact ownership) remain below the live one, in violation of this

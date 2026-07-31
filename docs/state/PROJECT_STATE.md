@@ -31,7 +31,7 @@ if(fs.existsSync(path.join(p,'package.json'))){const j=JSON.parse(fs.readFileSyn
 console.log(j.name,'|',p,j.private?'(private)':'');} w(p);}}})('packages');" | sort
 ```
 
-As of `74b9fcb4d` (31 workspace packages, 9 `private`, 22 publishable):
+As of `facb641dd` (31 workspace packages, 9 `private`, 22 publishable):
 
 - leaves: `@jesscss/awaitable-pipe`, `@jesscss/shared` (`packages/_shared`),
   `@jesscss/patch-css`, `@jesscss/style-resolver`, **`styles-config`**
@@ -105,7 +105,7 @@ This block used to list `verify:types` and `verify:baseline` as pre-existing
 reds. Both are fixed:
 
 - `pnpm run verify:types` — **GREEN. The gate prints its own config count (25 at
-  `74b9fcb4d`); do not carry a number here — `22/22` was stale.** The `less-parser`
+  `facb641dd`); do not carry a number here — `22/22` was stale.** The `less-parser`
   `CssAstSyntaxUnicodeRange` diagnostic (introduced `c1782031e`) is gone.
 - `pnpm run verify:baseline` — no longer stops at `verify:node-copy-frontier`.
   The `unit.clone()` in `jess-plugin-js/src/runtime-worker.ts` belongs to the
@@ -183,7 +183,7 @@ No active debugging focus is recorded here.
 on them as of 2026-07-24 (gate classification, the fns per-dialect registry, and the
 numeric-precision landing). Coordinate rather than duplicating one. *(The "parseman
 `0.34.0` adoption" lane listed here is closed and was three floors stale: the repo is on
-`^0.44.0` as of `f292fdd8f`.)*
+`^0.45.0` as of `75002c4a3`.)*
 
 For current implementation work, use the active handoffs listed at the top of
 this file. When a debugging session starts, fill in only these fields and delete

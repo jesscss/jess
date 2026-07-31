@@ -134,7 +134,7 @@ Two incompatible `defineFunction` signatures coexist:
 
 ### 3.1 The "42 of 60" claim — NO LONGER REPRODUCES
 
-> **Recounted 2026-07-30 on `74b9fcb4d`: `packages/fns/src/sass/index.ts` exports
+> **Recounted 2026-07-30 on `facb641dd`: `packages/fns/src/sass/index.ts` exports
 > **62** distinct names (`less/index.ts` exports **83**), which is what
 > `HANDOFF.md` independently records. The 60/42/18 split below describes the
 > audit's branch base, not current `dev`.**

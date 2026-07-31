@@ -1,7 +1,7 @@
 # Parseman combinator cheat sheet
 
 > ⚠️ **This sheet is CUT AGAINST `parseman@0.43.0` AND IS ONE FLOOR STALE.** The repo moved
-> to `^0.44.0` in `f292fdd8f` (2026-07-30) without the re-cut that this document's own rule —
+> to `^0.45.0` in `75002c4a3` (2026-07-30) without the re-cut that this document's own rule —
 > and `HANDOFF.md`'s grammar router — require in the same change as a floor bump. Treat every
 > combinator signature below as needing verification against the installed 0.44 package until
 > someone re-cuts it. Flagged by the 2026-07-30 docs audit; the re-cut itself was not done

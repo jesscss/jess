@@ -22,7 +22,7 @@ Start here:
 - [`state/PROJECT_STATE.md`](./state/PROJECT_STATE.md) — the measured known-red
   baseline and current debugging focus.
 - [`perf/V8-ARCHITECTURE.md`](./perf/V8-ARCHITECTURE.md) — the numbered hot-path invariants
-  (1-11 at `74b9fcb4d`) and the regression-fixture catalogue.
+  (1-11 at `facb641dd`) and the regression-fixture catalogue.
 - [`architecture/parser/GRAMMAR-REVIEW-STANDARD.md`](./architecture/parser/GRAMMAR-REVIEW-STANDARD.md)
   — the standing brief for the four grammar files (one host-mode `src/grammar.ts`
   per dialect since the eight-to-four fold): the per-`const` checklist, the hard

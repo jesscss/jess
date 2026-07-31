@@ -51,7 +51,7 @@ Do not keep branch-stage snapshots, pass counts, or transient failure notes here
 For hot-path perf work (core tree/eval/render, grammar/parser, extend/selector):
 
 - the canonical checklist is `docs/perf/V8-ARCHITECTURE.md` (numbered invariants,
-  1-11 at `74b9fcb4d` — count them in the file, do not trust a number here — plus
+  1-11 at `facb641dd` — count them in the file, do not trust a number here — plus
   the regression-fixture catalogue); enforcement design is
   `docs/architecture/llm-quality-enforcement-design.md`
 - load the `perf-architecture` skill before editing; use the
@@ -75,7 +75,7 @@ twins are deleted):
 - the rebuild spec — goal, current status, plan, gating, dispatchable units — is
   `docs/design/GRAMMAR-REBUILD-SPEC.md`; **start at its §0**
 - the standing brief is `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`
-  (numbered checklist items applied to **every `const`** — 1-16 at `74b9fcb4d`,
+  (numbered checklist items applied to **every `const`** — 1-16 at `facb641dd`,
   items 15/16 are the byte-identity oracle and the naming law — plus hard
   constraints, oracle verification loop, definition of done)
 - use the `grammar-reviewer` (evidence per const, not a verdict); "tests pass"

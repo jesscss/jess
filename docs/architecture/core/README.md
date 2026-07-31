@@ -38,7 +38,7 @@ self-declared historical. Read the header, not the backlinks.
 Two files were reprieved on evidence:
 
 - **`TYPECHECK-BURNDOWN.md`** — still live, but barely. **Re-measured 2026-07-30 on
-  `74b9fcb4d`: `--noCheck` survives in exactly TWO package.json files** —
+  `facb641dd`: `--noCheck` survives in exactly TWO package.json files** —
   `packages/syntax/scss/scss-parser/package.json:59` and
   `packages/syntax/jess/jess-parser/package.json:59`
   (`grep -rn noCheck --include=package.json packages/`). The **15** recorded here was
@@ -67,7 +67,7 @@ Two files were reprieved on evidence:
 | [`EXTEND-SEMANTICS.md`](./EXTEND-SEMANTICS.md) · [`EXTEND-PORT-DESIGN.md`](./EXTEND-PORT-DESIGN.md) · [`EXTEND-REDESIGN.md`](./EXTEND-REDESIGN.md) · [`EXTEND-4TH-OPTION-SYNTHESIS.md`](./EXTEND-4TH-OPTION-SYNTHESIS.md) · [`R1-EXTEND-HANDOFF.md`](./R1-EXTEND-HANDOFF.md) · [`_R1_IMPL_BRIEF.md`](./_R1_IMPL_BRIEF.md) | The extend cluster. |
 | [`BENCHMARK-EXTEND-EVIDENCE.md`](./BENCHMARK-EXTEND-EVIDENCE.md) | Per-case adjudication of the benchmark extend shapes against real Less 4.6.7. Completed evidence, still valid. |
 | [`PSEUDO-ARGUMENT-CONSOLIDATION-DESIGN.md`](./PSEUDO-ARGUMENT-CONSOLIDATION-DESIGN.md) · [`PSEUDO-ARGUMENT-ALWAYS-STRUCTURE-DESIGN.md`](./PSEUDO-ARGUMENT-ALWAYS-STRUCTURE-DESIGN.md) · [`P0-PSEUDO-STRUCTURING-DESIGN.md`](./P0-PSEUDO-STRUCTURING-DESIGN.md) | Pseudo-argument structuring. |
-| [`TYPECHECK-BURNDOWN.md`](./TYPECHECK-BURNDOWN.md) | The `--noCheck` burn-down. Open: **2** package.json files at `74b9fcb4d` (scss-parser, jess-parser); the `15` here was 7.5x too high. |
+| [`TYPECHECK-BURNDOWN.md`](./TYPECHECK-BURNDOWN.md) | The `--noCheck` burn-down. Open: **2** package.json files at `facb641dd` (scss-parser, jess-parser); the `15` here was 7.5x too high. |
 | [`STATIC-IMPORT-PREP-DESIGN.md`](./STATIC-IMPORT-PREP-DESIGN.md) · [`ASSIGNABLE-CONTROL-NODES-PLAN.md`](./ASSIGNABLE-CONTROL-NODES-PLAN.md) · [`NODE-SLIM-FOLLOWONS.md`](./NODE-SLIM-FOLLOWONS.md) · [`STRINGS-OVER-NODES.md`](./STRINGS-OVER-NODES.md) | Node/import shape work. |
 | [`NON-ENGINE-BLOAT-INVENTORY.md`](./NON-ENGINE-BLOAT-INVENTORY.md) · [`WRONG-TESTDATA-AUDIT.md`](./WRONG-TESTDATA-AUDIT.md) · [`DOC-COVERAGE.md`](./DOC-COVERAGE.md) | Inventories and coverage matrices. |
 | [`LESS-4X-FEATURE-TRIAGE.md`](./LESS-4X-FEATURE-TRIAGE.md) | Feature-by-feature triage of Less 4.8.1 against jess, every row measured against `lessc` 4.8.1 run directly. States what it did not examine. Carries its measurement SHAs — re-measure before relying on a row. |
@@ -81,7 +81,7 @@ Also live and self-explanatory: [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATC
 
 > `PARSER-RECOGNIZER-GAP.md` carries **stale measurements** — its phase profile
 > was taken 2026-07-15 against parseman 0.32-era code, and the floor is now
-> `^0.44.0` (`f292fdd8f`). The Less-4.x-versus-Parseman gap it frames is still the live
+> `^0.45.0` (`75002c4a3`). The Less-4.x-versus-Parseman gap it frames is still the live
 > question; its numbers are not current. Re-measure before citing.
 
 ## Consolidation note — five docs, one rule

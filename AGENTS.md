@@ -19,7 +19,7 @@ required to read them.
 shipping compile path). **The physical eight-to-four fold has landed:** each
 dialect now ships AST and CST from one host-mode grammar source. The active work
 is polishing the surviving grammars so they are small, readable, spec-shaped,
-well documented, and idiomatic Parseman (the floor is `^0.44.0` as of `f292fdd8f`;
+well documented, and idiomatic Parseman (the floor is `^0.45.0` as of `75002c4a3`;
 re-check `package.json` rather than trusting a version written here).
 
 **The spec is [`docs/design/GRAMMAR-REBUILD-SPEC.md`](docs/design/GRAMMAR-REBUILD-SPEC.md).
@@ -32,7 +32,7 @@ Two things to know before you plan anything:
 
 - **The parseman hostMode floor is paid.** The mechanism that lets one grammar
   file serve both the AST and the CST is parseman's `hostMode`, and the repo
-  resolves registry `parseman@0.44.0` through `^0.44.0` ranges (`f292fdd8f`;
+  resolves registry `parseman@0.45.0` through `^0.45.0` ranges (`f292fdd8f`;
   `pnpm-lock.yaml:18442` is the sole parseman entry). Publishing
   future parseman releases is still owner-only. Spec §0.2 says exactly what to
   check and how.
@@ -352,7 +352,7 @@ Before writing or reviewing code on a hot path (core tree/eval/render,
 grammar/parser, extend/selector algorithms), work from the canonical perf
 checklist:
 
-- `docs/perf/V8-ARCHITECTURE.md` — the **numbered invariants** (1-11 at `74b9fcb4d`;
+- `docs/perf/V8-ARCHITECTURE.md` — the **numbered invariants** (1-11 at `facb641dd`;
   count them in the file rather than trusting a number here) ("before you write X,
   check Y") plus the regression-fixture catalogue of real incidents
   (`selectorAtoms` re-derivation, the `documentHasExtend` tree-walk, extend
