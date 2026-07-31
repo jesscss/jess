@@ -5,7 +5,7 @@ import { readFileSync } from 'fs';
 import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
-import { getTestCases, resolveLessTestDataRoot } from '../test-utils.js';
+import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 
 const readNumericFunctionArg = (value: any): number => {
@@ -66,7 +66,13 @@ const baseCompiler = new Compiler({
        * Less plugin's `plugins` option — its `install`-registered functions become
        * ast/ GLOBAL fns (root-frame registry), no `@jesscss/plugin-less-compat`.
        */
-      lessPlugin({ plugins: [lessHarnessFunctionsPlugin] })
+      lessPlugin({ plugins: [lessHarnessFunctionsPlugin] }),
+
+      /*
+       * Pins the third-party packages that fixtures `@import` by bare specifier
+       * (tests-config/3rd-party/bootstrap4.less) — see lessFixturePackagesPlugin.
+       */
+      lessFixturePackagesPlugin()
     ]
   }
 });
@@ -125,7 +131,6 @@ const skippedFixtures: SkippedFixture[] = (
      * Config fixtures that need a dedicated compatibility decision or feature
      * work before they can be release gates.
      */
-    'tests-config/3rd-party/bootstrap4.less', // broad third-party fixture; keep out of config smoke progression
     'tests-config/at-rules-compressed/at-rules-compressed.less', // compression output parity not yet alpha-gated
     'tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less', // compression output parity not yet alpha-gated
     'tests-config/compression/compression.less', // compression output parity not yet alpha-gated
@@ -176,6 +181,17 @@ const skippedFixtureReasons = new Map(
 );
 
 const expectedFailureFixtures = new Map<string, string>([
+  /*
+   * Was skipped as "broad third-party fixture" while it could not resolve
+   * `bootstrap-less-port` at all; it now resolves against the pinned fixture-deps
+   * root and fails on a real parser defect, so it runs as a marker instead of
+   * being hidden.
+   */
+  [
+    'tests-config/3rd-party/bootstrap4.less',
+    'a leading-combinator nested rule inside a detached ruleset (`.m({ > td { … } })`) fails to parse; bootstrap-less-port mixins/_table-row.less hits it'
+  ],
+
   /*
    * NOTE: import-reference-issues.less and starting-style.less graduated OUT of
    * this list — the D3 single-render-pass change (removing the separate

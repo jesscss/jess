@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import type { PluginInterface } from '@jesscss/core';
 import { getExpectedOutputFiles, type OutputTestConfig } from '../src/config.js';
 import type { StylesConfig } from 'styles-config';
 
@@ -192,6 +194,75 @@ export function resolveLessTestDataRoot(): string {
   throw new Error(
     'Unable to resolve @less/test-data. Set LESS_TEST_DATA_ROOT to the Less.js packages/test-data directory.'
   );
+}
+
+/**
+ * Install root for third-party packages that corpus fixtures `@import` by bare
+ * specifier (e.g. `tests-config/3rd-party/bootstrap4.less` →
+ * `@import "bootstrap-less-port/less/bootstrap"`). Versions there are pinned to
+ * whatever the maintained `.css` golden was generated against.
+ */
+export function resolveLessFixtureDepsRoot(): string {
+  const testDir = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(testDir, '../../less-corpus-fixture-deps');
+}
+
+function pinnedFixturePackageDirs(): Map<string, string> {
+  const depsRoot = resolveLessFixtureDepsRoot();
+  const depsRequire = createRequire(path.join(depsRoot, '__jess_fixture_resolve__.js'));
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(depsRoot, 'package.json'), 'utf8')
+  ) as { dependencies?: Record<string, string> };
+  const dirs = new Map<string, string>();
+  for (const name of Object.keys(manifest.dependencies ?? {})) {
+    dirs.set(name, path.dirname(depsRequire.resolve(`${name}/package.json`)));
+  }
+  return dirs;
+}
+
+/**
+ * Pins the third-party packages that corpus fixtures import by bare specifier to
+ * `packages/less-corpus-fixture-deps`, whatever Node's resolver would otherwise pick.
+ *
+ * Two things break unpinned resolution, and search paths fix neither:
+ *
+ * 1. The fixtures live in the read-only Less.js checkout and declare no dependencies,
+ *    so Node's upward `node_modules` walk from a fixture reaches nothing installable.
+ * 2. `vitest` sets `NODE_PATH` to pnpm's flat virtual store
+ *    (`node_modules/.pnpm/node_modules`, which holds one copy of *every* installed
+ *    package). Node consults `NODE_PATH` for every bare resolution regardless of the
+ *    importing directory, so (1) silently succeeds against whichever copy is hoisted
+ *    there — for `bootstrap-less-port` that is jess's own perf-test devDependency
+ *    `~2.5.1`, a Bootstrap **5** port, not the `0.3.0` Bootstrap **4** port the
+ *    `bootstrap4.css` golden was generated against. Adding a search path cannot win:
+ *    `@jesscss/plugin-less` tries the importing directory first, and `NODE_PATH`
+ *    makes that attempt succeed.
+ *
+ * So this resolver runs after plugin-less has expanded the specifier and re-points
+ * any candidate that landed in another copy of a pinned package at the pinned one.
+ */
+export function lessFixturePackagesPlugin(): PluginInterface {
+  const pinned = pinnedFixturePackageDirs();
+
+  return {
+    name: 'less-corpus-fixture-packages',
+    resolve(filePath: string | string[]) {
+      const candidates = Array.isArray(filePath) ? filePath : [filePath];
+      return candidates.map((candidate) => {
+        for (const [name, dir] of pinned) {
+          const marker = `${path.sep}${name}${path.sep}`;
+          const at = candidate.lastIndexOf(marker);
+          if (at !== -1) {
+            return path.join(dir, candidate.slice(at + marker.length));
+          }
+          if (candidate.startsWith(`${name}/`)) {
+            return path.join(dir, candidate.slice(name.length + 1));
+          }
+        }
+        return candidate;
+      });
+    }
+  };
 }
 
 function existingDirectory(value: string | undefined): string | undefined {

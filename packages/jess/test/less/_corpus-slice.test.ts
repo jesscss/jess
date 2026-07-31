@@ -1,8 +1,7 @@
 /**
  * Child worker for the full-corpus completeness report (see
- * scripts/less-corpus-report.mjs). Runs under `vitest` so it gets the working
- * TS/src transform (the built lib can't parse — parseman version skew). Two
- * modes, selected by env:
+ * scripts/less-corpus-report.mjs). Runs under `vitest` so it gets the TS transform
+ * for the src path (`../../src/index.js`). Two modes, selected by env:
  *
  *   CORPUS_MODE=discover  → enumerate every case in the corpus and write the
  *                           job list to CORPUS_JOBS_OUT (no rendering — cheap,
@@ -20,7 +19,7 @@ import * as glob from 'glob';
 import * as path from 'path';
 import { readFileSync, appendFileSync, writeFileSync } from 'fs';
 import { Compiler } from '../../src/index.js';
-import { getTestCases, resolveLessTestDataRoot, lessHarnessFunctionsPlugin } from '../test-utils.js';
+import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin, lessHarnessFunctionsPlugin } from '../test-utils.js';
 import type { TestCase } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
@@ -45,7 +44,18 @@ interface Job { kind: 'render' | 'error'; file: string; lessPath: string; expect
 
 const baseCompiler = new Compiler({
   output: { collapseNesting: true },
-  compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [lessHarnessFunctionsPlugin] })] }
+  compile: {
+    plugins: [
+      lessPlugin(),
+      lessCompatPlugin({ plugins: [lessHarnessFunctionsPlugin] }),
+
+      /*
+       * Pins bare-specifier third-party `@import`s (tests-config/3rd-party/bootstrap4.less)
+       * — see lessFixturePackagesPlugin.
+       */
+      lessFixturePackagesPlugin()
+    ]
+  }
 });
 
 function makeTestCompiler(config: Partial<StylesConfig> = {}) {
