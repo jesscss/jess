@@ -128,6 +128,15 @@ for (const script of [
    * instead of crashing, and neither tsc nor no-unnecessary-condition sees it.
    */
   'verify:maybe-promise-truthiness',
+
+  /*
+   * Node does not tree-shake, so one named import of a plain const from a
+   * module that also imports a compiled grammar table costs every consumer of
+   * that entry point the whole table at load time. No test, output diff, or
+   * throughput gate can see it. Reads step 2's build output.
+   */
+  'verify:import-graph',
+
   'verify:aggressive-cutting-review',
   'verify:node-copy-frontier',
   'verify:materialization-frontier',
