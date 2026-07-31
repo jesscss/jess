@@ -190,18 +190,29 @@ const scopeAtKeyword = word(
   AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
-const descriptorAtKeyword = keywords(
-  [
-    '@font-face',
-    '@counter-style',
-    '@property',
-    '@color-profile',
-    '@font-palette-values',
-    '@position-try',
-    '@view-transition'
-  ],
+
+/*
+ * The descriptor at-rules every dialect gives a typed header/body.
+ */
+const descriptorAtKeywordTyped = keywords(
+  ['@font-face', '@counter-style', '@property'],
   { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
+
+/*
+ * Descriptor at-rules only the CSS grammar routes. Split out because a dialect
+ * must exclude from its generic/opaque branch ONLY the names it actually has a
+ * typed route for: excluding a name it cannot otherwise parse makes that at-rule
+ * unparseable rather than better-diagnosed. SCSS routes the three above and none
+ * of these four, so it inverts `descriptorAtKeywordTyped` and lets these reach
+ * its opaque branch. Still one declaration per name — `descriptorAtKeyword`
+ * below is the union, so CSS's typed set is unchanged.
+ */
+const descriptorAtKeywordCssOnly = keywords(
+  ['@color-profile', '@font-palette-values', '@position-try', '@view-transition'],
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
+);
+const descriptorAtKeyword = choice(descriptorAtKeywordTyped, descriptorAtKeywordCssOnly);
 const documentAtKeyword = keywords(
   ['@-moz-document', '@document'],
   { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
@@ -253,6 +264,22 @@ const atIdentifierUnescaped = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080
  */
 const typedAtKeyword = choice(
   descriptorAtKeyword,
+  documentAtKeyword,
+  fontFeatureValuesAtKeyword,
+  keyframesAtKeyword,
+  startingStyleAtKeyword,
+  pageAtKeyword,
+  scopeAtKeyword,
+  layerAtKeyword
+);
+
+/*
+ * `typedAtKeyword` minus the descriptor at-rules only CSS routes. A dialect
+ * inverts THIS when it implements every typed at-rule except those four, so it
+ * still spells no at-rule name of its own — see `descriptorAtKeywordCssOnly`.
+ */
+const typedAtKeywordSharedRoutes = choice(
+  descriptorAtKeywordTyped,
   documentAtKeyword,
   fontFeatureValuesAtKeyword,
   keyframesAtKeyword,
@@ -531,6 +558,7 @@ export const cssSyntax = rules(_g => ({
    * set by composing `not()` over these, instead of re-spelling the names.
    */
   TypedAtKeyword: typedAtKeyword,
+  TypedAtKeywordSharedRoutes: typedAtKeywordSharedRoutes,
   ImportAtKeyword: importAtKeyword,
   AtIdentifier: atIdentifier,
   FontFeatureValuesAtKeyword: fontFeatureValuesAtKeyword,

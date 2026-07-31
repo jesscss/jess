@@ -4508,6 +4508,7 @@ const scssFactory = (g: ScssInputRules) => {
     g.SimpleSelectorToken,
     children => simpleSelector(requireToken(children[0]).value)
   );
+
   /*
    * The leading `.`/`#` is a class/id sigil, and it must not claim the `#` that
    * OPENS an interpolation. Without the boundary the optional prefix consumed
@@ -4970,10 +4971,17 @@ const scssFactory = (g: ScssInputRules) => {
    * Excludes the SCSS-only names AND the CSS at-rule set, the latter by
    * inverting the very leaves that define it positively -- one source, both
    * polarities. css-syntax-3 §4.3.11 boundary throughout.
+   *
+   * `TypedAtKeywordSharedRoutes`, not `TypedAtKeyword`: SCSS has typed routes
+   * for `@font-face`, `@counter-style` and `@property` but NOT for
+   * `@color-profile`, `@font-palette-values`, `@position-try` or
+   * `@view-transition`. Excluding a name this grammar cannot otherwise parse
+   * would make that at-rule unparseable rather than better-diagnosed -- those
+   * four must reach the opaque branch below.
    */
   const ScssGenericAtRuleName = token(noTrivia(sequence(
     not(scssOwnAtKeyword),
-    not(g.TypedAtKeyword),
+    not(g.TypedAtKeywordSharedRoutes),
     not(g.ConditionalAtKeyword),
     not(g.ImportAtKeyword),
     g.AtIdentifier
