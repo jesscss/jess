@@ -821,6 +821,15 @@ transfer, and the second could not be reconciled with a `converted=0` measured
 on the shipping grammar. **Measure on the shipping artifact or say which you
 used, every time.**
 
+- **A fixed audit that has not been re-run against the thing it audits is the
+  same failure as a green self-check.** The fix lives in the tool; the wrong
+  numbers stay in the record. **After correcting a measurement tool, re-run it
+  over everything it previously measured and republish those numbers** — do not
+  assume the correction propagated. Live instance: a grammar's own coverage doc
+  claimed `H1 0 / H2 0` while the audit script was being fixed in the same
+  branch; an independent re-run found **H2 = 2**, worth **−15,332 B (−6.0%)**
+  from changing two identifiers to `g.`-references.
+
 ## 4b. A false win that passes EVERY gate
 
 **The most dangerous result of the session.** The scss lane rewrote all 31
