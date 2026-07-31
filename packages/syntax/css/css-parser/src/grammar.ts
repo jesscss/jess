@@ -2083,10 +2083,21 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     children => block(any(tokenText(children[1])))
   );
+
+  /*
+   * The spaced paren bridge (`foo (bar)`), reached through `IdentOrFunction`'s
+   * routing so the identifier is scanned once. As a sibling of the identifier
+   * atoms in `Value` it led with its own `genericIdentifier` and failed on every
+   * ordinary keyword, re-scanning the identifier the next arm then scanned
+   * again. Routing keeps the order rather than swapping it: a glued `(` is
+   * claimed by the function cases, and `cssValueTrivia` cannot match empty, so
+   * this bridge always requires trivia before its `(` and no input can reach
+   * both.
+   */
   const IdentBlock = node(
     'IdentBlock',
     sequence(
-      genericIdentifier,
+      routed(),
       field(
         'separator',
         cssValueTrivia
@@ -2231,6 +2242,10 @@ const cssFactory = (g: GrammarSelf) => {
     routed(),
     children => keyword(tokenText(children[0]))
   );
+  const IdentBlockOrKeyword = choice(
+    IdentBlock,
+    RoutedKeyword
+  );
 
   /*
    * Declaration identifiers and glued function openers share one lexical shape.
@@ -2256,7 +2271,7 @@ const cssFactory = (g: GrammarSelf) => {
       endsWith('('),
       GenericFunction
     ),
-    otherwise(RoutedKeyword)
+    otherwise(IdentBlockOrKeyword)
   );
   const TypedGenericFunction = node(
     'Call',
@@ -2311,18 +2326,18 @@ const cssFactory = (g: GrammarSelf) => {
     /*
      * Identifier-shaped atoms are routed by `IdentOrFunction`: known glued
      * functions keep their dedicated tails, other glued functions use the
-     * generic call tail, and bare identifiers become keywords. Keep the spaced
-     * paren bridge first so `foo (bar)` can preserve its authored separator as
-     * a value boundary instead of becoming a glued function token. The final
-     * punctuation fallback needs no negative identifier preflight: every
-     * identifier-shaped start has already been consumed by this route.
+     * generic call tail, and an identifier with no glued `(` is either the
+     * spaced paren bridge (`foo (bar)`, which preserves its authored separator
+     * as a value boundary) or a keyword. One route means the identifier is
+     * scanned once. The final punctuation fallback needs no negative identifier
+     * preflight: every identifier-shaped start has already been consumed by
+     * this route.
      */
     choice(
       g.Percentage,
       g.Dimension,
       g.Color,
       g.UnicodeRange,
-      IdentBlock,
       IdentOrFunction,
       g.ParenValue,
       g.Quoted,
