@@ -10,7 +10,7 @@
     },
     {
       "name": "cst",
-      "aggregate": "e4543e6cd85f86ba3d74481c791fb30b694d921eec1bdfdc4a4f5d2f431448e0",
+      "aggregate": "4ec13927dcff0cd703dd9c58e4f69def6ae8a34c0c4c36956470ef3402783c45",
       "threw": 0
     }
   ],
@@ -105,7 +105,7 @@
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_navbar.less": {
       "ast": "733703c285609637",
-      "cst": "95b845d621f5bc46"
+      "cst": "0a022b407acb7ebf"
     },
     "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_pagination.less": {
       "ast": "24142474925f7682",
@@ -401,11 +401,11 @@
     },
     "node_modules/@less/test-data/tests-config/compression/compression.css": {
       "ast": "733703c285609637",
-      "cst": "9d8b63437c9f1175"
+      "cst": "4d017e664cd50a6d"
     },
     "node_modules/@less/test-data/tests-config/compression/compression.less": {
       "ast": "733703c285609637",
-      "cst": "666110d8709be3f6"
+      "cst": "4f9f7656e0c21734"
     },
     "node_modules/@less/test-data/tests-config/debug/all/linenumbers-all.css": {
       "ast": "6d04afbf30e8ab5f",
@@ -501,11 +501,11 @@
     },
     "node_modules/@less/test-data/tests-config/math-always/mixins-guards.less": {
       "ast": "05ff841cacec261a",
-      "cst": "ca4a78573391c703"
+      "cst": "4a41802f6a5855ea"
     },
     "node_modules/@less/test-data/tests-config/math-always/no-sm-operations.less": {
       "ast": "47a1783144848205",
-      "cst": "1b01298abf42b2ef"
+      "cst": "37e0c25459dc6799"
     },
     "node_modules/@less/test-data/tests-config/math-parens-division/media-math.less": {
       "ast": "b8addfd6b0f2165d",
@@ -517,7 +517,7 @@
     },
     "node_modules/@less/test-data/tests-config/math-parens-division/new-division.less": {
       "ast": "733703c285609637",
-      "cst": "2bc5a437f05ae8bf"
+      "cst": "d22ac61432fa9afc"
     },
     "node_modules/@less/test-data/tests-config/math-parens-division/parens.less": {
       "ast": "c3451ce14c25a695",
@@ -525,7 +525,7 @@
     },
     "node_modules/@less/test-data/tests-config/math-strict/css.less": {
       "ast": "733703c285609637",
-      "cst": "06e5174c1a5c9caf"
+      "cst": "19e6a7563d46d4a9"
     },
     "node_modules/@less/test-data/tests-config/math-strict/media-math.less": {
       "ast": "a73bade8b9f698ef",
@@ -561,11 +561,11 @@
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/parens.css": {
       "ast": "733703c285609637",
-      "cst": "7a76e4021254a296"
+      "cst": "09f75a702314c208"
     },
     "node_modules/@less/test-data/tests-config/math/strict/css.css": {
       "ast": "733703c285609637",
-      "cst": "a30e428ee76ef47c"
+      "cst": "e53f3c2d5143bcd1"
     },
     "node_modules/@less/test-data/tests-config/math/strict/media-math.css": {
       "ast": "c05bff6857c4afa0",
@@ -577,7 +577,7 @@
     },
     "node_modules/@less/test-data/tests-config/math/strict/parens.css": {
       "ast": "733703c285609637",
-      "cst": "523db1e225dcea11"
+      "cst": "5a1adfdd0738220d"
     },
     "node_modules/@less/test-data/tests-config/modifyVars/extended.css": {
       "ast": "bedea8af37557742",
@@ -949,7 +949,7 @@
     },
     "node_modules/@less/test-data/tests-error/eval/extend-no-selector.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-1.less": {
       "ast": "3b6dee65df7a640b",
@@ -1069,7 +1069,7 @@
     },
     "node_modules/@less/test-data/tests-error/eval/multiple-guards-on-css-selectors.less": {
       "ast": "733703c285609637",
-      "cst": "8295fcbd11d2dbc6"
+      "cst": "bf74913b69300636"
     },
     "node_modules/@less/test-data/tests-error/eval/multiple-guards-on-css-selectors2.less": {
       "ast": "89cf366c8b7e197d",
@@ -1189,35 +1189,35 @@
     },
     "node_modules/@less/test-data/tests-error/parse/bad-variable-declaration1.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/custom-property-unmatched-block-1.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/custom-property-unmatched-block-2.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/custom-property-unmatched-block-3.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/detached-ruleset-6.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/extend-not-at-end.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/import-malformed.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/import-no-semi.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/import-subfolder2.less": {
       "ast": "f60e374efa03112b",
@@ -1233,7 +1233,7 @@
     },
     "node_modules/@less/test-data/tests-error/parse/invalid-color-with-comment.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/mixed-mixin-definition-args-1.less": {
       "ast": "e74c46a3b37ed3a1",
@@ -1245,23 +1245,23 @@
     },
     "node_modules/@less/test-data/tests-error/parse/mixins-guards-cond-expected.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/parens-error-1.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/parens-error-2.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/parens-error-3.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-curly-bracket.less": {
       "ast": "733703c285609637",
-      "cst": "f5e966019dbac62e"
+      "cst": "2762166335d2330f"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-media-no-block-1.less": {
       "ast": "05875765c152f691",
@@ -1277,7 +1277,7 @@
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-missing-bracket.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-missing-parens.less": {
       "ast": "05875765c152f691",
@@ -1285,7 +1285,7 @@
     },
     "node_modules/@less/test-data/tests-error/parse/parse-error-with-import.less": {
       "ast": "733703c285609637",
-      "cst": "648a01efd3c745f2"
+      "cst": "bd145b0af0d806f1"
     },
     "node_modules/@less/test-data/tests-error/parse/percentage-missing-space.less": {
       "ast": "43b1d2967181eb20",
@@ -1293,11 +1293,11 @@
     },
     "node_modules/@less/test-data/tests-error/parse/property-asterisk-only-name.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/parse/single-character.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.css": {
       "ast": "14d1c08645ceb1c2",
@@ -1685,7 +1685,7 @@
     },
     "node_modules/@less/test-data/tests-unit/extract-and-length/extract-and-length.css": {
       "ast": "733703c285609637",
-      "cst": "b1ac2d4368e07f89"
+      "cst": "74402ceb1b7e248b"
     },
     "node_modules/@less/test-data/tests-unit/extract-and-length/extract-and-length.less": {
       "ast": "547c7ed9759ee5a4",
@@ -1693,7 +1693,7 @@
     },
     "node_modules/@less/test-data/tests-unit/extract-and-length/legacy/extract-and-length.css": {
       "ast": "733703c285609637",
-      "cst": "d4a6b4e68a984797"
+      "cst": "d12548c995e39133"
     },
     "node_modules/@less/test-data/tests-unit/functions-each/functions-each.css": {
       "ast": "26014f4516048cd0",
@@ -1705,7 +1705,7 @@
     },
     "node_modules/@less/test-data/tests-unit/functions/functions.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-unit/functions/functions.less": {
       "ast": "47a1783144848205",
@@ -1713,19 +1713,19 @@
     },
     "node_modules/@less/test-data/tests-unit/functions/legacy/functions.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-unit/functions/legacy/functions.less": {
       "ast": "47a1783144848205",
-      "cst": "88275c3180253bcc"
+      "cst": "ab74b639029c534d"
     },
     "node_modules/@less/test-data/tests-unit/ie-filters-REMOVED/legacy/ie-filters.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-unit/ie-filters-REMOVED/legacy/ie-filters.less": {
       "ast": "733703c285609637",
-      "cst": "72d1c8cfc3b1ed17"
+      "cst": "143ddffa03b705d0"
     },
     "node_modules/@less/test-data/tests-unit/impor/impor.css": {
       "ast": "4fc8168e64283719",
@@ -1737,7 +1737,7 @@
     },
     "node_modules/@less/test-data/tests-unit/import/import-inline.css": {
       "ast": "733703c285609637",
-      "cst": "015b7e18b776eb07"
+      "cst": "fa360365232a007f"
     },
     "node_modules/@less/test-data/tests-unit/import/import-inline.less": {
       "ast": "0fe68574ac25238f",
@@ -1813,7 +1813,7 @@
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference.css": {
       "ast": "733703c285609637",
-      "cst": "4c9b48e1c857b26e"
+      "cst": "8e9919a1f356a1fe"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference.less": {
       "ast": "457a780a3d3d7a91",
@@ -1921,7 +1921,7 @@
     },
     "node_modules/@less/test-data/tests-unit/import/import/invalid-css.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-unit/import/import/json/index.less": {
       "ast": "b7b96a6f4591d495",
@@ -1957,15 +1957,15 @@
     },
     "node_modules/@less/test-data/tests-unit/import/legacy/import-reference.css": {
       "ast": "733703c285609637",
-      "cst": "807f99a439fea7d2"
+      "cst": "39390750bf993ce1"
     },
     "node_modules/@less/test-data/tests-unit/javascript-REMOVED/legacy/javascript.css": {
       "ast": "733703c285609637",
-      "cst": "338ac99f8a9c70d9"
+      "cst": "ab6857ee4537a075"
     },
     "node_modules/@less/test-data/tests-unit/javascript-REMOVED/legacy/javascript.less": {
       "ast": "3b23bd8d8134d736",
-      "cst": "6a11d9f673178855"
+      "cst": "bfe1cbf22f0a3729"
     },
     "node_modules/@less/test-data/tests-unit/layer/assets/import/layer-import.less": {
       "ast": "6a63bc0198872014",
@@ -2281,11 +2281,11 @@
     },
     "node_modules/@less/test-data/tests-unit/property-name-interp/legacy/property-name-interp.css": {
       "ast": "733703c285609637",
-      "cst": "2bab6a918153988b"
+      "cst": "845278a5f1f87cd7"
     },
     "node_modules/@less/test-data/tests-unit/property-name-interp/property-name-interp.css": {
       "ast": "733703c285609637",
-      "cst": "9debd876f0ccd754"
+      "cst": "dd8c7df1fa952a6b"
     },
     "node_modules/@less/test-data/tests-unit/property-name-interp/property-name-interp.less": {
       "ast": "9c6eb02dcf0ca31d",
@@ -2469,7 +2469,7 @@
     },
     "packages/jess/test/fixtures/invalid.less": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/jess/test/fixtures/warning.less": {
       "ast": "3d82afb4d3b905b6",
@@ -2593,7 +2593,7 @@
     },
     "packages/syntax/css/css-parser/test/css/errors/atrule-numeric-name.css": {
       "ast": "47a1783144848205",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/calc-empty.css": {
       "ast": "05875765c152f691",
@@ -2609,7 +2609,7 @@
     },
     "packages/syntax/css/css-parser/test/css/errors/comment-eof-unclosed.css": {
       "ast": "733703c285609637",
-      "cst": "202bc7d89b517469"
+      "cst": "4941e6a22c54d78f"
     },
     "packages/syntax/css/css-parser/test/css/errors/declaration-empty-value.css": {
       "ast": "ff23642d963f952f",
@@ -2617,11 +2617,11 @@
     },
     "packages/syntax/css/css-parser/test/css/errors/declaration-missing-colon.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/declaration-numeric-name.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/declaration-star-property.css": {
       "ast": "c8887550d00e1e60",
@@ -2629,47 +2629,47 @@
     },
     "packages/syntax/css/css-parser/test/css/errors/declaration-starts-colon.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/import-empty.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/important-boundary.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/important-doubled.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/important-lone.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/important-misplaced.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/invalid-selector.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-bad-ident-selector.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-block-no-selector.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-dimension-selector.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-number-selector.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/media-decl.css": {
       "ast": "05875765c152f691",
@@ -2689,7 +2689,7 @@
     },
     "packages/syntax/css/css-parser/test/css/errors/no-selector.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/root-declaration.css": {
       "ast": "5f3512f8c8547ec8",
@@ -2697,75 +2697,75 @@
     },
     "packages/syntax/css/css-parser/test/css/errors/ruleset-unclosed.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-anb-dangling-sign.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-anb-noninteger.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-attribute-numeric-name.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-bare-colon.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-class-numeric.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-double-combinator.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-double-comma.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-leading.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-trailing.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-hash-noname.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-leading-combinator.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-pseudo-element-noname.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-trailing-combinator.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-type-numeric.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/selector-unclosed-attribute.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/supports-bare-ident.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/supports-no-condition.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/url-interior-whitespace.css": {
       "ast": "05875765c152f691",
@@ -2781,15 +2781,15 @@
     },
     "packages/syntax/css/css-parser/test/css/errors/value-stray-close-bracket.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/value-stray-close-paren.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/value-unclosed-bracket.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/value-unclosed-function.css": {
       "ast": "43b1d2967181eb20",
@@ -2797,11 +2797,11 @@
     },
     "packages/syntax/css/css-parser/test/css/errors/value-unterminated-string.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/escape.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/expressions.css": {
       "ast": "cdc7e89dedb95333",
@@ -2817,7 +2817,7 @@
     },
     "packages/syntax/css/css-parser/test/css/ie-progid.css": {
       "ast": "05ff841cacec261a",
-      "cst": "90f641fbded1b6b3"
+      "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/important.css": {
       "ast": "5eee05c4c5a5a582",

@@ -164,7 +164,7 @@ describe('Jess constructs discovered outside the parser suites', () => {
     expect(failure.message).toBe('Unexpected Jess syntax.');
   });
 
-  it('reports CST truncation through unconsumedFrom, never through ok', () => {
+  it('reports CST truncation through both ok and unconsumedFrom', () => {
     /*
      * `ok: true` with `errors: []` and a non-null `unconsumedFrom` is the
      * silent-truncation trap: branching on `ok` alone accepts a half-read
@@ -173,7 +173,7 @@ describe('Jess constructs discovered outside the parser suites', () => {
     for (const source of ['.a { color: red; }\n!broken', '\n  !broken', '/* c */ !!!']) {
       const result = parseJessCst(source);
 
-      expect(result.ok, source).toBe(true);
+      expect(result.ok, source).toBe(false);
       expect(result.errors, source).toHaveLength(0);
       expect(result.unconsumedFrom, source).not.toBeNull();
     }
