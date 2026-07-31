@@ -1480,6 +1480,14 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * Sass bracketed lists carry the square delimiter as a first-class Block fact;
    * the inner value uses the same separator-aware list grammar as ordinary values.
+   *
+   * `requireValueSlot`/`isValueSlotValue`, not `requireValue`/`isValue`:
+   * `g.Value` yields a ValueSlot, and a space-separated interior (`[c d]`) makes
+   * that slot an ARRAY, which `isValue` does not admit. Narrowing to a single
+   * node threw a bare `TypeError` out of the reducer — a crash, not a parse
+   * failure, past the dialect error type every caller catches. Found by
+   * IDENTITY: the trivia slots either side are variable-width, so no fixed
+   * index reaches the interior. The paren sibling reads it the same way.
    */
   const Square = node<ValueNode>(
     'Square',
@@ -1491,7 +1499,7 @@ const scssFactory = (g: ScssInputRules) => {
       literal(']')
     )),
     children => block(
-      requireValue(children.find(isValue)),
+      requireValueSlot(children.find(isValueSlotValue)),
       'square'
     )
   );
@@ -4463,10 +4471,20 @@ const scssFactory = (g: ScssInputRules) => {
     g.SimpleSelectorToken,
     children => simpleSelector(requireToken(children[0]).value)
   );
+  /*
+   * The leading `.`/`#` is a class/id sigil, and it must not claim the `#` that
+   * OPENS an interpolation. Without the boundary the optional prefix consumed
+   * the `#` of `#{`, the interpolation then found `{` instead of `#{`, and the
+   * whole production failed — which is why `.#{$x}` and `a#{$x}` parsed while
+   * `#{$x}` did not. Interpolation BODIES vary by dialect; interpolation
+   * POSITIONS do not, so an interpolation that can continue a compound can also
+   * start one. The boundary is stated on the sigil rather than by reordering
+   * arms because `optional(...)` here commits: nothing backtracks into it.
+   */
   const InterpolatedSimple = node<SimpleSelector>(
     'InterpolatedSimple',
     noTrivia(sequence(
-      optional(regex(/[.#]/)),
+      optional(regex(/[.#](?!\{)/)),
       many(selectorTextRun),
       g.SassInterpolation,
       many(choice(
@@ -4609,11 +4627,26 @@ const scssFactory = (g: ScssInputRules) => {
    * non-relative shape reduces identically to `g.Selector`; the retained
    * `SelectorList` becomes structured `PseudoSelector.args`, never joined at parse.
    */
+  /*
+   * A structured pseudo argument must stay interpolation-free, and after the
+   * selector-start fix that has to be SAID rather than fall out of a defect.
+   * `pseudoCanonical` is the static join over `PseudoSelector.args`, and an
+   * interp-only member has `text: null`, so `:not(#{$x})` would serialize to
+   * `:not()` — content dropped silently. Resolving it needs the per-frame
+   * `resolveSimpleText` path that serialize.ts documents pseudo args as NOT
+   * taking ("P0 pseudo args are STATIC").
+   *
+   * The scan is bounded to this argument's own parens, so it cannot reach past
+   * the pseudo. It is a rejection, never a consume — the argument is parsed
+   * exactly once, by the production below.
+   */
+  const staticPseudoArgumentAhead = not(regex(/[^()]*#\{/));
   const SelectorOnlyPseudoArgument = node<SelectorList>(
     'SelectorOnlyPseudoArgument',
     parser(
       { trivia: whitespace },
       sequence(
+        staticPseudoArgumentAhead,
         RelativeComplex,
         many(sequence(
           literal(','),

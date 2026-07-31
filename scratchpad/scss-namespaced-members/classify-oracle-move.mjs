@@ -18,10 +18,15 @@ const repo = resolve(here, '../..');
 const pkg = resolve(repo, 'packages/syntax/scss/scss-parser');
 const cache = resolve(pkg, '.cache/sass-spec');
 
-const baseline = JSON.parse(readFileSync(resolve(pkg, 'test/oracle-byte-identity.baseline.json'), 'utf8'));
+/* argv[3] overrides the committed baseline: once you re-baseline, the committed
+ * file is the NEW report and comparing against it reports no movement at all. */
+const baseline = JSON.parse(readFileSync(process.argv[3] ?? resolve(pkg, 'test/oracle-byte-identity.baseline.json'), 'utf8'));
 const post = JSON.parse(readFileSync(resolve(here, 'post-report.json'), 'utf8'));
 
-const rows = JSON.parse(readFileSync(resolve(repo, 'scratchpad/sass-spec-triage/rows.json'), 'utf8'));
+/* MUST be the PRE-change measurement. Pass it explicitly: `rows.json` is
+ * overwritten by every `measure.mjs` run, so defaulting to it silently compares
+ * the change against itself and reports every widened entry as a regression. */
+const rows = JSON.parse(readFileSync(resolve(repo, process.argv[2] ?? 'scratchpad/sass-spec-triage/rows.json'), 'utf8'));
 const manifest = JSON.parse(readFileSync(resolve(cache, 'manifest.json'), 'utf8'));
 const pathById = new Map(manifest.cases.map(c => [c.id, c.inputRelPath]));
 

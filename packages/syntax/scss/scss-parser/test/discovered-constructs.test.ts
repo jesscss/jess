@@ -244,35 +244,20 @@ describe('SCSS constructs discovered outside the parser suites', () => {
 
   it.each([
     ['flat bracket list', 'a { b: [1, 2] }'],
-    ['single nested bracket list', 'a { b: [[1, 2]] }']
+    ['single nested bracket list', 'a { b: [[1, 2]] }'],
+    /*
+     * A SPACE separator inside the brackets makes the interior slot an array,
+     * which the reducer used to narrow to a single node — throwing a bare
+     * `TypeError` past the dialect error type every caller catches. Discovered
+     * via `meta.inspect([[1, 2] [3, 4]])` in sass-spec; `[c d]` is the minimal
+     * repro, and it had nothing to do with `meta.inspect` or with nesting.
+     */
+    ['space-separated members', 'a { b: [c d] }'],
+    ['two adjacent nested lists', 'a { b: [[1, 2] [3, 4]] }']
   ])('lowers a bracketed list to a Block (%s)', (_label, source) => {
     expect(firstRule(source)).toMatchObject({
       rules: [{ type: 'Declaration', name: 'b', value: { type: 'Block' } }]
     });
-  });
-
-  it.each([
-    ['space-separated members', 'a { b: [c d] }'],
-    ['two adjacent nested lists', 'a { b: [[1, 2] [3, 4]] }']
-  ])('PINNED DEFECT — crashes the reducer with a bare TypeError on a bracketed list (%s)', (_label, source) => {
-    /*
-     * `[c]`, `[c, d]` and `[[1, 2]]` all reduce fine; adding a *space*
-     * separator inside the brackets throws a bare `TypeError` out of the
-     * reducer rather than an `ScssParseError`. Whatever the eventual verdict
-     * on the construct, escaping as a raw TypeError is wrong: callers catch
-     * the dialect error type, so this reads as a crash, not a parse failure.
-     * Discovered via `meta.inspect([[1, 2] [3, 4]])` in sass-spec; `[c d]` is
-     * the minimal repro.
-     */
-    let thrown: unknown;
-    try {
-      parse(source);
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(thrown).toBeInstanceOf(TypeError);
-    expect(thrown).toMatchObject({ message: 'SCSS grammar produced a non-value child.' });
   });
 
   it('PINNED DEFECT — rejects a comment before a value-list comma', () => {
@@ -294,14 +279,49 @@ describe('SCSS constructs discovered outside the parser suites', () => {
   it.each([
     ['whole compound', '#{$x} { c: d }'],
     ['interpolation then combinator', '#{$x} .b { c: d }'],
-    ['interpolation then suffix', '#{$x}-y { c: d }']
-  ])('PINNED DEFECT — rejects a selector that STARTS with interpolation (%s)', (_label, source) => {
+    ['interpolation then suffix', '#{$x}-y { c: d }'],
+    ['two interpolated terms', '#{$a} #{$b} { c: d }'],
+    ['interpolation then child combinator', '#{$a} > .b { c: d }'],
+    ['interpolation then pseudo', '#{$selector}:first-child { c: d }'],
+    ['quoted interpolation body', '#{\'.foo\'} { c: d }'],
+    ['call interpolation body', '#{data(\'bar\')} { c: d }'],
+    ['not the first term of a list', '.a, #{$x} { c: d }'],
+    ['nested', 'a { #{$x} { c: d } }']
+  ])('accepts a selector that STARTS with interpolation (%s)', (_label, source) => {
     /*
-     * `.#{$x}` and `a#{$x}` parse; the same interpolation with nothing in
-     * front of it does not. The selector grammar reaches interpolation only
-     * as a *continuation* of an already-started simple selector, so an
-     * interpolation-first compound has no entry point.
+     * The optional leading `.`/`#` sigil was claiming the `#` that OPENS the
+     * interpolation, so `.#{$x}` and `a#{$x}` parsed while `#{$x}` did not.
+     * Interpolation BODIES vary by dialect; interpolation POSITIONS do not.
+     */
+    expect(() => parse(source)).not.toThrow();
+  });
+
+  it.each([
+    ['leading', '.card:not(#{$x}) { c: d }'],
+    ['after a static prefix', '.card:not(a#{$x}) { c: d }'],
+    ['after a comma', '.card:not(.a, #{$x}) { c: d }'],
+    ['after a combinator', '.x:has(> #{$a}) { c: d }']
+  ])('rejects an interpolated structured pseudo argument (%s)', (_label, source) => {
+    /*
+     * NOT a parse limitation — the tree is fully typed. `pseudoCanonical` is
+     * the STATIC join over `PseudoSelector.args`, an interp-only member has
+     * `text: null`, and the whole argument therefore SERIALIZES AWAY:
+     * `.card:not(a#{$x})` parsed on dev and emitted `.card:not()`. Rejecting is
+     * the honest answer until core resolves pseudo args per-frame; the
+     * dropping serializer is the defect to fix, and then these flip.
      */
     expect(() => parse(source)).toThrow();
+  });
+
+  it('PINNED DEFECT — rejects a parent selector in value position', () => {
+    /*
+     * `#{&}` (the whole `spec/libsass/base-level-parent/` family) is blocked
+     * by the interpolation BODY, not by its position: `a { b: & }` fails
+     * identically, and `#{$x}` in the same selector slot now parses. `&` as a
+     * VALUE has no node — Sass evaluates it to the parent selector — so this
+     * needs a model decision, not a grammar arm.
+     */
+    expect(() => parse('a { b: & }')).toThrow();
+    expect(() => parse('#{&} { c: d }')).toThrow();
   });
 });
