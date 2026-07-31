@@ -183,7 +183,7 @@ No active debugging focus is recorded here.
 on them as of 2026-07-24 (gate classification, the fns per-dialect registry, and the
 numeric-precision landing). Coordinate rather than duplicating one. *(The "parseman
 `0.34.0` adoption" lane listed here is closed and was three floors stale: the repo is on
-`^0.45.0` as of `75002c4a3`.)*
+`^0.46.0` (after `75002c4a3` took it to `^0.45.0`).)*
 
 For current implementation work, use the active handoffs listed at the top of
 this file. When a debugging session starts, fill in only these fields and delete

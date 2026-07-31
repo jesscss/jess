@@ -156,8 +156,8 @@ coordination.
 | change | source | artifact | status |
 | --- | --- | --- | --- |
 | less: 4 query productions promoted to named rules | +530 B (+0.20%) | **−621,785 B (−15.78%)**, 15.20× → 12.77× | landed `35140e615`, oracle byte-identical, parse speed *improved* |
-| parseman: rollback elision via `commitment.ts` | — | css −5.17%, less −4.06%, scss −6.68%, jess −5.73% | landed `9705159` |
-| parseman: `_cmlrg` root-trivia guard | — | css −1.20% | landed `1dc7613` |
+| parseman: rollback elision via `commitment.ts` | — | css −5.17%, less −4.06%, scss −6.68%, jess −5.73% | landed `9705159`, **published in parseman `0.45.0`** — see §2.4c |
+| parseman: `_cmlrg` root-trivia guard | — | css −1.20% | landed `1dc7613`, **published in parseman `0.45.0`** — see §2.4c |
 
 ### 2.4a css: −30.98% artifact, 29.2× → 21.0× (landed)
 
@@ -196,6 +196,38 @@ sites, each dragging its body-item closure. Inline edges 162 → 133;
 **Count is not prize.** The de-contaminated H2 count on css is **six**, not 86 —
 and those six were worth **187 KB**. A small count can carry a large prize and
 vice versa; always price by closure, never by count.
+
+### 2.4c Negative result: the `0.45.0 → 0.46.0` bump buys ~0.1–0.25%, not ~5%
+
+Measured on `origin/dev` `10c9fc7d8`, clean worktree, `pnpm run build:release`
+both sides, `check:macro` green (0 interpreter fallbacks) on both.
+
+| dialect | 0.45.0 | 0.46.0 | delta | pct | artifact |
+| --- | ---: | ---: | ---: | ---: | --- |
+| css | 27,273,194 | 27,234,854 | −38,340 | **−0.14%** | `packages/syntax/css/css-parser/lib/grammar/**` |
+| less | 31,826,814 | 31,803,978 | −22,836 | **−0.07%** | `packages/syntax/less/less-parser/lib/grammar/**` |
+| scss | 16,342,752 | 16,304,708 | −38,044 | **−0.23%** | `packages/syntax/scss/scss-parser/lib/grammar/**` |
+| jess | 16,698,264 | 16,658,964 | −39,300 | **−0.24%** | `packages/syntax/jess/jess-parser/lib/grammar/**` |
+
+**The §2.4 rollback-elision and `_cmlrg` rows were already banked at the 0.45.0
+floor.** They are not a 0.46.0 win and must not be counted as one. Evidence: the
+published `0.45.0` and `0.46.0` bundles carry the *same* commitment machinery —
+`committedFailBody` ×14, `committedReturnArr` ×2, `committed` ×22, `_cmlrg` ×1 in
+both `dist/index.cjs` — and `check:macro` reports **identical** lowering counts
+across the bump (css 17438 `charCodeAt` / 1260 `RegExp.exec`, less 12618/684,
+scss 7182/476, jess 11190/472). Those numbers do not move when a per-rule
+elision newly engages.
+
+The delta is near-**constant per emitted file** (css ≈ −4,790 B on each of its 8
+grammar outputs, less ≈ −2,850 B), i.e. a fixed prelude shrink, not
+proportional codegen elision. `dist/index.cjs` itself *grew* 530,496 → 575,662 B;
+0.46.0's additions are analysis tooling (`profileWastedWork`,
+`analyzeChoiceInventory`, `leftFactorPreview`, `checkWastedWork`), which is what
+the release actually buys.
+
+Byte-identity: `oracle:less:byte-identity` aggregates are **unchanged** across
+the bump — `ast 73d62a64…` / `cst fea95db2…`, 714 corpus entries and 0/714
+per-entry movers both sides. The bump is output-neutral.
 
 ### 2.4b Negative result: the less query win does NOT reproduce on css
 
@@ -527,9 +559,11 @@ them against gaps the gate can actually grade.
   6,243 real trees is the SUM of FOUR invocations**, one per parser with its
   own `--ext`. A single css run returns **315/260** and will look shrunk when
   it is not.
-- **State the resolved parseman version with every artifact number.** 0.45.0
-  and 0.46.0 figures are not comparable; 0.46.0 has landed several size
-  commits.
+- **State the resolved parseman version with every artifact number.** 0.45.0 and
+  0.46.0 figures are not interchangeable — but the gap is **small**: measured on
+  jess's four grammars the published bump is −0.07% to −0.24%, not the ~5% the
+  §2.4 rows record. Those rows were already banked at the 0.45.0 floor. See
+  §2.4c before crediting any size result to 0.46.0.
 
 ### 2.6 Language / grammar facts
 

@@ -635,8 +635,10 @@ Less/Sass facts until the semantic facts layer exists.
 The four parser dialects now ship from one host-mode `src/grammar.ts` each; the
 old `src/ast/grammar.ts` files are deleted. The grammar/parser floor was registry
 `parseman@0.41.0` on this date, resolved through `^0.41.0` ranges in the root,
-`@jesscss/parser-shared`, and the four parser packages. **It has since moved twice: the floor
-at `facb641dd` is `^0.45.0` in all 10 declarations** (`f292fdd8f`). Regenerate with
+`@jesscss/parser-shared`, and the four parser packages. **It has since moved three times: the floor
+on `dev` is now `^0.46.0` in all 10 declarations** (`75002c4a3` took it to `^0.45.0`;
+the 0.46.0 bump is output-neutral and worth −0.07% to −0.24% of artifact —
+see `docs/state/GRAMMAR-SIZE-FACTS.md` §2.4c). Regenerate with
 `grep -rn '"parseman"' --include=package.json . | grep -v node_modules` rather than trusting
 this sentence. Evidence as of 2026-07-27:
 dependency-order parser/plugin/jess builds pass, `pnpm run check:macro` and

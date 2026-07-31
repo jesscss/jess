@@ -110,8 +110,8 @@ importers:
         specifier: ^2.6.1
         version: 2.6.1
       parseman:
-        specifier: ^0.45.0
-        version: 0.45.0
+        specifier: ^0.46.0
+        version: 0.46.0
       puppeteer:
         specifier: ^19.10.1
         version: 19.11.1(typescript@7.0.1-rc)
@@ -708,8 +708,8 @@ importers:
   packages/parser-shared:
     devDependencies:
       parseman:
-        specifier: ^0.45.0
-        version: 0.45.0
+        specifier: ^0.46.0
+        version: 0.46.0
       tsdown:
         specifier: ~0.21.7
         version: 0.21.7(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(typescript@7.0.1-rc)
@@ -750,8 +750,8 @@ importers:
         specifier: workspace:*
         version: link:../../../_shared
       parseman:
-        specifier: ^0.45.0
-        version: 0.45.0
+        specifier: ^0.46.0
+        version: 0.46.0
       postcss:
         specifier: 8.5.23
         version: 8.5.23
@@ -778,8 +778,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.5
       parseman:
-        specifier: ^0.45.0
-        version: 0.45.0
+        specifier: ^0.46.0
+        version: 0.46.0
 
   packages/syntax/jess/jess-plugin-jess:
     dependencies:
@@ -861,8 +861,8 @@ importers:
         specifier: ^4.6.3
         version: 4.6.3
       parseman:
-        specifier: ^0.45.0
-        version: 0.45.0
+        specifier: ^0.46.0
+        version: 0.46.0
       postcss-less:
         specifier: ~6.0.0
         version: 6.0.0(postcss@8.5.23)
@@ -898,8 +898,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.45.0
-        version: 0.45.0
+        specifier: ^0.46.0
+        version: 0.46.0
       sass-spec:
         specifier: github:sass/sass-spec
         version: github.com/sass/sass-spec/67c3b83a26fd3f9772dd0d3e318fe32aefb38eef(@babel/core@7.29.7)(eslint@9.39.2)
@@ -16218,7 +16218,6 @@ packages:
   /linecraft@0.2.6:
     resolution: {integrity: sha512-soXv8qKLqsAA3Ws9HDwrf6VlLUHHKBqLplHVJ/HVhWH5Oakgr5iZmsiKX7eC2VMdZxFaxhLxDsAmiCjLvKPZlQ==}
     engines: {node: '>=18.0.0'}
-    dev: false
 
   /lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
@@ -18459,10 +18458,12 @@ packages:
     dependencies:
       entities: 6.0.1
 
-  /parseman@0.45.0:
-    resolution: {integrity: sha512-KoQY9NN+mdBZjv5eqrpsOU8eA8TgtELPg3fslp2InElZzpRo/QkGAf9Q42EqVG2QTHJrsdqpAZJjWno+/arWGQ==}
+  /parseman@0.46.0:
+    resolution: {integrity: sha512-IaQe2CMdf4JHbskC1z++Nknj0mDEHNRN6ntcIORuZRab3uOePvIvMnct/JfS2E+yai8/N7bBgn78bnvN8Aboaw==}
     engines: {node: ^20.19.0 || >=22.12.0}
+    hasBin: true
     dependencies:
+      linecraft: 0.2.6
       magic-string: 0.30.21
       oxc-parser: 0.137.0
       oxc-resolver: 11.23.0
