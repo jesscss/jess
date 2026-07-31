@@ -112,6 +112,35 @@ function nodesOnly(children: readonly unknown[]): ValueNode[] {
  * delimiter are exactly the characters this grammar's own `queryFeatureOpen`
  * put there, and nothing is being re-recognised. Candidate B found the leak.
  */
+/**
+ * The block body among a reducer's children — the first array.
+ *
+ * NEVER index past an `optional()`. Candidate B measured that an `optional()`
+ * which does not match contributes NO child slot and SHIFTS every later index:
+ * `sequence('(', optional(X), ')')` yields three children when X matches and
+ * TWO when it does not, so `children[2]` silently becomes `undefined` and
+ * `children[1]` silently becomes the wrong node. Measured on this grammar:
+ * `@layer{a{b:c}}` put the RULESET in the prelude slot and left the body slot
+ * empty, and `@font-face{a:b}` put the DECLARATION there. Both parsed, both
+ * consumed the full input, both were wrong.
+ *
+ * This is the fourth instance of one class — F1 `,`, F2 `!`, B-Q1 `<=>`, and
+ * now positional reads — all of them assumptions that hold in the common case,
+ * break in the uncommon one, and are invisible to a parse-success check.
+ */
+function bodyOf(children: readonly unknown[]): Statement[] {
+  return (children.find(Array.isArray) ?? []) as Statement[];
+}
+
+/** The prelude among a reducer's children: the first non-array AST node. */
+function preludeOf(children: readonly unknown[]): ValueSlot | null {
+  return (children.find(child =>
+    !Array.isArray(child)
+    && typeof child === 'object'
+    && child !== null
+    && 'type' in child) ?? null) as ValueSlot | null;
+}
+
 function insideParen(routedText: string): string {
   return routedText.replace(/^\(/, '').replace(/[)::<>=]+$/, '').trim();
 }
@@ -234,7 +263,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const ParenValue = node(
     'ParenValue',
     sequence(literal('('), optional(g.ValueList), literal(')')),
-    children => block(children[1] as ValueSlot, 'paren')
+    children => block(nodesOnly(children)[0] as ValueSlot, 'paren')
   );
 
   /** A bare identifier in value position is a keyword fact, never an `Identifier`. */
@@ -367,21 +396,21 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
       many(choice(sequence(choice(g.CustomProperty, g.Declaration), optional(literal(';'))), g.Item)),
       literal('}')
     ),
-    children => children[1] as never
+    children => nodesOnly(children) as unknown as never
   );
 
   /** An at-rule with a block body: `@name <prelude> { … }`. */
   const AtRuleBlock = node(
     'AtRuleBlock',
     sequence(routed(), optional(g.ValueList), g.Block),
-    children => atRuleBlock(text(children[0]).slice(1), children[1] as ValueSlot, children[2] as Statement[])
+    children => atRuleBlock(text(children[0]).slice(1), preludeOf(children), bodyOf(children))
   );
 
   /** An at-rule with no block: `@name <prelude> ;`. */
   const AtRuleStatement = node(
     'AtRuleStatement',
     sequence(routed(), optional(g.ValueList), literal(';')),
-    children => atRuleStatement(text(children[0]).slice(1), children[1] as ValueNode)
+    children => atRuleStatement(text(children[0]).slice(1), preludeOf(children) as ValueNode)
   );
 
   /*
@@ -547,7 +576,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
       sequence(literal('('), g.Declaration, literal(')')),
       g.GeneralEnclosed
     ),
-    children => block(children[1] as ValueSlot, 'paren')
+    children => block(nodesOnly(children)[0] as ValueSlot, 'paren')
   );
 
   /** `not (…)`, or `(…)` joined by `and` / `or`. */
@@ -577,7 +606,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const ConditionalBlock = node(
     'ConditionalBlock',
     sequence(routed(), choice(g.SupportsCondition, g.QueryPrelude), g.Block),
-    children => atRuleBlock(text(children[0]).slice(1), children[1] as ValueSlot, children[2] as Statement[])
+    children => atRuleBlock(text(children[0]).slice(1), preludeOf(children), bodyOf(children))
   );
 
   /**
@@ -621,7 +650,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const Item = choice(ConditionalAtRule, AtRule, Ruleset);
 
   /** The document. */
-  const Stylesheet = node('Stylesheet', many(g.Item), children => stylesheet(children as Statement[]));
+  const Stylesheet = node('Stylesheet', many(g.Item), children => stylesheet(nodesOnly(children) as unknown as Statement[]));
 
   return {
     Stylesheet,
