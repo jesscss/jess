@@ -113,13 +113,14 @@ function toHex(c: Color): string {
 }
 
 /**
- * The serialized alpha text — the authored `%` spelling (`round(pct,8)%`) when the
- * alpha was written as a percent, else the decimal alpha under the shared output
- * number policy ({@link formatNumber}). The decimal branch used to emit the raw
- * double, safe only because `fns` happened to pre-round it.
+ * The serialized alpha text — the authored `%` spelling when the alpha was written
+ * as a percent, else the decimal alpha. BOTH branches go through the shared output
+ * number policy ({@link formatNumber}); the percent branch used an 8-dp `round`,
+ * which ruling V4 forbids (no fixed decimal-places rounding) and which annihilated
+ * any percent below ~5e-9 to `0%`.
  */
 function alphaText(c: Color, a: number): string {
-  return c.alphaPct !== undefined ? `${round(c.alphaPct, 8)}%` : formatNumber(a);
+  return c.alphaPct !== undefined ? `${formatNumber(c.alphaPct)}%` : formatNumber(a);
 }
 
 /**
@@ -138,7 +139,7 @@ export function serializeColor(c: Color): string {
     const rgb = colorRgb(c);
     const pct = c.rgbPct;
     const chan = (idx: number): string =>
-      pct?.[idx] !== undefined ? `${round(clamp(pct[idx]!, 100), 8)}%` : `${rgb[idx]}`;
+      pct?.[idx] !== undefined ? `${formatNumber(clamp(pct[idx]!, 100))}%` : `${rgb[idx]}`;
     const r = chan(0), g = chan(1), b = chan(2);
     const a = clamp(c.alpha, 1);
     const modern = c.modernSyntax === true;
@@ -150,9 +151,9 @@ export function serializeColor(c: Color): string {
   if (format === HSL) {
     const [h, s, l] = c.hsl ?? rgbToHsl(c.rgb[0], c.rgb[1], c.rgb[2]);
     const a = clamp(c.alpha, 1);
-    const roundedHue = round(h, 8);
-    const S = round(clamp(s, 1) * 100, 8);
-    const L = round(clamp(l, 1) * 100, 8);
+    const hue = formatNumber(h);
+    const S = formatNumber(clamp(s, 1) * 100);
+    const L = formatNumber(clamp(l, 1) * 100);
     const modern = c.modernSyntax === true;
 
     /*
@@ -161,9 +162,9 @@ export function serializeColor(c: Color): string {
      */
     const hueUnit = modern ? (c.hueUnit || 'deg') : (c.hueUnit ?? '');
     if (modern) {
-      return a < 1 ? `hsl(${roundedHue}${hueUnit} ${S}% ${L}% / ${alphaText(c, a)})` : `hsl(${roundedHue}${hueUnit} ${S}% ${L}%)`;
+      return a < 1 ? `hsl(${hue}${hueUnit} ${S}% ${L}% / ${alphaText(c, a)})` : `hsl(${hue}${hueUnit} ${S}% ${L}%)`;
     }
-    return a < 1 ? `hsla(${roundedHue}${hueUnit}, ${S}%, ${L}%, ${alphaText(c, a)})` : `hsl(${roundedHue}${hueUnit}, ${S}%, ${L}%)`;
+    return a < 1 ? `hsla(${hue}${hueUnit}, ${S}%, ${L}%, ${alphaText(c, a)})` : `hsl(${hue}${hueUnit}, ${S}%, ${L}%)`;
   }
   return toHex(c);
 }
