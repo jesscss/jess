@@ -91,11 +91,11 @@ describe('Jess operator adjacency', () => {
     rejects(source);
   });
 
-  it('PINNED DEFECT — rejects a comment around a calc() PRODUCT operator', () => {
+  it('accepts a comment around a calc() PRODUCT operator', () => {
     /* §10.1's whitespace requirement is on `+` and `-` ONLY. `*` and `/` carry
-     * none, so a comment there is harmless and must parse. Less already
-     * accepts this form; Jess, SCSS and CSS all reject it. */
-    rejects('a { b: calc(1px/**/*/**/2) }');
+     * none, so a comment there is harmless and must parse. The product pad now
+     * admits comments; the sum pad still requires real whitespace alongside. */
+    accepts('a { b: calc(1px/**/*/**/2) }');
   });
 
   it('accepts calc() sum with real whitespace', () => {
@@ -116,11 +116,13 @@ describe('Jess operator adjacency', () => {
  *   around `*`    calc(1px/**\/*…)  rej    ACC    rej    rej
  *   around `-`    calc(1px/**\/-…)  rej    rej    rej    rej
  *
- * Jess and CSS reject a comment in EVERY position inside `calc()`, which means
- * the calc region is not consulting the dialect trivia table at all — the
- * hand-spelled operator regexes are the only boundary it has. This is the
- * clearest statement of the defect in the file: the productions did not merely
- * spell trivia badly, they replaced it.
+ * Jess and CSS USED to reject a comment in EVERY position inside `calc()`,
+ * which meant the calc region was not consulting the dialect trivia table at
+ * all — the hand-spelled operator regexes were the only boundary it had. That
+ * was the clearest statement of the defect in the file: the productions did not
+ * merely spell trivia badly, they replaced it. Every position below now parses;
+ * `-` alone stays rejected, because it is the only one §10.1 puts a whitespace
+ * REQUIREMENT on, and G25's accept-normalise-and-warn path is what changes it.
  */
 describe('Jess comments inside calc()', () => {
   it.each([
@@ -129,8 +131,8 @@ describe('Jess comments inside calc()', () => {
     ['trailing edge, spaced', 'a { b: calc(1px + 2px /**/) }'],
     ['after a nested paren', 'a { b: calc((1px)/**/) }'],
     ['around the product operator', 'a { b: calc(1px* /**/ 2) }']
-  ])('PINNED DEFECT — rejects a comment inside calc() (%s)', (_label, source) => {
-    rejects(source);
+  ])('accepts a comment inside calc() (%s)', (_label, source) => {
+    accepts(source);
   });
 
   it('accepts calc() with no comment at all', () => {

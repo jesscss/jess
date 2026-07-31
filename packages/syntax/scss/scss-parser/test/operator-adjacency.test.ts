@@ -66,10 +66,10 @@ describe('SCSS operator adjacency', () => {
     rejects('a { b: calc(1px -/**/2px) }');
   });
 
-  it('PINNED DEFECT — rejects a comment around a calc() PRODUCT operator', () => {
+  it('accepts a comment around a calc() PRODUCT operator', () => {
     /* css-values-4 §10.1 imposes a whitespace requirement on `+` and `-` only.
      * `*` and `/` have none, so a comment there is harmless and must parse. */
-    rejects('a { b: calc(1px/**/*/**/2) }');
+    accepts('a { b: calc(1px/**/*/**/2) }');
   });
 
   it('accepts the whitespace and glued forms that need no comment handling', () => {
@@ -123,9 +123,11 @@ describe('SCSS comments inside calc()', () => {
     accepts('a { b: calc((1px)/**/) }');
   });
 
-  it('PINNED DEFECT — rejects a comment around a calc() operator', () => {
-    rejects('a { b: calc(1px* /**/ 2) }');
-    rejects('a { b: calc(1px /**/ * /**/ 2) }');
+  it('accepts a comment around a calc() operator', () => {
+    /* Both spellings go through the product pad, which now admits comments.
+     * The sum operator keeps its whitespace requirement; that case is above. */
+    accepts('a { b: calc(1px* /**/ 2) }');
+    accepts('a { b: calc(1px /**/ * /**/ 2) }');
   });
 });
 

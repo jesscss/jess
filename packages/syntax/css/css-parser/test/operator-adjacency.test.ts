@@ -76,15 +76,15 @@ describe('CSS operator adjacency', () => {
     rejects(source);
   });
 
-  it('PINNED DEFECT — rejects a comment around a calc() PRODUCT operator', () => {
+  it('accepts a comment around a calc() PRODUCT operator', () => {
     /*
      * §10.1's whitespace requirement covers `+` and `-` only. `*` and `/` have
-     * none, so `calc(1px/**\/*\/**\/2)` is valid CSS and must parse. Less
-     * accepts it; CSS, SCSS and Jess all reject it, which is the whitespace
-     * requirement having been copied onto the wrong operator class by a
-     * hand-spelled boundary.
+     * none, so `calc(1px/**\/*\/**\/2)` is valid CSS and must parse. The
+     * requirement had been copied onto the wrong operator class by a
+     * hand-spelled boundary; the product operator's pad now admits comments and
+     * the sum operator's still requires real whitespace alongside them.
      */
-    rejects('a { b: calc(1px/**/*/**/2) }');
+    accepts('a { b: calc(1px/**/*/**/2) }');
   });
 
   it('accepts a calc() product with no separator', () => {
@@ -100,8 +100,8 @@ describe('CSS operator adjacency', () => {
  * is a requirement that whitespace be PRESENT — it is not a licence to reject
  * comments elsewhere. So every case below is valid CSS.
  *
- * All four dialects get this wrong, and each gets it wrong differently — four
- * different accept sets for one question:
+ * All four dialects USED to get this wrong, and each got it wrong differently —
+ * four different accept sets for one question:
  *
  *   position                     css    less   scss   jess
  *   leading edge  calc(/**\/1px …)  rej    rej    ACC    rej
@@ -109,8 +109,11 @@ describe('CSS operator adjacency', () => {
  *   around `*`    calc(1px/**\/*…)  rej    ACC    rej    rej
  *   around `-`    calc(1px/**\/-…)  rej    rej    rej    rej
  *
- * No two dialects agree, and none matches the spec. That is the signature of
- * four independent hand-spelled boundaries rather than one trivia table.
+ * No two dialects agreed, and none matched the spec. That is the signature of
+ * four independent hand-spelled boundaries rather than one trivia table, and
+ * every row above except `-` is now ACC in all four. `-` stays rejected on
+ * purpose: it is the only position §10.1 puts a whitespace REQUIREMENT on, and
+ * G25's accept-normalise-and-warn path is what changes it, not this.
  */
 describe('CSS comments inside calc()', () => {
   it.each([
@@ -119,8 +122,8 @@ describe('CSS comments inside calc()', () => {
     ['trailing edge, spaced', 'a { b: calc(1px + 2px /**/) }'],
     ['after a nested paren', 'a { b: calc((1px)/**/) }'],
     ['around the product operator', 'a { b: calc(1px* /**/ 2) }']
-  ])('PINNED DEFECT — rejects a comment inside calc() (%s)', (_label, source) => {
-    rejects(source);
+  ])('accepts a comment inside calc() (%s)', (_label, source) => {
+    accepts(source);
   });
 
   it('accepts calc() with no comment at all', () => {

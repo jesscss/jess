@@ -116,8 +116,11 @@ describe('Less comments inside calc()', () => {
     ['trailing edge, glued', 'a { b: calc(1px + 2px/**/) }'],
     ['trailing edge, spaced', 'a { b: calc(1px + 2px /**/) }'],
     ['after a nested paren', 'a { b: calc((1px)/**/) }']
-  ])('PINNED DEFECT — rejects a comment at a calc() edge (%s)', (_label, source) => {
-    rejects(source);
+  ])('accepts a comment at a calc() edge (%s)', (_label, source) => {
+    /* `CalcFunction` now spells its interior padding, the same combinator the
+     * `Paren` production next to it already spelled. That also makes `Paren`'s
+     * own padding reachable from inside a calc, which is the `(1px)/**\/` row. */
+    accepts(source);
   });
 
   it('accepts a comment around a calc() product operator', () => {
