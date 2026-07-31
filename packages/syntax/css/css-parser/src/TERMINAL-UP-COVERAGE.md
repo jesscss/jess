@@ -99,10 +99,36 @@ A document that quietly self-corrects teaches nobody that it drifted.
 | the by-const lever is "worth more than the tournament outcome" | overstated | it rested on the wrong count. The mechanism survives and is measured at −7.4% here; its size on `src/grammar.ts` is unmeasured |
 | `balanced()` cannot detect delimiter crossing, so the `varFallback*Cross*` guards are permanent | crossing **is** detected | `expect()` recovers rather than failing, so it is a surfacing problem. Candidate C retracted their own probe. Ground truth: `var(--x, ([c}]))` **accepts**; `([c)])`, `({c)})`, `[c(d]`, `{c[d}` reject. Do not "fix" the accepting row |
 
+| scss H2 15 / jess H2 28 (Candidate B) | 1 / 0 | type-position false positives — the sixth contamination class. scss and jess write `node<Declaration>(…)`, so the generic argument **is** the rule name. Toggling filter 5 alone reproduces B's figures (14 / 25). Hand-verified: all nine bare `Declaration` occurrences in `scss-parser/src/grammar.ts` are the type import, four `Combinator<Declaration>` annotations, a type predicate, comment prose, and its own generic argument — zero by-const references |
+
 Three lanes wrote this audit independently in one round and got 86, 109, and 65
 before de-contamination, all inflated in the flattering direction. That is the
 failure this tournament exists to stop, reproduced inside the fix for it. The
 harness should own one audit script, not three.
+
+Corrected record on how the seven were caught: **some by peers, some by their
+own authors before publication, and one by a consistency invariant** — B's
+generics bug, caught because "38 composite consts against 143 map rules" is
+impossible. Invariants are the cheapest of the three, so `inline-audit.mjs` now
+throws rather than reporting when map keys exceed composites, when factory-start
+detection fails, or when the composite count is far below the factory's const
+count.
+
+## The CST is not a rendering of this grammar's production tree
+
+Candidate C's finding, and it bounds what a terminal-up build can achieve.
+In `hostMode: 'cst'` the reducers do not run; nodes are built by a **repo-local**
+host, `src/cst-host.ts`, which changes a node's type from its children, remaps
+grammar names through `TYPE_NAMES` (`AtRuleBlock`/`AtRuleStatement` → `AtRule`,
+`Ruleset` → `QualifiedRule`, `Call` → `Function`, `Paren` → `SimpleBlock`,
+`Quoted` → `String`), and **fabricates children no production produced** —
+`publicChildren` manufactures a joined `name(` leaf for `Url` at :305–315.
+
+Consequences for this file: production names here are not what a CST gate
+grades; the production→CST-name map is already non-injective in the baseline;
+and the fabricated `Url` leaf cannot be reproduced by a from-scratch grammar
+however correct it is. That last one is the most likely way this entry fails an
+identity gate while looking right.
 
 ## Open question this shape does not answer
 
