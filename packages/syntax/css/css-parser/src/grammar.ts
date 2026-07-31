@@ -3318,13 +3318,19 @@ const cssFactory = (g: GrammarSelf) => {
   const pageBodyBlock = sequence(literal('{'), many(pageBodyItem), literal('}'));
   const keyframesBodyBlock = sequence(literal('{'), many(g.KeyframeBlock), literal('}'));
   const fontFeatureValuesBodyBlock = sequence(literal('{'), many(g.FeatureValueBlock), literal('}'));
+
+  /*
+   * Routed at-rule bodies: the routed keyword, its prelude, and a body block.
+   * The nested (declaration-list) and top-level (stylesheet) body shapes are each
+   * spelled once here and referenced by every routed block node that carries them,
+   * so the shape cannot drift between the at-rules that share it. Each `node()`
+   * keeps its own name and reducer; only the recognition shape is shared.
+   */
+  const routedDeclarationListBody = sequence(routed(), g.AtRulePrelude, declarationListBlock);
+  const routedStylesheetBody = sequence(routed(), g.AtRulePrelude, stylesheetBodyBlock);
   const RoutedLayerBlock = node(
     'LayerBlock',
-    sequence(
-      routed(),
-      g.AtRulePrelude,
-      stylesheetBodyBlock
-    ),
+    routedStylesheetBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
@@ -3333,11 +3339,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const RoutedNestedLayerBlock = node(
     'NestedLayerBlock',
-    sequence(
-      routed(),
-      g.AtRulePrelude,
-      declarationListBlock
-    ),
+    routedDeclarationListBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
@@ -3398,11 +3400,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const RoutedScopeBlock = node(
     'ScopeBlock',
-    sequence(
-      routed(),
-      g.AtRulePrelude,
-      declarationListBlock
-    ),
+    routedDeclarationListBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
@@ -3411,11 +3409,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const RoutedStartingStyleBlock = node(
     'StartingStyleBlock',
-    sequence(
-      routed(),
-      g.AtRulePrelude,
-      stylesheetBodyBlock
-    ),
+    routedStylesheetBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]),
       optionalValue(children[1]),
@@ -3424,11 +3418,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const RoutedNestedStartingStyleBlock = node(
     'NestedStartingStyleBlock',
-    sequence(
-      routed(),
-      g.AtRulePrelude,
-      declarationListBlock
-    ),
+    routedDeclarationListBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]),
       optionalValue(children[1]),
@@ -3437,11 +3427,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const RoutedDocumentBlock = node(
     'DocumentBlock',
-    sequence(
-      routed(),
-      g.AtRulePrelude,
-      stylesheetBodyBlock
-    ),
+    routedStylesheetBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
