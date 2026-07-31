@@ -79,7 +79,17 @@ a `parse/*` diagnostic would give a name. Not a gap in the bar as written.
 
 ## 2. Builtin functions — complete, name by name
 
-Less 4.x registers **89** names (every file in
+> **Superseded on the count and the per-function detail** by
+> [`../../state/less-4x-function-triage.md`](../../state/less-4x-function-triage.md)
+> (landed `803b91c8a`, independently). It enumerates from the 4.x **runtime**
+> registry — `functionRegistry.getLocalFunctions()`, **92** names — rather than
+> by reading the source files, and calls every one of the 92 in user spelling
+> under two configs. Prefer its numbers to this section's. The two lanes agree
+> on `isurl`; they differ on `style()` (reconciled in the row below), and this
+> section adds two findings that lane did not have: the `style()` prelude
+> position (below) and the `desaturate()` achromatic bug (§4.6).
+
+Less 4.x registers **89** names by source reading (every file in
 `less-4x/packages/less/lib/less/functions/` read; registry is `addMultiple`
 keyed by object key, lower-cased —
 `less-4x/.../functions/function-registry.js:4,15`; registration site
@@ -107,7 +117,7 @@ So: **85 IMPLEMENTED, 2 MISSING, 1 BUG, 1 unrelated parse bug surfaced.**
 | Name | Status | Evidence |
 | --- | --- | --- |
 | `isurl` | **MISSING** | `.x { a: isurl(url(x)); b: isurl(1); }` → less4 `a: true; b: false`; jess emits `a: isurl(url(x)); b: isurl(1)` **verbatim, with no diagnostic**. Not in the fns index and not in the core guard predicate table `packages/core/src/ast/value-guards.ts:205-225` (which has `iscolor/isnumber/isstring/iskeyword/ispixel/ispercentage/isem/isunit` — `isurl` and `isruleset` are absent from it; `isruleset` is handled elsewhere, `isurl` nowhere). Unknown calls fall through to `fallbackCall` (`packages/core/src/ast/evaluator.ts:125`), so this fails silently. **Exactly the class no fixture can catch.** |
-| `style` | **MISSING** | `@container (style(--x: 1)) { .y { c: 1 } }` → less4 renders it unchanged; jess `parse/syntax-error: Missing closing parenthesis.` at 1:22. CSS container **style queries** do not parse. |
+| `style` | **not a function gap — a PARSER gap** | In a declaration value, `style(@v)` renders identically in both engines, so as a *function* it is fine (`docs/state/less-4x-function-triage.md` §5). But in the position it exists for — a container style query — jess cannot parse it: `@container (style(--x: 1)) { .y { c: 1 } }` → less4 renders it unchanged; jess `parse/syntax-error: Missing closing parenthesis.` at 1:22. That doc records this prelude position as **not tested** (its §9); this row is the measurement. |
 
 ### The eight not in the fns registry that are nonetheless reachable
 
@@ -467,6 +477,37 @@ NEW 28   FIXED 10   STALE 1
 State the SHA with the number: the count moves as other lanes land, and figures
 of 13, 28, 29, 36 and 37 have all been quoted for this gate. **28 at
 `74b9fcb4d`.**
+
+One naming caveat, so the next reader does not chase it: running
+`test/min-max-dialect.test.ts` in isolation reports **16** failures, and the
+ratchet's NEW list names all 16 — 16 min-max plus 12 others is exactly 28.
+
+### The 28 NEW, classified
+
+**None of the 28 is an unimplemented language feature.** They are 8 real bugs
+across four mechanical defects, plus 4 stale expectations — three of which the
+tests themselves name the fix for. Nothing here belongs in §3 or §4.
+
+| Root cause | Failures | Class | Evidence |
+| --- | --- | --- | --- |
+| **RC-1 — the `.jess` dialect registers no value evaluator at all.** `JessPlugin` never calls `context.registerValueEvaluator(…)`; both sibling plugins do. Every typed leaf degrades to a bare `Keyword` and every call is preserved verbatim, so `.jess` has no arithmetic and no builtins. | **18** (all 16 `min-max-dialect`, 3 of the 5 `jess-render`) | BUG | missing call: `packages/syntax/jess/jess-plugin-jess/src/index.ts:26-39`; present at `packages/syntax/less/jess-plugin-less/src/index.ts:414` and `packages/syntax/scss/jess-plugin-scss/src/index.ts:71`. `registerValueEvaluator` is recent (`d32f6622d`) — the per-dialect-registry refactor wired Less and Sass and left `.jess` behind. Degradation sites `packages/core/src/ast/serialize.ts:2461,2483,4365,4503`. Direct check: `.jess` `$(1px + 2px)` → `1px + 2px`; `.less` `1px + 2px` → `3px`. Every one of the 16 min-max assertion messages names `.jess`; `.less` and `.scss` pass all 24. |
+| **RC-2 — body-form `&:extend()` keeps only the first branch of a comma-list rule.** `ExtendStatement` reduces to the same `{target, partial}` shape the inline-extend predicate tests for, so the body form is filed as a first-branch extend and stamped with `selector[0]` where it must carry the whole rule selector. | **2** | BUG | `packages/syntax/less/less-parser/src/grammar.ts:5872-5878`, predicate `:1678`, routing `:6065-6075`, stamp `:6128-6133`. Repro: `.foo{display:none} .a, .b { &:extend(.foo all); }` → `.foo, .a` — `.b` dropped. Hits `tests-unit/extend/extend.less:26-30` in two harnesses. |
+| **RC-3 — a detached-ruleset body rejects leading-combinator nested rules.** The `ValueBlock` body uses the absolute selector-list production; the ordinary nested body uses the relative one, which admits `>`/`+`/`~`. | **1** | BUG | `.../less-parser/src/grammar.ts:4316-4321` vs `:4293`, relative form `:5928`. Repro: `@r: { ~ .a { x: 1 } }` fails, `@r: { & ~ .a { x: 1 } }` and `.z { ~ .a { x: 1 } }` both pass. Breaks `bootstrap-less-port/less/mixins/_forms.less:88-91`. |
+| **RC-4 — `${…}` is absent from the Jess value-atom set.** It works in selectors, `url()`, quoted strings, custom-property names and media preludes, but not in a plain value or a statement at-rule prelude. | **1** | BUG | `packages/syntax/jess/jess-parser/src/grammar.ts:3288-3299` is `choice(Expression, DollarInterp)` — `DollarBrace` (defined `:1533`) is missing; consumed at `:3331`. |
+| **`$extend &`** — the extend-target policy validator has no carve-out for the parent selector, so `&` is rejected under the default `['class']` policy. `&` is not a selector kind the option means to gate. | **1** | BUG | `packages/syntax/jess/jess-parser/src/index.ts:87,102-110,117-122` |
+| **RC-5 — leading-combinator (implicit `&`) SCSS selectors now parse.** Two baselines record it as a gap; the ratchet is firing on an *improvement* and both tests say so in their failure text. | **2** | stale expectation | `test/scss/bootstrap-corpus.test.ts:284` (31 parse now, baseline names 29 — add `_button-group.scss`, `_type.scss`); `test/scss/scss-construct-support.test.ts:240` |
+| **`JessError` no longer extends `Error`** — `toBeInstanceOf(Error)` is stale; the change was deliberate (skip stack capture). | **1** | stale expectation | `packages/core/src/error/jess-error.ts:78`; failing line `test/diagnostics.test.ts:432`. **Carries an owner question:** `renderString` now rejects with a non-`Error`, and that perf decision was taken in `lint`'s context, not the public API's. |
+| **`quote`/`unquote` now register** — the guard asserting Sass's "still-unconverted globals register nothing" is a placeholder that reality overtook. | **1** | stale expectation | `packages/fns/src/sass/index.ts:88-89`, real bodies in `packages/fns/src/sass/string/quote.ts`; delete `test/dialect-builtins.test.ts:81-82` |
+
+RC-1 is one line of wiring with 18 failures behind it. RC-2 and RC-3 are both in
+the Less parser's ruleset-body/extend classification and are plausibly one work
+item.
+
+**Open, not decided here:** whether RC-1's fix is `makeLessRegistry()` (what the
+min-max test header prescribes as the stopgap — `test/min-max-dialect.test.ts:13-15`)
+or a real `jessFns` index. There is no `packages/fns/src/jess/` today. Owner call.
+
+### The baseline edit
 
 `packages/jess/test/known-failures.json` was reduced from 13 named entries to 2:
 the 10 FIXED and the 1 STALE were deleted, per the file's own rule that the gate
