@@ -513,9 +513,21 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const BasicSelector = node('BasicSelector', g.SimpleSelectorToken, children => simpleSelector(text(children[0])));
 
   /** Adjacent simple selectors with no combinator between them. */
+  /*
+   * `noTrivia` must scope BETWEEN members, never around the whole repetition.
+   * Wrapping the `oneOrMore` blocked the leading trivia too, so after a
+   * relative combinator the space in `:has(> .b)` was never skipped and the
+   * whole selector failed — a regression Candidate B predicted from the shape
+   * before it existed. Adjacency is a property of the JOIN between simple
+   * selectors (`.a.b` is one compound, `.a .b` is two), not of the compound's
+   * left edge.
+   */
   const CompoundSelector = node(
     'CompoundSelector',
-    noTrivia(oneOrMore(choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector))),
+    sequence(
+      choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector),
+      noTrivia(many(choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector)))
+    ),
     children => selectorTermOf(children as never)
   );
 
