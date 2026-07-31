@@ -36,9 +36,36 @@ function fellBack(source) {
   return /\bfrom\s*["']parseman["']/.test(source);
 }
 
+/**
+ * FRESHNESS GATE. `measure.mjs` once reported "399,168 B unchanged" for a build
+ * that had FAILED — it read the previous file and the number looked like
+ * evidence that a patch did nothing. That is the third distinct stale-artifact
+ * failure in this workstream and the class that has broken most instruments
+ * here: it did not error, it measured a different object.
+ *
+ * Every artifact must be NEWER than the newest grammar source. Force-deleting
+ * the artifact before a build is a habit; this is a gate.
+ */
+function assertFresh(entries) {
+  const srcDir = new URL('../src/', import.meta.url).pathname;
+  const newestSource = Math.max(...readdirSync(srcDir)
+    .filter(f => f.endsWith('.ts'))
+    .map(f => statSync(srcDir + f).mtimeMs));
+  const stale = entries.filter(name => statSync(dir + name).mtimeMs < newestSource);
+  if (stale.length > 0) {
+    console.error(
+      `STALE ARTIFACT — refusing to report.\n`
+      + stale.map(n => `  ${dir}${n} is older than its source`).join('\n')
+      + `\n  Rebuild, and check the build actually succeeded.`
+    );
+    process.exit(1);
+  }
+}
+
 console.log(`artifact dir: ${dir}\n`);
 let fallbacks = 0;
 
+assertFresh(readdirSync(dir).filter(n => /^s\d+-.*\.js$/.test(n)));
 for (const name of readdirSync(dir).sort()) {
   if (!name.endsWith('.js')) {
     continue;
