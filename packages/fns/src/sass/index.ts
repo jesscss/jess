@@ -100,19 +100,14 @@ export { default as length } from './list/length.js';
 export { default as nth } from './list/nth.js';
 export { default as index } from './list/list-index.js';
 export { default as isBracketed } from './list/is-bracketed.js';
-export { default as listSeparator } from './list/separator.js';
+export { listSeparator } from './list/globals.js';
 export { default as setNth } from './list/set-nth.js';
 export { default as join } from './list/join.js';
 export { default as append } from './list/append.js';
 export { default as zip } from './list/zip.js';
 
 // Global Map Functions (Deprecated - use map.* module instead)
-export { default as mapGet } from './map/get.js';
-export { default as mapMerge } from './map/merge.js';
-export { default as mapRemove } from './map/remove.js';
-export { default as mapKeys } from './map/keys.js';
-export { default as mapValues } from './map/values.js';
-export { default as mapHasKey } from './map/has-key.js';
+export { mapGet, mapMerge, mapRemove, mapKeys, mapValues, mapHasKey } from './map/globals.js';
 
 /*
  * Note: Module-specific functions are exported from their respective module files:
