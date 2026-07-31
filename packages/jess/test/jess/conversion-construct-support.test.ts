@@ -102,17 +102,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'css', name: '@container', src: '@container (min-width: 1px) { .a { color: red; } }', supported: true, origin: 'css' },
   { group: 'css', name: '@property', src: '@property --x { syntax: "<length>"; inherits: false; initial-value: 0px; }', supported: true, origin: 'css' },
   { group: 'css', name: '@media range syntax', src: '@media (400px <= width <= 700px) { .a { color: red; } }', supported: true, origin: 'css' },
-  {
-    group: 'css',
-    name: 'calc() with an operator',
-    src: '.a { width: calc(100% - 10px); }',
-    supported: false,
-    origin: 'css',
-    scope: 'gap',
-    note:
-      'css/less/scss parsers all accept this; `.jess` alone rejects it. `calc(1px)` parses, so the '
-      + 'failure is specifically an operator inside calc — which is essentially all real-world use.'
-  },
+  { group: 'css', name: 'calc() with an operator', src: '.a { width: calc(100% - 10px); }', supported: true, origin: 'css' },
   {
     group: 'css',
     name: 'unicode-range',
@@ -332,6 +322,7 @@ const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
     '@layer',
     '@media range syntax',
     '@property',
+    'calc() with an operator',
     'calc() without an operator',
     'clamp() / min() / max()'
   ],
@@ -390,7 +381,6 @@ const GAP_SCOPE_BASELINE: Record<'gap' | 'by-design' | 'undecided', readonly str
     '@import (css)',
     '@import (optional)',
     'anonymous-mixin call',
-    'calc() with an operator',
     'guard calling a function',
     'literal-value pattern matching',
     'rest/variadic parameters',
