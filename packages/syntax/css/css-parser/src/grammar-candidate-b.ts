@@ -20,7 +20,7 @@
  * the same core AST facts as the incumbent, but reducer-level fidelity is gated
  * on the shared tree-identity harness and is round-2 work.
  */
-import { balanced, choice, classifiedTrivia, composeLeaf, expect, keywords, literal, makeWord, many, node, noTrivia, optional, oneOrMoreSep, regex, rules, scanTo, sequence } from 'parseman' with { type: 'macro' };
+import { balanced, choice, classifiedTrivia, composeLeaf, dispatch, endsWith, expect, keywords, literal, makeWord, many, noTrivia, node, oneOrMoreSep, optional, otherwise, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -130,10 +130,6 @@ const cssFactory = (g: GrammarSelf) => {
    * value is the fusion that removes one call site per known function: `url(`,
    * `calc(` and `var(` do not each re-parse an identifier.
    */
-  const functionOpen = token(noTrivia(sequence(
-    regex(/-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i),
-    literal('(')
-  )));
 
   /** css-syntax-3 §4.3.5 — `<string-token>`, either quoting. */
   const Quoted = node(
@@ -205,7 +201,16 @@ const cssFactory = (g: GrammarSelf) => {
    * dispatching on the already-consumed opener replaces four independent
    * openers with one.
    */
-  const Component = g.FunctionNotation;
+  const functionOpen = token(noTrivia(sequence(
+    regex(/-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i),
+    literal('(')
+  )));
+
+  const Component = dispatch(
+    functionOpen,
+    when('url(', g.Url, { caseInsensitive: true }),
+    otherwise(g.FunctionNotation)
+  );
 
   /*
    * css-syntax-3 §5.4.8 — `<declaration-value>` is a sequence of component
