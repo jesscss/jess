@@ -158,6 +158,84 @@ coordination.
 | less: 4 query productions promoted to named rules | +530 B (+0.20%) | **−621,785 B (−15.78%)**, 15.20× → 12.77× | landed `35140e615`, oracle byte-identical, parse speed *improved* |
 | parseman: rollback elision via `commitment.ts` | — | css −5.17%, less −4.06%, scss −6.68%, jess −5.73% | landed `9705159`, **published in parseman `0.45.0`** — see §2.4c |
 | parseman: `_cmlrg` root-trivia guard | — | css −1.20% | landed `1dc7613`, **published in parseman `0.45.0`** — see §2.4c |
+| by-const promotion sweep, all four grammars | +5,462 B total | css **−37.13%**, less **−37.38%**, scss **−6.18%**, jess **−3.53%** | see §2.4-0; oracle identical on less/scss/jess, css moves 2 error *messages* only |
+
+**Measured on this branch and NOT reproduced: parseman 0.45.0 → 0.46.0 is worth
+−0.14% on css `ast.js` (3,341,439 → 3,336,650), not the −5.17% in the row
+above.** The rollback-elision and root-trivia savings were already in 0.45.0
+(that row says so); a lane circulating "0.46.0 gives css −5.17%" is
+double-counting them. Baseline both sides before quoting a version delta.
+
+### 2.4-0 By-const promotion swept across ALL FOUR grammars — VERIFIED
+
+Branch `lane/grammar-promote-named-rules`, rebased onto `origin/dev`
+`e4c948a7d`, **parseman 0.46.0** resolved at
+`node_modules/.pnpm/parseman@0.46.0/node_modules/parseman`. Every number is
+`lib/grammar/ast.js`, one promotion applied and rebuilt **alone**, artifact
+re-measured between each. Fast single-variant builds were validated
+byte-identical against the full four-variant build before use. **Both sides of
+every delta were built in this one directory**, never across worktrees.
+
+| grammar | source | `ast.js` before | after | delta | ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| css | 118,081 → 119,367 | 3,361,554 | **2,113,475** | **−1,248,079 (−37.13%)** | 28.47× → **17.71×** |
+| less | 261,685 → 263,523 | 4,244,093 | **2,657,620** | **−1,586,473 (−37.38%)** | 16.22× → **10.08×** |
+| scss | 167,688 → 168,817 | 2,039,126 | **1,913,131** | **−125,995 (−6.18%)** | 12.16× → **11.33×** |
+| jess | 195,516 → 196,775 | 2,061,455 | **1,988,785** | **−72,670 (−3.53%)** | 10.54× → **10.11×** |
+
+**Against the owner's two gates: the 10× ratio ceiling is now within reach on
+less (10.08×) and jess (10.11×) and still missed on scss (11.33×) and css
+(17.71×); the ~250 KB absolute target is missed by 7.7–10.6× on all four.**
+Promotion alone does not reach it — the remaining mass is the ~950 B/call-site
+base times the call-site count (§2.3), not duplication.
+
+The per-promotion deltas below were measured on the pre-rebase base
+(`6804623ba`, css 3,336,650 / less 3,937,767 / scss 2,006,731 / jess
+2,052,239). The trivia fixes that landed in between moved less's baseline by
++306,326 B on their own, which is why less's percentage improved without any
+change to what this branch does.
+
+**79 promotions attempted, 51 kept, 28 reverted as losses.** Reference count
+does not predict the delta in either direction:
+
+- **Biggest single win:** css `pseudoArgumentContent` at 5 refs, −236,140 B;
+  css `QueryTerm` at 4 refs, −221,963 B; less `QueryFeatureValue` at 4 refs,
+  −318,420 B.
+- **Biggest single loss:** css `typedIdentOrFunction` at **2** refs, **+240,791 B**
+  — a `dispatch()` whose arms are already `g.`-cut, so naming it buys nothing and
+  its own materialised body is pure cost. scss `propertyIdentifier` at **13** refs
+  cost **+1,607 B**.
+- **The order matters and the effect is self-limiting.** less `blockBody` paid
+  −362,182 B; with it cut, `rulesetBody` (+348), `atRuleBlockBody` (+857) and
+  `blockItem` (+539) all became losses, because their closures had collapsed to
+  the shared `g.blockBody` edge. **Re-measure after every accepted promotion; a
+  ranking taken once at the start goes stale immediately.**
+
+**§2.4b is NARROWED, not retracted.** Its finding — that the css query cluster
+promoted *as a nine-rule block* cost +2,423 B — still stands. But on this base
+`QueryTerm` **alone** is −221,963 B and `QueryValue` alone is −177 B. The
+negative result was a property of the batch, not of the rules in it. This is a
+second reason to promote one at a time.
+
+**H2 is not "rarer and smaller" here.** css carried ten H2 sites; cutting all
+ten was **−179,947 B**, of which `TypedValue` alone was −171,441 B. All four
+grammars are now at **H2 = 0**.
+
+Type-checking is part of the gate, not a formality: converting to `g.X` forced
+seven css rules that were already rules-map keys to be declared in
+`GrammarRuleName` for the first time, and two jess `dispatch()` scrutinees to
+carry `Combinator<string>` rather than `Combinator<unknown>`. **The rules map
+and the factory self type are different sets, and only a `g.` reference makes
+them agree** (§1.6b).
+
+Byte-identity, self-baselined against an `origin/dev` build in the same
+directory: **less, scss and jess identical on both `ast` and `cst`.** css moved
+**2 of 300 entries** — `test/css/errors/calc-empty.css` and
+`calc-lone-operator.css`, on both surfaces, `threw` unchanged at 98. Cause: the
+`Expected:` list in the error text now ends in the rule name
+`CustomPropertyName` where it used to inline that rule's 90-character regex,
+because the alternative is now reached through a named rule. **No accepted
+input changed anywhere in any corpus.**
 
 ### 2.4a css: −30.98% artifact, 29.2× → 21.0× (landed)
 

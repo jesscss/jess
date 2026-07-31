@@ -819,18 +819,33 @@ describe('@jesscss/scss-parser public parse API', () => {
     });
   });
 
+  /*
+   * `<keyframe-selector> = from | to | <percentage>` (css-animations-1 §4) and
+   * `<percentage> = <number> %` (css-values-4 §8.2), so the sign, the
+   * leading-dot decimal and the exponent are all in, because they are all part
+   * of `<number>` (css-syntax-3 §4.3.12).
+   *
+   * `100.%` is NOT: consuming a number stops at the `.` unless a digit follows
+   * it. SCSS used to accept it, from a hand-rolled `\d+\.?\d*` that the css
+   * dialect never shared -- so this test asserted alignment with CSS while
+   * pinning a divergence from it, in the one direction a dialect may not take
+   * (a dialect may add to CSS, never accept invalid CSS). All four dialects now
+   * answer identically here.
+   */
   it('keeps the direct keyframe selector shape aligned with CSS', () => {
-    expect(parse('@-moz-keyframes fade { +50%, -0.5%, 100.% { opacity: 1; } }')).toMatchObject({
+    expect(parse('@-moz-keyframes fade { +50%, -0.5%, .5%, 1e2% { opacity: 1; } }')).toMatchObject({
       type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@-moz-keyframes', rules: [{
           type: 'Ruleset', selector: { selectors: [
             simpleComplex('+50%'),
             simpleComplex('-0.5%'),
-            simpleComplex('100.%')
+            simpleComplex('.5%'),
+            simpleComplex('1e2%')
           ] }
         }]
       }]
     });
+    expect(() => parse('@-moz-keyframes fade { 100.% { opacity: 1; } }')).toThrow(SyntaxError);
   });
 
   it('constructs and renders static CSS @starting-style and @layer blocks through the public Stylesheet route', () => {
