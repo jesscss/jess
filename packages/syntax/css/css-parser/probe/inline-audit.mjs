@@ -83,17 +83,55 @@ function blankStringsAndComments(source) {
   return out;
 }
 
+/**
+ * Blanks TYPE positions, preserving offsets. Filter 5 of
+ * `docs/state/GRAMMAR-SIZE-FACTS.md` §1.
+ *
+ * A rule name that collides with an imported AST type name matches inside
+ * `Combinator<Interpolation>`, `(children): MixinGuard =>`, and
+ * `value as SelectorBranch`. **css does not expose this** — its rule names do
+ * not collide with its imported type names — so a probe validated only on css
+ * reads clean and mis-ranks every dialect grammar. less collides on
+ * `Interpolation`, `MixinGuard`, `SelectorBranch`, `Declaration`, `Stylesheet`,
+ * and `Url`.
+ */
+function blankTypePositions(source) {
+  return source
+
+    /* Generic argument lists: `Combinator<Interpolation>`, `node<Quoted>(`. */
+    .replace(/(?<=[A-Za-z0-9_>])<[^<>()\n]*>/g, match => ' '.repeat(match.length))
+
+    /* `as Type` assertions. */
+    .replace(/\bas\s+[A-Za-z][A-Za-z0-9_.]*/g, match => ' '.repeat(match.length))
+
+    /* Annotations: `: Type` before `=>`, `=`, `,`, `)`, `;`, or end of line. */
+    .replace(
+      /:\s*(?:readonly\s+)?[A-Za-z][A-Za-z0-9_.]*(?:\[\])?(?=\s*(?:=>|=[^=]|[,);]|$))/gm,
+      match => ' '.repeat(match.length)
+    );
+}
+
 const COMPOSITE = 'node|choice|sequence|dispatch|transform|oneOrMore|many|optional|oneOrMoreSep|sepBy|token|not|peek|label|field';
+
+/*
+ * SCSS and Jess declare rules as `node<Quoted>(…)`. A pattern demanding
+ * `node(` matches ZERO of them — 158 in scss and 170 in jess — so those
+ * grammars read as clean while carrying the repo's largest H2 counts.
+ * Candidate B caught this with a consistency invariant (a grammar cannot
+ * export more rules than it declares), which is cheaper than a reviewer and is
+ * why `assertUsable()` below exists.
+ */
+const COMPOSITE_DECL = `\\bconst ([A-Za-z][A-Za-z0-9_]*) = (?:${COMPOSITE})\\s*(?:<[^<>]*>)?\\(`;
 
 const file = process.argv[2];
 const raw = readFileSync(file, 'utf8');
-const clean = blankStringsAndComments(raw);
+const clean = blankTypePositions(blankStringsAndComments(raw));
 
 /*
  * Restrict to the factory body. Everything before the first `const <Name> = ` at
  * factory indentation is imports and type declarations, which name every rule.
  */
-const factoryStart = clean.search(new RegExp(`\\n {2}const [A-Za-z][A-Za-z0-9_]* = (?:${COMPOSITE})\\(`));
+const factoryStart = clean.search(new RegExp(`\\n {2}${COMPOSITE_DECL}`));
 const body = factoryStart === -1 ? clean : clean.slice(factoryStart);
 
 /* The LAST `return { ... };` in the factory is the rules map. */
@@ -105,9 +143,37 @@ const mapKeys = new Set(
 const scan = mapBlock === '' ? body : body.slice(0, body.lastIndexOf(mapBlock));
 
 const declared = new Set(
-  [...body.matchAll(new RegExp(`\\bconst ([A-Za-z][A-Za-z0-9_]*) = (?:${COMPOSITE})\\(`, 'g'))]
-    .map(match => match[1])
+  [...body.matchAll(new RegExp(COMPOSITE_DECL, 'g'))].map(match => match[1])
 );
+
+/*
+ * Filter 6: a run that detects far fewer composites than the file has consts
+ * is a BROKEN RUN, not a clean grammar. This is an error rather than a result
+ * because the failure is silent and flattering — a probe tuned on css found 21
+ * and 20 composites in scss and jess against 300+ actual, and reported them as
+ * the cleanest grammars in the tree.
+ */
+function assertUsable() {
+  const totalConsts = [...body.matchAll(/\n {2}const [A-Za-z]/g)].length;
+  if (factoryStart === -1) {
+    throw new Error(`${file}: factory-start detection failed; no composite const at factory indentation`);
+  }
+  if (declared.size * 4 < totalConsts) {
+    throw new Error(
+      `${file}: detected ${declared.size} composite consts against ${totalConsts} consts in the factory body. `
+      + 'That ratio means the composite pattern is missing a declaration form (generics? a combinator not in '
+      + 'COMPOSITE?), not that the grammar is clean. Refusing to report.'
+    );
+  }
+  if (mapKeys.size > declared.size) {
+    throw new Error(
+      `${file}: ${mapKeys.size} rules-map keys against ${declared.size} composite consts. A grammar cannot `
+      + 'export more rules than it declares. Refusing to report.'
+    );
+  }
+}
+
+assertUsable();
 
 const viaProxy = new Set(
   [...scan.matchAll(/\b_?g\.([A-Za-z][A-Za-z0-9_]*)/g)].map(match => match[1])
