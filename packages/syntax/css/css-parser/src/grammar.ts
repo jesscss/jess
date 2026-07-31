@@ -2858,7 +2858,7 @@ const cssFactory = (g: GrammarSelf) => {
     g.OpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : tokenText(children[0])
   );
-  const RoutedOpaqueAtRuleBlock = node(
+  const OpaqueAtRuleBlock = node(
     'OpaqueAtRuleBlock',
     sequence(
       routed(),
@@ -3419,7 +3419,7 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const routedDeclarationListBody = sequence(routed(), g.AtRulePrelude, g.declarationListBlock);
   const routedStylesheetBody = sequence(routed(), g.AtRulePrelude, g.stylesheetBodyBlock);
-  const RoutedLayerBlock = node(
+  const LayerBlock = node(
     'LayerBlock',
     g.routedStylesheetBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3428,7 +3428,7 @@ const cssFactory = (g: GrammarSelf) => {
       blockStatements(children)
     ), rawChildren)
   );
-  const RoutedNestedLayerBlock = node(
+  const NestedLayerBlock = node(
     'NestedLayerBlock',
     g.routedDeclarationListBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3437,7 +3437,7 @@ const cssFactory = (g: GrammarSelf) => {
       rulesetStatements(children)
     ), rawChildren)
   );
-  const RoutedDescriptorBlock = node(
+  const DescriptorBlock = node(
     'DescriptorBlock',
     sequence(
       routed(),
@@ -3450,7 +3450,7 @@ const cssFactory = (g: GrammarSelf) => {
       children.filter(isDeclaration)
     ), rawChildren)
   );
-  const RoutedPageBlock = node(
+  const PageBlock = node(
     'PageBlock',
     sequence(
       routed(),
@@ -3463,7 +3463,7 @@ const cssFactory = (g: GrammarSelf) => {
       children.filter((value): value is Declaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
     ), rawChildren)
   );
-  const RoutedKeyframes = node(
+  const Keyframes = node(
     'Keyframes',
     sequence(
       routed(),
@@ -3476,7 +3476,7 @@ const cssFactory = (g: GrammarSelf) => {
       blockStatements(children)
     ), rawChildren)
   );
-  const RoutedFontFeatureValuesBlock = node(
+  const FontFeatureValuesBlock = node(
     'FontFeatureValuesBlock',
     sequence(
       routed(),
@@ -3495,7 +3495,7 @@ const cssFactory = (g: GrammarSelf) => {
    * retains the canonical AtRuleBlock reduction rather than being rejected or
    * routed through an opaque body.
    */
-  const RoutedScopeBlock = node(
+  const ScopeBlock = node(
     'ScopeBlock',
     g.routedDeclarationListBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3504,7 +3504,7 @@ const cssFactory = (g: GrammarSelf) => {
       rulesetStatements(children)
     ), rawChildren)
   );
-  const RoutedStartingStyleBlock = node(
+  const StartingStyleBlock = node(
     'StartingStyleBlock',
     g.routedStylesheetBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3513,7 +3513,7 @@ const cssFactory = (g: GrammarSelf) => {
       blockStatements(children)
     ), rawChildren)
   );
-  const RoutedNestedStartingStyleBlock = node(
+  const NestedStartingStyleBlock = node(
     'NestedStartingStyleBlock',
     g.routedDeclarationListBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3522,7 +3522,7 @@ const cssFactory = (g: GrammarSelf) => {
       rulesetStatements(children)
     ), rawChildren)
   );
-  const RoutedDocumentBlock = node(
+  const DocumentBlock = node(
     'DocumentBlock',
     g.routedStylesheetBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
@@ -3551,7 +3551,7 @@ const cssFactory = (g: GrammarSelf) => {
     '@scope',
     choice(
       g.RoutedAtRuleStatement,
-      RoutedScopeBlock
+      g.ScopeBlock
     )
   );
   const descriptorAtRuleCase = cssCase(
@@ -3566,40 +3566,40 @@ const cssFactory = (g: GrammarSelf) => {
     ],
     choice(
       g.RoutedAtRuleStatement,
-      RoutedDescriptorBlock
+      g.DescriptorBlock
     )
   );
   const pageAtRuleCase = cssCase(
     '@page',
     choice(
       g.RoutedAtRuleStatement,
-      RoutedPageBlock
+      g.PageBlock
     )
   );
   const keyframesAtRuleCase = cssCase(
     keyframesAtRuleNames,
     choice(
       g.RoutedAtRuleStatement,
-      RoutedKeyframes
+      g.Keyframes
     )
   );
   const fontFeatureValuesAtRuleCase = cssCase(
     '@font-feature-values',
     choice(
       g.RoutedAtRuleStatement,
-      RoutedFontFeatureValuesBlock
+      g.FontFeatureValuesBlock
     )
   );
   const documentAtRuleCase = cssCase(
     ['@document', '@-moz-document'],
     choice(
       g.RoutedAtRuleStatement,
-      RoutedDocumentBlock
+      g.DocumentBlock
     )
   );
   const opaqueAtRuleOtherwise = otherwise(choice(
     g.RoutedAtRuleStatement,
-    RoutedOpaqueAtRuleBlock
+    g.OpaqueAtRuleBlock
   ));
   const StylesheetAtRule = dispatch(
     g.AtRuleKeyword,
@@ -3607,14 +3607,14 @@ const cssFactory = (g: GrammarSelf) => {
       '@layer',
       choice(
         g.RoutedAtRuleStatement,
-        RoutedLayerBlock
+        g.LayerBlock
       )
     ),
     cssCase(
       '@starting-style',
       choice(
         g.RoutedAtRuleStatement,
-        RoutedStartingStyleBlock
+        g.StartingStyleBlock
       )
     ),
     scopeAtRuleCase,
@@ -3631,14 +3631,14 @@ const cssFactory = (g: GrammarSelf) => {
       '@layer',
       choice(
         g.RoutedAtRuleStatement,
-        RoutedNestedLayerBlock
+        g.NestedLayerBlock
       )
     ),
     cssCase(
       '@starting-style',
       choice(
         g.RoutedAtRuleStatement,
-        RoutedNestedStartingStyleBlock
+        g.NestedStartingStyleBlock
       )
     ),
     scopeAtRuleCase,
@@ -3653,15 +3653,15 @@ const cssFactory = (g: GrammarSelf) => {
     g.AtRuleKeyword,
     cssCase(
       '@layer',
-      RoutedLayerBlock
+      g.LayerBlock
     ),
     cssCase(
       '@starting-style',
-      RoutedStartingStyleBlock
+      g.StartingStyleBlock
     ),
     cssCase(
       '@scope',
-      RoutedScopeBlock
+      g.ScopeBlock
     ),
     cssCase(
       [
@@ -3673,25 +3673,25 @@ const cssFactory = (g: GrammarSelf) => {
         '@position-try',
         '@view-transition'
       ],
-      RoutedDescriptorBlock
+      g.DescriptorBlock
     ),
     cssCase(
       '@page',
-      RoutedPageBlock
+      g.PageBlock
     ),
     cssCase(
       keyframesAtRuleNames,
-      RoutedKeyframes
+      g.Keyframes
     ),
     cssCase(
       '@font-feature-values',
-      RoutedFontFeatureValuesBlock
+      g.FontFeatureValuesBlock
     ),
     cssCase(
       ['@document', '@-moz-document'],
-      RoutedDocumentBlock
+      g.DocumentBlock
     ),
-    otherwise(RoutedOpaqueAtRuleBlock)
+    otherwise(g.OpaqueAtRuleBlock)
   );
 
   /*
@@ -3947,6 +3947,17 @@ const cssFactory = (g: GrammarSelf) => {
     StatementPrelude,
     OpaqueAtPrelude,
     OpaqueBody,
+    OpaqueAtRuleBlock,
+    LayerBlock,
+    NestedLayerBlock,
+    DescriptorBlock,
+    PageBlock,
+    Keyframes,
+    FontFeatureValuesBlock,
+    ScopeBlock,
+    StartingStyleBlock,
+    NestedStartingStyleBlock,
+    DocumentBlock,
     StylesheetAtRule,
     DeclarationListAtRule,
     ConditionalGroupAtRule,
