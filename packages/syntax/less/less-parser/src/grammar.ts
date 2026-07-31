@@ -28,7 +28,7 @@ import {
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, assignment, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
@@ -124,6 +124,7 @@ type LessRules = {
   DoubledQuoteArgument: Combinator<Any>;
   FunctionArgument: Combinator<ValueSlot>;
   FunctionScalarArgument: Combinator<ValueNode>;
+  FunctionAssignmentArgument: Combinator<ValueNode>;
   ArgumentValueSequence: Combinator<ValueSlot>;
   FunctionCondition: Combinator<ValueNode>;
   FunctionConditionOr: Combinator<FunctionConditionFact>;
@@ -1229,6 +1230,7 @@ function isValueNode(value: unknown): value is ValueNode {
     case 'List':
     case 'Operation':
     case 'Condition':
+    case 'Assignment':
     case 'Block':
     case 'PropertyReference':
     case 'VarIndirect':
@@ -2930,12 +2932,36 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     { trivia: functionTrivia },
     sequence(functionConditionNot, literal('('))
   ));
+  // `name=value` is a call-argument PAIR, not a comparison — Less models it as a
+  // dedicated assignment (`tree/assignment.js`) so `filter: alpha(opacity=50)`
+  // replays verbatim instead of collapsing to `false`. The form is nothing
+  // IE-specific: `foo(bar=1)` takes the same shape.
+  //
+  // The two forms are separated by SHAPE, not by function name: an assignment
+  // key is a bare authored identifier, so a comparison whose left operand is
+  // anything else — a number (`boolean(3 = 4)`), a variable (`foo(@a = 1)`), a
+  // group or a call — still reaches `FunctionCondition` untouched. The `=` must
+  // also open no other operator, keeping `==`, `=<`, `=>` and `=~` out.
+  const assignmentKey = regex(/[-_a-zA-Z\u0080-\uffff][-\w\u0080-\uffff]*(?=[ \t\n\r\f]*=(?![=<>~]))/);
+  const assignmentOperator = regex(/[ \t\n\r\f]*=[ \t\n\r\f]*/);
+  const FunctionAssignmentArgument = node(
+    'FunctionAssignmentArgument',
+    noTrivia(sequence(field('key', assignmentKey), assignmentOperator, g.ArgumentValueSequence)),
+    (children, fields) => {
+      const value = children.find(isValueSlotValue);
+      if (value === undefined) {
+        throw new TypeError('Less function assignment argument lost its value.');
+      }
+      return assignment(staticText(requireField(fields, 'key').value), value);
+    }
+  );
   const FunctionArgument = node(
     'FunctionArgument',
     choice(
       sequence(functionConditionNotAhead, g.FunctionCondition),
       g.FunctionScalarArgument,
       g.ArgumentValueSequence,
+      g.FunctionAssignmentArgument,
       g.FunctionCondition
     ),
     (children) => {
@@ -6185,6 +6211,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     DoubledQuoteArgument,
     FunctionArgument,
     FunctionScalarArgument,
+    FunctionAssignmentArgument,
     ArgumentValueSequence,
     FunctionCondition,
     FunctionConditionOr,

@@ -270,6 +270,24 @@ export interface Condition {
   readonly src: string;
 }
 
+/**
+ * A `name=value` CALL ARGUMENT (`filter: alpha(opacity=50)`, `foo(bar=1)`) — a
+ * key/value PAIR, not a comparison. The `=` here is argument syntax, so the pair
+ * must never reach the guard evaluator and collapse to `false`; it emits as
+ * `key=` followed by the evaluated value, canonicalized to the unspaced spelling
+ * whatever the authored gap was (`foo(bar = 1)` → `foo(bar=1)`). The value is an
+ * ordinary value slot, so `foo(bar=@v)` still resolves `@v`.
+ *
+ * A comparison keeps its {@link Condition} shape whenever the left operand is not
+ * a bare identifier (`boolean(3 = 4)`, `foo(@a = 1)`) — that shape split is what
+ * separates the two forms, since Less function names are not consulted here.
+ */
+export interface Assignment {
+  readonly type: 'Assignment';
+  readonly key: string;
+  readonly value: ValueSlot;
+}
+
 /* -------------------------------------------------------------- value */
 
 /**
@@ -465,6 +483,7 @@ export type ValueNode =
   | FunctionCall
   | Block
   | Condition
+  | Assignment
   | Interpolation
   | GeneralEnclosed
   | VarIndirect
@@ -1277,6 +1296,7 @@ export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren',
 export const boundaryBlock = (value: ValueSlot): Block =>
   ({ type: 'Block', value, delimiter: 'paren', boundary: true, _s: NO_SPAN, _e: NO_SPAN });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
+export const assignment = (key: string, value: ValueSlot): Assignment => ({ type: 'Assignment', key, value });
 export const variableDeclaration = (
   name: string,
   value: ValueSlot | MixinCall,

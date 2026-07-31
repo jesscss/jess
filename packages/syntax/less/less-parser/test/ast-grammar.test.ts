@@ -3438,6 +3438,78 @@ describe('Less AST grammar facts', () => {
     expect(parsesCompleteStylesheet('x: boolean(foo(1 = 1) and);')).toBe(false);
   });
 
+  it('constructs an assignment argument for `name=value`, not an equality comparison', () => {
+    const result = run(
+      lessGrammar.Document,
+      'a: alpha(opacity=50); b: foo(bar=1, baz=2); c: foo(bar = 1); d: foo(bar=@v);',
+      { trivia: lessGrammar.whitespace }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      rules: [
+        {
+          value: {
+            type: 'FunctionCall',
+            name: 'alpha',
+            args: [{ type: 'Assignment', key: 'opacity', value: { type: 'Dimension', src: '50' } }]
+          }
+        },
+        {
+          value: {
+            args: [
+              { type: 'Assignment', key: 'bar', value: { type: 'Dimension', src: '1' } },
+              { type: 'Assignment', key: 'baz', value: { type: 'Dimension', src: '2' } }
+            ]
+          }
+        },
+        {
+          value: {
+            args: [{ type: 'Assignment', key: 'bar', value: { type: 'Dimension', src: '1' } }]
+          }
+        },
+        {
+          value: {
+            args: [{ type: 'Assignment', key: 'bar', value: { type: 'VariableReference', name: 'v' } }]
+          }
+        }
+      ]
+    });
+  });
+
+  it('keeps a comparison whose left operand is not a bare identifier on the condition grammar', () => {
+    const result = run(
+      lessGrammar.Document,
+      'a: boolean(3 = 4); b: foo(@v = 1); c: foo(bar >= 1);',
+      { trivia: lessGrammar.whitespace }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      rules: [
+        { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '=' } }] } },
+        { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '=' } }] } },
+        { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '>=' } }] } }
+      ]
+    });
+  });
+
+  it('does not claim an `=` that opens a longer comparison operator', () => {
+    const result = run(
+      lessGrammar.Document,
+      'a: foo(bar =< 1); b: foo(bar => 1);',
+      { trivia: lessGrammar.whitespace }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      rules: [
+        { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '=<' } }] } },
+        { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '=>' } }] } }
+      ]
+    });
+  });
+
   it('constructs a Less function condition comparison between parenthesized conditions', () => {
     const result = run(
       lessGrammar.Document,

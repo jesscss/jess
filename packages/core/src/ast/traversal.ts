@@ -567,6 +567,7 @@ function walkNode(
       break;
     case 'Important':
     case 'Block':
+    case 'Assignment':
       walkValueSlot(node.value, hooks, 'value.value', node, 0, depth + 1);
       break;
     case 'Operation':
