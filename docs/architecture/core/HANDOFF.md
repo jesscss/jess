@@ -65,16 +65,21 @@ presenting the loss as a design decision.
 `isurl(@addr)` where `@addr` is `url(https://example.com/)` receives a single
 value. There is no group, no array, nothing to guard against.
 
-**(b) SEPARATELY, a bare JS array can reach the value layer.**
-`isValueGroupArray` appears **95 times across 25 files** in `packages/fns/src` — 8 of them inside `types.ts`,
-  the predicates file itself — and throughout the test suite, which therefore
-  pins the workaround as correct in roughly 40 places. The guard exists because
-  a function argument may be a raw array rather than an AST node. A raw array
-  has no `.type`, so every function must defend against it before it can ask
-  anything.
-  Evidence for (b): `SpacedValue` and `List` are both in the
-  `ValueNode` union at `packages/core/src/ast/nodes.ts:454-458`. `1px 2px` has a
-  node representation. The function layer is handed a raw array instead of it.
+**(b) SEPARATELY, `isValueGroupArray` is 95 sites of dead weight.**
+It appears **95 times across 25 files** in `packages/fns/src` — 8 inside
+`types.ts`, the predicates file itself — and throughout the test suite, which
+pins it as correct in roughly 40 places.
+
+**It defends against nothing.** If a value is an array it is not the thing being
+queried, so the answer is `false` — and `value.type === 'Color'` already returns
+`false`, because an array's `.type` is `undefined`. Verified. The guard restates
+an answer the comparison already gives, at every one of the 95 sites.
+
+Open question, NOT an established fact: whether a raw array reaches the value
+layer at all. `SpacedValue` and `List` are both in the `ValueNode` union at
+`packages/core/src/ast/nodes.ts:454-458`, so `1px 2px` has a node
+representation. Establish it by tracing; the guard's existence is not evidence
+that anything ever arrives as an array.
   Evidence for (a): `packages/fns/src/less/types.ts:5` states `isurl()` "deliberately has no AST-v2
   value-domain export" because "`Url` is syntax, not a materialized Value tag"
   and reimplementing it "would require sniffing output bytes." But `Url` is a
@@ -99,7 +104,7 @@ Anything more is the model failing, not the function:
 
 | symptom in a function body | what it actually means |
 | --- | --- |
-| a guard (`!isValueGroupArray(v) && …`) | a non-node reached the value layer |
+| a guard that restates the comparison | dead weight; delete it |
 | unwrapping a group or wrapper | the dispatcher should have done it |
 | re-parsing, or reading `src` text | the node should carry the fact |
 | byte-sniffing | the meaning was dropped upstream |
@@ -111,11 +116,11 @@ predicate sharing that distinction inherits it.
 
 **The fix, in order:**
 
-1. **Stop producing the bare array.** Find where it is constructed and make it a
-   `List`/`SpacedValue` node. Trace it with file:line; do not glob and predict.
-2. Then `isValueGroupArray` has **no callers**. Delete all 95 occurrences —
-   they become dead by construction, not by sweeping. Update the ~40 test sites;
-   they move because the fix landed, not because something regressed.
+1. **Delete `isValueGroupArray` from all 95 sites.** It changes no outcome.
+   Not blocked on anything, needs no model change. Update the ~40 test sites.
+2. **Separately, establish whether a raw array reaches the value layer at all.**
+   If it does, make it a `List`/`SpacedValue` node. Trace it with file:line, and
+   do not infer the answer from the guard — the guard is not evidence.
 3. **Sites that genuinely operate on multiple values** — `min-max`, `extract`,
    `svg-gradient`, `format` — are not guards. They read a node and walk its
    children afterwards. That is a real change to those functions and is where
