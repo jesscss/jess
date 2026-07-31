@@ -414,9 +414,17 @@ export function parserDiagnostic({
     failure?.endOffset === undefined
       ? undefined
       : Math.max(offset, Math.min(source.length, failure.endOffset));
-  const startLoc = failure?.line === undefined || failure.column === undefined
-    ? lineColAt(source, offset)
-    : { line: failure.line, column: failure.column };
+
+  /*
+   * The failure's own line/column describe `failure.offset`. A source summary
+   * re-localises to a better offset, and taking the position from one and the
+   * offset from the other would point the caret and the reported line at two
+   * different places, so the summary's offset wins the position too.
+   */
+  const startLoc =
+    sourceSummary === undefined && failure?.line !== undefined && failure.column !== undefined
+      ? { line: failure.line, column: failure.column }
+      : lineColAt(source, offset);
   const endLoc =
     failure?.endLine !== undefined && failure.endColumn !== undefined
       ? { line: failure.endLine, column: failure.endColumn }

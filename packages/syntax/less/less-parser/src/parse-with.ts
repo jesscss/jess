@@ -6,7 +6,7 @@
  * both compiled tables executes both at load time. Each entry imports exactly
  * the one table it parses with, and this module imports none.
  */
-import { run } from 'parseman';
+import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
 import type { ISafeParseResult } from '@jesscss/core';
 /*
@@ -40,12 +40,32 @@ function isStylesheet(value: unknown): value is Stylesheet {
   );
 }
 
-function lineOptions(span: Span): {
+/**
+ * Line/column at a bare offset. The leftover-input offset is not the start of
+ * any span the run returned — `result.span` covers the text that *was*
+ * consumed — so the position has to be derived from the offset itself. Only
+ * ever reached on a throw path, so building the index here costs a parse
+ * nothing.
+ */
+function positionAt(input: string, offset: number): { line: number; column: number } {
+  const { line, col } = offsetToLineCol(buildLineIndex(input), offset);
+  return { line, column: col };
+}
+
+/**
+ * Line/column for a failure span. The compiled table without line tracking
+ * leaves a span's line fields unset, so fall back to deriving them; an error
+ * that reports an offset but no line is barely actionable in an editor.
+ */
+function lineOptions(input: string, span: Span): {
   line?: number;
   column?: number;
   endLine?: number;
   endColumn?: number;
 } {
+  if (span.startLine === undefined) {
+    return positionAt(input, span.start);
+  }
   return {
     line: span.startLine,
     column: span.startColumn,
@@ -68,7 +88,7 @@ export function parseWith(grammar: LessAstGrammar, input: string): Stylesheet {
     rootTrivia: { select: commentTriviaLabels }
   });
   if (!result.ok) {
-    throw new LessParseError(result.span.start, result.expected, lineOptions(result.span));
+    throw new LessParseError(result.span.start, result.expected, lineOptions(input, result.span));
   }
   if (result.unconsumedFrom !== null) {
     if (result.unconsumedFrom > result.span.start) {
@@ -76,18 +96,21 @@ export function parseWith(grammar: LessAstGrammar, input: string): Stylesheet {
         message: 'Unexpected Less input after a complete stylesheet.',
         reason:
           'The parser consumed a complete Less stylesheet before this token, so the remaining text is not part of any rule, declaration, or at-rule.',
-        fix: 'Remove the extra input or wrap it in valid Less syntax.'
+        fix: 'Remove the extra input or wrap it in valid Less syntax.',
+        ...positionAt(input, result.unconsumedFrom)
       });
     }
     throw new LessParseError(result.unconsumedFrom, [], {
       message: 'Unexpected Less syntax.',
       reason:
         'The parser could not match this token as the start of a Less rule, declaration, or at-rule.',
-      fix: 'Remove the token or rewrite it as valid Less syntax.'
+      fix: 'Remove the token or rewrite it as valid Less syntax.',
+      ...positionAt(input, result.unconsumedFrom)
     });
   }
   if (!isStylesheet(result.value)) {
     throw new LessParseError(result.span.end, [], {
+      ...positionAt(input, result.span.end),
       message: 'Less parser did not produce a stylesheet.',
       reason:
         'The Less parser matched the input but returned a value that is not a stylesheet document.',

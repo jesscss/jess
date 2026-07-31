@@ -14,11 +14,16 @@ export class JessParseError extends SyntaxError {
   readonly column?: number;
   readonly endLine?: number;
   readonly endColumn?: number;
+  readonly reason?: string;
+  readonly fix?: string;
 
   constructor(
     offset: number,
     expected: readonly string[],
     options: {
+      message?: string;
+      reason?: string;
+      fix?: string;
       line?: number;
       column?: number;
       endLine?: number;
@@ -26,7 +31,7 @@ export class JessParseError extends SyntaxError {
     } = {}
   ) {
     const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
-    super(`Jess parser error.${detail}`);
+    super(options.message ?? `Jess parser error.${detail}`);
     this.name = 'JessParseError';
     this.offset = offset;
     this.expected = expected;
@@ -34,5 +39,7 @@ export class JessParseError extends SyntaxError {
     this.column = options.column;
     this.endLine = options.endLine;
     this.endColumn = options.endColumn;
+    this.reason = options.reason;
+    this.fix = options.fix;
   }
 }

@@ -214,7 +214,7 @@ describe('Jess parser plugin render-through', () => {
     it('rejects a `&` suffix that is not an identifier, and the at-root template', async () => {
       for (const source of ['.a { &-1 { color: red; } }', '.a { &1 { color: red; } }', '.a { &() { color: red; } }', '.a { &(\'\') { color: red; } }', '.a { &(nil) { color: red; } }']) {
         await expect(new Compiler().renderString(source, { filePath: 'entry.jess', extension: '.jess' }))
-          .rejects.toThrow(/Jess parser error/);
+          .rejects.toThrow(/Unexpected Jess syntax\./);
       }
     });
 

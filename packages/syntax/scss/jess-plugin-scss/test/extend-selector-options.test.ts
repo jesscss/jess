@@ -25,7 +25,7 @@ describe('scss-plugin direct AST parse route', () => {
       filePath: 'test.scss',
       line: 2,
       column: 1,
-      message: expect.stringMatching(/^SCSS parser error\./),
+      message: 'Unexpected SCSS input after a complete stylesheet.',
       file: { source }
     }]);
     expect(result.errors[0]?.lines?.[2]).toBe('!broken');
