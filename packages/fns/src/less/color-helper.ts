@@ -6,7 +6,7 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../tree`, no legacy node).
  */
-import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, round, serializeColor, textOf, type Color, type Value } from '@jesscss/core';
+import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, serializeColor, textOf, type Color, type Value } from '@jesscss/core';
 import { clamp01 } from './color-ctor-helper.js';
 import { requireDimension } from './math-helper.js';
 
@@ -32,8 +32,11 @@ export const snapAlpha = (a: number): number => (Math.abs(a - 1) < 1e-12 ? 1 : a
 
 /**
  * The one alpha-adjust kernel for `fade`/`fadein`/`fadeout`: rebuild `color` at
- * `newAlpha`, rounded to Less's 8-decimal numeric precision (Less `fround`) so
- * float drift emits `0.7`, not `0.7000000000000001`. A `#`-hex input keeps HEX
+ * `newAlpha`, carried at FULL precision. It used to round to Less's 8-decimal
+ * `fround` here so that float drift emitted `0.7` and not `0.7000000000000001` —
+ * but that is the OUTPUT policy's job (`formatNumber` trims exactly that noise),
+ * and ruling V5 forbids quantizing a colour channel at construction precisely
+ * because chained colour math compounds the error. A `#`-hex input keeps HEX
  * format ONLY when the literal already encoded an alpha channel (`#rgba` /
  * `#rrggbbaa`); an opaque hex (`#rgb` / `#rrggbb`) turns to `rgba(…)` the moment
  * it becomes translucent (Less 4.x/v5 parity — e.g. `fadeout(#ff0, 50%)` →
@@ -43,7 +46,7 @@ export function withAlpha(color: Color, newAlpha: number): Color {
   const node = color.src;
   const hexDigits = typeof node === 'string' && node.startsWith('#') ? node.length - 1 : 0;
   const preserveHex = color.format === HEX && (hexDigits === 4 || hexDigits === 8);
-  return makeColorRgb(colorRawRgb(color), round(newAlpha, 8), preserveHex ? HEX : RGB, { modernSyntax: color.modernSyntax === true });
+  return makeColorRgb(colorRawRgb(color), newAlpha, preserveHex ? HEX : RGB, { modernSyntax: color.modernSyntax === true });
 }
 
 /**
