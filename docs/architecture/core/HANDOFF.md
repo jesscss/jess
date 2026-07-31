@@ -504,16 +504,43 @@ symbol name and re-locate it with `grep`; treat the line number as a hint with a
 - ~~**`packages/fns/src/less/index.ts:31` exports the wrong function.**~~ **FIXED** with the
   per-dialect registry: the index now re-exports the *named* `format` (`string-format`) and
   `formatPercent` (`%`) explicitly, and both register under the names ruling A5 gives them.
-- **fns port backlog.** 35 modules under `packages/fns/src` still import from `@jesscss/core`
-  root (legacy tree nodes): 6 in `less/` (`each`, `iif`, `isdefined`, `isruleset`, `logical`,
-  `math-factory`), 27 in `sass/`, and `shared/math/{max,min}`. They stay on the module surface
-  but are not value-domain `Fn`s, so the dialect index does not register them — converting one
-  in place is what registers it. `type-of`, `str-length`, and `comparable` still do not exist
-  anywhere in `packages/fns/src`. There is still no alias mechanism (`separator`→
-  `list-separator`, `argb`→`ie-hex-str`). The dormant `builtins/{abs,ceil,floor}.ts` that would
-  have corrupted Less through `normalizeAngle` are DELETED; an audit of the landed tree finds
-  zero dormant value-domain fns (92 definitions on disk, 100 registered entries — the 8
-  `shared/` fns register in both dialects).
+- ~~**fns port backlog** — 35 unconverted modules, 3 missing fns, no alias mechanism.~~
+  **CLOSED 2026-07-30 at `ef173125a`.** Every item in the 2026-07-24 row had been overtaken:
+  - **The 35 modules are gone, not unconverted.** None of the 6 named `less/` modules
+    (`each`, `iif`, `isdefined`, `isruleset`, `logical`, `math-factory`) exists — core
+    special-forms all of them during serialization, so `packages/fns/src/less/index.ts`
+    records them as deleted dead code. `shared/math/{max,min}.ts` do not exist either
+    (`min`/`max` are dialect-owned; the module pair is `sass/math/{min,max}.ts`). Measured
+    at `ef173125a`: the Less index exports 83 callables and the Sass index 62, and **every
+    one of the 145 is a value-domain `Fn`** — zero non-`Fn` exports on either index, so the
+    registries register the whole surface.
+  - **`type-of`, `str-length` and `comparable` all exist and register** —
+    `sass/meta/type-of.ts`, `sass/string/globals.ts` (`strLength`) and
+    `sass/math/compatible.ts` (`comparable`).
+  - **The alias question is settled and implemented.** `separator`→`list-separator` was a
+    real registration bug and is fixed below. `argb`→`ie-hex-str` is *not* an alias:
+    `packages/fns/src/sass/NAME_ALIASES.md` records the owner ruling that the bodies diverge
+    (output case) and that a fn IS its dispatch name, so each spelling gets its own body.
+    Where a rename really is pure, the landed shape is a delegating `defineFunction` under
+    the second name reusing the first fn's `params` — `sass/string/globals.ts`, now also
+    `sass/map/globals.ts` and `sass/list/globals.ts`.
+- **Renamed Sass globals were registered under their MODULE names.** *(Found and fixed
+  2026-07-30, `b587617e0`.)* `registryOf()` keys on `fn.name`, so `sass/index.ts` exporting a
+  module member registered the module name: the Sass global registry held bare
+  `get`/`has-key`/`keys`/`values`/`merge`/`remove`/`separator` — seven names dart-sass has no
+  global for — and none of `map-get`/`map-has-key`/`map-keys`/`map-values`/`map-merge`/
+  `map-remove`/`list-separator` dispatched. Measured before/after on the same tree:
+  `map-keys`, `map-values`, `map-merge`, `map-remove` and `list-separator` went from
+  verbatim-preserved to computed; `map-get` was already reachable because the SCSS parser
+  lowers it to the `$[…]` accessor. Jess-suite ratchet was byte-identical across the fix
+  (37 NEW / 10 FIXED / 1 STALE both sides), so nothing else moved. `map-has-key` needed
+  `dd22fef60` on top: with a two-argument call its empty rest parameter mis-bound on the
+  `(ValueGroup, FnCtx)` route and the body threw, so the call was preserved verbatim while
+  the three-argument nested form worked. On `dd22fef60` all seven globals dispatch.
+- **Dead one-line shim: `packages/fns/src/sass/math/abs.ts`.** Re-exports `abs` from
+  `shared/`, but `sass/math/index.ts` imports `abs` from `shared/` directly, so nothing
+  reaches it. A reachability walk from all eleven index entrypoints finds it is the only
+  unreferenced `.ts` module in `packages/fns/src`.
 - **`extend-exact.less` flake is real cross-compile state contamination**, not test flakiness.
   **This row's pointers moved packages.** `packages/jess/src/index.ts` is now 24 lines and only
   subclasses `DefaultCompiler`; the plugin stack was extracted to `@jesscss/compiler-preset`
@@ -814,10 +841,11 @@ clustered as follows:
 **Decided (2026-07-24, ledger C13).** The ownership question above is settled in
 favour of the dialect owner: each converted `builtins/` implementation was moved
 INTO `less/`, replacing the legacy tree-node twin of the same name, and
-`builtins/` is deleted. What remains legacy is listed in the fns port backlog
-above; those modules keep their place on the dialect module surface and are
-simply not registered until converted in place. The tree barrel is still not cut
-— the legacy modules above still import it.
+`builtins/` is deleted. **Nothing legacy remains** (re-verified 2026-07-30 at
+`ef173125a`): both dialect indexes export value-domain `Fn`s exclusively — 83 in
+Less, 62 in Sass, zero non-`Fn` exports — so there is no "not registered until
+converted" residue left. See the closed fns-port-backlog row above. Cutting the
+tree barrel is now gated on `packages/core`, not on `packages/fns`.
 
 ### `plugin-js` bridge disposition
 
