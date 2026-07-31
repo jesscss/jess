@@ -76,19 +76,6 @@ function text(child: unknown): string {
 }
 
 /**
- * Reads the authored text of a reducer child that may be either a token leaf
- * or an already-built `SimpleSelector` node.
- *
- * Selector productions mix the two: `BasicSelector` yields a node while a
- * combinator yields a leaf. `text()` deliberately throws on a node rather than
- * guessing, which is what surfaced the selector reducers as broken.
- *
- * KNOWN INCOMPLETE — see TERMINAL-UP-COVERAGE.md. This flattens a complex
- * selector to one `SimpleSelector` carrying the joined text. It no longer
- * DISCARDS compounds, which was Candidate B's F5, but the incumbent emits
- * structured `SelectorTerm`/`SelectorBranch` nodes and this does not yet.
- */
-/**
  * Keeps only built AST nodes, dropping token leaves.
  *
  * `oneOrMoreSep` hands the reducer its SEPARATORS as well as its items, so a
@@ -103,15 +90,6 @@ function nodesOnly(children: readonly unknown[]): ValueNode[] {
     typeof child === 'object' && child !== null && 'type' in child);
 }
 
-/**
- * Strips the fixed delimiters a routed dispatch opener carried into its branch.
- *
- * `routed()` hands the branch the WHOLE consumed opener, so a query feature
- * arrives as `'(hover)'` or `'(min-width:'` rather than as its name. This is
- * not re-deriving structure from bytes: the leading `(` and the single trailing
- * delimiter are exactly the characters this grammar's own `queryFeatureOpen`
- * put there, and nothing is being re-recognised. Candidate B found the leak.
- */
 /**
  * The block body among a reducer's children — the first array.
  *
@@ -141,10 +119,34 @@ function preludeOf(children: readonly unknown[]): ValueSlot | null {
     && 'type' in child) ?? null) as ValueSlot | null;
 }
 
+/**
+ * Strips the fixed delimiters a routed dispatch opener carried into its branch.
+ *
+ * `routed()` hands the branch the WHOLE consumed opener, so a query feature
+ * arrives as `'(hover)'` or `'(min-width:'` rather than as its name. This is
+ * not re-deriving structure from bytes: the leading `(` and the ONE trailing
+ * delimiter are exactly the characters this grammar's own `queryFeatureOpen`
+ * put there, and nothing is being re-recognised. Candidate B found the leak,
+ * and also that stripping a RUN of trailing delimiters claimed more than the
+ * justification allowed — hence `$` rather than `+$`.
+ */
 function insideParen(routedText: string): string {
   return routedText.replace(/^\(/, '').replace(/[):<>=]$/, '').trim();
 }
 
+/**
+ * Reads the authored text of a reducer child that may be either a token leaf
+ * or an already-built `SimpleSelector` node.
+ *
+ * Selector productions mix the two: `BasicSelector` yields a node while a
+ * combinator yields a leaf. `text()` deliberately throws on a node rather than
+ * guessing, which is what surfaced the selector reducers as broken.
+ *
+ * KNOWN INCOMPLETE — see TERMINAL-UP-COVERAGE.md. This flattens a complex
+ * selector to one `SimpleSelector` carrying the joined text. It no longer
+ * DISCARDS compounds, which was Candidate B's F5, but the incumbent emits
+ * structured `SelectorTerm`/`SelectorBranch` nodes and this does not yet.
+ */
 function selectorText(child: unknown): string {
   if (typeof child === 'object' && child !== null && 'text' in child && typeof child.text === 'string') {
     return child.text;
