@@ -47,6 +47,15 @@ area, review the grammar file(s) there in full. State exactly what you reviewed
   state whether you fed it the pre-`compose()` `rules()` map or the fused
   compiled artifact. A clean result from the fused artifact is evidence of
   nothing.
+- **An unfalsified null result reported as a pass.** "No diff", "aggregates
+  unchanged", "digest identical" mean nothing until you have shown the
+  instrument can see *this* change. Prove the instrument first (below); if you
+  cannot, the row is `UNVERIFIED`, never `conforms`.
+
+**Proving the instrument is a review outcome in its own right.** Report it at
+file level whether or not anything else was found. A gate that runs green
+without looking at the file under review is the failure mode this section
+exists to catch, and it does not announce itself.
 
 ## Method
 
@@ -115,6 +124,27 @@ Report these separately at file level, with counts and file:line lists:
     `lib/` with `check:macro` green. **A change that moves the tree is a failed
     change, not a judgement call.** A red `check-macro-buildable` invalidates any
     differential taken on that build — say so rather than reporting the hash.
+
+    **A `css-parser` change is not covered by the Less oracle.** Less composes
+    `cssSyntax` from `@jesscss/parser-shared/recognition`, not from
+    `css-parser/src/grammar.ts`, and carries its own `Value`
+    (`less-parser/src/grammar.ts:3110`) with its own `IdentifierOrFunction`. A
+    change to CSS's value grammar therefore leaves every Less aggregate
+    byte-identical while proving nothing. **An unchanged oracle on a
+    `css-parser` change is a null result, not a pass** — say so rather than
+    quoting it as evidence. Measured: removing `IdentBlock` from CSS's `Value`
+    outright, which breaks 7 of 10 bridge fixtures, left both Less aggregates
+    byte-identical (`bb0b243f9`).
+
+    Until a `css-parser` byte-identity script exists, an ad-hoc `digestInto`
+    differential is the substitute, and it needs a **negative control**: mutate
+    the production under review in a way that must change output, and show the
+    digest moves. A corpus that never exercises the production returns
+    "identical" for a correct change and a broken one alike — measured, a first
+    differential over 408 files / 673 kB reported 0 diffs for the change *and* 0
+    diffs for a deliberately-broken control, and only became sensitive after 10
+    targeted fixtures were built. **Report the control alongside the result.**
+    A differential with no control shown is `UNVERIFIED`.
 14. **Name claims a divergence it does not have** *(item 14)* — a dialect prefix
     (`css…`, `less…`, `scss…`, `jess…`) asserts this rule accepts a different
     language than its unprefixed counterpart. Check whether it does. If it does
@@ -140,6 +170,7 @@ and any new `productions.ts` (never create one).
 **Reviewed:** (file / branch / range)
 **Consts enumerated:** N  → rows below: N
 **Gates:** lint (…) · verify:types (…) · check:macro (…) · oracle aggAst/aggCst (before → after, or n/a — no diff)
+**Instrument sensitivity:** (what proves the differential can see this change — the negative control you ran and the digest movement it produced; or "NOT PROVEN — results below are null, not passes")
 
 ### Per-const
 | # | const | outcome | item | evidence |
@@ -159,6 +190,9 @@ and any new `productions.ts` (never create one).
 - item 10 separator ownership — count, all `blocked`
 - item 11 gating — count vs the CSS grammar
 - item 12 reachability — unreachable / untested consts
+- item 13 instrument sensitivity — the negative control and its digest movement,
+  or the explicit statement that the oracle does not cover this file and the
+  unchanged aggregate is a null result
 - item 14 unearned prefix — every dialect-prefixed or `Ast`/`Cst`-bearing const
   name, with whether its accepted language actually differs (evidence, not
   assertion). List only; never rename.
@@ -186,5 +220,9 @@ guess a `conforms`.
 - Do not accept "matches less.js" or a green suite as justification for anything.
 - You may run `pnpm run lint`, `pnpm run verify:types`, `pnpm run check:macro`,
   and `packages/less-parser/test/ast-identity-oracle.mjs` and cite their output
-  — but the oracle exists only for `less-parser`, and hashes taken on a build
-  with a red `check:macro` are void.
+  — but the oracle exists only for `less-parser`, it does not cover
+  `css-parser` at all, and hashes taken on a build with a red `check:macro` are
+  void.
+- Do not report a null result as a pass. An unchanged aggregate or digest is
+  evidence only once you have shown the instrument moves when the production
+  under review is broken. Absent that, write `UNVERIFIED`.

@@ -117,6 +117,13 @@ for (const script of [
   'verify:config-syntax',
 
   /*
+   * CLAUDE.md mandates three reviewer agents. They live in `.cursor/agents` and
+   * Claude Code loads `.claude/agents` — when only the first exists, every one
+   * of those mandates names an agent no session can load, and nothing says so.
+   */
+  'verify:agents',
+
+  /*
    * A truthiness test on a possibly-awaitable value silently takes one branch
    * instead of crashing, and neither tsc nor no-unnecessary-condition sees it.
    */

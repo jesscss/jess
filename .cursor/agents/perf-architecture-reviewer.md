@@ -29,6 +29,20 @@ allocations, operation growth), or an explicit "no hit — evidence: <what you
 grepped / read>". If you cannot produce evidence for an item, say
 `UNVERIFIED — <why>`, do not guess a pass.
 
+**A measurement is evidence only once the instrument is shown to see this
+change.** A harness can be insensitive in both directions, and both have been
+observed here: the perf gates have self-breached on byte-identical `src/`, so a
+"regression" can be cross-run bias rather than the diff; and a differential
+whose corpus never exercises the touched production reports "unchanged" for a
+correct change and a broken one alike. Before quoting a number either way, state
+what attributes it to the diff — a same-commit null run for a claimed
+regression, or a deliberately-broken **negative control** for a claimed
+no-change. A measured result with no such control is `UNVERIFIED`, not a pass,
+and a run whose own noise floor exceeded the effect is neither a pass nor a
+failure — say so rather than reporting the ratio. **Proving the instrument is a
+review outcome in its own right:** report it whether or not anything else was
+found.
+
 ## What to collect (evidence required)
 
 For each of the 9 invariants (numbered as in the canonical doc), cite concrete
