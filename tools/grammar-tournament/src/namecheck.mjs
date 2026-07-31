@@ -108,5 +108,5 @@ export function checkNames(baseGrammarFile, candidateGrammarFile) {
     .sort()
     .map(n => `${n} -> emits ${publicName(n)}`);
 
-  return { ok: extra.length === 0, extra };
+  return { ok: extra.length === 0, extra, checked: base.size };
 }

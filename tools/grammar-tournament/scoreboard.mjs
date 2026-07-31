@@ -310,7 +310,17 @@ async function main() {
     const nc = checkNames(resolve(pkg, 'src/grammar.ts'), grammarSrc);
     if (nc.reason) {
       console.log(`  name check UNAVAILABLE: ${nc.reason}`);
-    } else if (!nc.ok) {
+    } else if (nc.ok) {
+      /*
+       * PRINT ON SUCCESS, NOT ONLY ON FAILURE. A check that is silent when
+       * clean cannot be distinguished from a check that did not run — the same
+       * absent-column-reads-as-clean shape that hid `id.illusory`, hid the
+       * `node<T>(` blind spot behind a zero, and let the byte columns measure
+       * the incumbent twice. Candidate B found this one. Silence is not
+       * evidence; a count is.
+       */
+      console.log(`  name check: ${nc.checked} incumbent names, 0 divergences`);
+    } else {
       console.log(`  CST NAMES: ${nc.extra.length} production(s) emit a CST type the incumbent never emits`);
       for (const e of nc.extra.slice(0, 8)) {
         console.log(`    ${e}`);
