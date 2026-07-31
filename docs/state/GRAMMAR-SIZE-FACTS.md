@@ -251,6 +251,41 @@ dispatch/case/block cluster ≈ 68. Three-bucket result matches less:
 because of tightness.** The loose-tier lead is a near-zero byte prize on both
 css and less.
 
+### 2.4e Compile-time elision beats runtime deferral — measured
+
+Per-child read rate, measured by wrapping every builder's `children` argument in
+a read-counting Proxy on the **baseline** css artifact, one bootstrap4.css AST
+parse:
+
+| | |
+| --- | ---: |
+| builder calls | 33,541 |
+| children passed | 62,884 |
+| **children read** | **62,140 — 98.82%** |
+| whole-array consumers | 21,010 calls / 47,172 children |
+| partial (index-only) consumers | 12,531 calls / 15,712 children, 14,968 read (95.3%) |
+
+**Almost everything is read.** The lazy-view variant's entire upside is **744 of
+62,884 children (1.18%)**, and that is the *favourable* bound. Avoiding 5,841
+allocations already cost −6%; avoiding 744 cannot pay for itself.
+
+**The principle, which generalises past this lane:**
+
+> **"Don't build what nobody reads" is better served by NOT EMITTING the
+> builder than by deferring it.** Runtime deferral pays on the common path to
+> save on the rare one. Compile-time elision pays nothing and saves entirely.
+
+The capture tape is the counter-example in miniature: **32,756 tape writes to
+avoid 5,841 allocations**. Compare `commitment.ts`, which deleted the emission
+outright and paid −5 to −7% across all four dialects.
+
+Supporting: rollback is **17.5%** of parse cost against save's **4.2%** — the
+win is in not having to unwind, not in cheapening the mark. And the entire
+dispatch/token-keying spread is **2.4%** of css parse time.
+
+**Recorded as the mechanism's verdict, not the goal's** (G17). The goal is
+untouched and sits inside G14.
+
 ### 2.5 Measurement discipline
 
 - **Noise floor on this machine: 5.144 vs 5.200 ms min-of-mins at a 6/15 win
