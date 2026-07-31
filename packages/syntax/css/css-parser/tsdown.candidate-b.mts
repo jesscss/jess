@@ -54,4 +54,11 @@ export default defineConfig([
     fixedExtension: false, hash: false, clean: false,
     deps: { onlyBundle: false }, plugins: [parseman.rolldown()]
   }
+,
+  {
+    entry: { 'probe-site-cost': './src/probe-site-cost.ts' },
+    format: ['esm'], dts: false, outDir: './probe', platform: 'node',
+    fixedExtension: false, hash: false, clean: false,
+    deps: { onlyBundle: false }, plugins: [parseman.rolldown()]
+  }
 ]);
