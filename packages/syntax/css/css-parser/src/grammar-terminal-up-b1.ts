@@ -30,6 +30,7 @@
  * var() fallbacks, @page margin rules, keyframes, and font-feature-values are
  * NOT covered, and the artifact number must be read with that stated.
  */
+import { pseudoSelector } from '@jesscss/core/ast';
 import { choice, composeLeaf, dispatch, endsWith, keywords, literal, many, noTrivia, node, oneOrMore, oneOrMoreSep, optional, otherwise, regex, routed, rules, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
@@ -151,6 +152,16 @@ function selectorText(child: unknown): string {
   if (typeof child === 'object' && child !== null && 'text' in child && typeof child.text === 'string') {
     return child.text;
   }
+
+  /* A functional pseudo reduces to a PseudoSelector, which carries `name`. */
+  if (typeof child === 'object' && child !== null && 'name' in child && typeof child.name === 'string') {
+    return `:${child.name}`;
+  }
+
+  /* A selector list argument carries `selectors`, not text. */
+  if (typeof child === 'object' && child !== null && 'selectors' in child) {
+    return (child.selectors as readonly unknown[]).map(selectorText).join(',');
+  }
   if (Array.isArray(child)) {
     return child.map(selectorText).join('');
   }
@@ -204,6 +215,16 @@ const queryPunctuationTable = keywords(['/', '+', '-', '*', '~', '|', '^', '$'])
 
 /** Descendant/child/sibling combinators, one closed table. */
 const combinator = keywords(['||', '>', '+', '~', '|']);
+
+/**
+ * The RELATIVE combinator table, for `:has()` only — three members, not five.
+ *
+ * A relative selector may open with a combinator (`:has(> .a)`), but `|` and
+ * `||` are excluded: a leading `|` is namespace syntax, not a relative
+ * combinator, so reusing the ordinary table would accept `:has(| .a)`.
+ * selectors-4 §3.6/§4.2.
+ */
+const relativeSelectorCombinator = keywords(['>', '+', '~']);
 
 /** The terminal-up factory. One `g` self-reference parameter, as the macro requires. */
 const terminalUpFactory = (g: Record<string, Combinator>) => {
@@ -325,10 +346,118 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   );
 
   /** A pseudo selector, argument-less or with an opaque argument run. */
+  /*
+   * ---------------------------------------------------------------------
+   * BATCH 2 — functional pseudo-selectors.
+   *
+   * 36 of 333 corpus entries. THREE genuinely different argument languages,
+   * not one parameterised argument (Candidate B, selectors-4):
+   *
+   *   §3.6/§4.4  :is() :where() :not() :has() :matches()  -> a selector list
+   *   §6.6       :nth-child() :nth-last-child()           -> <An+B> [of S]
+   *   §6.6.2     :nth-of-type() :nth-last-of-type()       -> <An+B> only
+   *   everything else                                     -> raw argument
+   *
+   * The `of S` asymmetry is why `NthChildPseudoSelectorName` and
+   * `NthTypePseudoSelectorName` are separate leaves rather than one `nth-*`
+   * pattern. Both leaves already assert `(?=\()`, so the name is glued to its
+   * paren by the leaf and needs no separate adjacency guard.
+   * ---------------------------------------------------------------------
+   */
+
+  /** `:hover`, `::before` — no argument. */
   const PseudoSelector = node(
     'PseudoSelector',
     token(noTrivia(sequence(g.PseudoSelectorColon, g.Identifier))),
     children => simpleSelector(text(children[0]))
+  );
+
+  /**
+   * A relative selector, for `:has()` only.
+   *
+   * It may OPEN with a combinator — `:has(> .a)`, `:has(+ .b)` — but the table
+   * is `['>', '+', '~']` and NOT the ordinary combinator table, which also
+   * carries `|` and `||`. A leading `|` is namespace syntax, not a relative
+   * combinator, so reusing the ordinary table would accept `:has(| .a)`.
+   * selectors-4 §3.6/§4.2. Candidate B pre-empted this as a fourth instance of
+   * the over-broad-table-reached-from-the-wrong-position class.
+   */
+  const RelativeSelector = node(
+    'RelativeSelector',
+    sequence(optional(relativeSelectorCombinator), g.ComplexSelector),
+    children => simpleSelector(children.map(selectorText).join(' '))
+  );
+
+  /** A comma-separated relative selector list. */
+  const RelativeSelectorList = node(
+    'RelativeSelectorList',
+    oneOrMoreSep(g.RelativeSelector, literal(',')),
+    children => selist(...(nodesOnly(children) as never[]))
+  );
+
+  /**
+   * `<An+B>`, plus the `of S` tail that only `:nth-child`/`:nth-last-child`
+   * accept.
+   *
+   * `NthExpression` is ONE leaf covering `even`, `odd`, `3`, `-3`, `n`, `2n`,
+   * `-n`, `2n+1`, `-n+3` and authored `2n + 1`. It must be tried BEFORE any
+   * component-style leaf gets a turn, or `-n+3` splits on its leading `-` —
+   * the same ordering hazard as `UnicodeRange` before `IdentOrFunction`, and
+   * the reason the incumbent carries a `LeadingDash*` production family.
+   *
+   * The authored text is preserved verbatim: v5 spaces operators everywhere
+   * EXCEPT inside `:nth-*()`, so `2n+1` must round-trip as `2n+1` and an
+   * authored `2n + 1` must not be re-spaced.
+   */
+  const NthChildArgument = node(
+    'NthChildArgument',
+    sequence(g.NthExpression, optional(sequence(g.NthOfKeyword, g.SelectorList))),
+    children => simpleSelector(text(children[0]))
+  );
+
+  /** `:nth-child(…)` / `:nth-last-child(…)` — `<An+B>` with an optional `of S`. */
+  const NthChildPseudoSelector = node(
+    'PseudoSelector',
+    sequence(g.PseudoSelectorColon, g.NthChildPseudoSelectorName, literal('('), g.NthChildArgument, literal(')')),
+    children => pseudoSelector(text(children[1]), null, selectorText(children[3]))
+  );
+
+  /** `:nth-of-type(…)` / `:nth-last-of-type(…)` — `<An+B>`, and NO `of` tail. */
+  const NthTypePseudoSelector = node(
+    'PseudoSelector',
+    sequence(g.PseudoSelectorColon, g.NthTypePseudoSelectorName, literal('('), g.NthExpression, literal(')')),
+    children => pseudoSelector(text(children[1]), null, text(children[3]))
+  );
+
+  /**
+   * `:is()`, `:where()`, `:not()`, `:has()`, and `:matches()`.
+   *
+   * `matches` is the legacy alias for `:is()`, removed from Selectors 4 before
+   * publication — so building this set from the current spec yields FOUR
+   * members and routes `:matches(.a, .b)` to the raw-argument arm, silently
+   * moving the tree on a construct that still appears in real stylesheets.
+   * The incumbent's set has five. Ours wins over the spec's shape here.
+   * Candidate B caught this; it is exactly the kind of thing a from-scratch
+   * build cannot see.
+   */
+  const SelectorArgumentPseudoSelector = node(
+    'PseudoSelector',
+    sequence(
+      g.PseudoSelectorColon,
+      g.SelectorArgumentPseudoSelectorName,
+      literal('('),
+      choice(g.RelativeSelectorList, g.SelectorList),
+      literal(')')
+    ),
+    children => pseudoSelector(text(children[1]), nodesOnly(children)[0] as never)
+  );
+
+  /** Any pseudo: the three argument languages, then the bare form. */
+  const AnyPseudoSelector = choice(
+    g.NthChildPseudoSelector,
+    g.NthTypePseudoSelector,
+    g.SelectorArgumentPseudoSelector,
+    g.PseudoSelector
   );
 
   /** An attribute selector: `[name]`, `[name=value]`, `[name=value i]`. */
@@ -348,7 +477,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
   const BasicSelector = node('BasicSelector', g.SimpleSelectorToken, children => simpleSelector(text(children[0])));
 
   /** Adjacent simple selectors with no combinator between them. */
-  const CompoundSelector = oneOrMore(choice(BasicSelector, PseudoSelector, AttributeSelector));
+  const CompoundSelector = oneOrMore(choice(g.BasicSelector, g.AnyPseudoSelector, g.AttributeSelector));
 
   /**
    * Compound selectors joined by combinators or by descendant whitespace.
@@ -678,6 +807,16 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
     Component,
     Quoted,
     CompoundSelector,
+    BasicSelector,
+    AttributeSelector,
+    PseudoSelector,
+    AnyPseudoSelector,
+    NthChildPseudoSelector,
+    NthTypePseudoSelector,
+    SelectorArgumentPseudoSelector,
+    NthChildArgument,
+    RelativeSelector,
+    RelativeSelectorList,
     ValueSequence,
     GeneralEnclosed,
     QueryNonOnlyKeyword,
