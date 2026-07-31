@@ -117,7 +117,7 @@ type LessRules = {
   Keyword: Combinator<ValueNode>;
   NamedColor: Combinator<ValueNode>;
   Color: Combinator<ValueNode>;
-  Percentage: Combinator<unknown>;
+  Percentage: Combinator<string>;
   Dimension: Combinator<ValueNode>;
   UnicodeRange: Combinator<Any>;
   EscapeValue: Combinator<Any>;

@@ -158,7 +158,7 @@ type ScssRules = {
   CounterStyle: Combinator<AtRuleBlock>;
   PropertyName: Combinator<Keyword>;
   PropertyAtRule: Combinator<AtRuleBlock>;
-  Percentage: Combinator<unknown>;
+  Percentage: Combinator<string>;
   KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;

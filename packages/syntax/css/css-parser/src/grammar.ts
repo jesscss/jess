@@ -224,6 +224,19 @@ type GrammarRuleName =
   | 'VarFallbackParen'
   | 'VarFallbackPunctuation'
   | 'VarFallbackTerm'
+
+  /*
+   * These seven were already rules-map keys but had never been declared here,
+   * because nothing referenced them through `g.` — the map and this union are
+   * different sets, and only a `g.` reference forces them to agree.
+   */
+  | 'AtRulePreludeWhitespace'
+  | 'AtRulePreludeComma'
+  | 'AtRulePreludeGroup'
+  | 'AtRulePreludeQuoted'
+  | 'AtRulePreludeText'
+  | 'QueryBareFeature'
+  | 'QueryRangeFeature'
   | 'keyframeSelector'
   | 'stylesheetBodyBlock'
   | 'declarationListBlock'

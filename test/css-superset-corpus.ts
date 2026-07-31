@@ -242,6 +242,31 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     group: 'at-rule',
     source: '@-webkit-keyframes x { 0% { opacity: 1 } }'
   },
+
+  /*
+   * `<keyframe-selector> = from | to | <percentage>` (css-animations-1 §4), and
+   * `<percentage> = <number> %` (css-values-4 §8.2). `<number>` is the
+   * css-syntax-3 §4.3.12 number, so the sign, the leading-dot decimal and the
+   * exponent are all part of the type — three dialects previously spelled the
+   * keyframe percentage as a hand-rolled regex that agreed with none of them
+   * and with each other only by accident. `0%`/`50%` above cover the easy
+   * middle; these cover the edges the hand-rolled spellings disagreed on.
+   */
+  {
+    id: '@keyframes with a signed percentage selector',
+    group: 'at-rule',
+    source: '@keyframes x { +50% { opacity: 1 } }'
+  },
+  {
+    id: '@keyframes with a leading-dot percentage selector',
+    group: 'at-rule',
+    source: '@keyframes x { .5% { opacity: 1 } }'
+  },
+  {
+    id: '@keyframes with an exponent percentage selector',
+    group: 'at-rule',
+    source: '@keyframes x { 1e2% { opacity: 1 } }'
+  },
   {
     id: '@font-face with src and unicode-range',
     group: 'at-rule',

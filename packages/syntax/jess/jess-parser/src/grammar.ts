@@ -196,7 +196,7 @@ type JessRules = {
   PropertyName: Combinator<Keyword>;
   PropertyDescriptor: Combinator<Declaration>;
   PropertyAtRule: Combinator<AtRuleBlock>;
-  Percentage: Combinator<unknown>;
+  Percentage: Combinator<string>;
   KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
@@ -211,7 +211,7 @@ type JessRules = {
   QueryValue: Combinator<unknown>;
   QueryTerm: Combinator<unknown>;
   typedAtRuleHeader: Combinator<unknown>;
-  identifierOrFunction: Combinator<unknown>;
+  identifierOrFunction: Combinator<string>;
   QueryFeatureName: Combinator<unknown>;
 };
 
