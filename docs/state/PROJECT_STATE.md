@@ -174,6 +174,56 @@ A stale `parser-shared` build masks real failures. Rebuild the workspace
 before trusting any count; a partial build makes the `all-less` number
 bogus.
 
+### Measure against the BUILT lib, not the edited source
+
+Two instrument failures in one session, both of which printed a clean
+result while measuring nothing:
+
+- `pnpm … | tail -N` reports the exit status of `tail`, so a **failed**
+  build reads as exit 0. Grep the log for `error TS`/`ELIFECYCLE`
+  instead of trusting the status of a pipeline.
+- `pnpm oracle:less:byte-identity` rebuilds first; invoking
+  `node …/oracle-byte-identity.mjs` directly does **not**. Running the
+  latter after a source edit silently digests the OLD lib. It reported
+  "0 entries moved" — plausible, and wrong.
+
+Standing habit: before any measurement, assert a known-discriminating
+fact against the built artifact (e.g. `parseCssCst('a{font-family:file{X}test}').ok === false`),
+and feed the detector a known-positive input to confirm it fires. A
+count that did not move when you predicted it would is the signal.
+
+### less byte-identity baseline is STALE on dev (needs owner sign-off)
+
+`packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json`
+was last written at `59f695d4a`. Measured at `131cd9d1b` with a clean
+build and the CST fix reverted, it already FAILS:
+
+- `ast` 709/709 shared entries moved, `threw` 120 → 118
+- `cst` 709/709 shared entries moved, `threw` 0 → 0
+- corpus GAINED 5 entries, lost 0 — all five are new upstream fixtures
+  under `node_modules/@less/test-data` (a dependency bump, not a jess
+  change)
+
+`harness` is byte-identical across both reports, and the harness
+fingerprint is a **frozen hand-built canary** that deliberately parses
+nothing — so it proves the projection/serializer is unchanged and says
+nothing about parser output. Every entry moving on BOTH surfaces with
+zero unchanged is the shape of a representation-level change, not
+per-file grammar drift, which would move a subset. ~40 parser commits
+landed since the baseline, including two parseman floor bumps
+(`f292fdd8f` 0.43→0.44, `75002c4a3` →0.45), the root-trivia capture
+migration (`b2f888070`), the per-node trivia stride fix (`d10e2238d`),
+span-builder monomorphization (`553d3a76e`) and AST source-provenance
+inlining (`39a9ca346`). Note the `cst` surface digests the WHOLE result
+object, not just `.tree`.
+
+No movement corresponds to a detected regression: all four parser
+suites, `diagnostics-core`, and the throw classification are consistent
+(`tests-error/parse` 26 throw / 3 not; `tests-error/eval` 67 parse
+cleanly, which is correct for a parser). **The exact commit per movement
+was NOT bisected** — that needs a build at the old parseman floor.
+Do not rebaseline without owner sign-off.
+
 ## Current Focus
 
 No active debugging focus is recorded here.
