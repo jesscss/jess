@@ -864,10 +864,39 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
    * leanest shape that covers them, to test whether 3.6 sites/case is inherent
    * to a coverage case or was incidental to how `@import` was written.
    */
+  /**
+   * `<percentage>` — css-values-4 §5.5: `<percentage> = <number> %`.
+   *
+   * A distinct GRAMMAR rule, not a distinct AST node: the tree keeps the same
+   * numeric-with-`%`-unit representation `Numeric` already produces. Owner
+   * ruling — "percentage should be a unique value so that we can distinguish
+   * it for cases like this... i mean a unique rule, not a unique AST value."
+   *
+   * `noTrivia` is load-bearing: css-syntax-3 §4.3.3 consumes a percentage only
+   * when `%` immediately follows the number, so `50 %` is two component values
+   * and `50%` is one.
+   *
+   * Without this rule a keyframe selector cannot say what it accepts — it has
+   * to take `Numeric` and discriminate afterwards, which is what made the
+   * `<percentage>` selector throw. Same shape as the `Url` finding: a value
+   * form no production can reference is a gap in the grammar's vocabulary,
+   * whatever the byte count says about inlining it.
+   */
+  const Percentage = node(
+    'Percentage',
+    noTrivia(sequence(g.NumberToken, literal('%'))),
+    children => dimension(Number.parseFloat(text(children[0])), '%', `${text(children[0])}%`)
+  );
+
+  /** `from | to | <percentage>` — css-animations-1 §4. */
   const KeyframeSelector = node(
     'KeyframeSelector',
-    choice(keywords(['from', 'to']), Numeric),
-    children => simpleSelector(text(children[0]))
+    choice(keywords(['from', 'to']), g.Percentage),
+    children => simpleSelector(
+      typeof children[0] === 'object' && children[0] !== null && 'src' in children[0]
+        ? String(children[0].src)
+        : text(children[0])
+    )
   );
 
   /** `from, 50% { … }` — a selector list and an ordinary declaration body. */
@@ -915,6 +944,7 @@ const terminalUpFactory = (g: Record<string, Combinator>) => {
     Component,
     Quoted,
     Url,
+    Percentage,
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,

@@ -1,0 +1,48 @@
+/* Keyframe selectors: `from | to | <percentage>` — css-animations-1 §4.
+   The `<percentage>` forms are the ones no fixture covered: the css test
+   corpus had NO @keyframes fixture at all, which is why a grammar that
+   rejected percentage selectors passed every suite. */
+@keyframes slide {
+  from {
+    left: 0;
+  }
+  to {
+    left: 100px;
+  }
+}
+
+@keyframes fade {
+  0% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* A comma-separated selector list, and `from`/`to` mixed with percentages. */
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  from,
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* `<percentage>` requires the `%` glued to the number — css-syntax-3 §4.3.3
+   consumes a percentage only when `%` immediately follows. A decimal and a
+   signed percentage are both ordinary percentages. */
+@keyframes precise {
+  0.5% {
+    top: 1px;
+  }
+  99.9% {
+    top: 2px;
+  }
+}
