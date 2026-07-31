@@ -147,6 +147,28 @@ reference"_ framing is superseded by this row. Source:
 
 ## 6. Parsing & grammar
 
+### 6.0 Codegen architecture — the four acceptance targets and the table design
+
+**These are owner rulings. An agent that "reasons" its way to an objection here
+is re-deriving something already settled with evidence — refute it from this
+table, do not escalate it.** Measurements live in
+`docs/state/GRAMMAR-SIZE-FACTS.md`.
+
+| #   | Ruling | Status | Source / detail |
+| --- | --- | --- | --- |
+| G1  | **Fastest compiled JS parser in the SVG comparison benchmarks** (chevrotain, nearley, peggy, parsimmon, jison, lezer × JSON/CSV/GraphQL), **excluding the incremental one**. A speed regression vs past parseman is **acceptable** if G2–G4 are met. | SETTLED (owner 2026-07-31) | supersedes the differential each-release-faster gate for this work |
+| G2  | **Codegen ≤ 4× source bytes.** 10× is the absolute maximum tolerated; ~250 KB per compiled grammar ideally (aspirational, not pass/fail). Target the **per-dialect artifact a consumer downloads**; aggregate is bookkeeping only. | SETTLED (owner 2026-07-31) | `GRAMMAR-SIZE-FACTS.md` §2.3 — needs a **1.9×** call-site reduction, not 8–12× |
+| G3  | **No factory pattern for multiple options.** Hot-swap, or cache the tables early. | SETTLED (owner 2026-07-31) | — |
+| G4  | **One input grammar, one compiled output.** `trackLines` × `hostMode` handled inside the single artifact, not as four files. | SETTLED (owner 2026-07-31) | — |
+| G5  | **THE DESIGN, owner verbatim:** *"quickly building the grammar reference on run start, making some swaps on rules or sub-rules (leafs), and then the run actually runs with **no logic branching for that option input**."* Build the `g.` table once per `(grammar, settings)` pair, cache it, `run` does a lookup. Variants differ in **table contents, not in code**. A small startup cost is explicitly acceptable. | **SETTLED (owner, restated repeatedly)** | `GRAMMAR-SIZE-FACTS.md` §2.10a |
+| G6  | **`g.X` compiles to a DIRECT STATIC CALL** (`_r_N0(input, _pos, _ctx)`), resolved at macro time — **not** a runtime indirection. Each variant therefore statically re-resolves the whole graph into its own body set. **This is the cause of the 4.19× variant duplication.** | SETTLED (measured) | `GRAMMAR-SIZE-FACTS.md` §2.10a |
+| G7  | The four variant bodies are **77–82% line-identical**. The sharing is available and the emitter declines it. Table design prices at **~105 KB vs 267,965 B**. | SETTLED (measured) | `GRAMMAR-SIZE-FACTS.md` §2.10a |
+| G8  | **"Naive goal 4 defeats goal 2" is REJECTED as a strawman.** Nobody proposed stuffing four code paths into one file with a runtime branch. Under G5 there is no per-variant code to tree-shake, so there is nothing to defeat. **G4 is a win for G2, not a threat to it.** | SETTLED (owner 2026-07-31) | owner: *"your logic is unsound… you're imagining that i was saying 'stuff 4 copies of codegen into one file'? no"* |
+| G9  | A 4.19× cost for four variants differing by two booleans is **a defect to delete, not a budget to design around.** | SETTLED (owner 2026-07-31) | owner: *"then the implementation sucked"* |
+| G10 | **AST construction is the canonical performance measure.** CST is a convenience and the IDE/diagnostics path *"where speed slowdowns can be slightly more hidden (you're not waiting on the command line)"*. A speed number that does not state its path is not a result. | SETTLED (owner 2026-07-31) | `GRAMMAR-SIZE-FACTS.md` §2.5 |
+| G11 | **Byte-identity is necessary and NOT sufficient.** A size win must also be *explicable* — if you cannot say which productions stopped being duplicated and why, the number is not evidence. | SETTLED (measured) | `GRAMMAR-SIZE-FACTS.md` §4b — 31 mangled type annotations compiled clean, passed 322/322, were byte-identical on both surfaces, and showed a −12.3 KB "win" |
+| G12 | **Grammars are parseman's showcase.** If the correct grammar is slower or impossible to express, that is a **parseman bug**, not a grammar compromise. | SETTLED | `memory:grammars-are-parseman-showcase` |
+
 ## 6a. AST v2 public vocabulary
 
 | #   | Ruling                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Status                          | Source / detail                                           |

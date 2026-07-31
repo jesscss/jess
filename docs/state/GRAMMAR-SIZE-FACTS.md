@@ -48,13 +48,24 @@ an independent audit found 4 rules / 8 references.
    lets every `node('X', …)` self-reference.
 3. **Use a `(?<![\w.])` lookbehind** so `g.X` cannot match a bare `X`.
 4. **Filter consts to those whose initializer is actually a combinator call.**
-5. **Exclude TYPE positions.** Added after the four above still produced false
-   positives. A rule name that collides with an imported AST type name matches
-   in `readonly guard?: MixinGuard`, `(children): MixinGuard =>`, and
-   `Combinator<Interpolation>`. **css does not expose this** — its rule names
-   do not collide. **less does**, on `Interpolation`, `MixinGuard`,
-   `SelectorBranch`, `Declaration`, `Stylesheet`, `Url`. Any probe validated
-   only on css will mis-rank every dialect grammar.
+5. **Exclude TYPE positions — FOUR distinct forms, not one.** Each of three
+   independent implementations caught a different subset, which fully explains
+   three different answers on one file:
+   - **generics** — `node<Declaration>(`
+   - **assertions** — `as T`
+   - **type predicates** — `(value): value is Declaration | AtRuleBlock =>`
+   - **annotations with array/indexed suffixes** — `const parts:
+     Interpolation['parts'] = []` (this form alone took less H2 from 2 to 1)
+
+   **Every grammar exposes some form of this**, including css — an earlier
+   claim that "css does not expose it" was wrong; css collides through type
+   *predicates* at `grammar.ts:3372` and `:3654`.
+6a. **Never gate H1/H2 behind `bareRefs >= 2`.** It silently drops every
+   single-reference double-emission site — which is most of them. Seven of
+   css's ten H2 sites have exactly one reference.
+6b. **Do not use "referenced as `g.X`" as a stand-in for rules-map
+   membership.** They are different sets: eight of css's ten real H2 sites are
+   mapped but never proxy-referenced.
 6. **Validate the factory-start detection per file before trusting a run.** A
    probe tuned on css detected 21 and 20 composite consts in scss and jess
    against 300+ actual. A count far below the file's `const` count is a broken
@@ -381,6 +392,72 @@ once per `(grammar, settings)` pair and cached, with `run` doing only a lookup
 
 Folding variants is a **build and DX win, not an artifact win.** Report it as
 such; never let it into a per-dialect artifact figure.
+
+### 2.10a `g.X` is a DIRECT STATIC CALL — this is the cause of the 4.19×
+
+`g.X` compiles to `_r_N0(input, _pos, _ctx)` — **resolved at macro time, not a
+runtime indirection.** Measured 24 call sites against 12 emitted bodies.
+
+**Therefore each variant statically re-resolves the entire graph into its own
+body set**, which is why four grammars differing by two booleans share nothing.
+This is the mechanism behind §2.10, not a mysterious emitter choice.
+
+**The duplication is available**: the four bodies are **77–82% line-identical**
+after normalising generated variable numbering.
+
+| variant | bytes | shared with `ast` |
+| --- | ---: | ---: |
+| ast | 63,965 | — |
+| ast + trackLines | 68,392 | 82.3% |
+| cst | 68,120 | 82.5% |
+| cst + trackLines | 72,539 | 77.3% |
+
+One shared body plus four thin tables lands near **~105 KB against today's
+267,965 B**, and drops a variant's marginal cost from 100% of the base to ~20%.
+
+**Honest qualification — do not let this leak into a goal-2 figure.** It does
+**not** shrink the single downloaded `ast.js`, which already pays 1× via
+tree-shaking. Late-resolving `g.` lets the four variants share a body; it does
+not change the ~950 B base per call site, because that base **is** the
+call-site emission. **Goal 4 is a large aggregate and DX win.** The per-dialect
+goal-2 number moves on the grammar-side multiplier and the leaf prune, not on
+variant folding.
+
+**§2.10's "naive goal 4 defeats goal 2" is RETRACTED** — it described a bad
+implementation nobody proposed. See §4.
+
+### 2.10b The unreferenced-leaf cost is an eagerly-materialised public surface
+
+51 leaves composed, **zero** referenced by the local factory. All 51 emit
+**both** an `_r_LN` body **and** a public `_map` wrapper:
+
+```js
+const _map = {
+  "L0": function (input, _pos, _ctx) { const _pfv13 = _r_L0(input, _pos, _ctx) ... },
+```
+
+Each `_r_LN` appears exactly twice — its definition and its single `_map`
+wrapper call. **Adding one reference (`g.L0`) costs +236 B**, confirming the
+~2,310 B is paid for *existing*, not for being used.
+
+**Not "dead code by accident" — every composed rule becomes an individually
+addressable parse entry point.** Tree-shaking cannot touch it because `_map` is
+a single object literal returned wholesale from the IIFE, and a bundler cannot
+drop individual properties of an object returned as a unit.
+
+Two fixes, **not equivalent**:
+
+1. **Reachability prune from the entry.** Correct for a *terminal* `composeLeaf`
+   — its contract says nothing composes further — but needs an entry
+   declaration and **breaks the linkable/fusable path**, where a downstream
+   dialect legitimately references base rules the base never uses.
+2. **Make the surface tree-shakeable** — emit each rule as its own
+   `/* @__PURE__ */` binding instead of a property of one atomic literal. No API
+   change, no semantic change. **Unchecked precondition:** whether any consumer
+   accesses rules by dynamic string, which would defeat it.
+
+Same shape as the variant duplication: **the elimination is available and the
+emitter declines it.**
 
 ### 2.11 Byte census at depth 4 (const 57,043 B vs named 27,420 B)
 
