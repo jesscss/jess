@@ -1079,7 +1079,19 @@ const scssScanSkipSingleString = noTrivia(sequence(
  */
 const scssGenericAtRuleName = regex(/@(?!(?:use|forward|import|mixin|include|function|return|if|else|each|for|while|extend|at-root|content|debug|warn|error|charset|namespace|media|container|supports|starting-style|page|scope|font-face|counter-style|property|font-feature-values|layer|-moz-document|document|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uFFFF]))-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*/i);
 
-export const scssFactory = (g: ScssInputRules) => {
+/*
+ * NOT exported, and must never be. The body is written entirely in parseman's
+ * macro vocabulary (`makeWord`, `sequence`, `node`, ...), which exists only at
+ * build time -- the macro plugin lowers each call site into inline JS and the
+ * package emits no runtime `parseman` combinator import. Exporting the factory
+ * makes the plugin emit a live runtime binding for it whose body still names
+ * the macro-only identifiers, so the export throws
+ * `ReferenceError: makeWord is not defined` the first time anyone calls it.
+ * That artifact shipped until 205eba3c4 split each compiled grammar into its
+ * own entry and tree-shook the factory out. `scripts/check-macro-buildable.mjs`
+ * now fails the build if any built module references an undefined identifier.
+ */
+const scssFactory = (g: ScssInputRules) => {
   const caseInsensitive = makeWhen({ caseInsensitive: true });
 
   /*

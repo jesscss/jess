@@ -8,6 +8,12 @@
  * regression (correct but slow, and it means a construct stopped lowering). This
  * script scans the built artifacts and FAILS if any interpreter fallback appears.
  *
+ * It ALSO fails if a built module reads an identifier nothing binds. A macro
+ * import (`makeWord`, `sequence`, `node`, ...) has no runtime existence, so a
+ * macro-authored value that survives un-lowered — an exported `rules()` factory
+ * is how this happens — emits code that throws `ReferenceError` on first call
+ * while producing no interpreter marker at all. See `undefinedReferences`.
+ *
  * It also reports how many regexes lowered to the fast `charCodeAt` path vs the
  * `RegExp.exec` fallback (informational — RegExp.exec is an accepted path, not a
  * failure), so drift is visible.
@@ -27,10 +33,69 @@
  */
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+const require = createRequire(import.meta.url);
+
+/*
+ * espree + eslint-scope come from the workspace's eslint install rather than a
+ * direct dependency: they are already present, already the versions eslint
+ * itself parses this repo with, and adding a second copy of a JS parser to the
+ * root just for this gate is not worth it.
+ */
+const eslintEntry = require.resolve('eslint');
+const espree = require(require.resolve('espree', { paths: [eslintEntry] }));
+const eslintScope = require(require.resolve('eslint-scope', { paths: [eslintEntry] }));
+const globals = require('globals');
+
+/*
+ * Anything a built module may legitimately reference without declaring it.
+ * `es2025` covers the language builtins, `node`/`browser` the host globals a
+ * bundled artifact can reach for.
+ */
+const AMBIENT_GLOBALS = new Set([
+  ...Object.keys(globals.node ?? {}),
+  ...Object.keys(globals.browser ?? {}),
+  ...Object.keys(globals.es2025 ?? globals.es2024 ?? {})
+]);
+
+/**
+ * Identifiers a module reads but never binds, minus the ambient globals.
+ *
+ * This is the second half of macro-buildability, and the half the interpreter
+ * marker misses. Grammar sources are written in parseman's macro vocabulary
+ * (`makeWord`, `sequence`, `node`, ...), which exists ONLY at build time: the
+ * macro plugin lowers every call site and the packages emit no runtime
+ * `parseman` combinator import. If any macro-authored value survives into the
+ * artifact un-lowered — an exported `rules()` factory is the way this happens,
+ * because the plugin then has to emit a live binding for it — the emitted code
+ * still names the macro-only identifiers and throws `ReferenceError` on first
+ * call. No interpreter marker appears, so the fallback scan reports a clean
+ * bill of health for a module that cannot run.
+ *
+ * Scope analysis rather than a text scan: `rule`, `node`, `not`, `field` and
+ * friends are also ordinary local names in the hand-written host modules, and a
+ * grep-level check reports them as failures.
+ */
+function undefinedReferences(file, code) {
+  const script = file.endsWith('.cjs');
+  const sourceType = script ? 'script' : 'module';
+  const ast = espree.parse(code, { ecmaVersion: 'latest', sourceType, loc: true, range: true });
+  const scopes = eslintScope.analyze(ast, { ecmaVersion: 2025, sourceType });
+  const found = new Map();
+  for (const ref of scopes.globalScope.through) {
+    const { name, loc } = ref.identifier;
+    if (AMBIENT_GLOBALS.has(name) || found.has(name)) {
+      continue;
+    }
+    found.set(name, loc.start.line);
+  }
+  return found;
+}
 
 /*
  * parseman-macro grammar packages, in dependency (compose) order: each composes
@@ -141,16 +206,36 @@ for (const pkg of PARSERS) {
     ? null
     : /\[parseman\].*(falling back to runtime|isn't a build-resolvable)/i.exec(output);
 
-  const bundle = modules.map(file => readFileSync(file, 'utf8')).join('\n');
+  const sources = modules.map(file => [file, readFileSync(file, 'utf8')]);
+  const bundle = sources.map(([, code]) => code).join('\n');
   const interp = (bundle.match(/_rp\[\d+\]\.parse\(/g) ?? []).length;
   const regexExec = (bundle.match(/\.exec\(input\)/g) ?? []).length;
   const charCode = (bundle.match(/charCodeAt\(/g) ?? []).length;
+
+  const undefined_ = [];
+  for (const [file, code] of sources) {
+    for (const [ident, line] of undefinedReferences(file, code)) {
+      undefined_.push(`${relative(root, file)}:${line} ${ident}`);
+    }
+  }
+
+  if (undefined_.length > 0) {
+    console.error(`✗ ${name}: ${undefined_.length} undefined identifier reference(s) in built output — `
+      + 'a macro-authored value survived un-lowered and will throw ReferenceError when reached:');
+    for (const entry of undefined_.slice(0, 20)) {
+      console.error(`    ${entry}`);
+    }
+    if (undefined_.length > 20) {
+      console.error(`    … and ${undefined_.length - 20} more`);
+    }
+    failed = true;
+  }
 
   if (interp > 0 || composeWarn) {
     console.error(`✗ ${name}: NOT fully macro-buildable — `
       + `${interp} interpreter fallback(s)${composeWarn ? `, warning: ${composeWarn[0]}` : ''}`);
     failed = true;
-  } else {
+  } else if (undefined_.length === 0) {
     /*
      * Marker totals are a drift signal, not a census: `index.js` re-bundles the
      * grammar, so a construct reachable from two entries is counted twice.
@@ -163,7 +248,8 @@ for (const pkg of PARSERS) {
 }
 
 if (failed) {
-  console.error('\nMacro-buildability guard FAILED. A grammar rule stopped compiling to inline JS.');
+  console.error('\nMacro-buildability guard FAILED. A grammar rule stopped compiling to inline JS, '
+    + 'or a macro-authored value reached the artifact un-lowered.');
   process.exit(1);
 }
 console.log('\nAll parsers are fully macro-buildable.');

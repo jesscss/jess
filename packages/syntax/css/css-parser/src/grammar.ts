@@ -1024,7 +1024,20 @@ const importTailSquareGroup = sequence(
     ']'
   )
 );
-export const cssFactory = (g: GrammarSelf) => {
+
+/*
+ * NOT exported, and must never be. The body is written entirely in parseman's
+ * macro vocabulary (`makeWord`, `sequence`, `node`, ...), which exists only at
+ * build time -- the macro plugin lowers each call site into inline JS and the
+ * package emits no runtime `parseman` combinator import. Exporting the factory
+ * makes the plugin emit a live runtime binding for it whose body still names
+ * the macro-only identifiers, so the export throws
+ * `ReferenceError: makeWord is not defined` the first time anyone calls it.
+ * That artifact shipped until 205eba3c4 split each compiled grammar into its
+ * own entry and tree-shook the factory out. `scripts/check-macro-buildable.mjs`
+ * now fails the build if any built module references an undefined identifier.
+ */
+const cssFactory = (g: GrammarSelf) => {
   const identWord = makeWord(
     '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
     { caseInsensitive: true }
