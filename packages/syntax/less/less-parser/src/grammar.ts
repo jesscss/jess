@@ -2092,7 +2092,7 @@ const whitespace = classifiedTrivia({
 const selectorAttributeModifierSpace = regex(/[ \t\n\r\f]+/);
 const importKeyword = keywords(
   ['@-import', '@import'],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
 );
 /* `customValueAtKeyword` is now the composed `g.CustomValueAtKeyword` rule. */
 // Opaque quoted-string skippers for the grammar-level ambient `scanSkip`.
@@ -2214,7 +2214,7 @@ const urlFunctionOpen = token(noTrivia(regex(/url\(/i)));
 const staticTailText = regex(/[^()\[\]{};@'"]+/);
 const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
 );
 const inlineJavaScriptBody = regex(/(?:[^`\\]|\\[\s\S])*/);
 // Math productions run under `noTrivia`, so their operators own precisely the
@@ -2322,13 +2322,13 @@ const lessOwnAtKeyword = keywords(
 const mixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const mixinPathCombinator = regex(/>/);
 const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
-const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|or)(?![-\w]))/i);
+const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|or)(?![-_a-zA-Z0-9\u0080-\uffff]))/i);
 const functionConditionOperator = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=])[ \t\n\r\f]*/);
-const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-\w])[ \t\n\r\f]*/i);
-const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-\w])[ \t\n\r\f]*/i);
+const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff])[ \t\n\r\f]*/i);
+const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff])[ \t\n\r\f]*/i);
 const functionConditionNot = word(
   'not',
-  '-_0-9A-Za-z',
+  '-_a-zA-Z0-9\\u0080-\\uFFFF',
   { caseInsensitive: true }
 );
 // A non-selector functional pseudo is still one canonical SimpleSelector leaf.
@@ -2366,10 +2366,10 @@ const lessVariableName = choice(lessUnsupportedNumericVariableName, lessSupporte
 
 const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const caseOf = makeWhen({ caseInsensitive: true });
-  const lessWord = makeWord('-_0-9A-Za-z');
-  const lessCaseWord = makeWord('-_0-9A-Za-z', { caseInsensitive: true });
+  const lessWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF');
+  const lessCaseWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
   const whenGuardAhead = sequence(optional(regex(/[ \t\n\r\f]+/)), lessCaseWord('when'));
-  const mixinGuardDefaultCall = regex(/default[ \t\n\r\f]*\([ \t\n\r\f]*\)(?![-\w])/);
+  const mixinGuardDefaultCall = regex(/default[ \t\n\r\f]*\([ \t\n\r\f]*\)(?![-_a-zA-Z0-9\u0080-\uffff])/);
   // `@@name` is a variable reference whose lookup name is the resolved value
   // of `@name`; retain that two-step lookup as a typed AST edge.  The doubled
   // sigil is glued just like the production `nestedRef`, so trivia cannot turn
@@ -2758,7 +2758,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       word(
         '@plugin',
-        '-_0-9A-Za-z',
+        '-_a-zA-Z0-9\\u0080-\\uFFFF',
         { caseInsensitive: true }
       ),
       optional(sequence(literal('('), field('options', g.GeneralEnclosedContent), literal(')'))),
@@ -4134,7 +4134,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       literal('@'), not(word(
         'supports',
-        '-_0-9A-Za-z',
+        '-_a-zA-Z0-9\\u0080-\\uFFFF',
         { caseInsensitive: true }
       )), lessVariableName, literal('('),
       optional(g.MixinArguments),
@@ -4872,12 +4872,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // structural custom-property comparison rather than an opaque header slice.
   const styleFunctionOpener = token(noTrivia(sequence(word(
     'style',
-    '-_0-9A-Za-z',
+    '-_a-zA-Z0-9\\u0080-\\uFFFF',
     { caseInsensitive: true }
   ), literal('('))));
   const scrollStateFunctionOpener = token(noTrivia(sequence(word(
     'scroll-state',
-    '-_0-9A-Za-z',
+    '-_a-zA-Z0-9\\u0080-\\uFFFF',
     { caseInsensitive: true }
   ), literal('('))));
   const ContainerStyleQuery = node(

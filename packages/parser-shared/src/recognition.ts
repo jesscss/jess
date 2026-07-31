@@ -387,7 +387,7 @@ const lessNamedColor = keywords(
     'steelblue', 'tan', 'teal', 'thistle', 'tomato', 'transparent', 'turquoise', 'violet', 'wheat',
     'white', 'whitesmoke', 'yellow', 'yellowgreen'
   ],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9(' }
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF(' }
 );
 const lessDeclarationProperty = token(noTrivia(sequence(
   optional(literal('*')),

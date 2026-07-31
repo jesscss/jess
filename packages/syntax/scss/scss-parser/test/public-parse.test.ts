@@ -760,6 +760,17 @@ describe('@jesscss/scss-parser public parse API', () => {
         rules: [{ type: 'OpaqueAtRuleBlock', name, prelude: 'url("screen")' }]
       });
     }
+
+    /*
+     * A non-ASCII ident character continues the name just like an ASCII one:
+     * `@documenté` is one unknown at-keyword, not `@document` with an `é`
+     * prelude. @see https://drafts.csswg.org/css-syntax/#ident-token-diagram
+     */
+    for (const name of ['@documenté', '@-moz-documenté']) {
+      expect(parse(`${name} { .card { color: red; } }`), name).toMatchObject({
+        rules: [{ type: 'OpaqueAtRuleBlock', name, prelude: null }]
+      });
+    }
   });
 
   it('parses descriptor-only @property through the public Stylesheet route', () => {

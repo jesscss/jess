@@ -1128,7 +1128,7 @@ const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
  * namespace interpolation each need a different AST shape and stay outside
  * this simple-token fact.
  */
-const selectorTextRun = regex(/[-_a-zA-Z0-9]+/);
+const selectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 
 /*
  * General-enclosed retains its body as an interpolation template. Delimiters

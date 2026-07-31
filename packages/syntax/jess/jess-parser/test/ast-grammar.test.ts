@@ -5,7 +5,7 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseJessCst } from '../src/cst.js';
-import { parse } from '../src/index.js';
+import { JessParseError, parse } from '../src/index.js';
 import { jessGrammar } from '../src/grammar.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
@@ -3405,5 +3405,28 @@ describe('Jess AST grammar facts', () => {
       const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
+  });
+});
+
+/*
+ * A keyword ends at the css-syntax-3 §4.3.11 ident-continue boundary, which
+ * includes every non-ASCII ident character. `$applyé` is a name of its own, and
+ * `@supportsé` is one unknown at-keyword rather than `@supports` with an `é`
+ * prelude. @see https://drafts.csswg.org/css-syntax/#ident-token-diagram
+ */
+describe('keyword boundaries run to full ident-continue', () => {
+  it('continues an at-keyword through a non-ASCII ident character', () => {
+    for (const name of ['@supportsé', '@mediaé', '@containeré']) {
+      expect(parse(`${name} { a { color: red; } }`), name).toMatchObject({
+        rules: [{ type: 'OpaqueAtRuleBlock', name, prelude: null }]
+      });
+    }
+  });
+
+  it('does not read $applyé or $extendé as the instruction keyword', () => {
+    expect(() => parse('$apply .rounded;')).not.toThrow();
+    expect(() => parse('$applyé .rounded;')).toThrow(JessParseError);
+    expect(() => parse('.a { $extend .b; }')).not.toThrow();
+    expect(() => parse('.a { $extendé .b; }')).toThrow(JessParseError);
   });
 });

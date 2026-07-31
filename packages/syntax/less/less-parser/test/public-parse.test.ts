@@ -3135,3 +3135,41 @@ describe('final declaration without a trailing semicolon', () => {
     expect(() => parse('.a { color: red b { x: 1 } }')).toThrow(LessParseError);
   });
 });
+
+/*
+ * A keyword ends at the css-syntax-3 §4.3.11 ident-continue boundary, which
+ * includes every non-ASCII ident character. An ASCII-only boundary recognized
+ * the keyword and then failed on the remainder, turning valid CSS into a Less
+ * parse error.
+ * @see https://drafts.csswg.org/css-syntax/#ident-token-diagram
+ */
+describe('keyword boundaries run to full ident-continue', () => {
+  it('continues an at-keyword through a non-ASCII ident character', () => {
+    for (const name of ['@supportsé', '@mediaé', '@containeré', '@layeré', '@importé']) {
+      expect(parse(`${name} { a { color: red; } }`), name).toMatchObject({
+        rules: [{ type: 'AtRuleBlock', name, prelude: null }]
+      });
+    }
+  });
+
+  it('continues a named color through a non-ASCII ident character', () => {
+    expect(parse('a { color: redé; }')).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'Keyword', src: 'redé' } }] }]
+    });
+    expect(parse('a { color: tané; }')).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'Keyword', src: 'tané' } }] }]
+    });
+  });
+
+  it('still binds the real keywords', () => {
+    expect(parse('a { color: red; }')).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'Color', src: 'red' } }] }]
+    });
+    expect(parse('a { color: tan; }')).toMatchObject({
+      rules: [{ rules: [{ value: { type: 'Color', src: 'tan' } }] }]
+    });
+    expect(parse('@supports (color: red) { a { color: red; } }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren' } }]
+    });
+  });
+});

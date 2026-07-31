@@ -3029,11 +3029,11 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const mediaTypeKeywordReserved = keywords(
     ['only', 'layer'],
-    { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+    { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
   );
   const containerNameReserved = keywords(
     ['none'],
-    { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+    { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
   );
   const QueryNonOnlyKeyword = node(
     'QueryNonOnlyKeyword',

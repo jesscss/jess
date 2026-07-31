@@ -5773,7 +5773,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const Apply = node<Apply>(
     'Apply',
     sequence(
-      regex(/\$apply(?![-\w])/),
+      regex(/\$apply(?![-_a-zA-Z0-9\u0080-\uffff])/),
       g.PseudoSelectorCompound,
       many(sequence(
         literal(','),
@@ -5786,13 +5786,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const Extend = node<ExtendInstruction[]>(
     'Extend',
     sequence(
-      regex(/\$extend(?![-\w])/),
+      regex(/\$extend(?![-_a-zA-Z0-9\u0080-\uffff])/),
       g.PseudoSelectorComplex,
       many(sequence(
         literal(','),
         g.PseudoSelectorComplex
       )),
-      optional(regex(/!exact(?![-\w])/)),
+      optional(regex(/!exact(?![-_a-zA-Z0-9\u0080-\uffff])/)),
       optional(literal(';'))
     ),
     children => children.filter(isSelectorBranch)

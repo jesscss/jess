@@ -1184,7 +1184,22 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.unconsumedFrom).toBeNull();
     expect(parseAst(source).rules[0]).toMatchObject({
       type: 'OpaqueAtRuleBlock',
-      name: '@font-feature-valuesé'
+      name: '@font-feature-valuesé',
+      prelude: null,
+      rawBody: ' @styleset /* header */ { nice: 1; } '
+    });
+  });
+
+  it('keeps the font-feature header-comment trivia behavior on the real keyword', () => {
+    const source = '@font-feature-values Demo { @styleset /* header */ { nice: 1; } }';
+    const cst = parseCssCst(source);
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(parseAst(source).rules[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      name: '@font-feature-values',
+      prelude: { type: 'Any', src: 'Demo' },
+      rules: [{ type: 'AtRuleBlock', name: '@styleset', prelude: null, rules: [{ type: 'Declaration', name: 'nice' }] }]
     });
   });
 
@@ -1415,18 +1430,44 @@ describe('CSS canonical-AST grammar', () => {
    * TYPED route whose prelude grammar then rejected the leftover `é`, so the
    * AST parse THREW on well-formed CSS. Keeping the keyword whole routes them
    * to the unknown-at-rule branch, which is what an unknown at-rule is for.
+   * @see https://drafts.csswg.org/css-syntax/#ident-token-diagram
    */
   it('keeps a Unicode ident code point inside a known at-keyword instead of splitting it', () => {
     for (const [source, name] of [
       ['@scopeé { .card { color: red; } }', '@scopeé'],
       ['@layeré { .card { color: red; } }', '@layeré'],
       ['@documenté { .card { color: red; } }', '@documenté'],
-      ['@keyframesé { .card { color: red; } }', '@keyframesé']
+      ['@keyframesé { .card { color: red; } }', '@keyframesé'],
+      ['@supportsé { .card { color: red; } }', '@supportsé'],
+      ['@mediaé { .card { color: red; } }', '@mediaé'],
+      ['@containeré { .card { color: red; } }', '@containeré']
     ] as const) {
       const cst = parseCssCst(source);
       expect(cst.errors).toHaveLength(0);
       expect(cst.unconsumedFrom).toBeNull();
       expect(parseAst(source).rules[0]).toMatchObject({ type: 'OpaqueAtRuleBlock', name });
+    }
+  });
+
+  /*
+   * The same boundary, in a PRELUDE keyword rather than an at-keyword. `only`
+   * and `layer` are reserved media types and `none` a reserved container name;
+   * under an ASCII-only boundary each matched inside a longer ident, so the
+   * reserved-word rule fired on `onlyé`/`noneé` and the query grammar then
+   * rejected the remainder — valid CSS refused. They are ordinary keywords.
+   */
+  it('ends a reserved query keyword at the full ident-continue boundary', () => {
+    for (const [source, src] of [
+      ['@media onlyé { .card { color: red; } }', 'onlyé'],
+      ['@media layeré { .card { color: red; } }', 'layeré'],
+      ['@container noneé { .card { color: red; } }', 'noneé']
+    ] as const) {
+      const cst = parseCssCst(source);
+      expect(cst.errors, source).toHaveLength(0);
+      expect(cst.unconsumedFrom, source).toBeNull();
+      expect(parseAst(source).rules[0], source).toMatchObject({
+        prelude: { type: 'Keyword', src }
+      });
     }
   });
 
