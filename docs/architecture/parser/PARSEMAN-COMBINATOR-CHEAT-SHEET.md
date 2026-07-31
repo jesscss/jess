@@ -294,3 +294,68 @@ CSS ownership, horizontal cleanup, and at-rule cleanup rule:
   separators. Comments are trivia. A block comment that makes an otherwise empty
   Less ruleset renderable is a trivia-backed renderability fact over the body
   span, not a `Comment` child in the rules list.
+
+## Reducer children are POSITIONAL and combinator arity is VARIABLE
+
+**This section exists because five distinct defects in one session came from it,
+every one invisible to a parse-success check and to a green test suite.**
+
+### `many()` SPREADS its matches into the children list
+
+It does **not** hand the reducer one array child.
+
+```js
+Block = node('Block', sequence(literal('{'), many(item), literal('}')),
+             children => children[1])
+run(Block, '{a:b;c:d}')   //  -> a single Declaration. NOT a list.
+```
+
+`children[1]` is the **first statement**, not the statement list. Measured
+consequence: **every multi-declaration rule dropped all but its first
+declaration**, and every at-rule body was empty while the body's first
+statement surfaced in the *prelude* slot.
+
+### A non-matching `optional()` contributes NOTHING and shifts every later index
+
+```
+sequence(literal('('), X, literal(')'))  on "(hover)" -> 3 children ['(','hover',')']
+                                          on "()"     -> 2 children ['(',')']
+```
+
+`"()"` yields `[')' at index 1]` — **not** `[undefined, ')']`. Any reducer
+indexing past an optional reads the wrong child, with no arity error and no
+exception. Confirmed live: `sequence(routed(), optional(prelude), Block)` with
+`children[1], children[2]` put the **body in the prelude slot** for
+`@font-face{a:b}`.
+
+`literal()` matches are **not** dropped from the child array — that is the
+obvious explanation for both symptoms and it is **false**.
+
+### The rule
+
+> **Do not read a fixed position when any preceding child combinator has
+> variable arity.** Put variable-arity combinators last, or destructure by
+> identity/type rather than by index.
+
+Established fix pattern in this codebase: `AtRuleStatement` uses
+`g.StatementPrelude` — a node that **always matches, possibly empty** — instead
+of `optional(...)`, so the arity is fixed. Prefer that.
+
+### Why no test catches this
+
+A wrong positional read produces a **plausible, well-typed tree**. It parses, it
+type-checks, and the suite passes. The only instruments that see it are a
+byte-level tree diff against a known-good baseline, and asserting
+`span.end === source.length` — because `many()` succeeds on zero matches, so a
+root of `many(Item)` returns `ok=true` with `span={0,0}` on pure garbage.
+
+### The five instances, for pattern recognition
+
+`,` reachable as a value component · `!` reachable as a value component ·
+`<`/`=`/`>` reachable as value punctuation (made `QueryComparisonFeature` and
+`QueryRangeFeature` **unreachable dead productions**) · positional reads past
+`optional()` · `many()` spreading.
+
+The general form: **a token that is structurally significant in some position
+must not sit in a terminal table that a greedy repetition can reach in that
+position.**
