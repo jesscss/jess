@@ -866,6 +866,30 @@ used, every time.**
   branch; an independent re-run found **H2 = 2**, worth **−15,332 B (−6.0%)**
   from changing two identifiers to `g.`-references.
 
+## 4e. `run()` reports SUCCESS on input it never consumed
+
+**`Stylesheet` is `many(Item)`, and `many` succeeds on zero matches.** So:
+
+```
+run(Stylesheet, "!!!garbage!!!")            ok=true  span={0,0}  rules=0
+run(Stylesheet, "@media (hover){a{b:c}}")   ok=true  span={0,0}  rules=0
+```
+
+**A whole at-rule can vanish from the tree while the parse reports success.**
+Every "N/N fixtures pass" claim made without checking consumption is worthless
+— and this hid a real routing bug for a full round: a `when('@media', …)` case
+on `atRuleKeyword` could never fire, because that const is defined with
+`(?!(?:import|media|container|supports)…)` and is explicitly the router for
+what is left *after* the conditional groups. `@media` fell through to no route,
+`many(Item)` matched zero, and the at-rule disappeared silently.
+
+**MANDATORY: assert `span.end === source.length` on every parse in any rig.**
+A grammar whose root is `many(…)` or any other nullable production cannot fail
+on unconsumed input, so "ok" means nothing on its own.
+
+This is the parse-level twin of the tree-level rule: parse-success evidence is
+not tree evidence, and here it was not even parse evidence.
+
 ## 4b. A false win that passes EVERY gate
 
 **The most dangerous result of the session.** The scss lane rewrote all 31
