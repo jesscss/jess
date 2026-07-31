@@ -2416,23 +2416,31 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           routed(),
           g.Quoted,
           syntaxWord('import'),
+
+          /*
+           * Left-factored on the specifier: as two arms, every plain
+           * `import a;` parsed it, failed the `,`, and parsed it again. The
+           * three arms now start on `*`, `(` and an identifier — disjoint, so
+           * nothing backtracks and arm order is inert.
+           */
           choice(
             sequence(
               literal('*'),
               moduleAsClause
             ),
             sequence(
-              g.ModuleSpecifier,
-              literal(','),
               literal('('),
               moduleSpecifierList,
               literal(')')
             ),
-            g.ModuleSpecifier,
             sequence(
-              literal('('),
-              moduleSpecifierList,
-              literal(')')
+              g.ModuleSpecifier,
+              optional(sequence(
+                literal(','),
+                literal('('),
+                moduleSpecifierList,
+                literal(')')
+              ))
             )
           ),
           optional(literal(';'))
