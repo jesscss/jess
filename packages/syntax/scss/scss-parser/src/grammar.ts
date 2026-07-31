@@ -3810,7 +3810,7 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const AtRootFilterPrelude = node<ValueNode>(
     'AtRootFilterPrelude',
-    noTrivia(balanced('(', ')')),
+    noTrivia(token(balanced('(', ')'))),
     children => any(joinSourceText(children).trim())
   );
   const AtRootBlock = node<AtRuleBlock>(

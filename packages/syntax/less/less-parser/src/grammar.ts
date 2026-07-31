@@ -5099,14 +5099,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const atPreludeWhitespace = noTrivia(regex(/[ \t\n\r\f]+/));
   const atPreludeComma = noTrivia(literal(','));
   const atPreludeGroup = noTrivia(choice(
-    balanced(
+    token(balanced(
       '(',
       ')'
-    ),
-    balanced(
+    )),
+    token(balanced(
       '[',
       ']'
-    )
+    ))
   ));
   const atPreludeQuoted = noTrivia(choice(
     scanSkipDoubleString,

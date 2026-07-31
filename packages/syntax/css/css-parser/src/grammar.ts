@@ -2756,8 +2756,8 @@ const cssFactory = (g: GrammarSelf) => {
   const AtRulePreludeGroup = node(
     'AtRulePreludeGroup',
     noTrivia(choice(
-      balanced('(', ')'),
-      balanced('[', ']')
+      token(balanced('(', ')')),
+      token(balanced('[', ']'))
     )),
     children => authoredText(children)
   );
