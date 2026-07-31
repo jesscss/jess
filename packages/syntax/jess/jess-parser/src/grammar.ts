@@ -167,6 +167,11 @@ type JessRules = {
   HeaderValueAtom: Combinator<ValueNode>;
   HeaderValue: Combinator<ValueSlot>;
   HeaderCallArgument: Combinator<ValueSlot>;
+  QueryValue: Combinator<ValueNode>;
+  QueryFeatureName: Combinator<JessQueryFeatureName>;
+  QueryComparisonFeature: Combinator<ValueNode>;
+  QueryNonOnlyKeyword: Combinator<Keyword>;
+  QueryTerm: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryDashedIdentifier: Combinator<Keyword>;
   QueryClause: Combinator<ValueNode>;
@@ -3985,7 +3990,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const QueryFeature = node<ValueNode>(
     'QueryFeature',
     noTrivia(choice(
-      QueryComparisonFeature,
+      g.QueryComparisonFeature,
       sequence(
         literal('('),
         optional(rawWhitespace),
@@ -4066,7 +4071,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.QueryOnly,
       regex(/[ \t\n\r\f]+/),
-      QueryNonOnlyKeyword,
+      g.QueryNonOnlyKeyword,
       many(sequence(
         regex(/[ \t\n\r\f]+/),
         g.QueryTerm
@@ -4097,6 +4102,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return values.length === 1 ? values[0]! : list(values, ',');
     }
   );
+
   /*
    * A generic at-rule prelude is a comma-separated `<media-query-list>` that
    * may also be absent, so its clause is `QueryClause` exactly as `QueryPrelude`'s
@@ -4358,6 +4364,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     templateInterpolationFromChildren
   );
+
   /*
    * The single door into the permissive chain, from EITHER side: a string body
    * is permissive wherever the quote was written, so this rung is chain-
@@ -5926,6 +5933,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     HeaderValueAtom,
     HeaderValue,
     HeaderCallArgument,
+    QueryValue,
+    QueryFeatureName,
+    QueryComparisonFeature,
+    QueryNonOnlyKeyword,
+    QueryTerm,
     QueryFeature,
     QueryDashedIdentifier,
     QueryClause,
