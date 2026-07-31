@@ -220,6 +220,9 @@ type LessRules = {
   AtRuleBlock: Combinator<AtRuleBlock>;
   OpaqueAtPrelude: Combinator<string | null>;
   OpaqueBody: Combinator<string>;
+  AtRuleName: Combinator<string>;
+  CustomValueAtKeyword: Combinator<string>;
+  StaticAtRuleStatementName: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   AtRuleStatement: Combinator<AtRuleStatement>;
   PseudoSelector: Combinator<SimpleToken>;
@@ -2087,7 +2090,7 @@ const importKeyword = keywords(
   ['@-import', '@import'],
   { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
 );
-const customValueAtKeyword = regex(/@(?:-import|-export|import|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w])/i);
+/* `customValueAtKeyword` is now the composed `g.CustomValueAtKeyword` rule. */
 // Opaque quoted-string skippers for the grammar-level ambient `scanSkip`.
 // `scanTo`/`balanced` with no per-call skip consults these so a delimiter hidden
 // inside a string is never matched. Consumes quote-to-quote including escapes;
@@ -2292,16 +2295,26 @@ const sumOperator = choice(sumOperatorSpaced, sumOperatorGlued);
 // here prevents a malformed import from falling through as a generic at-rule.
 const charsetAtRuleName = word(
   '@charset',
-  '-_0-9A-Za-z',
+  '-_a-zA-Z0-9\\u0080-\\uFFFF',
   { caseInsensitive: true }
 );
 const layerAtRuleName = word(
   '@layer',
-  '-_0-9A-Za-z',
+  '-_a-zA-Z0-9\\u0080-\\uFFFF',
   { caseInsensitive: true }
 );
-const atRuleName = regex(/@(?!(?:-import|-export|import|layer|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
-const staticAtRuleStatementName = regex(/@(?!(?:-import|-export|import|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+/*
+ * The Less-only compiler-namespace at-rule names, declared ONCE. The CSS names
+ * this must also exclude (@import, @layer, @media/@container/@supports,
+ * @keyframes) are NOT re-spelled: `AtRuleName` below inverts cssSyntax's own
+ * leaves for them, so the two polarities cannot drift apart and the
+ * css-syntax-3 §4.3.11 boundary is inherited rather than re-typed.
+ */
+const lessOwnAtKeyword = keywords(
+  ['@-import', '@-export'],
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+);
+/* `staticAtRuleStatementName` is now the composed `g.StaticAtRuleStatementName` rule. */
 const mixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const mixinPathCombinator = regex(/>/);
 const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
@@ -3535,7 +3548,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const CustomAtKeywordText = node(
     'CustomAtKeywordText',
-    token(customValueAtKeyword),
+    g.CustomValueAtKeyword,
     children => requireToken(children[0]).value
   );
   const CustomInnerPart: Combinator<CustomValuePart> = choice(
@@ -5228,7 +5241,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         atRuleBlockBody
       ),
       sequence(
-        atRuleName,
+        g.AtRuleName,
         genericAtRuleBlockTail
       )
     ),
@@ -5257,10 +5270,32 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     lessOpaqueBodyCapture,
     children => children.length === 0 ? '' : staticText(children)
   );
+  /*
+   * The at-rule names Less routes to a TYPED production, in one place. Every
+   * name here is defined by the leaf that also matches it positively -- Less's
+   * own compiler namespace plus cssSyntax's shared CSS leaves -- so the
+   * positive form (`CustomValueAtKeyword`) and the two negative forms below
+   * cannot drift. This replaced three hand-spelled copies of the same set.
+   */
+  const CustomValueAtKeyword = token(noTrivia(choice(
+    lessOwnAtKeyword,
+    g.ImportAtKeyword,
+    g.ConditionalAtKeyword,
+    g.KeyframesAtKeyword
+  )));
+  const StaticAtRuleStatementName = token(noTrivia(sequence(
+    not(CustomValueAtKeyword),
+    g.AtIdentifierUnescaped
+  )));
+  const AtRuleName = token(noTrivia(sequence(
+    not(CustomValueAtKeyword),
+    not(g.LayerAtKeyword),
+    g.AtIdentifierUnescaped
+  )));
   const OpaqueAtRuleBlock = node(
     'OpaqueAtRuleBlock',
     sequence(
-      atRuleName,
+      g.AtRuleName,
       not(regex(/[ \t\n\r\f]*:/)),
       noTrivia(sequence(
         g.OpaqueAtPrelude,
@@ -5302,7 +5337,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     node(
       'AtRuleStatement',
       dispatch(
-        token(noTrivia(staticAtRuleStatementName)),
+        g.StaticAtRuleStatementName,
         caseOf('@namespace', sequence(routed(), g.NamespacePrelude, literal(';'))),
         caseOf(
           '@layer',
@@ -6377,6 +6412,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     AtRuleBlock,
     OpaqueAtPrelude,
     OpaqueBody,
+    AtRuleName,
+    CustomValueAtKeyword,
+    StaticAtRuleStatementName,
     OpaqueAtRuleBlock,
     AtRuleStatement,
     PseudoSelector,

@@ -1101,10 +1101,21 @@ describe('CSS canonical-AST grammar', () => {
     expect(() => parse(source)).toThrow(SyntaxError);
   });
 
-  it('retains the public CST page-keyword boundary behavior', () => {
+  /*
+   * DESIGN-DECISIONS.md P20: an at-keyword ends only at a NON-ident code
+   * point, and css-syntax-3 §4.3.11 makes every code point >= U+0080 an ident
+   * code point. So `@pageé` is ONE unknown at-keyword, not `@page` with a
+   * prelude of `é`. This test previously asserted the ASCII-boundary split.
+   */
+  it('treats a known at-keyword followed by a Unicode ident code point as one unknown at-keyword', () => {
     for (const source of ['@pageé { size: A4; }']) {
-      expect(parseCssCst(source).errors).toHaveLength(0);
-      expect(parseAst(source).rules[0]).toMatchObject({ type: 'AtRuleBlock' });
+      const cst = parseCssCst(source);
+      expect(cst.errors).toHaveLength(0);
+      expect(cst.unconsumedFrom).toBeNull();
+      expect(parseAst(source).rules[0]).toMatchObject({
+        type: 'OpaqueAtRuleBlock',
+        name: '@pageé'
+      });
     }
   });
 
@@ -1165,16 +1176,15 @@ describe('CSS canonical-AST grammar', () => {
     }
   });
 
-  it('keeps the public font-feature keyword boundary and header-comment trivia behavior', () => {
+  /* DESIGN-DECISIONS.md P20 -- see the `@pageé` case above. */
+  it('keeps a Unicode ident code point inside the font-feature at-keyword', () => {
     const source = '@font-feature-valuesé { @styleset /* header */ { nice: 1; } }';
     const cst = parseCssCst(source);
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(parseAst(source).rules[0]).toMatchObject({
-      type: 'AtRuleBlock',
-      name: '@font-feature-values',
-      prelude: { type: 'Any', src: 'é' },
-      rules: [{ type: 'AtRuleBlock', name: '@styleset', prelude: null, rules: [{ type: 'Declaration', name: 'nice' }] }]
+      type: 'OpaqueAtRuleBlock',
+      name: '@font-feature-valuesé'
     });
   });
 
@@ -1399,16 +1409,24 @@ describe('CSS canonical-AST grammar', () => {
     }]);
   });
 
-  it('keeps the public ASCII known-at-keyword boundary before a Unicode prelude', () => {
+  /*
+   * DESIGN-DECISIONS.md P20. Under the old ASCII boundary `@layeré` and
+   * `@documenté` did not merely mis-name: the truncated keyword dispatched to a
+   * TYPED route whose prelude grammar then rejected the leftover `é`, so the
+   * AST parse THREW on well-formed CSS. Keeping the keyword whole routes them
+   * to the unknown-at-rule branch, which is what an unknown at-rule is for.
+   */
+  it('keeps a Unicode ident code point inside a known at-keyword instead of splitting it', () => {
     for (const [source, name] of [
-      ['@scopeé { .card { color: red; } }', '@scope'],
-      ['@layeré { .card { color: red; } }', '@layer'],
-      ['@documenté { .card { color: red; } }', '@document']
+      ['@scopeé { .card { color: red; } }', '@scopeé'],
+      ['@layeré { .card { color: red; } }', '@layeré'],
+      ['@documenté { .card { color: red; } }', '@documenté'],
+      ['@keyframesé { .card { color: red; } }', '@keyframesé']
     ] as const) {
       const cst = parseCssCst(source);
       expect(cst.errors).toHaveLength(0);
       expect(cst.unconsumedFrom).toBeNull();
-      expect(parseAst(source).rules[0]).toMatchObject({ type: 'AtRuleBlock', name });
+      expect(parseAst(source).rules[0]).toMatchObject({ type: 'OpaqueAtRuleBlock', name });
     }
   });
 

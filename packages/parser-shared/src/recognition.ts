@@ -5,7 +5,7 @@
  * Consumers macro-fuse this compiled artifact with their local reductions. It
  * contains recognition only: no AST construction or runtime composition seam.
  */
-import { keywords, literal, noTrivia, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
+import { choice, keywords, literal, noTrivia, not, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
 
 const cssIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const keywordValue = cssIdentifier;
@@ -77,12 +77,23 @@ const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-f
 const unicodeRange = regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/);
 
 /*
+ * The one at-keyword boundary. An at-keyword is `@` followed by an
+ * ident-sequence, and CSS Syntax L3 §4.3.11 makes every code point >= U+0080 an
+ * ident code point, so a keyword only ends where a NON-ident code point starts.
+ * Spelling this ASCII-only (`-_0-9A-Za-z`, or the `\w` that means the same
+ * thing) drops U+0080-U+FFFF -- 65,408 code points -- and cuts at-keywords in
+ * half mid-ident. Every recognizer below shares this const: the set of at-rule
+ * names is declared once per name, and both polarities come from `not()`.
+ */
+const AT_KEYWORD_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF';
+
+/*
  * CSS at-keywords are ASCII-case-insensitive. Dialect reductions own the
  * header/body shape; these leaves only establish the keyword boundary.
  */
 const conditionalAtKeyword = keywords(
   ['@media', '@container', '@supports'],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
 
 /*
@@ -93,37 +104,38 @@ const conditionalAtKeyword = keywords(
  */
 const mediaContainerAtKeyword = keywords(
   ['@media', '@container'],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
 const mediaAtKeyword = word(
   '@media',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 const containerAtKeyword = word(
   '@container',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 const supportsAtKeyword = word(
   '@supports',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 const startingStyleAtKeyword = word(
   '@starting-style',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 
 /*
- * Retain the current public CSS grammar's ASCII `\\w` boundaries exactly.
- * This accepts a Unicode character after the keyword (for example `@pageé`),
- * which is legacy parser behavior to preserve during the direct-route cutover.
+ * `@pageé` is ONE at-keyword, not `@page` plus a prelude starting with `é`.
+ * The older ASCII boundary here split it, and that split is superseded --
+ * see DESIGN-DECISIONS.md P20. Do not restore `-_0-9A-Za-z` on the authority
+ * of a comment that predates the ruling.
  */
 const pageAtKeyword = word(
   '@page',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 const marginAtKeyword = keywords(
@@ -145,7 +157,7 @@ const marginAtKeyword = keywords(
     '@right-middle',
     '@right-bottom'
   ],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
 const queryNot = word(
   'not',
@@ -175,7 +187,7 @@ const queryFunctionOpen = noTrivia(sequence(
 ));
 const scopeAtKeyword = word(
   '@scope',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 const descriptorAtKeyword = keywords(
@@ -188,44 +200,99 @@ const descriptorAtKeyword = keywords(
     '@position-try',
     '@view-transition'
   ],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
 const documentAtKeyword = keywords(
   ['@-moz-document', '@document'],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
 const layerAtKeyword = word(
   '@layer',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
-const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-\w])/i);
-const statementAtRuleName = regex(/@(?!(?:import)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-_a-zA-Z0-9\u0080-\uFFFF])/i);
+
+/*
+ * `@font-feature-valuesé` is ONE at-keyword. The older ASCII boundary read it
+ * as `@font-feature-values` plus a prelude beginning with `é`; that reading is
+ * superseded -- see DESIGN-DECISIONS.md P20.
+ */
+const fontFeatureValuesAtKeyword = word(
+  '@font-feature-values',
+  AT_KEYWORD_BOUNDARY,
+  { caseInsensitive: true }
+);
+const importAtKeyword = word(
+  '@import',
+  AT_KEYWORD_BOUNDARY,
+  { caseInsensitive: true }
+);
+
+/*
+ * `@` followed by an ident-sequence (css-syntax-3 §4.3.11), with no name
+ * excluded. The recognizers below carve subsets out of this by composing
+ * `not()` over the SAME leaves that define those names positively, so a name is
+ * spelled exactly once in this file and cannot drift between polarities.
+ */
+const atIdentifier = regex(/@-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+
+/*
+ * The Less at-rule-name body, which does NOT admit CSS escapes: Less keeps
+ * `@\\63 olor` out of the at-rule-name position on purpose. Same §4.3.11
+ * boundary, narrower body -- a different lexical class, not a second copy of
+ * the at-rule NAME SET.
+ */
+const atIdentifierUnescaped = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+
+/*
+ * Every at-rule name with a typed header/body. `keywords()` compiles each list
+ * to a single sticky regex, so this is an 8-arm choice over 15 names, and it is
+ * the ONE place the typed set is enumerated: `atRuleKeyword` matches it and
+ * `genericAtRuleName` excludes it, both reading this same const.
+ */
+const typedAtKeyword = choice(
+  descriptorAtKeyword,
+  documentAtKeyword,
+  fontFeatureValuesAtKeyword,
+  keyframesAtKeyword,
+  startingStyleAtKeyword,
+  pageAtKeyword,
+  scopeAtKeyword,
+  layerAtKeyword
+);
+
+const statementAtRuleName = token(noTrivia(sequence(
+  not(importAtKeyword),
+  atIdentifier
+)));
 
 /*
  * Opaque blocks are the public grammar's unknown-at-rule branch. Known block
  * names must not fall through here when their typed header/body is malformed:
  * the public CST reports that error instead of silently making it opaque.
  */
-const genericAtRuleName = regex(/@(?!(?:import|media|container|supports|starting-style|page|scope|font-face|counter-style|property|color-profile|font-palette-values|position-try|view-transition|-moz-document|document|font-feature-values|layer|(?:-[a-z]+-)?keyframes)(?=[^-\w]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+const genericAtRuleName = token(noTrivia(sequence(
+  not(typedAtKeyword),
+  not(conditionalAtKeyword),
+  not(importAtKeyword),
+  atIdentifier
+)));
 
 /*
  * One opener for dispatching typed/generic at-rules after `@import` and
- * conditional groups have already been handled. Keep this as one shared leaf:
- * splitting it into same-`@` keyword choices only adds pre-dispatch fan-out.
+ * conditional groups have already been handled. The typed arm comes first and
+ * the unrestricted arm last, so ORDERED CHOICE carries the "specific before
+ * general" constraint that used to be hand-encoded as a lookahead name list.
  */
-const atRuleKeyword = token(noTrivia(regex(/@(?:(?:starting-style|font-feature-values|font-face|counter-style|color-profile|font-palette-values|position-try|view-transition|property|page|scope|layer|-moz-document|document)(?=[^-_0-9A-Za-z]|$)|(?:-[a-z]+-)?keyframes(?![-\w])|(?!(?:import|media|container|supports)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)/i)));
-
-/*
- * Preserve the public CSS grammar's legacy ASCII boundary. In particular,
- * `@font-feature-valuesé` is the recognized at-keyword followed by a prelude
- * beginning with `é`, not a distinct at-keyword.
- */
-const fontFeatureValuesAtKeyword = word(
-  '@font-feature-values',
-  '-_0-9A-Za-z',
-  { caseInsensitive: true }
-);
+const atRuleKeyword = token(noTrivia(choice(
+  typedAtKeyword,
+  sequence(
+    not(conditionalAtKeyword),
+    not(importAtKeyword),
+    atIdentifier
+  )
+)));
 const fontFeatureValueAtKeyword = keywords(
   [
     '@stylistic',
@@ -458,6 +525,14 @@ export const cssSyntax = rules(_g => ({
   StatementAtRuleName: statementAtRuleName,
   GenericAtRuleName: genericAtRuleName,
   AtRuleKeyword: atRuleKeyword,
+
+  /*
+   * Exposed so dialects that add their OWN at-rule names can exclude the CSS
+   * set by composing `not()` over these, instead of re-spelling the names.
+   */
+  TypedAtKeyword: typedAtKeyword,
+  ImportAtKeyword: importAtKeyword,
+  AtIdentifier: atIdentifier,
   FontFeatureValuesAtKeyword: fontFeatureValuesAtKeyword,
   FontFeatureValueAtKeyword: fontFeatureValueAtKeyword,
   NumberToken: number,
@@ -473,6 +548,14 @@ export const cssSyntax = rules(_g => ({
 }));
 
 export const lessSyntax = rules(_g => ({
+  /* Same shared at-keyword leaves as cssSyntax: Less inverts these rather than
+   * re-spelling the CSS at-rule names. */
+  ConditionalAtKeyword: conditionalAtKeyword,
+  LayerAtKeyword: layerAtKeyword,
+  KeyframesAtKeyword: keyframesAtKeyword,
+  ImportAtKeyword: importAtKeyword,
+  AtIdentifier: atIdentifier,
+  AtIdentifierUnescaped: atIdentifierUnescaped,
   LessIdentifier: lessBareIdentifier,
   VariableNameToken: lessVariableName,
   DeclarationPropertyToken: lessDeclarationProperty,

@@ -729,8 +729,13 @@ describe('@jesscss/scss-parser public parse API', () => {
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
+    /*
+     * DESIGN-DECISIONS.md P20: `é` is an ident code point (css-syntax-3
+     * §4.3.11), so `@documenté` is ONE unknown at-keyword and keeps its full
+     * authored name -- the same rule the sibling test below states.
+     */
     expect(parse('@documenté { .card { color: red; } }')).toMatchObject({
-      rules: [{ type: 'AtRuleBlock', name: '@document', prelude: { type: 'Any', src: 'é' } }]
+      rules: [{ type: 'OpaqueAtRuleBlock', name: '@documenté', prelude: null }]
     });
   });
 

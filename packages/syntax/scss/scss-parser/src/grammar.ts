@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, classifiedTrivia, choice, composeLeaf, dispatch, endsWith, expect, label, literal, makeWhen, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, composeLeaf, dispatch, endsWith, expect, keywords, label, literal, makeWhen, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -184,6 +184,7 @@ type ScssRules = {
   Extend: Combinator<ExtendInstruction>;
   OpaqueAtPrelude: Combinator<string | null>;
   OpaqueBody: Combinator<string>;
+  ScssGenericAtRuleName: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   OpaqueAtRuleStatement: Combinator<AtRuleStatement>;
   Ruleset: Combinator<Ruleset>;
@@ -1157,7 +1158,23 @@ const scssScanSkipSingleString = noTrivia(sequence(
  * SCSS module directives LOWER to) is excluded for the same reason, while a
  * vendor prefix (`@-webkit-anything`) stays ordinary unknown CSS.
  */
-const scssGenericAtRuleName = regex(/@(?!(?:use|forward|import|mixin|include|function|return|if|else|each|for|while|extend|at-root|content|debug|warn|error|charset|namespace|media|container|supports|starting-style|page|scope|font-face|counter-style|property|font-feature-values|layer|-moz-document|document|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uFFFF]))-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*/i);
+/*
+ * The SCSS-only at-rule names, declared ONCE. The CSS at-rule names are NOT
+ * re-spelled here: `ScssGenericAtRuleName` below excludes them by composing
+ * `not()` over cssSyntax's own `TypedAtKeyword`/`ConditionalAtKeyword`/
+ * `ImportAtKeyword` leaves, so this list cannot drift from the CSS set the way
+ * a hand-copied one did (it was missing @color-profile, @font-palette-values,
+ * @position-try and @view-transition).
+ */
+const scssOwnAtKeyword = keywords(
+  [
+    '@use', '@forward', '@mixin', '@include', '@function', '@return',
+    '@if', '@else', '@each', '@for', '@while', '@extend', '@at-root',
+    '@content', '@debug', '@warn', '@error', '@charset', '@namespace',
+    '@-use', '@-compose', '@-export', '@-import', '@-from'
+  ],
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+);
 
 /*
  * NOT exported, and must never be. The body is written entirely in parseman's
@@ -4948,10 +4965,23 @@ const scssFactory = (g: ScssInputRules) => {
     g.PreprocessorOpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : requireToken(children[0]).value
   );
+
+  /*
+   * Excludes the SCSS-only names AND the CSS at-rule set, the latter by
+   * inverting the very leaves that define it positively -- one source, both
+   * polarities. css-syntax-3 §4.3.11 boundary throughout.
+   */
+  const ScssGenericAtRuleName = token(noTrivia(sequence(
+    not(scssOwnAtKeyword),
+    not(g.TypedAtKeyword),
+    not(g.ConditionalAtKeyword),
+    not(g.ImportAtKeyword),
+    g.AtIdentifier
+  )));
   const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
     'OpaqueAtRuleBlock',
     sequence(
-      scssGenericAtRuleName,
+      g.ScssGenericAtRuleName,
       noTrivia(sequence(
         g.OpaqueAtPrelude,
         literal('{'),
@@ -4981,7 +5011,7 @@ const scssFactory = (g: ScssInputRules) => {
   const OpaqueAtRuleStatement = node<AtRuleStatement>(
     'OpaqueAtRuleStatement',
     sequence(
-      scssGenericAtRuleName,
+      g.ScssGenericAtRuleName,
       noTrivia(sequence(
         g.OpaqueAtPrelude,
         literal(';')
@@ -5214,6 +5244,7 @@ const scssFactory = (g: ScssInputRules) => {
     Keyframes,
     OpaqueAtPrelude,
     OpaqueBody,
+    ScssGenericAtRuleName,
     OpaqueAtRuleBlock,
     OpaqueAtRuleStatement,
     Simple,
