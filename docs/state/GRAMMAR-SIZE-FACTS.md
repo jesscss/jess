@@ -229,13 +229,28 @@ and the factory self type are different sets, and only a `g.` reference makes
 them agree** (§1.6b).
 
 Byte-identity, self-baselined against an `origin/dev` build in the same
-directory: **less, scss and jess identical on both `ast` and `cst`.** css moved
-**2 of 300 entries** — `test/css/errors/calc-empty.css` and
-`calc-lone-operator.css`, on both surfaces, `threw` unchanged at 98. Cause: the
-`Expected:` list in the error text now ends in the rule name
+directory — corpus counts asserted on both sides (715 less / 301 css / 301 scss
+/ 315 jess), because the `@less/test-data` symlink is location-relative and a
+shortened corpus still prints a verdict.
+
+**less, scss and jess: IDENTICAL on both `ast` and `cst`.** The committed less
+oracle passes outright against its re-cut baseline (`IDENTICAL —
+output-neutral`, 715 entries).
+
+**css moved exactly 2 of 301 entries**, on both surfaces, `threw` unchanged at
+96. The whole enumeration, so the next lane that sees a moved css entry knows
+it was this one and why:
+
+| entry | surfaces | change |
+| --- | --- | --- |
+| `packages/syntax/css/css-parser/test/css/errors/calc-empty.css` | `ast`, `cst` | error text only |
+| `packages/syntax/css/css-parser/test/css/errors/calc-lone-operator.css` | `ast`, `cst` | error text only |
+
+Cause, traced to the byte: the `Expected:` list now ends in the rule name
 `CustomPropertyName` where it used to inline that rule's 90-character regex,
-because the alternative is now reached through a named rule. **No accepted
-input changed anywhere in any corpus.**
+because the alternative is now reached through a named rule. Both files still
+throw, with the same error class, at the same position. **No accepted input
+changed anywhere in any corpus, in any dialect.**
 
 ### 2.4a css: −30.98% artifact, 29.2× → 21.0× (landed)
 
