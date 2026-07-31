@@ -539,6 +539,28 @@ symbol name and re-locate it with `grep`; treat the line number as a hint with a
   `dd22fef60` on top: with a two-argument call its empty rest parameter mis-bound on the
   `(ValueGroup, FnCtx)` route and the body threw, so the call was preserved verbatim while
   the three-argument nested form worked. On `dd22fef60` all seven globals dispatch.
+- **Those seven globals now dispatch, but three of them diverge from dart-sass on a MISS.**
+  Measured 2026-07-30 at `74b9fcb4d` with a full workspace build, each case run through
+  `Compiler.renderString(src, { extension: '.scss' })` and the same source through
+  dart-sass 1.101.0 `compileString`:
+
+  | case | jess | dart-sass 1.101.0 |
+  | --- | --- | --- |
+  | `map-get($m, zzz)` (miss) | **throws `Name not found`** | `""` — declaration suppressed |
+  | `map-get(map-get($m, zz), b)` | **throws `Name not found`** | **throws** `$map: null is not a map` |
+  | `map-has-key($m, zzz)` | `false` | `false` |
+  | `map-remove($m, zzz)` | `b: { a: 1 }` | throws `(a: 1) isn't a valid CSS value` |
+  | `nth($l, 9)` (out of range) | `b: nth(1 2 3, 9)` — preserved verbatim | **throws** `Invalid index 9 for a list with 3 elements` |
+  | `index($l, 9)` (not found) | `b: ;` — EMPTY declaration | `""` — declaration suppressed |
+  | `x { b: null }` | `b: null` | `""` |
+  | `x { b: 1 null 2 }` | `b: 1 null 2` | `b: 1 2` |
+
+  `map-has-key` is the only one already right. `map-get`/`index`/`null` all trace to the
+  same root: **jess `ast/` v2 has no `null`/Nil value**, so there is nothing for a miss to
+  return and nothing to trigger declaration suppression or list elision. `map-remove` and
+  `nth` are a different axis (jess is more permissive where dart-sass errors) and are not
+  blocked on `null`. See DESIGN-DECISIONS R11/R12 — the `map-get` lowering fix is settled in
+  spelling (`$m[zzz]?`, per-step) and blocked on the miss-value/`null` language question.
 - **Dead one-line shim: `packages/fns/src/sass/math/abs.ts`.** Re-exports `abs` from
   `shared/`, but `sass/math/index.ts` imports `abs` from `shared/` directly, so nothing
   reaches it. A reachability walk from all eleven index entrypoints finds it is the only
