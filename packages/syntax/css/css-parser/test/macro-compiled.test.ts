@@ -4,7 +4,7 @@ import { createServer } from 'vite';
 import { compiledGrammarCoverageDefinitions, createGrammarCoverageCollector, createGrammarInstrumentationContext, run } from 'parseman';
 import { cssGrammar, cssCstGrammar } from '../src/grammar.js';
 import { parseCst } from '../src/cst.js';
-import { parseCssCst } from '../src/cst-css.js';
+import { parseCssCst } from '../src/cst.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 test('grammar is macro-compiled (not interpreted) under vitest', () => {

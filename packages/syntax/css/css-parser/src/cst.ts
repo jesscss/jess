@@ -53,6 +53,9 @@ export function parseCssDiagnosticDoc(input: string, startRule = 'Stylesheet'): 
   );
 }
 
+/* Every dialect's `./cst` surface carries the labels; CSS is not the exception. */
+export { commentTriviaLabels } from './trivia-labels.js';
+
 export {
   cssCstBuildHost,
   parseCst,

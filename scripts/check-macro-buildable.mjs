@@ -124,9 +124,9 @@ const noBuild = process.argv.includes('--no-build');
  * existed in every parser until the core-free CST entries landed, and the
  * hard-coded `['index.js', 'grammar.js', 'jess.js']` triple this script used to
  * read turned into an immediate ENOENT. Reading the directory is also a superset
- * of the `exports` map: `css-parser` ships `lib/cst-css.js`, which `./cst`
- * re-exports but the map never names directly, so an exports-driven walk would
- * leave it unscanned.
+ * of the `exports` map: `css-parser` ships `lib/chunks/*.js`, which its entries
+ * import but the map never names directly, so an exports-driven walk would
+ * leave them unscanned.
  *
  * `.cjs` is skipped: it is the same macro lowering emitted in the other module
  * format (marker counts are byte-for-byte identical), so scanning it would only

@@ -5,7 +5,7 @@ import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
 import { cssGrammar } from '../src/grammar.js';
-import { parseCssCst } from '../src/cst-css.js';
+import { parseCssCst } from '../src/cst.js';
 import { commentTriviaLabels } from '../src/cst.js';
 import { parse } from '../src/index.js';
 import { wptAnbParsing } from './wpt-syntax-vectors.js';

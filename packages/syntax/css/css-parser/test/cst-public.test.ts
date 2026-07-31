@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { absolutizeCST } from 'parseman';
-import { parseCssCst, parseCssDiagnosticCst, parseCssDoc } from '../src/cst-css.js';
-import type { CssCstChild } from '../src/cst-css.js';
+import { parseCssCst, parseCssDiagnosticCst, parseCssDoc } from '../src/cst.js';
+import type { CssCstChild } from '../src/cst.js';
 
 /**
  * Structural CST equality (type + absolute span + children, leaves by value+span).

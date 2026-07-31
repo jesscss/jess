@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseCssCst, type CssCstNode } from '../src/index.js';
+import { parseCssCst } from '../src/cst.js';
+import type { CssCstNode } from '../src/index.js';
 
 function childTypes(node: { rules: ReadonlyArray<unknown> }) {
   return node.rules

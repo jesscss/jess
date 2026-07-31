@@ -1,4 +1,4 @@
-import { parseCssCst } from '../src/cst-css.js';
+import { parseCssCst } from '../src/cst.js';
 
 function segmentText(tree: ReturnType<typeof parseCssCst>['tree']): Array<[string, string]> {
   return tree.rules.map((child) => {

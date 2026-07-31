@@ -49,7 +49,7 @@ const FILES = [
   'packages/parser-shared/src/pseudo-consts.ts',
   'packages/syntax/css/css-parser/src/grammar.ts',
   'packages/syntax/css/css-parser/src/ast/grammar.ts',
-  'packages/syntax/css/css-parser/src/cst-css.ts',
+  'packages/syntax/css/css-parser/src/cst.ts',
   'packages/syntax/css/css-parser/src/cst.ts',
   'packages/syntax/css/css-parser/src/index.ts',
   'packages/syntax/less/less-parser/src/grammar.ts',

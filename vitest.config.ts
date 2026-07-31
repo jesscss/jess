@@ -109,32 +109,48 @@ function workspaceSrcAliases() {
    * previously built `lib` while reporting on `src`.
    */
   /*
-   * css-parser's `./cst` public entry is `src/cst-css.ts` (the `parseCssCst`
-   * wrappers); its `src/cst.ts` is the shared builder those wrappers call, and
-   * is NOT the package's `./cst` export. The other three map straight across.
+   * All four dialects map straight across: `src/cst.ts` is the package's `./cst`
+   * export everywhere. css-parser additionally publishes `./cst-host`, the
+   * shared CST builder its own wrappers and the other three dialects call. The
+   * host is a separate entry precisely so that importing it does not pull the
+   * CSS CST grammar tables, so it needs its own alias — routing it through
+   * `./cst` here would reintroduce that edge on the source-side graph.
    */
-  for (const [dialect, file] of [
-    ['css', 'cst-css.ts'],
-    ['less', 'cst.ts'],
-    ['scss', 'cst.ts'],
-    ['jess', 'cst.ts']
-  ]) {
-    const cst = resolve(root, `packages/syntax/${dialect}/${dialect}-parser/src/${file}`);
+  const subpaths: [string, string][] = [
+    ['@jesscss/css-parser/cst', 'packages/syntax/css/css-parser/src/cst.ts'],
+    ['@jesscss/css-parser/cst-host', 'packages/syntax/css/css-parser/src/cst-host.ts'],
+    ['@jesscss/less-parser/cst', 'packages/syntax/less/less-parser/src/cst.ts'],
+    ['@jesscss/scss-parser/cst', 'packages/syntax/scss/scss-parser/src/cst.ts'],
+    ['@jesscss/jess-parser/cst', 'packages/syntax/jess/jess-parser/src/cst.ts'],
 
     /*
-     * THROWS rather than existsSync-skipping. These four are expected to exist;
+     * `@jesscss/core` itself is aliased to source by the walk above. Leaving
+     * this subpath on node resolution would give a test two copies of the error
+     * classes — a source-side `JessError` from the root and a lib-side one from
+     * the diagnostic surface — and `instanceof` across that boundary is false.
+     */
+    ['@jesscss/core/diagnostics', 'packages/core/src/diagnostics.ts']
+  ];
+  for (const [specifier, file] of subpaths) {
+    const source = resolve(root, file);
+
+    /*
+     * THROWS rather than existsSync-skipping. These are expected to exist;
      * degrading to a no-op would rebuild the half-source graph described above
      * and report nothing — the same silent-miss that killed the shape gate, and
      * the reason the dead `@jesscss/css-parser/jess` alias above was removed.
      */
-    if (!existsSync(cst)) {
+    if (!existsSync(source)) {
       throw new Error(
-        `vitest.config.ts: expected ${dialect}-parser CST source at ${cst}. `
+        `vitest.config.ts: expected ${specifier} source at ${source}. `
         + 'If the file moved, update this alias — do not delete it, or workspace '
-        + 'tests will silently resolve @jesscss/' + dialect + '-parser/cst to built lib.'
+        + `tests will silently resolve ${specifier} to built lib.`
       );
     }
-    alias.push({ find: new RegExp(`^@jesscss\\/${dialect}-parser\\/cst$`), replacement: cst });
+    alias.push({
+      find: new RegExp(`^${specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
+      replacement: source
+    });
   }
   return alias;
 }
