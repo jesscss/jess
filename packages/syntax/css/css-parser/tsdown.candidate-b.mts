@@ -40,4 +40,11 @@ export default defineConfig([
     deps: { onlyBundle: false },
     plugins: [parseman.rolldown()]
   }
+,
+  {
+    entry: { 'probe-childindex': './src/probe-childindex.ts' },
+    format: ['esm'], dts: false, outDir: './probe', platform: 'node',
+    fixedExtension: false, hash: false, clean: false,
+    deps: { onlyBundle: false }, plugins: [parseman.rolldown()]
+  }
 ]);
