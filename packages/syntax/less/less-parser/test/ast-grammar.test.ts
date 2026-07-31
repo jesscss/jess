@@ -2538,6 +2538,91 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  /**
+   * A detached-ruleset body, an `each()` callback body and a block mixin
+   * argument are all nested contexts: a child rule there may lead with a
+   * combinator, exactly as it may inside an ordinary ruleset body. The
+   * stylesheet root is not a nested context and keeps rejecting it.
+   */
+  it('admits leading-combinator child rules in every nested statement container', () => {
+    const containers: Array<[string, string]> = [
+      ['detached ruleset', '@d: { color: red; > td { color: blue; } };'],
+      ['each() callback', 'each(1, { > td { color: blue; } });'],
+      ['parameterized each() callback', 'each(1, .(@e) { ~ td { color: blue; } });'],
+      ['block mixin argument', '.a { #h({ > td { color: blue; } }); }'],
+      ['ordinary ruleset body', '.a { > td { color: blue; } }']
+    ];
+    for (const [label, source] of containers) {
+      expect(parsesCompleteStylesheet(source), label).toBe(true);
+      expect(cstIssueCount(parseLessCst(source)), `${label} (CST)`).toBe(0);
+    }
+
+    const detached = run(lessGrammar.Document, '@d: { color: red; > td { color: blue; } };', {
+      trivia: lessGrammar.whitespace
+    });
+    expect(detached.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'VariableDeclaration',
+          name: 'd',
+          value: {
+            type: 'AnonymousMixin',
+            rules: [
+              { type: 'Declaration', name: 'color' },
+              {
+                type: 'Ruleset',
+                selector: {
+                  selectors: [
+                    {
+                      type: 'RelativeSelector',
+                      value: ['>', { type: 'SimpleSelector', text: 'td', interp: null }]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    });
+
+    const callback = run(lessGrammar.Document, 'each(1, { ~ td { color: blue; } });', {
+      trivia: lessGrammar.whitespace
+    });
+    expect(callback.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'For',
+          rules: [
+            {
+              type: 'Ruleset',
+              selector: {
+                selectors: [
+                  {
+                    type: 'RelativeSelector',
+                    value: ['~', { type: 'SimpleSelector', text: 'td', interp: null }]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it('still rejects a leading-combinator selector at the stylesheet root', () => {
+    for (const source of [
+      '> .a { color: red; }',
+      '+ .a { color: red; }',
+      '~ .a { color: red; }'
+    ]) {
+      expect(parsesCompleteStylesheet(source), source).toBe(false);
+    }
+  });
+
   it('keeps standalone extend statements out of direct detached and callback bodies until they have a statement fact', () => {
     for (const source of [
       '@theme: { &:extend(.target); };',

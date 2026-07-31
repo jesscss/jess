@@ -4342,7 +4342,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // bodies: reductions above construct each canonical statement, and these
   // containers merely retain those typed children.  This is deliberately not a
   // CST/tree conversion or an opaque body fallback.
-  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, guardedRuleset, g.Each, g.FunctionStatement, declarationItem, literal(';'));
+  // The ruleset arm is `nestedGuardedRuleset`, the same arm `blockItem` uses:
+  // a detached-ruleset body is a nested context, so a child selector may lead
+  // with a combinator (`> td { … }`). Only `Stylesheet` keeps the absolute
+  // `guardedRuleset`, where a leading combinator stays an error.
+  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, nestedGuardedRuleset, g.Each, g.FunctionStatement, declarationItem, literal(';'));
   const ValueBlock = node(
     'ValueBlock',
     sequence(literal('{'), many(g.BodyStatement), optional(g.Call), literal('}')),
