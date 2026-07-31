@@ -224,7 +224,21 @@ type GrammarRuleName =
   | 'VarFallbackParen'
   | 'VarFallbackPunctuation'
   | 'VarFallbackTerm'
-  | 'keyframeSelector';
+  | 'keyframeSelector'
+  | 'stylesheetBodyBlock'
+  | 'declarationListBlock'
+  | 'descriptorBodyBlock'
+  | 'declarationListItem'
+  | 'declarationListDeclaration'
+  | 'RoutedAtRuleStatement'
+  | 'pseudoArgumentContent'
+  | 'CustomPropertyValue'
+  | 'QueryValue'
+  | 'QueryTerm'
+  | 'stylesheetBodyItem'
+  | 'routedStylesheetBody'
+  | 'routedDeclarationListBody'
+  | 'valueFunctionArguments';
 
 /*
  * Rules that the shared recognition library defines keep its concrete
@@ -1238,12 +1252,12 @@ const cssFactory = (g: GrammarSelf) => {
         not(g.MalformedPseudoSelectorNumericArgument),
         literal('-'),
         regex(/[ \t\n\r\f]+/),
-        pseudoArgumentContent
+        g.pseudoArgumentContent
       )),
       noTrivia(sequence(
         literal('-'),
         literal('-'),
-        pseudoArgumentContent
+        g.pseudoArgumentContent
       ))
     ),
     children => children.map(sourceText).join('')
@@ -1326,7 +1340,7 @@ const cssFactory = (g: GrammarSelf) => {
       ),
       sequence(
         not(g.MalformedPseudoSelectorNumericArgument),
-        pseudoArgumentContent
+        g.pseudoArgumentContent
       )
     ),
     children => selectorArgumentText(children[0])
@@ -1364,7 +1378,7 @@ const cssFactory = (g: GrammarSelf) => {
           ),
           sequence(
             not(g.MalformedPseudoSelectorNumericArgument),
-            pseudoArgumentContent
+            g.pseudoArgumentContent
           )
         )
       )
@@ -1382,7 +1396,7 @@ const cssFactory = (g: GrammarSelf) => {
   const GenericPseudoArgument = node(
     'GenericPseudoArgument',
     sequence(
-      pseudoArgumentContent,
+      g.pseudoArgumentContent,
       literal(')')
     ),
     children => selectorArgumentText(children[0])
@@ -1756,7 +1770,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       genericFunctionOpen,
       optional(cssValueTrivia),
-      valueFunctionArguments,
+      g.valueFunctionArguments,
       optional(cssValueTrivia),
       literal(')')
     ),
@@ -2066,7 +2080,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       varOpen,
       optional(cssValueTrivia),
-      CustomPropertyValue,
+      g.CustomPropertyValue,
       optional(cssValueTrivia),
       optional(sequence(
         literal(','),
@@ -2102,7 +2116,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.CalcIdentOrFunction,
       g.CalcParen,
       g.Quoted,
-      CustomPropertyValue
+      g.CustomPropertyValue
     ),
     { project: 0 }
   );
@@ -2316,7 +2330,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       routed(),
       optional(cssValueTrivia),
-      CustomPropertyValue,
+      g.CustomPropertyValue,
       optional(cssValueTrivia),
       optional(sequence(
         literal(','),
@@ -2341,7 +2355,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const IdentBlockOrKeyword = choice(
     IdentBlock,
-    RoutedKeyword
+    g.RoutedKeyword
   );
 
   /*
@@ -2375,7 +2389,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       routed(),
       optional(cssValueTrivia),
-      valueFunctionArguments,
+      g.valueFunctionArguments,
       optional(cssValueTrivia),
       literal(')')
     ),
@@ -2413,7 +2427,7 @@ const cssFactory = (g: GrammarSelf) => {
       endsWith('('),
       TypedGenericFunction
     ),
-    otherwise(RoutedKeyword)
+    otherwise(g.RoutedKeyword)
   );
   const CalcIdentOrFunction = typedIdentOrFunction;
   const TypedIdentOrFunction = typedIdentOrFunction;
@@ -2438,8 +2452,8 @@ const cssFactory = (g: GrammarSelf) => {
       IdentOrFunction,
       g.ParenValue,
       g.Quoted,
-      CustomPropertyValue,
-      PunctuationValue
+      g.CustomPropertyValue,
+      g.PunctuationValue
     ),
     { project: 0 }
   );
@@ -2498,7 +2512,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.Dimension,
       g.Color,
       g.Quoted,
-      CustomPropertyValue,
+      g.CustomPropertyValue,
       g.UnicodeRange,
       TypedIdentOrFunction
     ),
@@ -2507,16 +2521,16 @@ const cssFactory = (g: GrammarSelf) => {
   const TypedValueSequence = node(
     'TypedValueSequence',
     noTrivia(sequence(
-      TypedValue,
+      g.TypedValue,
       many(choice(
         sequence(
           field(
             'separator',
             cssValueTrivia
           ),
-          TypedValue
+          g.TypedValue
         ),
-        TypedValue
+        g.TypedValue
       ))
     )),
     (children, fields) => {
@@ -2780,11 +2794,11 @@ const cssFactory = (g: GrammarSelf) => {
     parser(
       { trivia: commentTrivia },
       many(choice(
-        AtRulePreludeWhitespace,
-        AtRulePreludeComma,
-        AtRulePreludeGroup,
-        AtRulePreludeQuoted,
-        AtRulePreludeText
+        g.AtRulePreludeWhitespace,
+        g.AtRulePreludeComma,
+        g.AtRulePreludeGroup,
+        g.AtRulePreludeQuoted,
+        g.AtRulePreludeText
       ))
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => semanticTextWithTriviaGaps(children, triviaLog)
@@ -2938,7 +2952,7 @@ const cssFactory = (g: GrammarSelf) => {
       literal('('),
       g.Property,
       literal(':'),
-      QueryValue,
+      g.QueryValue,
       literal(')')
     ),
     children => block(operation(
@@ -2953,10 +2967,10 @@ const cssFactory = (g: GrammarSelf) => {
       literal('('),
       g.Property,
       g.QueryComparisonOperator,
-      QueryValue,
+      g.QueryValue,
       optional(sequence(
         g.QueryComparisonOperator,
-        QueryValue
+        g.QueryValue
       )),
       literal(')')
     ),
@@ -2976,12 +2990,12 @@ const cssFactory = (g: GrammarSelf) => {
     'QueryRangeFeature',
     sequence(
       literal('('),
-      QueryValue,
+      g.QueryValue,
       g.QueryComparisonOperator,
       g.Property,
       optional(sequence(
         g.QueryComparisonOperator,
-        QueryValue
+        g.QueryValue
       )),
       literal(')')
     ),
@@ -3017,10 +3031,10 @@ const cssFactory = (g: GrammarSelf) => {
   const QueryFeature = node(
     'QueryFeature',
     choice(
-      QueryBareFeature,
+      g.QueryBareFeature,
       QueryColonFeature,
       QueryComparisonFeature,
-      QueryRangeFeature
+      g.QueryRangeFeature
     ),
     { project: 0 }
   );
@@ -3114,7 +3128,7 @@ const cssFactory = (g: GrammarSelf) => {
       QueryNonOnlyKeyword,
       many(sequence(
         g.QueryAndOr,
-        QueryTerm
+        g.QueryTerm
       ))
     ),
     children => spaced(children.map(child => isValue(child) ? child : keyword(tokenText(child))))
@@ -3132,8 +3146,8 @@ const cssFactory = (g: GrammarSelf) => {
     choice(
       QueryOnlyClause,
       sequence(
-        QueryTerm,
-        many(QueryTerm)
+        g.QueryTerm,
+        many(g.QueryTerm)
       )
     ),
     (children) => {
@@ -3169,7 +3183,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.QueryFeature,
         g.QueryFunction
       ),
-      many(QueryTerm)
+      many(g.QueryTerm)
     ),
     (children) => {
       const values = valueChildren(children);
@@ -3394,15 +3408,15 @@ const cssFactory = (g: GrammarSelf) => {
       peek(literal('}'))
     )
   );
-  const declarationListItem = choice(declarationListDeclaration, g.NestedConditionalBlock, g.DeclarationListAtRule, g.Ruleset, literal(';'));
-  const descriptorBodyItem = choice(declarationListDeclaration, literal(';'));
+  const declarationListItem = choice(g.declarationListDeclaration, g.NestedConditionalBlock, g.DeclarationListAtRule, g.Ruleset, literal(';'));
+  const descriptorBodyItem = choice(g.declarationListDeclaration, literal(';'));
   const conditionalGroupBodyItem = choice(g.ConditionalBlock, g.ConditionalGroupAtRule, g.TopLevelRuleset);
   const stylesheetBodyItem = choice(g.ConditionalBlock, g.StylesheetAtRule, g.TopLevelRuleset);
   const descriptorBodyBlock = sequence(literal('{'), many(descriptorBodyItem), literal('}'));
-  const declarationListBlock = sequence(literal('{'), many(declarationListItem), literal('}'));
+  const declarationListBlock = sequence(literal('{'), many(g.declarationListItem), literal('}'));
   const conditionalGroupBodyBlock = sequence(literal('{'), many(conditionalGroupBodyItem), literal('}'));
-  const stylesheetBodyBlock = sequence(literal('{'), many(stylesheetBodyItem), literal('}'));
-  const pageBodyItem = choice(declarationListDeclaration, g.MarginAtRule, literal(';'));
+  const stylesheetBodyBlock = sequence(literal('{'), many(g.stylesheetBodyItem), literal('}'));
+  const pageBodyItem = choice(g.declarationListDeclaration, g.MarginAtRule, literal(';'));
   const pageBodyBlock = sequence(literal('{'), many(pageBodyItem), literal('}'));
   const keyframesBodyBlock = sequence(literal('{'), many(g.KeyframeBlock), literal('}'));
   const fontFeatureValuesBodyBlock = sequence(literal('{'), many(g.FeatureValueBlock), literal('}'));
@@ -3414,11 +3428,11 @@ const cssFactory = (g: GrammarSelf) => {
    * so the shape cannot drift between the at-rules that share it. Each `node()`
    * keeps its own name and reducer; only the recognition shape is shared.
    */
-  const routedDeclarationListBody = sequence(routed(), g.AtRulePrelude, declarationListBlock);
-  const routedStylesheetBody = sequence(routed(), g.AtRulePrelude, stylesheetBodyBlock);
+  const routedDeclarationListBody = sequence(routed(), g.AtRulePrelude, g.declarationListBlock);
+  const routedStylesheetBody = sequence(routed(), g.AtRulePrelude, g.stylesheetBodyBlock);
   const RoutedLayerBlock = node(
     'LayerBlock',
-    routedStylesheetBody,
+    g.routedStylesheetBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
@@ -3427,7 +3441,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const RoutedNestedLayerBlock = node(
     'NestedLayerBlock',
-    routedDeclarationListBody,
+    g.routedDeclarationListBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
@@ -3439,7 +3453,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       routed(),
       g.AtRulePrelude,
-      descriptorBodyBlock
+      g.descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]),
@@ -3488,7 +3502,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const RoutedScopeBlock = node(
     'ScopeBlock',
-    routedDeclarationListBody,
+    g.routedDeclarationListBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
@@ -3497,7 +3511,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const RoutedStartingStyleBlock = node(
     'StartingStyleBlock',
-    routedStylesheetBody,
+    g.routedStylesheetBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]),
       optionalValue(children[1]),
@@ -3506,7 +3520,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const RoutedNestedStartingStyleBlock = node(
     'NestedStartingStyleBlock',
-    routedDeclarationListBody,
+    g.routedDeclarationListBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]),
       optionalValue(children[1]),
@@ -3515,7 +3529,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const RoutedDocumentBlock = node(
     'DocumentBlock',
-    routedStylesheetBody,
+    g.routedStylesheetBody,
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
@@ -3541,7 +3555,7 @@ const cssFactory = (g: GrammarSelf) => {
   const scopeAtRuleCase = cssCase(
     '@scope',
     choice(
-      RoutedAtRuleStatement,
+      g.RoutedAtRuleStatement,
       RoutedScopeBlock
     )
   );
@@ -3556,40 +3570,40 @@ const cssFactory = (g: GrammarSelf) => {
       '@view-transition'
     ],
     choice(
-      RoutedAtRuleStatement,
+      g.RoutedAtRuleStatement,
       RoutedDescriptorBlock
     )
   );
   const pageAtRuleCase = cssCase(
     '@page',
     choice(
-      RoutedAtRuleStatement,
+      g.RoutedAtRuleStatement,
       RoutedPageBlock
     )
   );
   const keyframesAtRuleCase = cssCase(
     keyframesAtRuleNames,
     choice(
-      RoutedAtRuleStatement,
+      g.RoutedAtRuleStatement,
       RoutedKeyframes
     )
   );
   const fontFeatureValuesAtRuleCase = cssCase(
     '@font-feature-values',
     choice(
-      RoutedAtRuleStatement,
+      g.RoutedAtRuleStatement,
       RoutedFontFeatureValuesBlock
     )
   );
   const documentAtRuleCase = cssCase(
     ['@document', '@-moz-document'],
     choice(
-      RoutedAtRuleStatement,
+      g.RoutedAtRuleStatement,
       RoutedDocumentBlock
     )
   );
   const opaqueAtRuleOtherwise = otherwise(choice(
-    RoutedAtRuleStatement,
+    g.RoutedAtRuleStatement,
     RoutedOpaqueAtRuleBlock
   ));
   const StylesheetAtRule = dispatch(
@@ -3597,14 +3611,14 @@ const cssFactory = (g: GrammarSelf) => {
     cssCase(
       '@layer',
       choice(
-        RoutedAtRuleStatement,
+        g.RoutedAtRuleStatement,
         RoutedLayerBlock
       )
     ),
     cssCase(
       '@starting-style',
       choice(
-        RoutedAtRuleStatement,
+        g.RoutedAtRuleStatement,
         RoutedStartingStyleBlock
       )
     ),
@@ -3621,14 +3635,14 @@ const cssFactory = (g: GrammarSelf) => {
     cssCase(
       '@layer',
       choice(
-        RoutedAtRuleStatement,
+        g.RoutedAtRuleStatement,
         RoutedNestedLayerBlock
       )
     ),
     cssCase(
       '@starting-style',
       choice(
-        RoutedAtRuleStatement,
+        g.RoutedAtRuleStatement,
         RoutedNestedStartingStyleBlock
       )
     ),
@@ -3689,7 +3703,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.LayerAtKeyword,
       g.AtRulePrelude,
-      stylesheetBodyBlock
+      g.stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
@@ -3702,7 +3716,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.LayerAtKeyword,
       g.AtRulePrelude,
-      declarationListBlock
+      g.declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
@@ -3721,7 +3735,7 @@ const cssFactory = (g: GrammarSelf) => {
     'MarginAtRule',
     sequence(
       g.MarginAtKeyword,
-      descriptorBodyBlock
+      g.descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
@@ -3762,7 +3776,7 @@ const cssFactory = (g: GrammarSelf) => {
        * This is the public descriptorBody shape: empty declaration statements
        * are syntactically valid and deliberately have no AST statement node.
        */
-      descriptorBodyBlock
+      g.descriptorBodyBlock
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(rule(
       keyframeSelectorList(children),
@@ -3796,7 +3810,7 @@ const cssFactory = (g: GrammarSelf) => {
         { trivia: interstitialTrivia },
         literal('{')
       ),
-      many(declarationListItem),
+      many(g.declarationListItem),
       expect(literal('}'), '}')
     ),
     (children, _fields, _span, rawChildren) => {
@@ -3818,7 +3832,7 @@ const cssFactory = (g: GrammarSelf) => {
         { trivia: interstitialTrivia },
         literal('{')
       ),
-      many(declarationListItem),
+      many(g.declarationListItem),
       expect(literal('}'), '}')
     ),
     (children, _fields, _span, rawChildren) => {
@@ -3868,17 +3882,17 @@ const cssFactory = (g: GrammarSelf) => {
           { trivia: interstitialTrivia },
           g.SupportsPrelude
         ),
-        declarationListBlock
+        g.declarationListBlock
       ),
       sequence(
         g.MediaAtKeyword,
         g.QueryPrelude,
-        declarationListBlock
+        g.declarationListBlock
       ),
       sequence(
         g.ContainerAtKeyword,
         g.ContainerPrelude,
-        declarationListBlock
+        g.declarationListBlock
       )
     ),
     (children, _fields, _span, rawChildren) => {
@@ -3894,7 +3908,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.DescriptorAtKeyword,
       g.AtRulePrelude,
-      descriptorBodyBlock
+      g.descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]),
@@ -3912,7 +3926,7 @@ const cssFactory = (g: GrammarSelf) => {
     'FeatureValueBlock',
     sequence(
       g.FontFeatureValueAtKeyword,
-      descriptorBodyBlock
+      g.descriptorBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
@@ -3944,7 +3958,7 @@ const cssFactory = (g: GrammarSelf) => {
        * scope retains the existing canonical AtRuleBlock reduction rather than
        * being rejected or routed through an opaque body.
        */
-      declarationListBlock
+      g.declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
@@ -3957,7 +3971,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.StartingStyleAtKeyword,
       g.AtRulePrelude,
-      stylesheetBodyBlock
+      g.stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]),
@@ -3970,7 +3984,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.StartingStyleAtKeyword,
       g.AtRulePrelude,
-      declarationListBlock
+      g.declarationListBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]),
@@ -3983,7 +3997,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.DocumentAtKeyword,
       g.AtRulePrelude,
-      stylesheetBodyBlock
+      g.stylesheetBodyBlock
     ),
     (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
       tokenText(children[0]!),
@@ -3995,7 +4009,7 @@ const cssFactory = (g: GrammarSelf) => {
     'Stylesheet',
     sequence(
       many(choice(g.ImportStatement, g.LayerStatement)),
-      many(stylesheetBodyItem)
+      many(g.stylesheetBodyItem)
     ),
     children => stylesheet(documentStatements(children)),
     { trailingTrivia: true }
@@ -4114,6 +4128,20 @@ const cssFactory = (g: GrammarSelf) => {
     Keyframes,
     Ruleset,
     TopLevelRuleset,
+    stylesheetBodyBlock,
+    declarationListBlock,
+    descriptorBodyBlock,
+    declarationListItem,
+    declarationListDeclaration,
+    RoutedAtRuleStatement,
+    pseudoArgumentContent,
+    CustomPropertyValue,
+    QueryValue,
+    QueryTerm,
+    stylesheetBodyItem,
+    routedStylesheetBody,
+    routedDeclarationListBody,
+    valueFunctionArguments,
     whitespace,
     rw: whitespace
   };

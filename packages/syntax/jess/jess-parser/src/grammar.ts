@@ -196,6 +196,7 @@ type JessRules = {
   PropertyName: Combinator<Keyword>;
   PropertyDescriptor: Combinator<Declaration>;
   PropertyAtRule: Combinator<AtRuleBlock>;
+  Percentage: Combinator<unknown>;
   KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
@@ -207,6 +208,11 @@ type JessRules = {
   AtRuleStatement: Combinator<AtRuleStatement>;
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
+  QueryValue: Combinator<unknown>;
+  QueryTerm: Combinator<unknown>;
+  typedAtRuleHeader: Combinator<unknown>;
+  identifierOrFunction: Combinator<unknown>;
+  QueryFeatureName: Combinator<unknown>;
 };
 
 type SharedSyntax = {
@@ -1593,7 +1599,6 @@ const keyframeEndpoint = keywords(
   ['from', 'to'],
   { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
 );
-const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 
 /*
  * NOT exported, and must never be. The body is written entirely in parseman's
@@ -2493,6 +2498,23 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.Identifier,
     children => keyword(requireToken(children[0]).value)
   );
+
+  /*
+   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
+   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
+   * type, referenced by name from many productions — `<keyframe-selector> = from
+   * | to | <percentage>` (css-animations-1 §4), `image-set()`, `color-mix()`,
+   * `<position>` — so it is a rule here rather than a shape each consumer
+   * re-spells. Three dialects previously carried three different hand-rolled
+   * numeric regexes for it, none referenceable and none agreeing with this
+   * grammar's own `<number>` token.
+   *
+   * This does NOT add an AST node type: a percentage is still a `Dimension`
+   * whose unit is `%`, which is why this is a token rule and not a `node()`.
+   * `noTrivia` enforces the "immediately followed by" of the spec, so `50 %`
+   * is not a percentage.
+   */
+  const Percentage = token(noTrivia(sequence(g.NumberToken, literal('%'))));
   const Dimension = node<Dimension>(
     'Dimension',
     noTrivia(sequence(
@@ -2792,7 +2814,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.PseudoSelectorColon,
       dispatch(
-        identifierOrFunction,
+        g.identifierOrFunction,
         caseInsensitiveWhen(
           ['nth-child(', 'nth-last-child('],
           sequence(
@@ -3253,18 +3275,18 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   const IdentifierOrFunction = dispatch(
-    identifierOrFunction,
+    g.identifierOrFunction,
     caseInsensitiveWhen(
       'url(',
       UrlFunction
     ),
     caseInsensitiveWhen(
       'var(',
-      VarCall
+      g.VarCall
     ),
     caseInsensitiveWhen(
       'calc(',
-      CalcFunction
+      g.CalcFunction
     ),
     when(
       endsWith('('),
@@ -3764,7 +3786,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     urlFromChildren
   );
   const HeaderIdentifierOrFunction = dispatch(
-    identifierOrFunction,
+    g.identifierOrFunction,
     caseInsensitiveWhen('url(', HeaderUrl),
     when(endsWith('('), HeaderCall),
     otherwise(KeywordValue)
@@ -3824,28 +3846,28 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         literal('('),
         optional(rawWhitespace),
-        QueryFeatureName,
+        g.QueryFeatureName,
         optional(rawWhitespace),
         field(
           'comparison',
           g.QueryComparisonOperator
         ),
         optional(rawWhitespace),
-        QueryValue,
+        g.QueryValue,
         optional(rawWhitespace),
         literal(')')
       ),
       sequence(
         literal('('),
         optional(rawWhitespace),
-        QueryValue,
+        g.QueryValue,
         optional(rawWhitespace),
         field(
           'comparison',
           g.QueryComparisonOperator
         ),
         optional(rawWhitespace),
-        QueryFeatureName,
+        g.QueryFeatureName,
         optional(sequence(
           optional(rawWhitespace),
           field(
@@ -3853,7 +3875,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             g.QueryComparisonOperator
           ),
           optional(rawWhitespace),
-          QueryValue
+          g.QueryValue
         )),
         optional(rawWhitespace),
         literal(')')
@@ -3920,7 +3942,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
-        QueryValue,
+        g.QueryValue,
         optional(rawWhitespace),
         literal(')')
       ),
@@ -3996,14 +4018,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       QueryNonOnlyKeyword,
       many(sequence(
         regex(/[ \t\n\r\f]+/),
-        QueryTerm
+        g.QueryTerm
       ))
     ),
     sequence(
-      QueryTerm,
+      g.QueryTerm,
       many(sequence(
         regex(/[ \t\n\r\f]+/),
-        QueryTerm
+        g.QueryTerm
       ))
     )
   )));
@@ -4165,8 +4187,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           g.AtRulePrelude
         )
       ),
-      caseInsensitiveWhen(typedAtRuleHeaderNames, typedAtRuleHeader),
-      when(endsWith('-keyframes'), typedAtRuleHeader, { caseInsensitive: true }),
+      caseInsensitiveWhen(typedAtRuleHeaderNames, g.typedAtRuleHeader),
+      when(endsWith('-keyframes'), g.typedAtRuleHeader, { caseInsensitive: true }),
       otherwise(sequence(
         routed(),
         g.AtRulePrelude
@@ -4222,8 +4244,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           requiredContainerPrelude
         )
       ),
-      caseInsensitiveWhen(typedAtRuleHeaderNames, typedAtRuleHeader),
-      when(endsWith('-keyframes'), typedAtRuleHeader, { caseInsensitive: true }),
+      caseInsensitiveWhen(typedAtRuleHeaderNames, g.typedAtRuleHeader),
+      when(endsWith('-keyframes'), g.typedAtRuleHeader, { caseInsensitive: true }),
       otherwise(RoutedAtRuleStatementHeader)
     ),
     (children) => {
@@ -4634,7 +4656,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'KeyframeSelector',
     choice(
       keyframeEndpoint,
-      keyframePercent
+      g.Percentage
     ),
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -5895,6 +5917,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PropertyName,
     PropertyDescriptor,
     PropertyAtRule,
+    Percentage,
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,
@@ -5983,7 +6006,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ElseBranch,
     If,
     rw: whitespace,
-    whitespace
+    whitespace,
+    QueryValue,
+    QueryTerm,
+    typedAtRuleHeader,
+    identifierOrFunction,
+    QueryFeatureName
   };
 };
 

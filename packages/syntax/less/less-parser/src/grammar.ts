@@ -117,6 +117,7 @@ type LessRules = {
   Keyword: Combinator<ValueNode>;
   NamedColor: Combinator<ValueNode>;
   Color: Combinator<ValueNode>;
+  Percentage: Combinator<unknown>;
   Dimension: Combinator<ValueNode>;
   UnicodeRange: Combinator<Any>;
   EscapeValue: Combinator<Any>;
@@ -272,6 +273,19 @@ type LessRules = {
   ImportTailGroup: Combinator<unknown>;
   ImportTailParen: Combinator<unknown>;
   whitespace: Combinator<unknown>;
+  blockBody: Combinator<unknown>;
+  BareVariableInterpolation: Combinator<unknown>;
+  valuePiece: Combinator<unknown>;
+  MediaQueryTerm: Combinator<unknown>;
+  QueryTerm: Combinator<unknown>;
+  pseudoArgumentInner: Combinator<unknown>;
+  QueryFeatureValue: Combinator<unknown>;
+  queryLeaf: Combinator<unknown>;
+  interpolatedValueTail: Combinator<unknown>;
+  GenericFunction: Combinator<unknown>;
+  CalcFunction: Combinator<unknown>;
+  QueryNonOnlyKeyword: Combinator<unknown>;
+  FunctionArguments: Combinator<unknown>;
 };
 
 function isToken(value: unknown): value is Token {
@@ -2163,7 +2177,6 @@ const keyframeEndpoint = keywords(
   ['from', 'to'],
   { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
 );
-const keyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
 // Ordered longest-first, identical to the production Less `combinator`
 // terminal. A missing authored token between compounds is the canonical
 // descendant relation; grammar trivia provides the separating whitespace.
@@ -2500,7 +2513,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'InterpolatedValue',
     noTrivia(sequence(
       g.Interpolation,
-      many(interpolatedValueTail)
+      many(g.interpolatedValueTail)
     )),
     children => interpolation(interpolationPartsFrom(children, true))
   );
@@ -2813,6 +2826,22 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.HexColor,
     children => color(requireToken(children[0]).value)
   );
+  /*
+   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
+   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
+   * type, referenced by name from many productions — `<keyframe-selector> = from
+   * | to | <percentage>` (css-animations-1 §4), `image-set()`, `color-mix()`,
+   * `<position>` — so it is a rule here rather than a shape each consumer
+   * re-spells. Three dialects previously carried three different hand-rolled
+   * numeric regexes for it, none referenceable and none agreeing with this
+   * grammar's own `<number>` token.
+   *
+   * This does NOT add an AST node type: a percentage is still a `Dimension`
+   * whose unit is `%`, which is why this is a token rule and not a `node()`.
+   * `noTrivia` enforces the "immediately followed by" of the spec, so `50 %`
+   * is not a percentage.
+   */
+  const Percentage = token(noTrivia(sequence(g.NumberToken, literal('%'))));
   const Dimension = node(
     'Dimension',
     noTrivia(sequence(g.NumberToken, optional(g.DimensionUnit))),
@@ -3042,13 +3071,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   )));
   const GenericFunction = node(
     'Call',
-    parser({ trivia: functionTrivia }, sequence(routed(), FunctionArguments, literal(')'))),
+    parser({ trivia: functionTrivia }, sequence(routed(), g.FunctionArguments, literal(')'))),
     (children, fields, span, _rawChildren, triviaLog, state) =>
       functionCallFromChildren(children, fields, span, triviaLog, state)
   );
   const Call = node(
     'Call',
-    parser({ trivia: functionTrivia }, sequence(genericFunctionOpen, FunctionArguments, literal(')'))),
+    parser({ trivia: functionTrivia }, sequence(genericFunctionOpen, g.FunctionArguments, literal(')'))),
     (children, fields, span, _rawChildren, triviaLog, state) =>
       functionCallFromChildren(children, fields, span, triviaLog, state)
   );
@@ -3099,7 +3128,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const Identifier = node(
     'Identifier',
-    noTrivia(sequence(routed(), many(interpolatedValueTail))),
+    noTrivia(sequence(routed(), many(g.interpolatedValueTail))),
     (children) => {
       if (children.some(isInterpolationFact)) {
         return interpolation(interpolationPartsFrom(children, true));
@@ -3110,8 +3139,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const IdentifierOrFunction = dispatch(
     identOrFunction,
     caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
-    caseOf('calc(', CalcFunction),
-    when(endsWith('('), GenericFunction),
+    caseOf('calc(', g.CalcFunction),
+    when(endsWith('('), g.GenericFunction),
     otherwise(Identifier)
   );
   // Less 5 removed inline backtick JavaScript. Recognize the complete legacy
@@ -3339,12 +3368,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       peek(whitespace),
       not(nestedAtRuleValueStart),
-      valuePiece
+      g.valuePiece
     )
   );
   const gluedVariableValueBoundary = sequence(
     leaf(peek(literal('@')), () => ({ kind: 'glued-value-boundary' })),
-    valuePiece
+    g.valuePiece
   );
   const valueContinuation = choice(valueTriviaBoundary, gluedVariableValueBoundary);
   // Function arguments are the one value context where top-level Less
@@ -3384,7 +3413,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // terminator a few characters later.
   const ValueSequence = node(
     'ValueSequence',
-    noTrivia(sequence(valuePiece, many(valueContinuation))),
+    noTrivia(sequence(g.valuePiece, many(valueContinuation))),
     (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
   );
   // Function bodies use their own argument boundary rule, but comments *inside*
@@ -3394,7 +3423,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ArgumentValueSequence = node(
     'FunctionValueSequence',
     noTrivia(sequence(
-      valuePiece,
+      g.valuePiece,
       many(functionArgumentValueContinuation),
       functionArgumentBoundaryAhead
     )),
@@ -4492,8 +4521,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const GeneralEnclosedQuoted = node(
     'GeneralEnclosedQuoted',
     choice(
-      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, BareVariableInterpolation, generalEnclosedDoubleChunk)), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, BareVariableInterpolation, generalEnclosedSingleChunk)), literal('\'')))
+      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.BareVariableInterpolation, generalEnclosedDoubleChunk)), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.BareVariableInterpolation, generalEnclosedSingleChunk)), literal('\'')))
     ),
     generalEnclosedInterpolationFromChildren
   );
@@ -4509,7 +4538,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const GeneralEnclosedContent = node(
     'GeneralEnclosedContent',
     noTrivia(many(choice(
-      BareVariableInterpolation,
+      g.BareVariableInterpolation,
       generalEnclosedRaw,
       g.VariableInterpolation,
       g.GeneralEnclosedQuoted,
@@ -4596,9 +4625,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'SupportsBlock',
     sequence(
       g.SupportsAtKeyword,
-      choice(g.AtRuleInterpolation, BareVariableInterpolation, g.SupportsCondition),
+      choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.SupportsCondition),
       literal('{'),
-      blockBody,
+      g.blockBody,
       optional(g.Call),
       literal('}')
     ),
@@ -4622,10 +4651,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const QueryIdentOrFunction = dispatch(
     queryIdentOrFunction,
-    caseOf('calc(', CalcFunction),
+    caseOf('calc(', g.CalcFunction),
     when(
       endsWith('('),
-      GenericFunction
+      g.GenericFunction
     ),
     otherwise(QueryKeyword)
   );
@@ -4636,7 +4665,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // text or run a second scanner over it.
   const QueryValue = node(
     'QueryValue',
-    choice(g.PreservedDivision, queryLeaf),
+    choice(g.PreservedDivision, g.queryLeaf),
     children => requireValueNode(children[0])
   );
   // A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
@@ -4649,7 +4678,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // declaration, so its slash stays a value-position slash group.
   const QueryFeatureValue = node(
     'QueryFeatureValue',
-    sequence(queryLeaf, many(sequence(literal('/'), queryLeaf))),
+    sequence(g.queryLeaf, many(sequence(literal('/'), g.queryLeaf))),
     foldOperation
   );
   const QueryBareFeature = node(
@@ -4660,8 +4689,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryComparisonFeature = node(
     'QueryComparisonFeature',
     sequence(
-      literal('('), g.Identifier, g.QueryComparisonOperator, QueryFeatureValue,
-      optional(sequence(g.QueryComparisonOperator, QueryFeatureValue)), literal(')')
+      literal('('), g.Identifier, g.QueryComparisonOperator, g.QueryFeatureValue,
+      optional(sequence(g.QueryComparisonOperator, g.QueryFeatureValue)), literal(')')
     ),
     (children) => {
       const values = children.filter(isValueNode);
@@ -4682,8 +4711,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryRangeFeature = node(
     'QueryRangeFeature',
     sequence(
-      literal('('), QueryFeatureValue, g.QueryComparisonOperator, g.Identifier,
-      optional(sequence(g.QueryComparisonOperator, QueryFeatureValue)), literal(')')
+      literal('('), g.QueryFeatureValue, g.QueryComparisonOperator, g.Identifier,
+      optional(sequence(g.QueryComparisonOperator, g.QueryFeatureValue)), literal(')')
     ),
     (children) => {
       const values = children.filter(isValueNode);
@@ -4719,7 +4748,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const QueryFeature = node(
     'QueryFeature',
-    choice(QueryBareFeature, QueryColonFeature, QueryComparisonFeature, QueryRangeFeature, QueryLogicalGroup, QueryNegatedFeature),
+    choice(QueryBareFeature, g.QueryColonFeature, QueryComparisonFeature, QueryRangeFeature, QueryLogicalGroup, QueryNegatedFeature),
     children => requireValueNode(children[0])
   );
   // `only` is a media/query modifier, not an ordinary media-type keyword.
@@ -4737,7 +4766,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       attempt(g.MixinReference),
       g.QueryFeature,
       g.VariableReference,
-      QueryNonOnlyKeyword
+      g.QueryNonOnlyKeyword
     ),
     children => requireValueNode(children[0])
   );
@@ -4745,8 +4774,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'QueryOnlyClause',
     sequence(
       g.QueryOnly,
-      QueryNonOnlyKeyword,
-      many(sequence(g.QueryAndOr, QueryTerm))
+      g.QueryNonOnlyKeyword,
+      many(sequence(g.QueryAndOr, g.QueryTerm))
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
   );
@@ -4759,8 +4788,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(
       QueryOnlyClause,
       sequence(
-        QueryTerm,
-        many(sequence(g.QueryAndOr, QueryTerm))
+        g.QueryTerm,
+        many(sequence(g.QueryAndOr, g.QueryTerm))
       )
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
@@ -4780,15 +4809,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // media-only typed sequence from the same structural leaves.
   const MediaQueryTerm = node(
     'MediaQueryTerm',
-    choice(g.AtRuleInterpolation, BareVariableInterpolation, QueryTerm),
+    choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.QueryTerm),
     children => requireValueNode(children[0])
   );
   const MediaQueryOnlyClause = node(
     'MediaQueryOnlyClause',
     sequence(
       g.QueryOnly,
-      QueryNonOnlyKeyword,
-      many(sequence(g.QueryAndOr, MediaQueryTerm))
+      g.QueryNonOnlyKeyword,
+      many(sequence(g.QueryAndOr, g.MediaQueryTerm))
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
   );
@@ -4796,8 +4825,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'MediaQueryNotClause',
     sequence(
       g.QueryNot,
-      MediaQueryTerm,
-      many(sequence(g.QueryAndOr, MediaQueryTerm))
+      g.MediaQueryTerm,
+      many(sequence(g.QueryAndOr, g.MediaQueryTerm))
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
   );
@@ -4807,8 +4836,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       MediaQueryOnlyClause,
       MediaQueryNotClause,
       sequence(
-        MediaQueryTerm,
-        many(sequence(g.QueryAndOr, MediaQueryTerm))
+        g.MediaQueryTerm,
+        many(sequence(g.QueryAndOr, g.MediaQueryTerm))
       )
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
@@ -4891,7 +4920,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ContainerConditionItem = node(
     'ContainerConditionItem',
     choice(
-      BareVariableInterpolation,
+      g.BareVariableInterpolation,
       g.ContainerCondition,
       sequence(
         g.AtRuleInterpolation,
@@ -4924,7 +4953,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'MediaContainerBody',
     sequence(
       literal('{'),
-      blockBody,
+      g.blockBody,
       optional(g.Call),
       literal('}')
     ),
@@ -4964,7 +4993,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // the identifier would commit too early.
   const KeyframeSelector = node(
     'KeyframeSelector',
-    choice(keyframeEndpoint, keyframePercent),
+    choice(keyframeEndpoint, g.Percentage),
     children => simpleSelector(requireToken(children[0]).value)
   );
   const KeyframeBlock = node(
@@ -4995,7 +5024,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'Keyframes',
     sequence(
       g.KeyframesAtKeyword,
-      field('prelude', choice(g.AtRuleInterpolation, BareVariableInterpolation, g.EscapedQuoted, g.LiteralQuoted, g.Keyword)),
+      field('prelude', choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.EscapedQuoted, g.LiteralQuoted, g.Keyword)),
       literal('{'),
       // Less permits a detached-ruleset call as a keyframes-body entry. Keep
       // that as the existing typed Reference fact so a parameterized keyframe
@@ -5047,8 +5076,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const AtRulePreludeIdentOrFunction = dispatch(
     atRulePreludeIdentOrFunction,
     caseOf('url(', RoutedPlainUrl),
-    caseOf('calc(', CalcFunction),
-    when(endsWith('('), GenericFunction),
+    caseOf('calc(', g.CalcFunction),
+    when(endsWith('('), g.GenericFunction),
     otherwise(AtRulePreludeKeyword)
   );
   // Generic at-rule headers have no parser-owned syntax-preserving evaluation
@@ -5122,7 +5151,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         atPreludeComma,
         atPreludeGroup,
         atPreludeQuoted,
-        BareVariableInterpolation,
+        g.BareVariableInterpolation,
         atPreludeText
       ))
     ),
@@ -5137,7 +5166,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     atPreludeComma,
     atPreludeGroup,
     atPreludeQuoted,
-    BareVariableInterpolation,
+    g.BareVariableInterpolation,
     lessOpaqueAtPreludeText
   ));
   // CSS-defined statement at-rules have grammar-owned interpolation forms that
@@ -5171,7 +5200,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const atRuleBlockBody = sequence(
     literal('{'),
-    blockBody,
+    g.blockBody,
     optional(g.Call),
     literal('}')
   );
@@ -5195,7 +5224,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(
         layerAtRuleName,
         not(noTrivia(literal('('))),
-        optional(choice(BareVariableInterpolation, g.InterpolatedValue, g.AtRulePreludeValue)),
+        optional(choice(g.BareVariableInterpolation, g.InterpolatedValue, g.AtRulePreludeValue)),
         atRuleBlockBody
       ),
       sequence(
@@ -5280,7 +5309,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           sequence(
             routed(),
             not(noTrivia(literal('('))),
-            optional(choice(BareVariableInterpolation, g.InterpolatedValue, g.AtRulePreludeValue)),
+            optional(choice(g.BareVariableInterpolation, g.InterpolatedValue, g.AtRulePreludeValue)),
             literal(';')
           )
         ),
@@ -5395,14 +5424,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const PseudoArgumentGroup = node(
     'PseudoArgumentGroup',
     parser({ trivia: staticSelectorTrivia }, choice(
-      sequence(literal('('), many(pseudoArgumentInner), literal(')')),
-      sequence(literal('['), many(pseudoArgumentInner), literal(']'))
+      sequence(literal('('), many(g.pseudoArgumentInner), literal(')')),
+      sequence(literal('['), many(g.pseudoArgumentInner), literal(']'))
     )),
     (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   const PseudoArgumentText = node(
     'PseudoArgumentText',
-    parser({ trivia: staticSelectorTrivia }, oneOrMore(pseudoArgumentInner)),
+    parser({ trivia: staticSelectorTrivia }, oneOrMore(g.pseudoArgumentInner)),
     (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   // A functional pseudo's static selector argument is the same recursive
@@ -5613,7 +5642,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const attributeInterpolationTokenBody = noTrivia(sequence(
     optional(choice(g.InterpolatedValueStart, g.InterpolatedValueDash)),
     g.Interpolation,
-    many(interpolatedValueTail)
+    many(g.interpolatedValueTail)
   ));
   const InterpolatedAttributeToken = node(
     'InterpolatedAttributeToken',
@@ -6064,7 +6093,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         sequence(g.MixinGuard, optional(mixinSignatureGap), literal('{')),
         literal('{')
       ),
-      blockBody,
+      g.blockBody,
       optional(g.Call),
       literal('}'),
       optional(literal(';'))
@@ -6246,6 +6275,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Keyword,
     NamedColor,
     Color,
+    Percentage,
     Dimension,
     UnicodeRange,
     EscapeValue,
@@ -6399,6 +6429,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ImportTailText,
     ImportTailGroup,
     ImportTailParen,
+    blockBody,
+    BareVariableInterpolation,
+    valuePiece,
+    MediaQueryTerm,
+    QueryTerm,
+    pseudoArgumentInner,
+    QueryFeatureValue,
+    queryLeaf,
+    interpolatedValueTail,
+    GenericFunction,
+    CalcFunction,
+    QueryNonOnlyKeyword,
+    FunctionArguments,
     whitespace,
     rw: whitespace
   };

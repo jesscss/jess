@@ -158,6 +158,7 @@ type ScssRules = {
   CounterStyle: Combinator<AtRuleBlock>;
   PropertyName: Combinator<Keyword>;
   PropertyAtRule: Combinator<AtRuleBlock>;
+  Percentage: Combinator<unknown>;
   KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
@@ -189,6 +190,9 @@ type ScssRules = {
   NestedRuleset: Combinator<Ruleset>;
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
+  nestedBody: Combinator<unknown>;
+  QueryValue: Combinator<unknown>;
+  AtRootContinuation: Combinator<unknown>;
 };
 
 type ScssInputRules =
@@ -1075,7 +1079,6 @@ const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
  * Keep the static SCSS slice aligned with the shared CSS keyframe-selector
  * shape: signed percentages and a trailing decimal point are valid selectors.
  */
-const keyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
 
 /*
  * The AST counterpart of the CST grammar's `InterpolatedSelector`: static
@@ -1380,6 +1383,23 @@ const scssFactory = (g: ScssInputRules) => {
     g.UnicodeRangeToken,
     children => any(requireToken(children[0]).value)
   );
+
+  /*
+   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
+   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
+   * type, referenced by name from many productions — `<keyframe-selector> = from
+   * | to | <percentage>` (css-animations-1 §4), `image-set()`, `color-mix()`,
+   * `<position>` — so it is a rule here rather than a shape each consumer
+   * re-spells. Three dialects previously carried three different hand-rolled
+   * numeric regexes for it, none referenceable and none agreeing with this
+   * grammar's own `<number>`.
+   *
+   * This does NOT add an AST node type: a percentage is still a `Dimension`
+   * whose unit is `%`, which is why this is a token rule and not a `node()`.
+   * `noTrivia` enforces the "immediately followed by" of the spec, so `50 %`
+   * is not a percentage.
+   */
+  const Percentage = token(noTrivia(sequence(numberValue, literal('%'))));
   const Dimension = node<Dimension>(
     'Dimension',
     noTrivia(sequence(
@@ -2896,7 +2916,7 @@ const scssFactory = (g: ScssInputRules) => {
       mixinNameToken,
       optional(g.MixinParameters),
       literal('{'),
-      nestedBody,
+      g.nestedBody,
       literal('}')
     ),
     children => mixinDef(
@@ -3004,7 +3024,7 @@ const scssFactory = (g: ScssInputRules) => {
       regex(/\bin\b/),
       g.Value,
       literal('{'),
-      nestedBody,
+      g.nestedBody,
       literal('}')
     ),
     (children) => {
@@ -3047,7 +3067,7 @@ const scssFactory = (g: ScssInputRules) => {
       ),
       g.MathTopSum,
       literal('{'),
-      nestedBody,
+      g.nestedBody,
       literal('}')
     ),
     children => forNode(
@@ -3353,7 +3373,7 @@ const scssFactory = (g: ScssInputRules) => {
    * CSS, and plain CSS parses in every dialect, so SCSS carries the same arm and
    * the same typed shape as the css/less/jess grammars: the outer comparison
    * wraps the inner one, giving Block(paren, Operation('<', Operation('<', …))).
-   * Building it on QueryValue is what gives the range form `<ratio>`
+   * Building it on g.QueryValue is what gives the range form `<ratio>`
    * bounds (`(16/9 < aspect-ratio < 2/1)`) without restating the ratio grammar.
    */
   const QueryFeature = node<ValueNode>(
@@ -3368,24 +3388,24 @@ const scssFactory = (g: ScssInputRules) => {
         literal('('),
         propertyIdentifier,
         literal(':'),
-        QueryValue,
+        g.QueryValue,
         literal(')')
       ),
       sequence(
         literal('('),
         propertyIdentifier,
         queryComparisonOperator,
-        QueryValue,
+        g.QueryValue,
         literal(')')
       ),
       sequence(
         literal('('),
-        QueryValue,
+        g.QueryValue,
         queryComparisonOperator,
         propertyIdentifier,
         optional(sequence(
           queryComparisonOperator,
-          QueryValue
+          g.QueryValue
         )),
         literal(')')
       )
@@ -3818,7 +3838,7 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       routed(),
       literal('{'),
-      nestedBody,
+      g.nestedBody,
       literal('}')
     ),
     children => atRuleBlock(
@@ -3839,7 +3859,7 @@ const scssFactory = (g: ScssInputRules) => {
       routed(),
       g.AtRootFilterPrelude,
       literal('{'),
-      nestedBody,
+      g.nestedBody,
       literal('}')
     ),
     children => atRuleBlock(
@@ -3882,7 +3902,7 @@ const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('@if', g.IfRule),
     caseInsensitive('@each', g.EachRule),
     caseInsensitive('@for', g.ForRule),
-    caseInsensitive('@at-root', AtRootContinuation)
+    caseInsensitive('@at-root', g.AtRootContinuation)
   );
   const SassNestedDirective = dispatch(
     g.AtRuleKeyword,
@@ -3891,7 +3911,7 @@ const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('@if', g.IfRule),
     caseInsensitive('@each', g.EachRule),
     caseInsensitive('@for', g.ForRule),
-    caseInsensitive('@at-root', AtRootContinuation)
+    caseInsensitive('@at-root', g.AtRootContinuation)
   );
   const SassControlDirective = dispatch(
     g.AtRuleKeyword,
@@ -3951,7 +3971,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.ScopeAtKeyword,
       g.AtRulePrelude,
       literal('{'),
-      nestedBody,
+      g.nestedBody,
       literal('}')
     ),
     children => atRuleBlock(
@@ -4387,7 +4407,7 @@ const scssFactory = (g: ScssInputRules) => {
     'KeyframeSelector',
     choice(
       keyframeEndpoint,
-      keyframePercent
+      g.Percentage
     ),
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -4647,10 +4667,10 @@ const scssFactory = (g: ScssInputRules) => {
       { trivia: whitespace },
       sequence(
         staticPseudoArgumentAhead,
-        RelativeComplex,
+        g.RelativeComplex,
         many(sequence(
           literal(','),
-          RelativeComplex
+          g.RelativeComplex
         ))
       )
     ),
@@ -5188,6 +5208,7 @@ const scssFactory = (g: ScssInputRules) => {
     CounterStyle,
     PropertyName,
     PropertyAtRule,
+    Percentage,
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,
@@ -5215,7 +5236,10 @@ const scssFactory = (g: ScssInputRules) => {
     Ruleset,
     NestedRuleset,
     rw: whitespace,
-    whitespace
+    whitespace,
+    nestedBody,
+    QueryValue,
+    AtRootContinuation
   };
 };
 
