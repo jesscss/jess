@@ -2313,6 +2313,24 @@ describe('public Less parse()', () => {
     }
 
     /*
+     * The nth-name boundary must span the FULL ident-continue set of
+     * css-syntax-3 §4.3.11, which admits every code point >= U+0080. A boundary
+     * narrower than that succeeds on `:nth-childé`, which reclassifies a plain
+     * identifier as an nth name, excludes it from the keyword-pseudo arm and
+     * then rejects it for lacking an immediate `(` — turning valid CSS into a
+     * parse error. These are ordinary pseudos that merely share an nth prefix.
+     */
+    for (const source of [
+      '.card:nth-childé(2n) { color: red; }',
+      '.card:nth-child中(2n) { color: red; }',
+      '.card:nth-of-typeé(2n) { color: red; }',
+      '.card:nth-last-childé(2n) { color: red; }',
+      '.card:nth-childé { color: red; }'
+    ]) {
+      expect(() => parse(source), source).not.toThrow();
+    }
+
+    /*
      * An `@{…}` argument is structural in Less too, so it round-trips as one
      * interpolation-backed selector token rather than being rejected.
      */

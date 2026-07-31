@@ -31,7 +31,7 @@ const nthTypeNameWithArg = regex(/nth-(?:last-)?of-type(?=\()/i);
  * pseudo — it must reach the structured nth arms with an immediate `(` or be
  * rejected. This is the shared form of the former Less-specific nth-name boundary.
  */
-const nthNameBoundary = regex(/nth-(?:last-)?(?:child|of-type)(?![-_a-zA-Z0-9-\uFFFF])/i);
+const nthNameBoundary = regex(/nth-(?:last-)?(?:child|of-type)(?![-_a-zA-Z0-9\u0080-\uFFFF])/i);
 
 /**
  * The selector-argument functional pseudos (`:is`/`:where`/`:not`/`:has`/

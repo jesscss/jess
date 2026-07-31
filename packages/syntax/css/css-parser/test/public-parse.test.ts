@@ -149,6 +149,35 @@ describe('public CSS parse()', () => {
     });
   });
 
+  it('accepts non-ASCII idents that merely share an nth prefix', () => {
+    /*
+     * The nth-name boundary must span the FULL ident-continue set of
+     * css-syntax-3 §4.3.11, which admits every code point >= U+0080. A boundary
+     * narrower than that succeeds on `:nth-childé`, reclassifying a plain
+     * identifier as an nth name and excluding it from the keyword-pseudo arm —
+     * turning valid CSS into a parse error.
+     */
+    for (const source of [
+      ':nth-childé { color: red; }',
+      ':nth-child中 { color: red; }',
+      ':nth-of-typeé { color: red; }',
+      ':nth-last-childé { color: red; }',
+      ':nth-childé(2n) { color: red; }'
+    ]) {
+      expect(() => parse(source), source).not.toThrow();
+    }
+
+    /* A paren-less REAL nth name is still rejected. */
+    for (const source of [
+      ':nth-child { color: red; }',
+      ':nth-of-type { color: red; }',
+      ':nth-last-child { color: red; }',
+      ':nth-last-of-type { color: red; }'
+    ]) {
+      expect(() => parse(source), source).toThrow(SyntaxError);
+    }
+  });
+
   it('accepts a comment at the qualified-selector to block boundary', () => {
     expect(parse('a/**/{ color: red; }')).toMatchObject({
       type: 'Stylesheet',
