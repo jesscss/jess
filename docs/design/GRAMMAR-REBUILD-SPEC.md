@@ -92,10 +92,30 @@ and 0.40.0 adds `node(..., { project: index })` for simple semantic projection
 without hiding CST ownership. Current package-local resolution checks report
 `0.43.0` from `/Users/matthew/git/oss/jess/node_modules/.pnpm/parseman@0.43.0/node_modules/parseman`.
 Macro
-probing has one important authoring boundary:
-`makeWord(...)` aliases declared inside a `rules(...)` factory lower cleanly, but
-module-scope word-factory aliases do not; keep shared recognition modules on
-direct `word(...)` / `keywords(...)` until that Parseman surface improves.
+probing has one important authoring boundary, and it is **not** about where the
+alias is declared. Measured against parseman `0.46.0`
+(`lane/macro-lowering-defects`), module scope and inside a `rules(...)` factory
+behave identically in every case below; the earlier note claiming module-scope
+word-factory aliases do not lower was wrong, and cost at least two authors a
+working `dispatch(...)` they did not need to cut.
+
+What the macro can lower is decided by **what the callee is**, not by its scope:
+
+| Alias shape | Lowers? |
+| --- | --- |
+| `const kw = makeWord(boundary?, opts?)`, then `kw('url')` | yes, either scope |
+| `const ci = makeWhen(opts?)`, then `ci(key, parser)` | yes, either scope |
+| `const ident = regex(/[a-z]+/)` — a plain combinator const | yes, either scope |
+| `const ci = (k, p) => when(k, p, opts)` — a user-defined function | **no**, either scope |
+| `const w2 = word` — a bare re-binding of an imported constructor | **no**, either scope |
+
+The rule: a call lowers when its callee is a parseman constructor **named
+directly**, or a binding produced by `makeWord(...)` / `makeWhen(...)`. The macro
+does not call user-defined functions and does not follow a constructor through a
+plain `const` re-binding, so both of those fall back to the interpreter with
+`rules(...) factory isn't statically evaluable`. Reach for `makeWord(...)` /
+`makeWhen(...)` — they exist precisely to be the lowerable form of an alias — and
+keep anything else on direct `word(...)` / `keywords(...)` / `when(...)`.
 
 **The physical four-grammar collapse is complete.** CSS, Less, SCSS, and Jess
 now ship AST and CST from one host-mode grammar source per dialect:
