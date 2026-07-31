@@ -268,6 +268,53 @@ describe('Jess parser plugin render-through', () => {
     });
   });
 
+  /**
+   * `.jess` arithmetic and the DELIBERATE absence of a global builtin namespace
+   * are two halves of one ruling (DESIGN-DECISIONS P17), and they are pinned
+   * together on purpose: the obvious way to make the first pass is to register
+   * a Less/Sass registry, which would silently break the second.
+   */
+  describe('value evaluation', () => {
+    const render = async (source: string): Promise<string> =>
+      String(await new Compiler().renderString(source, {
+        filePath: 'entry.jess',
+        extension: '.jess',
+        functionMode: 'error'
+      }));
+
+    it('evaluates arithmetic in the `$( … )` expression form', async () => {
+      // P13(d): `$( … )` is the ONLY arithmetic spelling in `.jess`.
+      await expect(render('a { b: $(1 + 2); }')).resolves.toContain('b: 3;');
+      await expect(render('$x: $(2 * 3px);\na { b: $x; }')).resolves.toContain('b: 6px;');
+      await expect(render('$x: $(10px / 2);\na { b: $x; }')).resolves.toContain('b: 5px;');
+      await expect(render('$a: 2;\n$b: 3;\nd { e: $($a + $b); }')).resolves.toContain('e: 5;');
+    });
+
+    it('rejects an infix operator outside an expression, and leaves CSS alone', async () => {
+      // Owner: `1 + 2` outside an expression "shouldn't even parse".
+      await expect(render('a { b: 1 + 2; }')).rejects.toThrow();
+      await expect(render('a { b: 1 * 2; }')).rejects.toThrow();
+
+      // …while plain CSS that merely LOOKS operator-ish keeps working.
+      await expect(render('a { b: 1 2; }')).resolves.toContain('b: 1 2;');
+      await expect(render('a { grid-area: 1 / 3; }')).resolves.toContain('grid-area: 1 / 3;');
+      await expect(render('a:nth-child(2n+1) { b: c; }')).resolves.toContain('2n+1');
+      await expect(render('a { transform: translate(+5px); }')).resolves.toContain('translate(+5px)');
+    });
+
+    it('serves NO ambient global builtin namespace', async () => {
+      /*
+       * Not a gap. `.jess` functions arrive via `@-use`/`@-compose` or as a
+       * stylesheet-defined lambda; an unimported name is an unknown CSS
+       * function and is emitted verbatim, exactly as `unknownfn(1)` would be.
+       * A Less/Sass registry wired in here would turn these into values.
+       */
+      await expect(render('a { b: ceil(1.4); }')).resolves.toContain('b: ceil(1.4);');
+      await expect(render('a { b: percentage(0.5); }')).resolves.toContain('b: percentage(0.5);');
+      await expect(render('a { b: unit(10px); }')).resolves.toContain('b: unit(10px);');
+    });
+  });
+
   it('loads a `.jess` entry file through Context plugin resolution', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-plugin-jess-'));
     const entry = path.join(directory, 'entry.jess');

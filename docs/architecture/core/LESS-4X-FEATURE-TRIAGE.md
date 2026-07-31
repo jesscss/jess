@@ -490,7 +490,7 @@ tests themselves name the fix for. Nothing here belongs in §3 or §4.
 
 | Root cause | Failures | Class | Evidence |
 | --- | --- | --- | --- |
-| **RC-1 — the `.jess` dialect registers no value evaluator at all.** `JessPlugin` never calls `context.registerValueEvaluator(…)`; both sibling plugins do. Every typed leaf degrades to a bare `Keyword` and every call is preserved verbatim, so `.jess` has no arithmetic and no builtins. | **18** (all 16 `min-max-dialect`, 3 of the 5 `jess-render`) | BUG | missing call: `packages/syntax/jess/jess-plugin-jess/src/index.ts:26-39`; present at `packages/syntax/less/jess-plugin-less/src/index.ts:414` and `packages/syntax/scss/jess-plugin-scss/src/index.ts:71`. `registerValueEvaluator` is recent (`d32f6622d`) — the per-dialect-registry refactor wired Less and Sass and left `.jess` behind. Degradation sites `packages/core/src/ast/serialize.ts:2461,2483,4365,4503`. Direct check: `.jess` `$(1px + 2px)` → `1px + 2px`; `.less` `1px + 2px` → `3px`. Every one of the 16 min-max assertion messages names `.jess`; `.less` and `.scss` pass all 24. |
+| **RC-1 — the `.jess` dialect registers no value evaluator at all** (**CLOSED; the count and the classification below are both superseded — see the correction under this table**). `JessPlugin` never calls `context.registerValueEvaluator(…)`; both sibling plugins do. Every typed leaf degrades to a bare `Keyword` and every call is preserved verbatim, so `.jess` has no arithmetic and no builtins. | ~~**18**~~ → **3** measured (`jess-render` only; the 16 `min-max-dialect` are stale expectations, not this bug) | BUG (arithmetic half only) | missing call: `packages/syntax/jess/jess-plugin-jess/src/index.ts:26-39`; present at `packages/syntax/less/jess-plugin-less/src/index.ts:414` and `packages/syntax/scss/jess-plugin-scss/src/index.ts:71`. `registerValueEvaluator` is recent (`d32f6622d`) — the per-dialect-registry refactor wired Less and Sass and left `.jess` behind. Degradation sites `packages/core/src/ast/serialize.ts:2461,2483,4365,4503`. Direct check: `.jess` `$(1px + 2px)` → `1px + 2px`; `.less` `1px + 2px` → `3px`. Every one of the 16 min-max assertion messages names `.jess`; `.less` and `.scss` pass all 24. |
 | **RC-2 — body-form `&:extend()` keeps only the first branch of a comma-list rule.** `ExtendStatement` reduces to the same `{target, partial}` shape the inline-extend predicate tests for, so the body form is filed as a first-branch extend and stamped with `selector[0]` where it must carry the whole rule selector. | **2** | BUG | `packages/syntax/less/less-parser/src/grammar.ts:5872-5878`, predicate `:1678`, routing `:6065-6075`, stamp `:6128-6133`. Repro: `.foo{display:none} .a, .b { &:extend(.foo all); }` → `.foo, .a` — `.b` dropped. Hits `tests-unit/extend/extend.less:26-30` in two harnesses. |
 | **RC-3 — a detached-ruleset body rejects leading-combinator nested rules.** The `ValueBlock` body uses the absolute selector-list production; the ordinary nested body uses the relative one, which admits `>`/`+`/`~`. | **1** | BUG | `.../less-parser/src/grammar.ts:4316-4321` vs `:4293`, relative form `:5928`. Repro: `@r: { ~ .a { x: 1 } }` fails, `@r: { & ~ .a { x: 1 } }` and `.z { ~ .a { x: 1 } }` both pass. Breaks `bootstrap-less-port/less/mixins/_forms.less:88-91`. |
 | **RC-4 — `${…}` is absent from the Jess value-atom set.** It works in selectors, `url()`, quoted strings, custom-property names and media preludes, but not in a plain value or a statement at-rule prelude. | **1** | BUG | `packages/syntax/jess/jess-parser/src/grammar.ts:3288-3299` is `choice(Expression, DollarInterp)` — `DollarBrace` (defined `:1533`) is missing; consumed at `:3331`. |
@@ -499,13 +499,36 @@ tests themselves name the fix for. Nothing here belongs in §3 or §4.
 | **`JessError` no longer extends `Error`** — `toBeInstanceOf(Error)` is stale; the change was deliberate (skip stack capture). | **1** | stale expectation | `packages/core/src/error/jess-error.ts:78`; failing line `test/diagnostics.test.ts:432`. **Carries an owner question:** `renderString` now rejects with a non-`Error`, and that perf decision was taken in `lint`'s context, not the public API's. |
 | **`quote`/`unquote` now register** — the guard asserting Sass's "still-unconverted globals register nothing" is a placeholder that reality overtook. | **1** | stale expectation | `packages/fns/src/sass/index.ts:88-89`, real bodies in `packages/fns/src/sass/string/quote.ts`; delete `test/dialect-builtins.test.ts:81-82` |
 
-RC-1 is one line of wiring with 18 failures behind it. RC-2 and RC-3 are both in
-the Less parser's ruleset-body/extend classification and are plausibly one work
-item.
+> **RC-1 CORRECTED AND CLOSED — the "18 behind one line" figure was wrong, and
+> the fix is NOT a Less/Sass registry.** Owner ruling 2026-07-30, recorded as
+> `DESIGN-DECISIONS.md` **P17**: `.jess` has **no ambient global builtin
+> namespace by design** — functions arrive through `@-use`/`@-compose` or as a
+> stylesheet-defined lambda. Only the ARITHMETIC half was a bug, and its
+> spelling is the `$( … )` expression form (P13(d)), never bare `1 + 2`.
+>
+> The fix landed is `buildEvaluator(createFnRegistry())` — an evaluator over an
+> **EMPTY** table — in `packages/syntax/jess/jess-plugin-jess/src/index.ts`. It
+> restores `operate`/`materialize`/`compare`/`typeCheck` (the `!e.ev` fallback
+> at `packages/core/src/ast/serialize.ts:3191` was re-emitting operand bytes)
+> while leaving unknown-call output byte-identical.
+>
+> **Measured, not predicted.** Ratchet at `ecb5a4f01`: **28 NEW** before,
+> **27 NEW** after. Exactly **3** entries flipped, all in `jess-render.test.ts`
+> (`$for` bindings, stylesheet-defined functions, function-as-a-value) — the
+> three that needed arithmetic. The **16 `min-max-dialect` entries did NOT flip
+> and must not**: they assert `.jess` serves the *Less* builtin set
+> (`packages/jess/test/min-max-dialect.test.ts:81-82`, "`.jess` has no dialect
+> fns of its own yet and takes the Less set"), which P17 rules is the wrong
+> language model. **Reclassify all 16 from BUG to stale expectation.** The
+> remaining 2 `jess-render` entries were never RC-1's: they are the `$extend &`
+> policy row and the RC-4 `${…}` row already listed separately.
+>
+> The "Open, not decided here" question below — `makeLessRegistry()` vs a
+> `jessFns` index — is therefore **answered: neither.** Do not create
+> `packages/fns/src/jess/`.
 
-**Open, not decided here:** whether RC-1's fix is `makeLessRegistry()` (what the
-min-max test header prescribes as the stopgap — `test/min-max-dialect.test.ts:13-15`)
-or a real `jessFns` index. There is no `packages/fns/src/jess/` today. Owner call.
+RC-2 and RC-3 are both in the Less parser's ruleset-body/extend classification
+and are plausibly one work item.
 
 ### The baseline edit
 
