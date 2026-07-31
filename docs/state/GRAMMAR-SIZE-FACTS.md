@@ -1364,7 +1364,14 @@ by-const cycle is unbounded inlining — the macro would not terminate. So
 by the build succeeding, and cannot be a lever.
 
 **The real variable is closure bytes under each inlined const**, which is a DAG
-path-multiplicity problem, not a cycle problem. less's top entries:
+path-multiplicity problem, not a cycle problem.
+
+> **The table below is SUPERSEDED by §2.14.** It sums `(refs − 1) ×
+> closureBytes` per const, which double-counts shared sub-closures and
+> mis-ranks the file — `blockBody` is not the top entry, and the hot/safe split
+> it implies is wrong. Kept only so the correction is traceable. **Use §2.14.**
+
+less's top entries under that superseded linear model:
 
 | refs | closure nodes | closure B | est. dup source | name |
 | ---: | ---: | ---: | ---: | --- |
@@ -1526,6 +1533,64 @@ name to hide a structural difference. It does **not** forbid the incumbent's
 existing collapses, which are part of the target and must be reproduced.
 
 ---
+
+### 2.14 The copy-count model — how to price by-const inlining, and the corrected less split
+
+**Summing `(refs − 1) × closureBytes` per const DOUBLE-COUNTS** shared
+sub-closures: in less, `selectorBranch`'s closure of 18 consts *contains*
+`SelectorBranch`'s closure of 16. That linear estimate gave 92,567 B for less
+and mis-ranked the table.
+
+The exact model, which does not double-count:
+
+```
+copies(X) = (X named or in the rules map ? 1 : 0)
+          + sum over referrers R of copies(R) × timesXAppearsIn(R)
+duplicated(X) = (copies(X) − 1) × ownBytes(X)
+```
+
+Computed to fixpoint over the by-const edge graph (a DAG, per the structural
+fact above). This is `GRAMMAR-SIZE-FACTS` §2.1's base × F^depth evaluated
+exactly rather than approximated.
+
+**less, at `35140e615`, filters 1–6 applied:**
+
+| quantity | value |
+| --- | ---: |
+| factory source | 160,555 B |
+| **exact duplicated source** | **98,795 B — 61.5% of the factory** |
+| of which the statement-dispatch cluster | 33,245 B (33.7%) |
+| **safe subtotal (statement path excluded)** | **65,550 B (66.3%)** |
+
+The statement-dispatch cluster is `blockBody`, `blockItem`, `rulesetBody`,
+`atRuleBlockBody` **and their arms** — `atStatement`, `mixinStatement`,
+`declarationItem`, `nestedGuardedRuleset`, `guardedRuleset`,
+`punctuationMapDeclarationItem`, `rootDeclarationItem`,
+`UnsupportedDashOnlyMixin`, `rulesetNotDeclaration`, `declarationEnd`,
+`stylesheetEnd`. Counting only the four container consts understates the hot
+share as 4%; counting the arms gives the correct 33.7%. This is the cluster
+measured at **+5.5%/+6.2% on bootstrap-port** (`scratchpad/blockitem.patch`,
+held for the owner).
+
+**Largest safe cluster: the pseudo-selector routing family, ~31,184 B**
+(`interpolatedArgumentPseudoRouted` 16 copies/7,830 B, `extendPseudoNameOpen`
+10/6,588, `pseudo` 8/4,886, `pseudoSelectorArgument` 9/3,888,
+`staticNonSelectorPseudoRouted` 9/2,144, `pseudoSelectorRouted` 9/1,952,
+`pseudoOpen` 9/1,600, `staticBarePseudoRouted` 9/1,296). ~32% of all
+duplication in the file. **Its parse cost is UNMEASURED** — pseudo selectors
+are parsed per selector, hotter than the query preludes proven safe at
+`35140e615` but colder than per-statement. It needs its own A/B before anyone
+treats the 31 KB as banked.
+
+**Filter 5 vindicated `SelectorBranch` rather than removing it.** It was
+flagged as a suspected type-position false positive; applying filter 5 left it
+in place, because its 2 references are genuine combinator uses —
+`choice(SelectorBranch, DynamicSelectorBranch)` and `choice(SelectorBranch,
+node(…))`. Its type-annotation uses all sit in the `LessRules` interface and
+module-scope helpers, which the factory slice (filter 1) already excludes.
+Filter 5's real effect on less was **H2 5 → 0**: `MixinGuard` and
+`Interpolation` were the only true positives it removed, and both were pure
+annotation artifacts. **less's H2 count is 0.** — less lane
 
 ## 3. SINGLE-SOURCE — act on, but label as provisional
 - **`GRAMMAR-REBUILD-SPEC §0.2` is wrong**: it states that aliases declared
