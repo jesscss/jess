@@ -191,7 +191,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/import/import.less',
-    '@jesscss/plugin-js now auto-wires and the @plugin pi() script executes; remaining gap is @import media-query handling and @media query merging'
+    '@import option keywords no longer leak into output and a media tail now wraps the loaded document in @media; remaining gap is import hoisting — Less resolves every @import before evaluating, so `.mixin()` at line 12 sees a definition from the file imported at line 18, while jess evaluates in source order and reports resolve/name-not-found'
   ],
   [
     'tests-unit/urls/urls.less',

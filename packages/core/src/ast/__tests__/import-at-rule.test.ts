@@ -445,18 +445,50 @@ describe('ImportAtRule', () => {
     });
   });
 
-  it('keeps optional imports off Context resolution', async () => {
-    const context = new Context({}, [{
-      name: 'must-not-resolve',
-      resolve: () => {
-        throw new Error('optional import should not resolve');
-      }
-    }]);
+  it('drops an optional import whose file cannot be located', async () => {
+    /*
+     * `(optional)` selects what happens when the load FAILS, so the import is
+     * still attempted. A missing file then contributes nothing at all — not a
+     * diagnostic, and not a `@import (optional) …` CSS terminal, which no
+     * browser understands. Matches Less 4.x.
+     */
+    const context = new Context({}, [{ name: 'never-locates', locate: () => null }]);
     const document = stylesheet([
-      importAtRule('@import', quoted('"missing.less"', 'missing.less', '"', false), list([keyword('optional')], ','))
+      importAtRule('@import', quoted('"missing.less"', 'missing.less', '"', false), list([keyword('optional')], ',')),
+      rule('.x', [decl('color', keyword('red'))])
     ]);
 
-    await expect(serialize(document, { context })).resolves.toEqual({ css: '@import (optional) "missing.less";\n' });
+    await expect(serialize(document, { context })).resolves.toEqual({ css: '.x {\n  color: red;\n}\n' });
+  });
+
+  it('resolves an optional import normally when the file exists', async () => {
+    const imported = stylesheet([rule('.a', [decl('color', keyword('red'))])]);
+    const document = stylesheet([
+      importAtRule('@import', quoted('"present.less"', 'present.less', '"', false), list([keyword('optional')], ','))
+    ]);
+
+    await expect(Promise.resolve(serialize(document, {
+      importDocument: ({ specifier }) => specifier === 'present.less' ? { document: imported } : undefined
+    }))).resolves.toEqual({ css: '.a {\n  color: red;\n}\n' });
+  });
+
+  it('never writes the option clause into a CSS-terminal import', () => {
+    /*
+     * `(css)` forces the CSS terminal, and the option list is import machinery
+     * with no CSS meaning: `@import (css) "a";` is not something a browser
+     * parses. The tail is real CSS syntax and stays.
+     */
+    const document = stylesheet([
+      importAtRule(
+        '@import',
+        quoted('"theme"', 'theme', '"', false),
+        list([keyword('css')], ','),
+        null,
+        any('screen')
+      )
+    ]);
+
+    expect(serialize(document)).toEqual({ css: '@import "theme" screen;\n' });
   });
 
   it('keeps imported loop extend placements isolated per concrete iteration', async () => {
@@ -585,8 +617,13 @@ describe('ImportAtRule', () => {
       )
     ]);
 
+    /*
+     * The option list stays a structured AST fact but is consumed by the import
+     * machinery, never serialized — only the interpolated target, the alias and
+     * the tail are syntax.
+     */
     expect(serialize(document)).toEqual({
-      css: '@-export (less, reference) url("themes/night.less") as tokens screen and (min-width: 40rem);\n'
+      css: '@-export url("themes/night.less") as tokens screen and (min-width: 40rem);\n'
     });
   });
 
