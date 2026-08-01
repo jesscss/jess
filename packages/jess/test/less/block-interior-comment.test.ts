@@ -8,26 +8,27 @@
  *
  * Found while scoping the SCSS trivia-table fix (G27).
  *
- * IMPORTANT — the stage matters, and an earlier version of this header got it
- * wrong. The comment is NOT lost by the parser and NOT lost by the serializer.
- * `parse()` + `serialize()` on this exact input reproduces it in position:
+ * IMPORTANT — the stage matters, and two earlier versions of this header got
+ * it wrong by measuring through the compiler without isolating. The comment is
+ * not lost by the parser, not lost by eval, and not lost for want of a
+ * TriviaMap. It is lost because the block-comment trivia replay exists only on
+ * the COLLAPSED-nesting emit path. One-flag bisect, same parsed document:
  *
- *   parse+serialize  'a { b: c; /* z *\/ d: e; }'  ->  comment kept, in place
- *   full compiler    same input                    ->  comment DROPPED
+ *   serialize(doc)                          -> comment KEPT, in place
+ *   serialize(doc, {collapseNesting: true}) -> comment KEPT, in place
+ *   serialize(doc, {collapseNesting: false})-> comment DROPPED
  *
- * So the loss is in EVALUATION. The parser tags a `TriviaMap` on the root, and
- * `withDocumentTrivia` (core `serialize.ts`) reads it back with
- * `triviaMapOf(document)` — but eval returns a NEW `Stylesheet` without the
- * tag, so serialization runs with no trivia at all. The documented fallback
- * `context.opts.trivia` is dead too: nothing in the repo assigns it. See G28.
+ * The compiler passes `collapseNesting: … ?? false`, which is the Less v5
+ * default, so every real render takes the emitter that has no replay.
  *
  * These tests therefore run through the COMPILER deliberately. A parser-level
- * test would pass today and watch nothing.
+ * test, or a serialize() call without the flag, passes today and watches
+ * nothing. See G28.
  *
  * lessc 4.x keeps both forms below, so they are top-level oracle divergences.
- * dart-sass keeps them as well, and jess-SCSS keeps them only because SCSS is
- * the one dialect that still models a block comment as a statement NODE — the
- * model the owner ruled against, and G27's blocker.
+ * dart-sass keeps them too, and jess-SCSS keeps them only because SCSS still
+ * models a block comment as a statement NODE -- the model the owner ruled
+ * against, and G27's blocker.
  *
  * PINNED DEFECT
  * -------------
