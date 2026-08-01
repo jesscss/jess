@@ -2621,7 +2621,28 @@ const cssFactory = (g: GrammarSelf) => {
         optional(g.Important)
       )
     ),
-    (children) => {
+
+    /*
+     * The span is what BOUNDS a declaration inside its owner's body. The
+     * renderer replays body trivia by advancing a cursor to each statement's
+     * END, so a declaration with no span leaves the cursor parked at the body
+     * start: every comment authored in the body then falls out of the closing
+     * flush in one clump at the `}` instead of at the position it was written.
+     * Less has carried this span from the start (`StandardDeclaration`), which
+     * is why Less alone renders these in place; css, scss and jess did not.
+     *
+     * The production deliberately does NOT include the statement `;` — Less's
+     * does not either, and an end past the semicolon turns a following comment
+     * into an INLINE trailing comment, which splices it before the `;`.
+     *
+     * The CUSTOM-PROPERTY arm is deliberately left unspanned, exactly as Less
+     * leaves its own `CustomDeclaration` unspanned. A custom-property value is
+     * retained as authored bytes, so a comment inside it is already part of the
+     * value; spanning the declaration additionally claims the run that FOLLOWS
+     * the value, and `a{--var:/* 1 *\/}` renders `--var: /* 1 *\/;` instead of
+     * keeping the comment as a body comment the way all four dialects do today.
+     */
+    (children, _fields, span) => {
       const name = tokenText(children[0]);
       if (name.startsWith('--')) {
         const value = children.find((child): child is ValueNode => isNodeType(
@@ -2642,12 +2663,12 @@ const cssFactory = (g: GrammarSelf) => {
       if (value === undefined) {
         throw new Error('Declaration requires a structured value');
       }
-      return decl(
+      return withSourceSpan(decl(
         name,
         Array.isArray(value) ? value : valueSlot(value),
         null,
         children.includes(true)
-      );
+      ), span);
     }
   );
 
