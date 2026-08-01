@@ -397,7 +397,7 @@ must take the TRUE branch. That is where JavaScript is wrong for this domain
 #### 4.4.1 Specified as a desugaring, implemented as one predicate
 
 ```jess
-$if($x)  ≡  $if($x != false and $x != null and $x != "" and $x != ())
+$if($x)  ≡  $if(not($x == false or $x == null or $x == "" or $x == ()))
 ```
 
 The desugaring is the DEFINITION — visible in the language, teachable, and one
@@ -415,7 +415,7 @@ everywhere else.
 
 ```
 .less   when (@x)   ->   $if($x == true)
-.scss   @if $x      ->   $if($x != false and $x != null)
+.scss   @if $x      ->   $if(not($x == false or $x == null))
 ```
 
 Both are writable `.jess`, which is the hard requirement: `.less` and `.scss`
@@ -423,19 +423,34 @@ must go {lang} -> `.css` AND {lang} -> `.jess` -> `.css`. A lowering that needs
 an internal node or a core-only predicate has no `.jess` representation and is
 therefore not a lowering.
 
-**`==` / `!=` are load-bearing, and each lowering breaks differently with the
-loose operator:**
+**`==` is load-bearing, and each lowering breaks differently with the loose
+operator.** Note this is an argument for `==` ONLY — `not(...)` covers negation,
+so `!=` is not required (§4.4.5):
 
-| lowering | with `==` / `!=` | with `=` |
+| lowering | with `==` | with `=` |
 | --- | --- | --- |
 | `.less` `$if($x == true)` | correct | `"true" = true` → string ground → **true**, but Less says `"true"` is falsy |
-| `.scss` `$if($x != false and $x != null)` | correct | `0 = null` → numeric ground → equal, so `0` comes out **falsy**; Sass says truthy |
+| `.scss` `$if(not($x == false or $x == null))` | correct | `0 = null` → numeric ground → equal, so `0` comes out **falsy**; Sass says truthy |
 | `.jess` `$if($x)` | correct | same `0 = null` break |
 
 `=`'s grounds are deliberately generous (§4.1); "is this literally that value" is
-the type-strict question. **This is why `.jess` needs `!=` as well as `==`** —
-Sass has both, and the pair is what keeps every lowering readable instead of a
-`not( … or … )` knot.
+the type-strict question.
+
+#### 4.4.5 `!=` is NOT required — deferred
+
+An earlier revision of this document claimed the type-strict PAIR was
+load-bearing. That was wrong, and the correction matters because it would have
+bought grammar surface for nothing.
+
+`not($x == y)` is unconditionally equivalent to `$x != y` here: `==` yields a
+`Bool`, and an incomparable pair already collapses to `false`, so there is no
+three-valued case where they could diverge. All three lowerings above are written
+with `not(...)` and need no `!=`.
+
+`!=` remains defensible as pure ergonomics — Sass has it, and `$x != null` reads
+better than `not($x == null)` — but it is redundant, and `!` in that position
+wants checking against `!important` before it is spent. **Deferred**; it is
+additive and breaks nothing if it earns its place later.
 
 #### 4.4.3 `=` is NOT overloaded with falsiness
 
@@ -839,19 +854,18 @@ Closes most of §7.1's 22 rows on its own. Cannot move `.less`/`.scss` output,
 because in those dialects a `Condition` only reaches the value lane in the
 mis-parse case the comment describes. **That makes it the safest first cut.**
 
-### Phase 2 — add `==` and `!=` to `.jess` (unblocked)
+### Phase 2 — add `==` to `.jess` (unblocked)
 
-Three operator regexes (`grammar.ts:1456`, `:1464`, `:2012`) gain `==` and `!=`;
-the guard node carries the new comparison kind; `compare()` gains the arms.
-Additive — both are parse errors today, so nothing that parses now changes
-meaning. Touches `operator-adjacency.test.ts`'s assumptions.
+Three operator regexes (`grammar.ts:1456`, `:1464`, `:2012`) gain `==`; the guard
+node carries the new comparison kind; `compare()` gains the arm. Additive — `==`
+is a parse error today, so nothing that parses now changes meaning. Touches
+`operator-adjacency.test.ts`'s assumptions.
 
-`!=` is not optional garnish: §4.4.2 shows every lowering needs the type-strict
-pair, and `!=` is what keeps them readable rather than `not( … or … )`. Watch the
-`!` for a first-set collision with `!important` in value position.
+`!=` is NOT part of this phase — `not(...)` covers negation and the pair is
+redundant (§4.4.5).
 
-**Phases 4 and 5 both depend on this**, since the lowerings are written in terms
-of `==` / `!=`.
+**Phases 4 and 5 both depend on this**, since every lowering is written in terms
+of `==`.
 
 ### Phase 3 — relational becomes trichotomous (unblocked, §4.2)
 
