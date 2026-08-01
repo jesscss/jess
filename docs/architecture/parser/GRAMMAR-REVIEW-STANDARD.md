@@ -612,6 +612,38 @@ In that order, one conversion class at a time.
    differential. A grammar touching one surface should move neither — the
    untouched surface is the control.
 
+2b. **Prove the two sides are two things, before believing any result.**
+   Every oracle here compares a *before* artifact against an *after* artifact, and
+   the whole family of failures in this repo — a stale `lib/`, an unpinned
+   `@less/test-data` symlink, a pointer resolved from the wrong checkout — has one
+   shape: **the instrument does not error, it measures the wrong object.** A green
+   result comes back, faster than usual, and nothing looks wrong.
+
+   Two checks, and the second is the one people skip:
+
+   - **A marker present on BOTH sides** proves neither side is a stale or
+     published build. Pick something that exists only in the version under test
+     (a newly added export, a new option name) and assert a nonzero count on each
+     side. Equal counts are the pass.
+   - **A marker present on exactly ONE side** proves the sides differ by the change
+     under test. Pick a symbol the change itself introduces and assert it is absent
+     on the before side and present on the after side.
+
+   Without the second check a *vacuous* pass is indistinguishable from a real one.
+   That is not hypothetical: a parseman lane ran a four-dialect byte-identity oracle
+   that reported **0 mismatched over 7,743 pairs / 6,918 real trees**, and the two
+   builds under comparison differed only by a directory name — every emitted
+   difference was the path-derived namespace token (`_495baed4__re0` vs
+   `_3fcfd22e__re0`), +0 bytes on all eight files. The one-sided marker (0 vs 21
+   files containing the change's new symbol) is what exposed it.
+
+   Also report the **resolved realpath and version** of every dependency the
+   comparison hinges on, beside the numbers, not in a preamble. And when two builds
+   are packed for comparison, note that `pnpm pack` names the tarball from
+   `package.json` `version`: two worktrees at the same version write the **same
+   filename**, and the second silently overwrites the first. Pack into per-side
+   directories *and* assert the tarballs' checksums differ before installing either.
+
 3. **Measure before committing, every time.** Capture a named before/after
    parse benchmark for the affected dialect's built `lib/`, even when the
    change was motivated by readability, reuse, naming, or correctness rather
