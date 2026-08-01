@@ -495,30 +495,84 @@ must stay one — generalised to every operator.
 | value | an ordinary declaration value slot | none |
 | **expression value** | the five forms below | **arithmetic, comparison, logical** |
 
-#### 4.5.1 The five expression value positions
+#### 4.5.1 The expression value positions
+
+Written as the owner gave them — `[here]` marks the expression, and whether
+parens surround it is part of each form, not a uniform rule:
 
 ```jess
-$( HERE )                      // the explicit expression boundary
-$if HERE { … }                 // condition
-… when HERE { … }              // mixin guard  (parens required: `when ( … )`)
-$ > my-mixin(HERE, …)          // mixin call argument
-$my-func(HERE, …)              // function call argument
+$([here])
+$if ([here])
+$for ([here])
+when [here]
+$ > my-mixin([here], …)
+$my-func([here], …)
 ```
 
-**Implementation status, measured — the last two are INTENT, not yet reality.**
+**Parens are REQUIRED after `$if`, `$else if` and `$for`. They are NOT required
+after `when`** (owner ruling, 2026-08-01).
 
-| position | production | expression today? |
+That asymmetry is deliberate and is about which language each keyword is sourced
+from, not about the parser:
+
+- **`$if` / `$for` — the mental model is JavaScript.** `if (…) { … }` is the most
+  familiar control-flow shape a web developer has, and the parens are what
+  separate the condition from the body. Keeping them mandatory buys that
+  symmetry outright, including for `$else if`.
+- **`when` — the mental model is a CSS query prelude**, where a single bare
+  keyword is a complete condition: `@media screen`, `@media print`. A guard is a
+  trailing modifier on a signature that already ends in `)`, so `m() when (true)`
+  puts two paren groups adjacent doing unrelated jobs. `m() when $foo` reads the
+  way a guard clause should.
+
+**`when` admits a bare VALUE, not a bare COMPARISON.** This is where the CSS
+query analogy is exact — a prelude is either a bare keyword or a parenthesised
+condition, never a bare condition:
+
+```jess
+when true            OK    like `@media screen`
+when $foo            OK
+when (1 > 2)         OK    like `@media (min-width: 500px)`
+when 1 > 2           NOT VALID — no CSS analogue
+```
+
+Parens after `when` therefore remain **allowed** everywhere and **required**
+around a comparison. That also keeps every existing `.less` guard parsing, and
+`when ((a) or (b))` is still required when grouping (§4.5.2).
+
+**Mixin and function call arguments parse like the inside of `$if`'s parens** —
+full expression positions, not value positions. So a bare comparison IS valid
+there, which is the opposite of `when`:
+
+```jess
+$my-func(1 > 2, …)   OK    argument is an expression position
+when 1 > 2           NOT VALID
+```
+
+The two are not in tension: an argument is *delimited* by the call's own parens,
+so the expression needs no delimiter of its own. A `when` guard has no delimiter
+until you add one.
+
+**Implementation status, measured.** Three of six rows are behind the ruling:
+
+| position | production today | matches the ruling? |
 | --- | --- | --- |
-| `$( … )` | `ExpressionAtom` → `ExpressionCompare` → `ExpressionSum` | **yes** |
-| `$if ( … )` | `IfGuardCompare` over `ExpressionSum` (`grammar.ts:5636`) | **yes** |
-| `when ( … )` | `MixinGuard` over `ExpressionSum` (`grammar.ts:2009`) | **yes** |
-| `$ > mixin(…)` | `MixinCallArgument` → **`g.ValueTerm`** (`grammar.ts:5269`) | **no** — value position |
-| `$name(…)` | `ReferenceCall` takes **no arguments** (`grammar.ts:5333`) | **no** |
+| `$([here])` | `ExpressionAtom` → `ExpressionCompare` → `ExpressionSum` | **yes** |
+| `$if ([here])` | `IfGuardCompare` over `ExpressionSum` (`grammar.ts:5636`) | **yes** — parens already required |
+| `$for ([here])` | `For` (`grammar.ts:5600`) | **yes** — parens already required |
+| `when [here]` | `MixinDefinition` spells `literal('(')` … `literal(')')` (`grammar.ts:5358`) | **NO** — parens are mandatory; `when true` is a parse error |
+| `$ > my-mixin([here])` | `MixinCallArgument` → **`g.ValueTerm`** (`grammar.ts:5269`) | **NO** — value position |
+| `$my-func([here])` | `ReferenceCall` takes **no arguments** (`grammar.ts:5333`) | **NO** |
+
+Measured, not inferred: `when true` and `$if true` both fail with
+`Unexpected Jess syntax.`, and lessc 4.6.3 rejects `when true` with
+`expected condition` — so bare `when` is new syntax in jess, not a Less
+behaviour being preserved.
 
 `ExpressionCallArgument` (`grammar.ts:1821`) already threads `ExpressionCompare`
 into a call argument, but only for a call written INSIDE `$( … )`. Closing the
-last two rows means routing the statement-level argument productions to the same
-expression ladder.
+last two rows means routing the statement-level argument productions to that same
+ladder.
 
 #### 4.5.2 Two consequences the grammar enforces today
 
