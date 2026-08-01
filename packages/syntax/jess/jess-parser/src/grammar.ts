@@ -89,6 +89,7 @@ type JessRules = {
   UrlInterpolatedValue: Combinator<Interpolation>;
   CallComponent: Combinator<ValueSlot>;
   CallArgument: Combinator<ValueSlot>;
+  KeywordValue: Combinator<Keyword>;
   VarCall: Combinator<FunctionCall>;
   CalcValue: Combinator<ValueNode>;
   CalcParen: Combinator<ValueNode>;
@@ -3337,7 +3338,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       endsWith('('),
       GenericCall
     ),
-    otherwise(KeywordValue)
+    otherwise(g.KeywordValue)
   );
 
   /*
@@ -3834,7 +3835,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.identifierOrFunction,
     caseInsensitiveWhen('url(', HeaderUrl),
     when(endsWith('('), HeaderCall),
-    otherwise(KeywordValue)
+    otherwise(g.KeywordValue)
   );
   const HeaderValueAtom = node<ValueNode>(
     'ValueAtom',
@@ -5977,6 +5978,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     Url,
     CallComponent,
     CallArgument,
+    KeywordValue,
     VarCall,
     CalcValue,
     CalcParen,
