@@ -178,8 +178,8 @@ The **superset-violation** buckets, which are the actionable list (147 total):
 **One construct is now 75% of the whole list.** `grid template` (85) left it
 entirely at `17b675065`; `calc / math fn` is what remains, and it is a single
 defect — the base grammar reaches its math ladder only through `calc()`, so a
-math expression inside any *other* math function does not parse. Design proposal:
-[`docs/design/css-math-model.md`](../../docs/design/css-math-model.md).
+math expression inside any *other* math function does not parse. Spec and plan:
+[`docs/design/OPERATIONS.md`](../../docs/design/OPERATIONS.md) §6.
 
 `less` and `scss` still score better than `css` on that bucket precisely because
 both already route function arguments back into their own math ladder.
