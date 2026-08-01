@@ -2253,41 +2253,40 @@ const preservedSlashBoundary = leaf(
   }
 );
 /*
- * CSS rule, KEPT: `+`/`-` are ambiguous between a binary operator and a leading
- * sign, so — like CSS `calc()`, css-values-4 §10.1 — they require REAL
- * whitespace on both sides (or Less's glued-to-a-number form `1-2`). A comment
- * does not supply that whitespace, so `1/**\/-/**\/2` is still NOT math and
- * `1 -2` is still a space list whose second item is the signed dimension.
+ * `+`/`-` are ambiguous between a binary operator and a leading sign, so the
+ * operand must be SEPARATED from the operator for this to be arithmetic: `1 - 2`
+ * subtracts, `1 -2` is a space list whose second item is the signed dimension.
+ * Less additionally treats the fully glued `1-2` as arithmetic.
  *
- * What changed is only that a comment may now sit ALONGSIDE the required
- * whitespace, which is what the `*`/`/`/`%` product operators above already
- * allowed: css-syntax-3 §4 makes a comment trivia wherever whitespace is
- * trivia, so a bare whitespace run was never the right spelling for a slot that
- * already required whitespace — it is why `calc(1px /* z *\/ + 2px)` was
- * rejected outright. The pad is `comment* ws+ (comment ws*)*`, the same shape
- * the CSS grammar's calc sum pad uses, and both Less comment forms count so it
- * matches the document trivia table. The comment and whitespace arms open on
- * disjoint characters and no inner group can match empty, so the match stays
- * linear.
+ * What separates them is the DIALECT'S trivia, not a local spelling of it. This
+ * used to hand-spell the pad as `comment* ws+ (comment ws*)*`, which is a second,
+ * private definition of the trivia table inside one expression production
+ * (DESIGN-DECISIONS G24) — and it drifted from the table in a way that was
+ * visible in emitted CSS: because the pad REQUIRED a whitespace run, a comment
+ * standing alone as the separator did not count, so `1px/**\/-/**\/2px` performed
+ * no arithmetic and the comment bytes were emitted verbatim as value content.
+ * `mathTrivia` is the same `classifiedTrivia` the `*`/`/`/`%` product operators
+ * above already use, and `classifiedTrivia` is one-or-more by construction, so
+ * naming it bare (rather than under `optional()`) IS the "must be separated"
+ * assertion. css-syntax-3 §4 makes a comment trivia wherever whitespace is, so
+ * both Less comment forms now count, exactly as the document trivia table says.
  *
- * ONLY the whitespace-REQUIRING arm is widened, and that boundary is measured,
- * not stylistic. The glued arms below use `(?![0-9.])` as their proxy for "this
- * sign is not glued to a number"; a comment defeats that proxy, because in
- * `1/**\/-/**\/2` the lookahead sees `/` and not the `2` that is actually there.
- * Widening those pads made `1/**\/-/**\/2` parse as math, contradicting the rule
- * two lines up, so they keep their bare whitespace runs.
+ * The separation is required on BOTH sides, which is what keeps `1 -2` a list:
+ * there is a pad before the `-` and none after it, so this arm cannot match and
+ * the glued arms below reject it on their `(?![0-9.])` guard. That guard is why
+ * the pad may not be relaxed to one side — a comment defeats it, since in
+ * `1/**\/-2px` the lookahead sees `/` rather than the digit actually there.
  *
- * The three arms remain symmetric-ws | glued-to-number | asymmetric-reject
- * guard. The widened one is a `leaf()` for the same reason the product operators
- * above are: the leaf's value is exactly the sign, so `foldOperation` still reads
- * a flat operator stream and no CST arity moves. Folding the pad into the
- * operator terminal instead would leave the reducer recovering the sign with
- * `.trim()` from bytes that can now hold a comment's own `/` and `*` — the
- * parser handing core a value to re-parse.
+ * The three arms remain separated-both-sides | glued-to-number | asymmetric
+ * reject guard. This one is a `leaf()` for the same reason the product operators
+ * are: the leaf's value is exactly the sign, so `foldOperation` still reads a
+ * flat operator stream and no CST arity moves. Folding the pad into the operator
+ * terminal instead would leave the reducer recovering the sign with `.trim()`
+ * from bytes that can now hold a comment's own `/` and `*` — the parser handing
+ * core a value to re-parse.
  */
-const sumPadRequired = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)*[ \t\n\r\f]+(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
 const sumOperatorSpaced = leaf(
-  noTrivia(sequence(sumPadRequired, keywords(['-', '+']), sumPadRequired)),
+  noTrivia(sequence(mathTrivia, keywords(['-', '+']), mathTrivia)),
   children => children[1] as string
 );
 const sumOperatorGlued = regex(/[-+](?=[0-9.])|[ \t\n\r\f]*[-+](?![0-9.])[ \t\n\r\f]*/);

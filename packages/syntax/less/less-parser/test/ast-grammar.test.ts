@@ -1722,7 +1722,7 @@ describe('Less AST grammar facts', () => {
     expect(malformed.ok && malformed.unconsumedFrom === null).toBe(false);
   });
 
-  it('admits comments around unambiguous product operators but not sign-ambiguous +/- (CSS rule)', () => {
+  it('admits comments as operand separators for both product and sum operators', () => {
     /*
      * `*` / `%` are unambiguous — like CSS `calc()` (where `*`/`/` need no
      * whitespace) block and line comments count as separating trivia.
@@ -1765,17 +1765,29 @@ describe('Less AST grammar facts', () => {
     });
 
     /*
-     * `+` / `-` are sign-ambiguous — like CSS `calc()`, comments do NOT satisfy
-     * the required whitespace, so a comment-separated `-` is not a subtraction.
+     * `+` / `-` are sign-ambiguous, so the operand must be SEPARATED from the
+     * operator — but a comment separates. This assertion was inverted until the
+     * sum pad stopped hand-spelling its own trivia and started naming the
+     * dialect's `mathTrivia` table (DESIGN-DECISIONS G24): the old pad REQUIRED
+     * a whitespace run, so a comment standing alone as the separator did not
+     * count, `1/**\/-/**\/2` performed no arithmetic, and the comment bytes were
+     * emitted verbatim into the CSS as value content. lessc 4.x folds this to
+     * `-1px`, so the old answer was also a byte divergence from the oracle.
+     *
+     * css-syntax-3 §4 makes a comment trivia wherever whitespace is trivia, and
+     * `1 -2` is still a list — see the signed-dimension case below — because the
+     * separation is required on BOTH sides, not because comments are excluded.
      */
     const commentSum = run(
       lessGrammar.Document,
       '.m { x: 1/**/-/**/2; }',
       { trivia: lessGrammar.whitespace }
     );
-    expect(
-      JSON.stringify(commentSum.value ?? {}).includes('"operator":"-"')
-    ).toBe(false);
+    expect(commentSum.value).toMatchObject({
+      rules: [
+        { rules: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
+      ]
+    });
 
     // Real whitespace around `-` still IS a subtraction (unchanged).
     const spacedSum = run(lessGrammar.Document, '.m { x: 1 - 2; }', {
@@ -1787,12 +1799,7 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
-    /*
-     * A comment may sit ALONGSIDE the required whitespace. That is the whole of
-     * the widening: css-syntax-3 §4 makes a comment trivia wherever whitespace
-     * is trivia, and the pad already had to contain real whitespace, so nothing
-     * about the sign rule above changes.
-     */
+    /* A comment may also sit alongside whitespace in the same pad. */
     const paddedSum = run(lessGrammar.Document, '.m { x: 1 /* z */- 2; }', {
       trivia: lessGrammar.whitespace
     });
@@ -1802,7 +1809,13 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
-    /* `1 -2` stays a space list whose second item is the signed dimension. */
+    /*
+     * `1 -2` stays a space list whose second item is the signed dimension. This
+     * is the coupling the whole rule turns on, and it survives because the pad
+     * is required on BOTH sides of the operator: there is one before the `-` and
+     * none after it, so the separated arm cannot match and the glued arms reject
+     * it on their `(?![0-9.])` guard.
+     */
     const signList = run(lessGrammar.Document, '.m { x: 1 -2; }', {
       trivia: lessGrammar.whitespace
     });

@@ -59,24 +59,55 @@ describe('Less math with a comment on the operator boundary', () => {
   it.each([
     ['glued on both sides', '1px/**/-/**/2px'],
     ['spaced, with an interior comment', '1px /**/ - 2px'],
-    ['comment after the operator', '1px - /**/ 2px']
-  ])(
-    'PINNED DEFECT — a comment on the boundary silently disables the math (%s)',
-    async (_label, value) => {
-      /*
-       * lessc 4.x evaluates all three to `-1px` (relocating the comment bytes
-       * to the end of the value: `-1px /**\/`). We perform NO arithmetic and
-       * emit the source bytes verbatim, comment included. That is a top-level
-       * byte divergence from the 4.x oracle in the Less dialect, and it means
-       * comment bytes reach the CSS output as value content — a comment is
-       * trivia and must never survive into a value as content.
-       *
-       * When the adjacency conversion lands, each of these must evaluate to
-       * `-1px`; flip the expectation and drop the marker.
-       */
-      await expect(render(`.a { width: ${value}; }`)).resolves.toBe(
-        `.a { width: ${value}; }`
-      );
-    }
-  );
+    ['comment after the operator', '1px - /**/ 2px'],
+    ['comment before the operator, spaced after', '1px/**/- 2px'],
+    ['line comment as the separator', '1px //c\n- 2px'],
+    ['addition, glued on both sides', '1px/**/+/**/2px']
+  ])('treats a comment on the boundary as an operand separator (%s)', async (_label, value) => {
+    /*
+     * Pins flipped. These asserted that a comment on the boundary silently
+     * disabled the math and that the comment bytes were emitted verbatim into
+     * the CSS as value content — three top-level byte divergences from the
+     * lessc 4.x oracle, which folds all of them.
+     *
+     * The cause was the sum pad hand-spelling its own trivia as
+     * `comment* ws+ (comment ws*)*`: because it REQUIRED a whitespace run, a
+     * comment standing alone as the separator did not count. Naming the
+     * dialect's `mathTrivia` table instead (DESIGN-DECISIONS G24) removes the
+     * private definition and the divergence with it. `1px/**\/+/**\/2px` did
+     * not merely mis-evaluate, it failed to parse at all.
+     */
+    const expected = value.includes('+') ? '3px' : '-1px';
+    await expect(render(`.a { width: ${value}; }`)).resolves.toBe(
+      `.a { width: ${expected}; }`
+    );
+  });
+
+  /*
+   * Where we now DIVERGE from lessc 4.x, deliberately. lessc gives opposite
+   * answers to mirror-image inputs: `1px/**\/- 2px` folds to `-1px` but its
+   * mirror `1px -/**\/2px` stays a list. That is the same self-inconsistency
+   * class as the SCSS four-arm `sumOperator`, and reference behaviour is not
+   * intent — a separator is a separator on whichever side it appears, so we
+   * fold both (G20: equivalent inputs, equivalent artifacts).
+   */
+  it('folds the mirror form that lessc 4.x leaves unfolded', async () => {
+    await expect(render('.a { width: 1px -/**/2px; }')).resolves.toBe('.a { width: -1px; }');
+  });
+
+  /*
+   * Unchanged, and NOT fixed by this: a pad on one side with the operator glued
+   * to a number on the other. lessc folds these to `-1px`; we leave them as
+   * lists. The glued arms use `(?![0-9.])` as their proxy for "this sign is not
+   * glued to a number", and a comment defeats that proxy — in `1px/**\/-2px`
+   * the lookahead sees `/` rather than the digit that is actually there. Fixing
+   * it needs the operand's adjacency asserted directly rather than sniffed
+   * through a lookahead, which is what `notAdjacent()` is for.
+   */
+  it.each([
+    ['comment before, glued after', '1px/**/-2px'],
+    ['glued before, comment after', '1px-/**/2px']
+  ])('PINNED DEFECT — leaves a one-sided pad unfolded where lessc folds it (%s)', async (_label, value) => {
+    await expect(render(`.a { width: ${value}; }`)).resolves.toBe(`.a { width: ${value}; }`);
+  });
 });

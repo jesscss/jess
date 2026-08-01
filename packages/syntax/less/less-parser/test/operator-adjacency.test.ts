@@ -76,8 +76,21 @@ describe('Less operator adjacency', () => {
     ['both sides', 'a { b: calc(1px/**/-/**/2px) }'],
     ['left only', 'a { b: calc(1px/**/- 2px) }'],
     ['right only', 'a { b: calc(1px -/**/2px) }']
-  ])('PINNED DEFECT — rejects a comment around calc() sum (%s)', (_label, source) => {
-    rejects(source);
+  ])('accepts a comment around a calc() sum (%s)', (_label, source) => {
+    /*
+     * Pin flipped: these were PINNED DEFECT rejections until the sum pad
+     * stopped hand-spelling its own trivia and named the dialect's `mathTrivia`
+     * table instead (DESIGN-DECISIONS G24). The calc ladder reaches the same
+     * sum terminal, so fixing the operand separator fixed `calc()` with it.
+     *
+     * This realises the auto-fix half of G25 and, as ruled, it matches NEITHER
+     * oracle. For `calc(100%/**\/-/**\/10px)` we emit `calc(100% - 10px)` —
+     * valid CSS. lessc 4.x emits `calc(100%-10px /**\/ /**\/)`, which is
+     * invalid and a browser drops the declaration; dart-sass over-folds and
+     * loses the `calc()` entirely. Normalising the separator to a real space is
+     * a deliberate choice and better than both.
+     */
+    accepts(source);
   });
 
   it('accepts calc() sum with real whitespace, and the glued product forms', () => {
