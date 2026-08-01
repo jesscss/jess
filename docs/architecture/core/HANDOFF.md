@@ -337,12 +337,17 @@ direct evidence that folding them into a dispatch is not free.
    with the trap that sank each previous attempt.
 2. Furthest-failure merging — the table reports a choice's union at its own position where
    both engines report at the furthest position reached.
-3. The perf-gate waiver has **never been watched failing end to end**. Its decision logic
+3. **`css/stylesheet` showed a +23.7% median on one of five passes** in the 2026-08-01
+   quiet-box `workload-perf` run against the new `a5dc9bd` anchor (load 1.87 → 1.76).
+   The run **passed** — a workload fails only on a strict majority of breached passes,
+   and this breached 1/5 — but the null control for that workload read only +0.7%, so it
+   is not obviously instrument noise. Worth one look on a quiet machine.
+4. The perf-gate waiver has **never been watched failing end to end**. Its decision logic
    is unit-tested (26 tests, 21 proving it stays red); the wiring is not observed. By this
    repo's own standard a gate nobody has watched fail is not known to work.
-4. New SVG charts on a cold machine — the published charts were generated at **0.29.0**,
+5. New SVG charts on a cold machine — the published charts were generated at **0.29.0**,
    eighteen releases stale. Every timing in the docs now correctly states that basis.
-5. The railroad terminal-rendering fix (landed, parseman `fe32f5e`) was **demonstrated on
+6. The railroad terminal-rendering fix (landed, parseman `fe32f5e`) was **demonstrated on
    an invented toy grammar**, not on jess's. The code change is real and its counts were
    replayed over the four actual pages, but the before/after that made it look verified was
    not verified. **Re-prove it on the real four.**
