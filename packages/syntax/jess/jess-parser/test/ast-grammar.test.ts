@@ -787,38 +787,8 @@ describe('Jess AST grammar facts', () => {
       }] }]
     });
     const evaluator = buildEvaluator(makeLessRegistry());
-    expect(serialize(parse('.a { width: $(2px * (2 + 1)); height: $(2px /* nudge */ * 2); }'), { evaluator }).css).toBe(
-      '.a {\n  width: 6px;\n  height: 4px;\n}\n'
-    );
-  });
-
-  /*
-   * PINNED DEFECT
-   *
-   * A comment authored at the HEAD of a `$( … )` expression is replayed as a
-   * BODY-level comment of the enclosing ruleset instead of being suppressed
-   * with the rest of the value.
-   *
-   * This is not caused by the `$( … )` grammar and it is not caused by the
-   * ruleset body span. The body span is what makes the ruleset's interior
-   * replayable at all; the misplacement is that NOTHING claims the run, because
-   * css/scss/jess `Declaration` nodes carry no source span (only Less does), so
-   * the body trivia cursor never advances past a declaration and every
-   * unclaimed run in the body flushes at the closing brace.
-   *
-   * `calc(1px /* … *\/ + 1px)` does not reproduce it in ANY of the four
-   * dialects: that interior is not document trivia, so the run never reaches
-   * the root trivia index. `$( … )` deliberately re-enters the ambient document
-   * trivia (see `ExpressionInterpolation` in the grammar), which is what exposes
-   * the missing declaration provenance.
-   *
-   * Owned by the declaration-span/root-span convention step, not by this one.
-   * Delete this case and fold it back above when declarations carry spans.
-   */
-  it('PINNED DEFECT — replays a leading $( … ) comment as a ruleset body comment', () => {
-    const evaluator = buildEvaluator(makeLessRegistry());
-    expect(serialize(parse('.a { depth: $(/* lead */ 1px + 1px); }'), { evaluator }).css).toBe(
-      '.a {\n  depth: 2px;\n  /* lead */\n}\n'
+    expect(serialize(parse('.a { width: $(2px * (2 + 1)); height: $(2px /* nudge */ * 2); depth: $(/* lead */ 1px + 1px); }'), { evaluator }).css).toBe(
+      '.a {\n  width: 6px;\n  height: 4px;\n  depth: 2px;\n}\n'
     );
   });
 
@@ -872,9 +842,15 @@ describe('Jess AST grammar facts', () => {
       expect(rule.rules[0]).toMatchObject(
         { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' }, important: true }
       );
-      expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toContain(
-        '  color: red !important;\n'
-      );
+
+      /*
+       * A comment authored AFTER the priority marker is the declaration's
+       * inline trailing comment and is retained, byte for byte as css and Less
+       * retain it. Match the priority rather than the whole line so the one
+       * source that carries such a comment is not a separate case.
+       */
+      expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css, source)
+        .toMatch(/ {2}color: red !important[^\n]*;\n/);
     }
 
     for (const source of [

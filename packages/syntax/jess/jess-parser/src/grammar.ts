@@ -4667,17 +4667,25 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const PropertyDescriptor = node<Declaration>(
     'PropertyDescriptor',
     sequence(
-      g.Identifier,
-      literal(':'),
-      g.HeaderValue,
+
+      /* Statement span, terminator excluded — see `Declaration`. */
+      field('statement', sequence(
+        g.Identifier,
+        literal(':'),
+        g.HeaderValue
+      )),
       literal(';')
     ),
-    (children) => {
+    (children, fields) => {
       const value = children[2];
-      return decl(
+      const node = decl(
         requireToken(children[0]).value,
         Array.isArray(value) ? value : valueSlot(requireValueNode(value))
       );
+      const statement = fields?.statement;
+      return statement === undefined || Array.isArray(statement)
+        ? node
+        : withSourceSpan(node, statement.span);
     }
   );
   const PropertyAtRule = node<AtRuleBlock>(
@@ -5029,17 +5037,30 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     choice(
       g.CustomDeclaration,
       sequence(
-        choice(
-          InterpolatedProperty,
-          g.Identifier
-        ),
-        literal(':'),
-        g.Value,
-        optional(g.Important),
+
+        /*
+         * The statement `;` is OUTSIDE this field on purpose. The field span is
+         * the declaration's source span, and it has to end at the end of the
+         * VALUE: the renderer treats a comment run beginning exactly at that
+         * offset as the declaration's INLINE trailing comment, and a span that
+         * reached past the semicolon would both mis-claim that run and swallow
+         * any comment authored between the value and the `;`. Less gets the
+         * same end for free — its declaration production never contained the
+         * terminator.
+         */
+        field('statement', sequence(
+          choice(
+            InterpolatedProperty,
+            g.Identifier
+          ),
+          literal(':'),
+          g.Value,
+          optional(g.Important)
+        )),
         optional(literal(';'))
       )
     ),
-    (children) => {
+    (children, fields) => {
       /*
        * The custom-property arm is a single completed Declaration child; pass it
        * through so every body that admits a declaration admits a custom property
@@ -5049,12 +5070,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       if (children.length === 1 && isDeclaration(custom)) {
         return custom;
       }
-      return decl(
+      const node = decl(
         isToken(children[0]) ? requireToken(children[0]).value : requireInterpolation(children[0]),
         requireValueSlot(children[2]),
         null,
         children.includes(true)
       );
+      const statement = fields?.statement;
+      return statement === undefined || Array.isArray(statement)
+        ? node
+        : withSourceSpan(node, statement.span);
     }
   );
 

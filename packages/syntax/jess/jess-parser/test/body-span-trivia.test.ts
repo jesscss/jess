@@ -58,14 +58,19 @@ describe('Jess block body spans', () => {
     expect(bodySpanOf(firstBlock('.a {}'))).toEqual({ start: 4, end: 4 });
   });
 
-  /* The loss this change exists to fix: without a body span these were dropped. */
+  /*
+   * The loss this change exists to fix: without a body span these were dropped
+   * entirely. The AUTHORED position (before the declaration, not after it) is
+   * owned by the declaration source span, which landed separately; these assert
+   * the bytes css and Less emit for the same input.
+   */
   it('emits a block comment authored inside a ruleset', () => {
-    expect(css('.a {\n  /* in */\n  color: red;\n}\n')).toBe('.a {\n  color: red;\n  /* in */\n}\n');
+    expect(css('.a {\n  /* in */\n  color: red;\n}\n')).toBe('.a {\n  /* in */\n  color: red;\n}\n');
   });
 
   it('emits the inner comment of every nesting level against its own body', () => {
     expect(css('.a {\n  /* outer */\n  .b {\n    /* inner */\n    color: red;\n  }\n}\n'))
-      .toBe('.a .b {\n  color: red;\n  /* inner */\n}\n');
+      .toBe('.a .b {\n  /* inner */\n  color: red;\n}\n');
   });
 
   it('emits a block comment authored inside an otherwise empty ruleset', () => {
