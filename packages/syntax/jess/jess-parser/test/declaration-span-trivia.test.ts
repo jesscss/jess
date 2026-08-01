@@ -117,17 +117,18 @@ describe('Jess declaration source spans', () => {
   });
 
   /*
-   * Still dropped: a comment inside a SELECTOR, and a comment BETWEEN two
-   * top-level rules. Both are the same gap one rung up — a `SelectorList` and a
-   * top-level `Ruleset` carry no source span either — and both reproduce
-   * identically in `@jesscss/css-parser`. Less keeps them.
+   * The between-rules case is FIXED by the selector-list span (a `Ruleset` has
+   * no span of its own — the renderer reads `sourceStartOf(node.selector)`).
+   * A comment INSIDE the selector text is still dropped: that is the selector
+   * TERM's provenance, one level further in, and it reproduces identically in
+   * `@jesscss/css-parser`. Less keeps it.
    */
   it('PINNED DEFECT — drops a comment authored inside a selector', () => {
     expect(css('s0/*test*/,/*test*/s1{p:v}')).toBe('s0,\ns1 {\n  p: v;\n}\n');
   });
 
-  it('PINNED DEFECT — drops a comment between two top-level rules', () => {
+  it('emits a comment between two top-level rules', () => {
     expect(css('a { color: red; }\n/* between */\nb { color: blue; }\n'))
-      .toBe('a {\n  color: red;\n}\nb {\n  color: blue;\n}\n');
+      .toBe('a {\n  color: red;\n}\n/* between */\nb {\n  color: blue;\n}\n');
   });
 });

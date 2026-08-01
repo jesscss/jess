@@ -4634,14 +4634,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(atBlockStatement),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValueNode(children[1]),
       collectBlockStatements(
         children,
         3
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -4697,14 +4697,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(g.PropertyDescriptor),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireKeyword(children[1]),
       requireStatements(children.slice(
         3,
         -1
       ))
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -4763,14 +4763,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(g.KeyframeBlock),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValueNode(children[1]),
       requireStatements(children.slice(
         3,
         -1
       ))
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -5106,19 +5106,19 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(atBlockStatement),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => {
+    (children, _fields, span, rawChildren) => {
       const prelude = children[1];
       if (prelude !== null && typeof prelude !== 'string') {
         throw new TypeError('Jess scope at-rule lost its grammar-owned prelude.');
       }
-      return withBlockBody(atRuleBlock(
+      return withSourceSpan(withBlockBody(atRuleBlock(
         requireToken(children[0]).value,
         prelude === null ? null : any(prelude),
         collectBlockStatements(
           children,
           2
         )
-      ), rawChildren);
+      ), rawChildren), span);
     }
   );
   const AtRuleBlock = node<AtRuleBlock>(
@@ -5129,14 +5129,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       many(atBlockStatement),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireJessAtRuleHeader(children[0]).name,
       requireJessAtRuleHeader(children[0]).prelude,
       collectBlockStatements(
         children,
         2
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const AtRuleStatement = node<AtRuleStatement>(
     'AtRuleStatement',
@@ -5792,13 +5792,23 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     reduceSelectorTail
   );
+
+  /*
+   * A ruleset's selector list carries the STATEMENT's start offset: the
+   * renderer reads `sourceStartOf(node.selector)` for a `Ruleset`, because a
+   * `Ruleset` itself has no span of its own. Without it the root trivia cursor
+   * never advances past a rule. Spanned here rather than in the shared
+   * `reduceSelectorList`, which `PseudoSelectorList` also uses: a pseudo
+   * argument is never a `Ruleset`'s selector, so a span there would move the
+   * tree for nothing. Less draws the same line.
+   */
   const Selector = node<SelectorList>(
     'Selector',
     sequence(
       g.Complex,
       many(g.SelectorTail)
     ),
-    reduceSelectorList
+    (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)
   );
   const Apply = node<Apply>(
     'Apply',

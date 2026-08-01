@@ -3841,7 +3841,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.nestedBody,
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       null,
       statementChildren(
@@ -3851,7 +3851,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const AtRootFilter = node<AtRuleBlock>(
     'AtRootFilter',
@@ -3862,7 +3862,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.nestedBody,
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       optionalValue(children[1]),
       statementChildren(
@@ -3872,7 +3872,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -3948,7 +3948,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       optionalValue(children[1]),
       statements(
@@ -3958,7 +3958,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -3974,7 +3974,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.nestedBody,
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       optionalValue(children[1]),
       statements(
@@ -3984,7 +3984,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const ConditionalBlock = node<AtRuleBlock>(
     'ConditionalBlock',
@@ -4023,14 +4023,14 @@ const scssFactory = (g: ScssInputRules) => {
         literal('}')
       )
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValue(children[1]),
       statements(children.slice(
         3,
         -1
       ))
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const StartingStyleBlock = node<AtRuleBlock>(
     'StartingStyleBlock',
@@ -4041,14 +4041,14 @@ const scssFactory = (g: ScssInputRules) => {
       startingLayerBlockBody,
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       optionalValue(children[1]),
       statements(children.slice(
         3,
         -1
       ))
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const LayerBlock = node<AtRuleBlock>(
     'LayerBlock',
@@ -4059,14 +4059,14 @@ const scssFactory = (g: ScssInputRules) => {
       startingLayerBlockBody,
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       optionalValue(children[1]),
       statements(children.slice(
         3,
         -1
       ))
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -4099,14 +4099,14 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       optionalValue(children[1]),
       statements(children.slice(
         3,
         -1
       ))
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -4128,14 +4128,14 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       null,
       statementChildren(
         children,
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -4157,7 +4157,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       optionalValue(children[1]),
       statementChildren(
@@ -4167,7 +4167,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -4188,14 +4188,14 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       null,
       statementChildren(
         children,
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const FontFeatureValuesBlock = node<AtRuleBlock>(
     'FontFeatureValuesBlock',
@@ -4209,14 +4209,14 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       optionalValue(children[1]),
       statementChildren(children.slice(
         3,
         -1
       ))
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const NestedConditionalBlock = node<AtRuleBlock>(
     'NestedConditionalBlock',
@@ -4255,7 +4255,7 @@ const scssFactory = (g: ScssInputRules) => {
         literal('}')
       )
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValue(children[1]),
       statements(
@@ -4265,7 +4265,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const NestedStartingStyleBlock = node<AtRuleBlock>(
     'NestedStartingStyleBlock',
@@ -4276,7 +4276,7 @@ const scssFactory = (g: ScssInputRules) => {
       nestedKeyframesBody,
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       optionalValue(children[1]),
       statements(
@@ -4286,7 +4286,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const NestedLayerBlock = node<AtRuleBlock>(
     'NestedLayerBlock',
@@ -4297,7 +4297,7 @@ const scssFactory = (g: ScssInputRules) => {
       nestedKeyframesBody,
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       optionalValue(children[1]),
       statements(
@@ -4307,7 +4307,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const FontFace = node<AtRuleBlock>(
     'FontFace',
@@ -4320,7 +4320,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       '@font-face',
       null,
       statements(
@@ -4330,7 +4330,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const CounterStyle = node<AtRuleBlock>(
     'CounterStyle',
@@ -4344,7 +4344,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       '@counter-style',
       requireKeyword(children[1]),
       statements(
@@ -4354,7 +4354,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -4383,7 +4383,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       '@property',
       requireKeyword(children[1]),
       statements(
@@ -4393,7 +4393,7 @@ const scssFactory = (g: ScssInputRules) => {
         ),
         true
       )
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -4470,14 +4470,14 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal('}')
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValue(children[1]),
       statementChildren(children.slice(
         3,
         -1
       ))
-    ), rawChildren)
+    ), rawChildren), span)
   );
 
   /*
@@ -4872,6 +4872,16 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => children.find(isSelectorBranch)!
   );
+
+  /*
+   * A ruleset's selector list carries the STATEMENT's start offset: the
+   * renderer reads `sourceStartOf(node.selector)` for a `Ruleset`, because a
+   * `Ruleset` itself has no span of its own. Without it the root trivia cursor
+   * never advances past a rule. Less spans exactly its two ruleset selector
+   * productions and leaves its pseudo-argument selector list unspanned; the
+   * pseudo-argument list here is left alone for the same reason — it is never a
+   * `Ruleset`'s selector, so a span there would move the tree for nothing.
+   */
   const Selector = node<SelectorList>(
     'Selector',
     sequence(
@@ -4882,7 +4892,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.Complex,
       many(g.SelectorTail)
     ),
-    children => selist(...children.filter(isSelectorBranch))
+    (children, _fields, span) => withSourceSpan(selist(...children.filter(isSelectorBranch)), span)
   );
   const NestedSelectorTail = node<SelectorBranch>(
     'NestedSelectorTail',
@@ -4902,7 +4912,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.RelativeComplex,
       many(g.NestedSelectorTail)
     ),
-    children => selist(...children.filter(isSelectorBranch))
+    (children, _fields, span) => withSourceSpan(selist(...children.filter(isSelectorBranch)), span)
   );
 
   /*

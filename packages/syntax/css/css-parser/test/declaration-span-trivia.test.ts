@@ -105,12 +105,12 @@ describe('CSS declaration source spans', () => {
   });
 
   /*
-   * A comment BETWEEN two top-level rules is still dropped, for the same reason
-   * one rung up: a top-level `Ruleset` carries no source span either, so the
-   * root trivia cursor never advances past it. Less keeps these.
+   * Fixed by the SELECTOR list span (a `Ruleset` has no span of its own — the
+   * renderer reads `sourceStartOf(node.selector)` for one). See
+   * `selector-span-trivia.test.ts` for the rest of that family.
    */
-  it('PINNED DEFECT — drops a comment between two top-level rules', () => {
+  it('emits a comment between two top-level rules', () => {
     expect(css('a { color: red; }\n/* between */\nb { color: blue; }\n'))
-      .toBe('a {\n  color: red;\n}\nb {\n  color: blue;\n}\n');
+      .toBe('a {\n  color: red;\n}\n/* between */\nb {\n  color: blue;\n}\n');
   });
 });

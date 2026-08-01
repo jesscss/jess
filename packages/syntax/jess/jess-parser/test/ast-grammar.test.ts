@@ -1019,7 +1019,15 @@ describe('Jess AST grammar facts', () => {
       const ordinary = run(jessGrammar.Selector, source, { trivia: jessGrammar.whitespace });
       expect(captured.ok && captured.unconsumedFrom === null, source).toBe(true);
       expect(ordinary.ok && ordinary.unconsumedFrom === null, source).toBe(true);
-      expect(captured.value).toEqual(ordinary.value);
+
+      /*
+       * STRUCTURE, not provenance. The ordinary `Selector` carries a source
+       * span — a ruleset reads its statement start off it — while a pseudo
+       * argument never does, exactly as Less draws the line. The claim here is
+       * that the two productions recognise the same selector, so compare the
+       * semantic shape.
+       */
+      expect(bare(captured.value)).toEqual(bare(ordinary.value));
     }
   });
 
