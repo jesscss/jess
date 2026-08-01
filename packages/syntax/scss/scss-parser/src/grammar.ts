@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, classifiedTrivia, choice, composeLeaf, dispatch, endsWith, expect, keywords, label, literal, makeWhen, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -2205,17 +2205,30 @@ const scssFactory = (g: ScssInputRules) => {
     choice(
       g.CustomDeclaration,
       sequence(
-        choice(
-          g.InterpolatedProperty,
-          propertyIdentifier
-        ),
-        literal(':'),
-        g.Value,
-        optional(g.Important),
+
+        /*
+         * The statement `;` is OUTSIDE this field on purpose. The field span is
+         * the declaration's source span, and it has to end at the end of the
+         * VALUE: the renderer treats a comment run beginning exactly at that
+         * offset as the declaration's INLINE trailing comment, and a span that
+         * reached past the semicolon would both mis-claim that run and swallow
+         * any comment authored between the value and the `;`. Less gets the
+         * same end for free — its declaration production never contained the
+         * terminator.
+         */
+        field('statement', sequence(
+          choice(
+            g.InterpolatedProperty,
+            propertyIdentifier
+          ),
+          literal(':'),
+          g.Value,
+          optional(g.Important)
+        )),
         optional(literal(';'))
       )
     ),
-    (children) => {
+    (children, fields) => {
       /*
        * The custom-property arm is a single completed Declaration child; pass it
        * through so every body that admits a declaration admits a custom property
@@ -2241,12 +2254,16 @@ const scssFactory = (g: ScssInputRules) => {
         throw new TypeError('SCSS declaration requires a value.');
       }
       const name = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
-      return decl(
+      const node = decl(
         name,
         requireValueSlot(value),
         null,
         isImportant
       );
+      const statement = fields?.statement;
+      return statement === undefined || Array.isArray(statement)
+        ? node
+        : withSourceSpan(node, statement.span);
     }
   );
 
@@ -2300,19 +2317,23 @@ const scssFactory = (g: ScssInputRules) => {
     'NestedPropertyDeclaration',
     sequence(
       directNestedPropertyAhead,
-      choice(
-        g.InterpolatedProperty,
-        propertyIdentifier
-      ),
-      literal(':'),
-      optional(g.Value),
-      literal('{'),
-      many(g.NestedPropertyMember),
-      literal('}'),
-      optional(g.Important),
+
+      /* Statement span, terminator excluded — see `Declaration`. */
+      field('statement', sequence(
+        choice(
+          g.InterpolatedProperty,
+          propertyIdentifier
+        ),
+        literal(':'),
+        optional(g.Value),
+        literal('{'),
+        many(g.NestedPropertyMember),
+        literal('}'),
+        optional(g.Important)
+      )),
       optional(literal(';'))
     ),
-    (children) => {
+    (children, fields) => {
       const prefix = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
       const open = children.findIndex(child => isToken(child) && child.value === '{');
       const close = children.findIndex((child, index) => index > open && isToken(child) && child.value === '}');
@@ -2339,7 +2360,7 @@ const scssFactory = (g: ScssInputRules) => {
           throw new TypeError('SCSS nested property produced a non-entry child.');
         }
       }
-      return decl(
+      const node = decl(
         prefix,
         collection(
           entries,
@@ -2348,6 +2369,10 @@ const scssFactory = (g: ScssInputRules) => {
         null,
         ownValue === null ? false : ownImportant
       );
+      const statement = fields?.statement;
+      return statement === undefined || Array.isArray(statement)
+        ? node
+        : withSourceSpan(node, statement.span);
     }
   );
   const ImportUrl = node<Url>(
@@ -2902,14 +2927,24 @@ const scssFactory = (g: ScssInputRules) => {
   const ReturnRule = node<Declaration>(
     'ReturnRule',
     sequence(
-      regex(/@return(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.Value,
+
+      /* Statement span, terminator excluded — see `Declaration`. */
+      field('statement', sequence(
+        regex(/@return(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.Value
+      )),
       optional(literal(';'))
     ),
-    children => decl(
-      'result',
-      requireValueSlot(children[1])
-    )
+    (children, fields) => {
+      const node = decl(
+        'result',
+        requireValueSlot(children[1])
+      );
+      const statement = fields?.statement;
+      return statement === undefined || Array.isArray(statement)
+        ? node
+        : withSourceSpan(node, statement.span);
+    }
   );
 
   /*
