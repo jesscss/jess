@@ -1,10 +1,11 @@
 {
   "note": "Measured with scripts/css-corpus-report.mjs. NOT a gate - see README.md.",
-  "measured_at": "2026-07-31",
-  "commit": "17b675065",
+  "measured_at": "2026-08-01",
+  "commit": "640c5697d",
+  "note_rebase": "Re-measured after rebasing onto dev 1641e30dd. The less +4 against the 2026-07-31 measurement is dev drift from those 23 commits, not from the SquareValue change, which leaves less and scss untouched by construction.",
   "previous": {
     "commit": "d948e2d75",
-    "note": "Most of the movement to 17b675065 is dev drift, not one change. The SquareValue commit itself accounts for css +124 and jess +124 (superset 236 -> 147); everything else, including css crashes 3 -> 5 and scss crashes 10 -> 3, landed on dev between the two measurements.",
+    "note": "Most of the movement is dev drift, not one change. The SquareValue commit itself accounts for css +124 and jess +124 (superset 236 -> 147); everything else, including css crashes 3 -> 5 and scss crashes 10 -> 3, landed on dev between the measurements.",
     "dialects": {
       "css": { "correct": 17748, "failing": 497, "crashes": 3 },
       "less": { "correct": 17952, "failing": 293, "crashes": 0 },
@@ -21,8 +22,8 @@
       "crashes": 5
     },
     "less": {
-      "correct": 17949,
-      "failing": 296,
+      "correct": 17953,
+      "failing": 292,
       "crashes": 0
     },
     "scss": {
