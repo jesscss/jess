@@ -44,6 +44,309 @@
    (`docs/architecture/core/LESS-V5-CONTENT-PR-PLAN.md:18`), so it can never adjudicate a
    jess-vs-`lessc` question.
 
+## SESSION HANDOFF — 2026-08-01, jess `d7ebe562e` / parseman `release/0.47.0` `cdf33f3`
+
+**All agents were stopped mid-flight at a spend limit.** Nothing below is in progress;
+every branch named is landed or explicitly held. Read this section before the older
+WORK IN FLIGHT block, which predates it by a week.
+
+### Owner decisions waiting
+
+1. **parseman 0.47.0 is ready to merge and publish.** PR #104, all gates green
+   (changelog, control-bytes, typecheck, docs 124/124, 3777 tests), **0 unresolved
+   review threads**. Owner merges parseman PRs; agents never do. Publishing is
+   owner-only. Until it publishes, jess cannot adopt `parseman/table` except by a
+   temporary link (see below).
+2. **`Quoted.value` is `readonly value: string`** (`packages/core/src/ast/nodes.ts:68`),
+   so a `Quoted` node with `escaped: true` **cannot hold an interpolation**. That blocks
+   the real fix for parse-time quote-dropping. Making it able to is a core AST change plus
+   eval work — pinned as a defect in `jess-parser/test/discovered-constructs.test.ts`,
+   not decided.
+3. **G18's carve-out swaps sides under a table lowering.** It licenses unidiomatic
+   *generated* code and requires hand-written source to stay idiomatic; a table has almost
+   no generated code, so the licensed tricks would live in the hand-written driver. Needs a
+   ruling, not an agent's judgement.
+4. **G2 says "Codegen ≤ 4× source bytes."** Its noun is wrong under a table and its
+   derivation (§2.3's "needs a 1.9× call-site reduction") rests on ~950 B per named call
+   site. If the marginal figure holds, the gate stops discriminating between the four
+   grammars rather than being passed. Per the standing perf-gate rule, that is a
+   re-derivation with owner sign-off, not a silent pass.
+5. **Can a `dispatch()` keep the diagnostic that an ordered `choice` gives?** See G30
+   below — this blocks two conversions and, if resolved, unblocks the `parser-shared`
+   at-keyword work that reaches all four dialects at once.
+
+### NEXT UP — the ordered path to table-based jess builds
+
+Every item below is blocking the one after it. Do them in order; each has a stated
+done-condition so nobody has to guess. **Steps 1–2 are jess's; steps 3–6 are parseman's.**
+The measured facts behind each are in the sections that follow.
+
+**1. Fix the `sepBy`/`rawChildren` reducer bug. (jess, ~small, no dependencies)**
+Reducers compute a trivia insert index from `children` when the index addresses
+`rawChildren`. `sepBy` no longer contributes separators, so the two arrays no longer
+advance in step and comments around separators are silently dropped.
+*Find them:* any reducer for a `node()` containing `sepBy`/`oneOrMoreSep` that correlates
+a `children` index with a `triviaLog` insert index. Also check reducers that index
+`children` positionally or read `children.length` to count.
+*Done when:* `comments`, `comments2`, `at-rules-keyword-comments` pass under parseman
+0.47.0, and all-less is back to 110/111 with 0.47.0 macro. **This is required to adopt
+0.47.0 at all — table or not — so it is the first thing regardless.**
+
+**2. Remove the duplicate factory keys. (jess, trivial)**
+`QueryValue`, `QueryTerm`, `QueryFeatureName` are each declared twice at
+`packages/syntax/jess/jess-parser/src/grammar.ts:6124-6131`. esbuild warns; the macro
+build does not. *Done when:* each key appears once and the jess suite is unchanged.
+
+**3. Register the regex first-set analyzer in the `parseman/table` module graph.
+(parseman, blocking everything)**
+`regex()` derives its first set from an analyzer registered only in `src/index.ts`.
+`dist/table/` is a separate graph that never runs that registration, so `regex()` returns
+the permissive `any()` fallback and `classifiedTrivia` rejects every arm with
+`"whitespace" must be non-nullable with a concrete finite first set`.
+**All four dialects are dead on arrival from the published shape** — this is not a jess
+problem and no jess change can work around it.
+*Done when:* `tableRules(encodeTable(<any jess grammar>))` runs from the built
+`dist/table` with no aliasing to source.
+
+**4. Isolate and fix the jess mis-parse. (parseman)**
+jess fails 5 of 6 matrix cells — cannot parse `.a{color:red}` under the table, with
+`expected: ["routed()"]` at the value position. The interpreter control passes on the
+*same live combinators*, so it is the lowering. Lowest divergent rule is
+`IdentifierOrFunction` (`jess-parser/src/grammar.ts:3334`) / `KeywordValue` (`:3195`),
+reached from `ValueAtom`, `Value`, `CallComponent`, `CalcSum`, `QueryValue` — 60
+rule×input divergences. jess is the only dialect using
+`makeWhen({ caseInsensitive: true })` (`:1665`), **but a minimal repro of
+`dispatch` + `caseInsensitiveWhen` + `otherwise(node(…, routed(), …))` does not
+reproduce it**, so the trigger is narrower than that and is still unknown.
+*Done when:* jess passes all 6 matrix cells and the repro is named.
+
+**5. Close the Less corpus divergence. (parseman)**
+The table loses 41 all-less fixtures against the interpreter on identical combinators.
+At parse level over `tests-unit/**/*.less`: 136 files, 94 identical, **40 throw** where
+the interpreter succeeds, **2 differ silently in bytes**. Start with the silent pair —
+`at-rules.less` 1677→1682 and `detached-rulesets.less` 1254→1743 — because a wrong tree
+with no error is the worse class and the throws are louder. The throw messages
+(`Unexpected Less input after a complete stylesheet`, `Missing closing brace`,
+`Less arithmetic grammar lost an operator operand`) suggest more than one cause.
+*Done when:* table parse-level output is byte-identical to the interpreter across all
+136 files.
+
+**6. Lower `balanced()` and `scanTo()`. (parseman)**
+Both park live combinator objects via `OP_CALL`, so **no shipping grammar can be emitted
+as a module** — css/less/scss block on both, jess on `scanTo` alone. A previous
+investigation established that **neither genuinely requires a live object**: `token` is
+save/clear/run/restore/one-leaf; `balanced`'s `_def` is its eager interior and its
+one-leaf behaviour is `token`-shaped; `scanTo`'s sentinel and skippers are grammar-graph
+combinators. `scanSkip` is ambient but static per scope, so it encodes as offsets
+installed by `OP_SCOPE` — **prove that rather than assuming it**, because a skip set that
+resolves at an outer scope and silently empties in an inner one is the same silent shape
+as the trivia bug.
+Two traps recorded from the failed attempts: `balanced`'s outer node is a `token` and
+`_balancedAmbient` sits on the **inner** combinator; and `balanced()` *does* detect
+crossed closures (`([a)]` reports `errors=1` via `expect()`), so a read-back measuring
+only consumption cannot distinguish acceptance from recovery.
+*Done when:* all 16 cells emit, the emit round-trip passes for each dialect, and
+per-dialect artifact bytes and parse time can finally be measured.
+
+**Only after 6 do the numbers this whole effort exists to produce become obtainable.**
+Until then `113 B/rule` and `~2.65×` remain ladder-and-json figures and must be labelled
+as such.
+
+**Rebuild the measurement harness first, before step 3.** The one that produced every
+number above was throwaway (gitignored `.scratch/`) and is gone. It should be a permanent
+script: parse-level table-vs-interpreter diff over the 136-file corpus, comparing
+serialized CSS. The interpreter is the ideal control — same live combinators, so any
+divergence is purely the lowering — and without it every step above gets re-measured by
+hand. **Proposed and not answered; treat as the first task unless the owner says
+otherwise.**
+
+*Linking parseman 0.47.0 into jess before it publishes:* use a **workspace-root-relative**
+`link:` in `pnpm.overrides`. An absolute path is silently mis-linked by pnpm 8.15, and
+because `.claude/worktrees/*` sits inside the mirror the broken link resolves upward into
+the mirror's `node_modules` and finds a *different* parseman with no error. **Print the
+resolved realpath and version from every package and assert one distinct realpath before
+trusting any number.**
+
+### parseman 0.47.0 — what shipped
+
+The table lowering (`src/table/`) ships as a **real public export** (`./table` is in
+`package.json` exports) that is **not on the shipping path** — nothing outside
+`src/table/` imports it, and macro / `compile()` / `compose()` do not reach it. Known
+limitations are stated in the CHANGELOG: four failure-reporting divergences, a
+structural-node refusal under `hostMode: 'cst'`, and no grammar using `scanTo()`/
+`balanced()` can be emitted.
+
+`113 B/rule` and `~2.65×` are **ladder-and-json figures**, never measured on a shipping
+grammar. The CHANGELOG records that. Do not quote them as if they were.
+
+### The table measured against jess — the numbers, and they are unfavourable
+
+Run with parseman 0.47.0 linked into jess (workspace-root-relative `link:`; an absolute
+path is silently mis-linked by pnpm 8.15 and resolves upward into the mirror's
+`node_modules`, finding a *different* parseman with no error — **print the realpath
+before trusting anything**).
+
+| configuration | all-less |
+|---|---:|
+| parseman 0.46.0, macro (jess's shipping config) | **110 / 111** |
+| parseman 0.47.0, macro | 107 / 111 |
+| parseman 0.47.0, interpreter | 101 / 111 |
+| parseman 0.47.0, **table** | **60 / 111** |
+
+Corpus: `~/git/oss/less.js/packages/test-data`, branch `alpha`, SHA
+`2f309b667df0fed192c83e1b32b4a72f045798f4`, 111 cases each side. Parse-level over
+`tests-unit/**/*.less`: 136 files, 94 identical, **40 threw** where the interpreter
+succeeded, **2 differ silently in bytes** (`at-rules.less` 1677→1682,
+`detached-rulesets.less` 1254→1743). The silent pair is the worse class.
+
+**Blockers, by owner:**
+
+*Parseman-side (jess cannot fix these):*
+- **`parseman/table` cannot run any classified-trivia grammar as shipped.** `regex()`
+  derives its first set from a registered analyzer; the analyzer is registered only in
+  `src/index.ts`, and `dist/table/` is a separate module graph that never runs that
+  registration. `classifiedTrivia` then rejects every arm. **All four dialects, dead on
+  arrival from the published shape.**
+- `balanced()` / `scanTo()` park live combinator objects via `OP_CALL`, so no shipping
+  grammar emits. css/less/scss block on both; jess on `scanTo` alone.
+- The table mis-parses. jess fails 5 of 6 matrix cells (`expected: ["routed()"]` at the
+  value position; lowest divergent rule `IdentifierOrFunction`
+  `jess-parser/src/grammar.ts:3334`). Root cause **not isolated** — a minimal
+  `dispatch` + `caseInsensitiveWhen` + `otherwise(node(…, routed(), …))` repro does not
+  reproduce it.
+- `buildSpecModel` **infinitely recurses on `balanced()`** — `RangeError` at default
+  stack, SIGSEGV at `--stack-size=40000`. Three rules are pinned in the diagram generator
+  to work around it: css `AtRulePreludeGroup`, less `AtRulePrelude` + `OpaqueAtPrelude`,
+  scss `AtRootFilterPrelude`.
+
+*Jess-side (short list — jess is not the blocker):*
+- **The `sepBy`/`rawChildren` reducer bug.** Reducers compute a trivia insert index from
+  `children` when it addresses `rawChildren`; once `sepBy` stopped contributing separators
+  the two diverge and comments around separators are silently dropped. Costs 3 fixtures
+  (`comments`, `comments2`, `at-rules-keyword-comments`). **Required to adopt 0.47.0 at
+  all**, table or not.
+- `QueryValue`, `QueryTerm`, `QueryFeatureName` are each declared **twice** in the jess
+  factory return object (`jess-parser/src/grammar.ts:6124-6131`). esbuild warns; the macro
+  build does not.
+
+The measurement harness was throwaway (gitignored `.scratch/`) and is **gone**. The
+interpreter is the right control — same live combinators, so any divergence is purely the
+lowering. **Rebuilding it as a permanent script was proposed and not answered.**
+
+### Grammar quality — the diagrams are the instrument
+
+`docs/grammar/railroad/` (landed, `d84bb3855`): `index.html`, four dialect pages,
+`complexity.html`. 788 KB, self-contained, no external assets. Generated from the same
+`rules()` tree that parses, so they cannot drift from what actually parses.
+
+The owner read them and found more actionable defects in minutes than three
+byte-measurement lanes found in days. **That is the lesson: grammar quality is a
+legibility property, read it directly.** A bake-off that judged three css rewrites on
+artifact bytes answered a question nobody asked and is deprioritised —
+*"more important fish to fry"*.
+
+Thresholds he set: **>30 symbols**, **>10 rows**, and unique chain count. Rows are a
+*decomposition* metric — a named reference is one row, an inlined alternative is its own,
+so >10 rows means "this rule should be split, and here is what into".
+
+The nine defect classes, with verified specimens:
+
+1. **Inline instead of linked** — `ModuleDirective` (scss) inlined the quoted production
+   instead of referencing `Quoted`. **Fixed.**
+2. **A construct re-spelled per variant** — `Quoted` wrote the `~` prefix four times.
+   **Fixed in jess; less and css carry the identical shape, untouched.**
+3. **A hand-maintained exclusion list** — `atRuleKeyword`
+   (`parser-shared/src/recognition.ts:315`) has **two leading `not()`s in one sequence**;
+   `GenericAtRuleName` (`:302`) has three. **Not converted — see G30.**
+4. **Alternatives inlined instead of named** — `ConditionalBlock` spells three
+   `<AtKeyword>+<Prelude>+<body>` arms inline and `NestedConditionalBlock` spells the same
+   three again. **Conversion attempted and reverted — see G30.**
+5. **Trivia re-spelled inside a rule** — `ImportTail` (`css/grammar.ts:2779`) is
+   `noTrivia(sequence(many(importTailWhitespace), …))`, and `ImportTailBody` installs a
+   *third* table via `parser({ trivia: commentTrivia })`. **Not started.** Real count of
+   hand-written whitespace: **154 lines** across the five files (less 59, parser-shared 30,
+   css 28, jess 25, scss 12) — the ~114 on record was wrong.
+6. **Glue rules that are not constructs** — `AtRulePreludeWhitespace`, `AtRulePreludeComma`,
+   `AtRulePreludeGroup`, `AtRulePreludeQuoted` (`css/grammar.ts:2845-2863`),
+   `ImportUrlUnquoted`, `DoubleQuotedText`. **Not started.**
+7. **`routed()` renders as nothing** — so `PageBlock`, `Keyframes`,
+   `FontFeatureValuesBlock`, `OpaqueAtRuleBlock` all appear in the diagrams without their
+   at-keyword. **The diagrams are actively misleading here**; any conclusion drawn from a
+   `routed()`-bearing diagram is suspect. Emitter bug, **not fixed**.
+8. **Named for the body, not the construct** — the same four rules; owner proposes
+   `PageAtRule` / `KeyframesAtRule` / `FontFeatureValuesAtRule` / `UnknownAtRule`. Note
+   classes 7 and 8 are entangled: some may be correctly named and only *look* wrong.
+9. **Context threaded as a duplicate rule family** — css has **four** `TopLevel*` rules
+   (`TopLevelSelectorList`, `TopLevelComplexSelector`, `TopLevelCompoundSelector`,
+   `TopLevelRuleset`), each a near-copy of its twin differing only by one reference.
+   `SelectorList` and `TopLevelSelectorList` are byte-identical apart from
+   `g.ComplexSelector` vs `g.TopLevelComplexSelector`. **less, scss and jess have zero
+   `TopLevel*` rules.** The mechanism this wants is `withCtx`/`gate` — but `withCtx` and
+   `gate` also render as nothing, so collapsing the chain would make the grammar smaller
+   and the diagram *less* informative. **Parseman feature requirement: the diagrams must
+   be able to show context.**
+
+**The reconciling principle**, which resolves classes 4 and 6 looking contradictory:
+*a rule should be a language construct — not a fragment of one, and not a bundle of
+several.* `ConditionalBlock` is a bundle; `AtRulePreludeComma` is a fragment.
+
+### G30 — the dispatch/diagnostics conflict, and a live bug
+
+**Ten real Sass at-rules do not parse.** `@while`, `@content`, `@debug`, `@warn`,
+`@error`, `@-use`, `@-compose`, `@-export`, `@-import`, `@-from` are named in
+`scssOwnAtKeyword` but have **no production anywhere**; the exclusion removes their only
+remaining route, so they are neither typed nor opaque and fail with `Unexpected SCSS
+syntax.` Pinned with a fixture; ledger row **G30**. Shortening the list is *not* the fix —
+those names are excluded so an evaluated directive is not emitted verbatim, and routing
+`@while` to opaque would put it in the CSS output. **They need productions.**
+
+**Why the dispatch conversions are blocked.** `ConditionalBlock` was rebuilt as a
+`dispatch` — arms named, `@supports`' `interstitialTrivia` preserved, node labels
+unchanged, `cst-host.ts:194` checked first (`publicGrammarType` maps both to
+`QueryAtRuleBlock`, so naming arms is not a CST change). It **broke 4 css tests**, all
+`expected 0 to be greater than 0`. The ordered `choice` is **load-bearing for
+diagnostics**: a malformed prelude currently falls through and reports; `dispatch` commits
+on the at-keyword and the error disappears. Reverted to a byte-identical tree rather than
+adjust the tests. The same blocker applies to `atRuleKeyword` in `parser-shared`, where it
+would reach all four dialects at once.
+
+**No dialect overrides any `*AtKeyword` rule** — verified. By the compose-override
+criterion they are enumeration for its own sake, but the `ConditionalBlock` result is
+direct evidence that folding them into a dispatch is not free.
+
+### Corrections to things previously recorded
+
+- **`pnpm check:control-bytes` does not exist in jess.** It is a parseman gate. Several
+  lanes were told to run it and had to hand-roll the scan.
+- **Leading-`not()` sites: 30**, not ~18 (css 12, less 8, jess 6, scss 4). Total `not()`
+  calls: css 22, less 46, scss 30, jess 17 — so the standard's "~460 vs 21" is also stale.
+- **Half the "byte-identical duplicate rules" list was a false premise** — `HexColor`,
+  `BlockCommentToken` and the less identifier family are shared *terminals* in
+  `recognition.ts`, not rules; `Stylesheet`==`Document` is an alias key, one object.
+  **Confirmed real:** css `StatementPrelude`==`AtRulePrelude` (identical bodies *and*
+  reducers, only the node-type string differs) and jess
+  `Expression`==`ExpressionInterpolation` (identical bodies, materially different
+  reducers).
+- **`bench/` in parseman had never been typechecked** — 82 errors, two real bugs. Now
+  under `tsc` with zero suppressions and nothing excluded.
+
+### Parked, in priority order
+
+1. `balanced()` and `scanTo()` lowering — the emit round-trip for shipping grammars, then
+   per-dialect bytes and timings. `notes/TABLE-DRIVER.md` in parseman carries the queue
+   with the trap that sank each previous attempt.
+2. Furthest-failure merging — the table reports a choice's union at its own position where
+   both engines report at the furthest position reached.
+3. The perf-gate waiver has **never been watched failing end to end**. Its decision logic
+   is unit-tested (26 tests, 21 proving it stays red); the wiring is not observed. By this
+   repo's own standard a gate nobody has watched fail is not known to work.
+4. New SVG charts on a cold machine — the published charts were generated at **0.29.0**,
+   eighteen releases stale. Every timing in the docs now correctly states that basis.
+5. The railroad terminal-rendering fix (landed, parseman `fe32f5e`) was **demonstrated on
+   an invented toy grammar**, not on jess's. The code change is real and its counts were
+   replayed over the four actual pages, but the before/after that made it look verified was
+   not verified. **Re-prove it on the real four.**
+
 ## WORK IN FLIGHT (as of 2026-07-24, `e34bb24b3`) — do not duplicate
 
 These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
