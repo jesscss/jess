@@ -4,9 +4,24 @@
  *
  * The parseman macro plugin compiles each `rules()`/`compose()` grammar to inline
  * JS at build time. If a rule can't be compiled it silently falls back to the
- * INTERPRETER — emitted as `_rp[N].parse(...)` in the built bundle. That is a real
- * regression (correct but slow, and it means a construct stopped lowering). This
- * script scans the built artifacts and FAILS if any interpreter fallback appears.
+ * INTERPRETER. That is a real regression — correct but slow, it means a construct
+ * stopped lowering, and the artifact gets SMALLER, so a bytes-first review banks
+ * it as a win. This script scans the built artifacts and FAILS if any interpreter
+ * fallback appears.
+ *
+ * WHAT A FALLBACK ACTUALLY LOOKS LIKE — and what it does NOT look like. This gate
+ * scanned for `_rp[N].parse(`, which CANNOT OCCUR in a macro artifact and never
+ * caught anything. `_rp` is codegen's runtime-parser fallback, but pushing to
+ * `ctx.runtimeParsers` is exactly what sets `canInline = false`, so the plugin
+ * then emits nothing and leaves the declaration as source. `_rp` therefore only
+ * exists in runtime `compile()` output. The two-canary test in
+ * `scripts/__tests__/parseman-fallback-detector.test.mjs` pins this: the old
+ * marker is absent from BOTH a healthy and a fallen-back module.
+ *
+ * The real signature is that the parseman import SURVIVES with the macro
+ * attribute stripped and the combinator source untouched — see
+ * `parseman-fallback-detector.mjs`, which owns the definition and explains why
+ * it keys on the imported NAME rather than on the substring `parseman`.
  *
  * It ALSO fails if a built module reads an identifier nothing binds. A macro
  * import (`makeWord`, `sequence`, `node`, ...) has no runtime existence, so a
@@ -36,6 +51,7 @@ import { readdirSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
+import { artifactFallbacks, scanBuildLog } from './parseman-fallback-detector.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -199,18 +215,28 @@ for (const pkg of PARSERS) {
   }
 
   /*
-   * A `[parseman] … falling back to runtime` warning means a whole grammar (or a
-   * compose arg) didn't compile — a hard regression. Only checkable in build mode.
+   * A parseman fallback warning means a grammar, a compose arg, or a single
+   * declaration didn't compile — a hard regression. Only checkable in build
+   * mode; `verify-compose-integrity.mjs --log` owns this half under --no-build,
+   * and both read the same pattern list.
    */
-  const composeWarn = noBuild
-    ? null
-    : /\[parseman\].*(falling back to runtime|isn't a build-resolvable)/i.exec(output);
+  const buildWarnings = noBuild ? [] : scanBuildLog(output);
 
   const sources = modules.map(file => [file, readFileSync(file, 'utf8')]);
   const bundle = sources.map(([, code]) => code).join('\n');
-  const interp = (bundle.match(/_rp\[\d+\]\.parse\(/g) ?? []).length;
   const regexExec = (bundle.match(/\.exec\(input\)/g) ?? []).length;
   const charCode = (bundle.match(/charCodeAt\(/g) ?? []).length;
+
+  /*
+   * The artifact half: a surviving parseman COMBINATOR import. This is the check
+   * that works with no build output, which is the mode CI runs.
+   */
+  const fallbacks = [];
+  for (const [file, code] of sources) {
+    for (const finding of artifactFallbacks(code)) {
+      fallbacks.push(`${relative(root, file)}:${finding.line} [${finding.kind}] ${finding.detail}`);
+    }
+  }
 
   const undefined_ = [];
   for (const [file, code] of sources) {
@@ -231,9 +257,20 @@ for (const pkg of PARSERS) {
     failed = true;
   }
 
-  if (interp > 0 || composeWarn) {
+  if (fallbacks.length > 0 || buildWarnings.length > 0) {
     console.error(`✗ ${name}: NOT fully macro-buildable — `
-      + `${interp} interpreter fallback(s)${composeWarn ? `, warning: ${composeWarn[0]}` : ''}`);
+      + `${fallbacks.length} artifact fallback(s), ${buildWarnings.length} build warning(s). `
+      + 'A declaration was left as source for the interpreter: the artifact SHRANK and is '
+      + 'no longer AST-equivalent.');
+    for (const entry of fallbacks.slice(0, 20)) {
+      console.error(`    ${entry}`);
+    }
+    if (fallbacks.length > 20) {
+      console.error(`    … and ${fallbacks.length - 20} more`);
+    }
+    for (const warning of buildWarnings.slice(0, 20)) {
+      console.error(`    ${warning}`);
+    }
     failed = true;
   } else if (undefined_.length === 0) {
     /*

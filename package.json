@@ -61,6 +61,7 @@
     "verify:pr": "node scripts/verify-pr.mjs",
     "verify:compose-integrity": "node scripts/verify-compose-integrity.mjs",
     "check:macro": "node scripts/check-macro-buildable.mjs",
+    "test:fallback-detector": "node --test scripts/__tests__/parseman-fallback-detector.test.mjs",
     "oracle:less:byte-identity": "pnpm --filter @jesscss/css-parser build && pnpm --filter @jesscss/less-parser build && node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json",
     "oracle:less:byte-identity:write": "pnpm --filter @jesscss/css-parser build && pnpm --filter @jesscss/less-parser build && node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs > packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json.new",
     "oracle:scss:byte-identity": "pnpm --filter @jesscss/scss-parser build && node packages/syntax/scss/scss-parser/test/oracle-byte-identity.mjs packages/syntax/scss/scss-parser/test/oracle-byte-identity.baseline.json",

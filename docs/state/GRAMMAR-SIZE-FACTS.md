@@ -983,11 +983,38 @@ is expected to transfer is the reference-weight finding, not the byte figures.
 ### 2.7 Hazards that produce false wins
 
 - **An interpreter fallback produces a SMALLER artifact and is NOT
-  AST-equivalent.** Detector: `grep -l 'from "parseman"' lib/grammar/*.js` must
-  be empty. A deliberately-constructed fake showed a 37% "win" this way.
-  Scope the glob non-recursively to `grammar/` — widening to `**/*.js` reds
-  every healthy build, because `cst-host.js` and `chunks/parse-with.js` import
-  parseman legitimately and always will.
+  AST-equivalent.** THE HAZARD IS UNCHANGED — only the detector moved. Measured
+  on a minimal canary pair through parseman 0.46.0's real `transformMacro`:
+  **healthy 2,464 B, fallen-back 209 B — a 91.5% "win" that is a pure
+  correctness regression.** A deliberately-constructed fake previously showed
+  37% the same way.
+- **Detector, as of `5c516dbb1`:** a built module may import a parseman
+  **runtime driver**; it may never import a parseman **combinator**. Owned by
+  `scripts/parseman-fallback-detector.mjs` and read by both `check:macro` and
+  `verify:compose-integrity`. Two signals:
+  - **build log** — `running via the interpreter`, the suffix parseman's
+    `warn()` appends to *every* fallback warning. Lowering-independent, and the
+    primary signal.
+  - **artifact** — any binding imported from `parseman` outside the allowlist
+    `{run, cstBuildHost, parseDoc, buildLineIndex, offsetToLineCol, tableRules}`.
+    That allowlist is the complete set the five parser packages import today,
+    read off the artifacts (`css-parser/lib/cst-host.js:2`, each parser's
+    `lib/chunks/parse-with.js`), not guessed.
+- **The detector is itself gated.** `scripts/__tests__/parseman-fallback-detector.test.mjs`
+  runs a two-canary pair — one module that compiles, one that closes over a
+  runtime value and really falls back — and asserts the detector clears the
+  first and **fails** the second. A detector proven only on a healthy build is
+  §4d material by construction. 9 assertions, ~110 ms, wired ahead of both gates
+  in `verify-pr.mjs` and `pr-quality-gate.yml`.
+- **The table lowering is not wired, and the gate will say so.** parseman
+  0.46.0/0.47.0 carry `src/table/` (G5: grammar as data read by one shared
+  driver) as a tested prototype with **no `./table` entry in `exports`**, unreachable
+  from the macro, `compile()` or `compose()`. A healthy table artifact would
+  import `tableRules` from `parseman/table` — i.e. a *parseman import is what
+  health looks like* under that lowering. The artifact scan therefore treats
+  that specifier as a loud `table-lowering` failure rather than a silent pass:
+  when G5 lands, the import-shape reasoning must be re-derived against the
+  emitted table before the gate can clear it.
 - **`dispatch()` costs ~2.8× the bytes of an equivalent `choice()`**, so a
   bytes-first ranking rewards a shape the review standard calls an
   anti-pattern.
@@ -1386,6 +1413,7 @@ by any type blocker. — less lane
 | Parameterless-const dedup is a major lever | 4.2%, terminals only. |
 | Composites referenced 2+ times get shared by the compiler | Falsified. |
 | Goal 4 done naively defeats goal 2 — one artifact holding all four variants costs 4.19×, which the goal-2 budget cannot absorb (§2.10) | A strawman: nobody proposed a single artifact branching at run time. Under the owner's design there is no per-variant code, so there is nothing to defeat. Late-resolving `g.` lets the four variants share a body; **goal 4 is a large aggregate and DX win**, and the per-dialect goal-2 number moves on the grammar-side multiplier and the leaf prune, not on variant folding. See §2.10a and `DESIGN-DECISIONS.md` G8. The 4.19× measurement itself stands. |
+| Fallback detector: `grep -l 'from "parseman"' lib/grammar/*.js` must be empty | **Retracted as the rule, not as the hazard** — see §2.7 for the replacement; the false-win it guards is real and now measured at 91.5%. Wrong on three counts. (a) It reads the module specifier as the fault, and parseman's G5 table lowering makes a `parseman` import the shape of a **healthy** artifact — the rule inverts. (b) `lib/grammar/*.js` is not where the compiled grammar lands: `css-parser` emits no `lib/grammar/` directory at all, so the glob matched nothing in the package with the largest grammar. (c) The narrow glob was forced by the same defect — widening it reds `cst-host.js` and `chunks/parse-with.js`, which import `run` legitimately. Keying on the imported **name** against a driver allowlist fixes all three and covers every emitted module. |
 
 ---
 
@@ -1506,6 +1534,25 @@ Two further traps in the same flow, both safe to measure through:
   no jess case.** It reported `PASS` having graded **zero** cases. Every scss
   and jess grammar commit in this project's history passed a gate that never
   looked at them.
+- **`check:macro`'s interpreter-fallback scan could never fire.** It counted
+  `_rp[N].parse(` in the built bundle and called zero "fully compiled". `_rp` is
+  emitted by `emitRuntimeFallback` in parseman's **codegen** — but pushing to
+  `ctx.runtimeParsers` is exactly what sets `canInline = false`
+  (`src/compiler/codegen.ts:5471`), after which the plugin emits nothing and
+  leaves the declaration as source (`src/plugin/index.ts:1871-1873`). So `_rp`
+  exists only in runtime `compile()` output and **cannot occur in a macro
+  artifact**. Confirmed on the canary pair: the marker is absent from the
+  fallen-back module as well as the healthy one. Under `--no-build` — the mode
+  CI and `verify:pr` run — this left the artifact half of the gate with **zero**
+  live coverage of the hazard it exists for. Fixed at `5c516dbb1`; the canary
+  test now pins it.
+- **`verify:compose-integrity` only ever caught `compose()` fallbacks.** Its
+  patterns were `falling back to runtime` and `references missing rule`. The
+  most common fallback by far is per-declaration — `"x" couldn't be inlined
+  (likely closes over a runtime value)` — and carries neither string, so it
+  passed silently. `composeLeaf()`'s own `isn't a build-resolvable` does not
+  carry `falling back to runtime` either. Now keyed on the universal
+  `running via the interpreter` suffix.
 - **`scoreboard.mjs:81` reads `.git/HEAD` directly**, so it cannot run in a
   worktree — where every lane is required to work. In a worktree `.git` is a
   *file*. Same class as the `.gitignore` bug: green on the author's checkout,

@@ -63,16 +63,26 @@ jobs:
             --filter='!@jesscss/docs-content' \
             build 2>&1 | tee build.log
 
-      # Compose-integrity: a parseman compose() macro degrade silently downgrades
-      # a grammar to the runtime interpreter (only visible in build output). Fail
-      # the PR if the captured build log shows any such fallback / missing rule.
+      # Both gates below share one detector definition
+      # (scripts/parseman-fallback-detector.mjs). A detector that has stopped
+      # firing is indistinguishable from a clean build — the retired
+      # `_rp[N].parse(` marker sat inert here for exactly that reason — so the
+      # two-canary test that proves it still catches a REAL parseman fallback
+      # runs before the gates that depend on it.
+      - name: Fallback-detector canaries
+        run: node --test scripts/__tests__/parseman-fallback-detector.test.mjs
+
+      # Compose-integrity: a parseman macro degrade silently downgrades a grammar
+      # to the runtime interpreter (only visible in build output). Fail the PR if
+      # the captured build log shows any such fallback / missing rule.
       - name: Compose-integrity check
         run: node scripts/verify-compose-integrity.mjs --log build.log
 
       # Macro-buildability: compose degrade is only half the concern. A single
       # rule can stop lowering to inline JS while the grammar still composes
-      # cleanly — visible only as `_rp[N].parse(` in the built bundle. Scans the
-      # artifacts the step above already built (--no-build: no second rebuild).
+      # cleanly — visible in the artifact as a surviving parseman COMBINATOR
+      # import. Scans the artifacts the step above already built (--no-build: no
+      # second rebuild).
       - name: Macro-buildability check
         run: node scripts/check-macro-buildable.mjs --no-build
 
