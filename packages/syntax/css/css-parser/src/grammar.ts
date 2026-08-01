@@ -143,6 +143,7 @@ type GrammarRuleName =
   | 'DeclarationListAtRule'
   | 'PunctuationValue'
   | 'ParenValue'
+  | 'SquareValue'
   | 'Identifier'
   | 'RawParenValue'
   | 'DescriptorBlock'
@@ -2204,6 +2205,43 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     children => block(valueSlotChildren(children)[0] ?? any(''))
   );
+
+  /*
+   * The square sibling of `ParenValue`, carrying its delimiter as a first-class
+   * `Block` fact rather than opaque bytes. `[` had no value first-set at all, so
+   * `grid: [a] 10px` and `grid-template-columns: [full-start] 1fr` died at the
+   * bracket while Less and SCSS both accepted them — the base rejecting what its
+   * own supersets accept.
+   *
+   * Named for the delimiter, not for `<line-names>`: the same bytes are Sass
+   * bracketed lists, and naming a shared shape after one consumer is how a
+   * grammar ends up claiming a construct it does not own.
+   *
+   * The interior is `ValueList`, exactly as the paren sibling spells it, so a
+   * multi-name `[a b]` is one slot holding an ARRAY. A reducer that narrows that
+   * with a single-node guard throws past the `SyntaxError` contract instead of
+   * declining — the defect SCSS's own square arm shipped and fixed in e4c948a7d.
+   *
+   * `find`, not `valueSlotChildren`: `<line-names>` is `<custom-ident>*`, so `[]`
+   * is legal and its interior is empty. `valueSlotChildren` THROWS on an empty
+   * match rather than returning `[]`, so the `?? any('')` a caller writes after it
+   * is unreachable — which is exactly why the paren sibling still crashes on
+   * `a{color:()}` instead of rejecting it. Do not copy that call here.
+   */
+  const SquareValue = node(
+    'SquareValue',
+    sequence(
+      literal('['),
+      optional(cssValueTrivia),
+      optional(g.ValueList),
+      optional(cssValueTrivia),
+      literal(']')
+    ),
+    children => block(
+      children.find(isValueSlotValue) ?? any(''),
+      'square'
+    )
+  );
   const RawParenValue = node(
     'RawParenValue',
     sequence(
@@ -2476,6 +2514,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.UnicodeRange,
       IdentOrFunction,
       g.ParenValue,
+      g.SquareValue,
       g.Quoted,
       g.CustomPropertyValue,
       g.PunctuationValue
@@ -3949,6 +3988,7 @@ const cssFactory = (g: GrammarSelf) => {
     CalcIdentOrFunction,
     CalcParen,
     ParenValue,
+    SquareValue,
     RawParenValue,
     PunctuationValue,
     ValueSequence,

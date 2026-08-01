@@ -99,6 +99,7 @@ type JessRules = {
   IdentifierOrFunction: Combinator<ValueNode>;
   CollectionEntry: Combinator<CollectionEntry>;
   Collection: Combinator<Collection>;
+  SquareValue: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
   ValueSpaceGroup: Combinator<ValueSlot>;
   ValueTerm: Combinator<ValueSlot>;
@@ -3634,6 +3635,31 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * `[a]` in value position — CSS `<line-names>`, and the same bytes Sass spells
+   * as a bracketed list. Mirrors the CSS base's `SquareValue` so `.jess` stays a
+   * superset; named for the delimiter rather than for grid, because the shape has
+   * more than one consumer.
+   *
+   * It belongs in the continuation set, unlike `Collection`: `]` terminates it, so
+   * a following atom has an unambiguous start. `$[ … ]` lookup is unaffected — that
+   * form is claimed by `DollarValue`, whose `$` head this arm never sees.
+   */
+  const SquareValue = node<ValueNode>(
+    'SquareValue',
+    noTrivia(sequence(
+      literal('['),
+      optional(valueTrivia),
+      optional(g.Value),
+      optional(valueTrivia),
+      literal(']')
+    )),
+    children => block(
+      children.find(isValueSlotValue) ?? any(''),
+      'square'
+    )
+  );
+
+  /*
    * The three `$`-headed arms (DollarValue `$name`, the `$(` expression / `$[` lookup
    * family, and the `$[` accessor inside it) are mutually exclusive on the
    * character after `$`, so their relative order is behaviour-neutral. Plain
@@ -3648,6 +3674,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * `$foo: bar { … }` a positioned parse error instead of a silent two-value read.
    */
   const nonBlockValueAtom = choice(
+    g.SquareValue,
     g.DollarValue,
     g.ExpressionLambda,
     g.InterpolatedValue,
@@ -6030,6 +6057,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     IdentifierOrFunction,
     CollectionEntry,
     Collection,
+    SquareValue,
     InterpolatedValue,
     ValueAtom,
     ValueSpaceGroup,
