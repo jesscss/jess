@@ -138,7 +138,7 @@ nothing about comments. That is a trivia-placement item.
 
 ### 2.5 D5's hidden-class precedent was backwards
 
-Revision 1 proposed `readonly inMath?: boolean` on `Operation`, "precedented by
+Revision 1 proposed `readonly inMathFunction?: boolean` on `Operation`, "precedented by
 `Block.boundary` and `FunctionCall.modern`". Verified in
 `packages/core/src/ast/nodes.ts:1358-1367`:
 
@@ -151,7 +151,7 @@ Revision 1 proposed `readonly inMath?: boolean` on `Operation`, "precedented by
 
 `Operation` has **1 realized map** — one construction site repo-wide
 (`nodes.ts:1359`). So the field is achievable at base=1 **only** if spelled
-`readonly inMath: boolean`, non-optional and factory-defaulted.
+`readonly inMathFunction: boolean`, non-optional and factory-defaulted.
 
 ### 2.6 D4's `.jess` immunity claim was false
 
@@ -255,7 +255,7 @@ corpora. The ladder itself is allocation-free for operator-free arguments
 (`{project: 0}` and `foldOperation`'s single-operand return both check out), so
 the dispatch chain is the entire cost.
 
-### D5 — `inMath` as a parse-time fact
+### D5 — `inMathFunction` as a parse-time fact
 
 At `7b7d4e57c` this was `OperationOptions.inCalc`, a parse-time flag on the node;
 an `inCalc` operation resolved operands and returned intact. v2 re-derives it from
@@ -277,7 +277,7 @@ use site:
 @var: 50vh/2;  a { c: calc(50% + @var); } => c: calc(50% + 25vh);
 ```
 
-Spelled `readonly inMath: boolean`, non-optional, factory-defaulted (§2.5). It is
+Spelled `readonly inMathFunction: boolean`, non-optional, factory-defaulted (§2.5). It is
 also a **perf win**, unclaimed by revision 1: it deletes the 18-field
 `{ ...e, calcDepth: … }` `EvalCtx` spread at `serialize.ts:4281` and five
 `(e.calcDepth ?? 0)` reads.
@@ -286,7 +286,7 @@ also a **perf win**, unclaimed by revision 1: it deletes the 18-field
 
 1. **It moves a committed fixture.** `tests-unit/calc/calc.css:9-10` expects
    `calc(50% + (25vh - 20px))` twice; the `25vh` exists *only* because the leaked
-   depth folded `50vh/2` inside `@var`'s binding. Under `inMath` it becomes
+   depth folded `50vh/2` inside `@var`'s binding. Under `inMathFunction` it becomes
    `calc(50% + (50vh / 2 - 20px))`. That requires the **O4** graduation
    procedure — create `tests-unit/calc/legacy/calc.css` holding the pre-change
    output with the **O5** header *first*, then update the top-level `.css`.
@@ -299,11 +299,36 @@ also a **perf win**, unclaimed by revision 1: it deletes the 18-field
 3. **`parenDepth` has the identical over-reach and the identical absent reset**
    (`serialize.ts:3348`). Fixing `calcDepth` alone is half a fix.
 
+**The oracles corroborate the rule, and they disagree with each other.** Measured
+against **dart-sass 1.101.0** and **lessc 4.6.3** directly (not jess's dialect
+plugins, which are not oracles for either language):
+
+| expression | dart-sass | lessc 4.x | jess `.scss` |
+| --- | --- | --- | --- |
+| `min(100% - 30px)` | **`min(100% - 30px)`** | `70%` | `70%` |
+| `min(1em - 2px)` | **`min(1em - 2px)`** | `-1em` | `-1em` |
+| `min(4px / 2)` | `2px` | `min(4px / 2)` | `2` |
+| `calc(4px / 2)` | `2px` | `calc(4px / 2)` | `4px / 2` |
+| `calc(1px + min(4px / 2))` | `3px` | preserved | `calc(1px + 2)` |
+
+dart-sass has **one coherent rule**: divide where division is written, and
+preserve when the units do not commensurate — `min(100% - 30px)` comes back
+untouched, exactly as `calc(100% - 30px)` does. That IS the `inMathFunction`
+rule, already shipping in the reference implementation. **Less 4.x is the
+implementation that fabricates.**
+
+So jess's `.scss` is wrong against its own oracle in four ways here: it copies
+Less 4.x's `70%`/`-1em` fabrication, it drops the unit on `min(4px / 2)`, and it
+does not divide inside `calc()` at all. Those are pre-existing SCSS defects, not
+consequences of this proposal, but they are the reason the `70%` case must not be
+described as "less and scss agree" — dart-sass does not agree, and it is the
+oracle.
+
 **Scope correction:** revision 1 promised `min(100% - 30px)` would preserve as
 `calc(100% - 30px)` does. It cannot at the proposed scope — that expression
 reaches math through Less's `FunctionScalarArgument` and SCSS's `MathTopSum`,
 neither of which D3 touches, and both emit the fabricated `70%` today. Either
-`inMath` is set in **all four** grammars, or the promise comes out. (It should be
+`inMathFunction` is set in **all four** grammars, or the promise comes out. (It should be
 set in all four: `70%` where the same expression under `calc` preserves is one
 value printing two ways.)
 
@@ -315,7 +340,7 @@ value printing two ways.)
 3. **D3** argument grammar — the accept-set widening. Differential must show
    movement only on previously-rejecting entries, **with a negative control**,
    and must separately show the 25-case battery from §2.1 does not regress.
-4. **D5** `inMath` — the semantic change, and the only step that moves emitted
+4. **D5** `inMathFunction` — the semantic change, and the only step that moves emitted
    CSS. Needs its own ledger row, the O4/O5 fixture graduation, and the
    semantics reviewer.
 
@@ -349,7 +374,7 @@ So D5 cannot cite a SETTLED row, and must not pretend to be a defect fix. It
 needs its own **OPEN** row, which must also retroactively settle what `47bda0a1b`
 changed. The row that *does* support it and revision 1 failed to cite is **P1**:
 *"Math mode … is a PARSE-TIME input."* Whether math happens is already settled as
-parse-time; `Operation.inMath` is the same axis.
+parse-time; `Operation.inMathFunction` is the same axis.
 
 Required ledger actions: a new OPEN row for in-math operation policy (stating the
 rule over the construct, the operand classes including the undecided
@@ -364,7 +389,7 @@ since `min(1px, 2px)` is valid CSS and emits three different ways today.
    `sibling-*`), or only values-4 §10?
 2. Spell `round()`'s `<rounding-strategy>` keyword arm now, or treat `round()` as
    ordinary until wanted?
-3. Is `inMath` set in **all four** grammars (needed for the `min(100% - 30px)`
+3. Is `inMathFunction` set in **all four** grammars (needed for the `min(100% - 30px)`
    promise), or only css+jess?
 4. Does D5 also fix `parenDepth`, or is that a separate ruling?
 5. Less's math reaches **every** function argument, broader than §1's closed set.
@@ -374,12 +399,29 @@ since `min(1px, 2px)` is valid CSS and emits three different ways today.
 
 Each needs its own issue; none is caused by this work.
 
-- **SCSS `calc(1px + min(4px / 2))` → `calc(1px + 2)`** — a dropped unit
-  producing invalid CSS. `min(4px / 2)` is `min(2px)` per §10.2.
+- **jess `.scss` diverges from dart-sass 1.101.0 on the whole slash family.**
+  `min(4px / 2)` → `2` where dart-sass gives `2px`; `calc(4px / 2)` → `4px / 2`
+  where dart-sass gives `2px`; `calc(1px + min(4px / 2))` → `calc(1px + 2)` where
+  dart-sass gives `3px`. Not one dropped unit — jess's SCSS does not divide in
+  these positions at all, and loses the unit when something else folds it. Cause
+  is positional: `topProductOperator` (`scss grammar.ts:1095`) excludes `/`, and
+  `Call` arguments use `MathTopSum`, so `/` is claimed by `ValueTail` as a list
+  boundary. dart-sass divides there.
+- **`ValueTail` (`scss grammar.ts:1876`) is a hand-rolled separated list.** It is
+  not a separator combinator but a bespoke node returning a tagged object
+  (`{ kind: 'space' | 'slash', value, separator }`, type at `:32`), conflating
+  both boundaries and forcing `ValueTerm` to rebuild the grouping imperatively.
+  The output is already right (`list(values, '/')`); the mechanism is the debt.
+  jess-parser has the intended shape — a space group plus a slash-separated
+  repetition. Whoever removes it must preserve BOTH the `list(values, '/')`
+  output and the positional exclusion of `/` from `MathTopProduct`, or every
+  `min(a / b)` silently changes meaning.
 - **`.jess` rejects `calc(1.0px+2em)`** (no whitespace around the operator) while
   `.less` and `.scss` accept — valid CSS rejected by one dialect.
-- **`min(100% - 30px)` → `70%`** in `.less` and `.scss` — fabricated output where
-  the same expression under `calc` correctly preserves.
+- **`min(100% - 30px)` → `70%`** in `.less` and jess `.scss` — fabricated output
+  where the same expression under `calc` correctly preserves. This matches
+  lessc 4.x and **contradicts dart-sass**, which preserves. Correct for `.less`
+  (4.x compat), a defect for `.scss`.
 - **`calc(1px /* c */ + 2em)` loses the comment** in all three dialects.
 - **`foldOperation`** (`css grammar.ts:743`, `:749`) does `children.find(isValue)`
   then `children.indexOf(first)` — two scans of one array, collapsible to one
