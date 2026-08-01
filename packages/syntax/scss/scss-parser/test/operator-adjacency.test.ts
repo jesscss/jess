@@ -1,4 +1,33 @@
 /*
+ * ROOT CAUSE for every SCSS case in this file (found 2026-07-31):
+ *
+ *   SCSS is the only one of the four dialects whose DOCUMENT TRIVIA TABLE
+ *   omits block comments.
+ *
+ *     css   classifiedTrivia({ whitespace, blockComment })
+ *     less  classifiedTrivia({ whitespace, lineComment, blockComment })
+ *     jess  classifiedTrivia({ whitespace, comment })       // both forms
+ *     scss  classifiedTrivia({ whitespace, comment: lineCommentRun })   // <- no block comment
+ *
+ * Because `/* … *\/` is not trivia in SCSS, every production that wants to
+ * tolerate one has to hand-spell it locally — `productPad`, `sumPad`,
+ * `valueTrivia`, `customValueBlockCommentRun` — which is precisely the
+ * defect DESIGN-DECISIONS G24 prohibits, and it explains why SCSS has the most
+ * tangled operator arms of the four dialects and why the arms disagree with
+ * each other. Every pin below is a symptom of that one omission:
+ *
+ *   - a block comment anywhere in a selector is a parse error
+ *   - `calc(1px/**\/- 2px)` parses but its mirror `calc(1px -/**\/2px)` does not
+ *   - `1px/**\/-/**\/2px` is rejected where dart-sass folds it to `-1px`
+ *   - `calc(1px/**\/*\/**\/2)` is rejected though §10.1 constrains only `+`/`-`
+ *
+ * The fix is to put `blockComment` in the table and delete the local
+ * hand-spellings, which is the Less fix already landed for `sumPadRequired`
+ * (`mathTrivia` named instead of a private pad) applied one level up. It is a
+ * larger blast radius than the Less one — block comments would start being
+ * SKIPPED at sites that currently capture them — so it is deliberately not
+ * bundled with the pins.
+ *
  * Operator adjacency: what separates two operands, and who decides.
  *
  * Standing rule (DESIGN-DECISIONS.md, G22): every language construct we find
