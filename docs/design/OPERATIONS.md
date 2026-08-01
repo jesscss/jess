@@ -581,7 +581,7 @@ no per-operator carve-outs, no position where the marker is optional.
 
 #### 4.5.3 Implementation status
 
-Measured. Exactly ONE row is behind the ruling:
+Measured. TWO rows are behind the ruling (see also §4.5.3b):
 
 | position | production today | matches? |
 | --- | --- | --- |
@@ -617,11 +617,48 @@ Consequences:
   `LOGICAL_FNS` short-circuits first — and would imply an argument shape the
   value-position rule forbids.
 - **They lower to jess syntax, not to a call.** `boolean(<cond>)` is the `$( … )`
-  expression boundary; `if(<cond>, a, b)` is the conditional form. The lowering
-  target is a language construct, matching §4.5.5's rule that logical operators
-  are native rather than rewritten.
+  expression boundary; `if(<cond>, a, b)` is the VALUE-POSITION `$if` (§4.5.3b),
+  not a call and not the statement form. The lowering target is a language
+  construct, matching §4.5.5's rule that logical operators are native rather than
+  rewritten.
 - **`not`/`and`/`or` are in that same set**, which is why §4.5.5's native
   operators are the right home for them rather than a `fns/` entry.
+
+#### 4.5.3b `$if` / `$for` have TWO body forms, decided by position
+
+This is the part `if(<cond>, a, b)` "lowers to the conditional form" was
+hand-waving over. `$if` and `$for` exist in two positions and the BODY differs:
+
+| position | body | example |
+| --- | --- | --- |
+| statement | a declaration / statement list | `a { $if (true) { b: 1px; } }` |
+| **value** | **a VALUE — never a declaration list** | `a { b: $if (true) { 1px } $else { 2px }; }` |
+
+A value-position `$if` produces a value, so its body cannot be a declaration
+list; there is nothing for declarations to attach to. Same for `$for`, whose
+value form yields the accumulated values rather than emitting declarations.
+
+**Only the statement form exists today.** Measured:
+
+```
+a { $if (true) { b: 1px; } }                  OK
+a { b: $if (true) { 1px } $else { 2px }; }    ERROR  Unexpected Jess syntax.
+a { b: $for ($i of 1 to 3) { $i }; }          ERROR  Unexpected Jess syntax.
+```
+
+There is one `If` production (`grammar.ts:5754`) and its `IfBody`
+(`grammar.ts:5717`) is `literal('{') many(nestedBodyStatement) literal('}')` — a
+statement list. No value-body form is reachable.
+
+**This is required, not optional**, because it is the lowering target for Less's
+`if(<cond>, a, b)`: that construct returns a value, so it cannot lower to the
+statement form, and §4.5.3a rules out lowering it to a call. Adding it is a
+grammar change of the same standing as `when`'s parens (§4.5.3).
+
+The exact spelling of the value body — brace-delimited as shown, whether `$else`
+chains in value position, whether a trailing `;` is permitted inside — is NOT
+settled here. The shapes above are the ones probed against the parser; they
+record the requirement, not a ratified syntax.
 
 #### 4.5.4 Two consequences the grammar enforces today
 
