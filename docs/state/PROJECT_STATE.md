@@ -88,6 +88,55 @@ files as suspect unless their expectations have been revalidated against
 upstream Less test-data, Less.js behavior, or a documented Jess-specific
 contract.
 
+## Triaging a branch queue: reverse-apply, never compare SHAs
+
+`dev` rebases constantly, so a landed change reappears on its branch under a new
+hash. `git cherry`, "N commits ahead", and comparing SHAs all then report a
+branch as unmerged when its content is already shipped. After a 90+ commit day
+this made the queue unreadable: 31 branches showed commits ahead, and most were
+content-merged.
+
+Ask whether the branch's CONTENT is on `dev` by trying to take it back OUT:
+
+```sh
+mb=$(git merge-base origin/dev "origin/$branch")
+git diff "$mb" "origin/$branch" > /tmp/b.patch
+git apply --check -R /tmp/b.patch   # clean => already on dev
+```
+
+Run it per file when the whole-patch check fails; `present`/`absent` counts
+separate "fully landed" from "partly landed" from "genuinely outstanding". Then
+classify into three lists — **already-merged**, **superseded** (the change was
+made differently on `dev`), **genuinely unmerged** — and report before landing
+anything.
+
+Three traps this caught, all of which a SHA comparison misses:
+
+- **A branch can be BEHIND on the same file it "adds".** `lane/cheat-sheet-complete`
+  asserted a `0.45.0` parseman floor and was 467 lines *smaller* than the sheet
+  already on `dev`. `lane/grammar-tournament-harness` differed from `dev` by one
+  hunk — a self-contradicting version string `dev` had already fixed. Landing
+  either would have been a regression.
+- **A stale branch reverts newer work through its conflicts.**
+  `fix/keyword-boundary-ident-continue` predated the P20 refactor; its side of the
+  `recognition.ts` conflicts carried an unsplit seven-name `descriptorAtKeyword`
+  that would have re-broken `@font-palette-values`, `@view-transition` and
+  `@position-try` in SCSS. Resolve such hunks to `dev` and re-apply the branch's
+  actual contribution on top of `dev`'s structure.
+- **Additive conflicts drop a side silently.** Where both sides ADD to the same
+  list, take the union: `dev` had `@keyframesé`, the branch had
+  `@supportsé`/`@mediaé`/`@containeré`, and either side taken wholesale loses the
+  other.
+
+Two verification rules that go with it: the oracles read `lib/`, so any
+post-rebase measurement without a rebuild is meaningless; and a branch's own
+recorded baseline may be stale in a way that hides its contribution — isolate by
+building at `dev`, digesting, then building the change and digesting again.
+
+Check paths still exist before triaging content. Branches predating the
+`packages/syntax/<lang>/` move or the `parser-shared` rename name files that are
+simply gone, which is a faster "dead" verdict than any diff.
+
 ## Known-red baseline (measured 2026-07-24 on `e34bb24b3`)
 
 Measured in a clean worktree after `pnpm install --frozen-lockfile` and
