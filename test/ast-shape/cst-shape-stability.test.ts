@@ -2,8 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { parseCssCst, parseCssDiagnosticCst } from '@jesscss/css-parser/cst';
-import { parseLessCst, parseLessDiagnosticCst } from '@jesscss/less-parser/cst';
+import { parseCssCst } from '@jesscss/css-parser/cst';
+import { parseLessCst } from '@jesscss/less-parser/cst';
+/*
+ * The line-aware half of the corpus. `f2121762c` retired the
+ * `parseXDiagnosticCst` names: each package now binds `./cst` to the
+ * offsets-only table and `./cst/positions` to the line-aware one, exporting the
+ * SAME names over the same parse body. So the line-carrying mode this gate
+ * needs is a change of import specifier, not of call site — aliased here the
+ * way `diagnostics-core/src/tolerant-cst.ts` aliases it.
+ */
+import { parseCssCst as parseCssPositionsCst } from '@jesscss/css-parser/cst/positions';
+import { parseLessCst as parseLessPositionsCst } from '@jesscss/less-parser/cst/positions';
 import { parseScssCst } from '@jesscss/scss-parser/cst';
 import { parseJessCst } from '@jesscss/jess-parser/cst';
 import { collectCstShapes, formatCstShapeReport, type CstCorpusEntry } from './cst-shape-probe.js';
@@ -34,7 +44,7 @@ const entry = (label: string, parse: CstCorpusEntry['parse'], text: string): Cst
 /**
  * Every fixture is a real stylesheet, plus targeted sources for the two
  * conditional-span builders (`shiftedSpan` via a `~` Quoted, `joinedSpan` via a
- * Url). The DIAGNOSTIC artifact is included deliberately: it is the only mode
+ * Url). The POSITIONS artifact is included deliberately: it is the only mode
  * that populates startLine/startColumn/endLine/endColumn, so it is the only mode
  * in which those two builders' line-carrying branch executes at all. A CST gate
  * that omitted it would be structurally blind to the exact code path the
@@ -68,7 +78,7 @@ function corpus(): CstCorpusEntry[] {
       entry('css:benchmark', parseCssCst, css),
       entry('less-on-css:benchmark', parseLessCst, css),
       entry('scss-on-css:benchmark', parseScssCst, css),
-      entry('css-diagnostic:benchmark', parseCssDiagnosticCst, css)
+      entry('css-positions:benchmark', parseCssPositionsCst, css)
     );
   }
   if (existsSync(resolve(repoRoot, BENCH_LESS))) {
@@ -81,10 +91,10 @@ function corpus(): CstCorpusEntry[] {
   const spanSources = '.u {\n  background: url(foo.png);\n}\n.q {\n  content: "abc";\n}\n';
   sources.push(
     entry('css:span-builders', parseCssCst, spanSources),
-    entry('css-diagnostic:span-builders', parseCssDiagnosticCst, spanSources),
+    entry('css-positions:span-builders', parseCssPositionsCst, spanSources),
     /*
      * `~"raw"` is the shiftedSpan trigger (a Quoted whose first leaf starts
-     * `~`). The second entry MUST use the diagnostic parser: `shiftedSpan` is
+     * `~`). The second entry MUST use the positions parser: `shiftedSpan` is
      * reachable only through this Less/SCSS/Jess form, and the only other
      * line-tracked sources here are CSS, which has no `~"…"` syntax. Parsing
      * this one without line tracking left `shiftedSpan`'s LINED arm at zero
@@ -92,7 +102,7 @@ function corpus(): CstCorpusEntry[] {
      * commit that added this gate and was not covered by it.
      */
     entry('less:escaped-quoted', parseLessCst, '.e { filter: ~"progid:x"; }'),
-    entry('less-diagnostic:escaped-quoted', parseLessDiagnosticCst, '.e {\n  filter: ~"progid:x";\n}')
+    entry('less-positions:escaped-quoted', parseLessPositionsCst, '.e {\n  filter: ~"progid:x";\n}')
   );
   return sources;
 }
