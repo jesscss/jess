@@ -213,6 +213,60 @@ evidence; silence is not. Filter 10's declaration-count assertion, the
 check are all the same move — **make the instrument state what it looked at, and
 compare that against something derived differently.**
 
+### 1d. The wrong-STAGE rule — bisect by stage before blaming a layer
+
+§1a catches measuring against the wrong **base**; §1c catches measuring the
+wrong **object**. This catches the fourth face, one level up again:
+
+> **When a defect is visible end to end, bisect by STAGE before attributing it
+> to a layer.**
+
+A block comment written between two declarations was missing from the emitted
+CSS. Measured through the compiler, that is all you can see. Two diagnoses were
+filed against it and **both were wrong, in different layers**:
+
+1. *"The parser does not capture block-interior trivia."* False — `parse()` +
+   `serialize()` reproduces the comment in position. A `captureTrivia` probe was
+   built and validated against five body shapes before the claim was checked.
+2. *"The `TriviaMap` does not survive eval."* False — instrumenting
+   `renderStylesheet` shows `triviaMapOf(document) === true` at the serialize
+   call. The map arrives intact.
+
+The actual cause was one flag on one **already-parsed** document:
+
+```
+serialize(doc)                            comment KEPT
+serialize(doc, {collapseNesting: true})   comment KEPT
+serialize(doc, {collapseNesting: false})  comment DROPPED   <- the v5 default
+```
+
+Two emitters; only the collapsed one replayed body-interior comments. Nothing
+in the parser, the AST or eval was ever involved.
+
+**Why it hid:** three of the four natural ways to test it take the emitter that
+works, and the fourth is the one every real compile takes. A parser-level test
+passes and watches nothing; a `serialize()` call without the flag passes and
+watches nothing.
+
+**The moves that would have found it first, not last:**
+
+- Hold an artefact FIXED and vary one stage. Parse once, then serialize twice.
+  A stage that is not varied is a stage that is not implicated.
+- Reproduce at the smallest stage that still shows it before naming a layer.
+  "The parser drops it" is a claim about the parser and needs a parser-only
+  reproduction.
+- Treat an option default as a stage. `?? false` in the compiler selected a
+  different code path than every test exercised — the flag was the bisect axis
+  and nothing named it as one.
+- A fix that only lands on the default leaves the two paths divergent in the
+  other direction. Pin BOTH values.
+
+Same family as §1c: the instrument reported a plausible value and the author
+believed it. The counter is identical — vary one thing, and make the
+measurement state which stage it actually exercised.
+
+---
+
 ### The reporting-end corollary
 
 **A check that prints nothing when it passes cannot be distinguished from a

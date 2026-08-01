@@ -12737,7 +12737,18 @@ function emitNestedBody(
   source: NestedHeaderSource | null = null,
   placement: NestedRuleMixinPlacement | null = null,
   sharedLeaves?: NestedLeafBuffer,
-  applyExpansion = false
+  applyExpansion = false,
+
+  /*
+   * [G28] The block whose body these statements are, when this call owns that
+   * body outright. Supplies the source span the block-interior comment replay
+   * anchors on. The COLLAPSED emitter has always done this walk; the nested one
+   * never did, so a block comment between declarations was dropped whenever
+   * `collapseNesting` was false -- the v5 default, and therefore every real
+   * compile. Left undefined for a SHARED leaf buffer, where the body being
+   * emitted is not this call's to anchor against.
+   */
+  owner?: object
 ): MaybePromise<void> {
   /*
    * buffer consecutive DIRECT leaves so a `+`/`+_` merge group can fold at
@@ -12746,6 +12757,23 @@ function emitNestedBody(
    * buffer flushes verbatim per-leaf (byte-identical to the prior stream).
    */
   const buf = sharedLeaves?.leaves ?? [];
+
+  /*
+   * [G28] Body-interior comment replay for the nested emitter, mirroring the
+   * walk the collapsed emitter already performs. Only armed when this call owns
+   * the body outright.
+   */
+  const bodyOwner = sharedLeaves === undefined ? owner : undefined;
+  const bodyOwnerStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
+  let bodyTriviaCursor = bodyOwnerStart === NO_SPAN ? 0 : bodyOwnerStart;
+  const replayBodyCommentsBefore = (statement: Statement): void => {
+    if (bodyOwner === undefined) {
+      return;
+    }
+    emitBodyBlockCommentTriviaBefore(bodyOwner, statement, e, INDENT.repeat(e.depth), bodyTriviaCursor);
+    const end = sourceEndOf(statement);
+    bodyTriviaCursor = end === NO_SPAN ? bodyTriviaCursor : end;
+  };
   const flushBuf = sharedLeaves?.flush ?? (() => {
     if (buf.length === 0) {
       return;
@@ -12754,6 +12782,7 @@ function emitNestedBody(
       mergeFold(buf, e, e.depth > 0 ? INDENT.repeat(e.depth) : '', emitNestedLeaf);
     } else {
       for (const leaf of buf) {
+        replayBodyCommentsBefore(leaf.node);
         emitNestedLeaf(leaf, e);
       }
     }
@@ -12839,6 +12868,7 @@ function emitNestedBody(
             break;
           }
           flushBuf();
+          replayBodyCommentsBefore(node);
           emitBeforeRootStatement(node);
 
           /*
@@ -13022,6 +13052,15 @@ function emitNestedBody(
     }
     if (!sharedLeaves) {
       flushBuf();
+
+      /*
+       * [G28] Comments after the LAST statement but still inside the block.
+       * The per-statement walk above only reaches comments that precede a
+       * statement, so without this a trailing `a { b: c; /* z *\/ }` is lost.
+       */
+      if (bodyOwner !== undefined) {
+        emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyEndOf(bodyOwner), INDENT.repeat(e.depth));
+      }
       emitTrailingRootTrivia();
     }
   };
@@ -13295,7 +13334,7 @@ function emitNestedRuleAuthored(
       mixins: collectMixins(rule.rules),
       declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null
     };
-    return emitNestedBody(rule.rules, childFrame, e, undefined, imp, source, placement);
+    return emitNestedBody(rule.rules, childFrame, e, undefined, imp, source, placement, undefined, false, rule);
   }
   if (plan?.flatten && !plan.hoistNested) {
     /*
@@ -13460,7 +13499,7 @@ function emitNestedRuleAuthored(
       };
       return mapMaybe(emitSplits(0), () => runHoist(0));
     };
-    return mapMaybe(emitNestedBody(rule.rules, childFrame, e, hoist, imp, childSource), finish);
+    return mapMaybe(emitNestedBody(rule.rules, childFrame, e, hoist, imp, childSource, null, undefined, false, rule), finish);
   });
 }
 
@@ -13831,6 +13870,6 @@ function emitNestedAtRuleBlockResolved(
   };
   return mapMaybe(
     prepareBodyPlugins(node.rules, bodyFrame, e),
-    () => mapMaybe(emitNestedBody(node.rules, bodyFrame, e, undefined, false, source), finish)
+    () => mapMaybe(emitNestedBody(node.rules, bodyFrame, e, undefined, false, source, null, undefined, false, node), finish)
   );
 }
