@@ -184,6 +184,63 @@ describe('Jess constructs discovered outside the parser suites', () => {
     expect(clean.unconsumedFrom).toBeNull();
   });
 
+  /*
+   * The escape is an OPTIONAL PREFIX on ONE quoted body, not a second copy of
+   * it. `~` used to lead its own full spelling of every arm — four copies of
+   * the body across `Quoted` alone — so the copies were free to drift. These
+   * pin the two forms together: whatever the plain form accepts, the `~` form
+   * must accept, and the only difference is `escaped`.
+   */
+  it.each([
+    ['double quotes', 'a { b: ~"raw" }', '"'],
+    ['single quotes', 'a { b: ~\'raw\' }', '\'']
+  ])('records a static escaped string as one Quoted node with escaped: true (%s)', (_label, source, quote) => {
+    expect(firstRule(source)).toMatchObject({
+      rules: [{ value: { type: 'Quoted', value: 'raw', quote, escaped: true } }]
+    });
+  });
+
+  it.each([
+    ['double quotes', 'a { b: "raw" }', '"'],
+    ['single quotes', 'a { b: \'raw\' }', '\'']
+  ])('records an unescaped string as the same node with escaped: false (%s)', (_label, source, quote) => {
+    expect(firstRule(source)).toMatchObject({
+      rules: [{ value: { type: 'Quoted', value: 'raw', quote, escaped: false } }]
+    });
+  });
+
+  it.each([
+    ['double quotes', 'a { b: ~"x$(1 + 1)y" }'],
+    ['single quotes', 'a { b: ~\'x$(1 + 1)y\' }']
+  ])('PINNED DEFECT — an escaped INTERPOLATED string loses its escape and its quotes (%s)', (_label, source) => {
+    /*
+     * `~"x$(…)y"` reduces to a bare `Interpolation` whose parts carry NO quote
+     * literals and no record that `~` was written, while the plain `"x$(…)y"`
+     * keeps its quote literals as parts. What the escape MEANS — that it
+     * strips the delimiters — is an eval-time decision made at parse time, so
+     * the tree cannot answer "was this escaped?" at all. Correct shape is one
+     * `Quoted` node with `escaped: true`, as the static arms above already
+     * produce and as `Block` does for `~(`/`~[`; that needs `Quoted.value` to
+     * admit an interpolation, which is an AST model change. Pinned so it
+     * changes loudly.
+     */
+    const value = (firstRule(source) as { rules: Array<{ value: { type: string; parts: Array<{ lit?: string }> } }> }).rules[0]!.value;
+
+    expect(value.type).toBe('Interpolation');
+    expect(value.parts.some(part => part.lit === '"' || part.lit === '\'')).toBe(false);
+    expect(value).not.toHaveProperty('escaped');
+  });
+
+  it.each([
+    ['double quotes', 'a { b: "x$(1 + 1)y" }', '"'],
+    ['single quotes', 'a { b: \'x$(1 + 1)y\' }', '\'']
+  ])('keeps the quote literals of an UNESCAPED interpolated string (%s)', (_label, source, quote) => {
+    const value = (firstRule(source) as { rules: Array<{ value: { type: string; parts: Array<{ lit?: string }> } }> }).rules[0]!.value;
+
+    expect(value.type).toBe('Interpolation');
+    expect(value.parts[0]).toMatchObject({ lit: expect.stringContaining(quote) });
+  });
+
   it.each([
     ['Sass namespaced call', 'a { b: ns.fn() }'],
     ['Sass namespaced variable', 'a { b: ns.$var }'],

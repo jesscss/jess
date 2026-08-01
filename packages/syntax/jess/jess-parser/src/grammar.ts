@@ -2170,32 +2170,25 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     { trivia: whitespace },
     g.ExpressionInterpolation
   );
-  const escapedLiteralQuoted = choice(
-    noTrivia(sequence(
-      literal('~'),
-      literal('"'),
-      plainDoubleQuotedText,
-      literal('"')
-    )),
-    noTrivia(sequence(
-      literal('~'),
-      literal('\''),
-      plainSingleQuotedText,
-      literal('\'')
-    ))
-  );
-
   /*
-   * Shared literal-quoted arms. The escaped, double-, and single-quoted
-   * static prefix is identical across the value, static, and expression quoted
-   * families; only the interp-bearing arms and the reducer differ.
+   * The escape is an OPTIONAL PREFIX on the quoted body, not a second spelling
+   * of it. `~` used to lead its own full copy of each arm, so the body was
+   * written twice per quote character and the two copies were free to drift —
+   * the same one-fact-several-copies shape that let SCSS module paths lose
+   * their escape arm. `optional` emits no child when absent, so the reducers'
+   * positional indices are the ones they always were: `~` at 0 when written,
+   * the opening quote at 0 otherwise.
+   * Shared across the value, static, and expression quoted families; only the
+   * interp-bearing arms and the reducer differ.
    */
-  const plainDoubleQuoted = noTrivia(sequence(
+  const staticDoubleQuoted = noTrivia(sequence(
+    optional(literal('~')),
     literal('"'),
     plainDoubleQuotedText,
     literal('"')
   ));
-  const plainSingleQuoted = noTrivia(sequence(
+  const staticSingleQuoted = noTrivia(sequence(
+    optional(literal('~')),
     literal('\''),
     plainSingleQuotedText,
     literal('\'')
@@ -2203,18 +2196,26 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const Quoted = node<Quoted | Interpolation>(
     'Quoted',
     choice(
-      escapedLiteralQuoted,
-      plainDoubleQuoted,
-      plainSingleQuoted,
+      staticDoubleQuoted,
+      staticSingleQuoted,
 
       /*
-       * An escaped string that carries interpolation IS representable: the
-       * escape drops the quotes, so the value is exactly the Interpolation of
-       * its content parts with no quote literals around them. Only the static
-       * arm needs the separate `Quoted` escaped fact.
+       * The same optional `~` leads the interp-bearing arms, so the escape is
+       * written once per quote character rather than once per arm.
+       *
+       * DEFECT, NOT A CONTRACT: the reducer below still DROPS the `~` and both
+       * quote tokens when an escaped string carries interpolation, so
+       * `~"a$(b)"` reduces to a bare `Interpolation` while `"a$(b)"` keeps its
+       * quote literals as parts. What the escape MEANS — that it strips the
+       * delimiters — is an eval-time decision that has leaked into the parser,
+       * and the resulting tree cannot say the escape was written at all. The
+       * fix is one `Quoted` node carrying `escaped`, as the static arm already
+       * does and as `Block` does for `~(`/`~[`; that needs `Quoted.value` to
+       * admit an interpolation, which is an AST model change, not a grammar
+       * one. Left as-is here so this arm collapse stays output-neutral.
        */
       noTrivia(sequence(
-        literal('~'),
+        optional(literal('~')),
         literal('"'),
         many(choice(
           g.DollarBrace,
@@ -2224,25 +2225,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal('"')
       )),
       noTrivia(sequence(
-        literal('~'),
-        literal('\''),
-        many(choice(
-          g.DollarBrace,
-          quotedExpressionParser,
-          interpolatedSingleQuotedText
-        )),
-        literal('\'')
-      )),
-      noTrivia(sequence(
-        literal('"'),
-        many(choice(
-          g.DollarBrace,
-          quotedExpressionParser,
-          interpolatedDoubleQuotedText
-        )),
-        literal('"')
-      )),
-      noTrivia(sequence(
+        optional(literal('~')),
         literal('\''),
         many(choice(
           g.DollarBrace,
@@ -2279,9 +2262,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const LiteralQuoted = node<Quoted>(
     'Quoted',
     choice(
-      escapedLiteralQuoted,
-      plainDoubleQuoted,
-      plainSingleQuoted
+      staticDoubleQuoted,
+      staticSingleQuoted
     ),
     (children) => {
       if (requireToken(children[0]).value === '~') {
@@ -2513,9 +2495,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const ExpressionQuoted = node<ExpressionFact>(
     'ExpressionQuoted',
     choice(
-      escapedLiteralQuoted,
-      plainDoubleQuoted,
-      plainSingleQuoted,
+      staticDoubleQuoted,
+      staticSingleQuoted,
       noTrivia(sequence(
         literal('"'),
         many(choice(

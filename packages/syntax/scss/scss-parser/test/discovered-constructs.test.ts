@@ -316,6 +316,58 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     expect(() => parse(source)).not.toThrow();
   });
 
+  /*
+   * A module path is a plain `QuotedString` — the SAME terminal `@import`
+   * takes (`UseRule ::= '@use' QuotedString …`, sass `spec/at-rules/use.md`;
+   * `ImportUrl ::= QuotedString | InterpolatedUrl`, `spec/at-rules/import.md`)
+   * — i.e. a CSS `<string-token>`, in which `\` always starts an escape
+   * (CSS Syntax 3 §4.3.1). `@use`/`@forward` used to run through a private
+   * escape-free copy of the quoted production, so a backslash parsed in every
+   * other SCSS string and failed here. There is now ONE `Quoted` rule and
+   * every quoted-string site references it by name; these cases are what that
+   * buys, so they must stay tied together.
+   */
+  it.each([
+    ['@use, double quotes', '@use "a\\62 c";'],
+    ['@use, single quotes', '@use \'a\\62 c\';'],
+    ['@forward', '@forward "a\\62 c";'],
+    ['@import', '@import "a\\62 c";'],
+    ['a value', '$x: "a\\62 c";'],
+    ['a keyframe name', '@keyframes "a\\62 c" { from { color: red } }']
+  ])('accepts a backslash escape in a quoted string (%s)', (_label, source) => {
+    expect(() => parse(source)).not.toThrow();
+  });
+
+  it('preserves an escape in a module path verbatim, as in any other string', () => {
+    expect(firstRule('@use "a\\62 c";')).toMatchObject({
+      path: { type: 'Quoted', value: 'a\\62 c', quote: '"' }
+    });
+    expect(firstRule('$x: "a\\62 c";')).toMatchObject({
+      value: { type: 'Quoted', value: 'a\\62 c', quote: '"' }
+    });
+  });
+
+  it.each([
+    ['a protocol-relative path is not a line comment', '@use "//host/lib";', '//host/lib'],
+    ['a bare `#` is not an interpolation opener', '@use "a#b";', 'a#b']
+  ])('keeps module-path lexing intact (%s)', (_label, source, value) => {
+    expect(firstRule(source)).toMatchObject({ path: { type: 'Quoted', value } });
+  });
+
+  it.each([
+    ['@use', '@use "#{$x}";'],
+    ['@forward', '@forward "#{$x}";']
+  ])('rejects an interpolated module path (%s)', (_label, source) => {
+    /*
+     * Still rejected, but now as a SEMANTIC failure from the reducer rather
+     * than a lexical one: the spec's terminal is `QuotedString`, not an
+     * interpolated string, so the grammar recognizes the shape (it must, or an
+     * escape-bearing path cannot be reached at all) and the reducer refuses a
+     * non-static path. dart-sass reports the same thing as "Expected string.".
+     */
+    expect(() => parse(source)).toThrow(/requires a quoted module path/);
+  });
+
   it('PINNED DEFECT — rejects a parent selector in value position', () => {
     /*
      * `#{&}` (the whole `spec/libsass/base-level-parent/` family) is blocked

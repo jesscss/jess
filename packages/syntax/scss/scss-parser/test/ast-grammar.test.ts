@@ -485,13 +485,21 @@ describe('SCSS canonical-AST grammar', () => {
     );
   });
 
+  /*
+   * `"./theme\.scss"` USED to be in this list. It is not unrepresentable — an
+   * escape is part of every `QuotedString` (sass `spec/at-rules/use.md` takes
+   * the same terminal as `@import`; CSS Syntax 3 §4.3.1 makes `\` an escape
+   * inside a `<string-token>`). It only failed because `@use`/`@forward` ran
+   * through a private escape-free copy of the quoted production. There is one
+   * `Quoted` rule now and it is accepted, pinned in `discovered-constructs`.
+   * What remains here is genuinely unrepresentable: a DYNAMIC path, and the
+   * clauses this grammar has no model for.
+   */
   it('rejects unrepresentable SCSS @use and @forward forms without classifying or resolving them', () => {
     for (const source of [
       '@use "theme-#{$name}.scss";',
-      '@use "./theme\\.scss";',
       '@use "./theme.scss" with ($tone: red);',
       '@forward "./theme.scss" as theme-*;',
-      '@forward "./theme\\.scss";',
       '@forward "./theme.scss" show $tone;',
       '@forward "./theme.scss" with ($tone: red);'
     ]) {

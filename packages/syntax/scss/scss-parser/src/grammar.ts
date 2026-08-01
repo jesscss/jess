@@ -1346,45 +1346,16 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * Module directives are classified from their literal authored path. They
-   * deliberately use this interpolation-free quoted production: a dynamic path
-   * or escape-bearing path has no decoded parser-time target class and must not
-   * be guessed or resolved here.
-   */
-  const staticDoubleQuotedPath = regex(/(?:[^"\\#]|#(?!\{))*/);
-  const staticSingleQuotedPath = regex(/(?:[^'\\#]|#(?!\{))*/);
-
-  /*
-   * `noTrivia`: a module path is literal bytes, so the ambient `//` trivia arm
-   * must not reach inside the quotes and swallow `@use "//host/lib"` as a line
-   * comment. Both arms are closed regex/literal, so disabling trivia here
-   * cannot propagate into a shared rule.
-   */
-  const ModulePathQuoted = node<Quoted>(
-    'Quoted',
-    choice(
-      noTrivia(sequence(
-        literal('"'),
-        staticDoubleQuotedPath,
-        literal('"')
-      )),
-      noTrivia(sequence(
-        literal('\''),
-        staticSingleQuotedPath,
-        literal('\'')
-      ))
-    ),
-    staticQuoted
-  );
-
-  /*
-   * Static values retain escapes, unlike module paths (whose classification
-   * deliberately rejects them). A real `#{` opener remains outside this fact
-   * so a supports condition can never flatten interpolation into a static
-   * `Quoted` node.
-   * `noTrivia` for the same reason as the module-path fact above: a supports
-   * condition's string is literal bytes, not a place the `//` trivia arm may
-   * reach. Closed regex/literal arms, so nothing shared is affected.
+   * NOT a copy of `Quoted`: this is the *static-only* quoted string, `Quoted`
+   * minus its two interpolation arms. It exists so that a real `#{` opener is
+   * left unconsumed and the caller can fall through to an arm that owns the
+   * dynamic form — `SupportsAtom` to `GeneralEnclosed`'s template, and
+   * `PseudoArgument` to the structured interpolated pseudo-argument. Reduced
+   * through the same `staticQuoted` fact and the same escape-bearing text
+   * regexes as `Quoted`, so the accepted string language is identical; only
+   * the interpolation arms differ.
+   * `noTrivia`: these are literal bytes, not a place the ambient `//` trivia
+   * arm may reach. Closed regex/literal arms, so nothing shared is affected.
    */
   const LiteralQuoted = node<Quoted>(
     'Quoted',
@@ -2587,11 +2558,24 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => requireToken(children[1]).value
   );
+
+  /*
+   * `UseRule ::= '@use' QuotedString AsClause? WithClause?` (Sass spec,
+   * `spec/at-rules/use.md`) — the same `QuotedString` terminal `@import` takes
+   * (`ImportUrl ::= QuotedString | InterpolatedUrl`, `spec/at-rules/import.md`),
+   * i.e. a CSS `<string-token>`, in which `\` always starts an escape
+   * (CSS Syntax 3 §4.3.1, consume-a-string-token). A module path therefore has
+   * no lexical rules of its own and must reference `g.Quoted` like every other
+   * quoted string. What the spec does restrict is the *value*: `QuotedString`,
+   * not an interpolated string. That is a semantic restriction, so the reducer
+   * below rejects a non-static path — the grammar must still recognize the
+   * shape, or an escape-bearing path fails to parse at all.
+   */
   const UseRule = node<StyleImport | ModuleImport>(
     'UseRule',
     sequence(
       routed(),
-      ModulePathQuoted,
+      g.Quoted,
       optional(g.UseNamespace),
       literal(';')
     ),
@@ -2628,11 +2612,16 @@ const scssFactory = (g: ScssInputRules) => {
           );
     }
   );
+
+  /*
+   * `ForwardRule ::= '@forward' QuotedString …` (`spec/at-rules/forward.md`):
+   * the same `QuotedString` terminal as `@use`, so the same `g.Quoted`.
+   */
   const ForwardRule = node<StyleImport>(
     'ForwardRule',
     sequence(
       routed(),
-      ModulePathQuoted,
+      g.Quoted,
       literal(';')
     ),
     (children) => {
@@ -4449,11 +4438,9 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * Keyframe names do not participate in the module-path classification that
-   * deliberately keeps `ModulePathQuoted` escape-free. They are ordinary
-   * static quoted values, so they reuse the escape-preserving static-value
-   * string helper while still leaving a real `#{` opener for the rejected
-   * dynamic path.
+   * A keyframe name is a static quoted value: `g.LiteralQuoted` leaves a real
+   * `#{` opener unconsumed so the dynamic form is rejected here rather than
+   * flattened into a static `Quoted` node.
    */
   const Keyframes = node<AtRuleBlock>(
     'Keyframes',
