@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
-import { bodySpanOf } from '../../../../core/src/ast/provenance.js';
+import { bodySpanOf, sourceSpanOf, triviaMapOf } from '../../../../core/src/ast/provenance.js';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parse } from '../src/index.js';
@@ -94,6 +94,33 @@ describe('SCSS block body spans', () => {
   it('keeps a leading and a trailing document comment', () => {
     expect(css('/* lead */\n.a { color: red; }\n/* trail */\n'))
       .toBe('/* lead */\n.a {\n  color: red;\n}\n/* trail */\n');
+  });
+
+  /*
+   * PINNED DEFECT — and the single most load-bearing fact for the trivia-model
+   * change.
+   *
+   * The case above passes, but NOT through trivia. SCSS's root trivia index is
+   * EMPTY for that input: every one of those comments reached the output as a
+   * `Comment` RULE NODE. css and Less capture the same document as two trivia
+   * runs (`[0,11]` and `[29,42]`) and render from those.
+   *
+   * So deleting the `g.Comment` arms while this is empty does not degrade SCSS
+   * comment output — it ends it. Body spans (landed) and declaration spans
+   * (landed) make the REPLAY path correct; this is the CAPTURE path, and it is
+   * a separate problem that declaration spans did not fix. The root span stops
+   * one byte short of the document (`{0,30}` of 31), so trailing trivia is
+   * never offered to the index at all.
+   *
+   * Owned by the root-span convention, which the four dialects split 2-2:
+   * css and Less cover the whole document, scss stops short of the final
+   * newline, jess stops at the last statement.
+   */
+  it('PINNED DEFECT — captures no document trivia at all', () => {
+    const source = '/* lead */\n.a { color: red; }\n/* trail */\n';
+    const root = parse(source);
+    expect(triviaMapOf(root)?.commentRuns() ?? []).toEqual([]);
+    expect(sourceSpanOf(root)).toEqual({ start: 0, end: source.length - 1 });
   });
 
   /*
