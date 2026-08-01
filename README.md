@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/dev/packages/docs/static/img/android-chrome-192x192.png" alt="Jess logo">
+  <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/dev/packages/docs/docs-jess/static/img/android-chrome-192x192.png" alt="Jess logo">
 </div>
 
 # Jess
