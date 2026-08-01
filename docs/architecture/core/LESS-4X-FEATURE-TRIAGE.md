@@ -503,7 +503,7 @@ tests themselves name the fix for. Nothing here belongs in §3 or §4.
 | Root cause | Failures | Class | Evidence |
 | --- | --- | --- | --- |
 | **RC-1 — the `.jess` dialect registers no value evaluator at all** (**CLOSED; the count and the classification below are both superseded — see the correction under this table**). `JessPlugin` never calls `context.registerValueEvaluator(…)`; both sibling plugins do. Every typed leaf degrades to a bare `Keyword` and every call is preserved verbatim, so `.jess` has no arithmetic and no builtins. | ~~**18**~~ → **3** measured (`jess-render` only; the 16 `min-max-dialect` are stale expectations, not this bug) | BUG (arithmetic half only) | missing call: `packages/syntax/jess/jess-plugin-jess/src/index.ts:26-39`; present at `packages/syntax/less/jess-plugin-less/src/index.ts:414` and `packages/syntax/scss/jess-plugin-scss/src/index.ts:71`. `registerValueEvaluator` is recent (`d32f6622d`) — the per-dialect-registry refactor wired Less and Sass and left `.jess` behind. Degradation sites `packages/core/src/ast/serialize.ts:2461,2483,4365,4503`. Direct check: `.jess` `$(1px + 2px)` → `1px + 2px`; `.less` `1px + 2px` → `3px`. Every one of the 16 min-max assertion messages names `.jess`; `.less` and `.scss` pass all 24. |
-| **RC-2 — body-form `&:extend()` keeps only the first branch of a comma-list rule.** `ExtendStatement` reduces to the same `{target, partial}` shape the inline-extend predicate tests for, so the body form is filed as a first-branch extend and stamped with `selector[0]` where it must carry the whole rule selector. | **2** | BUG | `packages/syntax/less/less-parser/src/grammar.ts:5872-5878`, predicate `:1678`, routing `:6065-6075`, stamp `:6128-6133`. Repro: `.foo{display:none} .a, .b { &:extend(.foo all); }` → `.foo, .a` — `.b` dropped. Hits `tests-unit/extend/extend.less:26-30` in two harnesses. |
+| **RC-2 — body-form `&:extend()` keeps only the first branch of a comma-list rule** (**CLOSED — the body form now reduces to its own tagged `BodyExtendFact` instead of a bare `{target, partial}[]`; see the section under this table**). `ExtendStatement` reduced to the same `{target, partial}` shape the inline-extend predicate tests for, so the body form was filed as a first-branch extend and stamped with `selector[0]` where it must carry the whole rule selector. | **2** | BUG | `packages/syntax/less/less-parser/src/grammar.ts:6025` (`ExtendStatement`), predicates `:1703`/`:1709`, consumers `:6108`/`:6129`/`:6227`. Repro: `.foo{display:none} .a, .b { &:extend(.foo all); }` → `.foo, .a` — `.b` dropped. Hit `tests-unit/extend/extend.less:26-30` in two harnesses. |
 | **RC-3 — a detached-ruleset body rejects leading-combinator nested rules** (**CLOSED — `BodyStatement` now takes the same `nestedGuardedRuleset` arm `blockItem` takes**). The `ValueBlock` body used the absolute selector-list production; the ordinary nested body uses the relative one, which admits `>`/`+`/`~`. | **1** | BUG (fixed) | `.../less-parser/src/grammar.ts:4349` (was `guardedRuleset` → `g.RulesetWithExtends` → `selectorListWithExtends`; now `nestedGuardedRuleset` → `g.NestedRulesetWithExtends` → `relativeSelectorListWithExtends`). Regressed by `d10c7fd38`, which split the absolute/relative selector lists and moved only `blockItem`. Repro: `@r: { ~ .a { x: 1 } }` fails, `@r: { & ~ .a { x: 1 } }` and `.z { ~ .a { x: 1 } }` both pass. Unblocked `bootstrap-less-port/less/{_card,_tables,mixins/_forms,mixins/_table-row}.less`. Two things this fix deliberately did **not** touch are recorded under the table. |
 
 > **RC-3 — root-level leading combinators are `DELIBERATE`, a settled divergence
@@ -604,3 +604,114 @@ Of the FIXED, nine are `tests-error/eval/*` entries — unmatched mixin calls,
 namespace member misses and undefined property accessors now raise eval errors
 where they previously rendered. That is a real capability gain and the reason
 this document does not treat "errors where Less errors" as an open area.
+
+### RC-2 and RC-3 — LANDED
+
+Both were in the Less parser's ruleset-body/extend classification. They were
+predicted to be one work item; they landed as two. RC-3 landed on its own in
+`a493bcee8`, independently discovered while this branch sat unmerged, so the
+change described here carries RC-2 only. Both are in
+`packages/syntax/less/less-parser/src/grammar.ts`.
+
+**RC-2.** `isExtendInstruction` and `isExtendTargetFact` were byte-identical
+predicates, so `RulesetTail`'s `extensions` bucket — selected by
+`isExtendInstruction(v) && !isExtendTargetFact(v)` — could never be non-empty.
+Every body-form extend fell into `firstExtensions` and `ClassIdStatement`
+stamped `subject: selist(prefix.selector)` on it. The fix gives the body form its
+own reduced fact (`BodyExtendFact`, field `bodyExtensions`) instead of a bare
+`{target, partial}[]` that is indistinguishable from an inline extend's. Body
+extends now reach `extensions` carrying **no** `subject`, which is already the
+documented whole-rule contract on `ExtendInstruction` and already what
+`RulesetWithExtends` / `NestedRulesetWithExtends` produced on their own path.
+
+**RC-3** (landed separately as `a493bcee8`). `BodyStatement` composes `nestedGuardedRuleset`, the same
+production the ordinary nested `blockItem` uses, rather than the absolute
+`guardedRuleset`. A detached-ruleset / `each()` body is evaluated in the
+caller's nesting context, so its rules are nested rules. `RelativeComplex` is a
+strict superset of `Complex` and reduces to the identical branch when no leading
+combinator is present, so this is a pure widening on the AST surface.
+
+**Ratchet: NEW 15 → 13**, failing 17 → 15 (`pnpm run verify:jess-suite-ratchet`,
+re-measured against `origin/dev` `089c02adf`). The two that go green are
+`all-less.test.ts` and `extend-exact-oracle.test.ts`, both on
+`tests-unit/extend/extend.less`. The post-change set is a strict subset of the
+pre-change set: nothing is introduced. The ratchet is red on `origin/dev` for
+unrelated reasons and stays red; this change only shrinks it.
+
+**Less test-data: 80/81 → 81/81** (`pnpm run test:less:test-data:unit`). The
+single fixture that flips is `tests-unit/extend/extend.less`. Less-parser unit
+suite is 702/702 on 13 files. `pnpm run verify:types` is red on both sides with
+byte-identical output (2/25 configs, 863 diagnostics, `@jesscss/jess-parser` 450
+and `@jesscss/scss-parser` 413) — pre-existing and untouched here.
+
+**`bootstrap-memory-bisect.test.ts` does NOT go green, and RC-3 was not its only
+blocker.** The table above attributes 1 failure to RC-3; that attribution was
+optimistic. `mixins/_forms.less:88-91` now parses, and the test advances to a
+second, unrelated defect in `bootstrap-less-port/less/_navbar.less:256` —
+`each(map-keys(@grid-breakpoints), #(@breakpoint) { … })`, which the parser
+rejects with "Unexpected Less input after a complete stylesheet." reported at
+line 251. `_navbar.less` is byte-identical between the pre- and post-fix parser
+in the byte-identity digest and holds the parse-failure hash in both, so this is
+pre-existing and untouched by either fix. It needs its own root cause.
+
+**Byte-identity: rebaselined here, with the move set classified first.** An
+earlier revision of this note claimed the baseline was already red on
+`origin/dev` and therefore could not gate the change. That is no longer true —
+the corpus and baseline have since converged. On `089c02adf` the gate is
+**PASS**, IDENTICAL on both surfaces: 715 entries, ast `b97690c7885e8fe3…`
+`threw=118`, cst `4ec13927dcff0cd7…` `threw=0`. So the committed baseline *is*
+dev's per-entry truth and the differential below is taken against it directly.
+
+With RC-2 applied the ast aggregate moves to `e301f07fa7554731…` — **14 of 715
+shared entries, cst byte-identical, `threw` unchanged at 118 → 118.** No entry
+gained or lost an extend instruction and no ruleset count changed; every
+difference is an `ExtendInstruction.subject` going from present to absent.
+
+The move set is *exactly* the files carrying a body-form `&:extend` under a
+class/id-led selector, verified in both directions: all 14 moved files contain
+one, and no file without one moved. Four files contain a body extend and do not
+move, each for a reason that confirms the scope — `_popover.less` and
+`_tooltip.less` carry theirs under `&`-led selectors, which route through
+`NestedRulesetWithExtends` and were already correct; `selectors.less` uses the
+inline form; `_navbar.less` throws identically on both sides.
+
+Of the 14, **three are output-changing** and eleven are AST-shape-only:
+
+| Entry | Class | Why |
+| --- | --- | --- |
+| `tests-unit/extend/extend.less` | output-changing | `.ext3, .ext4` — subject `.ext3` → absent |
+| `tests-unit/extend-chaining/extend-chaining.less` | output-changing | `.me, .mf` — subject `.me` → absent |
+| `bootstrap-less-port/less/mixins/_grid-framework.less` | output-changing | multi-branch compound — subject → absent |
+| the other 11 | AST-shape-only | single-branch carrying selector, so the stamped subject already equalled the whole rule; CSS is unchanged |
+
+The three output-changing entries are corrections, not regressions, and
+`extend.less` proves it against the owner-maintained expected CSS: before the
+fix jess emitted `:is(.foo, .ext1 .ext2, .ext3)`, dropping `.ext4` from a
+`.ext3, .ext4` comma list; the expected output is
+`:is(.foo, .ext1 .ext2, .ext3, .ext4)`. `extend-chaining.less` and
+`_grid-framework.less` are the same defect in a position where the emitted CSS
+happened not to differ, so both remain green. `_grid-framework.less` has no
+expected-CSS oracle in this suite and is covered only by the parse digest.
+
+Corpus provenance for the run: `@less/test-data` is a `link:` to the sibling
+`~/git/oss/less.js` checkout at `2f309b667` (branch `alpha`, clean tree). The
+gate is not reproducible across machines without that pin.
+
+**Perf: NOT re-measured after the rebase.** The original A/B was taken on the
+pre-rebase base and covered RC-2 and RC-3 together, so it does not describe the
+change that actually lands here. That run read NEUTRAL, and could only be called
+that: `ab-compare.mjs` (same worktree, git-toggled, interleaved) was run twice
+cleanly and disagreed in direction — at `4 3 8 25` every case read +1.5%…+7.1%
+median for the candidate, at `6 3 8 25` every case read −2.9%…+0.6% with
+win-rates at 7–12 of 18. The tell was the control: `css-corpus-ok` and
+`css-corpus-ok-joined` are plain CSS with no `:extend` and no detached ruleset,
+so neither fix can touch them structurally, yet they moved by the same magnitude
+and sign as the Less corpora in both runs. That is cross-run bias, exactly the
+constraint [`GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md)
+§4 records (`3.864x → 3.564x` on identical code).
+
+On structure, RC-2 adds one wrapper object per `ExtendStatement` reduction and
+replaces an `Array.isArray` scan of every ruleset child with a single-key
+predicate over the same children, so it is not expected to move the needle in
+either direction. That is a prediction, not a measurement — if a perf claim is
+needed for this change, re-run the A/B against `089c02adf`.

@@ -61,6 +61,7 @@ type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string }
 type AttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
 type AttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
+type BodyExtendFact = { readonly bodyExtensions: readonly ExtendInstruction[] };
 type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
 type SelectorListWithExtendsFact = { readonly selector: SelectorList; readonly extensions: readonly ExtendInstruction[] };
 type MixinDefinitionFact = {
@@ -73,6 +74,7 @@ type MixinCallFact = { readonly args: readonly MixinCallArgument[]; readonly imp
 type BareMixinCallFact = { readonly important: boolean };
 type MixinStatementFact = MixinDefinitionFact | MixinCallFact;
 type RulesetTailFact = {
+  /** INLINE `:extend()` written on the first branch; its subject is that branch alone. */
   readonly firstExtensions: readonly ExtendTargetFact[];
   readonly branches: readonly SelectorBranchFact[];
   readonly selectorEnd: number;
@@ -267,7 +269,7 @@ type LessRules = {
   SelectorTail: Combinator<SelectorBranch>;
   Selector: Combinator<SelectorList>;
   ExtendTarget: Combinator<ExtendTargetFact>;
-  ExtendStatement: Combinator<ExtendInstruction[]>;
+  ExtendStatement: Combinator<BodyExtendFact>;
   RulesetWithExtends: Combinator<Ruleset>;
   NestedRulesetWithExtends: Combinator<Ruleset>;
   Quoted: Combinator<Quoted | Interpolation>;
@@ -1702,6 +1704,12 @@ function isExtendTargetFact(value: unknown): value is ExtendTargetFact {
   return typeof value === 'object' && value !== null
     && 'target' in value && isSelectorList(value.target)
     && 'partial' in value && typeof value.partial === 'boolean';
+}
+
+function isBodyExtendFact(value: unknown): value is BodyExtendFact {
+  return typeof value === 'object' && value !== null
+    && 'bodyExtensions' in value && Array.isArray(value.bodyExtensions)
+    && value.bodyExtensions.every(isExtendInstruction);
 }
 
 function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
@@ -6007,12 +6015,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     children => children.filter(isExtendTargetFact)
   );
   const selectorBranchBoundary = peek(choice(literal(','), whenGuardAhead, literal('{')));
+  // A body-form `&:extend(...)` applies to the WHOLE carrying rule selector, so
+  // its instructions carry no `subject` (see `ExtendInstruction`: absent subject
+  // means whole-rule). That is the opposite of an inline `.a:extend(...)`, which
+  // binds to its own branch. The two are indistinguishable as bare `{target,
+  // partial}` arrays, so the body form reduces to its own fact instead; a ruleset
+  // reducer that mixed them stamped the first branch onto every body extend and
+  // silently dropped the rest of a comma list.
   const ExtendStatement = node(
     'ExtendStatement',
     sequence(literal('&'), ExtendPseudo, optional(literal(';'))),
-    children => children
-      .flatMap(child => Array.isArray(child) ? child.filter(isExtendTargetFact) : [])
-      .map(target => ({ target: target.target, partial: target.partial }))
+    children => ({
+      bodyExtensions: children
+        .flatMap(child => Array.isArray(child) ? child.filter(isExtendTargetFact) : [])
+        .map(target => ({ target: target.target, partial: target.partial }))
+    })
   );
   const selectorBranchContinuation = choice(
     sequence(ExtendPseudo, selectorBranchBoundary),
@@ -6088,7 +6105,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
-      const bodyExtensions = children.filter(Array.isArray).flatMap(child => child.filter(isExtendInstruction));
+      const bodyExtensions = children.filter(isBodyExtendFact).flatMap(fact => fact.bodyExtensions);
       const extensions = [...selectorFact.extensions, ...bodyExtensions];
       const node = withBlockBody(
         rule(
@@ -6109,7 +6126,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
-      const bodyExtensions = children.filter(Array.isArray).flatMap(child => child.filter(isExtendInstruction));
+      const bodyExtensions = children.filter(isBodyExtendFact).flatMap(fact => fact.bodyExtensions);
       const extensions = [...selectorFact.extensions, ...bodyExtensions];
       const node = withBlockBody(
         rule(
@@ -6207,9 +6224,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         selectorEnd: requiredTokenStart(rawChildren, '{'),
         ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
         rules: children.filter(isStatement),
-        extensions: children
-          .filter(Array.isArray)
-          .flatMap(values => values.filter(value => isExtendInstruction(value) && !isExtendTargetFact(value))),
+        extensions: children.filter(isBodyExtendFact).flatMap(fact => fact.bodyExtensions),
         ...(bodySpan === undefined ? {} : { bodySpan }),
         ...(hasRulesetTerminator(rawChildren) ? { terminated: true } : {})
       };
