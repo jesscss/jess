@@ -1373,14 +1373,13 @@ path, so they are governed by the held `blockitem.patch` decision rather than
 by any type blocker. — less lane
 
 ## 3. SINGLE-SOURCE — act on, but label as provisional
-- **`GRAMMAR-REBUILD-SPEC §0.2` is wrong**: it states that aliases declared
-  *inside* a `rules()` factory lower cleanly. One was inside and still failed.
-  The real constraint is narrower than the doc, and the doc actively misleads
-  anyone authoring a dispatch.
-- **`when(ciCase('url('), routed(...))` fails static evaluation**
-  ("factory isn't statically evaluable") while
-  `when('url(', g.Url, { caseInsensitive: true })` builds. The alias/factory
-  shape is the cause, not the opener shape.
+- **SETTLED, no longer provisional — the macro-lowering authoring boundary.**
+  Two bullets here previously claimed the alias *declaration site* was the
+  constraint and that `GRAMMAR-REBUILD-SPEC §0.2` was wrong about it. §0.2 has
+  since been corrected and now owns the rule outright, including the
+  `ciCase` case by name. **Read
+  `docs/design/GRAMMAR-REBUILD-SPEC.md` §0.2 — do not restate it here.** It is
+  the single source; a paraphrase in this file is what drifted last time.
 - **Bare-`choice()` consts cannot currently be promoted** — the union they infer
   cannot be spelled in an invariant `Combinator<T>` slot. Blocks the §2.1
   technique on a large share of remaining targets.
