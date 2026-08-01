@@ -361,7 +361,108 @@ one value type rather than growing a second node.
 `null` → JS `null` outbound. JS has two absences and jess has one, so the lossy
 direction is the inbound one.
 
-### 4.4 The math rule, stated over the construct
+### 4.4 Truthiness — falsy iff absent or empty
+
+**Owner ruling, 2026-08-01.** A condition is falsy for exactly four values:
+
+```
+false    null    ""  (and '')    ()  (empty list / map)
+```
+
+Everything else is truthy, INCLUDING `0`, `0px`, `0%`, `"0"`, `red`,
+`transparent`, and `rgba(0,0,0,0)`.
+
+**The principle is emptiness, not zero-ness.** `0` is a real CSS value —
+`margin: 0`, `content: ""` — not an absence, so `@if $margin` with `$margin: 0`
+must take the TRUE branch. That is where JavaScript is wrong for this domain
+(`0` and `""` both falsy) and where Sass is half-right (`0` truthy, but `""` and
+`()` truthy too, which it cannot explain). This rule is sharper than either.
+
+| value | `.less` | `.scss` | **`.jess`** |
+| --- | --- | --- | --- |
+| `true` | truthy | truthy | **truthy** |
+| `false`, `null` | falsy | falsy | **falsy** |
+| `""`, `''` | falsy | truthy | **falsy** — diverges from Sass |
+| `()` empty list/map | *parse error* | truthy | **falsy** — diverges from Sass |
+| `0`, `1`, `-1`, `0.0` | falsy | truthy | **truthy** |
+| `0px`, `1px`, `0%`, `1em` | falsy | truthy | **truthy** |
+| `"a"`, `"0"`, `"false"`, `"true"` | falsy | truthy | **truthy** |
+| `a`, `none`, `inherit` | falsy | truthy | **truthy** |
+| `red`, `#000`, `transparent`, `rgba(0,0,0,0)` | falsy | truthy | **truthy** |
+| `(1 2)`, `(1, 2)`, `(a: b)` | *parse error* | truthy | **truthy** |
+| `nope()` | falsy | truthy | **truthy** |
+
+`.less` / `.scss` columns measured on lessc 4.6.3 and dart-sass 1.101.0.
+
+#### 4.4.1 Specified as a desugaring, implemented as one predicate
+
+```jess
+$if($x)  ≡  $if($x != false and $x != null and $x != "" and $x != ())
+```
+
+The desugaring is the DEFINITION — visible in the language, teachable, and one
+line to change. Core implements it as a single typed predicate on the truth
+node, so there is one evaluation site, one error site, and the node keeps its
+AUTHORED span; a literal four-comparison expansion would point diagnostics at an
+expression the author never wrote.
+
+This retires `guard.ts`'s `'truth'` byte test —
+`emitValue(v).trim() === 'true'` — which decided a semantic question by
+serializing the value and string-matching, the thing the architecture forbids
+everywhere else.
+
+#### 4.4.2 Both dialects lower to plain `.jess`
+
+```
+.less   when (@x)   ->   $if($x == true)
+.scss   @if $x      ->   $if($x != false and $x != null)
+```
+
+Both are writable `.jess`, which is the hard requirement: `.less` and `.scss`
+must go {lang} -> `.css` AND {lang} -> `.jess` -> `.css`. A lowering that needs
+an internal node or a core-only predicate has no `.jess` representation and is
+therefore not a lowering.
+
+**`==` / `!=` are load-bearing, and each lowering breaks differently with the
+loose operator:**
+
+| lowering | with `==` / `!=` | with `=` |
+| --- | --- | --- |
+| `.less` `$if($x == true)` | correct | `"true" = true` → string ground → **true**, but Less says `"true"` is falsy |
+| `.scss` `$if($x != false and $x != null)` | correct | `0 = null` → numeric ground → equal, so `0` comes out **falsy**; Sass says truthy |
+| `.jess` `$if($x)` | correct | same `0 = null` break |
+
+`=`'s grounds are deliberately generous (§4.1); "is this literally that value" is
+the type-strict question. **This is why `.jess` needs `!=` as well as `==`** —
+Sass has both, and the pair is what keeps every lowering readable instead of a
+`not( … or … )` knot.
+
+#### 4.4.3 `=` is NOT overloaded with falsiness
+
+`"" = false` stays **false** (Quoted vs Bool → no common ground). Making it true
+was considered and rejected twice over:
+
+- It would force `null = false` to be **true** — `null` is falsy, so if `= false`
+  means "is falsy" then null must equal false — re-opening a settled ruling
+  (§4.1) that both engines back.
+- Making `"" = false` true while `$if("")` stays truthy is precisely the
+  JavaScript `[]` wart. Measured: `[] == false` is **true** in JS while `if([])`
+  is **truthy**, and `null == false` is **false** while `null` is **falsy**. JS's
+  `== false` agrees with its own truthiness on only four of six probed values,
+  with no rule predicting which.
+
+`=` asks *are these the same value*; `$if` asks *is this present and non-empty*.
+Two questions, two answers, and the relationship stays total and predictable:
+`$if` is false for exactly `{false, null, "", ()}` and `= false` is true for
+exactly `{false}`. Simple containment, no overlap.
+
+#### 4.4.4 Migration note
+
+Compiled `.scss` is unaffected — the lowering emits the explicit form. A HAND
+port of `@if $x` to `$if($x)` changes behaviour when `$x` is `""` or `()`. That
+is a migration-guide line, not a defect.
+
+### 4.5 The math rule, stated over the construct
 
 **An operation authored inside a CSS math function preserves its authorship; it
 does not fold.** `calc($val / 2)` → `calc(8px / 2)`: operands resolve so
@@ -564,7 +665,7 @@ keeping the mis-parse recovery while letting real comparisons evaluate.
 | `calc($($val / 2))` | `4px` | ✓ |
 | `$(1px / 2)`, `$(1 / 2px)` | `0.5px` | ✓ |
 
-The polarity is inverted against §4.4: v2 treats `calcDepth > 0` as FORCING
+The polarity is inverted against §4.5: v2 treats `calcDepth > 0` as FORCING
 operation and lets `value-operate` decline, where v1 treated in-calc as
 SUPPRESSING unless units are provably safe.
 
@@ -619,19 +720,9 @@ Sass**, where `false and (1px + 1em)` must not raise.
 
 ## 8. Open questions
 
-### Blocking
-
-- **O-TRUTH-1 — truthiness is not covered by §1 at all.** §1 settles comparison
-  and arithmetic but never says what `@if $x` / `when ($x)` means for a bare
-  non-boolean operand. This is the largest SCSS corpus blocker — 29 of 92
-  Bootstrap files, 42 of 109 failures across bourbon / foundation-sites /
-  include-media — and the reason the grammar deliberately withholds bare-truthy
-  `@if` (`scss-parser/src/grammar.ts`, `IfAtom`). **Widening the grammar alone
-  would not fail; it would silently take the wrong branch and emit wrong CSS.**
-  Does `.jess` make a bare non-Boolean an **error** (it has a type system, and
-  `@if 0` taking the true branch is a footgun), or adopt Sass truthiness? Sass+
-  separately needs Sass truthiness to run real code, which under "no modes"
-  means the **lowering** injects the coercion.
+- **O-TRUTH-1 — RESOLVED (owner, 2026-08-01).** See §4.4. `.jess` truthiness is
+  falsy iff **absent or empty** — `false`, `null`, `""`, `()` — and both dialects
+  lower to plain `.jess` source. Nothing is blocking.
 
 ### Semantics needing a `.jess` answer
 
@@ -725,7 +816,7 @@ Sass**, where `false and (1px + 1em)` must not raise.
 
 Ordered so that each phase is separately reviewable, separately measurable, and
 separately revertable. **Phases 1–3 are unblocked today. Phase 4 needs
-O-TRUTH-1, the only ruling still outstanding.**
+§4.4, which is now settled — no ruling is outstanding.**
 
 Every phase that can move emitted CSS carries the O4/O5 fixture graduation and a
 `Perf-AB` trailer, per the grammar review standard.
@@ -748,12 +839,19 @@ Closes most of §7.1's 22 rows on its own. Cannot move `.less`/`.scss` output,
 because in those dialects a `Condition` only reaches the value lane in the
 mis-parse case the comment describes. **That makes it the safest first cut.**
 
-### Phase 2 — add `==` to `.jess` (unblocked)
+### Phase 2 — add `==` and `!=` to `.jess` (unblocked)
 
-Three operator regexes (`grammar.ts:1456`, `:1464`, `:2012`) gain `==`; the
-guard node carries the new comparison kind; `compare()` gains the arm. Additive
-to the grammar — `==` is currently a parse error, so nothing that parses today
-changes meaning. Touches `operator-adjacency.test.ts`'s assumptions.
+Three operator regexes (`grammar.ts:1456`, `:1464`, `:2012`) gain `==` and `!=`;
+the guard node carries the new comparison kind; `compare()` gains the arms.
+Additive — both are parse errors today, so nothing that parses now changes
+meaning. Touches `operator-adjacency.test.ts`'s assumptions.
+
+`!=` is not optional garnish: §4.4.2 shows every lowering needs the type-strict
+pair, and `!=` is what keeps them readable rather than `not( … or … )`. Watch the
+`!` for a first-set collision with `!important` in value position.
+
+**Phases 4 and 5 both depend on this**, since the lowerings are written in terms
+of `==` / `!=`.
 
 ### Phase 3 — relational becomes trichotomous (unblocked, §4.2)
 
@@ -774,11 +872,17 @@ Do the two `fns/` bypasses in the same phase, since they are the same
 the bracket-lookup byte-identity `Map` (fast path plus `compare` fallback — a
 scan is O(n) on a hot path).
 
-### Phase 5 — truthiness (BLOCKED on O-TRUTH-1)
+### Phase 5 — truthiness (UNBLOCKED, §4.4)
 
-The grammar hold on bare-truthy `@if` must not be lifted before the truth node
-means something typed. `guard.ts`'s `'truth'` currently serializes the value and
-byte-matches `"true"`; that becomes a typed test whatever O-TRUTH-1 resolves to.
+Settled by §4.4: falsy iff `false`, `null`, `""`, `()`. The grammar hold on
+bare-truthy `@if` lifts together with the semantics, never before — widening the
+grammar alone would not fail, it would silently take the wrong branch.
+
+`guard.ts`'s `'truth'` byte test (`emitValue(v).trim() === 'true'`) is replaced
+by ONE typed predicate carrying the authored span, specified as the §4.4.1
+desugaring. The two dialect lowerings (§4.4.2) are plain `.jess` and need no core
+support beyond `==` / `!=` from phase 2.
+
 Short-circuiting `and`/`or` lands here too — required for Sass, unobservable in
 Less, so it is safe to bundle.
 
