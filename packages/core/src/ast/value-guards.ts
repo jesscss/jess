@@ -5,9 +5,9 @@
  *
  * HARD MODULE BOUNDARY: imports only the value domain + the shared units table.
  */
-import { isValueGroupArray, type Dimension, type ValueGroup, type Value } from './value-eval.js';
+import { UnitArithmeticError, isValueGroupArray, type Dimension, type ValueGroup, type Value } from './value-eval.js';
 import { unify } from './value-units.js';
-import type { EqualityMode } from '../types/modes.js';
+import type { EqualityMode, UnitMode } from '../types/modes.js';
 
 /** `Node.numericCompare`: EPSILON-fuzzed 3-way compare (float-precision tolerant). */
 const numericCompare = (a: number, b: number): -1 | 0 | 1 =>
@@ -21,8 +21,20 @@ const numericCompare = (a: number, b: number): -1 | 0 | 1 =>
  *    units compare numerically, incompatible/non-convertible units are INCOMPARABLE.
  * `%` is a REGULAR unit (NOT normalized to /100 — less@4.6.3: `50% = 0.5` is false,
  * `50% = 50` is true).
+ *
+ * Under `unitMode: 'strict'` an unreconcilable pair THROWS rather than reporting
+ * incomparable. Less 4.x — and jess before this — returned incomparable in every
+ * mode, so `strictUnits` made `1px + 3em` a hard error while `2px > 1em` stayed a
+ * silent `false`: the same operand pair, the same defect, two answers, and the
+ * author cannot tell "not greater" from "never comparable". Arithmetic already
+ * raises here (`dimensionOperate`); this is comparison catching up.
  */
-function dimensionCompare(a: Dimension, b: Dimension, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
+function dimensionCompare(
+  a: Dimension,
+  b: Dimension,
+  equalityMode: EqualityMode,
+  unitMode: UnitMode | undefined
+): -1 | 0 | 1 | undefined {
   /*
    * Less alone treats a unitless number as equivalent to the same magnitude
    * with a unit. Sass and exact retain the unit distinction while still
@@ -37,6 +49,11 @@ function dimensionCompare(a: Dimension, b: Dimension, equalityMode: EqualityMode
   const au = unify(a.number, a.unit);
   const bu = unify(b.number, b.unit);
   if (au.unit !== bu.unit) {
+    if (unitMode === 'strict') {
+      throw new UnitArithmeticError(
+        `Incompatible units. Change the units or use the unit function. Bad units: '${a.unit}' and '${b.unit}'.`
+      );
+    }
     return undefined;
   }
   return numericCompare(au.number, bu.number);
@@ -62,10 +79,10 @@ function hasCompare(v: Value): boolean {
 }
 
 /** A single operand's OWN `.compare(other)` (less.js per-type methods). */
-function selfCompare(a: Value, b: Value, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
+function selfCompare(a: Value, b: Value, equalityMode: EqualityMode, unitMode: UnitMode | undefined): -1 | 0 | 1 | undefined {
   switch (a.type) {
     case 'Dimension':
-      return b.type === 'Dimension' ? dimensionCompare(a, b, equalityMode) : undefined;
+      return b.type === 'Dimension' ? dimensionCompare(a, b, equalityMode, unitMode) : undefined;
     case 'Color':
       // rgb + alpha equality only (no ordering).
       return b.type === 'Color'
@@ -101,7 +118,7 @@ const negate = (c: -1 | 0 | 1 | undefined): -1 | 0 | 1 | undefined => {
  *  - same-type scalars are equal iff their values match; lists compare
  *    element-wise (same separator, length, and recursively-equal items).
  */
-function compareNodes(a: Value, b: Value, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
+function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: UnitMode | undefined): -1 | 0 | 1 | undefined {
   /*
    * Less compares escaped/raw bytes (`~"…"` as Keyword, `e("…")` as
    * Any) against a typed comparable by emitted CSS bytes. Thus `3 = ~"3"`
@@ -123,10 +140,10 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode): -1 | 0 | 
     return 0;
   }
   if (hasCompare(a) && b.type !== 'Quoted') {
-    return selfCompare(a, b, equalityMode);
+    return selfCompare(a, b, equalityMode, unitMode);
   }
   if (hasCompare(b)) {
-    return negate(selfCompare(b, a, equalityMode));
+    return negate(selfCompare(b, a, equalityMode, unitMode));
   }
   if (a.type !== b.type) {
     return undefined;
@@ -142,8 +159,8 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode): -1 | 0 | 
       return undefined;
     }
     for (const entry of a.entries) {
-      const other = b.entries.find(candidate => compareGroups(candidate.key, entry.key, equalityMode) === 0);
-      if (other === undefined || compareGroups(other.value, entry.value, equalityMode) !== 0) {
+      const other = b.entries.find(candidate => compareGroups(candidate.key, entry.key, equalityMode, unitMode) === 0);
+      if (other === undefined || compareGroups(other.value, entry.value, equalityMode, unitMode) !== 0) {
         return undefined;
       }
     }
@@ -154,7 +171,7 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode): -1 | 0 | 
       return undefined;
     }
     for (let i = 0; i < a.value.length; i++) {
-      if (compareGroups(a.value[i]!, b.value[i]!, equalityMode) !== 0) {
+      if (compareGroups(a.value[i]!, b.value[i]!, equalityMode, unitMode) !== 0) {
         return undefined;
       }
     }
@@ -163,19 +180,19 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode): -1 | 0 | 
   return a.bytes === b.bytes ? 0 : undefined;
 }
 
-function compareGroups(a: ValueGroup, b: ValueGroup, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
+function compareGroups(a: ValueGroup, b: ValueGroup, equalityMode: EqualityMode, unitMode: UnitMode | undefined): -1 | 0 | 1 | undefined {
   if (isValueGroupArray(a) || isValueGroupArray(b)) {
     if (!isValueGroupArray(a) || !isValueGroupArray(b) || a.length !== b.length) {
       return undefined;
     }
     for (let index = 0; index < a.length; index += 1) {
-      if (compareGroups(a[index]!, b[index]!, equalityMode) !== 0) {
+      if (compareGroups(a[index]!, b[index]!, equalityMode, unitMode) !== 0) {
         return undefined;
       }
     }
     return 0;
   }
-  return compareNodes(a, b, equalityMode);
+  return compareNodes(a, b, equalityMode, unitMode);
 }
 
 /**
@@ -184,8 +201,14 @@ function compareGroups(a: ValueGroup, b: ValueGroup, equalityMode: EqualityMode)
  * lexically, colors/keywords/lists by structural equality. An INCOMPARABLE pair
  * (`undefined`) is false for every operator.
  */
-export function compare(op: string, left: ValueGroup, right: ValueGroup, equalityMode: EqualityMode = 'less'): boolean {
-  const c = compareGroups(left, right, equalityMode);
+export function compare(
+  op: string,
+  left: ValueGroup,
+  right: ValueGroup,
+  equalityMode: EqualityMode = 'less',
+  unitMode?: UnitMode
+): boolean {
+  const c = compareGroups(left, right, equalityMode, unitMode);
   switch (op) {
     case '=': return c === 0;
     case '>': return c === 1;

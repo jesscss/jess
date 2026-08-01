@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { compare } from '../value-guards.js';
 import { makeDimension, makeKeyword, makeQuoted } from '../value-factory.js';
-import type { Value } from '../value-eval.js';
+import { UnitArithmeticError, type Value } from '../value-eval.js';
 
 const dim = (n: number, u = ''): Value => makeDimension(n, u);
 
@@ -74,5 +74,51 @@ describe('compare — dimension unit reconciliation (vs less@4.6.3)', () => {
     expect(compare('=', dim(3), makeKeyword('3'))).toBe(true);
     expect(compare('=', makeKeyword('3'), dim(3))).toBe(true);
     expect(compare('=', dim(3), makeKeyword('4'))).toBe(false);
+  });
+});
+
+describe('compare — unitMode reaches comparison, not just arithmetic', () => {
+  /*
+   * Less 4.6.3 (and jess before this) made `strictUnits` govern ARITHMETIC only:
+   * `1px + 3em` was a hard error while `2px > 1em` stayed a silent `false`, in the
+   * SAME mode, on the SAME operand pair. The author could not tell "not greater"
+   * from "never comparable". Measured against less@4.6.3, whose comparison is
+   * `false` in every mode including `strictUnits: true`.
+   */
+  it('keeps Less 4.x incomparable-is-false when unitMode is not strict', () => {
+    expect(compare('>', dim(2, 'px'), dim(1, 'em'))).toBe(false);
+    expect(compare('=', dim(2, 'px'), dim(1, 'em'), 'less', 'preserve')).toBe(false);
+    expect(compare('<', dim(2, 'px'), dim(1, 'em'), 'less', 'loose')).toBe(false);
+  });
+
+  it('throws on an unreconcilable pair under strict, as arithmetic already does', () => {
+    expect(() => compare('>', dim(2, 'px'), dim(1, 'em'), 'less', 'strict')).toThrow(UnitArithmeticError);
+    expect(() => compare('=', dim(2, 'px'), dim(1, 'em'), 'less', 'strict')).toThrow(UnitArithmeticError);
+    expect(() => compare('<=', dim(1, 'em'), dim(2, 'px'), 'less', 'strict')).toThrow(UnitArithmeticError);
+  });
+
+  it('names both offending units, matching the arithmetic message', () => {
+    expect(() => compare('>', dim(2, 'px'), dim(1, 'em'), 'less', 'strict'))
+      .toThrow(/Bad units: 'px' and 'em'/);
+  });
+
+  it('does NOT throw for units that reconcile, whatever the mode', () => {
+    expect(compare('=', dim(1, 'in'), dim(96, 'px'), 'less', 'strict')).toBe(true);
+    expect(compare('>', dim(1, 's'), dim(500, 'ms'), 'less', 'strict')).toBe(true);
+  });
+
+  /*
+   * A unitless operand is not a unit CLASH — Less reconciles it by magnitude, and
+   * strict mode must not turn that into an error or the common `@n > 0` guard
+   * breaks.
+   */
+  it('does NOT throw when one side is unitless', () => {
+    expect(compare('>', dim(2, 'px'), dim(1), 'less', 'strict')).toBe(true);
+    expect(compare('>', dim(1), dim(0), 'less', 'strict')).toBe(true);
+  });
+
+  it('does not reach non-dimension operands', () => {
+    expect(compare('=', makeKeyword('foo'), makeKeyword('bar'), 'less', 'strict')).toBe(false);
+    expect(compare('>', makeQuoted('b'), makeQuoted('a'), 'less', 'strict')).toBe(true);
   });
 });

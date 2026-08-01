@@ -2898,6 +2898,27 @@ function throwUnitArithmetic(error: unknown, node: object, e: EvalCtx): never {
   throw error;
 }
 
+/**
+ * Run a guard evaluation so a comparison's unit clash surfaces as the SAME
+ * structured error arithmetic raises.
+ *
+ * `dimensionCompare` throws `UnitArithmeticError` under `unitMode: 'strict'`, but
+ * only the arithmetic path was wrapped — so `1px + 3em` produced a `JessError`
+ * with `eval/invalid-unit-arithmetic` and a source location while `2px > 1em`
+ * threw a bare `TypeError` with neither, straight out of the public API. Same
+ * defect, two error contracts.
+ */
+function withUnitErrors<T>(node: object, e: EvalCtx, run: () => MaybePromise<T>): MaybePromise<T> {
+  try {
+    const result = run();
+    return isThenable(result)
+      ? result.then(value => value, error => throwUnitArithmetic(error, node, e))
+      : result;
+  } catch (error) {
+    throwUnitArithmetic(error, node, e);
+  }
+}
+
 function validateValueGroupUnits(value: ValueGroup, modes: EvalModes, owner: object, e: EvalCtx): void {
   if (isValueGroupArray(value)) {
     for (const item of value) {
@@ -3017,7 +3038,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        */
       return mapMaybe(evalCall(node, frame, e, true), v => force(e, v));
     case 'Condition':
-      return mapMaybe(evalGuard(node.guard, guardDeps(frame, e)), makeBool);
+      return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
     case 'Range':
       /*
        * Ranges are consumed structurally by `forItems`; a value-position use
@@ -4380,7 +4401,7 @@ const LOGICAL_FNS = new Set(['if', 'boolean', 'not', 'and', 'or']);
 function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const deps = guardDeps(frame, e);
   const truthOf = (a: ValueSlot | undefined): MaybePromise<boolean> =>
-    a === undefined ? false : evalGuard(condGuard(a), deps);
+    a === undefined ? false : withUnitErrors(node, e, () => evalGuard(condGuard(a), deps));
 
   /**
    * Fold the argument conditions left-to-right, SHORT-CIRCUITING on `stopOn`
@@ -8040,12 +8061,12 @@ function ruleGuardPasses(rule: Ruleset, frame: Frame, e: EvalCtx): MaybePromise<
       }
     });
   }
-  return evalGuard(rule.guard, {
+  return withUnitErrors(rule, e, () => evalGuard(rule.guard!, {
     resolveTyped: makeTypedResolver(frame, e),
     ev: e.ev,
     modes: e.modes,
     isDefault: () => false
-  });
+  }));
 }
 
 /**
@@ -8055,7 +8076,7 @@ function ruleGuardPasses(rule: Ruleset, frame: Frame, e: EvalCtx): MaybePromise<
  */
 function selectedIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
   for (const branch of node.branches) {
-    if (branch.guard !== null && !settledGuard(evalGuard(branch.guard, guardDeps(frame, e)), '$if arm selection', node, e)) {
+    if (branch.guard !== null && !settledGuard(withUnitErrors(node, e, () => evalGuard(branch.guard!, guardDeps(frame, e))), '$if arm selection', node, e)) {
       continue;
     }
     return branch.rules;
@@ -9589,7 +9610,7 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
 function pickIfBranch(node: FunctionCall, frame: Frame | null, e: EvalCtx): ValueSlot | undefined {
   const cond = node.args[0];
   const taken = cond !== undefined
-    && settledGuard(evalGuard(condGuard(cond), guardDeps(frame, e)), 'if() block resolution', node, e);
+    && settledGuard(withUnitErrors(node, e, () => evalGuard(condGuard(cond), guardDeps(frame, e))), 'if() block resolution', node, e);
   return taken ? node.args[1] : node.args[2];
 }
 

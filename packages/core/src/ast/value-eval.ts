@@ -308,6 +308,23 @@ export const DEFAULT_MODES: EvalModes = {
   mathMode: 'parens-division'
 };
 
+/**
+ * An operand pair whose units cannot reconcile, raised under `unitMode: 'strict'`.
+ *
+ * Lives in the value domain rather than in `value-operate.ts` because BOTH
+ * arithmetic and comparison raise it: `1px + 3em` and `2px > 1em` are the same
+ * defect, and `serialize.ts` re-raises either with its source location by
+ * matching this one class. `value-guards.ts` declares a hard module boundary
+ * that admits the value domain, so a shared home here is what lets comparison
+ * throw without importing the arithmetic module.
+ */
+export class UnitArithmeticError extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnitArithmeticError';
+  }
+}
+
 /* --------------------------------------------------------------- seam */
 
 /**

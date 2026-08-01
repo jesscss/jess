@@ -11,19 +11,19 @@
  * units table.
  */
 import Big from 'big.js';
-import { isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
+import { UnitArithmeticError, isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { convertValue } from './value-units.js';
 
 /* --------------------------------------------------------- arithmetic */
 
-export class UnitArithmeticError extends TypeError {
-  constructor(message: string) {
-    super(message);
-    this.name = 'UnitArithmeticError';
-  }
-}
+/*
+ * Re-exported, not defined here: comparison raises the same error for the same
+ * defect (`2px > 1em`), and `value-guards.ts`'s module boundary does not admit
+ * this module. The class lives in the value domain both import. See its JSDoc.
+ */
+export { UnitArithmeticError } from './value-eval.js';
 
 /**
  * Scalar arithmetic for dimension operands — the one choke point for `+ - * / %`

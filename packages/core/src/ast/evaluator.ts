@@ -126,8 +126,12 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return fallbackCall(name, args);
   };
 
+  /*
+   * `unitMode` reaches comparison, not just arithmetic: `strictUnits` used to make
+   * `1px + 3em` a hard error while `2px > 1em` stayed a silent `false`.
+   */
   const compare = (op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean =>
-    compareValues(op, left, right, modes.equalityMode ?? 'less');
+    compareValues(op, left, right, modes.equalityMode ?? 'less', modes.unitMode);
 
   const typeCheck = (name: string, args: ValueGroup, _modes: EvalModes): boolean => {
     const values: Value[] = [];
