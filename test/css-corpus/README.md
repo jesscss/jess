@@ -133,23 +133,30 @@ tractable hand-port and is the single highest-value follow-up here.
 median size 42 bytes, 67 KB total. `a-green.css` is `.a { color: green; }`. Not
 a corpus.
 
-## Baseline — 18,245 entries, at `d948e2d75` (parseman 0.46.0)
+## Baseline — 18,245 entries, at `17b675065` (parseman 0.46.0)
 
 Verdict is `ok && unconsumedFrom === null && errors.length === 0`. `ok` alone is
 not it (parseman reports `ok` for a run that consumed *nothing*), and
 `span.end === source.length` is not it either (whether the root span covers
 trailing trivia is a per-dialect convention, and it differs on two of four).
 
-| dialect | correct | rate | false-reject | false-accept | reducer crashes |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| css | 17,748 | 97.28% | 426 | 71 | 3 |
-| less | 17,952 | 98.39% | 254 | 39 | 0 |
-| scss | 17,889 | 98.05% | 300 | 56 | 10 |
-| jess | 17,656 | 96.77% | 558 | 31 | 0 |
+| dialect | correct | rate | failing | reducer crashes |
+| --- | ---: | ---: | ---: | ---: |
+| css | 17,901 | 98.11% | 344 | 5 |
+| less | 17,949 | 98.38% | 296 | 0 |
+| scss | 17,922 | 98.23% | 323 | 3 |
+| jess | 17,841 | 97.79% | 404 | 0 |
 
-**255 superset violations** — inputs `css` rejects that `less`, `scss` or `jess`
+**147 superset violations** — inputs `css` rejects that `less`, `scss` or `jess`
 accepts. The standing ruling is one-way: `css` is the base, so every one of
 these is a defect in the base grammar, not a dialect feature.
+
+> **Re-measured 2026-07-31 at `17b675065`, previously `d948e2d75`.** The movement
+> is not one change. `17b675065` (`SquareValue`) accounts for css +124, jess
+> +124, and superset violations 236 → 147; everything else — including css
+> crashes 3 → 5 and scss crashes 10 → 3 — landed on dev between the two
+> measurements. Rows below that a later commit invalidated are struck through
+> rather than deleted, so the defect and its fix stay legible.
 
 ### Triage — false-rejects by bucket
 
@@ -157,21 +164,25 @@ Buckets are a **text classifier over the failing input**, first match wins. They
 say what the failing sources are *about*; they do not by themselves prove cause.
 The verified minimal repros are the table after this one.
 
-| bucket | css (426) | less (254) | scss (300) | jess (558) |
-| --- | ---: | ---: | ---: | ---: |
-| calc / math fn | 118 | — | — | 123 |
-| grid template | 99 | 20 | 20 | 99 |
-| other | 80 | 65 | 95 | 104 |
-| url() | 34 | 34 | 37 | 39 |
-| dimension / number | 33 | 31 | 45 | 70 |
-| @media | 14 | 18 | 14 | 23 |
-| string value | 10 | 10 | 12 | 14 |
-| functional pseudo | 7 | 19 | 14 | 18 |
-| attribute selector | 5 | 10 | 9 | — |
-| escape sequence | — | 15 | 9 | 9 |
+The **superset-violation** buckets, which are the actionable list (147 total):
 
-`less` and `scss` score *better* than `css` overall precisely because they
-already accept the two constructs at the head of the `css` list.
+| bucket | count |
+| --- | ---: |
+| calc / math fn | 110 |
+| other | 22 |
+| attribute selector | 4 |
+| @position-try | 4 |
+| url() | 2 |
+| @container, @media, functional pseudo, dimension / number, @keyframes | 1 each |
+
+**One construct is now 75% of the whole list.** `grid template` (85) left it
+entirely at `17b675065`; `calc / math fn` is what remains, and it is a single
+defect — the base grammar reaches its math ladder only through `calc()`, so a
+math expression inside any *other* math function does not parse. Design proposal:
+[`docs/design/css-math-model.md`](../../docs/design/css-math-model.md).
+
+`less` and `scss` still score better than `css` on that bucket precisely because
+both already route function arguments back into their own math ladder.
 
 ### Verified minimal repros
 
@@ -179,19 +190,20 @@ Each row was re-parsed in all four dialects. "accepts" is the exact set.
 
 | repro | accepts | reading |
 | --- | --- | --- |
-| `a{color:rgb( 1 , 2 , 3 )}` | less | **whitespace before a comma in an argument list.** `rgb(1, 2, 3)` parses in all four. Three of four dialects reject a form every browser accepts. |
-| `a{width:calc(min(1em - 2px))}` | less, scss | **a math expression inside a math function nested in `calc()`.** `min(1em - 2px)` on its own parses in css/less/scss. |
-| `a{width:min(1em - 2px)}` | css, less, scss | jess alone rejects a bare math function containing an expression. |
-| `a{grid:[a] 10px}`, `a{color:[foo]}` | less, scss | **grid line names in value position** (css-grid-1 `<line-names>`). |
+| ~~`a{color:rgb( 1 , 2 , 3 )}`~~ | ~~less~~ **all four** | FIXED by `f45eb8834`, which found the report understated it — `a { b: ( c ) }` failed too, so it was a trivia bug, not a comma bug. |
+| `a{width:calc(min(1em - 2px))}` | less, scss | **a math expression inside a math function nested in `calc()`.** Still open — 110 entries, the largest remaining bucket. |
+| `a{width:min(1em - 2px)}` | css, less, scss | jess alone rejects it. Note css only *tolerates* it: the non-typed ladder swallows the `-` as opaque punctuation, so css builds no `Operation` here either. |
+| ~~`a{grid:[a] 10px}`, `a{color:[foo]}`~~ | ~~less, scss~~ **all four** | FIXED by `17b675065` — a bracketed value is now `Block(delimiter: 'square')` in css and jess. `a{color:[]}` parses too; `<line-names>` is `<custom-ident>*`. |
 | `[xlink\|href]{color:red}`, `\|E{color:red}` | less | **namespace selectors** (css-namespaces-3). `*\|E` is accepted by css and less only. |
 | `a{background-image:url("x.png" cross-origin(anonymous))}` | *none* | `<url-modifier>` (css-values-5). A uniform gap, not a superset violation. |
 | `a{top:--func()}` | *none* — **css crashes** | dashed functions (css-mixins-1). |
 | `:has(){color:red}`, `:is(){color:red}` | *none* — **scss crashes** | empty forgiving selector list. |
 | `a{color:()}` | scss — **css crashes** | an empty paren group. |
 
-The first two rows plus grid line names account for the large `calc / math fn`
-and `grid template` buckets, and all three are also **superset violations**:
-`less` and `scss` accept today what the base rejects.
+Two of those five original rows are now closed. What is left of the headline is
+the `calc / math fn` bucket — 110 entries, 75% of the remaining 147 superset
+violations, one defect. Namespace selectors are being fixed on their own lane and
+are pinned meanwhile in `test/css-superset-corpus.ts`.
 
 One bucket member that is *not* a defect: `@media (1 < 2 < 3)` is rejected by all
 four. csstree accepts it structurally, but css-mediaqueries-4's two-sided
@@ -217,30 +229,43 @@ pseudo-function's argument scan:
 :host-context(.a{){color:red}
 ```
 
-### 13 reducer crashes — a different kind of defect
+### 8 reducer crashes — a different kind of defect
 
-Thirteen inputs make a grammar reducer throw an **internal `Error`**, not the
+Eight inputs make a grammar reducer throw an **internal `Error`**, not the
 `SyntaxError` the public `parse()` contract promises. This is not a recognition
 gap and it must not be summed with one:
 
 | dialect | input | message |
 | --- | --- | --- |
-| css | `a{color:()}` | `CSS AST value grammar lost its value child` |
-| css | `a{color:expression(())}` | same |
-| css | `a{color:expression(()())}` | same |
+| css | `a{color:()}`, `a{color:(/*test*/)}`, `a{color:(  )}` | `CSS AST value grammar lost its value child` |
+| css | `.t { top: --func(); }`, `.t { top: --func(--bar(), --baz(--fez())); }` | same |
 | scss | `:has(){color:red}`, `::slotted(*):is(){}`, `::slotted(*):where(){}` | `SCSS grammar produced a non-selector-list child.` |
-| scss | `a{color:[foo bar]}`, 6 × `grid-template-*` with `[line names]` | `SCSS grammar produced a non-value child.` |
+
+Thirteen at `d948e2d75`. The seven `SCSS grammar produced a non-value child`
+entries went with `e4c948a7d`, which widened the `Square` reducer from
+`requireValue` to `requireValueSlot` — a space-separated interior is a
+**ValueSlot ARRAY**, and narrowing it with a single-node guard threw past the
+`SyntaxError` contract instead of declining.
+
+The five surviving `css` rows share ONE cause, and it is the same shape:
+`valueSlotChildren(...)` (`css-parser/src/grammar.ts:725-729`) **throws** on an
+empty match instead of returning `[]`, so the `?? any('')` fallback its callers
+spell after it is unreachable. `ParenValue` and the `--func()` dashed-function
+path both call it. `SquareValue` deliberately does not — it uses `find`, which is
+why `a{color:[]}` parses rather than joining this table.
 
 ## Gating recommendation
 
 Not now, and not on a percentage.
 
-1. **Gate reducer crashes at zero, first.** Thirteen today, a crisp contract
+1. **Gate reducer crashes at zero, first.** Eight today, a crisp contract
    ("`parse()` throws `SyntaxError` or returns"), and no judgement calls. This
-   is the one gate worth wiring as soon as the thirteen are fixed.
-2. **Then gate superset violations at zero.** 255 today, and the ruling behind
-   them is already settled — `css` is the base, one-way. Two constructs
-   (`calc()`-nested math, grid line names) are 77% of them.
+   is the one gate worth wiring as soon as the eight are fixed — and five of the
+   eight are now known to be one unreachable-fallback bug, so the work is
+   smaller than the count suggests.
+2. **Then gate superset violations at zero.** 147 today, and the ruling behind
+   them is already settled — `css` is the base, one-way. ONE construct
+   (`calc()`-nested math) is 75% of them.
 3. **Then ratchet the `css` false-reject count downward**, absolute and
    per-dialect, never as a percentage — a percentage moves when the corpus
    grows and hides which construct regressed.

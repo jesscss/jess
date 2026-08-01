@@ -1,30 +1,41 @@
 {
   "note": "Measured with scripts/css-corpus-report.mjs. NOT a gate - see README.md.",
   "measured_at": "2026-07-31",
-  "commit": "d948e2d75",
+  "commit": "17b675065",
+  "previous": {
+    "commit": "d948e2d75",
+    "note": "Most of the movement to 17b675065 is dev drift, not one change. The SquareValue commit itself accounts for css +124 and jess +124 (superset 236 -> 147); everything else, including css crashes 3 -> 5 and scss crashes 10 -> 3, landed on dev between the two measurements.",
+    "dialects": {
+      "css": { "correct": 17748, "failing": 497, "crashes": 3 },
+      "less": { "correct": 17952, "failing": 293, "crashes": 0 },
+      "scss": { "correct": 17889, "failing": 356, "crashes": 10 },
+      "jess": { "correct": 17656, "failing": 589, "crashes": 0 }
+    },
+    "supersetViolations": 255
+  },
   "total": 18245,
   "dialects": {
     "css": {
-      "correct": 17748,
-      "failing": 497,
-      "crashes": 3
+      "correct": 17901,
+      "failing": 344,
+      "crashes": 5
     },
     "less": {
-      "correct": 17952,
-      "failing": 293,
+      "correct": 17949,
+      "failing": 296,
       "crashes": 0
     },
     "scss": {
-      "correct": 17889,
-      "failing": 356,
-      "crashes": 10
+      "correct": 17922,
+      "failing": 323,
+      "crashes": 3
     },
     "jess": {
-      "correct": 17656,
-      "failing": 589,
+      "correct": 17841,
+      "failing": 404,
       "crashes": 0
     }
   },
-  "supersetViolations": 255,
+  "supersetViolations": 147,
   "parseman": "0.46.0"
 }
