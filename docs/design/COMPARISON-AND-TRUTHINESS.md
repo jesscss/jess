@@ -1,7 +1,9 @@
 # Comparison and truthiness — measured behaviour, and Jess's native rules
 
-> **Status: DESIGN, needs owner sign-off on §5.** Every fact in §2–§4 is
-> measured, not recalled. §5 is a proposal.
+> **Status: DESIGN.** Every fact in §2–§4 is measured, not recalled. §5 records
+> the owner's settled model from `packages/core/OPERATIONS.md` (no modes;
+> `.jess` compiles as `.jess`), and supersedes an earlier mode-based proposal in
+> this document. §6 is the open list.
 
 ## 1. Why this exists
 
@@ -193,70 +195,141 @@ Sass**, where `false and (1px + 1em)` must not raise.
 **Relational-on-incomparable has no mode.** `getResult` returns `false` for an
 `undefined` three-way comparison — Less's silent-false, for every dialect.
 
-## 5. Proposed native rules
+## 5. Native rules — the owner's model (supersedes an earlier mode proposal)
 
-The proposal is deliberately conservative: **reuse the mode vocabulary that
-already exists** rather than invent a parallel one. `EqualityMode` already
-proves the shape — two named compatibility modes plus a strict native one.
+`packages/core/OPERATIONS.md` settles the shape, and it is **not** the
+mode-based one an earlier draft of this document proposed. The resolutions
+there are:
 
-### 5.1 `TruthMode`, mirroring `EqualityMode`
+1. **Remove `equalityMode` from Jess options.**
+2. **Lower `.scss` / `.less` accordingly** — the dialect front end does the
+   work, not a runtime mode switch.
+3. **Add a double-equality operator to `.jess`** — `=` loose, `==` equal-to-type.
+4. Accept moderately breaking shifts in Less / Sass+ behaviour.
 
-| mode | rule | used by |
+Plus a structural note: these comparisons should be **function-based
+compare/operate primitives**, reused elsewhere — notably Collection index
+lookup, where `$foo['1px']` matches a `1px` key *because* lookup uses loose
+equality.
+
+**`.jess` compiles as `.jess`. There are no modes.** The two engines'
+divergent behaviours become expressible natively because `.jess` has *both*
+operators, and each dialect's lowering picks the right one.
+
+### 5.1 The two operators
+
+| expression | `.jess` `=` (loose) | `.jess` `==` (type-equal) |
 |---|---|---|
-| `less` | true iff the value is the boolean `true` | `.less` |
-| `sass` | true for everything except `false` and `null` | Sass+ |
-| `exact` | a condition operand **must** be a Boolean; anything else is an **error** | `.jess` |
+| `1 = 1px` | true | false |
+| `2 = 2%` | true | false |
+| `a = "a"` | true | false |
+| `a = a` | true | true |
+| `black = #000000` | true | true |
 
-`exact` is the native rule. Rationale: a condition whose operand is `1px` is
-almost always a mistake, and Jess has a type system to say so. This mirrors
-`EqualityMode.exact` exactly — the native mode is the one that refuses to guess.
+`=` coerces across representations; `==` additionally requires the same type.
+This is verified against OPERATIONS.md §".jess expected" rows `j`/`j1`,
+`l`/`l1`, `r`/`r1`.
 
-It also gives Sass+ a precise, nameable diagnostic instead of a parse error, and
-gives the language service something to *warn* rather than *reject* — the
-error/warning split from the wider Sass+ design.
+### 5.2 Verification of the source columns
 
-### 5.2 Relational on incomparable operands
+Every cell of OPERATIONS.md's Less and Sass outputs was re-run against
+lessc 4.6.3 and dart-sass 1.101.0: **all 32 Less rows and all 31 Sass rows
+reproduce exactly.** The `.jess` target column is therefore derived from
+accurate source data.
 
-| mode | rule |
-|---|---|
-| `less` | `false` (bug-compatible; required for byte-identity) |
-| `sass` | error |
-| `exact` | error |
+Two facts the re-run surfaced that the document does not mention:
 
-Native follows Sass here, because §3.3 is a defect, not a dialect choice.
+- dart-sass emits a **`slash-div` deprecation** for rows `g`, `g2` and `h`
+  (`/` division outside `calc()`, to be removed in Dart Sass 2.0). Sass+ is
+  defining behaviour for forms that are deprecated upstream.
+- `1px * 10%` is **reordered** by Sass to `calc(10px * 1%)`. The `.jess`
+  target preserves authored order (`calc(1px * 10%)`) — a deliberate divergence
+  worth stating as one.
 
-### 5.3 Logical operators
+## 6. Outstanding questions
 
-- **Native (`.jess`)**: `and`/`or`/`not` are boolean operators returning a
-  Boolean, and they **short-circuit**.
-- **Sass+**: `and`/`or` return the selected **operand** and short-circuit, per
-  §3.4. This is observable in value position (`$x: $a or $b`) and cannot be
-  approximated by a boolean.
-- **`.less`**: unchanged.
+Ordered by whether they block work now.
 
-Short-circuiting must be added regardless of mode — it is required for Sass
-correctness and is not observable in Less (guards are side-effect-free), so it
-is safe to make unconditional.
+### Blocking
 
-### 5.4 Lowering
+- **O-TRUTH-1 (unresolved, critical path)** — **OPERATIONS.md does not cover
+  truthiness at all.** It settles comparison and arithmetic, but never says what
+  `@if $x` / `when ($x)` means for a bare non-boolean operand. This is the 42/109
+  corpus blocker and the reason the grammar hold exists. `.jess` needs one
+  answer: is a bare non-Boolean operand an **error** (proposed — `.jess` has a
+  type system and `@if 0` taking the true branch is a footgun), or does `.jess`
+  adopt Sass truthiness? Sass+ separately needs Sass truthiness to run real
+  code, which under "no modes" means the **lowering** must inject the coercion.
 
-Both dialects lower onto the same `GuardNode` set; only the *modes* differ. No
-new node kinds. `@if <expr>` lowers to `{ g: 'truth', value }` exactly as
-`when (<expr>)` does — the mode decides what `truth` means.
+- **O-TRUTH-5 (new)** — **The Sass `==` lowering is not statically decidable.**
+  Sass `==` is unit-strict on numbers (→ `.jess` `==`) but quote-insensitive on
+  text (→ `.jess` `=`, per OPERATIONS.md line 216). For `$a == $b` the operand
+  types are not known until eval, so a syntactic operator substitution cannot
+  choose. The "function-based compare primitives" note looks like the intended
+  escape hatch: lower Sass `==` to a **named primitive** whose runtime dispatch
+  is numbers-strict / text-loose, rather than to either operator. Confirm that
+  is the intent — the alternative is accepting the moderately-breaking shift
+  where Sass+ `a == "a"` becomes `false`.
 
-## 6. Open owner decisions
+### Semantics that need a `.jess` answer
 
-- **O-TRUTH-1** — Is native truthiness `exact` (a non-Boolean operand is an
-  error), as proposed? The alternative is adopting Sass truthiness natively for
-  familiarity, at the cost of `@if 0` silently taking the true branch.
-- **O-TRUTH-2** — Should `.jess` `and`/`or` return a Boolean (proposed) or an
-  operand like Sass? Operand-returning is more expressive (`$x: $a or $default`)
-  but makes the type of `and` depend on its inputs.
-- **O-TRUTH-3** — Less's `1in == 2.54cm` → false is a precision **bug**. Does
-  `less` mode reproduce it for byte-identity, or is equality one place we
-  deliberately do not port a defect?
+- **O-TRUTH-6 (new)** — `t: $(a > b) // false` and `u: $(b > a) // false`, while
+  `q: $(a = b) // false`. All three false means `.jess` relational is
+  **non-trichotomous**: an author cannot distinguish "not greater" from "never
+  comparable". §3.3 argues this is Less's defect rather than a dialect choice,
+  and Sass raises here. Is silent-false deliberate for `.jess`?
+  Related: OPERATIONS.md covers only *unquoted* `a > b`. Less returns **true**
+  for quoted `"b" > "a"` (measured) while Sass errors — what is
+  `$("b" > "a")`?
+
+- **O-TRUTH-2** — `and` / `or`: Sass returns an **operand**, not a boolean
+  (`1 and 2` → `2`, `null or 2` → `2`), and **short-circuits** (proven in §3.4).
+  Jess's `evalGuard` currently evaluates both operands unconditionally.
+  Operand-returning is more expressive (`$x: $a or $default`) but makes the
+  result type depend on the inputs. Not covered by OPERATIONS.md.
+  Short-circuiting should land regardless — required for Sass, unobservable in
+  Less.
+
+- **O-TRUTH-7 (new)** — `g2: $(2px / 1px) // 2` cancels units (following Sass),
+  but `h: $(1 / 2px) // 0.5px` drops the inverse unit (following Less).
+  Dimensionally those are inconsistent: if units cancel in `g2`, `1 / 2px`
+  should carry `px⁻¹`, which is what Sass's `calc(0.5 / 1px)` expresses. Is
+  `0.5px` intended?
+
+- **O-TRUTH-3** — Less's `1in = 2.54cm` → **false** is a precision bug (they are
+  equal by definition); Sass says true. Not in OPERATIONS.md. Does `.less`
+  lowering reproduce the bug for byte-identity?
+  Similarly `1px = 1PX`: Less **true** (units case-insensitive), Sass **false**.
+
 - **O-TRUTH-4** — Sass list equality is separator-sensitive (`(1, 2) != (1 2)`).
-  Does the native Collection model preserve separator identity?
+  Does the native Collection model preserve separator identity? This interacts
+  with the index-lookup primitive, since lookup is specified as loose.
+
+- **O-TRUTH-8 (new)** — `null` is unaddressed: `null == false` is false in both
+  engines, `1 + null` → `1` in Sass, and a `null` value **drops the
+  declaration**. What does `.jess` do?
+
+### Editorial
+
+- **O-TRUTH-9** — OPERATIONS.md line 203, `h4: calc($(val / 2))`, is missing a
+  sigil; presumably `$($val / 2)`.
+- **O-TRUTH-10** — `h3: calc($val / 2)` → `calc(8px / 2)` ("Jess respects more
+  authorship") diverges from Sass, which folds it to `4px`. Confirm this is
+  inside the "moderately breaking" allowance for Sass+, since real Sass code
+  relies on the fold.
+
+## 7. Consequences for the code as it stands
+
+- `EqualityMode` (`packages/core/src/types/modes.ts`, `condition.ts`
+  `compareUnder`) is **slated for removal** under resolution 1. Its three
+  behaviours do not disappear — they become the lowering targets, and
+  `compareUnder`'s `less` / `sass` arms are the specification of what each
+  front end must lower to. It should not be extended in the meantime.
+- `guard.ts`'s `'truth'` node still decides truthiness by serializing the value
+  and byte-comparing to `"true"`. Whatever O-TRUTH-1 resolves to, that should
+  become a typed test; re-deriving meaning from emitted text is exactly what the
+  architecture forbids elsewhere.
+- `evalGuard`'s `and`/`or` need short-circuiting before Sass+ can be correct.
 
 ## 7. Reproducing
 
