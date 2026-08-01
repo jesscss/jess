@@ -397,7 +397,7 @@ must take the TRUE branch. That is where JavaScript is wrong for this domain
 #### 4.4.1 Specified as a desugaring, implemented as one predicate
 
 ```jess
-$if($x)  ≡  $if(not($x == false or $x == null or $x == "" or $x == ()))
+$if($x)  ≡  $if(not(($x == false) or ($x == null) or ($x == "") or ($x == ())))
 ```
 
 The desugaring is the DEFINITION — visible in the language, teachable, and one
@@ -415,7 +415,7 @@ everywhere else.
 
 ```
 .less   when (@x)   ->   $if($x == true)
-.scss   @if $x      ->   $if(not($x == false or $x == null))
+.scss   @if $x      ->   $if(not(($x == false) or ($x == null)))
 ```
 
 Both are writable `.jess`, which is the hard requirement: `.less` and `.scss`
@@ -425,18 +425,18 @@ therefore not a lowering.
 
 **`==` is load-bearing, and each lowering breaks differently with the loose
 operator.** Note this is an argument for `==` ONLY — `not(...)` covers negation,
-so `!=` is not required (§4.4.5):
+so `!=` is not required (§4.4.3):
 
 | lowering | with `==` | with `=` |
 | --- | --- | --- |
 | `.less` `$if($x == true)` | correct | `"true" = true` → string ground → **true**, but Less says `"true"` is falsy |
-| `.scss` `$if(not($x == false or $x == null))` | correct | `0 = null` → numeric ground → equal, so `0` comes out **falsy**; Sass says truthy |
+| `.scss` `$if(not(($x == false) or ($x == null)))` | correct | `0 = null` → numeric ground → equal, so `0` comes out **falsy**; Sass says truthy |
 | `.jess` `$if($x)` | correct | same `0 = null` break |
 
 `=`'s grounds are deliberately generous (§4.1); "is this literally that value" is
 the type-strict question.
 
-#### 4.4.5 `!=` is NOT required — deferred
+#### 4.4.3 `!=` is NOT required — deferred
 
 An earlier revision of this document claimed the type-strict PAIR was
 load-bearing. That was wrong, and the correction matters because it would have
@@ -447,12 +447,17 @@ bought grammar surface for nothing.
 three-valued case where they could diverge. All three lowerings above are written
 with `not(...)` and need no `!=`.
 
+**Both forms must parenthesise each comparison** — see §4.5.2. A bare comparison
+is not an `and`/`or` operand in the jess grammar, so
+`not($x == false or $x == null)` is a PARSE ERROR. Verified against the parser,
+not inferred.
+
 `!=` remains defensible as pure ergonomics — Sass has it, and `$x != null` reads
 better than `not($x == null)` — but it is redundant, and `!` in that position
 wants checking against `!important` before it is spent. **Deferred**; it is
 additive and breaks nothing if it earns its place later.
 
-#### 4.4.3 `=` is NOT overloaded with falsiness
+#### 4.4.4 `=` is NOT overloaded with falsiness
 
 `"" = false` stays **false** (Quoted vs Bool → no common ground). Making it true
 was considered and rejected twice over:
@@ -471,13 +476,119 @@ Two questions, two answers, and the relationship stays total and predictable:
 `$if` is false for exactly `{false, null, "", ()}` and `= false` is true for
 exactly `{false}`. Simple containment, no overlap.
 
-#### 4.4.4 Migration note
+#### 4.4.5 Migration note
 
 Compiled `.scss` is unaffected — the lowering emits the explicit form. A HAND
 port of `@if $x` to `$if($x)` changes behaviour when `$x` is `""` or `()`. That
 is a migration-guide line, not a defect.
 
-### 4.5 The math rule, stated over the construct
+### 4.5 Expression value position — where operators live
+
+`.jess` does not have one "value position". It has three, and operators are
+admitted in only one of them. This is the same boundary ledger **P17** already
+draws for arithmetic — bare `1 + 2` in a declaration value is a parse error and
+must stay one — generalised to every operator.
+
+| position | spelling | operators admitted |
+| --- | --- | --- |
+| interpolation | `${name}` | none |
+| value | an ordinary declaration value slot | none |
+| **expression value** | the five forms below | **arithmetic, comparison, logical** |
+
+#### 4.5.1 The five expression value positions
+
+```jess
+$( HERE )                      // the explicit expression boundary
+$if HERE { … }                 // condition
+… when HERE { … }              // mixin guard  (parens required: `when ( … )`)
+$ > my-mixin(HERE, …)          // mixin call argument
+$my-func(HERE, …)              // function call argument
+```
+
+**Implementation status, measured — the last two are INTENT, not yet reality.**
+
+| position | production | expression today? |
+| --- | --- | --- |
+| `$( … )` | `ExpressionAtom` → `ExpressionCompare` → `ExpressionSum` | **yes** |
+| `$if ( … )` | `IfGuardCompare` over `ExpressionSum` (`grammar.ts:5636`) | **yes** |
+| `when ( … )` | `MixinGuard` over `ExpressionSum` (`grammar.ts:2009`) | **yes** |
+| `$ > mixin(…)` | `MixinCallArgument` → **`g.ValueTerm`** (`grammar.ts:5269`) | **no** — value position |
+| `$name(…)` | `ReferenceCall` takes **no arguments** (`grammar.ts:5333`) | **no** |
+
+`ExpressionCallArgument` (`grammar.ts:1821`) already threads `ExpressionCompare`
+into a call argument, but only for a call written INSIDE `$( … )`. Closing the
+last two rows means routing the statement-level argument productions to the same
+expression ladder.
+
+#### 4.5.2 Two consequences the grammar enforces today
+
+Both verified against the parser rather than read off the productions:
+
+```
+($x = 1px)                       OK    a bare comparison is fine on its own
+($x = 1px or $x = 2px)           ERROR bare comparisons are not and/or operands
+(($x = 1px) or ($x = 2px))       OK    parens make them primaries
+(not true or false)              ERROR `not` always takes parens
+(not(true) or false)             OK
+(true or false)                  OK    bare values chain fine
+```
+
+1. **`not` takes parens** — `not($x)`, never `not $x`.
+2. **A comparison must be parenthesised to be an `and`/`or` operand.**
+   `IfGuardAnd`/`IfGuardOr` chain `IfGuardPrimary`, which is `not(…)`, `(…)`, or a
+   bare value; `IfGuardCompare` is not a primary.
+
+A guard parse failure is reported at the ENCLOSING rule, not the offending
+token — worth knowing, because it makes a bad guard look like a broken ruleset.
+
+#### 4.5.3 Logical operators are native, not rewritten
+
+`and` / `or` / `not` are expression-position operators in their own right:
+
+- **`and` / `or` return an OPERAND** and short-circuit — `$a or $default` is
+  `$a` when truthy, else `$default`.
+- **`not` returns a `Bool`.**
+- **Conditions truthiness-test the result** (§4.4), so one semantics serves both
+  the `$( … )` and the guard forms: `truthy($a and $b)` is exactly
+  `truthy($a) and truthy($b)`.
+
+They are NOT lowered to `if(…)`. That rewriting was considered and rejected:
+`if($a, $a, $default)` duplicates the operand in generated source, makes
+transpiled `.jess` stop resembling the author's code, and leaves a direct `.jess`
+author unable to express the construct at all. Sass's own `if()` is deprecated.
+
+Sass therefore lowers near-identically, wrapper aside:
+
+```
+.scss   $x: $a or $default   ->   $x: $($a or $default)
+.scss   @if $a and $b        ->   $if($a and $b)
+.scss   @if not $x           ->   $if(not($x))
+```
+
+The `$( … )` wrapper is mandatory in the first case and implicit in the other
+two, because `$if`'s condition is already an expression position (§4.5.1).
+
+Two grammar sites remain distinct even though the semantics are one:
+`$( … )` expression `and`/`or`, and `IfGuardAnd`/`IfGuardOr` combining guard
+nodes. They agree observationally in condition position; they are not the same
+production.
+
+#### 4.5.4 Guard EXPRESSION lowering is not CONSTRUCT lowering
+
+The tables above lower the guard *expression*. Where it lands is a separate
+mapping, and only Sass's is one-to-one:
+
+| dialect | construct | lands in |
+| --- | --- | --- |
+| `.scss` | `@if` | `$if` — a genuine statement-to-statement map |
+| `.less` | `.m() when (…)` | a jess **mixin guard** (`when ( … )`), not `$if` |
+| `.less` | `.sel when (…)` (CSS guard) | **UNVERIFIED** — whether jess has a ruleset-level guard is not established here |
+
+`.less` has `when (…)` guards and an `if()` function; it has no `$if`. Writing
+`.less when (@x) -> $if($x == true)` names a construct Less does not have and
+forces the wrong target.
+
+### 4.6 The math rule, stated over the construct
 
 **An operation authored inside a CSS math function preserves its authorship; it
 does not fold.** `calc($val / 2)` → `calc(8px / 2)`: operands resolve so
@@ -680,7 +791,7 @@ keeping the mis-parse recovery while letting real comparisons evaluate.
 | `calc($($val / 2))` | `4px` | ✓ |
 | `$(1px / 2)`, `$(1 / 2px)` | `0.5px` | ✓ |
 
-The polarity is inverted against §4.5: v2 treats `calcDepth > 0` as FORCING
+The polarity is inverted against §4.6: v2 treats `calcDepth > 0` as FORCING
 operation and lets `value-operate` decline, where v1 treated in-calc as
 SUPPRESSING unless units are provably safe.
 
@@ -862,7 +973,7 @@ is a parse error today, so nothing that parses now changes meaning. Touches
 `operator-adjacency.test.ts`'s assumptions.
 
 `!=` is NOT part of this phase — `not(...)` covers negation and the pair is
-redundant (§4.4.5).
+redundant (§4.4.3).
 
 **Phases 4 and 5 both depend on this**, since every lowering is written in terms
 of `==`.
