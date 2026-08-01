@@ -1,5 +1,15 @@
 # `$(…)` — keep it, drop it, or narrow it
 
+> **PROVENANCE — counts and grammar citations are against `1d4b66d16`, not `dev`.**
+> Written 2026-07-24 and landed unchanged. Its line references point into
+> `packages/{css,less,scss,jess}-parser/src/ast/grammar.ts`, which the host-mode
+> fold deleted — each dialect now has a single `src/grammar.ts` — and into
+> `packages/internal-css-recognition/`, renamed to `@jesscss/parser-shared` at
+> `a74131e8f`. Re-derive any citation before relying on it.
+>
+> The QUESTION is still live and is why this is kept: P13 settles that the three
+> `$` forms are chosen by position, not whether the third form earns its place.
+
 Status: **EXPLORATION. Nothing here is decided.** This document puts counts and
 grammar citations under a question the owner raised — whether `$(…)` could be
 replaced by a plain `(…)` expression boundary, the way Less does it — so the call

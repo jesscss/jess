@@ -1,5 +1,20 @@
 # CSS sharing inventory across the four grammars
 
+> **PROVENANCE — every count below is a fact about `4dcfd84fb`, not about `dev`.**
+> Measured 2026-07-24 and landed unchanged, so the structure it reads no longer
+> exists: `packages/internal-css-recognition/` is now `@jesscss/parser-shared`
+> (`a74131e8f`), and the four `src/ast/grammar.ts` files it counts 13,415 lines
+> across were deleted by the host-mode fold — each dialect now has one
+> `src/grammar.ts`. Since then the by-const promotion sweep restructured all four
+> grammars and P20 replaced six hand-spelled at-rule name lists with `not()`
+> composed over shared leaves, which is a direct change to the sharing picture
+> this document measures.
+>
+> The METHOD and the BROKEN rows are what survive: each broken row was an observed
+> rejection through a built parser, so it is a real defect unless separately fixed.
+> The reference-matrix counts need re-running before they are quoted. Landed for
+> the method and the defect list, not for the numbers.
+
 Answers the question: *how many other CSS constructs are not properly shared?*
 
 **Method.** Read `packages/internal-css-recognition/src/{recognition,opaque-at-rule,pseudo-consts}.ts`
