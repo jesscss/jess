@@ -6,23 +6,28 @@
  * that the parser suites did not already catch gets a fixture, in the same
  * change that discovers it.
  *
- * Found while scoping the SCSS trivia-table fix (G27), and it is the reason
- * that fix cannot be done yet. The four dialects split on WHERE a block comment
- * survives, and the split follows the representation, not any decision:
+ * Found while scoping the SCSS trivia-table fix (G27).
  *
- *                                   lessc 4.x  jess-less  dart-sass  jess-scss
- *   a { b: c; /* z *\/ d: e }          kept      DROPPED     kept       kept
- *   a { /* z *\/ b: c }                kept      DROPPED     kept       kept
- *   a { b: c /* z *\/ d }  (in value)  kept      kept        dropped    kept
+ * IMPORTANT — the stage matters, and an earlier version of this header got it
+ * wrong. The comment is NOT lost by the parser and NOT lost by the serializer.
+ * `parse()` + `serialize()` on this exact input reproduces it in position:
  *
- * Less and CSS have NO `Comment` node at all — every comment rides the trivia
- * channel. SCSS is the only dialect that makes a comment a statement-level
- * NODE, which is exactly why it is the only one that keeps the first two rows.
+ *   parse+serialize  'a { b: c; /* z *\/ d: e; }'  ->  comment kept, in place
+ *   full compiler    same input                    ->  comment DROPPED
  *
- * So the trivia channel as currently wired carries root-level comments (via the
- * root trivia index) and value-level comments (via `triviaTextAtInsertIndex`),
- * but NOTHING re-emits trivia that lands at a statement boundary INSIDE a block.
- * That gap is invisible in Less until you look, because no test covered it.
+ * So the loss is in EVALUATION. The parser tags a `TriviaMap` on the root, and
+ * `withDocumentTrivia` (core `serialize.ts`) reads it back with
+ * `triviaMapOf(document)` — but eval returns a NEW `Stylesheet` without the
+ * tag, so serialization runs with no trivia at all. The documented fallback
+ * `context.opts.trivia` is dead too: nothing in the repo assigns it. See G28.
+ *
+ * These tests therefore run through the COMPILER deliberately. A parser-level
+ * test would pass today and watch nothing.
+ *
+ * lessc 4.x keeps both forms below, so they are top-level oracle divergences.
+ * dart-sass keeps them as well, and jess-SCSS keeps them only because SCSS is
+ * the one dialect that still models a block comment as a statement NODE — the
+ * model the owner ruled against, and G27's blocker.
  *
  * PINNED DEFECT
  * -------------
