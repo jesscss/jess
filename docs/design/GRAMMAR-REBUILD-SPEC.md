@@ -334,7 +334,7 @@ their method rather than as bare numbers:
   the less/scss/jess grammars. So the headline **735** total holds under
   per-package scoping and is **744** repo-wide. Both are true; say which you
   mean.
-- **`parseman` manifest ranges are all `^0.43.0`** across the root,
+- **`parseman` manifest ranges are all `^0.46.0`** across the root,
   `@jesscss/parser-shared`, and the four parser packages. There are no exact
   parseman pins in package manifests; compiled parser artifacts still must never
   cross parseman versions.
@@ -769,7 +769,7 @@ The order is deliberately inverted from the obvious one. Reaching for the docs
 when stuck is how you end up with a regex.
 
 1. **Survey the pinned parseman export surface from source and package
-   resolution** — not from recollection. The active floor is `parseman@0.43.0`.
+   resolution** — not from recollection. The active floor is `parseman@0.46.0`.
    Use `word()` / `makeWord()`, `keywords()`, `oneOrMoreSep(...)`, `peek(...)`,
    `dispatch(...)` / `when(...)` / `otherwise(...)`, matcher cases,
    `routed()`, and `node(..., { project })` where they are the best grammar
