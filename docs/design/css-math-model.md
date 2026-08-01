@@ -1,5 +1,24 @@
 # The CSS math model — proposal, revision 2
 
+> **SCOPE NARROWED 2026-08-01.** `packages/core/OPERATIONS.md` is the owner's
+> canonical spec for math and comparison semantics, and
+> `COMPARISON-AND-TRUTHINESS.md` §0 records how the three documents relate.
+> **This document is now scoped to RECOGNITION only** — the CSS base grammar
+> does not parse math-function arguments as math, so `calc(min(1em - 2px))` is
+> rejected outright (110 of the 147 remaining corpus superset violations).
+>
+> Its semantic sections are superseded. In particular **D5 is subsumed**: it
+> reconstructed, from AST v1 at `7b7d4e57c` and a commit message, the rule
+> OPERATIONS.md states outright in rows `h3`/`h4` — inside a math function jess
+> preserves authorship (`calc($val / 2)` → `calc(8px / 2)`) and `$( … )` is the
+> explicit opt-in to fold (`calc($($val / 2))` → `4px`). The reconstruction was
+> right; it is no longer the source. Read D5 for the *mechanism* evidence — the
+> `calcDepth` binding leak, the hidden-class constraint, the fixture it moves —
+> and OPERATIONS.md for what the answer is.
+>
+> D1/D2/D3 (naming, the math-function table, the argument grammar) stand: they
+> are recognition, and nothing else in the set covers them.
+
 **Status: PROPOSAL. Nothing here is implemented.** Revision 1 was reviewed by
 four independent lenses (refutation, grammar standard, semantics, perf) and
 **three of its five steps were wrong**. This revision records what they killed as

@@ -5,6 +5,32 @@
 > `.jess` compiles as `.jess`), and supersedes an earlier mode-based proposal in
 > this document. §6 is the open list.
 
+## 0. The document set — which of these is authoritative
+
+Three documents cover this work. They are not alternatives; they have different
+jobs, and conflicts resolve in this order:
+
+| doc | role | authority |
+| --- | --- | --- |
+| **`packages/core/OPERATIONS.md`** | owner-authored target semantics: the four resolutions, and the row-by-row `.jess expected` table for comparison and arithmetic | **CANONICAL.** Where anything disagrees with it, it wins. |
+| **this document** | measured behaviour of dart-sass 1.101.0 and lessc 4.6.3, measured state of jess, and the open questions OPERATIONS.md does not answer | evidence and gap list; proposes nothing that contradicts OPERATIONS.md |
+| **`css-math-model.md`** | the *grammar-level* defect — CSS math functions do not parse their arguments as math, so `calc(min(1em - 2px))` is rejected by the base | scoped to recognition only; its semantic sections defer to OPERATIONS.md |
+
+Two things worth stating because they caused real confusion:
+
+- **`OPERATIONS.md` was untracked** until it was committed alongside this
+  revision — it existed only as an uncommitted file in one checkout. The
+  canonical spec was not in version control and could not be referenced by
+  commit.
+- **`css-math-model.md` §D5 independently reconstructed OPERATIONS.md's `h3`/`h4`
+  rule** ("Jess respects more authorship": `calc($val / 2)` → `calc(8px / 2)`,
+  with `$( … )` as the explicit opt-in to fold) by reading AST v1 at `7b7d4e57c`
+  and a 2025 commit message. That reconstruction was correct, but it was
+  inference where a written spec already existed. Its semantic claims are now
+  subordinate to OPERATIONS.md; what survives there is the recognition defect,
+  which OPERATIONS.md does not cover and which blocks the rest — `min(100% -
+  30px)` cannot preserve in `.jess` until it parses at all.
+
 ## 1. Why this exists
 
 Bare-truthy `@if` is the single largest blocker in the SCSS corpus — 29 of 92
@@ -165,11 +191,60 @@ In Less, `and`/`or` appear only in guards and yield a boolean.
 
 ## 4. What Jess does today
 
-**Equality is already three-mode and already correct.**
-`packages/core/src/tree/condition.ts` (`compareUnder`) implements
-`EqualityMode = 'less' | 'sass' | 'exact'`, and its doc comments assert exactly
-the divergences measured above (`2px = 2` ✓ Less / ✗ Sass; `a = "a"` ✗ Less /
-✓ Sass). Independent measurement confirms them. **No change needed here.**
+**Equality is already three-mode and already correct — but this document
+previously named the wrong file, and the correction matters for anyone
+implementing §5.**
+
+The LIVE primitive is **`compare()` at `packages/core/src/ast/value-guards.ts:187`**
+(`compare(op, left, right, equalityMode = 'less')`), reached through
+`ValueEvaluator.compare` (`value-eval.ts:463`) → `evaluator.ts:129` →
+`guard.ts:105`. Every dialect's guard, `@if`, `when(...)`, and logical-fn
+condition funnels into that one function. Its three `equalityMode` branches are
+`value-guards.ts:31-36` (unitless↔unit coercion), `:112-118` (sass
+quote-insensitive), `:119-124` (less cross-kind byte equality); `'exact'` is not
+a branch of its own — it is defined by matching none of the three.
+
+`packages/core/src/tree/condition.ts` (`compareUnder`) is the **dormant legacy
+duplicate**. `packages/core/src/index.ts:4` states the old tree classes are
+"intentionally not exported". Its doc comments do assert the measured
+divergences, so it remains readable as a specification, but it is not the code
+that runs and must not be the code that is edited.
+
+**Measured state of `.jess` (2026-08-01): all 22 comparison rows of
+OPERATIONS.md's `.jess expected` block FAIL**, and for one cause — see §4.1.
+Independent measurement confirms the divergence table above; what is missing is
+not the comparison logic but its reachability.
+
+### 4.1 Why no `.jess` comparison evaluates
+
+`$(1 = 2)` emits `1 = 2`, not `false`. The jess grammar builds a `Condition`
+node carrying both a real `GuardNode` and a verbatim `src`
+(`jess-parser/src/grammar.ts:1974-1998`). Serialize then has two lanes, and the
+value lane wins for a declaration value:
+
+- typed lane, `serialize.ts:3019` — `evalGuard(...)` → `makeBool`. Evaluates.
+- value lane, `serialize.ts:3323` — `return literal(node.src)`. Verbatim.
+
+The value lane's comment states its premise: the logical fns read a condition's
+guard directly, "so a `Condition` reaching this value lane is an UN-consumed
+condition" — a mis-parse, e.g. `url(…charset=utf-8…)`. That premise holds for
+Less and Sass, where a comparison only ever appears inside `boolean()`, `if()`,
+or a guard. **It is false for `.jess`**, which by ledger P17 has no `boolean()`
+at all, so `$( … )` is exactly where a comparison legitimately lands.
+
+The `$( … )` boundary Block is transparent (`serialize.ts:~3300`) and does not
+switch lanes. The fix is to make the value lane evaluate when an evaluator is
+present, and keep `literal(node.src)` only as the `!e.ev` fallback — but the
+mis-parse recovery the comment protects then needs a discriminator other than
+"reached the value lane". `Block.boundary` already marks `$( … )` and is the
+obvious candidate.
+
+**`==` does not parse at all.** The three jess operator regexes
+(`grammar.ts:1456`, `:1464`, `:2012`) are each `/>=|<=|>|<|=/` — no `==`, no
+`!=`. `$(1 == 1px)` fails with "Unexpected Jess syntax."
+
+**No `.jess` comparison assertion exists anywhere in the test suite**, which is
+why a 22/22 failure went unnoticed.
 
 **Truthiness has no mode at all.** `packages/core/src/ast/guard.ts`, `'truth'`:
 
@@ -261,15 +336,46 @@ Ordered by whether they block work now.
   adopt Sass truthiness? Sass+ separately needs Sass truthiness to run real
   code, which under "no modes" means the **lowering** must inject the coercion.
 
-- **O-TRUTH-5 (new)** — **The Sass `==` lowering is not statically decidable.**
-  Sass `==` is unit-strict on numbers (→ `.jess` `==`) but quote-insensitive on
-  text (→ `.jess` `=`, per OPERATIONS.md line 216). For `$a == $b` the operand
-  types are not known until eval, so a syntactic operator substitution cannot
-  choose. The "function-based compare primitives" note looks like the intended
-  escape hatch: lower Sass `==` to a **named primitive** whose runtime dispatch
-  is numbers-strict / text-loose, rather than to either operator. Confirm that
-  is the intent — the alternative is accepting the moderately-breaking shift
-  where Sass+ `a == "a"` becomes `false`.
+- **O-TRUTH-5 — RESOLVED (owner, 2026-08-01).** The question was whether Sass
+  `==` can be lowered by syntactic operator substitution. **It cannot**, and the
+  owner's ruling is that the lowering *"should depend on what is being
+  compared… sometimes it should lower to `=`, other times `==`"*.
+
+  Sass `==` is unit-strict on numbers (`1px == 1` → false, which is `.jess`
+  `==`) but quote-insensitive on text (`a == "a"` → true, which is `.jess` `=`).
+  Neither `.jess` operator reproduces it alone, and for `$a == $b` the operand
+  types are unknown until eval — so a front end cannot pick an operator.
+
+  **Therefore the lowering target is a named compare PRIMITIVE, not an
+  operator**: one whose runtime dispatch is numbers-strict / text-loose.
+
+  **These primitives are CORE-INTERNAL FUNCTIONS, not stylesheet-callable
+  functions** (owner, 2026-08-01). Nothing here becomes invocable from a
+  `.less` / `.scss` / `.jess` source file, and no name enters any dialect's
+  builtin registry — which would contradict ledger **P17** (`.jess` has no
+  ambient builtin namespace) as well as adding public API nobody asked for. The
+  primitives are TypeScript functions in `packages/core`, in the same
+  not-exported class `index.ts:4` already describes for "compare/cast/lookup
+  machinery".
+
+  The architecture already has the right shape and needs only one change of
+  carrier. `compare()` (`value-guards.ts:187`) is that internal function today,
+  and the guard node `{ g: 'cmp', op, left, right }` already carries `op`. So
+  the comparison KIND moves into the node the front end lowers to — `=` loose,
+  `==` type-equal, and a Sass-equality kind that dispatches on operand type —
+  and the `equalityMode` parameter threaded through `EvalModes` disappears.
+  Same function, one more discriminated `op`, no runtime flag.
+
+  Consequence for the architecture: "lowering, not modes" does **not** mean
+  every dialect difference resolves at parse time. It means the difference is
+  carried by *what the lowered node says*, rather than by a mode flag the
+  evaluator consults from ambient config. A primitive may still dispatch on
+  operand type at eval — that is its definition, not a mode.
+
+  Note the same reasoning does **not** rescue Less: Less is numbers-loose and
+  text-strict (`a = "a"` → false), while `.jess` `=` is loose on both. Under one
+  set of semantics Less's text comparison shifts to true, which is inside
+  resolution 4's allowance and is a real `.less` output change.
 
 ### Semantics that need a `.jess` answer
 
@@ -320,11 +426,42 @@ Ordered by whether they block work now.
 
 ## 7. Consequences for the code as it stands
 
-- `EqualityMode` (`packages/core/src/types/modes.ts`, `condition.ts`
-  `compareUnder`) is **slated for removal** under resolution 1. Its three
-  behaviours do not disappear — they become the lowering targets, and
-  `compareUnder`'s `less` / `sass` arms are the specification of what each
-  front end must lower to. It should not be extended in the meantime.
+- `EqualityMode` (`packages/core/src/types/modes.ts`) is **slated for removal**
+  under resolution 1. Its three behaviours do not disappear — they become the
+  named primitives each front end lowers to (O-TRUTH-5). The live specification
+  of those behaviours is `value-guards.ts:31-36`, `:112-118`, `:119-124`, NOT
+  `tree/condition.ts` `compareUnder`, which is dormant. It should not be
+  extended in the meantime.
+
+  Removal is not confined to core: the mode is read or defaulted at
+  `packages/config/src/options.ts:12,32,199`, `core/src/context.ts:252,274,400`,
+  `core/src/ast/evaluator.ts:129`, `value-eval.ts:302`, the `.less` plugin
+  (`jess-plugin-less/src/index.ts:32,331,401`) and the `.scss` plugin
+  (`jess-plugin-scss/src/index.ts:52,67`). `.jess` sets none and therefore runs
+  at the `'less'` fallthrough default today. `value-collection.ts:35,56` defaults
+  to `'sass'` instead — an existing inconsistency that disappears with the mode.
+- **`packages/fns` should CONSUME these primitives, not reimplement them**
+  (owner, 2026-08-01). Core-internal does not mean core-only: `fns/` is an
+  in-repo consumer and is expected to call the same compare/operate functions
+  wherever a builtin needs to compare or operate on values. That is what makes
+  "one set of semantics" true in practice rather than only in core.
+
+  Measured today there is **one conformer and two bypasses**:
+
+  | site | file:line | state |
+  | --- | --- | --- |
+  | Sass map fns (`map-get`, `map-has-key`, …) | `value-collection.ts:38` → `compare('=', …)` | **conforms** — though it defaults to `'sass'` where `compare()` itself defaults to `'less'`, an inconsistency the mode's removal deletes |
+  | Sass `min`/`max` | `fns/src/sass/math/compare.ts:26` `compareSassNumbers` | **bypass** — a second numeric comparison with its own unit rules |
+  | `.jess` / Less bracket lookup | `serialize.ts:4149-4152`, `DeclMap` as `Map<string, DeclEntry>` | **bypass** — keys are stringified and matched by BYTE identity |
+
+  The lookup bypass is the one OPERATIONS.md calls out by name: `$foo['1px']`
+  must match a `1px` dimension key *because lookup uses loose equality*. Today
+  it compares `"1px"` bytes against `"1px"` bytes with no unit logic, so it
+  happens to work for that spelling and would fail for `$foo[1px]` vs a `'1px'`
+  key, or any unit-equivalent key. Converting it means the `Map` string identity
+  becomes a fast path with a `compare`-based fallback, not a straight
+  replacement — a scan is O(n) per lookup and this is a hot path.
+
 - `guard.ts`'s `'truth'` node still decides truthiness by serializing the value
   and byte-comparing to `"true"`. Whatever O-TRUTH-1 resolves to, that should
   become a typed test; re-deriving meaning from emitted text is exactly what the
