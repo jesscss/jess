@@ -124,6 +124,21 @@ function workspaceSrcAliases() {
     ['@jesscss/jess-parser/cst', 'packages/syntax/jess/jess-parser/src/cst.ts'],
 
     /*
+     * `./cst/positions` — the same four entries bound to the line-aware grammar
+     * table. `f2121762c` split them out of `./cst` (retiring
+     * `parseXDiagnosticCst`) and did not add them here, so they stayed on node
+     * resolution: the CST shape gate's line-carrying half died with
+     * ERR_MODULE_NOT_FOUND, and every source-aliased consumer of
+     * `diagnostics-core` got the half-source graph the note above describes.
+     * All four are listed, not just the two the gate imports, because the
+     * half-graph hazard is per-dialect and does not care who imports first.
+     */
+    ['@jesscss/css-parser/cst/positions', 'packages/syntax/css/css-parser/src/cst/positions.ts'],
+    ['@jesscss/less-parser/cst/positions', 'packages/syntax/less/less-parser/src/cst/positions.ts'],
+    ['@jesscss/scss-parser/cst/positions', 'packages/syntax/scss/scss-parser/src/cst/positions.ts'],
+    ['@jesscss/jess-parser/cst/positions', 'packages/syntax/jess/jess-parser/src/cst/positions.ts'],
+
+    /*
      * `@jesscss/core` itself is aliased to source by the walk above. Leaving
      * this subpath on node resolution would give a test two copies of the error
      * classes — a source-side `JessError` from the root and a lib-side one from
