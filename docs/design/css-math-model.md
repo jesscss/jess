@@ -1,242 +1,389 @@
-# The CSS math model — proposal
+# The CSS math model — proposal, revision 2
 
-**Status: PROPOSAL. Nothing here is implemented.** It exists to be ruled on, and
-to be attacked first. Written 2026-07-31 against `origin/dev` `a9f5d77c7`.
+**Status: PROPOSAL. Nothing here is implemented.** Revision 1 was reviewed by
+four independent lenses (refutation, grammar standard, semantics, perf) and
+**three of its five steps were wrong**. This revision records what they killed as
+well as what survived, because the dead claims are the useful part: each one was
+plausible, and each one is a trap the next reader would otherwise re-enter.
+
+Written against `origin/dev` `a9f5d77c7`; measured at `17b675065`.
 
 ## 0. The defect, stated as an inversion
 
-The CSS base grammar has a general math-expression ladder. It is called
-`CalcValue` / `CalcProduct` / `CalcSum` / `CalcParen`, and it is reachable from
-exactly three places — `CalcCall`, `CalcFunction`, `CalcParen`
-(`packages/syntax/css/css-parser/src/grammar.ts:2123-2170`, `:2327-2339`,
-`:1811-1820`). Jess ports the same five consts verbatim
-(`packages/syntax/jess/jess-parser/src/grammar.ts:3254-3319`, port note at
-`:14-22`).
+The CSS base grammar has a general math-expression ladder called `CalcValue` /
+`CalcProduct` / `CalcSum` / `CalcParen`
+(`packages/syntax/css/css-parser/src/grammar.ts:2124-2159`), reachable from
+exactly three places — `CalcCall`, `CalcFunction`, `CalcParen`. Jess ports the
+same five consts verbatim (`jess-parser/src/grammar.ts:3255-3319`).
 
-So the base grammar says: **`calc()` owns arithmetic, and arithmetic exists
-because `calc()` needs it.** That is backwards. `calc()` is not a function in any
-executable sense — it computes nothing, it is a CSS spelling the parser detects
-so that operations inside it are not folded away. Naming the general ladder after
-it is the same category error as naming a value `DeclarationValue` because a
-declaration happens to use one, and the grammar standard already forbids that
-shape (`GRAMMAR-REVIEW-STANDARD.md` item 16, "Do not prefix a child with its
-caller").
+So the base says: **`calc()` owns arithmetic, and arithmetic exists because
+`calc()` needs it.** That is backwards. `calc()` computes nothing; it is a
+spelling the parser detects so that operations inside it are not folded away.
+Naming the general ladder after it is what `GRAMMAR-REVIEW-STANDARD.md` item 16
+forbids ("do not prefix a child with its caller").
 
-Two dialects already got this right and one did not:
+SCSS is the standing proof the base does not need a calc-shaped grammar:
+`grep -n "'calc" scss-parser/src/grammar.ts` returns **nothing**, and math is an
+ordinary value production reached from a dozen positions.
 
-| dialect | general math production | entered from | `calc()` special-cased? |
-| --- | --- | --- | --- |
-| SCSS | `MathSum` / `MathTopSum` | `Paren`, `MapEntry`, `ValueTail`, `ValueTerm`, at-rule preludes — a dozen sites | **no `calc` production exists at all** |
-| Less | `MathSum` / `TopSum` | `Paren`, media features, **every function argument** | yes, but not the sole entrance |
-| CSS | `CalcSum` | `CalcCall` / `CalcFunction` / `CalcParen` only | **yes — the sole owner** |
-| Jess | `CalcSum` (ported) | `CalcFunction` / `CalcParen` only | **yes — the sole owner** |
-
-`grep -n "'calc" packages/syntax/scss/scss-parser/src/grammar.ts` returns nothing.
-SCSS is the existing proof that the base does not need a calc-shaped grammar.
-
-### What it costs, measured
-
-`a{width:calc(min(1em - 2px))}` is rejected by `css` and `jess`, accepted by
-`less` and `scss` — the base rejecting what its own supersets accept. **110 of the
-147 remaining superset violations** in the 18,245-entry external corpus are this
-one construct (`test/css-corpus/README.md`; re-measured at `17b675065`).
-
-The mechanism is one hop. `CalcValue`'s function arm is
-`CalcIdentOrFunction = typedIdentOrFunction` (`grammar.ts:2445`), whose dispatch
-routes `url(`/`calc(`/`var(` to dedicated tails and **everything else** glued to
-`(` into `TypedGenericFunction` (`:2400-2408`), whose arguments are
-`sepBy(TypedValueSequence, …)`. `TypedValue` (`:2521-2532`) has no operator arm,
-so the `-` in `min(1em - 2px)` matches nothing and the enclosing `)` fails.
-
-A corollary worth stating because it changes what "fixed" means: top-level
-`min(1em - 2px)` *does* parse in `css` today — but only because the non-typed
-`Value` ladder has a `PunctuationValue` arm that swallows the `-` as an opaque
-byte. **CSS never builds an `Operation` for a nested math function, at any
-position.** The construct is not recognised anywhere; it is only tolerated in one
-of the two ladders. Widening `TypedValue` with the same punctuation arm would
-clear all 110 corpus entries while recognising nothing — a green number over an
-unchanged defect. This proposal rejects that option explicitly.
+**Cost:** `a{width:calc(min(1em - 2px))}` is rejected by `css` and `jess`,
+accepted by `less` and `scss` — the base rejecting what its supersets accept.
+**110 of the 147 remaining superset violations** are this construct.
 
 ## 1. Which CSS functions allow a math expression
 
-The open question in the ruling was whether `calc()` has company. It does.
-css-values-4 §10 defines a closed set, and every member takes `<calc-sum>`
-arguments:
+css-values-4 §10 defines a closed set, all taking `<calc-sum>` arguments:
+`calc`; `min`, `max`, `clamp`; `round`, `mod`, `rem`; `sin`, `cos`, `tan`,
+`asin`, `acos`, `atan`, `atan2`; `pow`, `sqrt`, `hypot`, `log`, `exp`; `abs`,
+`sign`. css-values-5 adds `calc-size`, `progress`, `media-progress`,
+`container-progress`, `random`, and the argument-less `sibling-count` /
+`sibling-index`. `round()` also takes an optional leading `<rounding-strategy>`
+keyword, so the argument grammar is not uniformly `<calc-sum>#`.
 
-| §10 | functions |
-| --- | --- |
-| §10.1 calc | `calc()` |
-| §10.2 comparison | `min()`, `max()`, `clamp()` |
-| §10.3 stepped-value | `round()`, `mod()`, `rem()` |
-| §10.4 trigonometric | `sin()`, `cos()`, `tan()`, `asin()`, `acos()`, `atan()`, `atan2()` |
-| §10.5 exponential | `pow()`, `sqrt()`, `hypot()`, `log()`, `exp()` |
-| §10.6 sign-related | `abs()`, `sign()` |
+No such list exists in the repo. `'calc'` is spelled independently in **six**
+places — the four grammar dispatch tables, `tree/call.ts:265`,
+`ast/serialize.ts:4647`, `ast/value-operate.ts:306`, and, the one revision 1
+missed, `genericFunctionIdentifier` (`css grammar.ts:864`), a regex negative
+lookahead `(?!(?:calc|url|var)(?=\())` that is a hand-rolled copy of the dispatch
+table, used at `:1785` and `:2077`.
 
-css-values-5 adds `calc-size()`, `progress()`, `media-progress()`,
-`container-progress()`, `random()`, and the argument-less `sibling-count()` /
-`sibling-index()`.
+## 2. What the reviews killed
 
-`round()` additionally takes an optional leading `<rounding-strategy>` keyword
-(`nearest | up | down | to-zero`), so the argument grammar is not uniformly
-`<calc-sum>#` and the production must spell that arm.
+### 2.1 D3 was NOT a pure widening — REFUTED
 
-**No such list exists in the repo today.** There is no `keywords()` table, no
-registry, no constant. The string `'calc'` is spelled independently in five
-layers: the four grammar dispatch tables, `tree/call.ts:265` `isCalcCall`,
-`ast/serialize.ts:4647`, `ast/value-operate.ts:306` `CALC_WRAP_RE`, and
-`tree/call.ts:1164`/`:2005`. Anything downstream that wants to ask "is this a
-math function?" has to hardcode a string.
+Revision 1 claimed that routing math-function arguments to `MathSum` was a pure
+accept-set widening, because `foldOperation` returns the lone operand when there
+are no operators. **That reasoning was about the fold and never looked at the
+choice lists or the sequence layer above them.** Both diverge:
 
-## 2. Proposal
+- **`CalcValue` lacks `UnicodeRange`**, which `TypedValue` has
+  (`grammar.ts:2124-2136` vs `:2560-2571`). `min(U+0-7F)` parses today, would not
+  after.
+- **`CalcSum` has no space-separated-run derivation.** `TypedValueSequence`
+  (`:2573-2599`) accepts a whitespace-joined run of values; `CalcSum` requires an
+  operator between operands, and `calcSumPad` (`:852`) makes whitespace around
+  `-`/`+` mandatory on both sides. Measured: **17 regressions in a 25-case
+  battery**, including `min(1px 2px)`, `min(1px -2px)`, `clamp(1px 2px, 3px)`,
+  `min(red blue)`, `min(var(--x) 1px)`, `min(calc(1px) 2px)` — all confirmed
+  end-to-end through the compiler.
+- **Bytes would move at step 3, not step 5.** `min(10px%3)` parses today as inert
+  opaque bytes. Routed, it becomes `Operation('%', 10px, 3)`; `calcDepth` is
+  bumped only for the name `calc` (`serialize.ts:4281`), so `shouldOperate`'s
+  `parens-division` disjunct is satisfied and **it folds to a number**.
+- **Separator capture is an extra obligation.** `TypedGenericFunction` ends in
+  `withAuthoredSeparators(args, fields, …)`; `CalcCall`'s reducer takes no
+  `fields`. Modelled on `CalcCall`, `min(1px ,2px)` loses its authored padding
+  even where the node tree is identical.
 
-### D1 — rename the family to what it is
+`min(1px 2px)` is not valid CSS. That is irrelevant: **the parser accepts shapes,
+not semantics**, it accepts this today, and narrowing it is a regression whatever
+the spec says about the value.
 
-`CalcValue` → `MathValue`, `CalcProduct` → `MathProduct`, `CalcSum` → `MathSum`,
-`CalcParen` → `MathParen`, in `css` and `jess`. Converges on the spelling Less
-and SCSS already use. `CalcCall` stays, because that one really is the `calc()`
-call.
+**Consequence: the argument of a math function is not `<calc-sum>`. It is the
+ordinary typed value sequence, extended so adjacent terms may be joined by a math
+operator.** The deciding question is adjacency (**G24**), not a separate ladder.
+Revision 2's D3 is rewritten on that basis.
 
-This is a rename with **no accept-set change and no AST movement** — the AST
-node built is `funcCall('calc', …)` either way. It should land alone, so its
-differential is provably inert and the next change starts from a clean base.
+### 2.2 D1 was not inert — the ladder is public CST
 
-### D2 — the math-function set is spec data, in one place
+Measured directly: `parseCssCst('a{width:calc(1px + 2px * (3px - 1px))}')` yields
+node types **`CalcCall CalcSum CalcProduct CalcValue CalcParen`**, and jess the
+same. `nodesByGrammarType` is the public CST query. So D1 is a **public CST label
+change in two dialects**, its `aggCst` differential *must* move, and revision 1's
+"provably inert differential" would have made a moving hash read as a regression
+— or a zero hash read as a pass from an instrument that never looked.
 
-One table, in `packages/parser-shared/`, holding §1's names with their argument
-shapes. It is the only thing that decides which openers route to `MathSum`, and
-it replaces five hardcoded `'calc'` strings with one import.
+### 2.3 D2 could not be built as described — BLOCKED
 
-### D3 — routing: `calc()` stops being the entrance
+Revision 1 proposed a shared table in `packages/parser-shared/` replacing "five
+hardcoded strings with one import". Three of those five are in `packages/core`,
+which **has no dependency on parser-shared** — and every parser asserts the
+package is *absent* from its compiled artifact
+(`expect(transformed?.code).not.toContain('@jesscss/parser-shared')`, four
+separate gates). parser-shared exists only to be inlined away at macro time. The
+payoff does not exist, and a name→argument-shape map is a runtime object, which
+is neither a combinator nor macro-foldable.
 
-In the base's ident-or-function dispatch, every name in the D2 table routes to a
-`MathFunction` production whose arguments are comma-separated `MathSum` (plus
-`round()`'s keyword arm). `calc(` loses its `cssCase` special case and becomes an
-ordinary member of the table. Jess mirrors it, per its port note.
+### 2.4 D6 was refuted by a SETTLED ledger row
 
-**This is an accept-set widening and nothing else, for the same reason the
-`SquareValue` change was.** `foldOperation` (`grammar.ts:743-765`) returns the
-lone operand when there are no operators, and `MathValue` projects to its single
-child. So an argument containing no arithmetic reduces to exactly the node it
-reduces to today; only arguments containing arithmetic — which currently fail to
-parse — produce anything new. **This claim is the load-bearing one in the whole
-proposal and is the first thing review should try to break.**
+Revision 1 called the missing `Operation.src` a gap that should gate D3. **Ledger
+F1 (SETTLED)** is dispositive: *"OPERATORS / SEPARATORS = SPACED … regardless of
+source … They are separators, NOT values — the verbatim-value rule (V1) does NOT
+govern them."* So `calc(1.0px+2em)` → `calc(1.0px + 2em)` is F1 executing, not a
+defect, and an `Operation.src` replaying authored bytes would **violate F1**.
 
-### D4 — the builtin-name collision is an EVAL question, and D3 does not touch it
+V1 is already honoured: the preserve path composes `left.bytes`/`right.bytes`
+(`value-operate.ts:416`), which are the V1-verbatim operand bytes. Measured
+identical in all three dialects: `calc(2PX + 1e3em)` → `calc(2PX + 1e3em)`.
 
-13 of the §1 names are registered Less builtins (`abs`, `min`, `max`, `round`,
-`mod`, `pow`, `sqrt`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`); 5 are
-registered Sass globals (`abs`, `min`, `max`, `round`, `random`). Their
-signatures are not the CSS ones — Less `round(x, 2)` is *decimal precision*,
-CSS `round(strategy, a, b)` rounds to a step
-(`packages/fns/src/less/round.ts:10`, `packages/fns/src/sass/math/round.ts:16`,
-whose header says outright that Sass follows CSS here and Less does not).
+**Open question 4 of revision 1 is closed: no, `Operation` does not gain `src`.**
 
-That looks like a blocker and is not one, **if D3's widening claim holds**:
-whether `min()` folds is decided by the registry at eval time
-(`packages/core/src/ast/evaluator.ts:124-125`; `functionMode` only fires for a
-*registered* name whose invocation failed), and D3 changes only how the
-argument's *structure* is recognised. An argument that parses to the same node
-reaches the same builtin with the same value.
+The perf and semantics reviews appeared to conflict here — perf said "D6 must
+gate D3", semantics said "D6 is a non-issue". They were describing different
+things, and separating them is the actual finding:
 
-What D3 *does* change is that arguments which previously failed to parse now
-reach those builtins. `min(1em - 2px)` in `.less` currently parses via Less's own
-`FunctionScalarArgument` → `MathSum` path, so Less is already there; the movement
-is in `css` and `jess`. `.jess` has no registry at all (**P17**, SETTLED), so it
-emits verbatim and cannot be affected semantically.
+- **`Operation.src` for formatting — dead.** F1 governs; nothing to fix.
+- **Preserved math has no node at all — real, and it is a STRUCTURE problem, not
+  a formatting one.** An unfoldable operation exits as
+  `makeKeyword('calc(…)')` and is re-entered by
+  `CALC_WRAP_RE = /^calc\(([\s\S]*)\)$/` (`value-operate.ts:306`) plus a
+  hand-rolled paren scanner (`:322-340`). That is answering a structural question
+  by scanning canonical text, and D3 multiplies traffic through it. It is the
+  same family as the standing "parser owns structure, core never re-derives from
+  bytes" rule.
 
-Existing pins that must not move: `packages/jess/test/min-max-dialect.test.ts`
-(`.less`/`.scss` fold, `.jess` verbatim — pinned by `b5ae850a1`), and the
-per-dialect registry disjointness in `packages/jess/test/dialect-builtins.test.ts`.
+The one genuine byte loss on the preserve path is neither: `calc(1px /* c */ +
+2em)` → `calc(1px + 2em)` in all three dialects. F1 governs whitespace and says
+nothing about comments. That is a trivia-placement item.
 
-### D5 — `inCalc`: v1 stored it, v2 derives it, and the derivation is wrong
+### 2.5 D5's hidden-class precedent was backwards
 
-At `7b7d4e57c` this was a **parse-time flag on the node**:
+Revision 1 proposed `readonly inMath?: boolean` on `Operation`, "precedented by
+`Block.boundary` and `FunctionCall.modern`". Verified in
+`packages/core/src/ast/nodes.ts:1358-1367`:
 
-```ts
-export type OperationOptions = { inCalc: boolean }
-// eval: if (inCalc) { resolve operands so variables substitute; return intact }
+- `FunctionCall.modern` (`:236`) is **non-optional**, always written by the sole
+  factory (`:1360`). **1 realized map.** Valid precedent.
+- `Block.boundary` (`:256`) is **optional**, and the factories build three
+  distinct literals (`:1363` two branches, `:1367`). **3 realized maps.**
+  `Block.boundary` *is* an existing hidden-class split of exactly the kind this
+  repo measured at 46% of CSS parse. Revision 1 cited its own counterexample.
+
+`Operation` has **1 realized map** — one construction site repo-wide
+(`nodes.ts:1359`). So the field is achievable at base=1 **only** if spelled
+`readonly inMath: boolean`, non-optional and factory-defaulted.
+
+### 2.6 D4's `.jess` immunity claim was false
+
+Revision 1 said `.jess` "has no registry at all (P17), so it emits verbatim and
+cannot be affected semantically." **P17 removes the function registry; it says
+nothing about arithmetic.** `.jess` already operates: `calc(2px * 3)` → `6px`.
+Today `.jess` `min(1em - 2px)` is a parse error; after routing, the argument is an
+`Operation` at `calcDepth === 0`, `shouldOperate` is true under parens-division,
+and it **folds**. D3 moves `.jess` from parse error to a folded numeric — and
+that lands squarely inside **OPEN P18** (where the CSS-superset guarantee stops
+in `.jess`), answering it by accident.
+
+The pin revision 1 named as protection, `packages/jess/test/min-max-dialect.test.ts`,
+contains **no argument with an arithmetic operator** in any of its 22 entries. It
+cannot move, and equally it pins nothing this touches.
+
+## 3. Revised proposal
+
+### D1 — rename to what it is, and delete the dead twins
+
+`CalcValue` → `MathAtom`, `CalcProduct` → `MathProduct`, `CalcSum` → `MathSum`,
+`CalcParen` → `Paren`, in `css` and `jess`.
+
+Names taken from the dialects that already have them, not invented: Less spells
+the operand `MathAtom` (`less grammar.ts:3271`) and the group `Paren` (`:3190`);
+Less and SCSS agree exactly on `MathProduct`/`MathSum`. Revision 1's `MathValue`
+and `MathParen` were a third spelling neither dialect uses.
+
+Also in scope, all missed by revision 1:
+
+- **Three dead consts.** `g.CalcCall`, `g.Url`, `g.Call` have **0 references
+  each** (verified). The `'CalcCall'` *label* is public CST and must stay; the
+  `CalcCall` const (`:2159`) is an unreachable twin of `CalcFunction` and should
+  collapse via `routed(fallback)` — parseman 0.46 documents it for exactly this
+  and it has zero uses in this repo — taking `calcOpen` (`:1141`) with it.
+- **`CalcIdentOrFunction` (`:2483`) and `TypedIdentOrFunction` (`:2484`) are
+  byte-identical aliases of the same combinator on consecutive lines** (verified),
+  both in the rule-name union and the rules map. This is the exact duplication D1
+  claims to fix, one line below the family it renames.
+- jess's `isCalcOperator` (`:1296`) and `foldCalcOperation` (`:1307`), whose CSS
+  counterpart is already plainly `foldOperation`.
+
+**Restated honestly: AST byte-identical; CST grammar-type labels change on four
+productions in two dialects; no accept-set change.** The differential must cover
+CST, and there is no css differential script today — building one is part of D1,
+not a precondition someone else supplies.
+
+### D2 — one combinator const, in the grammar, not a shared data table
+
+The math-function set becomes **one `keywords([...])`-style combinator const at
+module scope in `recognition.ts`**, spelled the way `conditionalAtKeyword` and
+`marginAtKeyword` already are: array inline as a combinator argument. That is the
+only shape with precedent and the only one the macro constraint permits.
+
+Core's three `'calc'` sites are **out of scope** — they stay literal, or move to
+a separate plain constant in `packages/core`. Do not claim one import.
+
+`genericFunctionIdentifier` (`css grammar.ts:864`) must be updated in the same
+change or `min(` behaves differently in `Call`/query positions than in value
+position.
+
+### D3 — extend the argument grammar; do not replace it
+
+**The math-function argument is `TypedValueSequence` with math.** Concretely: a
+sequence of typed values where adjacent terms may be joined either by whitespace
+(a space run, as today) or by a math operator (producing an `Operation`). This
+preserves `UnicodeRange`, space runs, and separator capture — the three things
+§2.1 showed a `MathSum` argument destroys — while adding arithmetic.
+
+The operator-vs-space-run decision is **adjacency**, and **G24** already settles
+how to spell it: never assert that trivia is present, assert that two tokens are
+not adjacent. `1px -2px` is a space run of two dimensions; `1px - 2px` is
+subtraction; that is the same distinction G24 states for `1 - 2` vs `1 -2`.
+
+**Spelling is mandatory, not an implementation detail.** parseman compiles
+`dispatch` to a linear `if / else if` chain with **each tail fully inlined**, and
+the css `IdentOrFunction` tail is emitted **6 times** across the ast and cst
+artifacts. Twenty separate `cssCase` arms would add roughly **1.4 MB** of
+generated code across css+jess; **one multi-key arm** — `when()` accepts
+`DispatchWhenKey = string | readonly string[]` (verified), and the artifact
+already uses the form for five pseudo-selector keys — costs about **70 KB**.
+
+- **MUST** be one multi-key `cssCase([...names], MathFunction)` whose tail is a
+  `g.`-rule reference.
+- **MUST NOT** be a `choice(MinFunction, MaxFunction, …)` of per-function
+  productions — that is the shared-prefix re-parse shape the perf checklist
+  names.
+- CSS has **two** dispatch tables (`:2418`, `:2463`); jess one. Both css tables
+  change, or the typed and non-typed ladders diverge further.
+
+`%` is in `calcProductOperator` (`regex(/[*/%]/)`) and is **not** a css-values-4
+calc operator. D3 must narrow it, or `min(10px%3)` starts folding (§2.1).
+
+**Frequency, measured — this is why the spelling matters more than the ladder:**
+non-`calc` math functions appear **0 times** in `packages/jess/benchmark/benchmark.css`,
+**0 times** in bootstrap 5.3.8 dist, and **6 times** in `benchmark.less` (none
+containing an operator). D3 pays a per-atom dispatch tax on every ident-shaped
+value atom in every stylesheet — ≥1,501 dispatch entries per parse of
+`benchmark.css` — to serve a construct that is nearly absent from the benchmark
+corpora. The ladder itself is allocation-free for operator-free arguments
+(`{project: 0}` and `foldOperation`'s single-operand return both check out), so
+the dispatch chain is the entire cost.
+
+### D5 — `inMath` as a parse-time fact
+
+At `7b7d4e57c` this was `OperationOptions.inCalc`, a parse-time flag on the node;
+an `inCalc` operation resolved operands and returned intact. v2 re-derives it from
+`calcDepth`, bumped at one site (`serialize.ts:4281`) with **no decrement and no
+reset**.
+
+**Correction to revision 1:** the leak is *subtree over-reach*, not an unbounded
+leak. `EvalCtx` is threaded by value — `ce` is a fresh object, never mutated onto
+`e` — so the depth does not escape the calc argument subtree. Verified:
+`a { b: calc(1px + @a); c: @a; }` emits `3px` then `4px / 2`. The defect is that
+a **variable binding evaluates in the use site's math context instead of its
+own**, because `evalBinding` (`serialize.ts:2409`) forwards the caller's `e`.
+
+That is invariant 1's prohibited shape — one binding, two spellings, decided by
+use site:
+
+```less
+@var: 50vh/2;  a { b: @var; }             => b: 50vh / 2;
+@var: 50vh/2;  a { c: calc(50% + @var); } => c: calc(50% + 25vh);
 ```
 
-An `inCalc` operation never operated. Today v2 re-derives it from a walker
-counter, and the derivation has a confirmed hole: `calcDepth` is **bumped at
-exactly one site** (`ast/serialize.ts:4281`) and has **no decrement and no reset
-site anywhere**. v1 had one (`tree/reference.ts:3301-3317` zeroes `calcFrames`,
-and `tree/call.ts` pushes `false` for call arguments). So in v2, once a walk
-enters `calc(…)`, every descendant `EvalCtx` — including unrelated nested call
-arguments and variable-binding evaluations reached through `evalBinding` /
-`resolveVarRef` — sees `calcDepth > 0`.
+Spelled `readonly inMath: boolean`, non-optional, factory-defaulted (§2.5). It is
+also a **perf win**, unclaimed by revision 1: it deletes the 18-field
+`{ ...e, calcDepth: … }` `EvalCtx` spread at `serialize.ts:4281` and five
+`(e.calcDepth ?? 0)` reads.
 
-The polarity also inverted, which is worth recording because it means the two
-engines are not merely differently-factored:
+**Three things D5 must own that revision 1 did not:**
 
-| | v1 (`tree/util/should-operate.ts:41-59`) | v2 (`ast/serialize.ts:3348`) |
-| --- | --- | --- |
-| in calc | short-circuits to **false** unless the unit pair is provably safe — calc SUPPRESSES | first disjunct is `calcDepth > 0` → **true** — calc FORCES, then `operate` declines |
-| operands | inspected here | never read; the predicate is a pure function of depths, mode, and operator |
-| parens | boolean **stack** — a frame can push `false` to close the context | monotone **counter**; nothing can close it |
+1. **It moves a committed fixture.** `tests-unit/calc/calc.css:9-10` expects
+   `calc(50% + (25vh - 20px))` twice; the `25vh` exists *only* because the leaked
+   depth folded `50vh/2` inside `@var`'s binding. Under `inMath` it becomes
+   `calc(50% + (50vh / 2 - 20px))`. That requires the **O4** graduation
+   procedure — create `tests-unit/calc/legacy/calc.css` holding the pre-change
+   output with the **O5** header *first*, then update the top-level `.css`.
+2. **The polarity divergence is undecided, not merely differently-factored.** For
+   Dimension×Dimension, v1's `should-operate.ts:41-59` and v2's `calcSafe` are
+   the same predicate. They diverge on non-Dimension operands: v1 returns false
+   and preserves; v2 has already decided to operate, so it falls through into
+   live arithmetic. Measured: `calc(#f00 + #001)` → `#ff0011` in v2, preserved in
+   v1. Both engines are public surface. The D5 ruling must cover this class.
+3. **`parenDepth` has the identical over-reach and the identical absent reset**
+   (`serialize.ts:3348`). Fixing `calcDepth` alone is half a fix.
 
-The v2-shaped fix follows from the model's own rule rather than from porting v1.
-v2's principle is that the AST owns structure and the evaluator owns policy
-(`nodes.ts:211-222`, `serialize.ts:192-199`) — so an evaluation *decision* must
-not live on a node. But "this operation was written inside a math function" is
-not a decision, it is a **positional fact the parser knows for free and the
-walker only approximates**. Storing the lossless fact and deriving the lossy one
-is the standing rule (`memory:downstream-workaround-means-upstream-defect`).
+**Scope correction:** revision 1 promised `min(100% - 30px)` would preserve as
+`calc(100% - 30px)` does. It cannot at the proposed scope — that expression
+reaches math through Less's `FunctionScalarArgument` and SCSS's `MathTopSum`,
+neither of which D3 touches, and both emit the fabricated `70%` today. Either
+`inMath` is set in **all four** grammars, or the promise comes out. (It should be
+set in all four: `70%` where the same expression under `calc` preserves is one
+value printing two ways.)
 
-Once D3 lands, the grammar knows this exactly. Proposal: an optional
-`readonly inMath?: boolean` on `Operation`, precedented by `Block.boundary` and
-`FunctionCall.modern`, initialized by the factory so the hidden class stays
-stable. Named `inMath`, not `inCalc`, because after D3 the fact is "inside a math
-function" and `min(100% - 30px)` must preserve exactly as `calc(100% - 30px)`
-does.
+## 4. Sequencing
 
-Fallback if review rejects a node field: keep the walker counter but give it the
-reset v1 had. That fixes the leak without fixing the derivation, and should be
-recorded as debt rather than as the design.
+1. **D1** rename + dead-twin collapse — AST-identical, **CST-moving**; build the
+   css differential here.
+2. **D2** the combinator const — build-time only.
+3. **D3** argument grammar — the accept-set widening. Differential must show
+   movement only on previously-rejecting entries, **with a negative control**,
+   and must separately show the 25-case battery from §2.1 does not regress.
+4. **D5** `inMath` — the semantic change, and the only step that moves emitted
+   CSS. Needs its own ledger row, the O4/O5 fixture graduation, and the
+   semantics reviewer.
 
-### D6 — the preserve path is a real gap, named here and not solved
+D6 is **deleted**: `Operation.src` is refuted by F1. The surviving structural
+residual (preserved math has no node; `CALC_WRAP_RE` re-derivation) is filed
+separately and does not gate this work.
 
-A math expression that cannot fold has, in v2, **no representation other than a
-string**: it becomes a value-domain `Keyword` whose bytes are re-entered by regex
-(`CALC_WRAP_RE`, `value-operate.ts:306`), and composition of two preserved calcs
-proceeds by unwrap-and-rewrap. `Operation` has no `src` field, unlike every other
-preserve-capable v2 value node (`Keyword`, `Color`, `Quoted`, `Dimension`, `Any`,
-`Condition` all carry one), so every preserve path reconstructs with **normalized
-single spaces** rather than replaying authored bytes.
+**No number from `postcss-oracle.mjs --bench` at n=3 can gate D3.** Predicted
+effect ≈ +1.1% against a documented 12.9% cross-process bias. D3 needs a
+same-commit null run establishing the real spread, and a **dead-arm negative
+control** — add 20 arms that can never fire and confirm the harness reports the
+predicted delta. If the control reads zero, the harness cannot see D3 and no
+post-D3 number is evidence either way.
 
-Today that is mostly invisible because so little math parses. D3 makes far more
-of it parse, so the gap gets proportionally larger. This proposal does **not**
-solve it; it flags that D3 should not land without deciding whether `Operation`
-gains a `src`.
+## 5. Governance — the finding under the finding
 
-## 3. Sequencing
+**No ledger row governs in-calc math semantics.** `grep -n "inCalc\|calcFrames"
+docs/architecture/core/DESIGN-DECISIONS.md` → zero hits. The owner memory note
+`tree-is-the-spec-for-math-semantics` cites **ledger P19** and
+`docs/architecture/core/MATH-FRAME-PROTOCOL.md`. **P19 is the parseman
+`balanced()` CST row**, and the doc **has never existed in git history**. Both
+pointers are wrong.
 
-Each step is separately reviewable, separately measurable, and separately
-revertable:
+The current v2 polarity was installed by `47bda0a1b`, justified in its commit
+message as *"matching less.js Dimension.toColor"* plus *"Differential oracle:
+operations-advanced DIFF->MATCH"* — a reference-implementation port and a green
+differential, with no ledger row. Ledger **E1/E5/E6/E7** forbid both halves. It
+shipped because no contradicting row existed to catch it.
 
-1. **D1** rename — inert, differential must show zero movement.
-2. **D2** the table — inert, replaces five hardcoded strings.
-3. **D3** routing — the accept-set widening; clears the 110 entries. Differential
-   must show movement **only** on entries that previously rejected, with a
-   negative control.
-4. **D6 decision** — does `Operation` carry `src`? Gate D5 on it.
-5. **D5** `inMath` — the semantic change, and the only step that can move emitted
-   CSS. Needs the semantics reviewer and its own corpus differential.
+So D5 cannot cite a SETTLED row, and must not pretend to be a defect fix. It
+needs its own **OPEN** row, which must also retroactively settle what `47bda0a1b`
+changed. The row that *does* support it and revision 1 failed to cite is **P1**:
+*"Math mode … is a PARSE-TIME input."* Whether math happens is already settled as
+parse-time; `Operation.inMath` is the same axis.
 
-Steps 1–3 do not change emitted bytes for any input that parses today. Steps 4–5
-can, and should not be bundled with them.
+Required ledger actions: a new OPEN row for in-math operation policy (stating the
+rule over the construct, the operand classes including the undecided
+colour/keyword case, and that a binding evaluates in its own math context); a row
+or tracker entry for D3's dialect asymmetry; correction of the broken memory
+pointers; and an owner decision on **P17 vs the valid-CSS-in-all-dialects rule**,
+since `min(1px, 2px)` is valid CSS and emits three different ways today.
 
-## 4. Open questions for the owner
+## 6. Open questions for the owner
 
-1. **Does the base grammar recognise the values-5 set** (`calc-size()`,
-   `progress()`, `random()`, `sibling-*()`), or only values-4 §10? They are less
-   stable and `random()` collides with a Sass global.
-2. **`round()`'s `<rounding-strategy>` keyword arm** — spell it in the base, or
-   treat `round()` as ordinary until the strategy grammar is wanted?
-3. **D5's home** — node field (`Operation.inMath`) or walker counter plus the
-   missing reset?
-4. **D6** — does `Operation` gain `src`, and if so is that a prerequisite for D3
-   rather than a follow-up?
-5. **Less's `MathSum` reaches every function argument** (`FunctionScalarArgument`,
-   `less/grammar.ts:3001`), which is broader than §1's closed set. After D3, is
-   that a Less addition that stays, or a divergence to converge?
+1. Does the base recognise the values-5 set (`calc-size`, `progress`, `random`,
+   `sibling-*`), or only values-4 §10?
+2. Spell `round()`'s `<rounding-strategy>` keyword arm now, or treat `round()` as
+   ordinary until wanted?
+3. Is `inMath` set in **all four** grammars (needed for the `min(100% - 30px)`
+   promise), or only css+jess?
+4. Does D5 also fix `parenDepth`, or is that a separate ruling?
+5. Less's math reaches **every** function argument, broader than §1's closed set.
+   After D3, does that stay as a Less addition or converge?
+
+## 7. Defects found by the reviews, outside this proposal's scope
+
+Each needs its own issue; none is caused by this work.
+
+- **SCSS `calc(1px + min(4px / 2))` → `calc(1px + 2)`** — a dropped unit
+  producing invalid CSS. `min(4px / 2)` is `min(2px)` per §10.2.
+- **`.jess` rejects `calc(1.0px+2em)`** (no whitespace around the operator) while
+  `.less` and `.scss` accept — valid CSS rejected by one dialect.
+- **`min(100% - 30px)` → `70%`** in `.less` and `.scss` — fabricated output where
+  the same expression under `calc` correctly preserves.
+- **`calc(1px /* c */ + 2em)` loses the comment** in all three dialects.
+- **`foldOperation`** (`css grammar.ts:743`, `:749`) does `children.find(isValue)`
+  then `children.indexOf(first)` — two scans of one array, collapsible to one
+  pass.
+- **Five `css` reducer crashes** share one cause: `valueSlotChildren` throws on an
+  empty match instead of returning `[]`, so the `?? any('')` fallback its callers
+  spell is unreachable. Tracked in `test/css-corpus/README.md`.
