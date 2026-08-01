@@ -447,7 +447,7 @@ bought grammar surface for nothing.
 three-valued case where they could diverge. All three lowerings above are written
 with `not(...)` and need no `!=`.
 
-**Both forms must parenthesise each comparison** — see §4.5.2. A bare comparison
+**Both forms must parenthesise each comparison** — see §4.5.4. A bare comparison
 is not an `and`/`or` operand in the jess grammar, so
 `not($x == false or $x == null)` is a PARSE ERROR. Verified against the parser,
 not inferred.
@@ -497,37 +497,32 @@ must stay one — generalised to every operator.
 
 #### 4.5.1 The expression value positions
 
-Written as the owner gave them — `[here]` marks the expression, and whether
-parens surround it is part of each form, not a uniform rule:
+There are FOUR, and whether parens surround the expression is part of each form
+rather than a uniform rule:
 
 ```jess
 $([here])
 $if ([here])
 $for ([here])
 when [here]
-$ > my-mixin([here], …)
-$my-func([here], …)
 ```
 
 **Parens are REQUIRED after `$if`, `$else if` and `$for`. They are NOT required
-after `when`** (owner ruling, 2026-08-01).
-
-That asymmetry is deliberate and is about which language each keyword is sourced
-from, not about the parser:
+after `when`** (owner ruling, 2026-08-01). The asymmetry is about which language
+each keyword is sourced from, not about the parser:
 
 - **`$if` / `$for` — the mental model is JavaScript.** `if (…) { … }` is the most
-  familiar control-flow shape a web developer has, and the parens are what
-  separate the condition from the body. Keeping them mandatory buys that
-  symmetry outright, including for `$else if`.
-- **`when` — the mental model is a CSS query prelude**, where a single bare
-  keyword is a complete condition: `@media screen`, `@media print`. A guard is a
-  trailing modifier on a signature that already ends in `)`, so `m() when (true)`
-  puts two paren groups adjacent doing unrelated jobs. `m() when $foo` reads the
-  way a guard clause should.
+  familiar control-flow shape a web developer has, and the parens separate the
+  condition from the body. Mandatory buys that symmetry outright, `$else if`
+  included.
+- **`when` — the mental model is a CSS query prelude**, where a bare keyword is a
+  complete condition (`@media screen`). A guard is a trailing modifier on a
+  signature that already ends in `)`, so `m() when (true)` puts two paren groups
+  adjacent doing unrelated jobs.
 
-**`when` admits a bare VALUE, not a bare COMPARISON.** This is where the CSS
-query analogy is exact — a prelude is either a bare keyword or a parenthesised
-condition, never a bare condition:
+**`when` admits a bare VALUE, not a bare COMPARISON** — this is where the CSS
+analogy is exact. A prelude is a bare keyword or a parenthesised condition, never
+a bare condition:
 
 ```jess
 when true            OK    like `@media screen`
@@ -536,45 +531,71 @@ when (1 > 2)         OK    like `@media (min-width: 500px)`
 when 1 > 2           NOT VALID — no CSS analogue
 ```
 
-Parens after `when` therefore remain **allowed** everywhere and **required**
-around a comparison. That also keeps every existing `.less` guard parsing, and
-`when ((a) or (b))` is still required when grouping (§4.5.2).
+Parens after `when` therefore stay **allowed** everywhere and **required** around
+a comparison, which also keeps every existing `.less` guard parsing.
 
-**Mixin and function call arguments parse like the inside of `$if`'s parens** —
-full expression positions, not value positions. So a bare comparison IS valid
-there, which is the opposite of `when`:
+#### 4.5.2 Call arguments are VALUE position — `$( … )` is the only compute marker
+
+**Mixin and function call arguments are NOT an expression position** (owner
+ruling, 2026-08-01, reversing an earlier steer in this document). Computing
+inside an argument requires the explicit boundary:
 
 ```jess
-$my-func(1 > 2, …)   OK    argument is an expression position
-when 1 > 2           NOT VALID
+$my-func($(4px / 2), …)      // computes -> 2px
+$ > my-mixin($(1 > 2), …)
 ```
 
-The two are not in tension: an argument is *delimited* by the call's own parens,
-so the expression needs no delimiter of its own. A `when` guard has no delimiter
-until you add one.
+The reversal is because treating arguments as expressions reintroduces exactly
+the ambiguity `$( … )` exists to remove. Measured on the current grammar, where
+arguments are already value position:
 
-**Implementation status, measured.** Three of six rows are behind the ruling:
+```
+m(4px / 2)      ->  4px / 2      slash value, preserved
+m($(4px / 2))   ->  2px          explicit expression, computes
+m(1 + 2)        ->  PARSE ERROR  bare arithmetic rejected, per P17
+m(12px/1.5)     ->  12px / 1.5   shorthand survives
+```
 
-| position | production today | matches the ruling? |
+Two things break if arguments become expressions:
+
+1. **`m(4px / 2)` silently becomes `2px`.** That is the most common shorthand
+   shape in CSS — `font: 12px/1.5`, `grid-area: 1/2`, `border-radius: 50% / 20%`
+   — changing meaning with no diagnostic. It is the `slash-div` mess dart-sass
+   spent years deprecating its way out of.
+2. **Nothing would be left to mean "do NOT compute this."** `$( … )` would be
+   redundant inside an argument, so a slash value could not be passed at all.
+
+A hybrid — admitting `>`/`<`/`and`/`or` bare because they carry no CSS value
+meaning while keeping `/` and `-` as value syntax — is explicitly rejected. It
+reads reasonable and is the worst option: an author would have to know which
+operators are safe bare, and the boundary is invisible at the call site.
+
+**Expression position IS contagious inward.** A call written inside `$( … )` has
+expression arguments — `ExpressionCallArgument` (`grammar.ts:1821`) already
+threads `ExpressionCompare` — while the same call at statement level takes value
+arguments through `MixinCallArgument` → `g.ValueTerm` (`grammar.ts:5269`). Both
+behaviours are already implemented and both are correct.
+
+The rule in one line: **if it computes, it is inside `$( )`** — no exceptions,
+no per-operator carve-outs, no position where the marker is optional.
+
+#### 4.5.3 Implementation status
+
+Measured. Exactly ONE row is behind the ruling:
+
+| position | production today | matches? |
 | --- | --- | --- |
 | `$([here])` | `ExpressionAtom` → `ExpressionCompare` → `ExpressionSum` | **yes** |
 | `$if ([here])` | `IfGuardCompare` over `ExpressionSum` (`grammar.ts:5636`) | **yes** — parens already required |
 | `$for ([here])` | `For` (`grammar.ts:5600`) | **yes** — parens already required |
-| `when [here]` | `MixinDefinition` spells `literal('(')` … `literal(')')` (`grammar.ts:5358`) | **NO** — parens are mandatory; `when true` is a parse error |
-| `$ > my-mixin([here])` | `MixinCallArgument` → **`g.ValueTerm`** (`grammar.ts:5269`) | **NO** — value position |
-| `$my-func([here])` | `ReferenceCall` takes **no arguments** (`grammar.ts:5333`) | **NO** |
+| `when [here]` | `MixinDefinition` spells `literal('(')` … `literal(')')` (`grammar.ts:5358`) | **NO** — parens mandatory; `when true` is a parse error |
+| call arguments | `MixinCallArgument` → `g.ValueTerm`; `ExpressionCallArgument` inside `$( … )` | **yes** — already value position |
 
-Measured, not inferred: `when true` and `$if true` both fail with
-`Unexpected Jess syntax.`, and lessc 4.6.3 rejects `when true` with
-`expected condition` — so bare `when` is new syntax in jess, not a Less
-behaviour being preserved.
+`when true` and `$if true` both fail today with `Unexpected Jess syntax.`, and
+lessc 4.6.3 rejects `when true` with `expected condition` — so bare `when` is NEW
+syntax in jess, not a Less behaviour being preserved.
 
-`ExpressionCallArgument` (`grammar.ts:1821`) already threads `ExpressionCompare`
-into a call argument, but only for a call written INSIDE `$( … )`. Closing the
-last two rows means routing the statement-level argument productions to that same
-ladder.
-
-#### 4.5.2 Two consequences the grammar enforces today
+#### 4.5.4 Two consequences the grammar enforces today
 
 Both verified against the parser rather than read off the productions:
 
@@ -595,7 +616,7 @@ Both verified against the parser rather than read off the productions:
 A guard parse failure is reported at the ENCLOSING rule, not the offending
 token — worth knowing, because it makes a bad guard look like a broken ruleset.
 
-#### 4.5.3 Logical operators are native, not rewritten
+#### 4.5.5 Logical operators are native, not rewritten
 
 `and` / `or` / `not` are expression-position operators in their own right:
 
@@ -627,7 +648,7 @@ Two grammar sites remain distinct even though the semantics are one:
 nodes. They agree observationally in condition position; they are not the same
 production.
 
-#### 4.5.4 Guard EXPRESSION lowering is not CONSTRUCT lowering
+#### 4.5.6 Guard EXPRESSION lowering is not CONSTRUCT lowering
 
 The tables above lower the guard *expression*. Where it lands is a separate
 mapping, and only Sass's is one-to-one:
