@@ -638,7 +638,7 @@ old `src/ast/grammar.ts` files are deleted. The grammar/parser floor was registr
 `@jesscss/parser-shared`, and the four parser packages. **It has since moved three times: the floor
 on `dev` is now `^0.46.0` in all 10 declarations** (`75002c4a3` took it to `^0.45.0`;
 the 0.46.0 bump is output-neutral and worth −0.07% to −0.24% of artifact —
-see `docs/state/GRAMMAR-SIZE-FACTS.md` §2.4c). Regenerate with
+see `docs/state/GRAMMAR-SIZE-FACTS.md` §2.4l). Regenerate with
 `grep -rn '"parseman"' --include=package.json . | grep -v node_modules` rather than trusting
 this sentence. Evidence as of 2026-07-27:
 dependency-order parser/plugin/jess builds pass, `pnpm run check:macro` and

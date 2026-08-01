@@ -78,7 +78,7 @@ parser packages depend on `^0.46.0` (the 0.46.0 bump, after `75002c4a3` took the
 capture and `d22cdb54b` dropping the last `RunResult.triviaLog` reads). The 0.46.0 bump is
 output-neutral and buys −0.07% to −0.24% of artifact, **not** the ~5% the size-facts
 §2.4 rows record — those were already banked at 0.45.0; see
-`docs/state/GRAMMAR-SIZE-FACTS.md` §2.4c. *(Corrected
+`docs/state/GRAMMAR-SIZE-FACTS.md` §2.4l. *(Corrected
 2026-07-30: this section and the §0 verification table below both asserted `0.43.0` /
 `^0.43.0`, which made the doc AGENTS.md points agents at FIRST self-falsifying against
 `package.json`.)* `hostMode` reaches the macro, 0.38 adds
@@ -366,12 +366,12 @@ release is adopted.
 
 | file                                            | line                                | form                 |
 | ----------------------------------------------- | ----------------------------------- | -------------------- |
-| `package.json`                                  | root dev dependency range           | `^0.43.0`            |
-| `packages/parser-shared/package.json`           | shared dependency range             | `^0.43.0`            |
-| `packages/syntax/css/css-parser/package.json`   | peer floor and dev dependency range | `^0.43.0`, `^0.43.0` |
-| `packages/syntax/less/less-parser/package.json` | peer floor and dev dependency range | `^0.43.0`, `^0.43.0` |
-| `packages/syntax/scss/scss-parser/package.json` | peer floor and dev dependency range | `^0.43.0`, `^0.43.0` |
-| `packages/syntax/jess/jess-parser/package.json` | peer floor and dev dependency range | `^0.43.0`, `^0.43.0` |
+| `package.json`                                  | root dev dependency range           | `^0.46.0`            |
+| `packages/parser-shared/package.json`           | shared dependency range             | `^0.46.0`            |
+| `packages/syntax/css/css-parser/package.json`   | peer floor and dev dependency range | `^0.46.0`, `^0.46.0` |
+| `packages/syntax/less/less-parser/package.json` | peer floor and dev dependency range | `^0.46.0`, `^0.46.0` |
+| `packages/syntax/scss/scss-parser/package.json` | peer floor and dev dependency range | `^0.46.0`, `^0.46.0` |
+| `packages/syntax/jess/jess-parser/package.json` | peer floor and dev dependency range | `^0.46.0`, `^0.46.0` |
 
 Plus `pnpm-lock.yaml`. **The invariant is that compiled parser artifacts never
 cross parseman versions** — a bump regenerates every artifact and rebaselines
@@ -1883,15 +1883,17 @@ produced this document.
   corpus differential — it silently zeroes `autoNot` for every arm and changes
   what the grammar accepts (§5.2b).
 
-### 10.2 Execution shape — checklist question 14
+### 10.2 Execution shape — checklist question 17
 
-`GRAMMAR-REVIEW-STANDARD.md`'s thirteen questions — is this from CSS, is it
-readable, does it have JSDoc, is it the simplest combinator representation, does it
-duplicate another rule — are all about **the shape of the source**. A rule can pass
-every one of them and still allocate a closure per token. Add, as its own numbered
-question and not a footnote to any other:
+`GRAMMAR-REVIEW-STANDARD.md` §2 carries **sixteen** numbered items — is this from
+CSS, is it readable, does it have JSDoc, is it the simplest combinator
+representation, does it duplicate another rule, and so on — and they are all about
+**the shape of the source**. A rule can pass every one of them and still allocate a
+closure per token. Add, as its own numbered question and not a footnote to any
+other (the standard does not carry this item yet; count the items in that file
+before citing a number here):
 
-> **14. What does this rule do at runtime, and what part of that is knowable at
+> **17. What does this rule do at runtime, and what part of that is knowable at
 > build time?** The AST building does visibly unnecessary work at runtime. Reason
 > about what happens at parse time, and move as much of it as possible into
 > parseman macros.

@@ -58,7 +58,7 @@ describe('Less block comments at a statement boundary inside a block', () => {
    * The two cases that were live oracle divergences: lessc 4.x keeps both, we
    * dropped both. dart-sass keeps them too, and jess-SCSS kept them only
    * because SCSS is the one dialect still modelling a block comment as a
-   * statement NODE — the model the owner ruled against, and G27's blocker.
+   * statement NODE — the model the owner ruled against, and G29's blocker.
    */
   it('keeps a block comment between two declarations', async () => {
     await bothEmitters('a { b: c; /* z */ d: e; }', 'a { b: c; /* z */ d: e; }');
@@ -112,7 +112,7 @@ describe('Less block comments at a statement boundary inside a block', () => {
    *   parse('a { b: c; /* z *\/ .n { d: e; }; }')  .n sourceStart === 18
    *
    * and with the span present the comment lands correctly, as the case below
-   * asserts. So this is the same prerequisite that blocks G27 on the SCSS side
+   * asserts. So this is the same prerequisite that blocks G29 on the SCSS side
    * (SCSS has 4 `withSourceSpan` call sites against Less's 41): statement
    * source spans must exist before a comment can be placed relative to the
    * statement. Handed to the spans lane.

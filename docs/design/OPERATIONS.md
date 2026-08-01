@@ -503,6 +503,24 @@ construct nearly absent from the benchmark corpora. Predicted effect ≈ **+1.1%
 against a documented **12.9%** cross-process bias — so **no n=3 bench number can
 gate this**. It needs a same-commit null run and a dead-arm negative control.
 
+**Cross-reference, recorded not resolved.** The MUST/MUST NOT above rests on one
+ground only: the codegen byte delta (~1.4 MB of inlined tails against ~70 KB).
+Two other documents give the opposite default on *other* grounds, and neither
+cites this delta:
+
+- `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md` — "do not use
+  `dispatch(...)` as a prettier `choice(...)`"; closed keyword/operator choices
+  are "already cheap and clearer as `choice(...)` or `keywords(...)`" — a
+  clarity-and-cheapness ground.
+- `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` §2 item 8 — `choice(...)`
+  is kept for alternatives with disjoint first sets, and closed spelling tables
+  "stay `word(...)` / `keywords(...)` / small literal `choice(...)`" — a
+  first-set-gating ground.
+
+The rule above is unchanged and still binds. Recorded so a reader who meets the
+other two first knows the conflict exists and on what grounds; the owner decides
+it, and it is not decidable until the measurements this section names have run.
+
 ## 7. What jess does today — the gap list
 
 Measured 2026-08-01 at `62c9a4ef1`.
