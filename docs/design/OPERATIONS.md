@@ -595,6 +595,34 @@ Measured. Exactly ONE row is behind the ruling:
 lessc 4.6.3 rejects `when true` with `expected condition` — so bare `when` is NEW
 syntax in jess, not a Less behaviour being preserved.
 
+#### 4.5.3a Less `boolean()` / `if()` are SYNTAX, not `fns/` exports
+
+They wear call parentheses, but they are expression-position constructs and must
+be **lowered**, not dispatched. Under §4.5.2 they could not be functions at all:
+their arguments are conditions, and call arguments are value position.
+
+The implementation already agrees. `LOGICAL_FNS = {'if','boolean','not','and','or'}`
+(`serialize.ts:4397`) is consulted in the serializer BEFORE any registry lookup,
+and its comment states the reason outright — the argument is *"a guard tree, not
+an ordinary value — dispatched here (not via `ev.call`) so the condition
+evaluates through the guard evaluator and `if` stays branch-lazy."* They are
+absent from the Less fns index, and the Less grammar carries dedicated
+`FunctionCondition` / `FunctionConditionTerm` productions (`less/grammar.ts:130`,
+`:2931`) precisely because an ordinary argument production cannot hold a
+condition.
+
+Consequences:
+
+- **`packages/fns` must not export them.** A registry entry would be dead —
+  `LOGICAL_FNS` short-circuits first — and would imply an argument shape the
+  value-position rule forbids.
+- **They lower to jess syntax, not to a call.** `boolean(<cond>)` is the `$( … )`
+  expression boundary; `if(<cond>, a, b)` is the conditional form. The lowering
+  target is a language construct, matching §4.5.5's rule that logical operators
+  are native rather than rewritten.
+- **`not`/`and`/`or` are in that same set**, which is why §4.5.5's native
+  operators are the right home for them rather than a `fns/` entry.
+
 #### 4.5.4 Two consequences the grammar enforces today
 
 Both verified against the parser rather than read off the productions:
