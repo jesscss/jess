@@ -16,6 +16,7 @@
  *   node scripts/triage-branches.mjs lane/foo fix/bar
  *   node scripts/triage-branches.mjs --base origin/main
  *   node scripts/triage-branches.mjs --json
+ *   node scripts/triage-branches.mjs --all     # include alpha/archive release lines
  *
  * Outcomes:
  *   ANCESTOR      branch is contained in the base; nothing to land
@@ -56,12 +57,23 @@ const gitOk = (...a) => {
   }
 };
 
+/*
+ * Long-lived release/archive lines are not queue items. `alpha` sits thousands of
+ * files from `dev` permanently and will never be "landed", so counting it inflates
+ * the outstanding total and its PARTIAL row is meaningless. Excluding it is the
+ * same correction as NOT filtering the queue down to `lane/|fix/` prefixes: both
+ * are the wrong denominator, in opposite directions. Pass --all to include them.
+ */
+const NOT_QUEUE_ITEMS = [/^origin\/alpha$/, /^origin\/alpha-archive-/, /^origin\/main$/];
+
 function allAheadOfBase() {
+  const includeAll = args.includes('--all');
   const refs = git('for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin')
     .split('\n')
     .map(s => s.trim())
     .filter(Boolean)
-    .filter(r => r !== 'origin' && r !== 'origin/HEAD' && r !== base && r !== 'origin/main');
+    .filter(r => r !== 'origin' && r !== 'origin/HEAD' && r !== base)
+    .filter(r => includeAll || !NOT_QUEUE_ITEMS.some(re => re.test(r)));
   return refs.filter((r) => {
     const n = git('rev-list', '--count', `${base}..${r}`).trim();
     return n !== '0';
