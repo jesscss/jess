@@ -336,6 +336,22 @@ does not predict the delta in either direction:
   the shared `g.blockBody` edge. **Re-measure after every accepted promotion; a
   ranking taken once at the start goes stale immediately.**
 
+**The same staleness crosses LANES, and that is the harder case.** A branch's
+recorded number is void the moment another lane shares the closure underneath it
+first — the win was real when measured and has since been banked by someone else,
+so re-quoting it double-counts. This happened three times on 2026-07-31 alone.
+The sharpest instance: `lane/jess-grammar-shrink` claimed **−0.84%** for
+promoting `VarCall`, `CalcFunction` and `KeywordValue` together, but the by-const
+sweep had already registered the first two, so the residual measured on `dev`
+was **−857 B (−0.042%)** — a twentieth of the quoted figure, and the whole
+difference was the two already banked.
+
+**So a cross-lane byte number is not a fact about the change, it is a fact about
+the change ON A BASE.** Quote the base commit with it, and re-measure on current
+`dev` before landing rather than carrying the branch's own figure forward. A
+number without its base is the same error as an artifact size without its
+parseman floor, which the row above already forbids.
+
 **§2.4b is NARROWED, not retracted.** Its finding — that the css query cluster
 promoted *as a nine-rule block* cost +2,423 B — still stands. But on this base
 `QueryTerm` **alone** is −221,963 B and `QueryValue` alone is −177 B. The
