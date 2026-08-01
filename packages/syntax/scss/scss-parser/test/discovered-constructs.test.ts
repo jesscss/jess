@@ -379,4 +379,71 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     expect(() => parse('a { b: & }')).toThrow();
     expect(() => parse('#{&} { c: d }')).toThrow();
   });
+
+  /*
+   * `scssOwnAtKeyword` (grammar.ts) is the hand-maintained list of SCSS-only
+   * at-rule names that `ScssGenericAtRuleName` subtracts from the opaque
+   * fallback. Its CSS half cannot drift — it inverts cssSyntax's own
+   * `TypedAtKeywordSharedRoutes`/`ConditionalAtKeyword`/`ImportAtKeyword`
+   * leaves — but this SCSS-only half is a second copy of "which names have a
+   * typed route", and NOTHING checks it against the routes.
+   *
+   * It has drifted. Ten of its twenty-four names have no production anywhere
+   * in the grammar, so the exclusion removes their only remaining route: they
+   * are neither typed nor opaque, and `@while`/`@content`/`@debug`/`@warn`/
+   * `@error` are ordinary Sass that this parser now rejects outright. That is
+   * the failure mode `descriptorAtKeywordCssOnly` was split out to prevent
+   * (recognition.ts: "excluding a name it cannot otherwise parse makes that
+   * at-rule unparseable rather than better-diagnosed") — the same bug, on the
+   * list that split never covered.
+   *
+   * These two cases are the missing check, not a fix. Opaque capture is NOT
+   * the fix for the first five: an evaluated directive emitted verbatim would
+   * put `@while` in the CSS output, which grammar.ts calls out as the reason
+   * these names are excluded at all. They need productions. The `@-…` compiler
+   * namespace is the same story — jess-parser routes all five, scss-parser
+   * routes none.
+   */
+  it.each([
+    ['@use', '@use "x";'],
+    ['@forward', '@forward "x";'],
+    ['@mixin', '@mixin m { a: b; }'],
+    ['@include', '.x { @include m; }'],
+    ['@function/@return', '@function f() { @return 1; }'],
+    ['@if', '@if $a == 1 { a: b; }'],
+    ['@else', '@if $a == 1 { a: b; } @else { c: d; }'],
+    ['@each', '@each $i in 1, 2 { a: b; }'],
+    ['@for', '@for $i from 1 through 2 { a: b; }'],
+    ['@extend', '.x { @extend .y; }'],
+    ['@at-root', '.x { @at-root { a: b; } }'],
+    ['@charset', '@charset "UTF-8";'],
+    ['@namespace', '@namespace svg url(http://www.w3.org/2000/svg);']
+  ])('routes the excluded SCSS at-keyword %s to a typed production', (_label, source) => {
+    expect(() => parse(source)).not.toThrow();
+  });
+
+  it.each([
+    ['@while', '@while $i > 0 { a: b; }'],
+    ['@content', '@content;'],
+    ['@debug', '@debug 1;'],
+    ['@warn', '@warn 1;'],
+    ['@error', '@error 1;'],
+    ['@-use', '@-use "x";'],
+    ['@-compose', '@-compose "x";'],
+    ['@-export', '@-export "x";'],
+    ['@-import', '@-import "x";'],
+    ['@-from', '@-from "x";']
+  ])(
+    'PINNED DEFECT — %s is excluded from the opaque branch but has no production',
+    (_label, source) => {
+      /*
+       * `Unexpected SCSS syntax.` is the signature of falling off the end of
+       * the statement choice with no arm having claimed the at-keyword. A name
+       * that reaches a real production fails differently (`@at-root .y {`
+       * reports `Expected: "(", "{"`), so this message — not merely "it
+       * throws" — is what distinguishes an unrouted name from a diagnosed one.
+       */
+      expect(() => parse(source)).toThrow(/Unexpected SCSS syntax/);
+    }
+  );
 });
