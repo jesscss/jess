@@ -156,6 +156,53 @@ is now explicit:
 - `&('')` drops the parent selector entirely.
 - `&(-1)` is equivalent to `&-1`.
 
+## At-rule variables require interpolation
+
+Where a variable supplies *syntax* rather than a *value*, Less 5.x requires
+explicit `@{…}` interpolation. Less 4.x still accepts the bare spelling but emits
+a deprecation warning for it.
+
+```less
+@breakpoint: (min-width: 48rem);
+@animation-name: fade-in;
+
+// Deprecated in 4.x, removed in 5.x:
+// @media @breakpoint { … }
+// @keyframes @animation-name { … }
+
+// Less 5.x:
+@media @{breakpoint} {
+  .card {
+    animation-name: @animation-name;
+  }
+}
+
+@keyframes @{animation-name} {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+```
+
+This applies wherever a variable becomes part of at-rule syntax — `@media`,
+`@supports`, `@container`, `@layer`, `@keyframes`, `@namespace` — and it is the
+same rule that already governs selectors (`.@{name}`), property names
+(`@{name}: value`), and `@import` paths.
+
+Variables in **value** positions are unaffected and keep the bare spelling. That
+includes ordinary declaration values and media feature values:
+
+```less
+@sizes: {
+  tablet: 768px;
+};
+
+@media (min-width: @sizes[tablet]) {
+  .navbar {
+    display: inline-block;
+  }
+}
+```
+
 ## `extend` and the `!all` flag
 
 `extend` behavior is validated against fixture parity, including nested and

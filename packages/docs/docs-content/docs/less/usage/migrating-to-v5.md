@@ -72,6 +72,37 @@ If you enable `collapseNesting: true`, nesting may be flattened/collapsed more a
 }
 ```
 
+### At-rule variables require interpolation
+
+Less 4.x deprecated bare variables in at-rule preludes, names, and identifiers.
+Less 5.x removes that syntax so at-rules remain unambiguous as CSS evolves.
+Wrap the variable reference in `@{...}` instead:
+
+```less
+@breakpoint: (min-width: 48rem);
+@animation-name: fade-in;
+
+// Removed in 5.x:
+// @media @breakpoint { ... }
+// @keyframes @animation-name { ... }
+
+// Less 5.x:
+@media @{breakpoint} {
+  .card {
+    animation: @animation-name 180ms ease-out;
+  }
+}
+
+@keyframes @{animation-name} {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+```
+
+This change applies anywhere a variable supplies at-rule syntax, including
+`@media`, `@supports`, `@container`, `@layer`, and `@keyframes`. Variables used
+inside ordinary declaration values keep the familiar `@name` spelling.
+
 ### Less-style parent suffix selectors (`&-1`)
 
 Less 5.x also supports Less-style parent suffix composition such as `&-1`. This is a Less feature (not native CSS nesting syntax), and it remains useful for utility/variant naming.

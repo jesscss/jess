@@ -231,7 +231,7 @@ Escaping allows you to use any arbitrary string as property or variable value. A
 ```less
 @min768: ~"(min-width: 768px)";
 .element {
-  @media @min768 {
+  @media @{min768} {
     font-size: 1.2rem;
   }
 }

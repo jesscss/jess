@@ -121,6 +121,31 @@ Example:
 @import "@{themes}/tidal-wave.less";
 ```
 
+#### At-Rule Preludes and Names
+
+Use explicit interpolation when a variable supplies part or all of an at-rule
+prelude, name, or identifier:
+
+```less
+@breakpoint: (min-width: 768px);
+@animation-name: fade-in;
+
+@media @{breakpoint} {
+  .card {
+    animation-name: @animation-name;
+  }
+}
+
+@keyframes @{animation-name} {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+```
+
+The older bare form (`@media @breakpoint`) was deprecated in Less 4.x and is not
+accepted by Less 5.x. Use `@{breakpoint}` when a variable is part of at-rule
+syntax; ordinary declaration values continue to use `@breakpoint`.
+
 #### Properties
 
 _v1.6.0_

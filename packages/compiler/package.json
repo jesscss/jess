@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "linecraft": "0.2.6",
+    "linecraft": "0.2.8",
     "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
   },
