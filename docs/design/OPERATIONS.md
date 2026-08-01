@@ -250,47 +250,118 @@ rows state for `.jess`, arrived at independently.
 }
 ```
 
-### 4.1 The two operators
+### 4.1 The comparison model — one-on-one common ground
 
-| expression | `.jess` `=` (loose) | `.jess` `==` (type-equal) |
-|---|---|---|
-| `1 = 1px` | true | false |
-| `2 = 2%` | true | false |
-| `a = "a"` | true | false |
-| `a = a` | true | true |
-| `black = #000000` | true | true |
+**Owner ruling, 2026-08-01. Each comparison is ONE-ON-ONE: the operand pair picks
+a common ground, and the comparison happens there, once. NOTHING IS TRANSITIVE.**
 
-`=` coerces across representations; `==` additionally requires the same type.
+| operand pair | common ground |
+| --- | --- |
+| both numeric | numeric — reconcile units; under `=` a unitless side is a wildcard |
+| either side quoted | string — compare the other operand's OWN spelling |
+| both colours | colour — rgb + alpha |
+| `null` and a number | numeric, `null` → `0` |
+| anything else | **none** |
 
-### 4.2 Relational on non-numbers — JS-like `toString()` comparison
+`=` compares on the common ground. `==` additionally requires the SAME TYPE.
+With no common ground, **relational errors and equality returns `false`** —
+equality never raises.
 
-**Owner ruling, 2026-08-01: `$(a > b)` and `$(b > a)` must not BOTH be false.
-Relational on non-numeric operands does a JavaScript-like `toString()`
-comparison.** This amends row `u` above from `false` to `true`.
+That single rule reproduces every row of the target table, and several results
+that previously looked like separate rulings now fall out of it:
 
-The defect it fixes is non-trichotomy: with both false, an author cannot
-distinguish "not greater" from "never comparable", and the condition quietly
-takes the else branch either way.
+| expression | ground | `=` | `==` |
+| --- | --- | --- | --- |
+| `1 = 1px`, `2 = 2%` | numeric (unitless wildcard) | true | false |
+| `1in = 2.54cm` | numeric (converted) | true | true |
+| `1 = "1"` | string — `1` spells `"1"` | **true** | false |
+| `1px = "1px"` | string — `1px` spells `"1px"` | **true** | false |
+| `1 = "1px"` | string — `"1"` ≠ `"1px"` | **false** | false |
+| `a = "a"` | string | true | false |
+| `red = "red"` | string | true | false |
+| `black = #000000` | colour | true | true |
+| `black = #00000000` | colour (alpha differs) | false | false |
+| `1px = red` | none | false | false |
+| `null = 0` | numeric | **true** | false |
+| `null = false` | none | **false** | false |
 
-Measured, and it shows Less is already half-way there and inconsistent about it:
+**Why this is not transitive, and why that is fine.** `1 = 1px` compares on
+numeric ground; `1 = "1px"` compares on string ground and fails. Different pairs,
+different grounds, no contradiction. Note Less's `=` is ALREADY non-transitive
+without any of this — measured on lessc 4.6.3, `1 = 1px` and `1 = 1em` are both
+true while `1px = 1em` is false — so transitivity was never a property to
+preserve.
 
-| expression | dart-sass | lessc 4.6.3 | `.jess` target |
-|---|---|---|---|
-| `a > b` | **error** | false | false |
-| `b > a` | **error** | **false** | **true** |
-| `"b" > "a"` | **error** | true | true |
-| `"a" > "b"` | **error** | false | false |
+A value equals its own spelling. That is the whole quoted rule, and it is what
+makes `1px = "1px"` and `1 = "1"` both true for the same reason.
 
-**Less already compares QUOTED strings lexicographically** (`"b" > "a"` → true)
-and does not do it for bare idents — the same construct, two answers, decided by
-quoting. Sass refuses the whole class with `Undefined operation`. The
-`toString()` rule makes relational **total and trichotomous** over every operand
-kind, which neither engine achieves.
+### 4.2 Relational — trichotomous, on the same ground
 
-Note equality is unaffected and already agrees across engines: `1px == red` and
-`1px == "1px"` are false in both, with no error.
+**Owner ruling, 2026-08-01: `$(a > b)` and `$(b > a)` must not BOTH be false.**
+This AMENDS row `u` above from `false` to `true`.
 
-### 4.3 The math rule, stated over the construct
+Relational uses §4.1's ground:
+
+- **numeric ground** → numeric comparison. Incompatible units ERROR under
+  `unitMode: 'strict'` (landed, `5c516dbb1`) and report incomparable otherwise.
+- **string ground** → lexicographic. `b > a` true, `a > b` false.
+- **no common ground** → **error**. `1px > red` is an author mistake, and Sass
+  agrees; erroring is what keeps the operator honest rather than answering
+  meaninglessly.
+
+Measured, showing both engines are degenerate in opposite directions and neither
+is trichotomous:
+
+| expression | dart-sass | lessc 4.6.3 | `.jess` |
+| --- | --- | --- | --- |
+| `2 > 1`, `10px > 9px` | true | true | true |
+| `1in > 1cm` | true | true | true |
+| `2px > 1em` | error | false | error under strict |
+| `b > a` | error | **false** | **true** |
+| `a > b` | error | false | false |
+| `"b" > "a"` | error | true | true |
+| `"a" > "b"` | error | false | false |
+| `1px > red` | error | false | **error** |
+| `null > 1` | error | false | false (`0 > 1`) |
+
+Less already compares QUOTED strings lexicographically (`"b" > "a"` → true) and
+not bare idents — the same construct, two answers, decided by quoting. Sass
+refuses the whole class. `.jess` is total over every pair that has a ground and
+errors on the rest.
+
+### 4.3 `null`
+
+`.jess` gets a `null` literal, spelled as Sass spells it rather than as a new
+word. Core ALREADY has the value: `value-eval.ts` defines `Nil` — "an empty /
+absent value" — and ledger **M5** already specifies that a Nil emits nothing AND
+drops the separator that would follow it, which is exactly Sass's list elision,
+built for merge. This is a missing literal, not a missing concept.
+
+Semantics, measured on dart-sass 1.101.0:
+
+| construct | result |
+| --- | --- |
+| `$x: null; a { b: $x; c: red }` | `a { c: red }` — declaration DROPS |
+| `a { b: 1px null 2px }` | `b: 1px 2px` — elides from a list |
+| `$x: null; a { margin: 0 $x 0 }` | `margin: 0 0` — elides from shorthand |
+| `$x: null; a { b: "v#{$x}" }` | `b: "v"` — interpolates empty |
+| `a { b: 1 + null }` | `b: 1` |
+| `$x: ""; a { b: $x; c: red }` | `b: ""` — `""` is NOT null |
+
+Comparison follows §4.1: `null` grounds numerically against a number, and has no
+ground with anything else — so `null = 0` is true while `null = false` is false,
+matching both engines on the case that matters.
+
+**Provenance is retained: explicit vs implicit.** An author-written `null` and an
+absent/unbound value are the same VALUE but not the same FACT, and core already
+mints the implicit one (M5's unbound optional self-ref). A flag on `Nil` keeps
+one value type rather than growing a second node.
+
+**Interop asymmetry (deliberate).** JS `undefined` → jess `null` inbound; jess
+`null` → JS `null` outbound. JS has two absences and jess has one, so the lossy
+direction is the inbound one.
+
+### 4.4 The math rule, stated over the construct
 
 **An operation authored inside a CSS math function preserves its authorship; it
 does not fold.** `calc($val / 2)` → `calc(8px / 2)`: operands resolve so
@@ -475,7 +546,7 @@ keeping the mis-parse recovery while letting real comparisons evaluate.
 | `calc($($val / 2))` | `4px` | ✓ |
 | `$(1px / 2)`, `$(1 / 2px)` | `0.5px` | ✓ |
 
-The polarity is inverted against §4.2: v2 treats `calcDepth > 0` as FORCING
+The polarity is inverted against §4.4: v2 treats `calcDepth > 0` as FORCING
 operation and lets `value-operate` decline, where v1 treated in-calc as
 SUPPRESSING unless units are provably safe.
 
@@ -546,36 +617,28 @@ Sass**, where `false and (1px + 1em)` must not raise.
 
 ### Semantics needing a `.jess` answer
 
-- **O-TRUTH-6 — RESOLVED (owner, 2026-08-01).** Relational on non-numeric
-  operands is a JS-like `toString()` comparison; `$(b > a)` is **true**. See
-  §4.2, which amends the target table.
+- **O-TRUTH-5 / 6 / 11 — ALL RESOLVED (owner, 2026-08-01) by §4.1's common-ground
+  model.** They turned out to be one question, not three:
 
-- **O-TRUTH-11 (new, owner-requested) — should a cross-TYPE comparison error?**
-  §4.2 settles text-vs-text. It does not settle `1px > red`. Measured:
+  - **O-TRUTH-5** (can Sass `==` be lowered by operator substitution?) — no. It
+    lowers to a named primitive that picks the ground at eval. See §5.1.
+  - **O-TRUTH-6** (are `$(a > b)` and `$(b > a)` both false?) — no. String ground
+    makes relational trichotomous; row `u` is amended to `true`. See §4.2.
+  - **O-TRUTH-11** (does a cross-type comparison error?) — **relational errors,
+    equality returns `false`.** `1px > red` has no common ground and is an author
+    mistake; `1px = red` is simply false. Equality never raises.
 
-  | expression | dart-sass | lessc 4.6.3 |
-  |---|---|---|
-  | `1px > red` / `red > 1px` | **error** — Undefined operation | false |
-  | `red > blue` | **error** | false |
-  | `true > false` | **error** | false |
-  | `1px > null` | **error** | false |
-  | `1px == red` | false | false |
-  | `1px == "1px"` | false | false |
+  What collapsed them was dropping the idea that an operand is COERCED into a
+  canonical value and then re-enters the other rules. It is not: the pair picks a
+  ground and compares there once. That is also why `1 = "1px"` is false — `"1"`
+  is not `"1px"` — while `1 = 1px` is true on numeric ground, with no
+  contradiction between them and no transitivity implied.
 
-  A pure `toString()` rule answers these without erroring — `red > 1px` becomes
-  `"red" > "1px"` → true — and is what §4.2 literally says. But comparing a
-  dimension to a colour is almost certainly an author mistake, `.jess` has a
-  type system, and Sass refuses the whole class. The two readings diverge:
+- **`null` in comparison — RESOLVED.** Grounds numerically against a number
+  (`null` → `0`), and has NO ground with anything else. So `null = 0` is true,
+  `null > 1` is false, and `null = false` stays **false**, which is what both
+  engines report and the case that would otherwise surprise. See §4.3.
 
-  - **toString everywhere** — total, trichotomous, never raises, one rule. But
-    `1px > red` silently answers, and the answer is meaningless.
-  - **toString within a comparable kind, error across kinds** — keeps §4.2 for
-    text and numbers, raises on dimension-vs-colour the way Sass does. Needs a
-    definition of "kind" and makes relational partial again, though it fails
-    LOUDLY rather than silently, which is the property §3.3 says Less lacks.
-
-  Equality is not in question either way: both engines already return false for
-  cross-type equality without erroring, and `.jess` should keep that.
 - **O-TRUTH-2** — `and`/`or`: Sass returns an **operand** and **short-circuits**.
   Operand-returning is more expressive (`$x: $a or $default`) but makes the
   result type depend on inputs. Short-circuiting should land regardless —
@@ -590,9 +653,8 @@ Sass**, where `false and (1px + 1em)` must not raise.
 - **O-TRUTH-4** — Sass list equality is separator-sensitive. Does the native
   Collection model preserve separator identity? Interacts with index lookup,
   which is specified as loose.
-- **O-TRUTH-8** — `null` is unaddressed: `null == false` is false in both
-  engines, `1 + null` → `1` in Sass, and a `null` value **drops the
-  declaration**.
+- **O-TRUTH-8 — RESOLVED.** `null` is specified in §4.3 (literal, elision,
+  declaration drop, interop) and §4.1 (comparison ground).
 
 ### Recognition (§6)
 
@@ -620,6 +682,12 @@ Sass**, where `false and (1px + 1em)` must not raise.
   resolution 1. Its three behaviours become the named primitives each front end
   lowers to (§5.1). The live specification is `value-guards.ts:31-36`,
   `:112-118`, `:119-124`. **It should not be extended in the meantime.**
+- **LANDED `5c516dbb1`:** `unitMode` now reaches comparison, not only
+  arithmetic. `strictUnits` used to make `1px + 3em` a hard error while
+  `2px > 1em` stayed a silent `false` in the same mode on the same operand pair.
+  Both now raise the same `JessError` (`eval/invalid-unit-arithmetic`) with a
+  source location. Known gap: `mixin-dispatch.ts` calls `evalGuard` unwrapped, so
+  a mixin guard's clash still surfaces as the bare class.
 - `guard.ts`'s `'truth'` node should become a typed test whatever O-TRUTH-1
   resolves to.
 - `evalGuard`'s `and`/`or` need short-circuiting before Sass+ can be correct.
@@ -639,7 +707,7 @@ Sass**, where `false and (1px + 1em)` must not raise.
 
 Ordered so that each phase is separately reviewable, separately measurable, and
 separately revertable. **Phases 1–3 are unblocked today. Phase 4 needs
-O-TRUTH-1; phase 5 needs O-TRUTH-11.**
+O-TRUTH-1, the only ruling still outstanding.**
 
 Every phase that can move emitted CSS carries the O4/O5 fixture graduation and a
 `Perf-AB` trailer, per the grammar review standard.
