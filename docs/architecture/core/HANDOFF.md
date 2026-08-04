@@ -220,23 +220,47 @@ next, ahead of anything not already in flight. Spec:
 Every ruling in it is decided and **none of it is implemented**, so it is execution, not
 design — with one exception, §12.3a, which is a design task and should be done first.
 
-Order within the item:
-- **§12.3a — the reference-family lookup descriptor.** The only piece needing design.
-  Do it before any other reference-node edit; each deferral tempts the next change to
-  add a sixth private copy of `scope`.
-- **§12.3 rows 1–3 and 5** — local node deletions (`SpacedValue`, `Assignment`,
-  `GeneralEnclosed`, `RawInline`). Independent of the descriptor and of each other.
-- **§10 Phases 0–6** — the Part I semantics work (comparison evaluates, `==`,
-  trichotomous relational, `equalityMode` collapse, truthiness, recognition).
-  Phases 0–3 and 5 are marked unblocked.
-- **§12.4** — the grammar-label renames, **last**: rows 2–4 of §12.3 delete labels this
-  table lists, so it shrinks once the deletions land.
+**Three phases, in this order. Each one is a prerequisite for the next.**
 
-*Why it waits for 1–6 rather than running beside them:* §12.4 renames `node('…')` labels
-in all four grammars and §12.1 changes `collapse` on the calc ladder — both move grammar
-output, and neither can be gated while the table lowering is still diverging from the
-interpreter (steps 4–5). Landing them concurrently would make a table divergence
-indistinguishable from a rename regression.
+**7a. Rename and refactor the AST nodes. (core)**
+The node set is what everything downstream is stated over, so it moves first.
+- **§12.3a — the reference-family lookup descriptor.** The only piece of the whole item
+  that needs *design* rather than execution. Do it before any other reference-node edit;
+  each deferral tempts the next change to add a sixth private copy of `scope`.
+- **§12.3 rows 1–3 and 5** — delete `SpacedValue`, `Assignment`, `GeneralEnclosed`,
+  `RawInline`. Independent of the descriptor and of each other.
+- **§10 Phases 0–6** — Part I's semantics in core (comparison evaluates, `==`,
+  trichotomous relational, `equalityMode` collapse, truthiness, recognition). Phases 0–3
+  and 5 are marked unblocked and do not wait on the node work.
+*Done when:* the union in `packages/core/src/ast/nodes.ts` is the intended set, every
+switch over it compiles, and no reference node carries a private spelling of scope or kind.
+
+**7b. Update the parsers to produce the new nodes. (four grammars)**
+Reducers currently construct the kinds 7a deletes. Every `generalEnclosed(…)`,
+`assignment(…)`, `spacedValue(…)`, `varIndirect(…)` and `rawInline(…)` call site becomes
+the surviving constructor, and reference-building reducers emit the descriptor.
+*Done when:* all four grammars build against the new union with no adapter or shim, and
+the byte-identity oracle is clean per dialect.
+
+**7c. Slim the parsers down and rename them to the same semantics. (four grammars)**
+Only now is it safe and cheap — 7a deletes kinds whose labels this phase would otherwise
+have renamed.
+- **§12.4** — the ~40 labels that misspell a real node (`VarDeclaration`, `NamedColor`,
+  `Paren`, `Map`, `Percentage`, `SassInterpolation`, …).
+- **§12.1** — collapse the precedence ladder so `CalcSum`/`CalcProduct`/`CalcValue` and
+  the jess `Expression*` rungs stop reaching the CST at all, the way less's already do.
+- **§12.7 and the parser-internal duplication** — `ExpressionQuoted` becomes `Quoted`;
+  the `ExpressionFact` envelope stops metastasising into twin productions
+  (`ExpressionDollarBrace` vs `DollarBrace` are an identical parser and reducer).
+*Done when:* a grammar's `node('…')` labels either name a real kind or are honest
+production names, and the four grammars are smaller than they started.
+
+*Why the whole item waits for 1–6 rather than running beside them:* 7b and 7c move
+grammar output — 7c renames `node('…')` labels in all four grammars and changes `collapse`
+on the calc ladder. Neither can be gated while the table lowering is still diverging from
+the interpreter (steps 4–5): a table divergence and a rename regression would be
+indistinguishable. 7a is core-only and could in principle start earlier, but splitting the
+item across the table work is how the reference family got duplicated in the first place.
 
 **Rebuild the measurement harness first, before step 3.** The one that produced every
 number above was throwaway (gitignored `.scratch/`) and is gone. It should be a permanent

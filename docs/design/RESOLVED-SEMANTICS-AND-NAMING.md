@@ -1441,6 +1441,93 @@ that a node by that name exists.**
 label in any grammar; jess's `Expression` (`grammar.ts:2115`) is a CST label
 with no AST kind. Both directions of the mismatch are already live.
 
+### 12.2a The 49 kinds and what each represents
+
+The list as it stands at `ee1aa5af8`, before §12.3's deletions. Regenerate with
+the grep in §12.2 — this table is a reading aid, not the source of truth, and if
+the two disagree the union wins.
+
+**Value leaves.** A leaf carries its type honestly in the discriminant; the
+parser's classification *is* the node.
+
+| kind | represents |
+| --- | --- |
+| `Keyword` | identifier / keyword leaf — `solid`, `auto`, `true` |
+| `Color` | color literal, hex or named — `#fff`, `red` |
+| `Quoted` | quoted string — `"x"`, `'y'`; pre-split fields so forcing never re-scans `src` |
+| `Dimension` | number + unit split plus the verbatim `src` spelling — `0px`, `50%` |
+| `Any` | opaque value bytes. **The only leaf that sniffs its `src`**, and only when operated |
+| `Url` | `url(…)` — the wrapper is syntax; the content stays an ordinary structured value |
+| `SelectorCapture` | Less `*[…]` — structured captured selector branches, canonical text per branch |
+
+**Value structure.**
+
+| kind | represents |
+| --- | --- |
+| `List` | separator-aware list — `Arial, sans-serif`, `1 / 2`. `sep` is the one canonical separator fact |
+| `SpacedValue` | space-run, **only** where authored boundary runs must survive. Ordinary adjacency is a raw `ValueSlot[]`. *(§12.3 row 1 — deleted, becomes `Sequence`)* |
+| `Sequence` | value template: literal text + refs, **no** separator — `1px solid @c` |
+| `Interpolation` | `@{var}` / `~"…@{x}…"` template resolving to bytes. Distinct from `Sequence` because a ref may unquote |
+| `Operation` | binary op. Structure only (operator + operand nodes); the math is delegated |
+| `FunctionCall` | `lighten(blue, 10%)` — a modeled arg list, so params bind typed. `modern` = Color-4 syntax |
+| `Block` | delimiter-bearing value — `(#aaa * 3)`, `[a, b]` |
+| `Condition` | a boolean condition reaching a **value** position; carries the same `GuardNode` tree `when (…)` builds |
+| `Assignment` | `name=value` call **argument** pair — `alpha(opacity=50)`. Never a comparison. *(§12.3 row 2 — deleted, becomes `Any`)* |
+| `Important` | `!important` as a **flag on a value**, not bytes; propagates to the enclosing declaration |
+| `GeneralEnclosed` | CSS general-enclosed; content stays a template, never a call. *(§12.3 row 3 — deleted, becomes `Call` + `Block`)* |
+| `Range` | `$for` bounds + inclusion flags. Iteration-only — the serializer expands it directly |
+
+**References and lookups.** *(the whole group is §12.3 row 4 / §12.3a — one
+descriptor replaces the eight slices below)*
+
+| kind | represents |
+| --- | --- |
+| `VariableReference` | a mixin param / bound variable. `$name` reads `live`; `$^name` and Less `@name` read `scoped` |
+| `VarIndirect` | `@@name` — a variable whose *name* is another node's resolved bytes |
+| `PropertyReference` | Less `$name` accessor — reads the current CSS property, last-wins, cascading up the ruleset chain |
+| `DeclarationReference` | the current declaration-entry surface; measured, it is `{ raw: '$' }` and nothing else |
+| `Reference` | left-associated lookup / call chain; `raw` is the authored fallback |
+| `DotLookup` | one named member step. Has **no** `kind` field — see §12.3a |
+| `BracketLookup` | one bracket step; `keyKind` carries the dialect's lookup namespace |
+| `Call` | one call step after a reference or lookup. **Its interface is named `ReferenceCall`** — kind ≠ interface name |
+
+**Blocks as values.**
+
+| kind | represents |
+| --- | --- |
+| `Collection` | data / map block `{ k: v; … }`. Root children are **entries only** — never declarations or rulesets |
+| `CollectionEntry` | one authored map entry. Not a declaration; the key may be any value shape the dialect admits |
+| `AnonymousMixin` | `@rs: { … }` — an *executable* block. Unlike `Collection`, its rules **can** hold rulesets and at-rules |
+
+**Selectors.**
+
+| kind | represents |
+| --- | --- |
+| `SimpleSelector` | one token — `.a`, `:hover`, `&`. `&` is just a `SimpleSelector` whose text is `'&'` |
+| `PseudoSelector` | structured selector-function pseudo — `:is(.a, .b)`. Its first two fields share offsets with `SimpleSelector` deliberately |
+| `CompoundSelector` | a run of simple tokens with no separator — `.a.b` |
+| `ComplexSelector` | flat term / combinator sequence. **Only** for branches with ≥1 authored combinator |
+| `RelativeSelector` | combinator-leading branch; admitted only where relative selectors are legal |
+| `SelectorList` | comma-separated branches — `.a, .b` |
+
+**Statements.**
+
+| kind | represents |
+| --- | --- |
+| `Declaration` | `name: value;`. `name` may be an `Interpolation`; `merge` is `','` / `' '` / `null` |
+| `VariableDeclaration` | `@x: …` with a `write` mode of `declare` / `if-absent` / `reassign` |
+| `Ruleset` | `sel { … }`; `extendInstructions` are hoisted here so the serializer's zero-cost gate holds |
+| `MixinDefinition` | canonical rules stored **once**, read through an overlay, never cloned; optional `when` guard |
+| `MixinCall` | args bind positional or named; `path` is the `#ns .a .b()` descent prefix |
+| `Apply` | Jess `$apply <selector-list>` — ruleset-only, whole-selector, merge-all. Deliberately **not** a `MixinCall` |
+| `If` | `$if` / `$else if` / `$else`, ordered as authored. **A control block is not a scope** |
+| `For` | `iterable` + `rules` + `binding` (single / comma / bracket / tuple) |
+| `Comment` | carried structurally in source order. Also a `ValueNode` |
+| `RawInline` | verbatim bytes from `@import (inline)`; no scope, no structure. *(§12.3 row 5 — deleted)* |
+| `StyleImport` | a compile-time stylesheet dependency; plugins resolve its authored path |
+| `ModuleImport` | a compile-time JavaScript / TypeScript module dependency |
+| `Stylesheet` | the document: an ordered list of top-level statements |
+
 ### 12.3 Deletions and merges
 
 Owner rulings, 2026-08-04. Each removes a kind that duplicated one already
