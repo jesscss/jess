@@ -511,3 +511,42 @@ diagnostics, linting, or editor features do not ask for it.
 - Stylelint docs: `docs/user-guide/rules.md` and `docs/user-guide/configure.md`
 - TypeScript handbook: "Call Signatures", "Function Overloads", and
   "Contextual Typing"
+
+## Operation diagnostics — surface the rules `OPERATIONS.md` already settles
+
+**Owner note, 2026-08-01: all four grammars need lint / IDE diagnostics for
+incorrect operations.** Not a new detector stack — this is the roadmap's own
+principle applied to `docs/design/OPERATIONS.md`, which settles a set of rules
+that currently only fail at EVAL time, when they should be visible in the editor
+as the author types.
+
+The division is already the standing one
+(`memory:parser-accepts-shapes-not-semantics`): the parser accepts SHAPES, and
+validity belongs to the language service. Every rule below is a shape the parser
+admits and the operations spec calls wrong.
+
+Candidates, each with its spec section:
+
+| diagnostic | rule | severity |
+| --- | --- | --- |
+| incompatible-unit arithmetic | `1px + 3em` (§4.7) | error under `strict`, warning under `preserve`/`loose` |
+| incompatible-unit comparison | `2px > 1em` (§4.7, landed `5c516dbb1`) | as above |
+| inexpressible unit | `1 / 2px` — no `px⁻¹` (§4.7) | never silent; warn or throw per mode |
+| cross-ground relational | `1px > red` (§4.2) | error — no common ground |
+| bare arithmetic outside `$( )` | `1 + 2` in a value slot (P17) | error — already a parse error, so this is a BETTER MESSAGE, not new detection |
+| non-Boolean condition | `.jess` `$if` on a non-Bool (§4.4) | error |
+| comparison in an `and`/`or` chain without parens | §4.5.4 | error — today it reports at the enclosing rule, which reads as a broken ruleset |
+
+Two things make this worth doing rather than leaving to eval:
+
+- **Several are currently reported at the wrong place.** A guard parse failure
+  surfaces at the enclosing rule, not the offending token (§4.5.4), so the author
+  sees "broken ruleset" for a missing paren.
+- **The mode-dependent ones are invisible by design.** Under `preserve` a unit
+  clash emits `calc(…)` and compiles; the warning is the only signal, and a
+  warning nobody reads in a build log is worth much more in the editor.
+
+Sequencing: this follows the operations implementation (`OPERATIONS.md` §10), not
+precedes it — the rules have to exist in core before lint can surface them, and
+the diagnostics should read the SAME predicates rather than reimplementing them,
+per the "one set of semantics" ruling.

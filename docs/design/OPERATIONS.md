@@ -1278,6 +1278,18 @@ a dead-arm negative control first.
 - Any new stylesheet-callable function (§1).
 - The §11 defects, which are real but independent and should not ride along.
 
+## 10a. Editor / lint diagnostics
+
+The rules here currently fail only at EVAL time. They should also be IDE and lint
+diagnostics across all four grammars — owner note, 2026-08-01. Tracked in
+[`docs/architecture/lint-roadmap.md`](../architecture/lint-roadmap.md), which
+owns stylesheet diagnostics and whose standing principle is that lint should
+"expose the problems Jess already understands, not grow a second detector stack."
+
+Follows the §10 implementation rather than preceding it: the rules must exist in
+core first, and the diagnostics should read the SAME predicates rather than
+reimplementing them.
+
 ## 11. Defects found while measuring, outside this document's scope
 
 - **jess `.scss` diverges from dart-sass across the whole slash family** —
