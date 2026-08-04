@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const read = path => readFileSync(resolve(root, path), 'utf8');
 const fail = (message) => {
   console.error(`diagnostic cold-path guard failed: ${message}`);

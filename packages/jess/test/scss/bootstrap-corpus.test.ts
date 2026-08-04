@@ -31,6 +31,7 @@ import * as glob from 'glob';
 import * as path from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { parse } from '@jesscss/scss-parser';
 import { Compiler } from '../../src/index.js';
 import scssPlugin from '@jesscss/plugin-scss';
@@ -288,7 +289,7 @@ describe('Bootstrap SCSS corpus ratchet', () => {
 // ── report ───────────────────────────────────────────────────────────────────
 
 function writeReport(parseLane: LaneResult[], evalLane: LaneResult[]) {
-  const here = path.dirname(new URL(import.meta.url).pathname);
+  const here = path.dirname(fileURLToPath(import.meta.url));
   const failed = parseLane.filter(r => r.outcome === 'fail');
 
   const counts = BLOCKERS.map(([name]) => ({

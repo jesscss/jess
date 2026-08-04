@@ -1,6 +1,7 @@
 import { createServer } from 'vite';
 import { parseCst } from '@jesscss/css-parser/cst';
 import { lessCstGrammar, lessGrammar } from '../src/grammar.js';
+import { fileURLToPath } from 'node:url';
 
 function hasGrammarNode(value: unknown, grammarType: string): boolean {
   if (typeof value !== 'object' || value === null) {
@@ -44,8 +45,8 @@ test('Less CST leaves detached binding semicolons at statement-list boundary', (
 
 test('canonical Less AST grammar macro-fuses recognition leaves with no runtime import', async () => {
   const server = await createServer({
-    root: new URL('..', import.meta.url).pathname,
-    configFile: new URL('../vitest.config.ts', import.meta.url).pathname,
+    root: fileURLToPath(new URL('..', import.meta.url)),
+    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
 
     /*
      * The compiler-facing entry imports the macro-linked parser and otherwise
@@ -66,8 +67,8 @@ test('canonical Less AST grammar macro-fuses recognition leaves with no runtime 
 
 test('compiler-facing Less entrypoint does not load compatibility grammar shims', async () => {
   const server = await createServer({
-    root: new URL('..', import.meta.url).pathname,
-    configFile: new URL('../vitest.config.ts', import.meta.url).pathname,
+    root: fileURLToPath(new URL('..', import.meta.url)),
+    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
     optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true }
   });

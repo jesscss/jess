@@ -21,8 +21,9 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
-const R = new URL('../../../', import.meta.url).pathname;
+const R = fileURLToPath(new URL('../../../', import.meta.url));
 
 const { parseCssCst } = await import(`${R}packages/syntax/css/css-parser/lib/cst.js`);
 const { parseLessCst } = await import(`${R}packages/syntax/less/less-parser/lib/cst.js`);

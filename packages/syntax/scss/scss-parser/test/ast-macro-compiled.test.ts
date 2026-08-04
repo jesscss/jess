@@ -1,5 +1,6 @@
 import { createServer } from 'vite';
 import { run } from 'parseman';
+import { fileURLToPath } from 'node:url';
 
 function isGrammarModule(value: unknown): value is typeof import('../src/grammar.js') {
   return typeof value === 'object' && value !== null && 'scssGrammar' in value;
@@ -7,8 +8,8 @@ function isGrammarModule(value: unknown): value is typeof import('../src/grammar
 
 test('canonical SCSS grammar macro-fuses recognition leaves with no runtime import', async () => {
   const server = await createServer({
-    root: new URL('..', import.meta.url).pathname,
-    configFile: new URL('../vitest.config.ts', import.meta.url).pathname,
+    root: fileURLToPath(new URL('..', import.meta.url)),
+    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
     server: { middlewareMode: true }
   });
   try {
@@ -39,8 +40,8 @@ test('canonical SCSS grammar macro-fuses recognition leaves with no runtime impo
 
 test('compiler-facing SCSS entrypoint does not load the CST grammar', async () => {
   const server = await createServer({
-    root: new URL('..', import.meta.url).pathname,
-    configFile: new URL('../vitest.config.ts', import.meta.url).pathname,
+    root: fileURLToPath(new URL('..', import.meta.url)),
+    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
     server: { middlewareMode: true }
   });
   try {

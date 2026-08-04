@@ -2,10 +2,11 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const temporaryRoots: string[] = [];
-const repositoryRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../..');
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const recordScript = path.join(repositoryRoot, 'scripts/release/record-alpha-source-provenance.mjs');
 const verifyScript = path.join(repositoryRoot, 'scripts/release/verify-alpha-source-sync.mjs');
 

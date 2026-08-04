@@ -16,8 +16,9 @@
 import { Compiler } from './packages/jess/lib/index.js';
 import lessPlugin from './packages/syntax/less/jess-plugin-less/lib/index.js';
 import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const f = new URL('./packages/jess/benchmark/benchmark.less', import.meta.url).pathname;
+const f = fileURLToPath(new URL('./packages/jess/benchmark/benchmark.less', import.meta.url));
 const benchmarkConfig = {
   output: { collapseNesting: true },
   compile: { plugins: [lessPlugin()] }

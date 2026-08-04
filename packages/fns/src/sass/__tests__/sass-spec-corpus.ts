@@ -28,6 +28,7 @@
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { colorRawRgb, emitValue, isValueGroupArray, namedColor, sniffLiteral, makeList } from '@jesscss/core';
 import type { Color, FnCtx, ValueGroup, Value } from '@jesscss/core';
 import { hsl } from '../color/hsl.js';
@@ -39,7 +40,7 @@ const resolver = createRequire(import.meta.url);
 
 /** The `spec/core_functions/color` root, or `null` when sass-spec is not installed. */
 export function specRoot(): string | null {
-  const scssParser = new URL('../../../../scss-parser', import.meta.url).pathname;
+  const scssParser = fileURLToPath(new URL('../../../../scss-parser', import.meta.url));
   try {
     const pkg = resolver.resolve('sass-spec/package.json', { paths: [scssParser] });
     const root = join(dirname(pkg), 'spec', 'core_functions', 'color');

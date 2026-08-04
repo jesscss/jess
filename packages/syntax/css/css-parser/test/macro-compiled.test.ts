@@ -7,6 +7,7 @@ import { parseCst } from '../src/cst.js';
 import { parseCssCst } from '../src/cst.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 test('grammar is macro-compiled (not interpreted) under vitest', () => {
   // compiled rules are plain functions; interpreted ones are Combinator objects
   expect(typeof G.Stylesheet).toBe('function');
@@ -39,8 +40,8 @@ function containsNode(value: unknown, predicate: (value: Record<string, unknown>
 
 test('canonical AST grammar macro-fuses the recognition artifact with no runtime import', async () => {
   const server = await createServer({
-    root: new URL('..', import.meta.url).pathname,
-    configFile: new URL('../vitest.config.ts', import.meta.url).pathname,
+    root: fileURLToPath(new URL('..', import.meta.url)),
+    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
     server: { middlewareMode: true }
   });
   try {
@@ -67,7 +68,7 @@ test('canonical CSS factory lowers as a positioned CST artifact', () => {
 
 test('coverage-enabled macro CSS reports structural grammar coverage across public fixtures', async () => {
   const server = await createServer({
-    root: new URL('../../../../..', import.meta.url).pathname,
+    root: fileURLToPath(new URL('../../../../..', import.meta.url)),
     configFile: false,
     plugins: [(await import('parseman/plugin')).default.vite({ grammarCoverage: true })],
     server: { middlewareMode: true }

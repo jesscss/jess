@@ -2,11 +2,12 @@ import { createServer } from 'vite';
 import { run } from 'parseman';
 import { parseJessCst } from '../src/cst.js';
 import { jessGrammar } from '../src/grammar.js';
+import { fileURLToPath } from 'node:url';
 
 test('canonical Jess AST grammar macro-fuses recognition with no runtime import', async () => {
   const server = await createServer({
-    root: new URL('..', import.meta.url).pathname,
-    configFile: new URL('../../../../../vitest.config.ts', import.meta.url).pathname,
+    root: fileURLToPath(new URL('..', import.meta.url)),
+    configFile: fileURLToPath(new URL('../../../../../vitest.config.ts', import.meta.url)),
     server: { middlewareMode: true }
   });
   try {
