@@ -788,7 +788,7 @@ expression. Since jess is not preserving here, the honest outcome is an error.
 | expression | lessc 4.6.3 | dart-sass | **jess** |
 | --- | --- | --- | --- |
 | `2px / 1px` | `2px` | `2` | **`2`** — units cancel |
-| `1 / 2px` | `0.5px` | `calc(0.5 / 1px)` | **throws** — no expressible unit |
+| `1 / 2px` | `0.5px` | `calc(0.5 / 1px)` | **mode-dependent, and never silent** — see below |
 | `1px * 2px` | `2px` | `calc(2px * 1px)` | preserve + warn (§4 rows `f`–`f3`) |
 
 The rule is chosen on the two axes that matter: **consistency with the coercion
@@ -796,13 +796,30 @@ model** — a value must be expressible in the value domain, and a reciprocal un
 is not — and **least surprise**, since `0.5px` is a plausible-looking answer that
 is simply wrong, which is worse than a diagnostic.
 
-`unitMode` is where the leniency lives. The default is `preserve`
-(`DEFAULT_MODES`, and the dialect plugins); `strict` arrives via the `strict: true`
-preset; `loose` is the third. **`loose` is the mode that keeps Less 4.x's
-permissive answers**; `preserve` and `strict` raise. This is the same lever
-extended in `5c516dbb1`, which gave `unitMode` reach into comparison — the modes
-now govern arithmetic, comparison, and expressibility as one policy rather than
-three.
+`unitMode` is the ladder, and **every rung warns except the one that throws**
+(owner, 2026-08-01):
+
+| mode | `1 / 2px` | |
+| --- | --- | --- |
+| `loose` | `0.5px` | Less 4.x's answer, **+ warning** |
+| **`preserve`** (default) | `calc(1 / 2px)` | **+ warning** |
+| `strict` | throws | |
+
+**No mode is silent.** Silent preservation is the worst option: the author gets
+output that looks fine and never learns the expression was meaningless. Ledger
+**G25** already settled that shape for the `calc()` comment case — *"auto-fixed
+AND warned — both, not either"* — and §4's rows `f`/`f2`/`f3` annotate the same
+thing ("EVAL warning → `calc(1px * 2px)`").
+
+`preserve` PRESERVES; it does not raise. That is both the mode's name and its
+existing implementation — `value-operate.ts:425` and `:441` already convert a
+unit clash into a `calc(…)` rather than throwing. An earlier revision of this
+section said `preserve` raises, which contradicted the name and the code.
+
+The default is `preserve` (`DEFAULT_MODES`, and the dialect plugins); `strict`
+arrives via the `strict: true` preset. This is the same lever extended in
+`5c516dbb1`, which gave `unitMode` reach into comparison — the modes now govern
+arithmetic, comparison, and expressibility as one policy rather than three.
 
 ## 5. Lowering — how dialects reach one set of semantics
 
@@ -1081,9 +1098,20 @@ Sass**, where `false and (1px + 1em)` must not raise.
   Required for Sass, where the right operand may raise; for Less it only ever
   makes FEWER things raise, so it is safe. `guard.ts:73-85` currently evaluates
   both, on the stated premise that "a guard is side-effect-free" — true for Less,
-  false for Sass. **Must land WITH Phase 5**: the defect is masked today by the
-  bare-truthy `@if` grammar hold, so lifting that hold without short-circuiting
-  turns a parse error into a raise. See §4.7.
+  false for Sass. **Independently landable** — an earlier revision of this
+  document claimed the defect was masked by the bare-truthy `@if` hold and had to
+  land with Phase 5. That was wrong: the demo behind it died on a DIFFERENT gap
+  (a parenthesised arithmetic expression is not admitted as an `and` operand in
+  the SCSS `@if` grammar), which was then misattributed. The defect is live and
+  reproducible today:
+
+  ```
+  unitMode: 'strict'
+  @if false and (2px > 1em)   ->  ERR "Invalid unit arithmetic"   RHS evaluated
+  ```
+
+  Short-circuiting should take the `@else` branch there. So this belongs early
+  (phase 1–2), not with phase 5.
 
 - **O-TRUTH-7 — RESOLVED (owner, 2026-08-01): `$(1 / 2px)` THROWS.** See §4.7.
   There is no such unit as `px⁻¹`; an earlier draft of this document suggested
