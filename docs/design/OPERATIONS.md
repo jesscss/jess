@@ -1153,11 +1153,38 @@ Sass**, where `false and (1px + 1em)` must not raise.
   direction: it claims syntax that may still change, and §6.3 shows every routed
   name carries generated-code weight.
 - Spell `round()`'s `<rounding-strategy>` arm now, or later?
-- Is `inMathFunction` set in **all four** grammars? It must be, or
-  `min(100% - 30px)` → `70%` survives in `.less`/`.scss`, which reach math
-  through their own ladders.
-- Does the fix also cover `parenDepth`, which has the identical over-reach and
-  the identical absent reset?
+- **RESOLVED (owner, 2026-08-01): yes, in all four — but the OUTCOME is not
+  `inMathFunction` alone.** An earlier revision claimed setting it in all four
+  grammars is what stops `min(100% - 30px)` → `70%`. That was only partially
+  right.
+
+  `inMathFunction` is a parse-time POSITIONAL FACT: was this operation authored
+  inside a css-values-4 §10 math function? Whether it then folds is decided by
+  that fact **together with `unitMode` and `mathMode`** — in the Less case
+  especially, where `mathMode` decides whether math happens at all and
+  `unitMode` decides whether a cross-unit pair folds, preserves as `calc(…)`, or
+  raises (§4.7).
+
+  So the fact belongs in all four grammars, and the emitted result is the
+  product of three inputs, not one. Do not write the rule as though the flag
+  alone determines it.
+
+- **RESOLVED (owner, 2026-08-01): `parenDepth` becomes `parenFrames`, a BOOLEAN
+  STACK.** This is not "the same fix as `calcDepth`", as an earlier revision
+  framed it — it is a different defect with an already-settled shape.
+
+  v2 carries `parenDepth?: number`, a monotone counter bumped at
+  `serialize.ts:2992` and `:3318` and read at `:3371`. v1 carries
+  `parenFrames: boolean[]` (`context.ts:1205`), read via `.at(-1)`
+  (`should-operate.ts:21`), and `call.ts:797` pushes **`false`** when entering a
+  call so math is DISABLED for the arguments.
+
+  **A counter cannot express that.** Increment/decrement can say "one level
+  deeper"; it cannot say "disabled here, then restore whatever the caller had,
+  which may have been enabled". So the fix is a shape change, not a missing
+  reset — and the boolean-stack requirement is already on record in the owner's
+  math-semantics note.
+
 - Less's math reaches **every** function argument, broader than §6.1's closed
   set. Stays, or converges?
 
