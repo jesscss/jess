@@ -44,7 +44,8 @@
    (`docs/architecture/core/LESS-V5-CONTENT-PR-PLAN.md:18`), so it can never adjudicate a
    jess-vs-`lessc` question.
 10. **Touching value semantics or node names?** Both are already decided and NOT yet
-    implemented — read
+    implemented, and this is **the declared top priority once the parsing-table work
+    (NEXT UP steps 1–6) finishes** — read
     [`../../design/RESOLVED-SEMANTICS-AND-NAMING.md`](../../design/RESOLVED-SEMANTICS-AND-NAMING.md)
     before designing anything in that space, or you will re-derive rulings the owner has
     already made. **Part I (§1–§11)** settles math, comparison, truthiness, `null`, unit
@@ -128,10 +129,11 @@ Where it actually stands, so nobody quotes a friendlier number: the table **lose
 and **mis-parses jess wholesale** (5 of 6 matrix cells). `113 B/rule` and `~2.65×` are
 16-rule-ladder and json figures and are not evidence about real grammars.
 
-### NEXT UP — the ordered path to table-based jess builds
+### NEXT UP — the ordered path to table-based jess builds, then semantics/naming
 
 Every item below is blocking the one after it. Do them in order; each has a stated
-done-condition so nobody has to guess. **Steps 1–2 are jess's; steps 3–6 are parseman's.**
+done-condition so nobody has to guess. **Steps 1–2 are jess's; steps 3–6 are parseman's;
+step 7 is jess's and is the declared top priority once 6 lands.**
 The measured facts behind each are in the sections that follow.
 
 **1. Fix the `sepBy`/`rawChildren` reducer bug. (jess, ~small, no dependencies)**
@@ -210,6 +212,31 @@ per-dialect artifact bytes and parse time can finally be measured.
 **Only after 6 do the numbers this whole effort exists to produce become obtainable.**
 Until then `113 B/rule` and `~2.65×` remain ladder-and-json figures and must be labelled
 as such.
+
+**7. Resolved semantics and naming — TOP PRIORITY once 1–6 are done. (jess)**
+**Owner ruling 2026-08-04:** when the table work finishes, this is what agents pick up
+next, ahead of anything not already in flight. Spec:
+[`../../design/RESOLVED-SEMANTICS-AND-NAMING.md`](../../design/RESOLVED-SEMANTICS-AND-NAMING.md).
+Every ruling in it is decided and **none of it is implemented**, so it is execution, not
+design — with one exception, §12.3a, which is a design task and should be done first.
+
+Order within the item:
+- **§12.3a — the reference-family lookup descriptor.** The only piece needing design.
+  Do it before any other reference-node edit; each deferral tempts the next change to
+  add a sixth private copy of `scope`.
+- **§12.3 rows 1–3 and 5** — local node deletions (`SpacedValue`, `Assignment`,
+  `GeneralEnclosed`, `RawInline`). Independent of the descriptor and of each other.
+- **§10 Phases 0–6** — the Part I semantics work (comparison evaluates, `==`,
+  trichotomous relational, `equalityMode` collapse, truthiness, recognition).
+  Phases 0–3 and 5 are marked unblocked.
+- **§12.4** — the grammar-label renames, **last**: rows 2–4 of §12.3 delete labels this
+  table lists, so it shrinks once the deletions land.
+
+*Why it waits for 1–6 rather than running beside them:* §12.4 renames `node('…')` labels
+in all four grammars and §12.1 changes `collapse` on the calc ladder — both move grammar
+output, and neither can be gated while the table lowering is still diverging from the
+interpreter (steps 4–5). Landing them concurrently would make a table divergence
+indistinguishable from a rename regression.
 
 **Rebuild the measurement harness first, before step 3.** The one that produced every
 number above was throwaway (gitignored `.scratch/`) and is gone. It should be a permanent
