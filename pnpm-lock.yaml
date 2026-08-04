@@ -172,8 +172,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       linecraft:
-        specifier: 0.2.6
-        version: 0.2.6
+        specifier: 0.2.8
+        version: 0.2.8
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.23
@@ -695,8 +695,8 @@ importers:
         specifier: ^10.2.1
         version: 10.5.0
       linecraft:
-        specifier: 0.2.6
-        version: 0.2.6
+        specifier: 0.2.8
+        version: 0.2.8
       styles-config:
         specifier: workspace:*
         version: link:../config
@@ -5310,7 +5310,7 @@ packages:
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     dependencies:
       '@eslint/object-schema': 2.1.7
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       minimatch: 3.1.2
     transitivePeerDependencies:
       - supports-color
@@ -5343,7 +5343,7 @@ packages:
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     dependencies:
       ajv: 6.12.6
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       espree: 10.4.0
       globals: 14.0.0
       ignore: 5.3.2
@@ -8038,7 +8038,7 @@ packages:
       '@typescript-eslint/types': 8.62.0
       '@typescript-eslint/typescript-estree': 8.62.0(typescript@7.0.1-rc)
       '@typescript-eslint/visitor-keys': 8.62.0
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       eslint: 9.39.2
       typescript: 7.0.1-rc
     transitivePeerDependencies:
@@ -8067,7 +8067,7 @@ packages:
     dependencies:
       '@typescript-eslint/tsconfig-utils': 8.62.0(typescript@7.0.1-rc)
       '@typescript-eslint/types': 8.62.0
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       typescript: 7.0.1-rc
     transitivePeerDependencies:
       - supports-color
@@ -8127,7 +8127,7 @@ packages:
       '@typescript-eslint/types': 8.62.0
       '@typescript-eslint/typescript-estree': 8.62.0(typescript@7.0.1-rc)
       '@typescript-eslint/utils': 8.62.0(eslint@9.39.2)(typescript@7.0.1-rc)
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       eslint: 9.39.2
       ts-api-utils: 2.5.0(typescript@7.0.1-rc)
       typescript: 7.0.1-rc
@@ -8180,7 +8180,7 @@ packages:
       '@typescript-eslint/tsconfig-utils': 8.62.0(typescript@7.0.1-rc)
       '@typescript-eslint/types': 8.62.0
       '@typescript-eslint/visitor-keys': 8.62.0
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       minimatch: 10.2.3
       semver: 7.7.4
       tinyglobby: 0.2.17
@@ -8802,7 +8802,7 @@ packages:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
     engines: {node: '>= 6.0.0'}
     dependencies:
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
     dev: true
@@ -11453,18 +11453,6 @@ packages:
       ms: 2.1.2
     dev: true
 
-  /debug@4.4.3:
-    resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
-    engines: {node: '>=6.0'}
-    peerDependencies:
-      supports-color: '*'
-    peerDependenciesMeta:
-      supports-color:
-        optional: true
-    dependencies:
-      ms: 2.1.3
-    dev: true
-
   /debug@4.4.3(supports-color@8.1.1):
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
     engines: {node: '>=6.0'}
@@ -12015,7 +12003,7 @@ packages:
     resolution: {integrity: sha512-+kjUJnZGwzewFDw951CDWcwj35vMNf2fcj7xQWOctq1F2i1jkDdVvdFG9kM/BEChymCH36KgjnW0NsL58JYRxw==}
     dependencies:
       '@socket.io/component-emitter': 3.1.2
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       engine.io-parser: 5.2.3
       ws: 8.18.3
       xmlhttprequest-ssl: 2.1.2
@@ -12040,7 +12028,7 @@ packages:
       base64id: 2.0.0
       cookie: 0.7.2
       cors: 2.8.5
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       engine.io-parser: 5.2.3
       ws: 8.18.3
     transitivePeerDependencies:
@@ -12553,7 +12541,7 @@ packages:
       '@es-joy/resolve.exports': 1.2.0
       are-docs-informative: 0.0.2
       comment-parser: 1.4.7
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       escape-string-regexp: 4.0.0
       eslint: 9.39.2
       espree: 11.2.0
@@ -12760,7 +12748,7 @@ packages:
       ajv: 6.12.6
       chalk: 4.1.2
       cross-spawn: 7.0.6
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       escape-string-regexp: 4.0.0
       eslint-scope: 8.4.0
       eslint-visitor-keys: 4.2.1
@@ -13102,7 +13090,7 @@ packages:
     engines: {node: '>= 10.17.0'}
     hasBin: true
     dependencies:
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       get-stream: 5.2.0
       yauzl: 2.10.0
     optionalDependencies:
@@ -14404,7 +14392,7 @@ packages:
     engines: {node: '>= 6'}
     dependencies:
       agent-base: 6.0.2
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
     dev: true
@@ -16250,6 +16238,12 @@ packages:
   /linecraft@0.2.6:
     resolution: {integrity: sha512-soXv8qKLqsAA3Ws9HDwrf6VlLUHHKBqLplHVJ/HVhWH5Oakgr5iZmsiKX7eC2VMdZxFaxhLxDsAmiCjLvKPZlQ==}
     engines: {node: '>=18.0.0'}
+    dev: true
+
+  /linecraft@0.2.8:
+    resolution: {integrity: sha512-GZfe6kW8K6yByouQLiIwarj69bsuaWJlI+ioTWH7spsvV/cF7mCGvmPq4K3WUXBwMLrNYsbQE16RSM+qb1MXNQ==}
+    engines: {node: '>=18.0.0'}
+    dev: false
 
   /lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
@@ -16262,7 +16256,7 @@ packages:
       chalk: 5.2.0
       cli-truncate: 3.1.0
       commander: 10.0.1
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       execa: 7.2.0
       lilconfig: 2.1.0
       listr2: 5.0.8
@@ -21178,7 +21172,7 @@ packages:
   /socket.io-adapter@2.5.6:
     resolution: {integrity: sha512-DkkO/dz7MGln0dHn5bmN3pPy+JmywNICWrJqVWiVOyvXjWQFIv9c2h24JrQLLFJ2aQVQf/Cvl1vblnd4r2apLQ==}
     dependencies:
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       ws: 8.18.3
     transitivePeerDependencies:
       - bufferutil
@@ -21191,7 +21185,7 @@ packages:
     engines: {node: '>=10.0.0'}
     dependencies:
       '@socket.io/component-emitter': 3.1.2
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       engine.io-client: 6.6.4
       socket.io-parser: 4.2.5
     transitivePeerDependencies:
@@ -21205,7 +21199,7 @@ packages:
     engines: {node: '>=10.0.0'}
     dependencies:
       '@socket.io/component-emitter': 3.1.2
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
     dev: true
@@ -21217,7 +21211,7 @@ packages:
       accepts: 1.3.8
       base64id: 2.0.0
       cors: 2.8.5
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@8.1.1)
       engine.io: 6.6.5
       socket.io-adapter: 2.5.6
       socket.io-parser: 4.2.5
