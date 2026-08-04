@@ -13,7 +13,8 @@ what the semantics are stated over.
 - **Part II — Naming (§12): the node set and the grammar labels** — which AST
   kinds exist, what each represents, which are being deleted or merged, and which
   of the 448 grammar production labels are misspellings of a real node. **Status:
-  four deletions settled, two facts still need a home** (§12.3).
+  four local deletions settled; the reference family needs a descriptor design
+  before its kind count is knowable** (§12.3, §12.3a).
 
 Nothing in either part is implemented. Part I's plan is §10; Part II's is §12.4,
 and it runs **deletions first** — renaming a label onto a kind that is about to
@@ -1440,7 +1441,7 @@ that a node by that name exists.**
 label in any grammar; jess's `Expression` (`grammar.ts:2115`) is a CST label
 with no AST kind. Both directions of the mismatch are already live.
 
-### 12.3 Deletions and merges — 49 kinds become 43
+### 12.3 Deletions and merges
 
 Owner rulings, 2026-08-04. Each removes a kind that duplicated one already
 present. Where I argued against, the objection is recorded as withdrawn so it is
@@ -1451,16 +1452,90 @@ not re-raised.
 | 1 | `SpacedValue` | `Sequence` | Same shape (`{ parts: ValueNode[] }`). `separators?` is **deleted, not migrated** — trivia is carried structurally, never as an array on a value node. |
 | 2 | `Assignment` | `Any` | `alpha(opacity=@x)` resolving `@x` has no utility; **dropped from Less v5**, test-data updated. The pair becomes verbatim bytes. |
 | 3 | `GeneralEnclosed` | `Call` + `Block` | `form: 'function' \| 'paren'` fused two forms that both already had a node. Function form → `Call`; paren form → `Block`. `content` stays an `Interpolation` in both. |
-| 4 | `VarIndirect` | `$[$name]` | `Reference{ base, steps: [BracketLookup{ key: VariableReference, keyKind: 'var' }] }`. `keyKind: 'var'` already exists. |
-| 5 | `DotLookup` / `DeclarationReference` | one member lookup | A dot lookup is a member lookup; the **target** decides what is found — ruleset → var-or-prop declaration, `Collection` → entry key, JS object → property. |
-| 6 | `RawInline` | `StyleImport` → `Any` | Unresolved it is a `StyleImport` with an inline flag; resolved it is bytes. `Statement` already admits a value node (`FunctionCall`, `nodes.ts:1155`) for exactly this reason. |
+| 4 | the **reference family** (8 kinds) | one lookup descriptor | See §12.3a. Subsumes what earlier drafts listed as two separate merges (`VarIndirect`, and `DotLookup`/`DeclarationReference`). |
+| 5 | `RawInline` | `StyleImport` → `Any` | Unresolved it is a `StyleImport` with an inline flag; resolved it is bytes. `Statement` already admits a value node (`FunctionCall`, `nodes.ts:1155`) for exactly this reason. Two fields move to `StyleImport` — see below. |
 
-**Two facts still need a home** — these block 4 and 6:
+Rows 1–3 and 5 are local. Row 4 is a family redesign and must be done as one
+piece; splitting it is how the duplication got there.
 
-- `VarIndirect.lookup: 'live' | 'scoped'` — `BracketLookup` has no such field.
-  Either it gains one, or `lookup` is shown to be derivable from the base.
-- `RawInline.media` (`@import (inline) url(x) screen`) and the inline flag itself
-  — `StyleImport` carries neither today.
+**`RawInline` (row 5) needs two fields on `StyleImport`**, which today is
+`{ path, mode: 'compose' | 'import', namespace, forward }` (`nodes.ts:1093`):
+
+- **`media`** — from `@import (inline) "x" (min-width:…)`. It was never a
+  property of the bytes; it is a property of the *import statement*, and the
+  `@media` wrap is the resolver's job. Resolution emits
+  `AtRuleBlock{ @media, rules: [Any(text)] }` rather than a bare `Any`, and then
+  `RawInline` really is just `Any`.
+- **the inline flag** — its own boolean, **not** a third `mode` value. `mode` is
+  about module semantics; `(inline)` is a Less import *option* with siblings
+  (`reference`, `optional`, `css`, `multiple`). Folding an option into `mode` is
+  the same fusion that produced `GeneralEnclosed.form`.
+
+### 12.3a The reference family — one descriptor, not eight slices
+
+Measured 2026-08-04 at `ee1aa5af8`. Field sets as they stand:
+
+```
+VariableReference      name: string          | lookup: 'live'|'scoped'
+PropertyReference      name: string          | raw: string
+DeclarationReference                         | raw: string
+VarIndirect            nameRef: ValueNode    | lookup: 'live'|'scoped'
+Reference              base: ValueNode|MixinCall | steps | raw: string
+DotLookup              name: string
+BracketLookup          key: ValueNode|number | keyKind: 'var'|'prop'|'index'|'member' | indexBase?
+ReferenceCall          args: CallArg[]
+MixinCall              name: string          | args | path | important
+```
+
+A lookup is three facts — **where** you look, **what kind** of thing you look
+for, and **which name**. Each is currently encoded four different ways:
+
+- **Scope (where).** A *field* on `VariableReference` and `VarIndirect`
+  (`lookup`); a whole *node type* on `DeclarationReference` ("the current
+  declaration surface") and `PropertyReference` ("enclosing declaration scope,
+  cascading up"); a *base node* on `Reference`; absent on the rest. A fifth copy
+  already exists outside the family — `VariableWrite` carries its own
+  `lookup: VariableLookup` (`nodes.ts:895`).
+- **Kind (what).** A *field* on exactly one (`BracketLookup.keyKind`); the *node
+  type* on three (`VariableReference`=var, `PropertyReference`=prop,
+  `MixinCall`=mixin); **absent** on `DotLookup`.
+- **Name (which).** Split by having *two node types* rather than one field
+  admitting both: `VariableReference.name: string` vs
+  `VarIndirect.nameRef: ValueNode`, and `DotLookup.name: string` vs
+  `BracketLookup.key: ValueNode|number`. **`VarIndirect` exists only because
+  `name` could not be a node.**
+
+A fourth concept is duplicated alongside them: `raw: string`, the verbatim
+fallback spelling, appears independently on `PropertyReference`,
+`DeclarationReference` and `Reference`.
+
+**The target.** One descriptor, carried by every reference node:
+
+```ts
+{ scope: 'live' | 'scoped' | <base node>,
+  kind:  'var' | 'prop' | 'mixin' | 'entry' | 'index' | 'member',
+  name:  string | ValueNode,
+  raw:   string }
+```
+
+Small distinct reference node types remain fine — the rule is that they **carry
+this descriptor and call the same lookup utilities**, rather than each inventing
+a slice of it. In particular `VariableReference` should be expected to survive as
+a flat fast-path node: a bare `$name` is the hottest reference shape in any
+stylesheet, and forcing every one through a container plus a one-element `steps`
+array is an allocation regression the perf invariants would reject. Flat is fine;
+*its own private spelling of `scope` and `kind`* is not.
+
+**The final kind count is OPEN** and should not be guessed — it falls out of the
+descriptor design (container + step types + which flat fast paths earn their
+keep). Earlier drafts of this section claimed "49 → 43"; that number assumed rows
+4 and 5 were two small independent merges and is withdrawn.
+
+**Why this is one row and not two.** Written as separate merges, `VarIndirect` →
+`BracketLookup` requires giving `BracketLookup` a `lookup` field — which is the
+**fifth** copy of scope and the **second** of kind. The separate-merge framing
+does not just under-deliver, it actively deepens the duplication it was meant to
+remove.
 
 **Withdrawn objections**, recorded so they are not re-litigated:
 
@@ -1473,7 +1548,10 @@ not re-raised.
 - *"Base-dependent member resolution violates the parser-owns-structure rule."*
   **Misapplied.** That rule bans re-deriving structure from source **bytes**, not
   resolving a name against a target. Ordinary member resolution is not
-  re-derivation, and it does not justify a second node.
+  re-derivation, and it does not justify a second node. The argument was also
+  reaching for a field that is simply missing: `DotLookup` has no `kind`, so
+  "what is being looked up" had nowhere to live and looked like a semantic
+  problem instead of an absent slot (§12.3a).
 
 ### 12.4 Grammar labels that misspell a node
 
@@ -1511,6 +1589,11 @@ emits exactly one kind.
 (`FunctionAssignmentArgument`, the eight `GeneralEnclosed*` labels across all four
 grammars, `UnsupportedVariableName`), so §12.4's table shrinks once §12.3 lands.
 Renaming a label onto a kind that is about to disappear is wasted work.
+
+**The descriptor before the rest.** §12.3a is the only item here that is a design
+rather than an edit, and rows 1–3 and 5 do not depend on it. Do it first anyway
+if anything is going to touch a reference node — every day it is deferred, the
+next merge is tempted to add a sixth private copy of `scope`.
 
 Interface names drifted too — `ReferenceCall` is the interface for kind `'Call'`
 (`nodes.ts:430`). A rename pass fixes both sides or it only relocates the

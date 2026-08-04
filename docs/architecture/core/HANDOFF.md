@@ -50,11 +50,16 @@
     already made. **Part I (§1–§11)** settles math, comparison, truthiness, `null`, unit
     strictness, expression positions, and each dialect's lowering; the implementation plan
     is its §10. **Part II (§12)** settles the node set: the authoritative list is the
-    **49-kind discriminated union** in `packages/core/src/ast/nodes.ts`, six of those kinds
-    are being deleted or merged (§12.3, 49 → 43), and roughly 40 of the **448** grammar
-    `node('…')` labels are misspellings of a real node rather than productions (§12.4).
-    A grammar label is NOT evidence that a node by that name exists. Deletions land before
-    renames (§12.5).
+    **49-kind discriminated union** in `packages/core/src/ast/nodes.ts`, four kinds are
+    deleted outright (§12.3), and roughly 40 of the **448** grammar `node('…')` labels are
+    misspellings of a real node rather than productions (§12.4). A grammar label is NOT
+    evidence that a node by that name exists. Deletions land before renames (§12.5).
+    **Before touching any reference node, read §12.3a.** The eight-kind reference family
+    (`VariableReference`, `PropertyReference`, `DeclarationReference`, `VarIndirect`,
+    `Reference`, `DotLookup`, `BracketLookup`, `Call`) encodes scope, kind and name four
+    different ways each, and a fifth copy of scope already sits on `VariableWrite`. The
+    target is ONE shared lookup descriptor; adding a `lookup` or `keyKind` field to a
+    reference node without it makes the duplication worse, not better.
 
 ## SESSION HANDOFF — 2026-08-01, jess `d7ebe562e` / parseman `release/0.47.0` `cdf33f3`
 
