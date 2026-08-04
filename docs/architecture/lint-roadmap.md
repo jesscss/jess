@@ -550,3 +550,51 @@ Sequencing: this follows the operations implementation (`OPERATIONS.md` §10), n
 precedes it — the rules have to exist in core before lint can surface them, and
 the diagnostics should read the SAME predicates rather than reimplementing them,
 per the "one set of semantics" ruling.
+
+### Effective severity — compiler is the baseline, lint may only ESCALATE
+
+**Owner ruling, 2026-08-01.** Two independent severity sources, combined by
+taking the HIGHEST:
+
+```
+effective = max(compiler baseline, lint setting)
+```
+
+- **`styles.config` compiler settings are the BASELINE** — what the build
+  actually does. `unitMode: 'strict'` makes a unit clash a build error; the
+  default `preserve` makes it a warning.
+- **The lint config is INDEPENDENT and may set its own level**, including for
+  problems the compiler only warns about — or does not mention at all.
+- **The diagnostic reports its SOURCE**, so an author can see whether an error
+  came from the compiler configuration or from a lint rule.
+
+**Lint must be able to stand alone.** A user with no `compile` block at all still
+configures these purely as lint settings; the compiler baseline in that case is
+simply the default modes.
+
+#### Why MAX rather than override
+
+The two configs answer different questions. The compiler governs what the BUILD
+DOES; lint governs what the AUTHOR SEES. Lint may show more than the build fails
+on — pre-emptive strictness is the point of a linter — but it must never hide
+something the build will fail on, or the editor lies about a real build failure.
+
+So `off` in lint does not silence a compiler error:
+
+| compiler | lint | effective | source shown |
+| --- | --- | --- | --- |
+| `strict` → error | (unset) | **error** | compiler |
+| `strict` → error | `off` | **error** | compiler — lint cannot de-escalate |
+| `preserve` → warn | `error` | **error** | lint |
+| `preserve` → warn | (unset) | **warning** | compiler |
+| (no compile block) | `error` | **error** | lint |
+| (no compile block) | (unset) | default modes | compiler |
+
+#### This NARROWS an existing statement in this document
+
+Above, under compiler-owned problems: *"Lint may suppress, include, or remap
+severity; it should not rebrand compiler failures as optional style rules."*
+Under the MAX rule, **"suppress" applies only to rules the compiler does not
+own.** A compiler-owned failure cannot be suppressed or downgraded by lint
+config — which is the stronger form of the same intent that sentence was
+reaching for.
