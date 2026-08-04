@@ -974,21 +974,56 @@ function triviaTextAtInsertIndex(
     .join('');
 }
 
-function isFunctionSeparatorChild(child: unknown): boolean {
-  const text = typeof child === 'string'
-    ? child
-    : typeof child === 'object'
-      && child !== null
-      && 'value' in child
-      && typeof child.value === 'string'
-      ? child.value
-      : '';
-  return text.slice(0, 1) === ',' || text.slice(0, 1) === ';';
+function rawLeafText(entry: unknown): string | undefined {
+  return typeof entry === 'object'
+    && entry !== null
+    && '_tag' in entry
+    && entry._tag === 'leaf'
+    && 'value' in entry
+    && typeof entry.value === 'string'
+    ? entry.value
+    : undefined;
+}
+
+/** `sepBy`/`oneOrMoreSep` contribute their items and nothing else, so a list
+ * separator is absent from `children` and present in `rawChildren` — which is
+ * the array a trivia insert index has always addressed. Locate the k-th
+ * separator's `rawChildren` index by the exact text `field('separator')`
+ * captured, matched in source order, so trivia can be read against the array it
+ * is indexed against rather than against a `children` array that no longer
+ * advances in step with it. */
+function separatorRawIndexes(
+  rawChildren: readonly unknown[],
+  separators: readonly string[]
+): number[] {
+  const indexes: number[] = [];
+  let next = 0;
+  for (let index = 0; index < rawChildren.length && next < separators.length; index += 1) {
+    if (rawLeafText(rawChildren[index]) === separators[next]) {
+      indexes.push(index);
+      next += 1;
+    }
+  }
+  return indexes;
+}
+
+/** Trivia around one separator: what sits before it, then the separator, then
+ * what sits between it and the item that follows. `rawIndex + 1` is that item —
+ * a `sepBy` separator is always followed immediately by one item entry. */
+function separatorWithSurroundingTrivia(
+  separator: string,
+  rawIndex: number,
+  triviaLog: readonly number[],
+  state: unknown
+): string {
+  return triviaTextAtInsertIndex(triviaLog, state, rawIndex)
+    + separator
+    + triviaTextAtInsertIndex(triviaLog, state, rawIndex + 1);
 }
 
 function functionSeparatorsFromFields(
   fields: FieldMap | undefined,
-  children: readonly unknown[],
+  rawChildren: readonly unknown[],
   triviaLog: readonly number[],
   state: unknown
 ): string[] {
@@ -997,23 +1032,13 @@ function functionSeparatorsFromFields(
     return separators;
   }
 
-  const separatorIndexes: number[] = [];
-  for (let index = 0; index < children.length; index++) {
-    if (isFunctionSeparatorChild(children[index])) {
-      separatorIndexes.push(index);
-    }
-  }
+  const separatorIndexes = separatorRawIndexes(rawChildren, separators);
 
   return separators.map((separator, index) => {
     const separatorIndex = separatorIndexes[index];
-    if (separatorIndex === undefined) {
-      return separator;
-    }
-    const nextValueIndex = children.findIndex((child, childIndex) =>
-      childIndex > separatorIndex && isValueSlotValue(child));
-    return triviaTextAtInsertIndex(triviaLog, state, separatorIndex)
-      + separator
-      + triviaTextAtInsertIndex(triviaLog, state, nextValueIndex);
+    return separatorIndex === undefined
+      ? separator
+      : separatorWithSurroundingTrivia(separator, separatorIndex, triviaLog, state);
   });
 }
 
@@ -1026,7 +1051,8 @@ function commaListWithTriviaFromChildren<T extends ValueSlot>(
   fields: FieldMap | undefined,
   triviaLog: readonly number[],
   state: unknown,
-  pick: (child: unknown) => child is T
+  pick: (child: unknown) => child is T,
+  rawChildren: readonly unknown[]
 ): T | List {
   const values = children.filter(pick);
   if (values.length === 1) {
@@ -1037,22 +1063,13 @@ function commaListWithTriviaFromChildren<T extends ValueSlot>(
   if (authoredSeparators.length !== values.length - 1) {
     return result;
   }
-  const separators: string[] = [];
-  let valueIndex = 0;
-  for (let index = 0; index < children.length; index += 1) {
-    if (!pick(children[index])) {
-      continue;
-    }
-    if (valueIndex > 0) {
-      separators.push(
-        triviaTextAtInsertIndex(triviaLog, state, index - 1)
-        + authoredSeparators[valueIndex - 1]!
-        + triviaTextAtInsertIndex(triviaLog, state, index)
-      );
-    }
-    valueIndex++;
+  const separatorIndexes = separatorRawIndexes(rawChildren, authoredSeparators);
+  if (separatorIndexes.length !== authoredSeparators.length) {
+    return result;
   }
-  return separators.length === values.length - 1 ? withValueLayout(result, separators) : result;
+  const separators = authoredSeparators.map((separator, index) =>
+    separatorWithSurroundingTrivia(separator, separatorIndexes[index]!, triviaLog, state));
+  return withValueLayout(result, separators);
 }
 
 function isGluedValueBoundary(child: unknown): boolean {
@@ -1350,7 +1367,8 @@ function functionCallFromChildren(
   fields: FieldMap | undefined,
   span: SourceSpan,
   triviaLog: readonly number[],
-  state: unknown
+  state: unknown,
+  rawChildren: readonly unknown[]
 ): FunctionCall {
   const name = functionNameFromOpener(children[0]);
   const args: ValueSlot[] = [];
@@ -1359,7 +1377,7 @@ function functionCallFromChildren(
       args.push(child);
     }
   }
-  const separators = functionSeparatorsFromFields(fields, children, triviaLog, state);
+  const separators = functionSeparatorsFromFields(fields, rawChildren, triviaLog, state);
   return callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span);
 }
 
@@ -3096,14 +3114,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const GenericFunction = node(
     'Call',
     parser({ trivia: functionTrivia }, sequence(routed(), g.FunctionArguments, literal(')'))),
-    (children, fields, span, _rawChildren, triviaLog, state) =>
-      functionCallFromChildren(children, fields, span, triviaLog, state)
+    (children, fields, span, rawChildren, triviaLog, state) =>
+      functionCallFromChildren(children, fields, span, triviaLog, state, rawChildren)
   );
   const Call = node(
     'Call',
     parser({ trivia: functionTrivia }, sequence(genericFunctionOpen, g.FunctionArguments, literal(')'))),
-    (children, fields, span, _rawChildren, triviaLog, state) =>
-      functionCallFromChildren(children, fields, span, triviaLog, state)
+    (children, fields, span, rawChildren, triviaLog, state) =>
+      functionCallFromChildren(children, fields, span, triviaLog, state, rawChildren)
   );
   // A detached ruleset is a call-argument form, not a general value piece.
   // Keep this argument-enabled function production out of Value
@@ -3465,12 +3483,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         field('separator', regex(/,[ \t\n\r\f]*/))
       )
     ),
-    (children, fields, _span, _rawChildren, triviaLog, state) => {
+    (children, fields, _span, rawChildren, triviaLog, state) => {
       const referenceValue = children.find(isReference);
       if (referenceValue !== undefined) {
         return referenceValue;
       }
-      return commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueSlotValue);
+      return commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueSlotValue, rawChildren);
     }
   );
   // Variable declarations additionally permit Less trivia immediately after
@@ -3486,8 +3504,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ),
       optional(sequence(literal(','), optional(whitespace)))
     ),
-    (children, fields, _span, _rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueSlotValue)
+    (children, fields, _span, rawChildren, triviaLog, state) =>
+      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueSlotValue, rawChildren)
   );
   // `!important` is a grammar-owned declaration/value modifier.  Variables
   // carry the wrapper so references hoist importance once; declarations expose
@@ -4824,8 +4842,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.QueryClause,
       field('separator', regex(/,[ \t\n\r\f]*/))
     ),
-    (children, fields, _span, _rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode)
+    (children, fields, _span, rawChildren, triviaLog, state) =>
+      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode, rawChildren)
   );
   // Less permits a variable interpolation as an ordinary `@media` query term:
   // `@media @{all} and @{tv}`. That is not a container-query form, so retain
@@ -4872,8 +4890,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       MediaQueryClause,
       field('separator', regex(/,[ \t\n\r\f]*/))
     ),
-    (children, fields, _span, _rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode)
+    (children, fields, _span, rawChildren, triviaLog, state) =>
+      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode, rawChildren)
   );
   // A style query is a real typed container-header function. Its argument is a
   // structural custom-property comparison rather than an opaque header slice.
@@ -4967,8 +4985,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ContainerConditionItem,
       field('separator', regex(/,[ \t\n\r\f]*/))
     ),
-    (children, fields, _span, _rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode)
+    (children, fields, _span, rawChildren, triviaLog, state) =>
+      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode, rawChildren)
   );
   // Media and container headers differ, but their child statement language is
   // one shared grammar production. Keep it shared so a valid nested Less
