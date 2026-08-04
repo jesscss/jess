@@ -28,9 +28,12 @@ all Jess grammars."*
 
 So:
 
-- **The deliverable is a verdict on the architecture, not a set of green PRs.** Nothing
-  merges until the design is proven against all four jess grammars. Fixes land as
-  branches and are held.
+- **The deliverable is a WORKING, FAST table design — not a verdict.** *(Corrected
+  2026-08-01.)* Nothing merges until the design is proven against all four jess grammars,
+  and fixes land as branches until then — but a disappointing measurement is the problem
+  statement, not an answer. Owner: *"we're close enough that you have to make this right.
+  if we're on the wrong side of speed, you work night and day until we fix it"* — and the
+  fix must be **within the table design**, not a pivot away from it.
 - **Proven means, in order:** every combinator emits · all four grammars emit as modules ·
   an emitted module parses **identically to the interpreter on the real corpora** ·
   per-dialect speed and size the owner accepts. Only then is codegen deleted.

@@ -98,10 +98,15 @@ until the design is finished far enough to measure. Until then:
   `scanTo()` non-emission a documented limitation. That framing is withdrawn — it is the
   thing that makes the whole design unmeasurable, since no shipping grammar can be written
   to a module at all.
-- **The deliverable is a VERDICT**, not a set of fixes. If a construct genuinely cannot be
-  data, or a cost genuinely cannot come down, that is the most valuable finding available
-  and it should arrive early and loudly. An approach is withdrawn only when proven
-  impossible or its premise proven false — proving either is a legitimate outcome.
+- **The deliverable is a WORKING, FAST table design — not a verdict.** *(Corrected
+  2026-08-01. This section previously said the deliverable was a verdict and that an
+  unfavourable number was a legitimate answer. That was wrong and the owner rejected it:
+  "no. we're close enough that you have to make this right. if we're on the wrong side of
+  speed, you work night and day until we fix it" — and, on scope, "with the table
+  design.")* A bad number is the problem statement, not the answer. The design ships; the
+  work is making it fast **within** the table architecture, not pivoting away from it. An
+  approach is withdrawn only when proven **impossible** or its premise proven **false** —
+  a disappointing measurement is neither.
 - **When it is proven, codegen is deleted.** `src/compiler/codegen.ts` and everything that
   exists only to serve it. Not kept as a fallback.
 
