@@ -883,7 +883,9 @@ css-values-4 §10 defines a closed set, all taking `<calc-sum>` arguments:
 `asin`, `acos`, `atan`, `atan2`; `pow`, `sqrt`, `hypot`, `log`, `exp`; `abs`,
 `sign`. css-values-5 adds `calc-size`, `progress`, `media-progress`,
 `container-progress`, `random`, and argument-less `sibling-count` /
-`sibling-index`. `round()` also takes an optional leading `<rounding-strategy>`
+`sibling-index`. **These are NOT recognised** — see §8, Recognition: nothing
+enters the table until it ships in browsers, gated per function at
+implementation time. `round()` also takes an optional leading `<rounding-strategy>`
 keyword, so the argument grammar is not uniformly `<calc-sum>#`.
 
 No such list exists in the repo. `'calc'` is spelled independently in **six**
@@ -1138,7 +1140,18 @@ Sass**, where `false and (1px + 1em)` must not raise.
 
 ### Recognition (§6)
 
-- Does the base recognise the values-5 set, or only values-4 §10?
+- **RESOLVED (owner, 2026-08-01): values-4 §10 ONLY.** Nothing is recognised
+  until it is shipping in browsers. The values-5 set is not uniform — some
+  members have shipped and some have not — so the gate is **per function,
+  verified against browser support AT IMPLEMENTATION TIME**, not a judgement
+  baked in here from memory.
+
+  Not recognising one costs nothing today: an unrecognised `progress(…)` falls
+  through to `GenericFunction` and emits verbatim, so the only consequence is
+  that its arguments are not parsed as math — and nobody writes math inside a
+  function that does not exist yet. Adding a name early is the costlier
+  direction: it claims syntax that may still change, and §6.3 shows every routed
+  name carries generated-code weight.
 - Spell `round()`'s `<rounding-strategy>` arm now, or later?
 - Is `inMathFunction` set in **all four** grammars? It must be, or
   `min(100% - 30px)` → `70%` survives in `.less`/`.scss`, which reach math
