@@ -43,6 +43,18 @@
    particular the Less v5 alpha package is a thin wrapper over jess's `Compiler`
    (`docs/architecture/core/LESS-V5-CONTENT-PR-PLAN.md:18`), so it can never adjudicate a
    jess-vs-`lessc` question.
+10. **Touching value semantics or node names?** Both are already decided and NOT yet
+    implemented — read
+    [`../../design/RESOLVED-SEMANTICS-AND-NAMING.md`](../../design/RESOLVED-SEMANTICS-AND-NAMING.md)
+    before designing anything in that space, or you will re-derive rulings the owner has
+    already made. **Part I (§1–§11)** settles math, comparison, truthiness, `null`, unit
+    strictness, expression positions, and each dialect's lowering; the implementation plan
+    is its §10. **Part II (§12)** settles the node set: the authoritative list is the
+    **49-kind discriminated union** in `packages/core/src/ast/nodes.ts`, six of those kinds
+    are being deleted or merged (§12.3, 49 → 43), and roughly 40 of the **448** grammar
+    `node('…')` labels are misspellings of a real node rather than productions (§12.4).
+    A grammar label is NOT evidence that a node by that name exists. Deletions land before
+    renames (§12.5).
 
 ## SESSION HANDOFF — 2026-08-01, jess `d7ebe562e` / parseman `release/0.47.0` `cdf33f3`
 
