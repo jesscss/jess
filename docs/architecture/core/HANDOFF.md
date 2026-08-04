@@ -75,6 +75,197 @@ WORK IN FLIGHT block, which predates it by a week.
    below — this blocks two conversions and, if resolved, unblocks the `parser-shared`
    at-keyword work that reaches all four dialects at once.
 
+### ACTIVE GOAL — 2026-08-01: the table must parse `benchmark.less` in ~17.41 ms OR LOWER
+
+Owner-set, verbatim: *"Get the table-based Parseman (0.47) to ~17.41 ms when parsing
+benchmark.less (without resorting to a gazillion megabyte codegen again - do NOT sacrifice
+core goals)"* and *"OBVIOUSLY 17.41ms OR LOWER... in case an LLM is stupid and is like
+'oops, i successfully parsed in 8ms, better revert'."*
+
+**Faster than codegen is a win to report, never an anomaly to revert.**
+
+`benchmark.less`, 106,802 B, AST path: **codegen 17.41 / table 46.86 / interpreter 99.68**.
+Note a second lane measured the same fixture at 22.17 / 49.72 / 111.33 — **27% apart on the
+baseline**, box and harness settings. A lane is pinning a canonical protocol and a single
+command; until it lands, **quote the ratio alongside any absolute** or the numbers are not
+comparable.
+
+**The constraint is as binding as the target.** The way to make a table fast is to stop it
+being a table. **No per-rule code emission, no generating JS from the table, no
+reintroducing inlining.** Measure artifact bytes alongside milliseconds; material growth in
+the emitted table is the signal the line has been crossed. The size win is not currency.
+
+### THE ROOT CAUSE — G5's specialisation half was never implemented
+
+This is the single most important thing in this document. The measured gap does not
+decompose into several defects. It is **one missing half of the design**, surfacing
+wherever the driver touches the parse path.
+
+Owner, verbatim: *"the entire fucking table design was to do that logic branching ONCE and
+NEVER AGAIN PER NODE."*
+
+G5 says: build the grammar reference at run start, **swap in specialised implementations
+for rules and sub-rules (leafs)**, then run with no branching. The encoder was built to
+*represent* the grammar faithfully. **The half that *specialises* it was not built.** So:
+
+| analysis, already written | wired into `src/table/` |
+|---|---|
+| `src/compiler/scannable-run.ts` — 76,570 B | **no** |
+| `src/compiler/trivia-fast-path.ts` — 11,119 B | **no** |
+| `src/compiler/token-scanner.ts` + `token-alphabet.ts` — 24,338 B | **no — no consumer at all** |
+| CST capture elision (`FUSED_HOST_ELIDED = mode === 'ast'`) | **no** |
+
+**~112 KB of recognition and lowering analysis sits one import away**, while the driver pays
+generic cost for every terminal, every trivia scan, and every node. `codegen.ts` imports
+`token-dispatch.ts`; nothing imports `token-scanner.ts` or `token-alphabet.ts` at all.
+
+**The test for any candidate: could this have been decided when the table was built?** If
+yes it belongs in `resolveTable`/`OP_SCOPE` as a swapped-in specialised path, not in the
+parse loop.
+
+This also explains why **materialising the table into a closure tree bought only ~10%**
+(measured, −9.3/−8.5/−9.9%, 20/20 wins): it changed how rows *dispatch* while leaving what
+rows *do* generic. **Do not re-attempt materialisation** — it has been built and measured.
+
+### Where the time actually is on `benchmark.less`
+
+**The json profile misled every lane and is retired.** The 60% recognition / 29% trivia /
+6% reducers split came from 12 KB of json. On `benchmark.less`:
+
+| | table | compiled | share of gap |
+|---|---:|---:|---:|
+| **CST capture machinery** | **21.7%** | **~0%** | **~40%** |
+| trivia | 3.1% | 4.4% | ~2% |
+
+`OP_NODE` calls `beginCstNodeCapture` unconditionally **on the AST path**, where the
+compiled artifact stamps `FUSED_HOST_ELIDED` and elides it. Second-order effect is arguably
+larger: setting `_cstBuf` keeps `rollbackNeeded()` true for the whole parse, so **every
+choice attempt and every repetition item allocates a 5-field mark object** that codegen does
+with scalar locals. That is the per-item allocation a lane hunted on json and could not
+replicate — json has almost no nodes.
+
+**Two directions are parked with evidence, do not re-derive them:**
+- **Trivia** — the swap was *built correctly to G5* and buys **nothing**: `fastTriviaScanner`
+  cannot lower `classifiedTrivia` because its arms are `label()`-wrapped. css 0 of 4, less
+  0 of 8, scss 0 of 2, jess 0 of 2 lower. json's trivia is a plain regex, which is the only
+  reason it profiled at 22%. Measured effect on `benchmark.less`: **−0.19 ms, noise.**
+- **Terminals** — only 31–48% are scannable (less 49/142, css 26/83, scss 51/106, jess
+  47/112) and **no `RegExp.exec` frame appears in the top 18** of the less table profile.
+  Unproven, not disproven.
+
+### Where the architecture stands, measured
+
+**Correctness — met, with one qualification I over-reported.** Three-way identity
+(interpreted / compiled / table) across **2,833 files** with every cap removed: css 87,
+less 314, scss 2,408, jess 24. **`table-outlier` = 0 on all four.** No defect was hiding in
+the 2,414 files nobody had looked at.
+
+**The qualification:** that sweep ran on **jess's** corpora. parseman's own `examples/csv`
+exposes a genuine table-outlier — `sepBy()` over a nullable item yields `[]` on empty input
+where interpreter *and* codegen both yield `[""]`, so the grammar's drop-trailing-empty-row
+transform never fires (5 rows vs 4). Pinned; csv is unmeasurable in the SVG comparison as a
+result.
+
+**Size — met decisively.** Per variant, whole artifact:
+
+| | codegen raw / gzip | table raw / gzip | raw |
+|---|---|---|---:|
+| css | 2,276.6 KB / 315.6 | **74.2 / 15.1** | 30.7× |
+| less | 2,863.0 / 406.4 | **209.3 / 33.2** | 13.7× |
+| scss | 1,883.1 / 266.9 | **108.4 / 20.2** | 17.4× |
+| jess | 2,015.9 / 288.4 | **119.2 / 23.3** | 16.9× |
+
+Conservative (codegen shares ~14% across variants): **12.5×–27.4×**. Machinery only,
+reducers removed from both sides: 19.7×–41.4×. Shared driver 68,738 B once. All four
+dialects × four variants: **2.00 MB against 31.56 MB.**
+
+**Load time — a large table win, and the counterweight to the parse cost.** Cold import to
+parser-callable: css 65.4 → **7.4 ms**, less 83.4 → **8.0**, scss 49.4 → **7.1**, jess 54.1 →
+**7.1**. V8 compile alone is **46–85×**. Codegen's cost is **43–68 ms deferred, not absent** —
+lazy compilation hides it until first call, and a parser calls every rule it has.
+
+**Crossover** — below it the table is faster overall, above it codegen is: **css 0.36 MB,
+less 0.17 MB, scss 0.17 MB, jess 1.18 MB.** So the table wins one-shot and editor
+workloads outright and loses sustained bulk compilation. Every millisecond off the parse
+side moves the crossover right.
+
+**The penalty does not track input size.** `gen-workload.less` at 275 KB is 4.11× while
+`benchmark.less` at 107 KB is 2.69×, same dialect. It tracks **which constructs a file
+exercises**. Never optimise into a single fixture.
+
+### G1–G5, honestly
+
+| | status |
+|---|---|
+| **G1** fastest in the SVG comparison | **being measured on the table for the first time.** Every prior pass — 11/11 groups, tightest 1.80× over chevrotain — had **codegen** on the parseman side. csv is unmeasurable (the `sepBy` outlier), so coverage is 9 of 11 groups |
+| **G2** ≤ 4× source bytes | **met**, with wide margin |
+| **G3** no factory pattern for options | **met** — options resolved at build, zero option reads on the parse path |
+| **G4** one grammar, one output | **NOT met** — four `trackLines`×`hostMode` tables per dialect, differing by only **0.2–0.4%**. G5's build-at-run-start with row swaps should give one artifact plus small deltas. *(An earlier claim that AST and CST are byte-identical tables was TOY-derived and is false on all four real grammars — proven by sha256, not byte counts.)* |
+| **G5** build at run start, swap, no branching | **half met** — the *option* half is honoured literally (`trackLines` swaps rows at build, zero option reads in `exec.ts`); the **leaf/node half was never built**. See THE ROOT CAUSE above |
+| **G14** predictive token cursor | **never composed with G5.** The ledger records G14 as settled and separately records that nobody specified how it composes with the table. A token cursor feeding a driver is a different machine from one feeding generated code |
+
+### Two more defects of the same class, found today
+
+**`run()` taxes every parse 36.9% on small input.** `guardRemovedFields`
+(`src/functional/run.ts:162`, called at `:337`) installs **two `Object.defineProperty`
+throwing accessors on every result** — a migration aid for fields removed in **0.44.0**.
+Per-instance accessor properties on a hot object, in a repo with numbered V8 invariants and
+a recorded incident where a hidden-class split cost **46% of CSS parse time**. Being fixed.
+
+**Builder call-site megamorphism.** Every builder reaches **one** `build(...)` site in the
+driver — css **125** distinct builders, less 259, scss 152, jess 175 — against V8's inline
+cache limit of **4**. Codegen calls each from its own monomorphic site. Materialising does
+**not** fix this. ~6% of the gap.
+
+### Enforcement — the rules exist and nothing checks them
+
+Every defect above landed in a repo whose docs forbid it. `docs/perf/V8-ARCHITECTURE.md`
+has numbered invariants; `docs/architecture/llm-quality-enforcement-design.md` is an
+enforcement design that was written and never built; jess's `pnpm lint:absolute` detects the
+`as any` ban, has found ~500 violations across 52 files, and **has never been gated**.
+
+**LANDED 2026-08-01** — parseman branch `feat/invariant-gate`, `pnpm check:invariants`,
+wired into CI's required `test` check, the pre-commit hook, and `pnpm test`. Rationale in
+`docs/design/invariant-gate.md`. Four rules, all source-decidable, no thresholds:
+
+- **INV-1** accessor descriptors in `Object.defineProperty` — object-*literal* getters stay
+  legal, since the repo uses them for lazy materialization and banning them would be the
+  false positive that gets the gate switched off
+- **INV-2** a field in an exported `*Options` type read nowhere in `src/**` — starts at zero
+  across 29 public option types
+- **INV-3** a `src/**` module unreachable from `package.json` exports
+- **INV-4** byte-identical top-level declarations across files
+
+**It immediately caught this session's own pattern:** INV-3 flags `token-alphabet.ts` and
+`token-scanner.ts` as having no consumer, and INV-1 flags `run.ts:guardRemovedFields`.
+
+**The rejections are the substance.** The conditional-spread rule (jess's 46% incident) was
+implemented and **removed**: 177 pre-existing hits, overwhelmingly cold string-assembly code,
+and source carries no notion of call frequency so it cannot separate the hot case from the
+idiom. Recommended instead: a two-sided count ratchet over a declared hot-module set, in the
+shape of `choicecost:guard`. Also rejected with reasons: conditional property assignment
+(not decidable), side-effect registration reachability (needs to know which side effects are
+load-bearing — INV-3 catches its neighbour but not this), allocation/complexity invariants
+(counting instruments against baselines, not lints), monomorphic node shapes (runtime-only).
+
+12 pre-existing violations, allowlisted **by name**, and a **stale entry fails the gate** —
+an exemption for a fixed violation is a licence to reintroduce it. Six are the frozen
+ablation controls; six are real debt.
+
+### Lanes in flight (2026-08-01, all on branches, nothing merged)
+
+| branch | doing |
+|---|---|
+| `diag/table-penalty-attribution` | **the big one** — CST capture elision, then sweeping the whole decide-once class |
+| `perf/builder-call-site` | the 125-builders-into-one-call-site megamorphism |
+| `fix/run-result-guard-tax` | the per-result `defineProperty` accessors |
+| `bench/benchmark-less-canonical` | one reproducible `benchmark.less` measurement + command |
+| `feat/invariant-gate` | mechanising the written invariants |
+| `measure/svg-margin-table` | G1 on the table, 9 of 11 groups |
+
+**Codegen deletion is the LAST step before merge**, not now — it is the comparison baseline
+while a gap remains. The pinned codegen numbers are scaffolding and get deleted with it.
+
 ### THE GOAL, and it is not what several lanes have been working to
 
 **Owner ruling, 2026-08-01, verbatim:** *"you're not even close, and we CAN'T TELL IF WE
