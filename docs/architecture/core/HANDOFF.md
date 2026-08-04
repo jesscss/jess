@@ -75,6 +75,42 @@ WORK IN FLIGHT block, which predates it by a week.
    below — this blocks two conversions and, if resolved, unblocks the `parser-shared`
    at-keyword work that reaches all four dialects at once.
 
+### THE GOAL, and it is not what several lanes have been working to
+
+**Owner ruling, 2026-08-01, verbatim:** *"you're not even close, and we CAN'T TELL IF WE
+KEEP THIS WHOLE ARCHITECTURE YET because you haven't FINISHED it to where it's PROVEN
+against all Jess grammars."* And: *"why would i accept ANY PR until you PROVE ./table
+works, has acceptable speed trade-offs, and is finalized as working, and if so, all other
+parsing / codegen paths are deleted and replaced with table paths."*
+
+**The table is not a second lowering that lives alongside codegen. It replaces it.** That
+is `DESIGN-DECISIONS` **G4** — *one input grammar, one compiled output* — and **G5**, the
+owner's own design. Several lanes, and the orchestrator briefing them, drifted into
+treating it as an opt-in prototype to be incrementally de-bugged. That is how a parallel
+path becomes permanent.
+
+**The open question is whether this architecture is worth keeping.** It cannot be answered
+until the design is finished far enough to measure. Until then:
+
+- **Nothing merges.** Green PRs that fix pieces of an unvalidated design are premature
+  polish. Fixes land as branches; they are held, not merged.
+- **A limitation is not a scope decision.** The 0.47.0 CHANGELOG called `balanced()`/
+  `scanTo()` non-emission a documented limitation. That framing is withdrawn — it is the
+  thing that makes the whole design unmeasurable, since no shipping grammar can be written
+  to a module at all.
+- **The deliverable is a VERDICT**, not a set of fixes. If a construct genuinely cannot be
+  data, or a cost genuinely cannot come down, that is the most valuable finding available
+  and it should arrive early and loudly. An approach is withdrawn only when proven
+  impossible or its premise proven false — proving either is a legitimate outcome.
+- **When it is proven, codegen is deleted.** `src/compiler/codegen.ts` and everything that
+  exists only to serve it. Not kept as a fallback.
+
+Where it actually stands, so nobody quotes a friendlier number: the table **loses 41 of
+111** all-less cases against the interpreter on identical combinators, **throws on 40 of
+136** corpus files where the interpreter succeeds, **differs silently in bytes on 2 more**,
+and **mis-parses jess wholesale** (5 of 6 matrix cells). `113 B/rule` and `~2.65×` are
+16-rule-ladder and json figures and are not evidence about real grammars.
+
 ### NEXT UP — the ordered path to table-based jess builds
 
 Every item below is blocking the one after it. Do them in order; each has a stated

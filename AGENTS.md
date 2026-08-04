@@ -11,6 +11,47 @@ required to read them.
 
 ---
 
+## Start Here — the parseman table lowering, and what "done" means
+
+**If you are working on parseman's table lowering (`src/table/`), or on anything
+downstream of it, read this before the section below.**
+
+The table is **not** a second lowering that lives alongside codegen. It is meant to
+**replace** it — `DESIGN-DECISIONS` **G4**, *one input grammar, one compiled output*.
+Several lanes drifted into treating it as an opt-in prototype and fixing it piecemeal.
+
+**Owner, 2026-08-01:** *"why would i accept ANY PR until you PROVE ./table works, has
+acceptable speed trade-offs, and is finalized as working, and if so, all other parsing /
+codegen paths are deleted and replaced with table paths."* And: *"we CAN'T TELL IF WE KEEP
+THIS WHOLE ARCHITECTURE YET because you haven't FINISHED it to where it's PROVEN against
+all Jess grammars."*
+
+So:
+
+- **The deliverable is a verdict on the architecture, not a set of green PRs.** Nothing
+  merges until the design is proven against all four jess grammars. Fixes land as
+  branches and are held.
+- **Proven means, in order:** every combinator emits · all four grammars emit as modules ·
+  an emitted module parses **identically to the interpreter on the real corpora** ·
+  per-dialect speed and size the owner accepts. Only then is codegen deleted.
+- **A limitation is not a scope decision.** `balanced()`/`scanTo()` non-emission was
+  written up as a documented limitation; that framing is withdrawn. It is what makes the
+  design unmeasurable — no shipping grammar can be written to a module at all.
+- **Report unfavourable results early and loudly.** If a construct genuinely cannot be
+  data, or a cost cannot come down, that is the most valuable finding available. An
+  approach is withdrawn only when proven impossible or its premise proven false.
+
+Current state, so nobody quotes a friendlier number: the table **loses 41 of 111** all-less
+cases against the interpreter on identical combinators, **throws on 40 of 136** corpus
+files where the interpreter succeeds, **differs silently in bytes on 2 more**, and
+**mis-parses jess wholesale**. `113 B/rule` and `~2.65×` are 16-rule-ladder and json
+figures — not evidence about real grammars, and not to be quoted as if they were.
+
+Full state and the ordered next steps: `docs/architecture/core/HANDOFF.md`, the
+**THE GOAL** and **NEXT UP** sections.
+
+---
+
 ## Start Here — the largest active project
 
 **The four-grammar rewrite.** Each of the four dialect parsers (`css`, `less`,
