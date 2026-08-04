@@ -1,7 +1,11 @@
 # Operations — math, comparison, and truthiness
 
-> **Status: the resolutions in §1 are the owner's settled model. Everything else
-> is measurement, gap list, or open question.** Nothing in here is implemented.
+> **Status: SETTLED. Every semantic question in this document is decided; §8
+> carries no open rulings.** Nothing in here is implemented — the plan is §10.
+>
+> Two items are deliberately *unspecified* rather than open: the exact
+> diagnostics wording, and whether the values-5 math-function set is recognised
+> (§8, Recognition).
 >
 > This document replaces three that used to cover the same ground and disagreed
 > about who was authoritative: `packages/core/OPERATIONS.md` (owner-authored,
@@ -352,6 +356,13 @@ Comparison follows §4.1: `null` grounds numerically against a number, and has n
 ground with anything else — so `null = 0` is true while `null = false` is false,
 matching both engines on the case that matters.
 
+**The node is renamed `Nil` → `Null`** (owner, 2026-08-01). The language spells
+the literal `null`, and the naming law is to use the language's own term; `Nil`
+is invented vocabulary by comparison. This is a PUBLIC rename, not an internal
+one — `Nil` and `makeNil` are exported from the package root
+(`packages/core/src/index.ts:52,92`), so the discriminant `type: 'Nil'` is an AST
+fact that consumers can see.
+
 **Provenance is retained: explicit vs implicit.** An author-written `null` and an
 absent/unbound value are the same VALUE but not the same FACT, and core already
 mints the implicit one (M5's unbound optional self-ref). A flag on `Nil` keeps
@@ -655,10 +666,15 @@ statement list. No value-body form is reachable.
 statement form, and §4.5.3a rules out lowering it to a call. Adding it is a
 grammar change of the same standing as `when`'s parens (§4.5.3).
 
-The exact spelling of the value body — brace-delimited as shown, whether `$else`
-chains in value position, whether a trailing `;` is permitted inside — is NOT
-settled here. The shapes above are the ones probed against the parser; they
-record the requirement, not a ratified syntax.
+**The spelling is settled** (owner, 2026-08-01):
+
+```jess
+foo: $if ($bar) { blah } $else { blarp };
+```
+
+Brace-delimited value bodies, `$else` chains in value position, and the whole
+form terminates as an ordinary declaration with `;`. The braces delimit a VALUE,
+not a declaration list — that is the distinction this section exists to make.
 
 #### 4.5.4 Two consequences the grammar enforces today
 
@@ -722,11 +738,28 @@ mapping, and only Sass's is one-to-one:
 | --- | --- | --- |
 | `.scss` | `@if` | `$if` — a genuine statement-to-statement map |
 | `.less` | `.m() when (…)` | a jess **mixin guard** (`when ( … )`), not `$if` |
-| `.less` | `.sel when (…)` (CSS guard) | **UNVERIFIED** — whether jess has a ruleset-level guard is not established here |
+| `.less` | `.sel when (…)` (CSS guard) | **`$if (guard)` WRAPPING the ruleset** — jess grows no ruleset-level guard |
 
 `.less` has `when (…)` guards and an `if()` function; it has no `$if`. Writing
 `.less when (@x) -> $if($x == true)` names a construct Less does not have and
 forces the wrong target.
+
+**CSS guards lower by WRAPPING** (owner, 2026-08-01) — jess deliberately does not
+grow a ruleset-level guard, because a guard hanging off a selector is clunky:
+
+```less
+.light when (lightness(@a) > 50%) { color: green; }
+```
+
+```jess
+$if ((lightness($a) > 50%)) {
+  .light { color: green; }
+}
+```
+
+So `when` survives in jess only as a MIXIN guard. A Less CSS guard becomes a
+control-flow statement wrapping the ruleset, which is the construct jess already
+has.
 
 ### 4.6 The math rule, stated over the construct
 
@@ -740,6 +773,36 @@ This is exactly AST v1's model. At `7b7d4e57c` it was `OperationOptions.inCalc`,
 a **parse-time flag on the Operation node**, and an `inCalc` operation never
 operated. The name broadens with the rule: the fact is `inMathFunction`, because
 after §6 it covers every css-values-4 §10 function, not only `calc()`.
+
+### 4.7 Unit strictness — nonsensical operations throw
+
+**Owner ruling, 2026-08-01. jess defaults to units being stricter than Less 4.x,
+and refuses operations whose result cannot be expressed.**
+
+The deciding case is `1 / 2px`. Dividing a unitless number by a dimension yields
+a reciprocal unit, and **CSS has no such unit** — there is no `px⁻¹`. Less 4.x
+answers `0.5px`, which is dimensionally false; dart-sass answers
+`calc(0.5 / 1px)`, which does not claim the unit exists but merely preserves the
+expression. Since jess is not preserving here, the honest outcome is an error.
+
+| expression | lessc 4.6.3 | dart-sass | **jess** |
+| --- | --- | --- | --- |
+| `2px / 1px` | `2px` | `2` | **`2`** — units cancel |
+| `1 / 2px` | `0.5px` | `calc(0.5 / 1px)` | **throws** — no expressible unit |
+| `1px * 2px` | `2px` | `calc(2px * 1px)` | preserve + warn (§4 rows `f`–`f3`) |
+
+The rule is chosen on the two axes that matter: **consistency with the coercion
+model** — a value must be expressible in the value domain, and a reciprocal unit
+is not — and **least surprise**, since `0.5px` is a plausible-looking answer that
+is simply wrong, which is worse than a diagnostic.
+
+`unitMode` is where the leniency lives. The default is `preserve`
+(`DEFAULT_MODES`, and the dialect plugins); `strict` arrives via the `strict: true`
+preset; `loose` is the third. **`loose` is the mode that keeps Less 4.x's
+permissive answers**; `preserve` and `strict` raise. This is the same lever
+extended in `5c516dbb1`, which gave `unitMode` reach into comparison — the modes
+now govern arithmetic, comparison, and expressibility as one policy rather than
+three.
 
 ## 5. Lowering — how dialects reach one set of semantics
 
@@ -984,13 +1047,13 @@ Even keeping Less semantics, this should be a typed test.
 both operands unconditionally. Defensible for Less; **observably wrong for
 Sass**, where `false and (1px + 1em)` must not raise.
 
-## 8. Open questions
+## 8. Questions — all semantic rulings CLOSED
 
 - **O-TRUTH-1 — RESOLVED (owner, 2026-08-01).** See §4.4. `.jess` truthiness is
   falsy iff **absent or empty** — `false`, `null`, `""`, `()` — and both dialects
   lower to plain `.jess` source. Nothing is blocking.
 
-### Semantics needing a `.jess` answer
+### Semantics — all resolved
 
 - **O-TRUTH-5 / 6 / 11 — ALL RESOLVED (owner, 2026-08-01) by §4.1's common-ground
   model.** They turned out to be one question, not three:
@@ -1014,20 +1077,34 @@ Sass**, where `false and (1px + 1em)` must not raise.
   `null > 1` is false, and `null = false` stays **false**, which is what both
   engines report and the case that would otherwise surprise. See §4.3.
 
-- **O-TRUTH-2** — `and`/`or`: Sass returns an **operand** and **short-circuits**.
-  Operand-returning is more expressive (`$x: $a or $default`) but makes the
-  result type depend on inputs. Short-circuiting should land regardless —
-  required for Sass, unobservable in Less.
-- **O-TRUTH-7** — `g2: $(2px / 1px)` → `2` cancels units (Sass), but
-  `h: $(1 / 2px)` → `0.5px` drops the inverse unit (Less). Dimensionally
-  inconsistent: if units cancel in `g2`, `1 / 2px` should carry `px⁻¹`, which is
-  what Sass's `calc(0.5 / 1px)` expresses. Is `0.5px` intended?
-- **O-TRUTH-3** — Less's `1in = 2.54cm` → false is a precision bug; Sass says
-  true. Does `.less` lowering reproduce the bug for byte-identity? Same for
-  `1px = 1PX` (Less true, Sass false).
-- **O-TRUTH-4** — Sass list equality is separator-sensitive. Does the native
-  Collection model preserve separator identity? Interacts with index lookup,
-  which is specified as loose.
+- **O-TRUTH-2 — RESOLVED (owner, 2026-08-01): `and`/`or` SHORT-CIRCUIT.**
+  Required for Sass, where the right operand may raise; for Less it only ever
+  makes FEWER things raise, so it is safe. `guard.ts:73-85` currently evaluates
+  both, on the stated premise that "a guard is side-effect-free" — true for Less,
+  false for Sass. **Must land WITH Phase 5**: the defect is masked today by the
+  bare-truthy `@if` grammar hold, so lifting that hold without short-circuiting
+  turns a parse error into a raise. See §4.7.
+
+- **O-TRUTH-7 — RESOLVED (owner, 2026-08-01): `$(1 / 2px)` THROWS.** See §4.7.
+  There is no such unit as `px⁻¹`; an earlier draft of this document suggested
+  one, which was simply wrong — dart-sass's `calc(0.5 / 1px)` PRESERVES the
+  expression rather than claiming an inverse unit exists. Since the result cannot
+  be expressed, the honest answer is a unit error, and the ruling generalises:
+  jess defaults to units being STRICTER and refuses nonsensical operations.
+
+- **O-TRUTH-3 — RESOLVED (owner, 2026-08-01): `1in = 2.54cm` is TRUE.** They are
+  equal by definition; Less 4.x's `false` is a conversion-precision bug, not a
+  dialect choice. `.less` output shifts, and that is acceptable: **a divergence
+  from Less 4.x where Less 4.x was wrong in the first place needs no further
+  justification.**
+
+- **O-TRUTH-4 — RESOLVED (owner, 2026-08-01): list equality IS
+  separator-sensitive.** `(1, 2) ≠ (1 2)`, matching Sass, because **CSS does not
+  make those interchangeable** — a comma list and a space list are different
+  values in a declaration. `List` already carries `sep`, so the fact is available
+  without a model change. Note it sits deliberately alongside index lookup being
+  LOOSE (§1): lookup compares keys by value, list identity compares separators.
+
 - **O-TRUTH-8 — RESOLVED.** `null` is specified in §4.3 (literal, elision,
   declaration drop, interop) and §4.1 (comparison ground).
 
