@@ -131,7 +131,13 @@ with no error is the worse class and the throws are louder. The throw messages
 *Done when:* table parse-level output is byte-identical to the interpreter across all
 136 files.
 
-**6. Lower `balanced()` and `scanTo()`. (parseman)**
+**6. Lower `balanced()` and `scanTo()`. (parseman) — OWNER RULING 2026-08-01: this is
+NOT an acceptable limitation.** Verbatim: *"that's not acceptable, make sure everything
+compiles / emits in our combinators for this table design"*. The CHANGELOG called it a
+documented limitation; that framing was wrong and is withdrawn. **Every combinator must
+emit.** A table design where two core combinators cannot be written to a module is not a
+working design — it is precisely what makes the size claim unmeasurable. Treat this as a
+correctness requirement on the lowering, not a scope decision.
 Both park live combinator objects via `OP_CALL`, so **no shipping grammar can be emitted
 as a module** — css/less/scss block on both, jess on `scanTo` alone. A previous
 investigation established that **neither genuinely requires a live object**: `token` is
