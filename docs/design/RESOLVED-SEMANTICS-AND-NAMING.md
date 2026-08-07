@@ -1,16 +1,34 @@
-# Operations — math, comparison, and truthiness
+# Resolved semantics and naming
 
-> **Status: SETTLED. Every semantic question in this document is decided; §8
-> carries no open rulings.** Nothing in here is implemented — the plan is §10.
->
-> Two items are deliberately *unspecified* rather than open: the exact
-> diagnostics wording, and whether the values-5 math-function set is recognised
-> (§8, Recognition).
->
-> This document replaces three that used to cover the same ground and disagreed
-> about who was authoritative: `packages/core/OPERATIONS.md` (owner-authored,
-> and until 2026-08-01 not in version control), `docs/design/COMPARISON-AND-TRUTHINESS.md`,
-> and the semantic half of `docs/design/css-math-model.md`.
+Owner rulings that are **decided but not implemented**, in two parts. They are
+one document because they were settled in one thread and they constrain each
+other: a semantic ruling usually deletes or renames a node, and the node set is
+what the semantics are stated over.
+
+- **Part I — Semantics (§1–§11): operations** — math, comparison, truthiness,
+  `null`, unit strictness, expression positions, and how each dialect lowers into
+  them. **Status: SETTLED**; §8 carries no open rulings. Two items are
+  deliberately *unspecified* rather than open: the exact diagnostics wording, and
+  whether the values-5 math-function set is recognised (§8, Recognition).
+- **Part II — Naming (§12): the node set and the grammar labels** — which AST
+  kinds exist, what each represents, which are being deleted or merged, and which
+  of the 448 grammar production labels are misspellings of a real node. **Status:
+  four local deletions settled; the reference family needs a descriptor design
+  before its kind count is knowable** (§12.3, §12.3a).
+
+Nothing in either part is implemented. Part I's plan is §10; Part II's is §12.4,
+and it runs **deletions first** — renaming a label onto a kind that is about to
+disappear is wasted work.
+
+Part I replaces three documents that used to cover the same ground and disagreed
+about who was authoritative: `packages/core/OPERATIONS.md` (owner-authored, and
+until 2026-08-01 not in version control),
+`docs/design/COMPARISON-AND-TRUTHINESS.md`, and the semantic half of
+`docs/design/css-math-model.md`.
+
+---
+
+# Part I — Semantics
 
 ## 1. The resolutions
 
@@ -970,6 +988,15 @@ The rule above is unchanged and still binds. Recorded so a reader who meets the
 other two first knows the conflict exists and on what grounds; the owner decides
 it, and it is not decidable until the measurements this section names have run.
 
+### 6.4 The recognition rename is moot — see Part II
+
+An earlier draft of this section planned a `Calc*` → `Math*` rename. That is
+**withdrawn**: the `Calc*` names are precedence-ladder rungs, and if the rungs
+collapse the way less's already do, there is nothing left to name. The change is
+`{ collapse: true }`, not a rename plus a reference sweep.
+
+The node-set work that replaces it — including this ladder — is **[Part II](#part-ii--naming)**.
+
 ## 7. What jess does today — the gap list
 
 Measured 2026-08-01 at `62c9a4ef1`.
@@ -1354,3 +1381,338 @@ reimplementing them.
 - **Latent:** Less's guard vocabulary includes `=>` and `=~`, stored
   un-normalized (`less grammar.ts:4213`), and `value-guards.ts:189-197` has no
   case for either — both silently evaluate to `false`.
+
+---
+
+# Part II — Naming
+
+## 12. The node set
+
+Settled 2026-08-04 (owner) except where marked. This is about **node names and
+node kinds**, not about parser-internal `const` names.
+
+### 12.1 Precedence rungs are not nodes
+
+`Atom`, `Product` and `Sum` are not language concepts — they are how precedence
+is written in a PEG. Less already treats them as such; css and jess leak all of
+theirs. Measured 2026-08-04 at `089c02adf`:
+
+| grammar | rungs | `collapse` |
+| --- | --- | --- |
+| less | `MathAtom` / `MathProduct` / `MathSum` | `true` — no CST nodes |
+| jess | `ExpressionAtom` / `Product` / `Sum` / `Compare` | `0` — public CST nodes |
+| css | `CalcValue` / `CalcProduct` / `CalcSum` | `0` — public CST nodes |
+
+`parseCssCst('calc(1px + 2px)')` reports `CalcSum`, `CalcProduct`, `CalcValue`
+as node types. None of those is a thing an author writes. The ladder should
+contribute **no** node names at all; the only CST name the construct needs is
+jess's existing `Expression` (`grammar.ts:2115`), which governs the outer
+`$( … )` and nothing else.
+
+Collapsing is not free: it moves the CST for every calc input, which is the
+`aggCst` movement §4 flags, and the css differential to gate it does not exist
+yet. Less proves the shape is right; it does not prove css can adopt it without
+moving output.
+
+### 12.2 The authoritative node list, and why `node('…')` is not it
+
+There are two populations, and only one of them is nodes. Measured 2026-08-04 at
+`089c02adf`:
+
+| population | how to enumerate | count |
+| --- | --- | --- |
+| **AST kinds — the nodes** | `grep -oE "readonly type: '[A-Za-z]+'" packages/core/src/ast/nodes.ts \| sort -u` | **49** |
+| CST production labels | first arg of every `node('…')` across the four grammars | **448** (css 122, less 219, scss 150, jess 164) |
+
+The 49 are a closed discriminated union: the compiler exhaustiveness-checks
+every switch over it, so it cannot drift silently. **That list is the answer to
+"what nodes are."**
+
+The 448 name a *parse rule*. Exactly **32** of them coincide with an AST kind
+(`Call`, `Color`, `Declaration`, `Quoted`, `Ruleset`, `Stylesheet`, …); the
+other **416** never did and never will. `CalcSum`, `MathAtom`, `ExpressionQuoted`
+and `TopSumMaybeDivision` are all in the 416. Nothing in the type system, the
+naming, or the review standard separates the 32 that denote a node from the 416
+that are scaffolding — which is how a precedence rung and a real node came to
+look identical at a glance. **A grammar's `node('…')` label is not evidence
+that a node by that name exists.**
+
+`Operation` (`nodes.ts:217`) and `Condition` (`:267`) are AST kinds with no CST
+label in any grammar; jess's `Expression` (`grammar.ts:2115`) is a CST label
+with no AST kind. Both directions of the mismatch are already live.
+
+### 12.2a The 49 kinds and what each represents
+
+The list as it stands at `ee1aa5af8`, before §12.3's deletions. Regenerate with
+the grep in §12.2 — this table is a reading aid, not the source of truth, and if
+the two disagree the union wins.
+
+**Value leaves.** A leaf carries its type honestly in the discriminant; the
+parser's classification *is* the node.
+
+| kind | represents |
+| --- | --- |
+| `Keyword` | identifier / keyword leaf — `solid`, `auto`, `true` |
+| `Color` | color literal, hex or named — `#fff`, `red` |
+| `Quoted` | quoted string — `"x"`, `'y'`; pre-split fields so forcing never re-scans `src` |
+| `Dimension` | number + unit split plus the verbatim `src` spelling — `0px`, `50%` |
+| `Any` | opaque value bytes. **The only leaf that sniffs its `src`**, and only when operated |
+| `Url` | `url(…)` — the wrapper is syntax; the content stays an ordinary structured value |
+| `SelectorCapture` | Less `*[…]` — structured captured selector branches, canonical text per branch |
+
+**Value structure.**
+
+| kind | represents |
+| --- | --- |
+| `List` | separator-aware list — `Arial, sans-serif`, `1 / 2`. `sep` is the one canonical separator fact |
+| `SpacedValue` | space-run, **only** where authored boundary runs must survive. Ordinary adjacency is a raw `ValueSlot[]`. *(§12.3 row 1 — deleted, becomes `Sequence`)* |
+| `Sequence` | value template: literal text + refs, **no** separator — `1px solid @c` |
+| `Interpolation` | `@{var}` / `~"…@{x}…"` template resolving to bytes. Distinct from `Sequence` because a ref may unquote |
+| `Operation` | binary op. Structure only (operator + operand nodes); the math is delegated |
+| `FunctionCall` | `lighten(blue, 10%)` — a modeled arg list, so params bind typed. `modern` = Color-4 syntax |
+| `Block` | delimiter-bearing value — `(#aaa * 3)`, `[a, b]` |
+| `Condition` | a boolean condition reaching a **value** position; carries the same `GuardNode` tree `when (…)` builds |
+| `Assignment` | `name=value` call **argument** pair — `alpha(opacity=50)`. Never a comparison. *(§12.3 row 2 — deleted, becomes `Any`)* |
+| `Important` | `!important` as a **flag on a value**, not bytes; propagates to the enclosing declaration |
+| `GeneralEnclosed` | CSS general-enclosed; content stays a template, never a call. *(§12.3 row 3 — deleted, becomes `Call` + `Block`)* |
+| `Range` | `$for` bounds + inclusion flags. Iteration-only — the serializer expands it directly |
+
+**References and lookups.** *(the whole group is §12.3 row 4 / §12.3a — one
+descriptor replaces the eight slices below)*
+
+| kind | represents |
+| --- | --- |
+| `VariableReference` | a mixin param / bound variable. `$name` reads `live`; `$^name` and Less `@name` read `scoped` |
+| `VarIndirect` | `@@name` — a variable whose *name* is another node's resolved bytes |
+| `PropertyReference` | Less `$name` accessor — reads the current CSS property, last-wins, cascading up the ruleset chain |
+| `DeclarationReference` | the current declaration-entry surface; measured, it is `{ raw: '$' }` and nothing else |
+| `Reference` | left-associated lookup / call chain; `raw` is the authored fallback |
+| `DotLookup` | one named member step. Has **no** `kind` field — see §12.3a |
+| `BracketLookup` | one bracket step; `keyKind` carries the dialect's lookup namespace |
+| `Call` | one call step after a reference or lookup. **Its interface is named `ReferenceCall`** — kind ≠ interface name |
+
+**Blocks as values.**
+
+| kind | represents |
+| --- | --- |
+| `Collection` | data / map block `{ k: v; … }`. Root children are **entries only** — never declarations or rulesets |
+| `CollectionEntry` | one authored map entry. Not a declaration; the key may be any value shape the dialect admits |
+| `AnonymousMixin` | `@rs: { … }` — an *executable* block. Unlike `Collection`, its rules **can** hold rulesets and at-rules |
+
+**Selectors.**
+
+| kind | represents |
+| --- | --- |
+| `SimpleSelector` | one token — `.a`, `:hover`, `&`. `&` is just a `SimpleSelector` whose text is `'&'` |
+| `PseudoSelector` | structured selector-function pseudo — `:is(.a, .b)`. Its first two fields share offsets with `SimpleSelector` deliberately |
+| `CompoundSelector` | a run of simple tokens with no separator — `.a.b` |
+| `ComplexSelector` | flat term / combinator sequence. **Only** for branches with ≥1 authored combinator |
+| `RelativeSelector` | combinator-leading branch; admitted only where relative selectors are legal |
+| `SelectorList` | comma-separated branches — `.a, .b` |
+
+**Statements.**
+
+| kind | represents |
+| --- | --- |
+| `Declaration` | `name: value;`. `name` may be an `Interpolation`; `merge` is `','` / `' '` / `null` |
+| `VariableDeclaration` | `@x: …` with a `write` mode of `declare` / `if-absent` / `reassign` |
+| `Ruleset` | `sel { … }`; `extendInstructions` are hoisted here so the serializer's zero-cost gate holds |
+| `MixinDefinition` | canonical rules stored **once**, read through an overlay, never cloned; optional `when` guard |
+| `MixinCall` | args bind positional or named; `path` is the `#ns .a .b()` descent prefix |
+| `Apply` | Jess `$apply <selector-list>` — ruleset-only, whole-selector, merge-all. Deliberately **not** a `MixinCall` |
+| `If` | `$if` / `$else if` / `$else`, ordered as authored. **A control block is not a scope** |
+| `For` | `iterable` + `rules` + `binding` (single / comma / bracket / tuple) |
+| `Comment` | carried structurally in source order. Also a `ValueNode` |
+| `RawInline` | verbatim bytes from `@import (inline)`; no scope, no structure. *(§12.3 row 5 — deleted)* |
+| `StyleImport` | a compile-time stylesheet dependency; plugins resolve its authored path |
+| `ModuleImport` | a compile-time JavaScript / TypeScript module dependency |
+| `Stylesheet` | the document: an ordered list of top-level statements |
+
+### 12.3 Deletions and merges
+
+Owner rulings, 2026-08-04. Each removes a kind that duplicated one already
+present. Where I argued against, the objection is recorded as withdrawn so it is
+not re-raised.
+
+| # | kind | becomes | note |
+| --- | --- | --- | --- |
+| 1 | `SpacedValue` | `Sequence` | Same shape (`{ parts: ValueNode[] }`). `separators?` is **deleted, not migrated** — trivia is carried structurally, never as an array on a value node. |
+| 2 | `Assignment` | `Any` | `alpha(opacity=@x)` resolving `@x` has no utility; **dropped from Less v5**, test-data updated. The pair becomes verbatim bytes. |
+| 3 | `GeneralEnclosed` | `Call` + `Block` | `form: 'function' \| 'paren'` fused two forms that both already had a node. Function form → `Call`; paren form → `Block`. `content` stays an `Interpolation` in both. |
+| 4 | the **reference family** (8 kinds) | one lookup descriptor | See §12.3a. Subsumes what earlier drafts listed as two separate merges (`VarIndirect`, and `DotLookup`/`DeclarationReference`). |
+| 5 | `RawInline` | `StyleImport` → `Any` | Unresolved it is a `StyleImport` with an inline flag; resolved it is bytes. `Statement` already admits a value node (`FunctionCall`, `nodes.ts:1155`) for exactly this reason. Two fields move to `StyleImport` — see below. |
+
+Rows 1–3 and 5 are local. Row 4 is a family redesign and must be done as one
+piece; splitting it is how the duplication got there.
+
+**`RawInline` (row 5) needs two fields on `StyleImport`**, which today is
+`{ path, mode: 'compose' | 'import', namespace, forward }` (`nodes.ts:1093`):
+
+- **`media`** — from `@import (inline) "x" (min-width:…)`. It was never a
+  property of the bytes; it is a property of the *import statement*, and the
+  `@media` wrap is the resolver's job. Resolution emits
+  `AtRuleBlock{ @media, rules: [Any(text)] }` rather than a bare `Any`, and then
+  `RawInline` really is just `Any`.
+- **the inline flag** — its own boolean, **not** a third `mode` value. `mode` is
+  about module semantics; `(inline)` is a Less import *option* with siblings
+  (`reference`, `optional`, `css`, `multiple`). Folding an option into `mode` is
+  the same fusion that produced `GeneralEnclosed.form`.
+
+### 12.3a The reference family — one descriptor, not eight slices
+
+Measured 2026-08-04 at `ee1aa5af8`. Field sets as they stand:
+
+```
+VariableReference      name: string          | lookup: 'live'|'scoped'
+PropertyReference      name: string          | raw: string
+DeclarationReference                         | raw: string
+VarIndirect            nameRef: ValueNode    | lookup: 'live'|'scoped'
+Reference              base: ValueNode|MixinCall | steps | raw: string
+DotLookup              name: string
+BracketLookup          key: ValueNode|number | keyKind: 'var'|'prop'|'index'|'member' | indexBase?
+ReferenceCall          args: CallArg[]
+MixinCall              name: string          | args | path | important
+```
+
+A lookup is three facts — **where** you look, **what kind** of thing you look
+for, and **which name**. Each is currently encoded four different ways:
+
+- **Scope (where).** A *field* on `VariableReference` and `VarIndirect`
+  (`lookup`); a whole *node type* on `DeclarationReference` ("the current
+  declaration surface") and `PropertyReference` ("enclosing declaration scope,
+  cascading up"); a *base node* on `Reference`; absent on the rest. A fifth copy
+  already exists outside the family — `VariableWrite` carries its own
+  `lookup: VariableLookup` (`nodes.ts:895`).
+- **Kind (what).** A *field* on exactly one (`BracketLookup.keyKind`); the *node
+  type* on three (`VariableReference`=var, `PropertyReference`=prop,
+  `MixinCall`=mixin); **absent** on `DotLookup`.
+- **Name (which).** Split by having *two node types* rather than one field
+  admitting both: `VariableReference.name: string` vs
+  `VarIndirect.nameRef: ValueNode`, and `DotLookup.name: string` vs
+  `BracketLookup.key: ValueNode|number`. **`VarIndirect` exists only because
+  `name` could not be a node.**
+
+A fourth concept is duplicated alongside them: `raw: string`, the verbatim
+fallback spelling, appears independently on `PropertyReference`,
+`DeclarationReference` and `Reference`.
+
+**The target.** One descriptor, carried by every reference node:
+
+```ts
+{ scope: 'live' | 'scoped' | <base node>,
+  kind:  'var' | 'prop' | 'mixin' | 'entry' | 'index' | 'member',
+  name:  string | ValueNode,
+  raw:   string }
+```
+
+Small distinct reference node types remain fine — the rule is that they **carry
+this descriptor and call the same lookup utilities**, rather than each inventing
+a slice of it. In particular `VariableReference` should be expected to survive as
+a flat fast-path node: a bare `$name` is the hottest reference shape in any
+stylesheet, and forcing every one through a container plus a one-element `steps`
+array is an allocation regression the perf invariants would reject. Flat is fine;
+*its own private spelling of `scope` and `kind`* is not.
+
+**The final kind count is OPEN** and should not be guessed — it falls out of the
+descriptor design (container + step types + which flat fast paths earn their
+keep). Earlier drafts of this section claimed "49 → 43"; that number assumed rows
+4 and 5 were two small independent merges and is withdrawn.
+
+**Why this is one row and not two.** Written as separate merges, `VarIndirect` →
+`BracketLookup` requires giving `BracketLookup` a `lookup` field — which is the
+**fifth** copy of scope and the **second** of kind. The separate-merge framing
+does not just under-deliver, it actively deepens the duplication it was meant to
+remove.
+
+**Withdrawn objections**, recorded so they are not re-litigated:
+
+- *"`Block` forces value interpretation, so `GeneralEnclosed` cannot merge."*
+  **False.** `Block.value` is a `ValueSlot`, `ValueSlot` admits `ValueNode`, and
+  `Interpolation` is in that union (`nodes.ts:487`). `block(interpolation(…),
+  'paren')` type-checks today and preserves "never interpreted as a value
+  expression" exactly, because an `Interpolation` **is** the uninterpreted
+  template node.
+- *"Base-dependent member resolution violates the parser-owns-structure rule."*
+  **Misapplied.** That rule bans re-deriving structure from source **bytes**, not
+  resolving a name against a target. Ordinary member resolution is not
+  re-derivation, and it does not justify a second node. The argument was also
+  reaching for a field that is simply missing: `DotLookup` has no `kind`, so
+  "what is being looked up" had nowhere to live and looked like a semantic
+  problem instead of an absent slot (§12.3a).
+
+### 12.4 Grammar labels that misspell a node
+
+Extracted by reading the constructor each reducer actually calls, so every row is
+evidence-backed rather than name-matched. Only 1:1 cases are listed — one
+production building exactly one kind, under a different name.
+
+| grammar | label | builds | should be |
+| --- | --- | --- | --- |
+| less | `VarDeclaration` ×2 | `variableDeclaration` | `VariableDeclaration` |
+| less | `NamedColor` | `color` | `Color` |
+| less | `Paren`, `EscapedParen` | `block` | `Block` |
+| less | `Selector`, `RelativeSelector`, `ExtendTarget`, `SelectorBranch` | `selist` | `SelectorList` |
+| less | `Complex`, `ExtendComplex`, `ExtendTargetComplex` | `selectorBranchOf` | `ComplexSelector` |
+| less | `FlatMixinCall`, `NamespacedMixinCall`, `MixinReferenceBase` | `mixinCall` | `MixinCall` |
+| css | `BasicSelector`, `NestingSelector`, `keyframeSelector` | `simpleSelector` | `SimpleSelector` (`keyframeSelector` is also the only lowercase label in the 448) |
+| css | `Percentage` | `dimension` | `Dimension` |
+| css | `CalcParen`, `ParenValue`, `SquareValue` | `block` | `Block` |
+| css | `ValueList`, `TypedValueList`, `VarFallback` | `list` | `List` |
+| css | `RelativeComplexSelector` | `relativeSelector` | `RelativeSelector` |
+| scss | `Map`, `MapEntry` | `collection`, `collectionEntry` | `Collection`, `CollectionEntry` |
+| scss | `Paren`, `Square` | `block` | `Block` |
+| scss | `Simple`, `Placeholder` | `simpleSelector` | `SimpleSelector` |
+| scss | `SassInterpolation` | `interpolation` | `Interpolation` |
+
+**Labels that correctly do NOT name a node.** `QueryColonFeature`,
+`SupportsFeature` and `ImportQueryTail` each build three different kinds
+(`block`, `keyword`, `operation`). These are genuine productions, and they are
+why "label = node name" cannot be a blanket rule: it binds only where the reducer
+emits exactly one kind.
+
+### 12.5 Order of work
+
+**Deletions before renames.** Rows 2, 3 and 4 of §12.3 also kill grammar labels
+(`FunctionAssignmentArgument`, the eight `GeneralEnclosed*` labels across all four
+grammars, `UnsupportedVariableName`), so §12.4's table shrinks once §12.3 lands.
+Renaming a label onto a kind that is about to disappear is wasted work.
+
+**The descriptor before the rest.** §12.3a is the only item here that is a design
+rather than an edit, and rows 1–3 and 5 do not depend on it. Do it first anyway
+if anything is going to touch a reference node — every day it is deferred, the
+next merge is tempted to add a sixth private copy of `scope`.
+
+Interface names drifted too — `ReferenceCall` is the interface for kind `'Call'`
+(`nodes.ts:430`). A rename pass fixes both sides or it only relocates the
+confusion.
+
+### 12.6 Open — `$( … )` currently lowers to `Block`
+
+The `Expression` reducer builds
+`interpolation([{ ref: boundaryBlock(…) }])`, i.e. the CSS `Block` node carrying
+`boundary: true` (`nodes.ts:248-256`, ctor `:1366`). That flag is real and
+well-specified — the delimiters belong to the enclosing form's syntax, so `$(`
+and `)` open the math context but never emit, which is what distinguishes it
+from `escaped` (drops delimiters *and* the context). But `Block` is the node for
+authored `( … )` and `[ … ]`; using it for `$( … )` means a CSS value node
+carries a jess syntax marker whose whole content is "these delimiters are not
+mine". The math-context fact needs a home that is not the CSS block node.
+
+### 12.7 `ExpressionQuoted` should be `Quoted`
+
+The repo's own convention is
+already many productions → one node name: `'Quoted'` is emitted from **three**
+distinct productions in less (`grammar.ts:2545`, `:2568`, `:2580`), **two** in
+scss (`:1292`, `:1361`), and **two** in jess (`:2197`, `:2263`) — each with
+different arms. `ExpressionQuoted` (jess `:2496`) breaks that convention alone.
+
+A previous draft of this section defended the split on the grounds that
+`Quoted` admits a leading `~` and the expression-position arms do not. **That
+defence is withdrawn**: differing arms under one node name is precisely what the
+five sites above already do, so it cannot also be the reason to split. The real
+driver is the `ExpressionFact` `{value, src}` envelope metastasising into a node
+name — a type leaking into the CST surface, not a language difference.
+
+Parser-internal duplication (`ExpressionDollarBrace` vs `DollarBrace` are an
+identical parser and an identical reducer) is real but separate, and lower
+priority than the node names.

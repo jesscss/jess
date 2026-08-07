@@ -512,11 +512,11 @@ diagnostics, linting, or editor features do not ask for it.
 - TypeScript handbook: "Call Signatures", "Function Overloads", and
   "Contextual Typing"
 
-## Operation diagnostics — surface the rules `OPERATIONS.md` already settles
+## Operation diagnostics — surface the rules RESOLVED-SEMANTICS-AND-NAMING.md already settles
 
 **Owner note, 2026-08-01: all four grammars need lint / IDE diagnostics for
 incorrect operations.** Not a new detector stack — this is the roadmap's own
-principle applied to `docs/design/OPERATIONS.md`, which settles a set of rules
+principle applied to [`docs/design/RESOLVED-SEMANTICS-AND-NAMING.md`](../design/RESOLVED-SEMANTICS-AND-NAMING.md) Part I, which settles a set of rules
 that currently only fail at EVAL time, when they should be visible in the editor
 as the author types.
 
@@ -546,7 +546,7 @@ Two things make this worth doing rather than leaving to eval:
   clash emits `calc(…)` and compiles; the warning is the only signal, and a
   warning nobody reads in a build log is worth much more in the editor.
 
-Sequencing: this follows the operations implementation (`OPERATIONS.md` §10), not
+Sequencing: this follows the operations implementation ([`RESOLVED-SEMANTICS-AND-NAMING.md`](../design/RESOLVED-SEMANTICS-AND-NAMING.md) §10), not
 precedes it — the rules have to exist in core before lint can surface them, and
 the diagnostics should read the SAME predicates rather than reimplementing them,
 per the "one set of semantics" ruling.
