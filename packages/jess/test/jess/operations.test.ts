@@ -102,7 +102,7 @@ describe('OPERATIONS §4 — arithmetic', () => {
 });
 
 describe('OPERATIONS §4 — loose equality `=`', () => {
-  it.fails('PENDING phase 1 — numeric ground: a unitless side is a wildcard (rows i, j, j2, k, l)', async () => {
+  it('numeric ground: a unitless side is a wildcard (rows i, j, j2, k, l)', async () => {
     await expect(value('$(1 = 2)')).resolves.toBe('false');
     await expect(value('$(1 = 1px)')).resolves.toBe('true');
     await expect(value('$(1em = 1px)')).resolves.toBe('false');
@@ -110,13 +110,13 @@ describe('OPERATIONS §4 — loose equality `=`', () => {
     await expect(value('$(2 = 2%)')).resolves.toBe('true');
   });
 
-  it.fails('PENDING phase 1 — string ground: a value equals its own spelling (rows q, r, s)', async () => {
+  it.fails('PENDING phase 4 — string ground: a value equals its own spelling (rows q, r, s)', async () => {
     await expect(value('$(a = b)')).resolves.toBe('false');
     await expect(value('$(a = "a")')).resolves.toBe('true');
     await expect(value('$(a = a)')).resolves.toBe('true');
   });
 
-  it.fails('PENDING phase 1 — colour ground is rgb + alpha (rows v, w, x, y, z)', async () => {
+  it.fails('PENDING phase 4 — colour ground is rgb + alpha (rows v, w, x, y, z)', async () => {
     await expect(value('$(red = red)')).resolves.toBe('true');
     await expect(value('$(black = transparent)')).resolves.toBe('false');
     await expect(value('$(black = #000000)')).resolves.toBe('true');
@@ -124,7 +124,7 @@ describe('OPERATIONS §4 — loose equality `=`', () => {
     await expect(value('$(black = #000000FF)')).resolves.toBe('true');
   });
 
-  it.fails('PENDING phase 1 — §4.1 — the ground is picked ONCE, per pair, and nothing is transitive', async () => {
+  it.fails('PENDING phase 4 — §4.1 — the ground is picked ONCE, per pair, and nothing is transitive', async () => {
     /*
      * `1 = 1px` compares on numeric ground and `1 = "1px"` on string ground.
      * Different pairs, different grounds, no contradiction — and Less's `=` is
@@ -137,7 +137,7 @@ describe('OPERATIONS §4 — loose equality `=`', () => {
     await expect(value('$(red = "red")')).resolves.toBe('true');
   });
 
-  it.fails('PENDING phase 1 — §4.1 — with no common ground, equality is false and never raises', async () => {
+  it('§4.1 — with no common ground, equality is false and never raises', async () => {
     await expect(value('$(1px = red)')).resolves.toBe('false');
   });
 });
@@ -158,7 +158,7 @@ describe('OPERATIONS §4 — type-equal `==`', () => {
 });
 
 describe('OPERATIONS §4.2 — relational is trichotomous', () => {
-  it.fails('PENDING phase 1 — numeric ground (rows m, n, o, p)', async () => {
+  it('numeric ground (rows m, n, o, p)', async () => {
     await expect(value('$(1 > 2)')).resolves.toBe('false');
     await expect(value('$(2 > 1)')).resolves.toBe('true');
     await expect(value('$(1 > 1px)')).resolves.toBe('false');
@@ -166,7 +166,7 @@ describe('OPERATIONS §4.2 — relational is trichotomous', () => {
     await expect(value('$(1in > 1cm)')).resolves.toBe('true');
   });
 
-  it.fails('PENDING phase 1 — string ground is lexicographic, so `a > b` and `b > a` are not BOTH false (rows t, u)', async () => {
+  it.fails('PENDING phase 3 — string ground is lexicographic, so `a > b` and `b > a` are not BOTH false (rows t, u)', async () => {
     /*
      * Row `u` is the amendment of §4.2. lessc 4.6.3 answers `false` to both,
      * which is the clearest case in the document where an engine's behaviour is
@@ -179,7 +179,7 @@ describe('OPERATIONS §4.2 — relational is trichotomous', () => {
     await expect(value('$("a" > "b")')).resolves.toBe('false');
   });
 
-  it.fails('PENDING phase 1 — with no common ground, relational ERRORS — unlike equality', async () => {
+  it.fails('PENDING phase 3 — with no common ground, relational ERRORS — unlike equality', async () => {
     await expect(value('$(1px > red)')).rejects.toThrow();
   });
 });

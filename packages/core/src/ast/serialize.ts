@@ -2523,6 +2523,16 @@ interface EvalCtx {
   parenDepth?: number;
 
   /*
+   * [condition-grammar] inside a `$( … )` EXPRESSION boundary (`Block.boundary`).
+   * `.jess` has no `boolean()` (ledger P17), so `$( … )` is exactly where a
+   * comparison legitimately lands in value position — while in `.less`/`.scss`
+   * a `Condition` reaching the value lane is still the mis-parse the lane was
+   * written for. Set only by the boundary Block, so the two dialects that have
+   * no such boundary are untouched.
+   */
+  exprBoundary?: boolean;
+
+  /*
    * [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
    * `@{v}: …`) is being resolved up-stack. `resolvePropRef` skips a candidate whose
    * name is already in flight, breaking the self-reference `${prop-name}: red` where
@@ -3315,7 +3325,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return evalValueSlot(node.value, frame, e);
       }
       const inner = evalValueSlot(node.value, frame, node.delimiter === 'paren'
-        ? { ...e, parenDepth: (e.parenDepth ?? 0) + 1 }
+        ? { ...e, parenDepth: (e.parenDepth ?? 0) + 1, exprBoundary: e.exprBoundary || node.boundary }
         : e);
 
       /*
@@ -3348,7 +3358,16 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * lane is an UN-consumed condition — an ordinary/unknown call's arg that merely
        * happened to carry a top-level operator (e.g. a mis-parsed `url(…charset=utf-8…)`).
        * Emit it VERBATIM, exactly as it was spelled, rather than collapsing it to a bool.
+       *
+       * That premise holds for Less and Sass, where a comparison only ever appears
+       * inside `boolean()`, `if()` or a guard. It is FALSE for `.jess`, which by
+       * ledger P17 has no `boolean()` at all — so `$( … )` is exactly where a real
+       * comparison lands, and "reached the value lane" cannot be the discriminator.
+       * `Block.boundary` marks that position and is (OPERATIONS.md §7.1, phase 1).
        */
+      if (e.ev && e.exprBoundary) {
+        return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
+      }
       return literal(node.src);
     case 'Assignment':
       /*
