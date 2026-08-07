@@ -179,7 +179,7 @@ The **superset-violation** buckets, which are the actionable list (147 total):
 entirely at `17b675065`; `calc / math fn` is what remains, and it is a single
 defect — the base grammar reaches its math ladder only through `calc()`, so a
 math expression inside any *other* math function does not parse. Spec and plan:
-[`docs/design/OPERATIONS.md`](../../docs/design/OPERATIONS.md) §6.
+[`docs/design/RESOLVED-SEMANTICS-AND-NAMING.md`](../../docs/design/RESOLVED-SEMANTICS-AND-NAMING.md) §6.
 
 `less` and `scss` still score better than `css` on that bucket precisely because
 both already route function arguments back into their own math ladder.
