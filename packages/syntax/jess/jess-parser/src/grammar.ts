@@ -1456,7 +1456,7 @@ const dollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const expressionBoundary = regex(/(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
 const expressionProductSymbol = regex(/[*/%]/);
 const expressionSumSymbol = regex(/[-+]/);
-const expressionCompareSymbol = regex(/>=|<=|>|<|=/);
+const expressionCompareSymbol = regex(/>=|<=|==|>|<|=/);
 
 /*
  * `$if` conditions retain the CST's comparison spelling, which permits both
@@ -1464,7 +1464,7 @@ const expressionCompareSymbol = regex(/>=|<=|>|<|=/);
  * expression interpolation, whose arithmetic/comparison grammar requires
  * spaces to avoid value-position ambiguity.
  */
-const ifGuardCompareOperator = regex(/[ \t\n\r\f]*(?:>=|<=|>|<|=)[ \t\n\r\f]*/);
+const ifGuardCompareOperator = regex(/[ \t\n\r\f]*(?:>=|<=|==|>|<|=)[ \t\n\r\f]*/);
 
 /*
  * This is intentionally the type-predicate namespace, not general function
@@ -2013,7 +2013,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'GuardCompare',
     sequence(
       g.ExpressionSum,
-      regex(/>=|<=|>|<|=/),
+      regex(/>=|<=|==|>|<|=/),
       g.ExpressionSum
     ),
     reduceGuardCompare

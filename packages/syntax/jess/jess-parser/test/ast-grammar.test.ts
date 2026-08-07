@@ -914,8 +914,16 @@ describe('Jess AST grammar facts', () => {
         { value: { type: 'Interpolation' } }
       ] }]
     });
+
+    /*
+     * `scoped-compare` used to emit `^w > 0px` — the un-evaluated source, with
+     * the scoped-lookup sigil leaking into the output. That was OPERATIONS.md
+     * §7.1: the `Condition` value lane emitted verbatim on the premise that a
+     * condition reaching it must be a mis-parse, which is false for `.jess`,
+     * where `$( … )` is exactly where a comparison legitimately lands.
+     */
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
-      '.card {\n  signed: 2px -1;\n  slash: 2px / 2;\n  scoped: 2px;\n  wrapped: 1px;\n  scoped-wrapped: 3px;\n  scoped-compare: ^w > 0px;\n}\n'
+      '.card {\n  signed: 2px -1;\n  slash: 2px / 2;\n  scoped: 2px;\n  wrapped: 1px;\n  scoped-wrapped: 3px;\n  scoped-compare: true;\n}\n'
     );
 
     /*

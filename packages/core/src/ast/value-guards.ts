@@ -196,6 +196,35 @@ function compareGroups(a: ValueGroup, b: ValueGroup, equalityMode: EqualityMode,
 }
 
 /**
+ * Whether two operands share a TYPE, for `.jess`'s `==` (OPERATIONS.md §4.1:
+ * "`=` compares on the common ground. `==` additionally requires the SAME TYPE").
+ *
+ * For dimensions the type is the unit GROUP, not the unit: `1in == 2.54cm` is
+ * true because both are lengths and the ground converts, while `1 == 1px` is
+ * false because unitless is its own type — it is the wildcard that makes `=`
+ * loose, and `==` is exactly the operator that declines the wildcard. `2 == 2%`
+ * is false for the same reason. Every other operand pair is same-type iff its
+ * discriminants match.
+ */
+function sameType(a: ValueGroup, b: ValueGroup): boolean {
+  if (isValueGroupArray(a) || isValueGroupArray(b)) {
+    return isValueGroupArray(a) && isValueGroupArray(b)
+      && a.length === b.length
+      && a.every((item, index) => sameType(item, b[index]!));
+  }
+  if (a.type !== b.type) {
+    return false;
+  }
+  if (a.type === 'Dimension' && b.type === 'Dimension') {
+    if (!a.unit || !b.unit) {
+      return !a.unit && !b.unit;
+    }
+    return unify(a.number, a.unit).unit === unify(b.number, b.unit).unit;
+  }
+  return true;
+}
+
+/**
  * Guard comparison (`@a > 0`) on typed operands, faithful to less.js `Node.compare`
  * (see {@link compareNodes}): dimensions reconcile units, quoted strings compare
  * lexically, colors/keywords/lists by structural equality. An INCOMPARABLE pair
@@ -211,6 +240,15 @@ export function compare(
   const c = compareGroups(left, right, equalityMode, unitMode);
   switch (op) {
     case '=': return c === 0;
+
+    /*
+     * `.jess`'s type-equal operator (OPERATIONS.md §4). It is `=` plus a type
+     * check rather than a separate comparison: the pair still picks its common
+     * ground and compares there once, and `==` only declines the coercions that
+     * ground allows. `!=` is deliberately NOT added — `not(…)` covers negation
+     * and the pair is redundant (§4.4.3).
+     */
+    case '==': return c === 0 && sameType(left, right);
     case '>': return c === 1;
     case '<': return c === -1;
     case '>=': return c === 0 || c === 1;

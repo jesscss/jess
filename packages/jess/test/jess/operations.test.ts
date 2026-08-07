@@ -143,17 +143,39 @@ describe('OPERATIONS §4 — loose equality `=`', () => {
 });
 
 describe('OPERATIONS §4 — type-equal `==`', () => {
-  it.fails('PENDING phase 2 — `==` additionally requires the same type (rows j1, l1, r1)', async () => {
+  it('`==` additionally requires the same type (rows j1, l1, r1)', async () => {
+    /*
+     * Unitless is its OWN type — it is the wildcard that makes `=` loose, and
+     * `==` is exactly the operator that declines the wildcard.
+     */
     await expect(value('$(1 == 1px)')).resolves.toBe('false');
     await expect(value('$(2 == 2%)')).resolves.toBe('false');
     await expect(value('$(a == "a")')).resolves.toBe('false');
   });
 
-  it.fails('PENDING phase 2 — `==` agrees with `=` where the types already match', async () => {
+  it('`==` agrees with `=` where the types already match', async () => {
     await expect(value('$(1px == 1px)')).resolves.toBe('true');
     await expect(value('$(a == a)')).resolves.toBe('true');
+    await expect(value('$(1 == 1)')).resolves.toBe('true');
+    await expect(value('$(red == red)')).resolves.toBe('true');
+  });
+
+  it('for a dimension the TYPE is the unit group, so compatible units convert', async () => {
+    await expect(value('$(1in == 96px)')).resolves.toBe('true');
+  });
+
+  it.fails('PENDING phase 4 — colour ground, and `1in = 2.54cm` (O-TRUTH-3)', async () => {
+    /*
+     * `black == #000000` needs the §4.1 COLOUR ground: `black` is still a
+     * Keyword against a Color here, and only the ground model makes the pair
+     * compare as colours at all. `1in = 2.54cm` is equal BY DEFINITION —
+     * lessc 4.6.3's `false` is a conversion-precision bug, not a dialect
+     * choice, and it is the one row where diverging from Less 4.x needs no
+     * further justification.
+     */
     await expect(value('$(black == #000000)')).resolves.toBe('true');
     await expect(value('$(1in == 2.54cm)')).resolves.toBe('true');
+    await expect(value('$(1in = 2.54cm)')).resolves.toBe('true');
   });
 });
 
