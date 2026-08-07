@@ -3,7 +3,7 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
   decl, collection, collectionEntry, declarationReference, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
-  variableDeclaration, varIndirect, variableReference, type Stylesheet
+  variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
@@ -24,9 +24,11 @@ describe('direct canonical value access', () => {
       variableDeclaration('tokens', tokens, { mode: 'declare' }),
       variableDeclaration('member-name', keyword('tone'), { mode: 'declare' }),
       rule('.card', [
-        decl('width', varIndirect(variableReference('indirect-name', 'scoped'), 'scoped')),
-        decl('gap', reference(variableReference('tokens', 'scoped'), [{ type: 'BracketLookup', key: keyword('gap'), keyKind: 'prop' }], '@tokens[gap]')),
-        decl('color', reference(variableReference('tokens', 'scoped'), [{ type: 'BracketLookup', key: variableReference('member-name', 'scoped'), keyKind: 'var' }], '@tokens[@member-name]')),
+        /* `@@indirect-name` — a var lookup whose NAME is a node, which is what
+         * `varIndirect` used to be a separate kind for. */
+        decl('width', variableReference(variableReference('indirect-name', 'scoped'), 'scoped')),
+        decl('gap', reference(variableReference('tokens', 'scoped'), [{ type: 'LookupStep', name: keyword('gap'), kind: 'prop' }], '@tokens[gap]')),
+        decl('color', reference(variableReference('tokens', 'scoped'), [{ type: 'LookupStep', name: variableReference('member-name', 'scoped'), kind: 'var' }], '@tokens[@member-name]')),
         decl('min-width', propertyReference('width'))
       ])
     ]);
@@ -49,7 +51,7 @@ describe('direct canonical value access', () => {
       variableDeclaration('tokens', tokens, { mode: 'declare' }),
       rule('.card', [decl('gap', reference(
         variableReference('tokens', 'scoped'),
-        [{ type: 'BracketLookup', key: keyword('missing'), keyKind: 'prop' }],
+        [{ type: 'LookupStep', name: keyword('missing'), kind: 'prop' }],
         '@tokens[missing]'
       ))])
     ]))).toThrow(/Name not found/);
@@ -67,7 +69,7 @@ describe('direct canonical value access', () => {
       rule('.card', [
         decl('color', reference(
           variableReference('theme', 'scoped'),
-          [{ type: 'DotLookup', name: 'palette' }, { type: 'BracketLookup', key: keyword('accent'), keyKind: 'prop' }],
+          [{ type: 'LookupStep', kind: 'member', name: 'palette' }, { type: 'LookupStep', name: keyword('accent'), kind: 'prop' }],
           '@theme.palette[accent]'
         ))
       ])
@@ -82,10 +84,10 @@ describe('direct canonical value access', () => {
       rule('.card', [
         variableDeclaration('local', keyword('green'), { mode: 'declare' }),
         decl('tone', keyword('red')),
-        decl('from-ns', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }], '$tokens.tone')),
-        decl('from-root', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }], '$.tokens.tone')),
-        decl('from-var', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'local' }], '$.local')),
-        decl('from-prop', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'tone' }], '$.tone'))
+        decl('from-ns', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], '$tokens.tone')),
+        decl('from-root', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], '$.tokens.tone')),
+        decl('from-var', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'local' }], '$.local')),
+        decl('from-prop', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'tone' }], '$.tone'))
       ])
     ]);
 
@@ -100,14 +102,14 @@ describe('direct canonical value access', () => {
       rule('.card', [
         variableDeclaration('same', keyword('blue'), { mode: 'declare' }),
         decl('same', keyword('red')),
-        decl('value', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'same' }], '$.same'))
+        decl('value', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'same' }], '$.same'))
       ])
     ]))).toThrow(/Ambiguous reference member: same/);
     expect(() => render(stylesheet([
       rule('.card', [
         variableDeclaration('same', collection([entry('tone', keyword('blue'))]), { mode: 'declare' }),
         decl('same', keyword('red')),
-        decl('value', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'same' }, { type: 'DotLookup', name: 'tone' }], '$same.tone'))
+        decl('value', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'same' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], '$same.tone'))
       ])
     ]))).toThrow(/Ambiguous reference member: same/);
   });
@@ -122,8 +124,8 @@ describe('direct canonical value access', () => {
         decl('color', reference(
           variableReference('schemes', 'scoped'),
           [
-            { type: 'BracketLookup', key: varIndirect(variableReference('scheme-name', 'scoped'), 'scoped'), keyKind: 'var' },
-            { type: 'BracketLookup', key: keyword('color'), keyKind: 'prop' }
+            { type: 'LookupStep', name: variableReference(variableReference('scheme-name', 'scoped'), 'scoped'), kind: 'var' },
+            { type: 'LookupStep', name: keyword('color'), kind: 'prop' }
           ],
           '@schemes[@@scheme-name][color]'
         ))
@@ -138,8 +140,8 @@ describe('direct canonical value access', () => {
     const document = stylesheet([
       variableDeclaration('sizes', sizes, { mode: 'declare' }),
       rule('.card', [
-        decl('first', reference(variableReference('sizes', 'live'), [{ type: 'BracketLookup', key: 0, keyKind: 'index', indexBase: 0 }], '$sizes[0]')),
-        decl('last', reference(variableReference('sizes', 'live'), [{ type: 'BracketLookup', key: -1, keyKind: 'index', indexBase: 0 }], '$sizes[-1]'))
+        decl('first', reference(variableReference('sizes', 'live'), [{ type: 'LookupStep', name: 0, kind: 'index', indexBase: 0 }], '$sizes[0]')),
+        decl('last', reference(variableReference('sizes', 'live'), [{ type: 'LookupStep', name: -1, kind: 'index', indexBase: 0 }], '$sizes[-1]'))
       ])
     ]);
 
@@ -147,7 +149,7 @@ describe('direct canonical value access', () => {
   });
 
   it('reads namespace call variable members from the callee, not a caller shadow', () => {
-    const member = (name: string) => [{ type: 'BracketLookup' as const, key: variableReference(name, 'scoped'), keyKind: 'var' as const }];
+    const member = (name: string) => [{ type: 'LookupStep' as const, name: variableReference(name, 'scoped'), kind: 'var' as const }];
     const namespaceCall = mixinCall('#ns1');
     const libraryCall = {
       type: 'MixinCall' as const,
@@ -169,7 +171,7 @@ describe('direct canonical value access', () => {
       ])
     ]);
 
-    expect(render(document)).toBe('.out {\n  foo: dos;\n  key: callee;\n  returned: callee-return;\n}\n');
+    expect(render(document)).toBe('.out {\n  foo: dos;\n  name: callee;\n  returned: callee-return;\n}\n');
   });
 
   it('uses the final local variable as a mixin call empty-bracket result', () => {
@@ -180,7 +182,7 @@ describe('direct canonical value access', () => {
       rule('.entry', [
         decl('width', reference(
           mixinCall('.add', [{ value: dimension(10, 'px') }, { value: dimension(10, 'px') }]),
-          [{ type: 'BracketLookup', key: -1, keyKind: 'index' }],
+          [{ type: 'LookupStep', name: -1, kind: 'index' }],
           '.add(10px, 10px)[-1]'
         ))
       ])
@@ -192,7 +194,7 @@ describe('direct canonical value access', () => {
   it('keeps the empty-accessor fallback scoped to the final index and final selected callee', () => {
     const last = (key: number) => reference(
       mixinCall('.pick'),
-      [{ type: 'BracketLookup' as const, key, keyKind: 'index' as const }],
+      [{ type: 'LookupStep' as const, name: key, kind: 'index' as const }],
       `.pick()[${key}]`
     );
     const document = stylesheet([

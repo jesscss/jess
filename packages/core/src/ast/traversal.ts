@@ -94,10 +94,10 @@ export type AstEdge =
   | 'value.function.arg'
   | 'value.interpolation.ref'
   | 'value.general.content'
-  | 'value.var-indirect.name'
+  | 'value.lookup.name'
   | 'value.condition.guard'
   | 'value.reference.base'
-  | 'value.reference.bracket-key'
+  | 'value.reference.step-key'
   | 'value.reference.call-arg'
   | 'value.range.start'
   | 'value.range.end'
@@ -447,8 +447,8 @@ function walkReference(node: Reference, hooks: AstVisitHooks, depth: number): vo
   walkNode(node.base, hooks, 'value.reference.base', node, 0, depth + 1);
   for (let i = 0; i < node.steps.length; i++) {
     const step = node.steps[i]!;
-    if (step.type === 'BracketLookup' && typeof step.key !== 'number') {
-      walkNode(step.key, hooks, 'value.reference.bracket-key', node, i, depth + 1);
+    if (step.type === 'LookupStep' && typeof step.name === 'object') {
+      walkNode(step.name, hooks, 'value.reference.step-key', node, i, depth + 1);
     } else if (step.type === 'Call') {
       for (let j = 0; j < step.args.length; j++) {
         walkCallArg(step.args[j]!, hooks, 'value.reference.call-arg', node, j, depth + 1);
@@ -583,8 +583,11 @@ function walkNode(
     case 'GeneralEnclosed':
       walkNode(node.content, hooks, 'value.general.content', node, 0, depth + 1);
       break;
-    case 'VarIndirect':
-      walkNode(node.nameRef, hooks, 'value.var-indirect.name', node, 0, depth + 1);
+    case 'Lookup':
+      /* A `@@indirect` is a Lookup whose NAME is a node; a plain `@x` is a leaf. */
+      if (typeof node.name === 'object') {
+        walkNode(node.name, hooks, 'value.lookup.name', node, 0, depth + 1);
+      }
       break;
     case 'Condition':
       walkGuard(node.guard, hooks, 'value.condition.guard', node, 0, depth + 1);
@@ -626,9 +629,6 @@ function walkNode(
     case 'Comment':
     case 'SelectorCapture':
     case 'Dimension':
-    case 'VariableReference':
-    case 'DeclarationReference':
-    case 'PropertyReference':
     case 'RawInline':
       break;
   }

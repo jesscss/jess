@@ -78,7 +78,6 @@ import type {
   MixinDefinition,
   ModuleImport,
   Operation,
-  PropertyReference,
   PseudoSelector,
   Quoted,
   RawInline,
@@ -96,9 +95,8 @@ import type {
   StyleImport,
   ValueNode,
   ValueSlot,
-  VarIndirect,
   VariableDeclaration,
-  VariableReference
+  Lookup
 } from './nodes.js';
 
 // [atrule] block + statement at-rule node types
@@ -2155,8 +2153,12 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
     return value.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
   }
   switch (value.type) {
-    case 'VariableReference':
-      return value.name === name && value.lookup === lookup;
+    case 'Lookup':
+      /* A direct `@x` matches by name; an indirect `@@x` recurses into the node
+       * that NAMES the target, which is what the old VarIndirect arm did. */
+      return typeof value.name === 'string'
+        ? value.kind === 'var' && value.name === name && value.scope === lookup
+        : callValueContainsVarRef(value.name, name, lookup);
     case 'Url':
       return callValueContainsVarRef(value.value, name, lookup);
     case 'SpacedValue':
@@ -2178,17 +2180,15 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
       return value.parts.some(part => 'ref' in part && callValueContainsVarRef(part.ref, name, lookup));
     case 'GeneralEnclosed':
       return callValueContainsVarRef(value.content, name, lookup);
-    case 'VarIndirect':
-      return callValueContainsVarRef(value.nameRef, name, lookup);
     case 'Reference':
       return callValueContainsVarRef(value.base, name, lookup)
         || value.steps.some((step) => {
           if (step.type === 'Call') {
             return step.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
           }
-          return step.type === 'BracketLookup'
-            && typeof step.key !== 'number'
-            && callValueContainsVarRef(step.key, name, lookup);
+          return step.type === 'LookupStep' && typeof step.name !== 'string'
+            && typeof step.name !== 'number'
+            && callValueContainsVarRef(step.name, name, lookup);
         });
     case 'Range':
       return callValueContainsVarRef(value.start, name, lookup)
@@ -2444,7 +2444,27 @@ function recursiveReference(node: object, symbol: string, kind: 'Variable' | 'Pr
   });
 }
 
-function unresolvedRef(node: VariableReference | VarIndirect, name: string, e: EvalCtx): EvalValue {
+/**
+ * A {@link Lookup}'s target NAME. A plain `@x` carries it literally; an indirect
+ * `@@x` carries the NODE whose resolved bytes name the target, which is the one
+ * fact that used to justify a separate `VarIndirect` kind. Both paths land here,
+ * so every caller reads one name and never re-derives the distinction.
+ */
+function lookupName(node: Lookup, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+  return typeof node.name === 'string'
+    ? node.name
+    : mapMaybe(evalBytes(node.name, frame, e), raw => stripOuterQuotes(raw));
+}
+
+/**
+ * A lookup's LITERAL name, for the synchronous paths. An indirect `@@x` cannot
+ * resolve without evaluating its name node, which those paths cannot do — and
+ * they never saw one before either, because only the string-named kinds reached
+ * them. Empty string keeps the miss behaviour they already had.
+ */
+const literalName = (node: Lookup): string => typeof node.name === 'string' ? node.name : '';
+
+function unresolvedRef(node: Lookup, name: string, e: EvalCtx): EvalValue {
   if (!e.optional) {
     unresolvedSymbol(node, `@${name}`, e);
   }
@@ -2959,20 +2979,21 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       return node.escaped ? makeKeyword(node.value) : materializeNode(node, e);
     case 'Url':
       return mapMaybe(evalValue(node, frame, e), v => force(e, v));
-    case 'VariableReference': {
-      const hit = resolveVarRef(frame, node.name, node.lookup, e);
-      if (!hit) {
-        if (hasExcludedVarRef(frame, node.name, node.lookup, e)) {
-          recursiveReference(node, `@${node.name}`, 'Variable', e);
+    case 'Lookup':
+      return mapMaybe(lookupName(node, frame, e), (nm) => {
+        const hit = resolveVarRef(frame, nm, node.scope, e);
+        if (!hit) {
+          if (hasExcludedVarRef(frame, nm, node.scope, e)) {
+            recursiveReference(node, `@${nm}`, 'Variable', e);
+          }
+          return force(e, unresolvedRef(node, nm, e));
         }
-        return force(e, unresolvedRef(node, node.name, e));
-      }
-      const bound = hit.value;
-      return withExcluded(e, bound, () =>
-        isMixinCallValue(bound)
-          ? force(e, literal(''))
-          : evalTypedSlot(bound, hit.frame, e));
-    }
+        const bound = hit.value;
+        return withExcluded(e, bound, () =>
+          isMixinCallValue(bound)
+            ? force(e, literal(''))
+            : evalTypedSlot(bound, hit.frame, e));
+      });
     case 'Reference': {
       /*
        * A typed guard comparison must retain the matched member's AST tag.
@@ -3214,19 +3235,28 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         }
         return literal(`url(${emitValue(value)})`);
       });
-    case 'VariableReference': {
-      const hit = resolveVarRef(frame, node.name, node.lookup, e);
-      if (!hit) {
-        if (hasExcludedVarRef(frame, node.name, node.lookup, e)) {
-          recursiveReference(node, `@${node.name}`, 'Variable', e);
-        }
-        return unresolvedRef(node, node.name, e);
+    case 'Lookup': {
+      /*
+       * All four old reference kinds land here. `kind` is the discriminator that
+       * used to be the node TYPE — `entry` was `DeclarationReference`, `prop` was
+       * `PropertyReference`, `var` was `VariableReference`, and a `var` whose
+       * `name` is a NODE is what `VarIndirect` (`@@x`) used to be.
+       */
+      if (node.kind === 'entry') {
+        return literal(node.raw);
       }
-      return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
-    }
-    case 'DeclarationReference':
-      return literal(node.raw);
-    case 'PropertyReference': {
+      if (node.kind === 'var') {
+        return mapMaybe(lookupName(node, frame, e), (nm) => {
+          const hit = resolveVarRef(frame, nm, node.scope, e);
+          if (!hit) {
+            if (hasExcludedVarRef(frame, nm, node.scope, e)) {
+              recursiveReference(node, `@${nm}`, 'Variable', e);
+            }
+            return unresolvedRef(node, nm, e);
+          }
+          return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
+        });
+      }
       /*
        * A `$name` property accessor resolves the winning declaration and folds
        * its value. Its declaration-level `!important` is carried through the
@@ -3235,12 +3265,13 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * A miss is a Less semantic error. `functionMode` applies only after a
        * registered function has actually been invoked and failed.
        */
-      const hit = resolvePropRef(frame, node.name, e);
+      const propName = typeof node.name === 'string' ? node.name : '';
+      const hit = resolvePropRef(frame, propName, e);
       if (!hit) {
-        if (hasExcludedPropRef(frame, node.name, e)) {
-          recursiveReference(node, `$${node.name}`, 'Property', e);
+        if (hasExcludedPropRef(frame, propName, e)) {
+          recursiveReference(node, `$${propName}`, 'Property', e);
         }
-        unresolvedSymbol(node, `$${node.name}`, e);
+        unresolvedSymbol(node, `$${propName}`, e);
       }
       if (hit.important) {
         if (e.importantSink) {
@@ -3423,23 +3454,6 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'GeneralEnclosed':
       return mapMaybe(evalInterp(node.content, frame, e), value =>
         literal(generalEnclosedBytes(node, emitValue(value))));
-    case 'VarIndirect': {
-      /*
-       * Resolve the name expression to bytes (unquoted), then read that variable
-       * through the normal exclusion-aware stack walk (`@@name` = two chained reads).
-       */
-      return mapMaybe(evalBytes(node.nameRef, frame, e), (raw) => {
-        const nm = stripOuterQuotes(raw);
-        const hit = resolveVarRef(frame, nm, node.lookup, e);
-        if (!hit) {
-          if (hasExcludedVarRef(frame, nm, node.lookup, e)) {
-            recursiveReference(node, `@${nm}`, 'Variable', e);
-          }
-          return unresolvedRef(node, nm, e);
-        }
-        return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
-      });
-    }
     case 'Reference':
       return evalReference(node, frame, e);
     case 'Range': {
@@ -3845,8 +3859,8 @@ function resolveBaseDeclMap(
    * call and treat its EMITTED declarations as the map (the same reconstruction the
    * `each(.mixin(), …)` iterable uses — `forItemsFromMixinCall`).
    */
-  if (base.type === 'VariableReference' && frame) {
-    const bound = lookupVar(frame, base.name);
+  if (base.type === 'Lookup' && base.kind === 'var' && frame) {
+    const bound = lookupVar(frame, literalName(base));
     if (bound && isMixinCallValue(bound)) {
       return declMapFromMixinCall(bound, frame, e);
     }
@@ -4034,8 +4048,8 @@ function resolveReferenceResult(
   let value: ValueSlot | MixinCall = node.base;
   let valueFrame = frame;
   let sourceOwner = frame?.sourceOwner ?? null;
-  if (!isValueSlotArray(value) && value.type === 'VariableReference') {
-    const resolved = resolveVarRef(valueFrame, value.name, value.lookup, e);
+  if (!isValueSlotArray(value) && value.type === 'Lookup' && value.kind === 'var') {
+    const resolved = resolveVarRef(valueFrame, value.name as string, value.scope, e);
     if (!resolved) {
       return null;
     }
@@ -4045,8 +4059,8 @@ function resolveReferenceResult(
       ?? sourceOwnerForBody(!isValueSlotArray(value) && isValueBlock(value) ? valueBlockBody(value) : value, valueFrame, e);
   }
   for (const step of node.steps) {
-    if (!isValueSlotArray(value) && value.type === 'DeclarationReference') {
-      if (step.type !== 'DotLookup') {
+    if (!isValueSlotArray(value) && value.type === 'Lookup' && value.kind === 'entry') {
+      if (step.type !== 'LookupStep' || typeof step.name !== 'string') {
         return null;
       }
       const matched = resolveDeclarationMember(valueFrame, step.name, e);
@@ -4081,8 +4095,8 @@ function resolveReferenceResult(
        * means, or the call silently becomes a no-op on the reference itself.
        */
       while (!isValueSlotArray(value)) {
-        if (value.type === 'VariableReference') {
-          const aliased = resolveVarRef(valueFrame, value.name, value.lookup, e);
+        if (value.type === 'Lookup' && value.kind === 'var') {
+          const aliased = resolveVarRef(valueFrame, value.name as string, value.scope, e);
           if (!aliased) {
             break;
           }
@@ -4113,14 +4127,14 @@ function resolveReferenceResult(
       }
       continue;
     }
-    if (step.type === 'BracketLookup' && step.keyKind === 'index' && typeof step.key === 'number'
+    if (step.type === 'LookupStep' && typeof step.name !== 'string' && step.kind === 'index' && typeof step.name === 'number'
       && (isValueSlotArray(value) || (!isValueSlotArray(value) && (value.type === 'List' || value.type === 'SpacedValue')))) {
       const items = isValueSlotArray(value)
         ? value
         : value.type === 'List' ? value.value : value.parts;
-      const index = step.key < 0
-        ? items.length + step.key
-        : step.indexBase === 0 ? step.key : step.key - 1;
+      const index = step.name < 0
+        ? items.length + step.name
+        : step.indexBase === 0 ? step.name : step.name - 1;
       const item = items[index];
       if (item === undefined) {
         return null;
@@ -4137,7 +4151,7 @@ function resolveReferenceResult(
     }
     let matched: DeclEntry | undefined;
     let missingSymbol = node.raw;
-    if (step.type === 'DotLookup') {
+    if (step.type === 'LookupStep' && typeof step.name === 'string') {
       missingSymbol = step.name;
       const prop = map.byProp.get(step.name);
       const variable = map.unified ? undefined : map.byVar.get(step.name) ?? lookupVarMember(map, step.name, e);
@@ -4145,17 +4159,19 @@ function resolveReferenceResult(
         throw new Error(`Ambiguous reference member: ${step.name}`);
       }
       matched = prop ?? variable;
-    } else if (step.keyKind !== 'index' && typeof step.key !== 'number') {
+    } else if (step.kind !== 'index' && typeof step.name !== 'number') {
       /*
        * `[@name]` names a variable member of the evaluated map/call result.
        * In particular, a mixin-call base must resolve `[@return]` from every
        * selected callee frame, rather than evaluating `@return` in the caller.
        * Other bracket keys remain dynamic value expressions in the current frame.
        */
-      if (step.keyKind === 'var' && step.key.type === 'VariableReference' && (
-        value.type === 'MixinCall' || !resolveVarRef(valueFrame, step.key.name, step.key.lookup, e)
+      if (step.kind === 'var' && typeof step.name === 'object' && step.name.type === 'Lookup'
+        && step.name.kind === 'var' && typeof step.name.name === 'string' && (
+        value.type === 'MixinCall' || !resolveVarRef(valueFrame, step.name.name, step.name.scope, e)
       )) {
-        missingSymbol = `@${step.key.name}`;
+        const keyName = step.name.name;
+        missingSymbol = `@${keyName}`;
 
         /*
          * A namespace/mixin-call accessor is a callee result: `#ns.m[@key]`
@@ -4163,8 +4179,9 @@ function resolveReferenceResult(
          * A detached map with no caller binding has the same member spelling;
          * only a bound caller key is a dynamic detached-map lookup.
          */
-        matched = mapForKind(map, 'var').get(step.key.name) ?? lookupVarMember(map, step.key.name, e);
-      } else if (step.keyKind === 'var' && step.key.type === 'VarIndirect') {
+        matched = mapForKind(map, 'var').get(keyName) ?? lookupVarMember(map, keyName, e);
+      } else if (step.kind === 'var' && typeof step.name === 'object' && step.name.type === 'Lookup'
+        && step.name.kind === 'var' && typeof step.name.name === 'object') {
         /*
          * `[@@name]` is a map-variable indirection: evaluate only its first
          * lookup to obtain the member NAME, then read that named member from
@@ -4174,23 +4191,25 @@ function resolveReferenceResult(
          * its resulting bytes name a member of this map. The map owner can be a
          * root/detached closure while `@name` is an each/mixin-local binding.
          */
-        const name = stripOuterQuotes(evalBytesSync(step.key.nameRef, frame ?? valueFrame, e));
+        const name = stripOuterQuotes(evalBytesSync(step.name.name, frame ?? valueFrame, e));
         missingSymbol = `@${name}`;
         matched = mapForKind(map, 'var').get(name) ?? lookupVarMember(map, name, e);
-      } else if (step.keyKind === 'prop' && step.key.type === 'PropertyReference') {
-        missingSymbol = `$${step.key.name}`;
+      } else if (step.kind === 'prop' && typeof step.name === 'object' && step.name.type === 'Lookup'
+        && step.name.kind === 'prop' && typeof step.name.name === 'string') {
+        const propKey = step.name.name;
+        missingSymbol = `$${propKey}`;
 
         /*
          * In a map bracket, `$name` selects the property member named `name`.
          * It is not a `$name` read from the caller's declaration timeline.
          */
-        matched = map.byProp.get(step.key.name);
+        matched = map.byProp.get(propKey);
       } else {
-        const key = evalBytesSync(step.key as ValueNode, valueFrame, e);
-        missingSymbol = step.keyKind === 'var'
+        const key = evalBytesSync(step.name as ValueNode, valueFrame, e);
+        missingSymbol = step.kind === 'var'
           ? `@${key}`
-          : step.keyKind === 'prop' ? `$${key}` : key;
-        if (step.keyKind === 'member') {
+          : step.kind === 'prop' ? `$${key}` : key;
+        if (step.kind === 'member') {
           const prop = map.byProp.get(key);
           const variable = map.unified ? undefined : map.byVar.get(key) ?? lookupVarMember(map, key, e);
           if (prop && variable) {
@@ -4198,8 +4217,8 @@ function resolveReferenceResult(
           }
           matched = prop ?? variable;
         } else {
-          matched = mapForKind(map, step.keyKind).get(key);
-          if (!matched && step.keyKind === 'var') {
+          matched = mapForKind(map, step.kind === 'prop' ? 'prop' : 'var').get(key);
+          if (!matched && step.kind === 'var') {
             matched = lookupVarMember(map, key, e);
           }
         }
@@ -4209,10 +4228,10 @@ function resolveReferenceResult(
         }
       }
     } else {
-      if (typeof step.key !== 'number') {
+      if (typeof step.name !== 'number') {
         return null;
       }
-      const idx = step.key;
+      const idx = step.name;
       const i = idx < 0 ? map.list.length + idx : idx - 1;
       matched = map.list[i] ?? (idx === -1 && map.list.length === 0 ? lastVarMember(map, e) : undefined);
       if (!matched) {
@@ -4254,12 +4273,12 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
 function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undefined {
   let cur: Binding | undefined = node;
   const seen = new Set<Binding>();
-  while (cur !== undefined && !isValueSlotArray(cur) && cur.type === 'VariableReference') {
+  while (cur !== undefined && !isValueSlotArray(cur) && cur.type === 'Lookup' && cur.kind === 'var') {
     if (seen.has(cur)) {
       return undefined;
     } // cyclic
     seen.add(cur);
-    cur = lookupVar(frame, cur.name);
+    cur = lookupVar(frame, literalName(cur));
   }
   return cur;
 }
@@ -4281,7 +4300,7 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null): EvalValue |
      * Defined iff the single argument resolves to a bound value. A non-`VariableReference`
      * argument (a literal / call) is inherently defined.
      */
-    const bound = !isValueSlotArray(arg) && arg.type === 'VariableReference'
+    const bound = !isValueSlotArray(arg) && arg.type === 'Lookup' && arg.kind === 'var'
       ? resolveBindingNode(arg, frame)
       : arg;
     return literal(bound !== undefined ? 'true' : 'false');
@@ -4461,8 +4480,8 @@ function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): Ma
   }
   let binding: Binding = slot;
   let bindingFrame = frame;
-  if (!isValueSlotArray(slot) && slot.type === 'VariableReference') {
-    const hit = resolveVarRef(frame, slot.name, slot.lookup, e);
+  if (!isValueSlotArray(slot) && slot.type === 'Lookup' && slot.kind === 'var') {
+    const hit = resolveVarRef(frame, literalName(slot), slot.scope, e);
     if (hit) {
       binding = hit.value;
       bindingFrame = hit.frame;
@@ -4608,8 +4627,8 @@ function needsPluginRawArguments(args: readonly ValueSlot[], frame: Frame | null
     }
     let binding: Binding = arg;
     let bindingFrame = frame;
-    if (arg.type === 'VariableReference') {
-      const hit = resolveVarRef(frame, arg.name, arg.lookup, e);
+    if (arg.type === 'Lookup' && arg.kind === 'var') {
+      const hit = resolveVarRef(frame, literalName(arg), arg.scope, e);
       if (hit) {
         binding = hit.value;
         bindingFrame = hit.frame;
@@ -4995,10 +5014,10 @@ interface GroupInterp { branches: string[]; multi: boolean; capture: boolean }
  *  selector CAPTURE, or an escaped `~'…'` selector string with a top-level comma.
  *  Any other ref (a plain value, a comma-less string) is null. */
 function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupInterp | null {
-  if (ref.type !== 'VariableReference') {
+  if (ref.type !== 'Lookup' || ref.kind !== 'var') {
     return null;
   }
-  const hit = resolveVarRef(frame, ref.name, ref.lookup, e);
+  const hit = resolveVarRef(frame, literalName(ref), ref.scope, e);
   if (hit === undefined) {
     return null;
   }
@@ -5179,7 +5198,7 @@ function interpTokenSpelling(token: SimpleToken): string {
       continue;
     }
     const ref = part.ref;
-    out += !isValueSlotArray(ref) && ref.type === 'VariableReference' ? `@{${ref.name}}` : '@{…}';
+    out += !isValueSlotArray(ref) && ref.type === 'Lookup' && ref.kind === 'var' ? `@{${ref.name}}` : '@{…}';
   }
   return out;
 }
@@ -9654,8 +9673,8 @@ function resolveToMixinCall(node: Binding | undefined, frame: Frame | null): Mix
     if (cur.type === 'MixinCall') {
       return cur;
     }
-    if (cur.type === 'VariableReference') {
-      cur = lookupVar(frame, cur.name);
+    if (cur.type === 'Lookup' && cur.kind === 'var') {
+      cur = lookupVar(frame, literalName(cur));
       continue;
     }
     return undefined;
@@ -9683,8 +9702,8 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): Valu
     if (isValueBlock(cur)) {
       return cur;
     }
-    if (cur.type === 'VariableReference') {
-      const hit = lookupVarIn(cursor, cur.name);
+    if (cur.type === 'Lookup' && cur.kind === 'var') {
+      const hit = lookupVarIn(cursor, literalName(cur));
       cur = hit?.value;
       cursor = hit?.frame ?? cursor;
       continue;
@@ -9778,7 +9797,7 @@ function expandReferenceCall(
   }
   const resolved = resolveReferenceResult(call, frame, e);
   if (!resolved) {
-    if (call.base.type === 'VariableReference') {
+    if (call.base.type === 'Lookup' && call.base.kind === 'var') {
       unresolvedSymbol(call.base, `@${call.base.name}`, e);
     }
     return;
@@ -9913,8 +9932,8 @@ function resolveForRuleset(
     const binding = detachedBinding(frame, node);
     return { rules: valueBlockBody(node), frame: binding?.lexicalFrame ?? frame, detached: binding };
   }
-  if (node.type === 'VariableReference') {
-    const bound = lookupVar(frame, node.name);
+  if (node.type === 'Lookup' && node.kind === 'var') {
+    const bound = lookupVar(frame, literalName(node));
     if (!bound) {
       return null;
     }
@@ -9931,7 +9950,7 @@ function resolveForRuleset(
      * a `@map[k]` accessor (`@scheme: @color-schemes[@@name]; each(@scheme, …)` /
      * `@scheme[@color]`). Follow it through the same resolver.
      */
-    if (bound.type === 'VariableReference' || bound.type === 'Reference' || bound.type === 'Block') {
+    if (bound.type === 'Lookup' && bound.kind === 'var' || bound.type === 'Reference' || bound.type === 'Block') {
       return resolveForRuleset(bound, frame, e);
     }
     return null;
@@ -9963,8 +9982,8 @@ function resolveForNode(
       cur = cur.value;
       continue;
     }
-    if (cur.type === 'VariableReference') {
-      const hit = resolveVarRef(f, cur.name, cur.lookup, e);
+    if (cur.type === 'Lookup' && cur.kind === 'var') {
+      const hit = resolveVarRef(f, literalName(cur), cur.scope, e);
 
       /*
        * A mixin-CALL binding is not a plain list/scalar iterable node; stop at the
@@ -10313,14 +10332,14 @@ function dispatch(
    * for a block passed explicitly. Anything else falls through to byte resolution.
    */
   const resolveDefaultBlock = (v: ValueSlot, boundSoFar: Map<string, CallValue>, def: MixinDefinition): ValueSlot | undefined => {
-    if (isValueSlotArray(v) || v.type !== 'VariableReference') {
+    if (isValueSlotArray(v) || v.type !== 'Lookup' || v.kind !== 'var') {
       return undefined;
     }
     const home = homes?.get(def);
     const overlay: Frame = home && home !== frame
       ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
       : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
-    const bound = lookupVar(overlay, v.name);
+    const bound = lookupVar(overlay, literalName(v));
     return bound && !isValueSlotArray(bound) && isValueBlock(bound) ? bound : undefined;
   };
 
@@ -10434,8 +10453,8 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
      * wrap it as a detached ruleset whose body is that call, so `@another-mixin()`
      * dispatches it (its args resolve in the caller frame's runtime binding).
      */
-    if ('type' in a.value && a.value.type === 'VariableReference') {
-      const bound = lookupVar(frame, a.value.name);
+    if ('type' in a.value && a.value.type === 'Lookup' && a.value.kind === 'var') {
+      const bound = lookupVar(frame, literalName(a.value));
       if (bound && !isValueSlotArray(bound) && isValueBlock(bound)) {
         changed = true;
         return { ...a, value: bound };
@@ -11924,20 +11943,21 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
       }
       return joinPreludeParts(parts);
     }
-    case 'VariableReference': {
-      const hit = resolveVarRef(frame, node.name, node.lookup, e);
-      if (!hit) {
-        if (hasExcludedVarRef(frame, node.name, node.lookup, e)) {
-          recursiveReference(node, `@${node.name}`, 'Variable', e);
+    case 'Lookup':
+      return mapMaybe(lookupName(node, frame, e), (nm) => {
+        const hit = resolveVarRef(frame, nm, node.scope, e);
+        if (!hit) {
+          if (hasExcludedVarRef(frame, nm, node.scope, e)) {
+            recursiveReference(node, `@${nm}`, 'Variable', e);
+          }
+          return evalBytes(node, frame, e);
         }
-        return evalBytes(node, frame, e);
-      }
-      const value = hit.value;
-      if (isMixinCallValue(value)) {
-        return evalBytes(node, frame, e);
-      }
-      return withExcluded(e, value, () => evalQueryPrelude(value, hit.frame, e));
-    }
+        const value = hit.value;
+        if (isMixinCallValue(value)) {
+          return evalBytes(node, frame, e);
+        }
+        return withExcluded(e, value, () => evalQueryPrelude(value, hit.frame, e));
+      });
     case 'Reference': {
       const resolved = resolveReferenceResult(node, frame, e);
       if (resolved === null || isMixinCallValue(resolved.value)) {

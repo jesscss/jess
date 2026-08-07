@@ -33,7 +33,7 @@ import type {
   Dimension,
   SpacedValue,
   List,
-  VariableReference,
+  Lookup,
   MixinDefinition,
   MixinCall,
   VariableDeclaration,
@@ -44,14 +44,11 @@ import type {
   Block,
   Interpolation,
   GeneralEnclosed,
-  VarIndirect,
   AnonymousMixin,
   Collection,
   CollectionEntry,
-  DeclarationReference,
   Reference,
   Range,
-  PropertyReference,
   For,
   If,
   StyleImport,
@@ -66,10 +63,10 @@ import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plu
 export type NodeType =
   | 'Stylesheet' | 'Ruleset' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'ComplexSelector' | 'RelativeSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
-  | 'SpacedValue' | 'List' | 'VariableReference' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
+  | 'SpacedValue' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
   | 'Sequence' | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition' | 'Assignment'
-  | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation' | 'GeneralEnclosed' | 'VarIndirect'
-  | 'AnonymousMixin' | 'Collection' | 'CollectionEntry' | 'DeclarationReference' | 'Reference' | 'Range' | 'PropertyReference' | 'For' | 'If' | 'StyleImport' | 'ModuleImport' | 'RawInline';
+  | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation' | 'GeneralEnclosed'
+  | 'AnonymousMixin' | 'Collection' | 'CollectionEntry' | 'Reference' | 'Range' | 'For' | 'If' | 'StyleImport' | 'ModuleImport' | 'RawInline';
 
 /** Combinator between two compounds in a complex selector. `|` is the CSS
  * namespace separator (tight, no spaces: `foo|h1`); `||` is the column
@@ -89,10 +86,10 @@ export function renderCombinator(comb: Combinator): string {
  */
 export type Node =
   | Stylesheet | Ruleset | Declaration | Comment | SelectorList | ComplexSelector | RelativeSelector | CompoundSelector
-  | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | VariableReference | MixinDefinition | MixinCall
+  | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | Lookup | MixinDefinition | MixinCall
   | VariableDeclaration | Sequence | Important | Operation | FunctionCall | Block | Condition | Assignment
-  | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | GeneralEnclosed | VarIndirect | AnonymousMixin | Collection
-  | CollectionEntry | DeclarationReference | Reference | Range | PropertyReference | For | If | StyleImport | ModuleImport | RawInline;
+  | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | GeneralEnclosed | AnonymousMixin | Collection
+  | CollectionEntry | Reference | Range | For | If | StyleImport | ModuleImport | RawInline;
 
 /**
  * The frozen set of the structural `type` strings — the membership basis for
@@ -112,10 +109,10 @@ export type Node =
 export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Stylesheet', 'Ruleset', 'Declaration', 'Comment', 'SelectorList',
   'ComplexSelector', 'RelativeSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
-  'SpacedValue', 'List', 'VariableReference', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
+  'SpacedValue', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
   'Sequence', 'Important', 'Operation', 'FunctionCall', 'Block', 'Condition', 'Assignment',
-  'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation', 'GeneralEnclosed', 'VarIndirect',
-  'AnonymousMixin', 'Collection', 'CollectionEntry', 'DeclarationReference', 'Reference', 'Range', 'PropertyReference', 'For', 'If', 'StyleImport', 'ModuleImport', 'RawInline'
+  'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation', 'GeneralEnclosed',
+  'AnonymousMixin', 'Collection', 'CollectionEntry', 'Reference', 'Range', 'For', 'If', 'StyleImport', 'ModuleImport', 'RawInline'
 ]);
 
 /** Value predicate for a tree2 AST node (replaces the old `x instanceof Node`). */

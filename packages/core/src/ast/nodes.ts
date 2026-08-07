@@ -145,39 +145,55 @@ export interface List {
 /** The binding store a variable operation addresses. */
 export type VariableLookup = 'live' | 'scoped';
 
-/** A reference to a mixin parameter / bound variable. */
-export interface VariableReference extends SpanSlots {
-  readonly type: 'VariableReference';
-  readonly name: string;
+/**
+ * WHAT a lookup looks for. Previously this fact was encoded four different ways
+ * — a field on one node (`BracketLookup.keyKind`), the node TYPE on three
+ * (`VariableReference`=var, `PropertyReference`=prop, `MixinCall`=mixin), and
+ * ABSENT on `DotLookup`, which is why "what is being looked up" there looked
+ * like a semantic problem instead of a missing slot.
+ */
+export type LookupKind = 'var' | 'prop' | 'mixin' | 'entry' | 'index' | 'member';
+
+/**
+ * A reference: WHERE you look (`scope`), WHAT kind of thing you look for
+ * (`kind`), WHICH name (`name`), and the verbatim fallback spelling (`raw`).
+ *
+ * Carried as FLAT FIELDS rather than a nested object on purpose. A bare `$name`
+ * is the hottest reference shape in any stylesheet, and routing every one
+ * through a container — or through a descriptor sub-object — is an allocation
+ * regression the perf invariants reject. Flat is fine; what is NOT fine is each
+ * reference node inventing its own private spelling of `scope` and `kind`,
+ * which is how eight kinds came to encode three facts twelve ways.
+ *
+ * `name` admits a NODE, not just a string. That is what retires `VarIndirect`
+ * (`@@name`), which existed only because a name could not be a node.
+ */
+export interface Lookup extends SpanSlots {
+  readonly type: 'Lookup';
 
   /** `$name` reads `live`; `$^name` and Less `@name` read `scoped`. */
-  readonly lookup: VariableLookup;
-}
+  readonly scope: VariableLookup;
 
-/**
- * A reference to the current declaration-entry surface. Dot steps on this base
- * resolve a member name against both CSS property declarations and variable
- * declarations; a same-name hit in both namespaces is ambiguous.
- */
-export interface DeclarationReference extends SpanSlots {
-  readonly type: 'DeclarationReference';
-  readonly raw: string;
-}
+  /**
+   * `var` — a mixin param / bound variable.
+   * `prop` — a Less property accessor: the CURRENT value of the CSS property
+   *   `name` in the enclosing declaration scope, last-wins and cascading up the
+   *   ruleset chain, carrying the source declaration's `!important`.
+   * `entry` — the current declaration-entry surface; `name` is empty, and dot
+   *   steps on it resolve against both CSS property and variable declarations.
+   */
+  readonly kind: LookupKind;
 
-/**
- * A property accessor `$name` (Less "property accessors"): reads the CURRENT value
- * of the CSS property `name` from the enclosing declaration scope — last-wins, and
- * cascading up the ruleset chain (`$color` inside a nested rule reads the parent
- * ruleset's final `color`). The resolved value carries the source declaration's
- * `!important` flag (`$color` of `color: red !important` → `red !important`).
- * `raw` is the verbatim source (`$name`) emitted as a literal fallback when the
- * property is not resolvable in the current ast/ scope (e.g. it would only exist
- * after a not-yet-modelled expansion), so an unresolved accessor never regresses
- * below its prior verbatim output.
- */
-export interface PropertyReference extends SpanSlots {
-  readonly type: 'PropertyReference';
-  readonly name: string;
+  /** A literal name, or the node whose resolved bytes NAME the target (`@@x`). */
+  readonly name: string | ValueNode;
+
+  /**
+   * The verbatim source, emitted as a literal fallback when the target does not
+   * resolve in the current ast/ scope — so an unresolved accessor never
+   * regresses below its prior verbatim output. One field, where
+   * `PropertyReference`, `DeclarationReference` and `Reference` each carried
+   * their own.
+   */
   readonly raw: string;
 }
 
@@ -326,19 +342,6 @@ export interface GeneralEnclosed {
 }
 
 /**
- * Indirect variable `@@name`: a variable whose NAME is the resolved bytes
- * of another value node (`@name: var; x: @@name` → the value of `@var`). Two-step
- * `VariableReference` — no braces, no quote-strip.
- */
-export interface VarIndirect extends SpanSlots {
-  readonly type: 'VarIndirect';
-  readonly nameRef: ValueNode;
-
-  /** Lookup mode for the variable named by `nameRef`. */
-  readonly lookup: VariableLookup;
-}
-
-/**
  * An anonymous mixin value `@rs: { … }` / `$x: { … }`: an executable block bound
  * to a value, callable (`@rs()`) to splice its rules at the call site. Unlike a
  * {@link Collection} (a data map), its rules CAN contain rulesets, at-rules, and
@@ -408,19 +411,27 @@ export const valueBlockBody = (n: ValueBlock): Statement[] =>
   n.rules;
 
 /** One typed step in a left-associated {@link Reference} chain. */
-export type ReferenceStep = DotLookup | BracketLookup | ReferenceCall;
+export type ReferenceStep = LookupStep | ReferenceCall;
 
-/** A named member lookup following a reference. */
-export interface DotLookup {
-  readonly type: 'DotLookup';
-  readonly name: string;
-}
+/**
+ * ONE lookup step following a reference — what `DotLookup` and `BracketLookup`
+ * used to be. They were never two things: a dot step and a bracket step differ
+ * only in the SPELLING the dialect gives the same three facts, and spelling is
+ * the parser's business, not the AST's. Splitting them is what left `DotLookup`
+ * with no `kind` field at all, so "what is being looked up" had nowhere to live
+ * and read as a semantic problem instead of an absent slot.
+ *
+ * Carries the same `kind`/`name` descriptor as {@link Lookup}; only `scope`
+ * differs, because a step's scope IS its base — the preceding link in the chain.
+ */
+export interface LookupStep {
+  readonly type: 'LookupStep';
 
-/** A bracket lookup. `keyKind` carries the dialect's lookup namespace. */
-export interface BracketLookup {
-  readonly type: 'BracketLookup';
-  readonly key: ValueNode | number;
-  readonly keyKind: 'var' | 'prop' | 'index' | 'member';
+  /** The dialect's lookup namespace for this step. */
+  readonly kind: LookupKind;
+
+  /** A literal member name, a computed key node, or a numeric index. */
+  readonly name: string | ValueNode | number;
 
   /** Explicit dialect indexing convention; omitted preserves the historical 1-based map index. */
   readonly indexBase?: 0 | 1;
@@ -474,9 +485,7 @@ export type ValueNode =
   | Dimension
   | SpacedValue
   | List
-  | VariableReference
-  | DeclarationReference
-  | PropertyReference
+  | Lookup
   | Sequence
   | Important
   | Operation
@@ -486,7 +495,6 @@ export type ValueNode =
   | Assignment
   | Interpolation
   | GeneralEnclosed
-  | VarIndirect
   | AnonymousMixin
   | Collection
   | Reference
@@ -1217,7 +1225,6 @@ export const generalEnclosed = (
   name: string | null,
   content: Interpolation
 ): GeneralEnclosed => ({ type: 'GeneralEnclosed', form, name, content });
-export const varIndirect = (nameRef: ValueNode, lookup: VariableLookup): VarIndirect => ({ type: 'VarIndirect', nameRef, lookup, _s: NO_SPAN, _e: NO_SPAN });
 export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
   params === undefined ? { type: 'AnonymousMixin', rules } : { type: 'AnonymousMixin', rules, params };
 
@@ -1259,7 +1266,9 @@ export const reference = (
   steps: readonly ReferenceStep[],
   raw: string
 ): Reference => ({ type: 'Reference', base, steps, raw, _s: NO_SPAN, _e: NO_SPAN });
-export const propertyReference = (name: string, raw: string = `$${name}`): PropertyReference => ({ type: 'PropertyReference', name, raw, _s: NO_SPAN, _e: NO_SPAN });
+/** A Less property accessor `$name` — {@link Lookup} of kind `prop`. */
+export const propertyReference = (name: string, raw: string = `$${name}`): Lookup =>
+  ({ type: 'Lookup', scope: 'scoped', kind: 'prop', name, raw, _s: NO_SPAN, _e: NO_SPAN });
 
 /** A compound from an already-built list of simple tokens. */
 export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => ({ type: 'CompoundSelector', value, _s: NO_SPAN, _e: NO_SPAN });
@@ -1347,9 +1356,17 @@ export const comment = (text: string): Comment => ({ type: 'Comment', text, _s: 
  * `media` (optional) wraps the splice in an `@media <media> { … }` block. */
 export const rawInline = (text: string, media?: string | null): RawInline =>
   media != null ? { type: 'RawInline', text, media } : { type: 'RawInline', text };
-export const variableReference = (name: string, lookup: VariableLookup): VariableReference =>
-  ({ type: 'VariableReference', name, lookup, _s: NO_SPAN, _e: NO_SPAN });
-export const declarationReference = (raw: string = '$'): DeclarationReference => ({ type: 'DeclarationReference', raw, _s: NO_SPAN, _e: NO_SPAN });
+/** A bound-variable reference — {@link Lookup} of kind `var`. `name` may be a
+ *  NODE, which is how `@@indirect` is spelled now that it needs no own kind. */
+export const variableReference = (name: string | ValueNode, lookup: VariableLookup, raw?: string): Lookup =>
+  ({ type: 'Lookup', scope: lookup, kind: 'var', name, raw: raw ?? (typeof name === 'string' ? `@${name}` : ''), _s: NO_SPAN, _e: NO_SPAN });
+/** The current declaration-entry surface — {@link Lookup} of kind `entry`. */
+export const declarationReference = (raw: string = '$'): Lookup =>
+  ({ type: 'Lookup', scope: 'scoped', kind: 'entry', name: '', raw, _s: NO_SPAN, _e: NO_SPAN });
+
+/** One lookup step in a {@link Reference} chain (dot or bracket — one node). */
+export const lookupStep = (kind: LookupKind, name: string | ValueNode | number, indexBase?: 0 | 1): LookupStep =>
+  indexBase === undefined ? { type: 'LookupStep', kind, name } : { type: 'LookupStep', kind, name, indexBase };
 export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
 export const important = (value: ValueSlot): Important => ({ type: 'Important', value });
 
