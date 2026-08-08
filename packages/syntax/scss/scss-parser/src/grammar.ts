@@ -899,6 +899,30 @@ function mapKeyValue(node: ValueNode): ValueSlot {
   return valueSlot(node);
 }
 
+/**
+ * The SCSS condition lowering (§4.4.2): `@if $x` means
+ * `$if(not(($x == false) or ($x == null)))`.
+ *
+ * Sass is falsy for `false` and `null` ONLY — `0`, `""` and `()` are all
+ * truthy there — so the dialect states its own rule in plain `.jess` rather
+ * than sharing `.jess`'s truth node, whose emptiness rule (§4.4) deliberately
+ * diverges. That is what keeps `.scss` -> `.jess` -> `.css` reachable.
+ *
+ * Each comparison is its own `cmp` because a bare comparison is not an
+ * `and`/`or` operand (§4.5.4), and `==` is load-bearing: under the loose `=`,
+ * `0 = null` grounds numerically and `0` would come out falsy.
+ */
+function scssTruth(value: ValueSlot): GuardNode {
+  return {
+    g: 'not',
+    inner: {
+      g: 'or',
+      left: { g: 'cmp', op: '==', left: value, right: keyword('false') },
+      right: { g: 'cmp', op: '==', left: value, right: keyword('null') }
+    }
+  };
+}
+
 function isGuardNode(value: unknown): value is GuardNode {
   if (typeof value !== 'object' || value === null || !('g' in value)) {
     return false;
@@ -3110,9 +3134,10 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * SCSS conditionals use the canonical If/GuardNode. Bare truthiness is
-   * deliberately still held because the current truth node has Less's exact-
-   * true behavior; comparisons have their own existing typed evaluator path.
+   * SCSS conditionals use the canonical If/GuardNode, and BARE truthiness is
+   * admitted through the §4.4.2 lowering below — the hold lifted with the
+   * semantics, never before it, because widening the grammar alone would not
+   * fail, it would silently take the wrong branch.
    */
   const scssTrueKeyword = regex(/true(?![-_a-zA-Z0-9\u0080-\uffff])/i);
   const scssFalseKeyword = regex(/false(?![-_a-zA-Z0-9\u0080-\uffff])/i);
@@ -3144,22 +3169,34 @@ const scssFactory = (g: ScssInputRules) => {
   const IfAtom = node<GuardNode>(
     'IfAtom',
     choice(
+
+      /*
+       * The comparison arm goes FIRST now that a bare value is an atom.
+       * `(1 + 2) * 3 == 9` opens with a paren, and with a bare operand admitted
+       * the grouped arm would otherwise match `(1 + 2)` as a whole condition,
+       * commit, and leave `* 3 == 9` unconsumed. Trying the comparison first
+       * keeps the grouped arm for what it is actually for — `(a) and (b)`,
+       * where the head is not a comparison operand.
+       */
+      g.IfComparison,
       sequence(
         literal('('),
         g.IfCondition,
         literal(')')
       ),
-      g.IfComparison,
       scssTrueKeyword,
-      scssFalseKeyword
+      scssFalseKeyword,
+      g.MathTopSum
     ),
     (children) => {
       const nested = children.find((child): child is GuardNode => typeof child === 'object' && child !== null && 'g' in child);
       if (nested !== undefined) {
         return nested;
       }
-      const token = requireToken(children[0]).value.toLowerCase();
-      return { g: 'truth', value: keyword(token) };
+      const value = children.find(isValue);
+      return value === undefined
+        ? { g: 'truth', value: keyword(requireToken(children[0]).value.toLowerCase()) }
+        : scssTruth(value);
     }
   );
   const IfTerm = node<GuardNode>(

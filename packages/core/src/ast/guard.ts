@@ -8,10 +8,11 @@
  * STRUCTURE + operand byte emission, the evaluator owns the MATH).
  *
  * This module owns the whole boolean STRUCTURE:
- *   - `and` / `or` are combined here (over leaf booleans),
+ *   - `and` / `or` are combined here (over leaf booleans), SHORT-CIRCUITING,
  *   - `not` negates here,
- *   - truthiness (`when (@a)`, `when (true)`) is a pure byte test here
- *     (Less: a bare value guard is true iff it evaluates to the keyword `true`),
+ *   - truthiness (`$if($a)`) is one TYPED predicate here — `.jess`'s §4.4 rule,
+ *     falsy iff `false` / `null` / `""` / `()`; the dialects lower their own
+ *     condition to comparisons instead (§4.4.2) and never reach it,
  *   - `default()` is a DISPATCH decision owned here (true iff no other def
  *     matched), supplied to `evalGuard` as a callback.
  * Only `cmp` (a comparison like `@a > 0`) and `call` (a boolean function like
@@ -20,8 +21,9 @@
 
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { ValueSlot } from './nodes.js';
-import { emitValue, type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
+import { type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { makeList } from './value-factory.js';
+import { isTruthy } from './value-truth.js';
 
 /** A guard condition tree. Never serialized to CSS — evaluated to a boolean. */
 export type GuardNode =
@@ -73,27 +75,35 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
     case 'and':
     case 'or': {
       /*
-       * Both operands are evaluated (a guard is side-effect-free, and this
-       * preserves the existing evaluation order exactly); only the COMBINE waits.
+       * SHORT-CIRCUIT (O-TRUTH-2, RESOLVED). The right operand is not evaluated
+       * once the left decides the answer. An earlier version evaluated both, on
+       * the premise that a guard is side-effect-free — true for Less, FALSE for
+       * Sass, where the right operand may RAISE:
+       *
+       *   unitMode: 'strict'
+       *   @if false and (2px > 1em)   ->  the RHS must never be reached
+       *
+       * For Less this only ever makes FEWER things raise, so it is safe there.
+       * The walk stays synchronous whenever the left operand is, so a settled
+       * guard never gains a microtask hop.
        */
+      const decided = node.g === 'and' ? false : true;
       const l = evalGuard(node.left, deps);
-      const r = evalGuard(node.right, deps);
-      const join = node.g === 'and'
-        ? (a: boolean, b: boolean) => a && b
-        : (a: boolean, b: boolean) => a || b;
-      return isThenable(l) || isThenable(r)
-        ? Promise.all([l, r]).then(([a, b]) => join(a, b))
-        : join(l, r);
+      const rest = (a: boolean): MaybePromise<boolean> => a === decided ? decided : evalGuard(node.right, deps);
+      return isThenable(l) ? l.then(rest) : rest(l);
     }
     case 'not': {
       const inner = evalGuard(node.inner, deps);
       return isThenable(inner) ? inner.then(value => !value) : !inner;
     }
     case 'truth': {
-      // Less: a bare-value guard is true only if it evaluates to `true`.
+      /*
+       * `.jess` truthiness (§4.4): falsy iff `false`, `null`, `""` or `()`.
+       * ONE typed predicate over the materialized value — never a byte test.
+       * The dialects do not arrive here: they lower to comparisons (§4.4.2).
+       */
       const value = deps.resolveTyped(node.value);
-      const test = (v: ValueGroup): boolean => emitValue(v).trim() === 'true';
-      return isThenable(value) ? value.then(test) : test(value);
+      return isThenable(value) ? value.then(isTruthy) : isTruthy(value);
     }
     case 'cmp': {
       const ev = deps.ev;

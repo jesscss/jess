@@ -188,7 +188,7 @@ describe('OPERATIONS §4.2 — relational is trichotomous', () => {
     await expect(value('$(1in > 1cm)')).resolves.toBe('true');
   });
 
-  it.fails('PENDING phase 3 — string ground is lexicographic, so `a > b` and `b > a` are not BOTH false (rows t, u)', async () => {
+  it('string ground is lexicographic, so `a > b` and `b > a` are not BOTH false (rows t, u)', async () => {
     /*
      * Row `u` is the amendment of §4.2. lessc 4.6.3 answers `false` to both,
      * which is the clearest case in the document where an engine's behaviour is
@@ -201,7 +201,7 @@ describe('OPERATIONS §4.2 — relational is trichotomous', () => {
     await expect(value('$("a" > "b")')).resolves.toBe('false');
   });
 
-  it.fails('PENDING phase 3 — with no common ground, relational ERRORS — unlike equality', async () => {
+  it('with no common ground, relational ERRORS — unlike equality', async () => {
     await expect(value('$(1px > red)')).rejects.toThrow();
   });
 });

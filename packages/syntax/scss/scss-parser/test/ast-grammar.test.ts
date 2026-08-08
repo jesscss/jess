@@ -222,19 +222,24 @@ describe('SCSS canonical-AST grammar', () => {
     expect(serialize(stylesheet(result.value))).toEqual({ css: '@media screen {\n  .inside {\n    color: green;\n  }\n}\n' });
   });
 
-  it('rejects unmodelled @if conditions and body forms instead of borrowing eval or legacy parsing', () => {
+  it('admits a bare value as an @if condition, lowered to the Sass truthiness rule', () => {
+    /*
+     * `@if $enabled` / `@if feature()` are truthiness on the VALUE, valid Sass.
+     * The grammar hold lifted with the semantics (§4.4.2, phase 5), and the bare
+     * operand lowers to `not(($x == false) or ($x == null))` — Sass's own rule,
+     * falsy for `false` and `null` only, written in plain `.jess`.
+     */
     for (const source of [
       '@if $enabled { .a { color: green; } }',
       '@if feature() { .a { color: green; } }'
     ]) {
-      let accepted = false;
-      try {
-        const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-        accepted = result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
-      } catch {
-        accepted = false;
-      }
-      expect(accepted, source).toBe(false);
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+
+      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
+      expect(stylesheet(result.value).rules[0], source).toMatchObject({
+        type: 'If',
+        branches: [{ guard: { g: 'not', inner: { g: 'or', left: { g: 'cmp', op: '==' }, right: { g: 'cmp', op: '==' } } } }]
+      });
     }
   });
 

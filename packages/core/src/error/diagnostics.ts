@@ -685,6 +685,20 @@ export const ERR = {
   },
 
   /**
+   * A RELATIONAL comparison whose operands share no common ground (`1px > red`).
+   * Relational is trichotomous over every grounded pair, so the alternative is
+   * answering `false` to both `a > b` and `b > a` — which is what the author
+   * cannot distinguish from a genuine "not greater".
+   */
+  incomparableOperands(args: Common & { meta: { reason: string } }) {
+    return makeJessError({
+      code: 'eval/incomparable-operands',
+      phase: 'eval',
+      ...args
+    });
+  },
+
+  /**
    * A value resolved asynchronously in one of the few positions still confined
    * to the synchronous lane. A real limitation, not a wrong answer: it names the
    * position and the site rather than silently picking a branch.

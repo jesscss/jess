@@ -95,6 +95,10 @@ type FunctionConditionFact = {
   readonly src: string;
   readonly grouped: boolean;
   readonly hasComparison: boolean;
+
+  /** The operand a BARE condition was built from, kept so a following comparison
+   *  operator can reclaim it rather than unpick the {@link lessTruth} lowering. */
+  readonly bare?: ValueNode;
 };
 type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
 type SlashBoundaryFact = { readonly before: string; readonly after: string };
@@ -1889,6 +1893,22 @@ function mixinCallArgsFromInterior(interior: MixinInteriorFact): MixinCallArgume
   });
 }
 
+/**
+ * The LESS condition lowering (§4.4.2): `when (@x)` means `$if($x == true)`.
+ *
+ * Less's bare condition asks "is this literally the boolean `true`" — `0`,
+ * `"a"`, `red` and `"true"` are all false — which is a DIFFERENT question from
+ * `.jess`'s `$if($x)` (falsy iff `false` / `null` / `""` / `()`, §4.4). So the
+ * dialect states its own meaning in plain `.jess` here rather than sharing the
+ * truth node, which is what makes `.less` -> `.jess` -> `.css` reachable.
+ *
+ * `==` is load-bearing: with the loose `=` a `"true"` string would ground
+ * against `true` and come out TRUE, which Less says it is not.
+ */
+function lessTruth(value: ValueNode): MixinGuard {
+  return { g: 'cmp', op: '==', left: value, right: keyword('true') };
+}
+
 function isMixinGuard(value: unknown): value is MixinGuard {
   return typeof value === 'object' && value !== null && 'g' in value
     && (value.g === 'cmp' || value.g === 'and' || value.g === 'or' || value.g === 'not'
@@ -3002,8 +3022,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const nested = children.filter(isFunctionConditionFact);
       const values = children.filter(isValueNode);
       const operator = children.map(guardOperatorText).find((value): value is string => value !== null)?.trim();
-      const left = nested[0] ?? (values[0] === undefined ? undefined : { guard: { g: 'truth' as const, value: values[0] }, src: functionConditionSource(values[0]), grouped: false, hasComparison: false });
-      const right = nested[1] ?? (values.length > 1 && values[1] !== undefined ? { guard: { g: 'truth' as const, value: values[1] }, src: functionConditionSource(values[1]), grouped: false, hasComparison: false } : undefined);
+      const left = nested[0] ?? (values[0] === undefined ? undefined : { guard: lessTruth(values[0]), src: functionConditionSource(values[0]), grouped: false, hasComparison: false, bare: values[0] });
+      const right = nested[1] ?? (values.length > 1 && values[1] !== undefined ? { guard: lessTruth(values[1]), src: functionConditionSource(values[1]), grouped: false, hasComparison: false, bare: values[1] } : undefined);
       if (left === undefined) {
         throw new TypeError('Less function condition term lost its left operand.');
       }
@@ -3019,8 +3039,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         if (nested.length === 0 && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === 'not')) {
           throw new TypeError('Less function condition `not` requires a grouped condition operand.');
         }
-        const leftValue = left.guard.g === 'truth' ? left.guard.value : condition(left.guard, left.src);
-        const rightValue = right.guard.g === 'truth' ? right.guard.value : condition(right.guard, right.src);
+        const leftValue = left.bare ?? condition(left.guard, left.src);
+        const rightValue = right.bare ?? condition(right.guard, right.src);
         guard = { g: 'cmp', op: operator, left: leftValue, right: rightValue };
         src = `${left.src} ${operator} ${right.src}`;
       }
@@ -4269,7 +4289,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           } else if (call !== null) {
             guard = { g: 'call', name: call.name, args: call.args.map(requireValueNode) };
           } else {
-            guard = { g: 'truth', value: left };
+            guard = lessTruth(left);
           }
         } else {
           const right = values[1];

@@ -5,9 +5,30 @@
  *
  * HARD MODULE BOUNDARY: imports only the value domain + the shared units table.
  */
-import { UnitArithmeticError, isValueGroupArray, type Dimension, type ValueGroup, type Value } from './value-eval.js';
+import {
+  IncomparableOperandsError,
+  UnitArithmeticError,
+  isValueGroupArray,
+  type Dimension,
+  type ValueGroup,
+  type Value
+} from './value-eval.js';
 import { unify } from './value-units.js';
 import type { EqualityMode, UnitMode } from '../types/modes.js';
+
+/**
+ * §4.1's last row: the operand pair shares NO common ground (`1px > red`).
+ *
+ * Distinct from `undefined`, which means "there IS a ground and the pair is not
+ * ORDERED on it" (`2px > 1em` outside strict units, two unequal colours, two
+ * unequal lists). Equality collapses the two — both are `false` — but relational
+ * does not: §4.2 makes it trichotomous over every grounded pair, so a pair with
+ * no ground must ERROR rather than answer meaninglessly.
+ */
+const NO_GROUND = Symbol('no-common-ground');
+
+/** A 3-way comparison outcome: ordered, unordered-on-a-ground, or {@link NO_GROUND}. */
+type Compared = -1 | 0 | 1 | undefined | typeof NO_GROUND;
 
 /** `Node.numericCompare`: EPSILON-fuzzed 3-way compare (float-precision tolerant). */
 const numericCompare = (a: number, b: number): -1 | 0 | 1 =>
@@ -79,52 +100,76 @@ function hasCompare(v: Value): boolean {
 }
 
 /** A single operand's OWN `.compare(other)` (less.js per-type methods). */
-function selfCompare(a: Value, b: Value, equalityMode: EqualityMode, unitMode: UnitMode | undefined): -1 | 0 | 1 | undefined {
+function selfCompare(a: Value, b: Value, equalityMode: EqualityMode, unitMode: UnitMode | undefined): Compared {
   switch (a.type) {
     case 'Dimension':
-      return b.type === 'Dimension' ? dimensionCompare(a, b, equalityMode, unitMode) : undefined;
+      return b.type === 'Dimension' ? dimensionCompare(a, b, equalityMode, unitMode) : noGround(a, b);
     case 'Color':
-      // rgb + alpha equality only (no ordering).
-      return b.type === 'Color'
-        && b.rgb[0] === a.rgb[0] && b.rgb[1] === a.rgb[1] && b.rgb[2] === a.rgb[2]
-        && b.alpha === a.alpha
+      // rgb + alpha equality only (no ordering) — a colour ground, never an order.
+      if (b.type !== 'Color') {
+        return noGround(a, b);
+      }
+      return b.rgb[0] === a.rgb[0] && b.rgb[1] === a.rgb[1] && b.rgb[2] === a.rgb[2] && b.alpha === a.alpha
         ? 0
         : undefined;
     case 'Quoted':
       /*
        * Two unescaped quoted strings compare LEXICALLY by contents (quote char
-       * ignored); otherwise fall back to a symmetric `toCSS` equality.
+       * ignored); against anything else the pair takes §4.1's STRING ground and
+       * compares each operand's own spelling — ORDERED, not equality-only. The
+       * ground belongs to the PAIR, so `>` must find the same one `=` does.
        */
       return b.type === 'Quoted' && !a.escaped && !b.escaped
         ? primCompare(a.value, b.value)
-        : toCssStr(a) === toCssStr(b) ? 0 : undefined;
+        : primCompare(toCssStr(a), toCssStr(b));
     default:
       return undefined;
   }
 }
 
-const negate = (c: -1 | 0 | 1 | undefined): -1 | 0 | 1 | undefined => {
-  if (c === undefined) {
-    return undefined;
+const negate = (c: Compared): Compared => {
+  if (c === undefined || c === NO_GROUND) {
+    return c;
   }
   return c === -1 ? 1 : c === 1 ? -1 : 0;
 };
 
 /**
+ * Kinds that are never the no-ground half of a cross-kind pair.
+ *
+ * §4.1 fixes the ground on the PAIR, never on the operator, so this predicate is
+ * the whole of what relational and equality disagree about: they read the same
+ * ground and only differ in what they do with it.
+ *
+ *  - `Any` is opaque UNQUOTED bytes — `e("4")`, and `~"4"`, which
+ *    `serialize.ts` now lowers here rather than to a `Keyword`. §4.1's row 2 is
+ *    "either side quoted → string ground: compare the other operand's OWN
+ *    spelling", and that is what `toCssStr` yields for it. So `3 = ~"3"` is true
+ *    AND `5 > ~"4"` is true, from ONE ground.
+ *  - `Nil` grounds NUMERICALLY against a number (§4.1, `null` → `0`). Adopting
+ *    that ground outright is phase 4's — it moves `null = 0` from false to true,
+ *    and equality is not this phase's to change — and reporting the pair
+ *    unordered already gives §4.2's answer for `null > 1`, which is `false`.
+ *
+ * A `Keyword` is deliberately NOT here. It is a bare identifier, not a string:
+ * §4.1's last row gives `1px > red` and `1 < true` no ground at all, which is
+ * §4.2's error row. That is the ONE distinction lost when `~"4"` lowered to a
+ * `Keyword` — it made an unquoted string and an identifier the same operand.
+ */
+const noGround = (a: Value, b: Value): Compared =>
+  a.type === 'Nil' || b.type === 'Nil' ? undefined : NO_GROUND;
+
+/**
  * Faithful port of less.js `Node.compare(a, b)` over materialized operands:
  *  - a typed operand's own `.compare` wins UNLESS the other side is a quoted
  *    string (then a symmetric `toCSS` comparison is forced for stable results),
- *  - differing structural types are INCOMPARABLE (`undefined`),
- *  - same-type scalars are equal iff their values match; lists compare
- *    element-wise (same separator, length, and recursively-equal items).
+ *  - differing structural kinds share NO GROUND (§4.1's last row),
+ *  - same-kind scalars compare LEXICOGRAPHICALLY on their own spelling; lists
+ *    compare element-wise (same separator, length, and recursively-equal items).
  */
-function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: UnitMode | undefined): -1 | 0 | 1 | undefined {
+function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: UnitMode | undefined): Compared {
   /*
-   * Less compares escaped/raw bytes (`~"…"` as Keyword, `e("…")` as
-   * Any) against a typed comparable by emitted CSS bytes. Thus `3 = ~"3"`
-   * and `3 = e("3")` are true even though the operands have different value
-   * kinds. Keep this narrow to raw/keyword cross-kind equality; ordinary quoted
-   * strings retain their quote bytes and therefore remain unequal.
+   * Sass unquotes a keyword against a quoted string for EQUALITY only.
    */
   if (equalityMode === 'sass') {
     const quoted = a.type === 'Quoted' ? a : b.type === 'Quoted' ? b : null;
@@ -133,11 +178,19 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: 
       return 0;
     }
   }
-  if (equalityMode === 'less'
-    && (hasCompare(a) || hasCompare(b))
-    && (a.type === 'Keyword' || b.type === 'Keyword' || a.type === 'Any' || b.type === 'Any')
-    && toCssStr(a) === toCssStr(b)) {
-    return 0;
+
+  /*
+   * STRING GROUND (§4.1 row 2), taken by the PAIR before any typed dispatch: an
+   * opaque unquoted operand (`e("4")`, `~"4"`) against anything compares each
+   * side's OWN spelling, LEXICOGRAPHICALLY.
+   *
+   * This replaces an equality-only byte shortcut that answered `3 = ~"3"` true
+   * while leaving `5 > ~"4"` groundless. That made the ground depend on the
+   * OPERATOR, which §4.1 forbids — the pair picks the ground once, and equality
+   * then asks "is it 0" while relational reads the order off the same answer.
+   */
+  if (a.type === 'Any' || b.type === 'Any') {
+    return primCompare(toCssStr(a), toCssStr(b));
   }
   if (hasCompare(a) && b.type !== 'Quoted') {
     return selfCompare(a, b, equalityMode, unitMode);
@@ -146,7 +199,7 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: 
     return negate(selfCompare(b, a, equalityMode, unitMode));
   }
   if (a.type !== b.type) {
-    return undefined;
+    return noGround(a, b);
   }
   if (a.type === 'Collection' && b.type === 'Collection') {
     /*
@@ -177,10 +230,19 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: 
     }
     return 0;
   }
-  return a.bytes === b.bytes ? 0 : undefined;
+
+  /*
+   * STRING GROUND (§4.1): two operands of the same kind compare on their own
+   * spellings, LEXICOGRAPHICALLY — not by byte equality alone. This is §4.2's
+   * amendment: `b > a` is true and `a > b` false, where Less 4.6.3 answers false
+   * to BOTH and leaves the author unable to tell "not greater" from "never
+   * comparable". Equality is unaffected — `c === 0` is still exactly byte
+   * equality.
+   */
+  return primCompare(a.bytes, b.bytes);
 }
 
-function compareGroups(a: ValueGroup, b: ValueGroup, equalityMode: EqualityMode, unitMode: UnitMode | undefined): -1 | 0 | 1 | undefined {
+function compareGroups(a: ValueGroup, b: ValueGroup, equalityMode: EqualityMode, unitMode: UnitMode | undefined): Compared {
   if (isValueGroupArray(a) || isValueGroupArray(b)) {
     if (!isValueGroupArray(a) || !isValueGroupArray(b) || a.length !== b.length) {
       return undefined;
@@ -227,8 +289,11 @@ function sameType(a: ValueGroup, b: ValueGroup): boolean {
 /**
  * Guard comparison (`@a > 0`) on typed operands, faithful to less.js `Node.compare`
  * (see {@link compareNodes}): dimensions reconcile units, quoted strings compare
- * lexically, colors/keywords/lists by structural equality. An INCOMPARABLE pair
- * (`undefined`) is false for every operator.
+ * lexically, colors/lists by structural equality, and same-kind operands
+ * lexicographically on their own spelling (§4.2's trichotomy).
+ *
+ * A pair that HAS a ground but no order on it is `false` for every operator. A
+ * pair with NO ground is `false` for equality and an ERROR for relational.
  */
 export function compare(
   op: string,
@@ -249,13 +314,36 @@ export function compare(
      * and the pair is redundant (§4.4.3).
      */
     case '==': return c === 0 && sameType(left, right);
-    case '>': return c === 1;
-    case '<': return c === -1;
-    case '>=': return c === 0 || c === 1;
+
+    /*
+     * RELATIONAL is trichotomous (§4.2). A pair with no common ground cannot be
+     * ordered and must not silently answer `false` in both directions, so it
+     * raises here — the one place relational and equality part company.
+     */
+    case '>':
+    case '<':
+    case '>=':
     case '<=':
-    case '=<': return c === 0 || c === -1;
+    case '=<': {
+      if (c === NO_GROUND) {
+        throw new IncomparableOperandsError(
+          `Incomparable operands. '${groupBytes(left)}' and '${groupBytes(right)}' share no common ground, so '${op}' has no answer.`
+        );
+      }
+      switch (op) {
+        case '>': return c === 1;
+        case '<': return c === -1;
+        case '>=': return c === 0 || c === 1;
+        default: return c === 0 || c === -1;
+      }
+    }
   }
   return false;
+}
+
+/** An operand's authored spelling, for the incomparable-operands message. */
+function groupBytes(v: ValueGroup): string {
+  return isValueGroupArray(v) ? v.map(groupBytes).join(' ') : v.bytes;
 }
 
 /**

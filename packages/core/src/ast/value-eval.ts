@@ -325,6 +325,28 @@ export class UnitArithmeticError extends TypeError {
   }
 }
 
+/**
+ * A RELATIONAL comparison whose operands share no common ground
+ * (`RESOLVED-SEMANTICS-AND-NAMING.md` §4.1's last row — `1px > red`).
+ *
+ * Relational is trichotomous over every pair that HAS a ground (§4.2): `a > b`
+ * and `b > a` must not both be false, and the only honest answer for a pair with
+ * no ground is to refuse rather than to invent one. Equality is deliberately
+ * different — it returns `false` on the same pair and never raises — so this is
+ * a distinct outcome from "there is a ground and the pair is not ordered on it"
+ * (`2px > 1em` outside `unitMode: 'strict'`), which stays a silent `false`.
+ *
+ * Lives beside {@link UnitArithmeticError} for the same reason: `value-guards.ts`
+ * declares a hard module boundary that admits the value domain, and `serialize.ts`
+ * re-raises either with its source location by matching the class.
+ */
+export class IncomparableOperandsError extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IncomparableOperandsError';
+  }
+}
+
 /* --------------------------------------------------------------- seam */
 
 /**

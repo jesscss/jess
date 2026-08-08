@@ -217,15 +217,16 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     expect(() => parse(source)).toThrow();
   });
 
-  it('PINNED DEFECT — rejects a bare variable as an @if condition', () => {
+  it('admits a bare variable as an @if condition', () => {
     /*
-     * `@if $a` is truthiness on the value, valid Sass. The condition grammar
-     * currently demands a comparison operator or a literal boolean — the
-     * error even lists them.
+     * `@if $a` is truthiness on the value, valid Sass. The grammar hold on the
+     * bare condition lifted with the SEMANTICS (§4.4.2, phase 5) and never
+     * before them — widening the grammar alone would not have failed, it would
+     * have silently taken the wrong branch. The bare operand lowers to
+     * `not(($a == false) or ($a == null))`, which is Sass's rule written in
+     * plain `.jess`.
      */
-    const failure = failureOf('@if $a { a { b: c } }');
-
-    expect(failure.message).toContain('Expected:');
+    expect(() => parse('@if $a { a { b: c } }')).not.toThrow();
   });
 
   it.each([

@@ -75,34 +75,10 @@ const CONSTRUCTS: Construct[] = [
   { group: 'control flow', name: '@if with `and` of comparisons', src: '@if $x != 1 and $y != 2 { c: red; }', supported: true },
   { group: 'control flow', name: '@else / @else if', src: '@if $x == 1 { c: red; } @else if $y == 2 { c: blue; } @else { c: green; }', supported: true },
   { group: 'control flow', name: '@if with a boolean literal', src: '@if true { c: red; }', supported: true },
-  {
-    group: 'control flow',
-    name: '@if with a bare truthy variable',
-    src: '@if $x { c: red; }',
-    supported: false,
-    note: 'the condition grammar requires a binary comparison; a bare operand is rejected'
-  },
-  {
-    group: 'control flow',
-    name: '@if with a bare function call',
-    src: '@if fn($x) { c: red; }',
-    supported: false,
-    note: 'same bare-operand boundary'
-  },
-  {
-    group: 'control flow',
-    name: '@if with `not`',
-    src: '@if not $x { c: red; }',
-    supported: false,
-    note: 'same bare-operand boundary'
-  },
-  {
-    group: 'control flow',
-    name: '@if with a parenthesized bare operand',
-    src: '@if ($x) { c: red; }',
-    supported: false,
-    note: 'same bare-operand boundary'
-  },
+  { group: 'control flow', name: '@if with a bare truthy variable', src: '@if $x { c: red; }', supported: true },
+  { group: 'control flow', name: '@if with a bare function call', src: '@if fn($x) { c: red; }', supported: true },
+  { group: 'control flow', name: '@if with `not`', src: '@if not $x { c: red; }', supported: true },
+  { group: 'control flow', name: '@if with a parenthesized bare operand', src: '@if ($x) { c: red; }', supported: true },
   { group: 'control flow', name: '@each over a list', src: '@each $x in a, b { .#{$x}-y { color: red; } }', supported: true },
   { group: 'control flow', name: '@each with destructuring', src: '@each $k, $v in $map { .k-#{$k} { color: $v; } }', supported: true },
   { group: 'control flow', name: '@each over a function call', src: '@each $b in map-keys($grid) { .b-#{$b} { color: red; } }', supported: true },

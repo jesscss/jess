@@ -105,6 +105,7 @@ import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
   DEFAULT_MODES,
+  IncomparableOperandsError,
   emitValue,
   isValueGroupArray,
   isLiteral,
@@ -125,7 +126,7 @@ import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scop
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { UnitArithmeticError, calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
-import { makeBlock, makeCollection, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
+import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
@@ -368,6 +369,7 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
         importError(request, error);
       }
     }
+
     /*
      * Parse-mode selection remains Context/plugin-owned. The typed Less `(less)`
      * flag asks the existing dispatcher for its `less` plugin even when the path
@@ -2638,6 +2640,19 @@ function requireScalarValue(value: ValueGroup, reason: string): Value {
  */
 function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comment, e: EvalCtx): Value {
   const src = node.type === 'Comment' ? node.text : node.src;
+
+  /*
+   * `true` / `false` are BOOLEANS, not identifiers that happen to spell one.
+   * Both dialect conditions lower to a comparison against `true` (§4.4.2), and
+   * `boolean(…)` already mints a `Bool`, so an authored literal has to land on
+   * the SAME value type or `@x: true` and `@x: boolean(1 > 0)` would answer the
+   * same guard differently. `Bool` serializes to the same bytes, so nothing in
+   * output position moves — and this sits ABOVE the no-evaluator early return
+   * because what a literal IS does not depend on an evaluator being installed.
+   */
+  if (node.type === 'Keyword' && (src === 'true' || src === 'false')) {
+    return makeBool(src === 'true');
+  }
   if (!e.ev) {
     return { type: 'Keyword', text: src, bytes: src };
   }
@@ -2912,6 +2927,20 @@ function throwUnitArithmetic(error: unknown, node: object, e: EvalCtx): never {
       meta: { reason: error.message }
     });
   }
+
+  /*
+   * A no-common-ground RELATIONAL comparison (`1px > red`) surfaces through the
+   * same site as a unit clash: same operand position, same guard lane, so the
+   * author gets the same structured error and location rather than a bare
+   * TypeError out of the public API.
+   */
+  if (error instanceof IncomparableOperandsError) {
+    throw ERR.incomparableOperands({
+      node,
+      ...arithmeticSiteLocation(node, e),
+      meta: { reason: error.message }
+    });
+  }
   throw error;
 }
 
@@ -2962,8 +2991,16 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       /*
        * `~'…'` / `~"…"` are Less escaped strings: typed arithmetic must see
        * their raw bytes just as ordinary value emission does.
+       *
+       * They land as `Any` — "opaque evaluated bytes produced by explicit
+       * unquote APIs", which is what `e("…")` already produces — and NOT as a
+       * `Keyword`. The two are not interchangeable once comparison has a ground
+       * model (§4.1): an unquoted string carries a STRING ground against any
+       * operand, while a `Keyword` is a bare identifier that shares no ground
+       * with a number or a colour. Lowering `~"4"` to a Keyword made `5 > ~"4"`
+       * and `1px > red` the same pair, and they are not.
        */
-      return node.escaped ? makeKeyword(node.value) : materializeNode(node, e);
+      return node.escaped ? makeAny(node.value) : materializeNode(node, e);
     case 'Url':
       return mapMaybe(evalValue(node, frame, e), v => force(e, v));
     case 'Lookup':
@@ -3251,6 +3288,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
         });
       }
+
       /*
        * A `$name` property accessor resolves the winning declaration and folds
        * its value. Its declaration-level `!important` is carried through the
@@ -4403,13 +4441,19 @@ function guardDeps(frame: Frame | null, e: EvalCtx): {
 }
 
 /** The `GuardNode` an argument of a logical fn contributes: a structured
- *  `Condition` carries its own guard tree; any other value is a bare TRUTH test
- *  (`if((iscolor(@x)), …)`, `if(true, …)`) — the same rule a bare guard value uses. */
+ *  `Condition` carries its own guard tree; any other value takes the LESS
+ *  condition lowering (§4.4.2) — `if(@x, …)` means `if(@x == true, …)`, the same
+ *  rule `when (@x)` uses, because `if`/`boolean` are Less syntax (§4.5.3a) and
+ *  Less's condition is "is this literally the boolean true", not `.jess`'s
+ *  emptiness test. */
 function condGuard(node: ValueSlot): GuardNode {
   return !isValueSlotArray(node) && node.type === 'Condition'
     ? node.guard
-    : { g: 'truth', value: node };
+    : { g: 'cmp', op: '==', left: node, right: TRUE_LITERAL };
 }
+
+/** The `true` operand every Less condition lowering compares against (§4.4.2). */
+const TRUE_LITERAL: Keyword = { type: 'Keyword', src: 'true' };
 
 /** The Less logical / conditional fns whose argument is a boolean CONDITION (a
  *  guard tree), not an ordinary value — dispatched here (not via `ev.call`) so the
@@ -4675,11 +4719,11 @@ function evalCall(
    */
   if (e.defaultFn && node.args.length === 0 && node.name.toLowerCase() === 'default') {
     /*
-     * This is a Less keyword value in a comparison, not the evaluator's internal
-     * Bool result shape. Keeping it a Keyword lets `@x: false` compare structurally
-     * with `default()` when a non-default candidate already matched.
+     * `default()` in a comparison is a BOOLEAN, and an authored `true`/`false`
+     * literal now materializes as one too, so `@x: false` still compares
+     * structurally with `default()` when a non-default candidate already matched.
      */
-    return makeKeyword(e.defaultFn() ? 'true' : 'false');
+    return makeBool(e.defaultFn());
   }
   const intro = evalIntrospection(node, frame);
   if (intro !== undefined) {
@@ -5889,7 +5933,7 @@ class EmittedTrivia {
       return false;
     }
     const owned = this.bits.get(table);
-    return owned !== undefined && owned[table.canonical[i]!] === 1;
+    return owned?.[table.canonical[i]!] === 1;
   }
 
   addIndex(table: CommentTable, i: number): void {

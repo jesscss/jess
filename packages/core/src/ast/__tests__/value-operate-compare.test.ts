@@ -6,12 +6,15 @@
  * incompatible units — real Less 4.6.3 does neither in a guard). Verified cases:
  *   1cm = 10mm  → true      1s > 500ms → true      100ms = 0.1s → true
  *   50% = 0.5   → false     50% = 50   → true       50% = 50%    → true
- *   2px < 1em   → false (incomparable, no throw)    foo < bar    → false
+ *   2px < 1em   → false (incomparable, no throw)
+ *
+ * `foo < bar` is the one row where less@4.6.3 is NOT ground truth: it answers
+ * false to that AND to `bar < foo`, which §4.2 rules out — see the row below.
  */
 import { describe, expect, it } from 'vitest';
 import { compare } from '../value-guards.js';
-import { makeDimension, makeKeyword, makeQuoted } from '../value-factory.js';
-import { UnitArithmeticError, type Value } from '../value-eval.js';
+import { makeAny, makeColorRgb, makeDimension, makeKeyword, makeQuoted } from '../value-factory.js';
+import { IncomparableOperandsError, UnitArithmeticError, type Value } from '../value-eval.js';
 
 const dim = (n: number, u = ''): Value => makeDimension(n, u);
 
@@ -58,10 +61,19 @@ describe('compare — dimension unit reconciliation (vs less@4.6.3)', () => {
     expect(compare('<', dim(2, 'px'), dim(0))).toBe(false);
   });
 
-  it('non-dimension ordered comparison does NOT fall back to lexical bytes', () => {
-    expect(compare('>', makeKeyword('foo'), makeKeyword('bar'))).toBe(false);
+  /*
+   * RESOLVED-SEMANTICS-AND-NAMING.md §4.2 AMENDS this row. Less 4.6.3 answers
+   * `false` to BOTH `foo > bar` and `bar > foo`, which leaves the author unable
+   * to tell "genuinely not greater" from "never comparable"; relational is
+   * trichotomous over every pair that has a ground, and two same-kind operands
+   * ground on their own spelling.
+   */
+  it('same-kind ordered comparison IS lexicographic on the operands own spelling', () => {
+    expect(compare('>', makeKeyword('foo'), makeKeyword('bar'))).toBe(true);
     expect(compare('<', makeKeyword('foo'), makeKeyword('bar'))).toBe(false);
+    expect(compare('<', makeKeyword('bar'), makeKeyword('foo'))).toBe(true);
     expect(compare('>', makeQuoted('abc', '"', false), makeQuoted('abd', '"', false))).toBe(false);
+    expect(compare('<', makeQuoted('abc', '"', false), makeQuoted('abd', '"', false))).toBe(true);
 
     // equality on non-dimensions still holds (byte match), and self-order is reflexive.
     expect(compare('=', makeKeyword('foo'), makeKeyword('foo'))).toBe(true);
@@ -70,10 +82,42 @@ describe('compare — dimension unit reconciliation (vs less@4.6.3)', () => {
     expect(compare('>', makeKeyword('foo'), makeKeyword('foo'))).toBe(false);
   });
 
-  it('matches a dimension to an escaped/e() CSS-word result by emitted bytes', () => {
-    expect(compare('=', dim(3), makeKeyword('3'))).toBe(true);
-    expect(compare('=', makeKeyword('3'), dim(3))).toBe(true);
-    expect(compare('=', dim(3), makeKeyword('4'))).toBe(false);
+  /*
+   * §4.1's last row: no common ground. Equality is `false` and never raises;
+   * relational REFUSES, because inventing an order is the only alternative.
+   */
+  it('a pair with NO common ground is false for equality and an ERROR for relational', () => {
+    const red = makeColorRgb([255, 0, 0], 1, 1);
+    expect(compare('=', dim(1, 'px'), red)).toBe(false);
+    expect(compare('==', dim(1, 'px'), red)).toBe(false);
+    expect(() => compare('>', dim(1, 'px'), red)).toThrow(IncomparableOperandsError);
+    expect(() => compare('<', red, dim(1, 'px'))).toThrow(IncomparableOperandsError);
+    expect(() => compare('>=', dim(1, 'px'), red)).toThrow(/share no common ground/);
+  });
+
+  /*
+   * `e("3")` and `~"3"` both land as opaque unquoted bytes (`Any`), which take
+   * §4.1's STRING ground against any operand. The ground belongs to the PAIR, so
+   * the SAME ground answers equality and ordering — `3 = e("3")` is true and
+   * `5 > e("4")` is true, and neither is a special case of the other.
+   */
+  it('takes a string ground against an escaped/e() CSS-word result, for BOTH operators', () => {
+    expect(compare('=', dim(3), makeAny('3'))).toBe(true);
+    expect(compare('=', makeAny('3'), dim(3))).toBe(true);
+    expect(compare('=', dim(3), makeAny('4'))).toBe(false);
+    expect(compare('>', dim(5), makeAny('4'))).toBe(true);
+    expect(compare('<', dim(5), makeAny('4'))).toBe(false);
+    expect(compare('<', makeAny('4'), dim(5))).toBe(true);
+  });
+
+  /*
+   * A bare identifier is NOT a string. §4.1's last row gives it no ground with a
+   * number, which is the distinction that makes `1px > red` an error while
+   * `5 > ~"4"` is an answer.
+   */
+  it('shares no ground between a bare keyword and a number', () => {
+    expect(compare('=', dim(1), makeKeyword('true'))).toBe(false);
+    expect(() => compare('<', dim(1), makeKeyword('true'))).toThrow(IncomparableOperandsError);
   });
 });
 

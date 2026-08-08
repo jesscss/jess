@@ -176,6 +176,14 @@ describe('Mixin canonical AST emission', () => {
       + '.out {\n  box-shadow: first, second;\n}\n');
   });
 
+  /*
+   * An escaped quoted operand stays TYPED — it lowers to opaque unquoted bytes,
+   * not to a bare identifier — and takes §4.1's STRING ground against the number:
+   * `"5" > "4"`. Less 4.x answered `false` to both `<` and `>` here and selected
+   * only the `not(=)` overload; §4.2 forbids that pair of falses, so the `>`
+   * overload now selects too. The ground is the same one equality reads, which is
+   * why `not(@a = @b)` still matches.
+   */
   it('keeps an escaped quoted guard operand typed instead of re-materializing its bytes', () => {
     const less = mixin('.m', [{ name: 'a' }, { name: 'b' }], [decl('order', keyword('less'))], {
       g: 'cmp', op: '<', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped')
@@ -193,7 +201,7 @@ describe('Mixin canonical AST emission', () => {
       rule('.out', [call('.m', [{ value: dimension(5) }, { value: quoted('~"4"', '4', '"', true) }])])
     ]);
 
-    expect(render(document)).toBe('.out {\n  order: unequal;\n}\n');
+    expect(render(document)).toBe('.out {\n  order: greater;\n  order: unequal;\n}\n');
   });
 
   it('preserves typed space-list units through a mixin guard binding', () => {

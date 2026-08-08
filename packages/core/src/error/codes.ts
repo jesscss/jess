@@ -38,6 +38,7 @@ export type JessErrorCode =
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
   | 'eval/invalid-unit-arithmetic'
+  | 'eval/incomparable-operands'
   | 'eval/unit-conversion'
   | 'extend/protected-boundary'
   | 'extend/not-found'
@@ -277,6 +278,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Invalid unit arithmetic',
       reason: '${reason}',
       fix: 'Use compatible units, cancel compound units before emission, or use unit() to normalize the value.'
+    }
+  ],
+  [
+    'eval/incomparable-operands',
+    {
+      summary: 'Incomparable operands',
+      reason: '${reason}',
+      fix: 'Compare values that share a ground — two numbers, two strings, or two colours — or test with = instead, which is false rather than an error when there is no ground.'
     }
   ],
   [

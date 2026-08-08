@@ -665,8 +665,10 @@ describe('@jesscss/scss-parser public parse API', () => {
       css: '.card {\n  color: red;\n}\n.each {\n  color: blue;\n}\n.step {\n  width: 1px;\n}\n'
     });
 
+    // A bare `@if $x` is now admitted everywhere a condition is (§4.4.2).
+    expect(() => parse('@each $tone in blue { @if $enabled { .each { color: $tone; } } }')).not.toThrow();
+
     for (const notThisBatch of [
-      '@each $tone in blue { @if $enabled { .each { color: $tone; } } }',
       '@mixin paint { @while true { color: red; } }'
     ]) {
       expect(() => parse(notThisBatch), notThisBatch).toThrow(SyntaxError);

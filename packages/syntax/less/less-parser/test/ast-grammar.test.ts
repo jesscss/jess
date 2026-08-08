@@ -7062,7 +7062,16 @@ describe('Less AST grammar facts', () => {
         {
           type: 'MixinDefinition',
           name: '.enabled',
-          guard: { g: 'truth', value: { type: 'Keyword', src: 'true' } }
+
+          /* `when (@x)` lowers to `$if($x == true)` — the Less condition
+           * written in plain `.jess` (§4.4.2), so `.less` -> `.jess` -> `.css`
+           * stays reachable and the truth node is `.jess`'s alone. */
+          guard: {
+            g: 'cmp',
+            op: '==',
+            left: { type: 'Keyword', src: 'true' },
+            right: { type: 'Keyword', src: 'true' }
+          }
         }
       ]
     });
@@ -7110,8 +7119,9 @@ describe('Less AST grammar facts', () => {
       {
         type: 'Ruleset',
         guard: {
-          g: 'truth',
-          value: {
+          g: 'cmp',
+          op: '==',
+          left: {
             type: 'Reference',
             base: {
               type: 'MixinCall',
