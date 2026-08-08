@@ -23,8 +23,8 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, Null, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -705,6 +705,7 @@ function isValue(value: unknown): value is ValueNode {
     case 'Operation':
       return 'left' in value && 'right' in value && isValue(value.left) && isValue(value.right);
     case 'Keyword':
+    case 'Null':
       return 'src' in value && typeof value.src === 'string';
     case 'Collection':
       return 'entries' in value && Array.isArray(value.entries);
@@ -828,6 +829,28 @@ function requireKeyword(value: unknown): Keyword {
   return node;
 }
 
+/**
+ * A value-position identifier, with `null` recognised as the LITERAL it is in
+ * `.scss` (§4.3) rather than as an identifier that happens to spell one.
+ *
+ * The GRAMMAR decides this, not core: `.scss` `null` is the absent VALUE — a
+ * declaration holding it is dropped, a list drops it, `1 + null` is `1`, and
+ * `@if null` takes the false branch — while `b: null` in `.css`/`.less` is an
+ * ordinary identifier that must pass through verbatim. Core sees a `Null` node
+ * and never asks which dialect produced it.
+ *
+ * `.scss`'s `null` is AUTHOR-WRITTEN, so it mints the EXPLICIT literal: the
+ * shared `NULL_NODE` leaf, which materializes to `makeNull(true)`.
+ *
+ * Only the value-position identifier terminal calls this. The identifier
+ * positions that must keep reading `null` as a NAME — a media/container name,
+ * an `@import layer(…)` name, a `@counter-style` / `@keyframes` name, a static
+ * `@supports` operand — reference `g.Keyword` directly and are untouched.
+ */
+function keywordOrNull(src: string): Keyword | Null {
+  return src === 'null' ? NULL_NODE : keyword(src);
+}
+
 /** The best-effort authored spelling of a value node for a Reference `raw`. */
 function referenceKeyRaw(node: ValueNode): string {
   if (node.type === 'Lookup' && node.kind === 'var') {
@@ -868,9 +891,9 @@ function lowerMapGet(base: ValueNode, key: ValueNode): Reference {
  * branch-lazy and its first argument is a condition, neither of which a
  * `sassFns` entry could express. Lowering it here, in the grammar that knows the
  * dialect, is what lets ONE evaluator answer `if(0, T, F)` with `T` for `.scss`
- * and `F` for `.less`: {@link scssTruth} fixes Sass's rule (falsy iff `false` or
- * `null`) at parse time, Less's grammar fixes its own, and core never learns
- * which dialect a guard came from.
+ * and `F` for `.less`: {@link scssTruth} fixes Sass+'s rule (§4.4.6 — falsy iff
+ * `false`, `null`, `""` or `()`) at parse time, Less's grammar fixes its own,
+ * and core never learns which dialect a guard came from.
  *
  * Anything but the three-argument form is left an ordinary call — plain CSS
  * `if()` is not this construct.
@@ -940,44 +963,34 @@ function mapKeyValue(node: ValueNode): ValueSlot {
 }
 
 /**
- * The SCSS condition lowering (§4.4.2): `@if $x` means
- * `$if(not(($x == false) or ($x == null)))`.
+ * The SCSS condition lowering (§4.4.2, as revised by §4.4.6): `@if $x` means
+ * `$if($x)` — the SAME truth node `.jess` uses.
  *
- * Sass is falsy for `false` and `null` ONLY — `0`, `""` and `()` are all
- * truthy there — so the dialect states its own rule in plain `.jess` rather
- * than sharing `.jess`'s truth node, whose emptiness rule (§4.4) deliberately
- * diverges. That is what keeps `.scss` -> `.jess` -> `.css` reachable.
+ * **Sass+ takes §4.4's emptiness rule** (owner, 2026-08-07): falsy iff `false`,
+ * `null`, `""` or `()`. It previously spelled Sass's own rule out —
+ * `not(($x == false) or ($x == null))` — to keep `""` and `()` truthy. What
+ * forced the change was INTERNAL CONTRADICTION, not reference parity: `or`/`and`
+ * lower to jess's native operators (§4.5.5), so `.scss "" or 2` already answered
+ * `2` under jess truthiness while `@if ""` took the true branch under Sass's.
+ * One dialect, one value, two answers, decided by which construct you wrote.
  *
- * Each comparison is its own `cmp` because a bare comparison is not an
- * `and`/`or` operand (§4.5.4), and `==` is load-bearing: under the loose `=`,
- * `0 = null` grounds numerically and `0` would come out falsy.
+ * This is why `.scss` must mint the value-domain `Null` (§4.3): with
+ * `keyword('null')` in the value lane, `$if($x)` would silently take the TRUE
+ * branch for `null`.
+ *
+ * `.less` is unaffected — `when (@x)` still lowers to `$if($x == true)`.
  */
 function scssTruth(value: ValueSlot): GuardNode {
-  return { g: 'not', inner: scssNegation(value) };
+  return { g: 'truth', value };
 }
 
 /**
- * Sass's `not <value>` — the NEGATION of {@link scssTruth}, which is the same
- * expression with the `not(…)` wrapper removed:
- *
- * ```
- * .scss   not $x   ->   ($x == false) or ($x == null)
- * ```
- *
- * No double negation, and no separate rule to keep in step: §4.4.2 already
- * states Sass truthiness as `not(($x == false) or ($x == null))`, so negating it
- * is literally dropping the wrapper. Every measured row follows — `not 0` is
- * `false or false`, `not false` short-circuits on the left, `not null` on the
- * right, and `not ""` / `not red` are false because neither is `false` or
- * `null`. The result is always a `Bool` with no coercion, because `or` returns
- * an operand and both operands are `==` results.
+ * Sass's `not <value>` — the NEGATION of {@link scssTruth}, i.e. "is `$x`
+ * falsy". Under §4.4.6 that is exactly jess's `not($x)`, so it is the truth node
+ * under a `not` wrapper and cannot drift from the positive form.
  */
 function scssNegation(value: ValueSlot): GuardNode {
-  return {
-    g: 'or',
-    left: { g: 'cmp', op: '==', left: value, right: keyword('false') },
-    right: { g: 'cmp', op: '==', left: value, right: keyword('null') }
-  };
+  return { g: 'not', inner: scssTruth(value) };
 }
 
 /**
@@ -992,7 +1005,7 @@ function scssConditionSource(value: ValueSlot): string {
   }
   const node = requireValue(value);
   switch (node.type) {
-    case 'Keyword': case 'Color': case 'Quoted': case 'Any': case 'Dimension': return node.src;
+    case 'Keyword': case 'Null': case 'Color': case 'Quoted': case 'Any': case 'Dimension': return node.src;
     case 'Lookup': return node.raw;
     case 'Reference': return node.raw;
     case 'Condition': return node.src;
@@ -1820,7 +1833,7 @@ const scssFactory = (g: ScssInputRules) => {
           ? child.parts
           : [{ lit: requireToken(child).value }]));
       }
-      return keyword(children.map(child => requireToken(child).value).join(''));
+      return keywordOrNull(children.map(child => requireToken(child).value).join(''));
     }
   );
 

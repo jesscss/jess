@@ -229,12 +229,14 @@ describe('SCSS canonical-AST grammar', () => {
     expect(serialize(stylesheet(result.value))).toEqual({ css: '@media screen {\n  .inside {\n    color: green;\n  }\n}\n' });
   });
 
-  it('admits a bare value as an @if condition, lowered to the Sass truthiness rule', () => {
+  it('admits a bare value as an @if condition, lowered to the shared truth node', () => {
     /*
      * `@if $enabled` / `@if feature()` are truthiness on the VALUE, valid Sass.
-     * The grammar hold lifted with the semantics (§4.4.2, phase 5), and the bare
-     * operand lowers to `not(($x == false) or ($x == null))` — Sass's own rule,
-     * falsy for `false` and `null` only, written in plain `.jess`.
+     * Under §4.4.6 Sass+ takes §4.4's emptiness rule, so the bare operand lowers
+     * to plain `$if($x)` — the SAME truth node `.jess` uses — instead of writing
+     * Sass's own `not(($x == false) or ($x == null))` out. That collapse is what
+     * ends `.scss` disagreeing with itself, since `or`/`and` already lowered to
+     * jess's native operators.
      */
     for (const source of [
       '@if $enabled { .a { color: green; } }',
@@ -245,7 +247,7 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
       expect(stylesheet(result.value).rules[0], source).toMatchObject({
         type: 'If',
-        branches: [{ guard: { g: 'not', inner: { g: 'or', left: { g: 'cmp', op: '==' }, right: { g: 'cmp', op: '==' } } } }]
+        branches: [{ guard: { g: 'truth' } }]
       });
     }
   });
