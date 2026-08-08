@@ -56,6 +56,27 @@ export interface Keyword {
   readonly src: string;
 }
 
+/**
+ * The `null` LITERAL (§4.3) — a leaf of its own, not a `Keyword` that happens to
+ * spell one.
+ *
+ * It is a node rather than a byte sniff because `null` is a literal in `.jess`
+ * (and Sass) and an ORDINARY IDENTIFIER everywhere else: `b: null` must elide in
+ * `.jess` and pass through verbatim in `.css`/`.less`. Sniffing `src` at
+ * materialize time — the route `true`/`false` take, where every dialect agrees —
+ * cannot tell those apart, and re-deriving a dialect fact from bytes in core is
+ * exactly what the parser-owns-structure invariant forbids. So the GRAMMAR that
+ * admits the literal mints this node, and core never asks which dialect it came
+ * from.
+ *
+ * `src` rides so the verbatim-field split holds (`'src' in v` is an AST literal,
+ * `'bytes' in v` a value) and the authored spelling survives a round trip.
+ */
+export interface Null {
+  readonly type: 'Null';
+  readonly src: string;
+}
+
 /** A color literal leaf, hex or named, e.g. `#fff`, `red`, `transparent`.
  *  Hex vs named is `src[0] === '#'` (read only on the cold operated path). */
 export interface Color {
@@ -265,16 +286,25 @@ export interface Block extends SpanSlots {
 
   /** Less `~(...)` emits without the authored delimiters. */
   readonly escaped?: boolean;
+}
 
-  /**
-   * The delimiters belong to an enclosing form's SYNTAX, not to the value —
-   * jess's `$( … )`, whose parens are consumed by the `$(`/`)` spelling itself.
-   * Such a block opens the same math context an authored group does (so
-   * `$(4px / 2)` divides) but never emits delimiters, whatever its inner
-   * evaluates to. This is NOT {@link escaped}, which drops the delimiters AND
-   * the math context.
-   */
-  readonly boundary?: boolean;
+/**
+ * A COMPUTATION BOUNDARY — jess's `$( … )`. The `$(` and `)` are the marker that
+ * says EVALUATE THIS: they are not delimiters around a value and they never
+ * emit, whatever the inner evaluates to (`$(foo)` -> `foo`, while the authored
+ * group `$((foo))` -> `(foo)`).
+ *
+ * Categorically NOT a {@link Block}, which is a DELIMITED VALUE whose parens are
+ * part of the value's own authored syntax — `(1 + 2)` means something in CSS on
+ * its own. An `Expression` opens the same math context an authored group does
+ * (so `$(4px / 2)` divides), and it is the one position where a `.jess`
+ * comparison legitimately lands in value position: `.jess` has no `boolean()`
+ * (ledger P17), so `$( … )` is where a real comparison EVALUATES rather than
+ * emitting its source text.
+ */
+export interface Expression extends SpanSlots {
+  readonly type: 'Expression';
+  readonly value: ValueSlot;
 }
 
 /**
@@ -473,6 +503,7 @@ export interface Range {
 
 export type ValueNode =
   | Keyword
+  | Null
   | Color
   | Quoted
   | Any
@@ -487,6 +518,7 @@ export type ValueNode =
   | Operation
   | FunctionCall
   | Block
+  | Expression
   | Condition
   | IfValue
   | Interpolation
@@ -1189,6 +1221,10 @@ export type Statement =
 /* ------------------------------------------------------------ constructors */
 
 export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
+
+/** The `null` literal node — ONE frozen instance; the literal carries no fact
+ *  beyond its own identity, so it never allocates. */
+export const NULL_NODE: Null = { type: 'Null', src: 'null' };
 export const any = (src: string): Any => ({ type: 'Any', src, _s: NO_SPAN, _e: NO_SPAN });
 export const url = (value: ValueNode): Url => ({ type: 'Url', value });
 export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>
@@ -1397,9 +1433,9 @@ export const funcCall = (name: string, args: ValueSlot[], modern = false): Funct
 export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
   escaped ? { type: 'Block', value, delimiter, escaped: true, _s: NO_SPAN, _e: NO_SPAN } : { type: 'Block', value, delimiter, _s: NO_SPAN, _e: NO_SPAN };
 
-/** The `$( … )` math boundary — see {@link Block.boundary}. */
-export const boundaryBlock = (value: ValueSlot): Block =>
-  ({ type: 'Block', value, delimiter: 'paren', boundary: true, _s: NO_SPAN, _e: NO_SPAN });
+/** The `$( … )` computation boundary — see {@link Expression}. */
+export const expression = (value: ValueSlot): Expression =>
+  ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
 export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]]): IfValue =>
   ({ type: 'IfValue', branches });

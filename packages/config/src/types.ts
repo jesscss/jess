@@ -16,15 +16,6 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
  */
 export type FunctionMode = 'preserve' | 'error';
 
-/**
- * Equality compatibility modes for the shared guard evaluator. The names retain
- * their source-compatibility meaning (Less 4.x and Sass diverge in opposite
- * directions), not separate runtime semantics:
- * - `less`: Less 4.x equality (numeric coercion; quoted vs unquoted distinct)
- * - `sass`: Dart Sass equality (unit-strict; quote-insensitive strings)
- * - `exact`: no coercion — operands must be the same node type
- */
-export type EqualityMode = 'less' | 'sass' | 'exact';
 export type SelectorPolicyKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 export type ExtendSelectorKind = SelectorPolicyKind;
 export type ApplySelectorKind = SelectorPolicyKind;
@@ -175,14 +166,6 @@ export interface LessOptions {
   functionMode?: FunctionMode;
 
   /**
-   * How to handle equality/coercion in guards and comparisons.
-   * - 'loose': Less-compatible loose (coercive) equality (JS '==')
-   * - 'strict': type-strict behavior
-   * @default 'loose'
-   */
-  equalityMode?: EqualityMode;
-
-  /**
    * @deprecated Use `mathMode` instead. This option maps to `mathMode` as follows:
    * - 0 or 'always' → 'always'
    * - 1 or 'parens-division' → 'parens-division'
@@ -266,7 +249,6 @@ export interface LessOptions {
    * Convenience preset. When `true`, sets the strict bundle for any of the
    * following left `undefined` (individual options always win):
    * - `unitMode: 'strict'`
-   * - `equalityMode: 'exact'` (the no-coercion dialect)
    * - `leakyScope: false`
    * - `allowOverloadedImport: false`
    *
@@ -318,7 +300,6 @@ export interface ScssOptions {
   allowExtendSelectors?: ExtendSelectorKind[];
   allowApplySelectors?: ApplySelectorKind[];
   unitMode?: UnitMode;
-  equalityMode?: EqualityMode;
   collapseNesting?: boolean;
 
   [key: string]: any;
@@ -343,7 +324,6 @@ export interface InputOptions extends FileMatchOptions {
   mathMode?: MathMode;
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
-  equalityMode?: EqualityMode;
   strict?: boolean;
   allowOverloadedImport?: boolean;
   processImports?: boolean;
@@ -483,7 +463,6 @@ export interface StylesConfig {
     mathMode?: MathMode;
     unitMode?: UnitMode;
     functionMode?: FunctionMode;
-    equalityMode?: EqualityMode;
 
     /** See {@link LessOptions.strict}. Expanded onto the other compile modes. */
     strict?: boolean;

@@ -5,7 +5,7 @@
  *
  *  1. The runtime value nodes (`Value`) — the typed *results* an evaluation
  *     produces and hands to functions/visitors (`Dimension`/`Color`/`Quoted`/
- *     `Keyword`/`Any`/`List`/`Bool`/`Nil`), distinct from the value AST
+ *     `Keyword`/`Any`/`List`/`Bool`/`Null`), distinct from the value AST
  *     (`Operation`/`FunctionCall`/…) that describes HOW to compute. A value
  *     `Color` has semantic fields such as `rgb` and `alpha`; a value
  *     `Dimension` has `number` and `unit`.
@@ -28,7 +28,7 @@
  */
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { EqualityMode, FunctionMode, MathMode, UnitMode } from '../types/modes.js';
+import type { FunctionMode, MathMode, UnitMode } from '../types/modes.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js';
 
 /* --------------------------------------------------------- value domain */
@@ -176,9 +176,23 @@ export interface Bool {
   readonly bytes: string;
 }
 
-/** An empty / absent value. */
-export interface Nil {
-  readonly type: 'Nil';
+/**
+ * An empty / absent value — the `null` literal (§4.3). It emits nothing AND
+ * drops the separator that would follow it, which is Sass's list elision
+ * (ledger M5, built for merge).
+ *
+ * `explicit` is PROVENANCE, not a second value: an author-written `null` and an
+ * absent/unbound value are the same VALUE but not the same FACT, and core
+ * already mints the implicit one (M5's unbound optional self-ref). A flag keeps
+ * ONE value type rather than growing a second node — and it is NON-optional and
+ * factory-defaulted so every `Null` realizes one hidden class (§9's
+ * `inMathFunction` rule, NOT `Block.boundary`'s optional shape).
+ */
+export interface Null {
+  readonly type: 'Null';
+
+  /** The author WROTE `null`, rather than core minting an absent value. */
+  readonly explicit: boolean;
   readonly bytes: string;
 }
 
@@ -233,7 +247,7 @@ export interface Collection {
   readonly bytes: string;
 }
 
-export type Value = Dimension | Color | Quoted | Keyword | Any | List | Block | Bool | Nil | Collection;
+export type Value = Dimension | Color | Quoted | Keyword | Any | List | Block | Bool | Null | Collection;
 
 /**
  * The canonical structural value carrier. A raw array is a default
@@ -259,8 +273,38 @@ export const isValueGroup = (value: unknown): value is ValueGroup =>
 export type EvalValue = ValueGroup | string;
 
 /** Emit a value's bytes. A bare-string literal is its own bytes. */
+/**
+ * Whether a value ELIDES from the group holding it. `null` emits nothing AND
+ * drops the separator that would follow it (§4.3, ledger M5) — measured on
+ * dart-sass 1.101.0: `b: 1px null 2px` is `b: 1px 2px`, not `b: 1px  2px`.
+ *
+ * A nested group elides only when it is NON-EMPTY and every member elides, so an
+ * authored empty group keeps its present (empty-bytes) behavior.
+ */
+export const isElided = (v: ValueGroup): boolean =>
+  isValueGroupArray(v) ? v.length > 0 && v.every(isElided) : v.type === 'Null';
+
+/**
+ * Join a group's members with `glue`, DROPPING each elided member along with the
+ * separator it would have carried. Written as a loop rather than
+ * `filter().map().join()` so the common (no-`null`) path allocates nothing.
+ */
+export const joinGroup = (v: readonly ValueGroup[], glue: string, emit: (item: ValueGroup) => string): string => {
+  let out = '';
+  let empty = true;
+  for (let i = 0; i < v.length; i++) {
+    const item = v[i]!;
+    if (isElided(item)) {
+      continue;
+    }
+    out = empty ? emit(item) : out + glue + emit(item);
+    empty = false;
+  }
+  return out;
+};
+
 export const emitValue = (v: EvalValue): string =>
-  typeof v === 'string' ? v : isValueGroupArray(v) ? v.map(emitValue).join(' ') : v.bytes;
+  typeof v === 'string' ? v : isValueGroupArray(v) ? joinGroup(v, ' ', emitValue) : v.bytes;
 
 /** The whitespace glue joining a list's items for its separator (`,`→`, `, `/`→` / `). */
 export const sepGlue = (sep: ListSeparator): string => {
@@ -298,8 +342,6 @@ export interface EvalModes {
   /** Registered-function failure policy supplied by the active compile Context. */
   readonly functionMode?: FunctionMode;
 
-  /** Guard-comparison compatibility rule supplied by the active compile Context. */
-  readonly equalityMode?: EqualityMode;
   readonly inCalc?: boolean;
 }
 

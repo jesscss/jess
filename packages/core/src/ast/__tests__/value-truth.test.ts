@@ -14,13 +14,13 @@ import { describe, expect, it } from 'vitest';
 import { isTruthy } from '../value-truth.js';
 import {
   makeBlock, makeBool, makeCollection, makeColorRgb, makeDimension, makeKeyword,
-  makeList, makeNil, makeQuoted
+  makeList, makeNull, makeQuoted
 } from '../value-factory.js';
 import type { ValueGroup } from '../value-eval.js';
 
 const FALSY: ReadonlyArray<readonly [string, ValueGroup]> = [
   ['false', makeBool(false)],
-  ['null', makeNil()],
+  ['null', makeNull()],
   ['""', makeQuoted('', '"', false)],
   ['\'\'', makeQuoted('', '\'', false)],
   ['() — empty list', makeList([], ',')],

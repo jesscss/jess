@@ -95,8 +95,8 @@ function makeCompiler() {
       // Less 4.x errors". Under the v5-lenient defaults (functionMode/unitMode
       // 'preserve') Jess would render bad-function / mixed-unit input as-is —
       // that's option-controlled, not a gap. Turn the options that gate those
-      // errors ON so what remains accepting is a REAL gap. (leakyScope /
-      // equalityMode stay at Less-4 defaults: Less 4.x is leaky + `less` equality.)
+      // errors ON so what remains accepting is a REAL gap. (leakyScope stays at
+      // the Less-4 default: Less 4.x is leaky.)
       functionMode: 'error',
       unitMode: 'strict'
     }

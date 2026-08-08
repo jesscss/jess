@@ -526,7 +526,7 @@ export class Compiler {
 
     /*
      * Expand the `strict` convenience preset once, on the compile config, so the
-     * bundle it sets (unitMode/equalityMode/leakyScope/allowOverloadedImport)
+     * bundle it sets (unitMode/leakyScope/allowOverloadedImport)
      * reaches eval via `context.opts` (contextOptions spreads compile). Individual
      * options already set always win.
      */

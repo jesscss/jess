@@ -101,11 +101,11 @@ describe('Sass remaining string functions', () => {
       expect(expectDimension(result).number).toBe(1);
     });
 
-    it('returns Nil when substring is not found', () => {
+    it('returns Null when substring is not found', () => {
       const str = unquoted('Hello');
       const substring = unquoted('x');
       const result = strIndex(str, substring);
-      expect(result).toMatchObject({ type: 'Nil' });
+      expect(result).toMatchObject({ type: 'Null' });
     });
 
     it('returns first occurrence index', () => {

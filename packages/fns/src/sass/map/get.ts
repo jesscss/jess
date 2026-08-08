@@ -7,7 +7,7 @@
  * map.get((a: 1, b: 2), a) // 1
  * map.get((a: (b: 2)), a, b) // 2
  */
-import { defineFunction, NIL } from '@jesscss/core';
+import { defineFunction, NULL } from '@jesscss/core';
 import { collectionValueAt, nestedCollection } from './util.js';
 
 const get = defineFunction(
@@ -22,9 +22,9 @@ const get = defineFunction(
       const path = [key, ...keys];
       const parent = nestedCollection(map, path.slice(0, -1));
       if (parent === undefined) {
-        return NIL;
+        return NULL;
       }
-      return collectionValueAt(parent, path[path.length - 1]!) ?? NIL;
+      return collectionValueAt(parent, path[path.length - 1]!) ?? NULL;
     }
   }
 );

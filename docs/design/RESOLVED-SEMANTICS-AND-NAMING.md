@@ -375,8 +375,8 @@ errors on the rest.
 ### 4.3 `null`
 
 `.jess` gets a `null` literal, spelled as Sass spells it rather than as a new
-word. Core ALREADY has the value: `value-eval.ts` defines `Nil` — "an empty /
-absent value" — and ledger **M5** already specifies that a Nil emits nothing AND
+word. Core ALREADY has the value: `value-eval.ts` defines `Null` — "an empty /
+absent value" — and ledger **M5** already specifies that it emits nothing AND
 drops the separator that would follow it, which is exactly Sass's list elision,
 built for merge. This is a missing literal, not a missing concept.
 
@@ -404,7 +404,7 @@ fact that consumers can see.
 
 **Provenance is retained: explicit vs implicit.** An author-written `null` and an
 absent/unbound value are the same VALUE but not the same FACT, and core already
-mints the implicit one (M5's unbound optional self-ref). A flag on `Nil` keeps
+mints the implicit one (M5's unbound optional self-ref). A flag on `Null` keeps
 one value type rather than growing a second node.
 
 **Interop asymmetry (deliberate).** JS `undefined` → jess `null` inbound; jess
@@ -1104,25 +1104,40 @@ SUPPRESSING unless units are provably safe.
   specification; **not** the code that runs, and not the code to edit. (Earlier
   drafts of this document named it as the live one. They were wrong.)
 
-`equalityMode` is read or defaulted at `config/src/options.ts:12,32,199`,
-`core/src/context.ts:252,274,400`, `ast/evaluator.ts:129`, `value-eval.ts:302`,
-`jess-plugin-less/src/index.ts:32,331,401`, `jess-plugin-scss/src/index.ts:52,67`.
-`.jess` sets none and runs at the `'less'` fallthrough.
-`value-collection.ts:35,56` defaults to `'sass'` — an inconsistency the mode's
-removal deletes.
+**LANDED (phase 4).** `equalityMode` no longer exists. `EqualityMode` is deleted
+from `core/src/types/modes.ts` and `config/src/types.ts`; the option is gone from
+`ResolvedOptions`, `LessOptions`/`ScssOptions`/`InputOptions`, the `strict`
+preset, and both dialect plugins. `compare()` lost the parameter. The comparison
+KIND is carried by the guard node's own `op`:
+
+| `op` | meaning | who lowers to it |
+|---|---|---|
+| `=` | LOOSE — §4.1's common ground, unitless wildcard, quoted operand puts the pair on string ground | `.less` `=`, `.jess` `=` |
+| `==` | TYPE-EQUAL — `=` plus `sameType`, which declines exactly the coercions the ground allows | `.jess` `==` |
+| `sass-equal` | the Sass-equality PRIMITIVE — type-equal for a NUMERIC pair, loose otherwise | `.scss` `==`; `!=` is the same under `not` |
+
+`sass-equal` is the one comparison a front end cannot resolve by substituting an
+operator, so it dispatches on operand TYPE in `compare()` (`value-guards.ts`).
+That is its definition, not a mode: nothing is read from ambient config and the
+node says which comparison it is. `value-collection.ts`'s Sass map keys, which
+used to DEFAULT to `'sass'`, now name `SASS_EQUAL` outright.
 
 **`fns/` conformance: one conformer, two bypasses.**
 
-| site | file:line | state |
-|---|---|---|
-| Sass map fns | `value-collection.ts:38` → `compare('=', …)` | **conforms** |
-| Sass `min`/`max` | `fns/src/sass/math/compare.ts:26` | **bypass** — second numeric comparison |
-| `.jess` / Less bracket lookup | `serialize.ts:4149-4152`, `Map<string, DeclEntry>` | **bypass** — BYTE identity |
+**BOTH BYPASSES CLOSED (phase 4).**
 
-The lookup bypass is the case §1 names by example: `$foo['1px']` works today
-only by byte coincidence and would fail for `$foo[1px]` against a `'1px'` key.
-Converting it is a fast-path-plus-fallback, not a replacement — a compare scan
-is O(n) on a hot path.
+| site | state |
+|---|---|
+| Sass map fns | `value-collection.ts` → `compare(SASS_EQUAL, …)` — **conforms** |
+| Sass `min`/`max` | `fns/src/sass/math/compare.ts` → `compareOrder` — **conforms**; the private numeric comparison is deleted, only dart-sass's failure MESSAGE is kept |
+| `.jess` / Less bracket lookup | `serialize.ts` `looseMemberLookup` — **conforms**; the byte `Map` is still the fast path |
+
+The lookup bypass is the case §1 names by example: `$foo['1px']` used to work
+only by byte coincidence and failed for `$foo[1px]` against a `'1px'` key. It is
+a fast-path-plus-fallback, not a replacement — the value scan runs only after
+every byte lookup has missed, one step before the unresolved-symbol error,
+because a compare scan is O(n) and cannot live on the hit path. The two member
+namespaces stay disjoint: the rescan walks the same map the byte lookup did.
 
 **Truthiness has no mode at all.** `guard.ts`, `'truth'`:
 
@@ -1270,10 +1285,21 @@ Sass**, where `false and (1px + 1em)` must not raise.
 
 ## 9. Consequences for the code as it stands
 
-- `EqualityMode` (`core/src/types/modes.ts`) is **slated for removal** under
-  resolution 1. Its three behaviours become the named primitives each front end
-  lowers to (§5.1). The live specification is `value-guards.ts:31-36`,
-  `:112-118`, `:119-124`. **It should not be extended in the meantime.**
+- **LANDED (phase 4):** `EqualityMode` is REMOVED. Its three behaviours became
+  the named primitives each front end lowers to (§5.1) — see §7.3's `op` table.
+  Two further things moved with it, both required by §4.1 and neither expressible
+  as an operator substitution:
+  - **Colour ground reaches a NAMED colour.** A bare `black` materializes as a
+    `Keyword`, so `black == #000000` had no ground at all. A `Color` on either
+    side now takes the colour ground against a colour-named keyword, for `=`,
+    `==` and `sameType` alike. Two BARE keywords stay on string ground, which
+    preserves §4.2's lexicographic order over identifiers and agrees with the
+    colour ground on every row of §4.1's table.
+  - **Numeric equality tolerance is RELATIVE.** `1in` and `2.54cm` are the same
+    length by definition but convert to `96` and `96.00000000000001` — a gap
+    4×10⁸ times `Number.EPSILON`, which the old absolute fuzz called unequal.
+    The tolerance is `1e-10`, the same one the numeric emit path trims at, so a
+    pair that prints identically compares equal. That is O-TRUTH-3.
 - **LANDED `5c516dbb1`:** `unitMode` now reaches comparison, not only
   arithmetic. `strictUnits` used to make `1px + 3em` a hard error while
   `2px > 1em` stayed a silent `false` in the same mode on the same operand pair.
@@ -1341,18 +1367,20 @@ of `==`.
 `b > a` false → true, and any guard that depended on the silent false. Fixture
 graduation required. Independent of phases 1–2.
 
-### Phase 4 — collapse `equalityMode` into lowered primitives
+### Phase 4 — collapse `equalityMode` into lowered primitives — **LANDED**
 
-The mechanical shape is small (§5.1): the comparison KIND moves into the guard
-node's existing `op`, `compare()` loses its mode parameter, and the ~12 read
-sites in §7.3 go with it. What makes it phase 4 rather than phase 1 is that it
-changes `.less` and `.scss` output together — Less's `a = "a"` shifts false →
-true (§5.2) — so it wants phases 0–3's net in place first.
+The comparison KIND moved into the guard node's existing `op`, `compare()` lost
+its mode parameter, and every read site in §7.3 went with it. Both `fns/`
+bypasses closed in the same phase, since they are the same "one set of
+semantics" claim.
 
-Do the two `fns/` bypasses in the same phase, since they are the same
-"one set of semantics" claim: Sass `min`/`max`'s private numeric comparison, and
-the bracket-lookup byte-identity `Map` (fast path plus `compare` fallback — a
-scan is O(n) on a hot path).
+`.less` output shifted exactly where §5.2 said it would: a quoted operand now
+spells its CONTENTS on string ground, so `a = "a"`, `1 = "1"` and `red = "red"`
+are true where Less 4.x answers false. **No committed `.css` fixture moved** —
+nothing in the corpus compares text across a quote — so no O4/O5 graduation was
+needed. `packages/jess/test/less/equality-mode.test.ts`, which asserted a
+three-column truth table with one column per mode, became
+`less-equality.test.ts` with the one column that is left.
 
 ### Phase 5 — truthiness (UNBLOCKED, §4.4)
 

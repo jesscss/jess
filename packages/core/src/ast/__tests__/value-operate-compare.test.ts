@@ -131,24 +131,24 @@ describe('compare — unitMode reaches comparison, not just arithmetic', () => {
    */
   it('keeps Less 4.x incomparable-is-false when unitMode is not strict', () => {
     expect(compare('>', dim(2, 'px'), dim(1, 'em'))).toBe(false);
-    expect(compare('=', dim(2, 'px'), dim(1, 'em'), 'less', 'preserve')).toBe(false);
-    expect(compare('<', dim(2, 'px'), dim(1, 'em'), 'less', 'loose')).toBe(false);
+    expect(compare('=', dim(2, 'px'), dim(1, 'em'), 'preserve')).toBe(false);
+    expect(compare('<', dim(2, 'px'), dim(1, 'em'), 'loose')).toBe(false);
   });
 
   it('throws on an unreconcilable pair under strict, as arithmetic already does', () => {
-    expect(() => compare('>', dim(2, 'px'), dim(1, 'em'), 'less', 'strict')).toThrow(UnitArithmeticError);
-    expect(() => compare('=', dim(2, 'px'), dim(1, 'em'), 'less', 'strict')).toThrow(UnitArithmeticError);
-    expect(() => compare('<=', dim(1, 'em'), dim(2, 'px'), 'less', 'strict')).toThrow(UnitArithmeticError);
+    expect(() => compare('>', dim(2, 'px'), dim(1, 'em'), 'strict')).toThrow(UnitArithmeticError);
+    expect(() => compare('=', dim(2, 'px'), dim(1, 'em'), 'strict')).toThrow(UnitArithmeticError);
+    expect(() => compare('<=', dim(1, 'em'), dim(2, 'px'), 'strict')).toThrow(UnitArithmeticError);
   });
 
   it('names both offending units, matching the arithmetic message', () => {
-    expect(() => compare('>', dim(2, 'px'), dim(1, 'em'), 'less', 'strict'))
+    expect(() => compare('>', dim(2, 'px'), dim(1, 'em'), 'strict'))
       .toThrow(/Bad units: 'px' and 'em'/);
   });
 
   it('does NOT throw for units that reconcile, whatever the mode', () => {
-    expect(compare('=', dim(1, 'in'), dim(96, 'px'), 'less', 'strict')).toBe(true);
-    expect(compare('>', dim(1, 's'), dim(500, 'ms'), 'less', 'strict')).toBe(true);
+    expect(compare('=', dim(1, 'in'), dim(96, 'px'), 'strict')).toBe(true);
+    expect(compare('>', dim(1, 's'), dim(500, 'ms'), 'strict')).toBe(true);
   });
 
   /*
@@ -157,12 +157,12 @@ describe('compare — unitMode reaches comparison, not just arithmetic', () => {
    * breaks.
    */
   it('does NOT throw when one side is unitless', () => {
-    expect(compare('>', dim(2, 'px'), dim(1), 'less', 'strict')).toBe(true);
-    expect(compare('>', dim(1), dim(0), 'less', 'strict')).toBe(true);
+    expect(compare('>', dim(2, 'px'), dim(1), 'strict')).toBe(true);
+    expect(compare('>', dim(1), dim(0), 'strict')).toBe(true);
   });
 
   it('does not reach non-dimension operands', () => {
-    expect(compare('=', makeKeyword('foo'), makeKeyword('bar'), 'less', 'strict')).toBe(false);
-    expect(compare('>', makeQuoted('b'), makeQuoted('a'), 'less', 'strict')).toBe(true);
+    expect(compare('=', makeKeyword('foo'), makeKeyword('bar'), 'strict')).toBe(false);
+    expect(compare('>', makeQuoted('b'), makeQuoted('a'), 'strict')).toBe(true);
   });
 });

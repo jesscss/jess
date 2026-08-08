@@ -11,8 +11,7 @@
  * HARD MODULE BOUNDARY: imports only the value domain + the value comparator.
  */
 import { isValueGroupArray, type Collection, type CollectionEntry, type ValueGroup } from './value-eval.js';
-import { compare } from './value-guards.js';
-import type { EqualityMode } from '../types/modes.js';
+import { compare, SASS_EQUAL } from './value-guards.js';
 
 /** Narrow a value group to a map. */
 export function isCollection(value: ValueGroup | undefined): value is Collection {
@@ -28,14 +27,16 @@ export function collectionEntries(value: ValueGroup | undefined): readonly Colle
   return isCollection(value) ? value.entries : [];
 }
 
-/** Find a map entry by Sass/Jess value equality in an already-owned entry list. */
-export function collectionEntryIndex(
-  entries: readonly CollectionEntry[],
-  key: ValueGroup,
-  equalityMode: EqualityMode = 'sass'
-): number {
+/**
+ * Find a map entry by KEY IDENTITY in an already-owned entry list.
+ *
+ * Sass map keys use SASS EQUALITY — quoting does not distinguish `"a"` from `a`,
+ * but a unit does distinguish `1px` from `1` — so this names that primitive
+ * outright instead of defaulting a mode nobody at the call sites ever passed.
+ */
+export function collectionEntryIndex(entries: readonly CollectionEntry[], key: ValueGroup): number {
   for (let index = 0; index < entries.length; index += 1) {
-    if (compare('=', entries[index]!.key, key, equalityMode)) {
+    if (compare(SASS_EQUAL, entries[index]!.key, key)) {
       return index;
     }
   }
@@ -50,10 +51,6 @@ export function collectionEntryIndex(
  * `remove` splices. Sass compares map keys with Sass equality, so quoting does not
  * distinguish `"a"` from `a`.
  */
-export function collectionKeyIndex(
-  value: ValueGroup | undefined,
-  key: ValueGroup,
-  equalityMode: EqualityMode = 'sass'
-): number {
-  return collectionEntryIndex(collectionEntries(value), key, equalityMode);
+export function collectionKeyIndex(value: ValueGroup | undefined, key: ValueGroup): number {
+  return collectionEntryIndex(collectionEntries(value), key);
 }

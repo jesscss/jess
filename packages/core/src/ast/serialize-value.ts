@@ -8,7 +8,7 @@
  * (`format-number`) + `color`.
  */
 import type { CollectionEntry, Dimension, Quoted, ValueGroup } from './value-eval.js';
-import { emitValue, isValueGroupArray, sepGlue } from './value-eval.js';
+import { emitValue, isValueGroupArray, joinGroup, sepGlue } from './value-eval.js';
 import { formatNumber } from './format-number.js';
 import { serializeColor } from './color.js';
 
@@ -54,7 +54,7 @@ function collectionEntryBytes(entry: CollectionEntry): string {
 /** Serialize any structural value group to canonical bytes. */
 export function serializeValue(v: ValueGroup): string {
   if (isValueGroupArray(v)) {
-    return v.map(serializeValue).join(' ');
+    return joinGroup(v, ' ', serializeValue);
   }
   switch (v.type) {
     case 'Dimension': return serializeDimension(v);
@@ -63,8 +63,8 @@ export function serializeValue(v: ValueGroup): string {
     case 'Keyword': return v.text;
     case 'Any': return v.bytes;
     case 'Bool': return v.value ? 'true' : 'false';
-    case 'Nil': return v.bytes;
-    case 'List': return v.value.map(serializeValue).join(sepGlue(v.sep));
+    case 'Null': return v.bytes;
+    case 'List': return joinGroup(v.value, sepGlue(v.sep), serializeValue);
     case 'Block': {
       const open = v.delimiter === 'square' ? '[' : '(';
       const close = v.delimiter === 'square' ? ']' : ')';

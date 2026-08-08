@@ -29,8 +29,8 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, forNode, funcCall, ifNode, interpolation, keyword, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, keyword, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -94,7 +94,8 @@ type JessRules = {
   UrlInterpolatedValue: Combinator<Interpolation>;
   CallComponent: Combinator<ValueSlot>;
   CallArgument: Combinator<ValueSlot>;
-  KeywordValue: Combinator<Keyword>;
+  KeywordValue: Combinator<Keyword | Null>;
+  NullLiteral: Combinator<Null>;
   VarCall: Combinator<FunctionCall>;
   CalcValue: Combinator<ValueNode>;
   CalcParen: Combinator<ValueNode>;
@@ -275,6 +276,20 @@ function requireToken(value: unknown): Token {
     throw new TypeError('Jess grammar produced a non-token child.');
   }
   return { value: token.value };
+}
+
+/**
+ * A value-position identifier, with `null` recognised as the LITERAL it is in
+ * `.jess` (§4.3) rather than as an identifier that happens to spell one.
+ *
+ * The GRAMMAR decides this, not core: `null` emits nothing and drops the
+ * separator after it here, while `b: null` in `.css`/`.less` is an ordinary
+ * identifier that must pass through verbatim. Core sees a `Null` node and never
+ * asks which dialect produced it — sniffing `src` at materialize time (the route
+ * `true`/`false` take, where every dialect agrees) could not tell the two apart.
+ */
+function keywordOrNull(src: string): Keyword | Null {
+  return src === 'null' ? NULL_NODE : keyword(src);
 }
 
 function requireFields(fields: FieldMap | undefined, name: string): readonly FieldCapture[] {
@@ -509,6 +524,7 @@ function isValueNode(value: unknown): value is ValueNode {
      */
     && (value.type === 'Any'
       || value.type === 'Keyword'
+      || value.type === 'Null'
       || value.type === 'Quoted'
       || value.type === 'Lookup'
       || value.type === 'Reference'
@@ -522,6 +538,7 @@ function isValueNode(value: unknown): value is ValueNode {
       || value.type === 'Sequence'
       || value.type === 'List'
       || value.type === 'Block'
+      || value.type === 'Expression'
       || value.type === 'Url'
       || value.type === 'AnonymousMixin'
       || value.type === 'Collection'
@@ -752,7 +769,7 @@ function lookupNameSource(name: string | ValueNode): string {
 
 function expressionSource(value: ValueNode): string {
   switch (value.type) {
-    case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
+    case 'Keyword': case 'Null': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
     case 'Lookup': return value.kind === 'var'
       ? `${value.scope === 'scoped' ? '^' : '$'}${lookupNameSource(value.name)}`
       : value.raw;
@@ -927,7 +944,7 @@ function referenceArgSource(value: JessMixinCallArgument['value']): string {
     return '';
   }
   switch (value.type) {
-    case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
+    case 'Keyword': case 'Null': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
     case 'Lookup': return value.kind === 'var'
       ? `${value.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(value.name)}`
       : value.raw;
@@ -1774,6 +1791,9 @@ const charsetAtRuleName = word('@charset', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseI
 const importAtRuleName = word('@import', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
 const propertyAtRuleName = word('@property', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
 const scopeAtRuleName = word('@scope', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+
+/** The `null` LITERAL's word (§4.3). Boundary-guarded, so `nullish` stays an ordinary identifier. */
+const nullWord = word('null', '-_a-zA-Z0-9\\u0080-\\uFFFF');
 const keyframeEndpoint = keywords(
   ['from', 'to'],
   { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
@@ -2049,6 +2069,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
        * make `default()` a legal condition. Dispatch reaches an expression only
        * through the `$fn(…)` reference tail above, which cannot spell `default()`.
        */
+      /*
+       * `null` is the LITERAL (§4.3), tried before the generic identifier so an
+       * expression operand carries the absent VALUE rather than an identifier
+       * that spells one — that is what makes `$(1 + null)` be `1` and
+       * `$if (null)` take the false branch. The word boundary keeps `nullish`
+       * an ordinary keyword.
+       */
+      g.NullLiteral,
       g.Keyword
     ),
     (children) => {
@@ -2335,11 +2363,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     /*
      * `$()` is the explicit arithmetic boundary. Preserve that execution fact
      * in the canonical value graph so division operates under parens-division.
-     * The block is a BOUNDARY, not an authored group: the parens are the `$(`
-     * and `)` of this very spelling, so they open the math context without ever
-     * reaching output — otherwise `$(foo)` emits a paren pair nobody wrote.
+     * An `Expression` is a COMPUTATION BOUNDARY, not an authored group: the
+     * parens are the `$(` and `)` of this very spelling, so they open the math
+     * context without ever reaching output — otherwise `$(foo)` would emit a
+     * paren pair nobody wrote.
      */
-    children => interpolation([{ ref: boundaryBlock(requireExpressionFact(children.find(isExpressionFact)).value), unquote: true }])
+    children => interpolation([{ ref: expression(requireExpressionFact(children.find(isExpressionFact)).value), unquote: true }])
   );
   const ExpressionInterpolation = node<ExpressionFact>(
     'ExpressionInterpolation',
@@ -2357,7 +2386,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
        * parens-division semantics depending on where the expression appears.
        */
       return {
-        value: interpolation([{ ref: boundaryBlock(body.value), unquote: true }]),
+        value: interpolation([{ ref: expression(body.value), unquote: true }]),
         src: children.map(child => isExpressionFact(child) ? body.src : requireToken(child).value).join('')
       };
     }
@@ -2739,6 +2768,18 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'Keyword',
     g.Identifier,
     children => keyword(requireToken(children[0]).value)
+  );
+
+  /*
+   * The `null` LITERAL (§4.3) — a rule of its own, so the identifier positions
+   * that must keep reading `null` as a plain name (a lookup key, a media/container
+   * name, a @keyframes name) are untouched: only the positions that reference this
+   * rule admit the literal.
+   */
+  const NullLiteral = node<Null>(
+    'Null',
+    nullWord,
+    () => NULL_NODE
   );
 
   /*
@@ -3375,10 +3416,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.CustomPropertyName,
     children => keyword(requireToken(children[0]).value)
   );
-  const KeywordValue = node<Keyword>(
+  const KeywordValue = node<Keyword | Null>(
     'Keyword',
     routed(),
-    children => keyword(requireToken(children[0]).value)
+    children => keywordOrNull(requireToken(children[0]).value)
   );
   const VarCall = node<FunctionCall>(
     'VarCall',
@@ -6317,6 +6358,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     CallComponent,
     CallArgument,
     KeywordValue,
+    NullLiteral,
     VarCall,
     CalcValue,
     CalcParen,

@@ -1,4 +1,4 @@
-import { defineFunction, emitValue, groupItems, makeDimension, NIL } from '@jesscss/core';
+import { defineFunction, emitValue, groupItems, makeDimension, NULL } from '@jesscss/core';
 
 const index = defineFunction('index', {
   params: [
@@ -8,7 +8,7 @@ const index = defineFunction('index', {
   body: (list, value) => {
     const items = groupItems(list);
     const found = items.findIndex(item => emitValue(item) === emitValue(value));
-    return found < 0 ? NIL : makeDimension(found + 1);
+    return found < 0 ? NULL : makeDimension(found + 1);
   }
 });
 

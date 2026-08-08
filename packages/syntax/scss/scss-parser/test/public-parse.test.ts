@@ -658,7 +658,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         { type: 'MixinDefinition', rules: [{ type: 'If', branches: [{ guard: { g: 'truth', value: { src: 'true' } } }] }] },
         { type: 'Ruleset', rules: [{ type: 'MixinCall' }] },
         { type: 'For', binding: { kind: 'single', name: 'tone' }, rules: [{ type: 'If' }] },
-        { type: 'For', binding: { kind: 'single', name: 'i' }, rules: [{ type: 'If', branches: [{ guard: { g: 'cmp', op: '=' } }] }] }
+        { type: 'For', binding: { kind: 'single', name: 'i' }, rules: [{ type: 'If', branches: [{ guard: { g: 'cmp', op: 'sass-equal' } }] }] }
       ]
     });
     expect(serialize(root, { evaluator: buildEvaluator(makeLessRegistry()) })).toEqual({

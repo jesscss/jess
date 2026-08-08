@@ -556,6 +556,7 @@ function walkNode(
       break;
     case 'Important':
     case 'Block':
+    case 'Expression':
       walkValueSlot(node.value, hooks, 'value.value', node, 0, depth + 1);
       break;
     case 'Operation':
@@ -617,6 +618,7 @@ function walkNode(
       }
       break;
     case 'Keyword':
+    case 'Null':
     case 'Color':
     case 'Quoted':
     case 'Any':

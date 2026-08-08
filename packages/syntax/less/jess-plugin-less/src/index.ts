@@ -11,7 +11,7 @@ import {
 import { type PluginHost } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
-import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
+import type { MathMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
@@ -29,7 +29,6 @@ export type LessPluginOptions = LessOptions;
 export const lessPluginDefaults = {
   mathMode: 'parens-division' as MathMode,
   unitMode: 'preserve' as UnitMode,
-  equalityMode: 'less' as EqualityMode,
   leakyScope: true,
   bubbleRootAtRules: true,
   processImports: true,
@@ -142,7 +141,6 @@ export class LessPluginResolver {
       mathMode: lessOptions.mathMode,
       strictUnits: lessOptions.strictUnits,
       unitMode: lessOptions.unitMode,
-      equalityMode: lessOptions.equalityMode,
       allowExtendSelectors: lessOptions.allowExtendSelectors,
       leakyScope: lessOptions.leakyScope,
       bubbleRootAtRules: lessOptions.bubbleRootAtRules,
@@ -287,7 +285,6 @@ export class LessPlugin extends AbstractPlugin {
   supportedExtensions = ['.less'];
   mathMode: MathMode;
   unitMode: UnitMode;
-  equalityMode: EqualityMode;
   leakyScope: boolean;
   bubbleRootAtRules: boolean;
   processImports: boolean;
@@ -328,7 +325,6 @@ export class LessPlugin extends AbstractPlugin {
       unitMode = lessPluginDefaults.unitMode;
     }
     this.unitMode = unitMode;
-    this.equalityMode = opts.equalityMode ?? lessPluginDefaults.equalityMode;
     this.leakyScope = opts.leakyScope ?? lessPluginDefaults.leakyScope;
     this.bubbleRootAtRules = opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules;
     this.processImports = opts.processImports ?? lessPluginDefaults.processImports;
@@ -397,9 +393,6 @@ export class LessPlugin extends AbstractPlugin {
     }
     if (context.opts.unitMode === undefined) {
       context.setOption('unitMode', this.unitMode);
-    }
-    if (context.opts.equalityMode === undefined) {
-      context.setOption('equalityMode', this.equalityMode);
     }
     if (context.opts.leakyScope === undefined) {
       context.setOption('leakyScope', this.leakyScope);

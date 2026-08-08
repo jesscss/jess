@@ -144,11 +144,18 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
+
+    /*
+     * Sass `==` / `!=` lower to the named `sass-equal` PRIMITIVE, not to an
+     * operator (§5.1): Sass equality is unit-strict on numbers and
+     * quote-insensitive on text, so it dispatches on operand type at eval.
+     * `!=` is that same comparison under `not`.
+     */
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{
         type: 'If', branches: [
-          { guard: { g: 'cmp', op: '=', left: { type: 'Dimension', number: 1 }, right: { type: 'Dimension', number: 2 } } },
-          { guard: { g: 'and', left: { g: 'not', inner: { g: 'cmp', op: '=' } }, right: { g: 'cmp', op: '>=' } } }
+          { guard: { g: 'cmp', op: 'sass-equal', left: { type: 'Dimension', number: 1 }, right: { type: 'Dimension', number: 2 } } },
+          { guard: { g: 'and', left: { g: 'not', inner: { g: 'cmp', op: 'sass-equal' } }, right: { g: 'cmp', op: '>=' } } }
         ]
       }]
     });

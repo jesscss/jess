@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, boundaryBlock, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -700,6 +700,7 @@ function isValue(value: unknown): value is ValueNode {
     case 'List':
       return 'value' in value && Array.isArray(value.value);
     case 'Block':
+    case 'Expression':
       return 'value' in value && isValueSlotValue(value.value);
     case 'Operation':
       return 'left' in value && 'right' in value && isValue(value.left) && isValue(value.right);
@@ -1935,12 +1936,13 @@ const scssFactory = (g: ScssInputRules) => {
         const operand = requireValue(children[children.length - 1]);
 
         /*
-         * The boundary block is what makes the condition EVALUATE rather than
-         * replay its own spelling: a bare `Condition` in a value lane is an
-         * un-consumed one, and core emits those verbatim on purpose. `$( … )`
-         * is the marker that says this position computes (§4.5.2).
+         * The `Expression` computation boundary is what makes the condition
+         * EVALUATE rather than replay its own spelling: a bare `Condition` in a
+         * value lane is an un-consumed one, and core emits those verbatim on
+         * purpose. The boundary is the marker that says this position computes
+         * (§4.5.2).
          */
-        return boundaryBlock(condition(
+        return expression(condition(
           scssNegation(operand),
           `not ${scssConditionSource(operand)}`
         ));
@@ -3340,7 +3342,22 @@ const scssFactory = (g: ScssInputRules) => {
       const left = requireValue(children[0]);
       const operator = requireToken(children[1]).value;
       const right = requireValue(children[2]);
-      const comparison = { g: 'cmp' as const, op: operator === '==' || operator === '!=' ? '=' : operator, left, right };
+
+      /*
+       * Sass `==` lowers to the named PRIMITIVE `sass-equal`, NOT to an
+       * operator (§5.1). Sass equality is unit-strict on numbers (`1 == 1px` is
+       * false) and quote-insensitive on text (`a == "a"` is true), so neither
+       * `=` nor `==` reproduces it alone — and for `$a == $b` the operand types
+       * are unknown here, so this front end cannot pick one. It names the
+       * comparison instead, and the primitive dispatches on operand type at
+       * eval. `!=` is that same comparison under `not`.
+       */
+      const comparison = {
+        g: 'cmp' as const,
+        op: operator === '==' || operator === '!=' ? 'sass-equal' : operator,
+        left,
+        right
+      };
       return operator === '!=' ? { g: 'not', inner: comparison } : comparison;
     }
   );

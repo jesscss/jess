@@ -3704,9 +3704,7 @@ describe('Less AST grammar facts', () => {
       rules: [
         {
           value: {
-            type: 'Block',
-            delimiter: 'paren',
-            boundary: true,
+            type: 'Expression',
             value: {
               type: 'Condition',
               guard: { g: 'not', inner: { g: 'cmp', op: '<' } }
@@ -3729,8 +3727,7 @@ describe('Less AST grammar facts', () => {
       rules: [
         {
           value: {
-            type: 'Block',
-            boundary: true,
+            type: 'Expression',
             value: {
               type: 'Condition',
               guard: {
@@ -3742,8 +3739,7 @@ describe('Less AST grammar facts', () => {
         },
         {
           value: {
-            type: 'Block',
-            boundary: true,
+            type: 'Expression',
             value: { type: 'Condition', guard: { g: 'and' } }
           }
         },
@@ -3817,7 +3813,7 @@ describe('Less AST grammar facts', () => {
       rules: [
         /* `boolean(…)` lowers to the expression boundary; an ORDINARY call keeps
          * its `Condition` argument, which is exactly the split under test. */
-        { value: { type: 'Block', boundary: true, value: { type: 'Condition', guard: { g: 'cmp', op: '=' } } } },
+        { value: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' } } } },
         { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '=' } }] } },
         { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '>=' } }] } }
       ]
@@ -3852,9 +3848,7 @@ describe('Less AST grammar facts', () => {
       rules: [
         {
           value: {
-            type: 'Block',
-            delimiter: 'paren',
-            boundary: true,
+            type: 'Expression',
             value: {
               type: 'Condition',
               guard: {

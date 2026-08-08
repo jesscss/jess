@@ -14,7 +14,32 @@ import {
   type Value
 } from './value-eval.js';
 import { unify } from './value-units.js';
-import type { EqualityMode, UnitMode } from '../types/modes.js';
+import { namedColor } from './color-names.js';
+import type { UnitMode } from '../types/modes.js';
+
+/**
+ * The comparison KIND, carried by the guard node's own `op` (§5.1). There is no
+ * `equalityMode`: a dialect front end does not pick a runtime flag, it lowers to
+ * the primitive that says what it means.
+ *
+ *  - `'='`  — LOOSE. The operand pair picks §4.1's common ground and compares
+ *    there once. A unitless number is a wildcard against a unit; a quoted
+ *    operand puts the pair on string ground, where a value equals its own
+ *    spelling. `.less` and `.jess` `=` both lower here.
+ *  - `'=='` — TYPE-EQUAL. `'='` plus {@link sameType}: it declines exactly the
+ *    coercions the ground allows. `.jess` `==` lowers here.
+ *  - {@link SASS_EQUAL} — the Sass-equality PRIMITIVE. Sass `==` is unit-strict
+ *    on numbers and quote-insensitive on text, so NEITHER operator reproduces it
+ *    alone, and for `$a == $b` the operand types are unknown until eval — a
+ *    front end cannot pick. It therefore dispatches on operand TYPE here:
+ *    type-equal for a numeric pair, loose for everything else. Dispatching on
+ *    operand type is this primitive's definition, not an ambient mode: nothing
+ *    is read from config, the node says which comparison it is.
+ *
+ * Relational (`>` `<` `>=` `<=` `=<`) reads the SAME ground and only differs in
+ * what it does with it (§4.2).
+ */
+export const SASS_EQUAL = 'sass-equal';
 
 /**
  * §4.1's last row: the operand pair shares NO common ground (`1px > red`).
@@ -30,9 +55,26 @@ const NO_GROUND = Symbol('no-common-ground');
 /** A 3-way comparison outcome: ordered, unordered-on-a-ground, or {@link NO_GROUND}. */
 type Compared = -1 | 0 | 1 | undefined | typeof NO_GROUND;
 
-/** `Node.numericCompare`: EPSILON-fuzzed 3-way compare (float-precision tolerant). */
-const numericCompare = (a: number, b: number): -1 | 0 | 1 =>
-  a === b || Math.abs(a - b) < Number.EPSILON ? 0 : a > b ? 1 : -1;
+/**
+ * 3-way numeric compare, tolerant of CONVERSION error.
+ *
+ * The tolerance is RELATIVE, not the absolute `Number.EPSILON` this used to
+ * apply. `1in` and `2.54cm` are the same length by definition, but both convert
+ * through a canonical unit and land on `96` and `96.00000000000001` — a gap of
+ * 1.4e-14, four hundred million times `Number.EPSILON`, so an absolute fuzz
+ * called them unequal. That is O-TRUTH-3: lessc 4.6.3's `false` for
+ * `1in = 2.54cm` is a conversion-precision bug, not a dialect choice. `1e-10`
+ * is the same tolerance the numeric emit path trims at, so a pair that prints
+ * identically compares equal.
+ */
+const COMPARE_TOLERANCE = 1e-10;
+const numericCompare = (a: number, b: number): -1 | 0 | 1 => {
+  if (a === b) {
+    return 0;
+  }
+  const scale = Math.max(Math.abs(a), Math.abs(b), 1);
+  return Math.abs(a - b) <= COMPARE_TOLERANCE * scale ? 0 : a > b ? 1 : -1;
+};
 
 /**
  * Dimension ⊕ Dimension comparison, unit-reconciling (stock Less 4.x
@@ -53,18 +95,16 @@ const numericCompare = (a: number, b: number): -1 | 0 | 1 =>
 function dimensionCompare(
   a: Dimension,
   b: Dimension,
-  equalityMode: EqualityMode,
   unitMode: UnitMode | undefined
 ): -1 | 0 | 1 | undefined {
   /*
-   * Less alone treats a unitless number as equivalent to the same magnitude
-   * with a unit. Sass and exact retain the unit distinction while still
-   * reconciling two compatible explicit units (1in = 96px).
+   * A unitless operand is a WILDCARD on numeric ground (§4.1): it compares on
+   * raw magnitude against any unit. That is the whole of what makes `=` loose,
+   * and it is unconditional now — the unit distinction is not retained by an
+   * ambient mode but DECLINED by the operator, in `sameType`, which `==` and the
+   * numeric arm of {@link SASS_EQUAL} apply on top of this ground.
    */
   if (!a.unit || !b.unit) {
-    if (equalityMode !== 'less' && a.unit !== b.unit) {
-      return undefined;
-    }
     return numericCompare(a.number, b.number);
   }
   const au = unify(a.number, a.unit);
@@ -84,15 +124,38 @@ function dimensionCompare(
 const primCompare = (a: string | number, b: string | number): -1 | 0 | 1 | undefined =>
   a < b ? -1 : a === b ? 0 : a > b ? 1 : undefined;
 
-/** `toCSS`-equivalent of a value operand (the byte form less.js compares by).
- *  An ESCAPED quoted string emits its raw contents (`~"x"` → `x`); a plain quoted
- *  string keeps its quotes; every other operand serializes to its own `bytes`. */
+/**
+ * An operand's SPELLING — what it is on §4.1's string ground.
+ *
+ * A quoted string spells its CONTENTS, quote characters excluded, escaped or
+ * not. "A value equals its own spelling" is the whole quoted rule, and it is
+ * what makes `1px = "1px"`, `1 = "1"` and `a = "a"` all true for one reason.
+ * This used to keep the quotes on an unescaped string, which is what made Less
+ * text-strict; dropping them is §5.2's real `.less` output shift (false → true),
+ * taken deliberately so that one set of semantics holds across the dialects.
+ */
 function toCssStr(v: Value): string {
-  if (v.type === 'Quoted') {
-    return v.escaped ? v.value : `${v.quote}${v.value}${v.quote}`;
-  }
-  return v.bytes;
+  return v.type === 'Quoted' ? v.value : v.bytes;
 }
+
+/**
+ * The colour an operand IS, or `undefined` — a `Color` value, or a `Keyword`
+ * that spells a CSS colour name (`black`, `transparent`).
+ *
+ * §4.1's "both colours" ground has to reach a NAMED colour, because a bare
+ * `black` materializes as a `Keyword`: without this, `black = #000000` compares
+ * two structural kinds, finds no ground, and answers false against the table.
+ */
+function asColor(v: Value): { rgb: readonly number[]; alpha: number } | undefined {
+  if (v.type === 'Color') {
+    return v;
+  }
+  return v.type === 'Keyword' ? namedColor(v.text) : undefined;
+}
+
+/** Colour ground: rgb + alpha equality, never an order (§4.1 / §4.2). */
+const colorCompare = (a: NonNullable<ReturnType<typeof asColor>>, b: NonNullable<ReturnType<typeof asColor>>): 0 | undefined =>
+  a.rgb[0] === b.rgb[0] && a.rgb[1] === b.rgb[1] && a.rgb[2] === b.rgb[2] && a.alpha === b.alpha ? 0 : undefined;
 
 /** Whether an operand carries a dedicated `.compare` (less.js: Dimension/Color/Quoted). */
 function hasCompare(v: Value): boolean {
@@ -100,28 +163,27 @@ function hasCompare(v: Value): boolean {
 }
 
 /** A single operand's OWN `.compare(other)` (less.js per-type methods). */
-function selfCompare(a: Value, b: Value, equalityMode: EqualityMode, unitMode: UnitMode | undefined): Compared {
+function selfCompare(a: Value, b: Value, unitMode: UnitMode | undefined): Compared {
   switch (a.type) {
     case 'Dimension':
-      return b.type === 'Dimension' ? dimensionCompare(a, b, equalityMode, unitMode) : noGround(a, b);
-    case 'Color':
-      // rgb + alpha equality only (no ordering) — a colour ground, never an order.
-      if (b.type !== 'Color') {
-        return noGround(a, b);
-      }
-      return b.rgb[0] === a.rgb[0] && b.rgb[1] === a.rgb[1] && b.rgb[2] === a.rgb[2] && b.alpha === a.alpha
-        ? 0
-        : undefined;
+      return b.type === 'Dimension' ? dimensionCompare(a, b, unitMode) : noGround();
+    case 'Color': {
+      /*
+       * COLOUR ground (§4.1 row 3): rgb + alpha equality only, never an order.
+       * The other side may spell its colour as a NAME (`black == #000000`); a
+       * non-colour operand shares no ground at all.
+       */
+      const other = asColor(b);
+      return other === undefined ? noGround() : colorCompare(a, other);
+    }
     case 'Quoted':
       /*
-       * Two unescaped quoted strings compare LEXICALLY by contents (quote char
-       * ignored); against anything else the pair takes §4.1's STRING ground and
-       * compares each operand's own spelling — ORDERED, not equality-only. The
-       * ground belongs to the PAIR, so `>` must find the same one `=` does.
+       * STRING ground (§4.1 row 2), ORDERED, not equality-only: both operands
+       * compare on their own SPELLING, so `>` finds the same ground `=` does.
+       * A quoted operand spells its contents, which is why this is one branch
+       * now rather than a quoted-pair special case plus a fallback.
        */
-      return b.type === 'Quoted' && !a.escaped && !b.escaped
-        ? primCompare(a.value, b.value)
-        : primCompare(toCssStr(a), toCssStr(b));
+      return primCompare(toCssStr(a), toCssStr(b));
     default:
       return undefined;
   }
@@ -146,18 +208,41 @@ const negate = (c: Compared): Compared => {
  *    "either side quoted → string ground: compare the other operand's OWN
  *    spelling", and that is what `toCssStr` yields for it. So `3 = ~"3"` is true
  *    AND `5 > ~"4"` is true, from ONE ground.
- *  - `Nil` grounds NUMERICALLY against a number (§4.1, `null` → `0`). Adopting
- *    that ground outright is phase 4's — it moves `null = 0` from false to true,
- *    and equality is not this phase's to change — and reporting the pair
- *    unordered already gives §4.2's answer for `null > 1`, which is `false`.
- *
  * A `Keyword` is deliberately NOT here. It is a bare identifier, not a string:
  * §4.1's last row gives `1px > red` and `1 < true` no ground at all, which is
  * §4.2's error row. That is the ONE distinction lost when `~"4"` lowered to a
  * `Keyword` — it made an unquoted string and an identifier the same operand.
  */
-const noGround = (a: Value, b: Value): Compared =>
-  a.type === 'Nil' || b.type === 'Nil' ? undefined : NO_GROUND;
+const noGround = (): Compared => NO_GROUND;
+
+/**
+ * `null`'s NUMERIC ground (§4.1 row 4): against a number, `null` compares AS `0`.
+ * A frozen operand rather than a fresh `makeDimension(0)` per comparison, and a
+ * real `Dimension` rather than a bare `0` so the pair goes through
+ * {@link dimensionCompare} and inherits its unit rules unchanged — `null = 0` is
+ * true, and `null = 0px` answers whatever `1 = 1px` answers.
+ */
+const NULL_AS_ZERO: Dimension = { type: 'Dimension', number: 0, unit: '', bytes: '0' };
+
+/**
+ * §4.1's `null` row, taken by the PAIR before any typed dispatch.
+ *
+ * `null` grounds NUMERICALLY against a number and has NO ground with anything
+ * else, which is exactly the two answers the target table needs: `null = 0` is
+ * true (numeric ground), `null > 1` is false (`0 > 1`, §4.2's row), and
+ * `null = false` stays false because the pair never finds a ground at all.
+ *
+ * Two `null`s are equal — the same value on the same ground.
+ */
+function nullCompare(a: Value, b: Value, unitMode: UnitMode | undefined): Compared {
+  if (a.type === 'Null' && b.type === 'Null') {
+    return 0;
+  }
+  if (a.type === 'Null') {
+    return b.type === 'Dimension' ? dimensionCompare(NULL_AS_ZERO, b, unitMode) : NO_GROUND;
+  }
+  return a.type === 'Dimension' ? dimensionCompare(a, NULL_AS_ZERO, unitMode) : NO_GROUND;
+}
 
 /**
  * Faithful port of less.js `Node.compare(a, b)` over materialized operands:
@@ -167,18 +252,7 @@ const noGround = (a: Value, b: Value): Compared =>
  *  - same-kind scalars compare LEXICOGRAPHICALLY on their own spelling; lists
  *    compare element-wise (same separator, length, and recursively-equal items).
  */
-function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: UnitMode | undefined): Compared {
-  /*
-   * Sass unquotes a keyword against a quoted string for EQUALITY only.
-   */
-  if (equalityMode === 'sass') {
-    const quoted = a.type === 'Quoted' ? a : b.type === 'Quoted' ? b : null;
-    const keyword = a.type === 'Keyword' ? a : b.type === 'Keyword' ? b : null;
-    if (quoted && quoted.value === keyword?.text) {
-      return 0;
-    }
-  }
-
+function compareNodes(a: Value, b: Value, unitMode: UnitMode | undefined): Compared {
   /*
    * STRING GROUND (§4.1 row 2), taken by the PAIR before any typed dispatch: an
    * opaque unquoted operand (`e("4")`, `~"4"`) against anything compares each
@@ -189,17 +263,20 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: 
    * OPERATOR, which §4.1 forbids — the pair picks the ground once, and equality
    * then asks "is it 0" while relational reads the order off the same answer.
    */
+  if (a.type === 'Null' || b.type === 'Null') {
+    return nullCompare(a, b, unitMode);
+  }
   if (a.type === 'Any' || b.type === 'Any') {
     return primCompare(toCssStr(a), toCssStr(b));
   }
   if (hasCompare(a) && b.type !== 'Quoted') {
-    return selfCompare(a, b, equalityMode, unitMode);
+    return selfCompare(a, b, unitMode);
   }
   if (hasCompare(b)) {
-    return negate(selfCompare(b, a, equalityMode, unitMode));
+    return negate(selfCompare(b, a, unitMode));
   }
   if (a.type !== b.type) {
-    return noGround(a, b);
+    return noGround();
   }
   if (a.type === 'Collection' && b.type === 'Collection') {
     /*
@@ -212,8 +289,8 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: 
       return undefined;
     }
     for (const entry of a.entries) {
-      const other = b.entries.find(candidate => compareGroups(candidate.key, entry.key, equalityMode, unitMode) === 0);
-      if (other === undefined || compareGroups(other.value, entry.value, equalityMode, unitMode) !== 0) {
+      const other = b.entries.find(candidate => compareGroups(candidate.key, entry.key, unitMode) === 0);
+      if (other === undefined || compareGroups(other.value, entry.value, unitMode) !== 0) {
         return undefined;
       }
     }
@@ -224,7 +301,7 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: 
       return undefined;
     }
     for (let i = 0; i < a.value.length; i++) {
-      if (compareGroups(a.value[i]!, b.value[i]!, equalityMode, unitMode) !== 0) {
+      if (compareGroups(a.value[i]!, b.value[i]!, unitMode) !== 0) {
         return undefined;
       }
     }
@@ -242,19 +319,19 @@ function compareNodes(a: Value, b: Value, equalityMode: EqualityMode, unitMode: 
   return primCompare(a.bytes, b.bytes);
 }
 
-function compareGroups(a: ValueGroup, b: ValueGroup, equalityMode: EqualityMode, unitMode: UnitMode | undefined): Compared {
+function compareGroups(a: ValueGroup, b: ValueGroup, unitMode: UnitMode | undefined): Compared {
   if (isValueGroupArray(a) || isValueGroupArray(b)) {
     if (!isValueGroupArray(a) || !isValueGroupArray(b) || a.length !== b.length) {
       return undefined;
     }
     for (let index = 0; index < a.length; index += 1) {
-      if (compareGroups(a[index]!, b[index]!, equalityMode, unitMode) !== 0) {
+      if (compareGroups(a[index]!, b[index]!, unitMode) !== 0) {
         return undefined;
       }
     }
     return 0;
   }
-  return compareNodes(a, b, equalityMode, unitMode);
+  return compareNodes(a, b, unitMode);
 }
 
 /**
@@ -275,7 +352,13 @@ function sameType(a: ValueGroup, b: ValueGroup): boolean {
       && a.every((item, index) => sameType(item, b[index]!));
   }
   if (a.type !== b.type) {
-    return false;
+    /*
+     * A COLOUR is a colour however it is spelled. `black == #000000` is the
+     * colour ground's type-equal row: the pair already compares as colours
+     * under `=`, and `==` declines COERCIONS, not spellings — a named colour
+     * and a hex colour are one type, so nothing is being coerced here.
+     */
+    return asColor(a) !== undefined && asColor(b) !== undefined;
   }
   if (a.type === 'Dimension' && b.type === 'Dimension') {
     if (!a.unit || !b.unit) {
@@ -284,6 +367,26 @@ function sameType(a: ValueGroup, b: ValueGroup): boolean {
     return unify(a.number, a.unit).unit === unify(b.number, b.unit).unit;
   }
   return true;
+}
+
+/** Whether BOTH operands are numbers — the type {@link SASS_EQUAL} dispatches on. */
+const isNumericPair = (a: ValueGroup, b: ValueGroup): boolean =>
+  !isValueGroupArray(a) && !isValueGroupArray(b) && a.type === 'Dimension' && b.type === 'Dimension';
+
+/**
+ * A 3-way ORDER over two operands, on §4.1's ground — the ordering primitive
+ * every in-repo consumer that needs `<`/`=`/`>` rather than a boolean shares
+ * (`fns/`'s Sass `min`/`max` folds with it). THROWS when the pair has no ground
+ * or no order on the one it has, because a fold cannot represent "unordered".
+ */
+export function compareOrder(left: ValueGroup, right: ValueGroup, unitMode?: UnitMode): -1 | 0 | 1 {
+  const c = compareGroups(left, right, unitMode);
+  if (c === undefined || c === NO_GROUND) {
+    throw new IncomparableOperandsError(
+      `Incomparable operands. '${groupBytes(left)}' and '${groupBytes(right)}' share no common ground, so they cannot be ordered.`
+    );
+  }
+  return c;
 }
 
 /**
@@ -299,12 +402,22 @@ export function compare(
   op: string,
   left: ValueGroup,
   right: ValueGroup,
-  equalityMode: EqualityMode = 'less',
   unitMode?: UnitMode
 ): boolean {
-  const c = compareGroups(left, right, equalityMode, unitMode);
+  const c = compareGroups(left, right, unitMode);
   switch (op) {
     case '=': return c === 0;
+
+    /*
+     * The Sass-equality PRIMITIVE (§5.1), which `.scss` lowers `==` to. It
+     * DISPATCHES on operand type rather than reading a mode: unit-strict on a
+     * numeric pair (`1 == 1px` is false), loose on everything else (`a == "a"`
+     * is true). Neither `=` nor `==` reproduces that alone, and the operand
+     * types are not known until here, so this is the one comparison a front end
+     * cannot resolve by substituting an operator.
+     */
+    case SASS_EQUAL:
+      return c === 0 && (isNumericPair(left, right) ? sameType(left, right) : true);
 
     /*
      * `.jess`'s type-equal operator (OPERATIONS.md §4). It is `=` plus a type

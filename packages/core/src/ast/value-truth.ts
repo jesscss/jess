@@ -40,7 +40,7 @@ function isEmptyGroup(value: ValueGroup): boolean {
     return value.length === 0;
   }
   switch (value.type) {
-    case 'Nil': return true;
+    case 'Null': return true;
     case 'List': return value.value.length === 0;
     case 'Collection': return value.entries.length === 0 && value.base === undefined;
     default: return false;
@@ -61,7 +61,7 @@ export function isTruthy(value: ValueGroup): boolean {
   }
   switch (value.type) {
     case 'Bool': return value.value;
-    case 'Nil': return false;
+    case 'Null': return false;
     case 'Quoted': return value.value !== '';
     case 'List': return value.value.length !== 0;
     case 'Collection': return value.entries.length !== 0 || value.base !== undefined;

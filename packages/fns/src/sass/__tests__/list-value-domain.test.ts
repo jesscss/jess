@@ -56,7 +56,7 @@ describe('Sass list functions on the AST-v2 value domain', () => {
     const list = makeList([makeKeyword('a'), makeKeyword('b')], ',');
     expect(call(length, list)).toMatchObject({ type: 'Dimension', number: 2, unit: '' });
     expect(call(listIndex, list, makeKeyword('b'))).toMatchObject({ type: 'Dimension', number: 2 });
-    expect(call(listIndex, list, makeKeyword('x'))).toMatchObject({ type: 'Nil' });
+    expect(call(listIndex, list, makeKeyword('x'))).toMatchObject({ type: 'Null' });
     expect(call(separator, list)).toMatchObject({ type: 'Keyword', text: 'comma' });
   });
 

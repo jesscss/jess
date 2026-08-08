@@ -394,6 +394,19 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
    * FunctionCall was folded to bytes upstream), and a computed preserve-mode
    * `calc(...)` fallback result has no node at all, so both are string-unwrapped.
    */
+  /*
+   * [null] `null` is ABSENT, not an operand: it contributes nothing and the other
+   * side stands (§4.3, measured on dart-sass 1.101.0 — `b: 1 + null` is `b: 1`).
+   * Two nulls stay null. This sits ABOVE the calc/keyword guards so `null` never
+   * gets spliced into a preserved `calc(…)` as the bare text `null`.
+   */
+  if (left.type === 'Null') {
+    return right;
+  }
+  if (right.type === 'Null') {
+    return left;
+  }
+
   const leftInner = left.type === 'Keyword' ? calcInner(left.bytes) : null;
   const rightInner = right.type === 'Keyword' ? calcInner(right.bytes) : null;
   if (leftInner !== null || rightInner !== null) {

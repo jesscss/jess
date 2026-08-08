@@ -3,7 +3,6 @@ import {
   AbstractPlugin,
   type ISafeParseResult,
   parserDiagnostic,
-  type EqualityMode,
   type UnitMode,
   type Context,
   buildEvaluator
@@ -23,13 +22,6 @@ export type ScssPluginOptions = {
   unitMode?: UnitMode;
 
   /**
-   * Compatibility input retained on this frontend's option object. It does not
-   * select a separate SCSS evaluator; configure the shared evaluator through
-   * Context compile/input options.
-   */
-  equalityMode?: EqualityMode;
-
-  /**
    * Whether to collapse nested selectors (flatten nesting during print).
    * This is a Jess output option, not a Sass option.
    */
@@ -44,12 +36,10 @@ export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
   unitMode: UnitMode;
-  equalityMode: EqualityMode;
 
   constructor(public opts: ScssPluginOptions = {}) {
     super();
     this.unitMode = opts.unitMode ?? 'preserve';
-    this.equalityMode = opts.equalityMode ?? 'sass';
   }
 
   expandImport(importPath: string) {
@@ -63,9 +53,6 @@ export class ScssPlugin extends AbstractPlugin {
     }
     if (context.opts.unitMode === undefined) {
       context.setOption('unitMode', this.unitMode);
-    }
-    if (context.opts.equalityMode === undefined) {
-      context.setOption('equalityMode', this.equalityMode);
     }
     context.registerValueEvaluator(sassValueEvaluator);
   }

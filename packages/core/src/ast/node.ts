@@ -26,6 +26,7 @@ import type {
   SimpleSelector,
   SelectorCapture,
   Keyword,
+  Null,
   Color,
   Quoted,
   Any,
@@ -41,6 +42,7 @@ import type {
   Operation,
   FunctionCall,
   Block,
+  Expression,
   Interpolation,
   AnonymousMixin,
   Collection,
@@ -59,9 +61,9 @@ import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './
 /** Every tree2 node's PascalCase `type` discriminant (Less-matching). */
 export type NodeType =
   | 'Stylesheet' | 'Ruleset' | 'Declaration' | 'Comment' | 'SelectorList'
-  | 'ComplexSelector' | 'RelativeSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
+  | 'ComplexSelector' | 'RelativeSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Null' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
   | 'Sequence' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
-  | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition' | 'IfValue'
+  | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Expression' | 'Condition' | 'IfValue'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation'
   | 'AnonymousMixin' | 'Collection' | 'CollectionEntry' | 'Reference' | 'Range' | 'For' | 'If' | 'StyleImport' | 'ModuleImport';
 
@@ -83,8 +85,8 @@ export function renderCombinator(comb: Combinator): string {
  */
 export type Node =
   | Stylesheet | Ruleset | Declaration | Comment | SelectorList | ComplexSelector | RelativeSelector | CompoundSelector
-  | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | Sequence | List | Lookup | MixinDefinition | MixinCall
-  | VariableDeclaration | Important | Operation | FunctionCall | Block | Condition | IfValue
+  | SimpleSelector | SelectorCapture | Keyword | Null | Color | Quoted | Any | Url | Dimension | Sequence | List | Lookup | MixinDefinition | MixinCall
+  | VariableDeclaration | Important | Operation | FunctionCall | Block | Expression | Condition | IfValue
   | AtRuleBlock | AtRuleStatement | Plugin | OpaqueAtRuleBlock | Interpolation | AnonymousMixin | Collection
   | CollectionEntry | Reference | Range | For | If | StyleImport | ModuleImport;
 
@@ -105,9 +107,9 @@ export type Node =
  */
 export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Stylesheet', 'Ruleset', 'Declaration', 'Comment', 'SelectorList',
-  'ComplexSelector', 'RelativeSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
+  'ComplexSelector', 'RelativeSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Null', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
   'Sequence', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
-  'Important', 'Operation', 'FunctionCall', 'Block', 'Condition', 'IfValue',
+  'Important', 'Operation', 'FunctionCall', 'Block', 'Expression', 'Condition', 'IfValue',
   'AtRuleBlock', 'AtRuleStatement', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation',
   'AnonymousMixin', 'Collection', 'CollectionEntry', 'Reference', 'Range', 'For', 'If', 'StyleImport', 'ModuleImport'
 ]);

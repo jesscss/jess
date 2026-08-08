@@ -17,7 +17,7 @@ import type { StylesConfig } from './types.js';
 import type { TriviaMap } from './types/index.js';
 import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
-import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js';
+import { FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
@@ -126,7 +126,6 @@ export interface ContextOptions {
   mathMode?: MathMode;
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
-  equalityMode?: EqualityMode;
 
   /** See LessOptions.allowOverloadedImport. Enforcement pending its definition. */
   allowOverloadedImport?: boolean;
@@ -226,7 +225,7 @@ export interface ContextOptions {
 /**
  * The flat, fully-resolved option set read on the eval fast path. Every field is
  * present (no `undefined`), so a read-site is a single property access —
- * `context.options.equalityMode` — with no `?? treeContext ?? default` chain and
+ * `context.options.unitMode` — with no `?? treeContext ?? default` chain and
  * no per-read merge. Resolved once and cached on {@link Context}; recomputed only
  * when `context.treeContext` switches (see its setter), so crossing into an
  * imported file is one recompute, not a cost paid on every option read.
@@ -235,7 +234,6 @@ export interface ResolvedOptions {
   mathMode: MathMode;
   unitMode: UnitMode;
   functionMode: FunctionMode;
-  equalityMode: EqualityMode;
   leakyScope: boolean;
   bubbleRootAtRules: boolean;
   processImports: boolean;
@@ -249,7 +247,6 @@ const OPTION_DEFAULTS: ResolvedOptions = {
   mathMode: 'parens-division',
   unitMode: 'preserve',
   functionMode: 'preserve',
-  equalityMode: 'less',
   leakyScope: false,
   bubbleRootAtRules: false,
   processImports: true
@@ -271,7 +268,6 @@ export function resolveOptions(
     mathMode: compile?.mathMode ?? tree?.mathMode ?? OPTION_DEFAULTS.mathMode,
     unitMode: compile?.unitMode ?? tree?.unitMode ?? OPTION_DEFAULTS.unitMode,
     functionMode: compile?.functionMode ?? tree?.functionMode ?? OPTION_DEFAULTS.functionMode,
-    equalityMode: compile?.equalityMode ?? tree?.equalityMode ?? OPTION_DEFAULTS.equalityMode,
     leakyScope: compile?.leakyScope ?? tree?.leakyScope ?? OPTION_DEFAULTS.leakyScope,
     bubbleRootAtRules: compile?.bubbleRootAtRules ?? tree?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules,
     processImports: compile?.processImports ?? tree?.processImports ?? OPTION_DEFAULTS.processImports
@@ -397,7 +393,6 @@ export class TreeContext extends DocumentContext {
     delete rest.mathMode;
     delete rest.unitMode;
     delete rest.functionMode;
-    delete rest.equalityMode;
     delete rest.leakyScope;
     delete rest.bubbleRootAtRules;
     delete rest.processImports;

@@ -45,7 +45,7 @@ const VALUE_TYPES: ReadonlySet<string> = new Set([
   'List',
   'Block',
   'Bool',
-  'Nil',
+  'Null',
   'Collection'
 ]);
 

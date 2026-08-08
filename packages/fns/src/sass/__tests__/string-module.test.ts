@@ -98,7 +98,7 @@ describe('sass:string — index', () => {
     expect(bytes(index, k('Hello'), k('ll'))).toBe('3');
     // Code-point indexing: the emoji counts as one character.
     expect(bytes(index, q('😊abc'), q('abc'))).toBe('2');
-    expect(call(index, q('cde'), q('f'))).toMatchObject({ type: 'Nil' });
+    expect(call(index, q('cde'), q('f'))).toMatchObject({ type: 'Null' });
   });
 });
 

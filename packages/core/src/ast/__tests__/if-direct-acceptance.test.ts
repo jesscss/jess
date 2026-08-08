@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { atRuleBlock } from '../at-rule.js';
-import { boundaryBlock, condition, decl, dimension, ifNode, keyword, mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference } from '../nodes.js';
+import { expression, condition, decl, dimension, ifNode, keyword, mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
@@ -26,7 +26,7 @@ describe('If canonical AST emission', () => {
     }, '(3 > 2)');
     const document = stylesheet([
       rule('.boolean', [
-        decl('value', boundaryBlock(condition({
+        decl('value', expression(condition({
           g: 'cmp',
           op: '=',
           left: gtLeft,

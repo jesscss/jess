@@ -111,13 +111,13 @@ describe('OPERATIONS §4 — loose equality `=`', () => {
     await expect(value('$(2 = 2%)')).resolves.toBe('true');
   });
 
-  it.fails('PENDING phase 4 — string ground: a value equals its own spelling (rows q, r, s)', async () => {
+  it('string ground: a value equals its own spelling (rows q, r, s)', async () => {
     await expect(value('$(a = b)')).resolves.toBe('false');
     await expect(value('$(a = "a")')).resolves.toBe('true');
     await expect(value('$(a = a)')).resolves.toBe('true');
   });
 
-  it.fails('PENDING phase 4 — colour ground is rgb + alpha (rows v, w, x, y, z)', async () => {
+  it('colour ground is rgb + alpha (rows v, w, x, y, z)', async () => {
     await expect(value('$(red = red)')).resolves.toBe('true');
     await expect(value('$(black = transparent)')).resolves.toBe('false');
     await expect(value('$(black = #000000)')).resolves.toBe('true');
@@ -125,7 +125,7 @@ describe('OPERATIONS §4 — loose equality `=`', () => {
     await expect(value('$(black = #000000FF)')).resolves.toBe('true');
   });
 
-  it.fails('PENDING phase 4 — §4.1 — the ground is picked ONCE, per pair, and nothing is transitive', async () => {
+  it('§4.1 — the ground is picked ONCE, per pair, and nothing is transitive', async () => {
     /*
      * `1 = 1px` compares on numeric ground and `1 = "1px"` on string ground.
      * Different pairs, different grounds, no contradiction — and Less's `=` is
@@ -165,14 +165,14 @@ describe('OPERATIONS §4 — type-equal `==`', () => {
     await expect(value('$(1in == 96px)')).resolves.toBe('true');
   });
 
-  it.fails('PENDING phase 4 — colour ground, and `1in = 2.54cm` (O-TRUTH-3)', async () => {
+  it('colour ground, and `1in = 2.54cm` (O-TRUTH-3)', async () => {
     /*
-     * `black == #000000` needs the §4.1 COLOUR ground: `black` is still a
-     * Keyword against a Color here, and only the ground model makes the pair
-     * compare as colours at all. `1in = 2.54cm` is equal BY DEFINITION —
-     * lessc 4.6.3's `false` is a conversion-precision bug, not a dialect
-     * choice, and it is the one row where diverging from Less 4.x needs no
-     * further justification.
+     * `black == #000000` needs the §4.1 COLOUR ground: `black` is a Keyword
+     * against a Color, and only the ground model makes the pair compare as
+     * colours at all. `1in = 2.54cm` is equal BY DEFINITION — lessc 4.6.3's
+     * `false` is a conversion-precision bug, not a dialect choice, and it is
+     * the one row where diverging from Less 4.x needs no further
+     * justification. Both close with phase 4.
      */
     await expect(value('$(black == #000000)')).resolves.toBe('true');
     await expect(value('$(1in == 2.54cm)')).resolves.toBe('true');

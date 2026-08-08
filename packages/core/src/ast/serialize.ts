@@ -109,6 +109,7 @@ import {
   IncomparableOperandsError,
   emitValue,
   isValueGroupArray,
+  isElided,
   isLiteral,
   literal,
   type EvalModes,
@@ -127,7 +128,7 @@ import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scop
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { UnitArithmeticError, calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
-import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
+import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList, makeNull, NULL } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
@@ -2549,12 +2550,12 @@ interface EvalCtx {
   parenFrames?: readonly boolean[];
 
   /*
-   * [condition-grammar] inside a `$( … )` EXPRESSION boundary (`Block.boundary`).
-   * `.jess` has no `boolean()` (ledger P17), so `$( … )` is exactly where a
+   * [condition-grammar] inside a `$( … )` computation boundary — the `Expression`
+   * node. `.jess` has no `boolean()` (ledger P17), so `$( … )` is exactly where a
    * comparison legitimately lands in value position — while in `.less`/`.scss`
    * a `Condition` reaching the value lane is still the mis-parse the lane was
-   * written for. Set only by the boundary Block, so the two dialects that have
-   * no such boundary are untouched.
+   * written for. Set only by `Expression`, which only jess parses, so the two
+   * dialects that have no such boundary are untouched.
    */
   exprBoundary?: boolean;
 
@@ -2574,6 +2575,14 @@ interface EvalCtx {
    * a declaration value, e.g. an at-rule prelude / interpolated name).
    */
   importantSink?: { hit: boolean };
+
+  /*
+   * [null] Per-declaration elision sink (§4.3). `evalBytes` sets `elided` when the
+   * WHOLE value is `null`, so the declaration emitter can DROP the declaration
+   * rather than write `b: ;`. Installed only around a declaration value; absent
+   * everywhere else, where an empty value is not an absence.
+   */
+  elideSink?: { elided: boolean };
 
   /*
    * [important] Scalar equivalent of `importantSink` for a merged declaration
@@ -2722,15 +2731,33 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
   const values = slot.map(value => evalValueSlot(value, frame, valueContext));
   return combineAll(values, (resolved) => {
     const separators = valueLayoutOf(slot);
-    if (separators === undefined) {
-      return literal(resolved.map(emitValue).join(' '));
+
+    /*
+     * [null] An elided member takes its authored separator with it (§4.3), which
+     * is why this is a skipping loop and not a `map().join()`: `b: 1px null 2px`
+     * is `b: 1px 2px`, and `b: 1px, null, 2px` is `b: 1px, 2px` — one space and
+     * one comma, not the two the dropped member's glue would leave behind.
+     */
+    let bytes = '';
+    let empty = true;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const item = resolved[index]!;
+      if (!isLiteral(item) && isElided(item)) {
+        continue;
+      }
+      if (!empty) {
+        bytes += separators === undefined ? ' ' : separators[index - 1] ?? ' ';
+      }
+      bytes += emitValue(item);
+      empty = false;
     }
-    let bytes = emitValue(resolved[0]!);
-    for (let index = 1; index < resolved.length; index += 1) {
-      bytes += separators[index - 1] ?? ' ';
-      bytes += emitValue(resolved[index]!);
-    }
-    return literal(bytes);
+
+    /*
+     * Every member elided, so the WHOLE slot is absent — hand back the value, not
+     * empty bytes, so the declaration emitter drops the declaration outright
+     * (dart-sass: `$x: null; a { b: $x null }` emits nothing at all).
+     */
+    return empty && resolved.length > 0 ? NULL : literal(bytes);
   });
 }
 
@@ -2998,6 +3025,10 @@ function validateValueGroupUnits(value: ValueGroup, modes: EvalModes, owner: obj
 
 function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<ValueGroup> {
   switch (node.type) {
+    /* An AUTHORED `null` — provenance explicit, so `null` and an unbound value
+     * stay distinguishable downstream while remaining the same value. */
+    case 'Null':
+      return makeNull(true);
     case 'Keyword':
     case 'Color':
     case 'Dimension':
@@ -3123,7 +3154,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
        * branch value, not on its bytes. An unmatched chain has no value. */
       return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
-        ? force(e, literal(''))
+        ? NULL
         : evalTypedSlot(taken, frame, e));
     case 'Range':
       /*
@@ -3268,6 +3299,16 @@ function evalLogicalOperation(node: Operation, frame: Frame | null, e: EvalCtx):
  */
 function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   switch (node.type) {
+    /*
+     * `null` is the ONE literal that does not emit its `src`: it emits nothing
+     * and drops the separator that would follow it (§4.3 / ledger M5). It must
+     * therefore leave this lane as a VALUE, not as bare bytes — the byte lane
+     * has no way to spell "absent", and `literal('')` would leave the join glue
+     * behind (`1px  2px`).
+     */
+    case 'Null':
+      return makeNull(true);
+
     /*
      * Every value LITERAL is inert here: emit its verbatim `src` as a bare string,
      * except an escaped Less quote, whose value semantics intentionally unquote it.
@@ -3422,13 +3463,24 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       return combineAll(items, (vals) => {
         const glue = node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ';
         const authored = valueLayoutOf(node);
-        let out = emitValue(vals[0]!);
-        for (let index = 1; index < vals.length; index += 1) {
-          const separator = authored?.[index - 1];
-          out += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
-          out += emitValue(vals[index]!);
+
+        /* [null] An elided item takes its separator with it (§4.3): dart-sass
+         * emits `b: 1px, null, 2px` as `b: 1px, 2px`, with ONE comma. */
+        let out = '';
+        let empty = true;
+        for (let index = 0; index < vals.length; index += 1) {
+          const item = vals[index]!;
+          if (!isLiteral(item) && isElided(item)) {
+            continue;
+          }
+          if (!empty) {
+            const separator = authored?.[index - 1];
+            out += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
+          }
+          out += emitValue(item);
+          empty = false;
         }
-        return literal(out);
+        return empty && vals.length > 0 ? NULL : literal(out);
       });
     }
     case 'Block': {
@@ -3440,18 +3492,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return evalValueSlot(node.value, frame, e);
       }
       const inner = evalValueSlot(node.value, frame, node.delimiter === 'paren'
-        ? { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: e.exprBoundary || node.boundary }
+        ? { ...e, parenFrames: pushParenFrame(e, true) }
         : e);
-
-      /*
-       * A `$( … )` boundary opens the math context above but owns no output
-       * delimiters — its parens are the enclosing form's spelling. It stays
-       * transparent even when the inner folds to bytes, which an authored
-       * group does not (`$(foo)` -> `foo`, but `$((foo))` -> `(foo)`).
-       */
-      if (node.boundary) {
-        return inner;
-      }
 
       /*
        * Transparent to computed bytes: a materialized (operated) inner strips the
@@ -3466,6 +3508,15 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return node.delimiter === 'square' ? makeBlock(v, 'square', node.escaped) : v;
       });
     }
+    case 'Expression':
+      /*
+       * A `$( … )` COMPUTATION BOUNDARY opens the math context but owns no output
+       * delimiters — the `$(` and `)` are the marker, not a value's syntax. It stays
+       * transparent even when the inner folds to bytes, which an authored group does
+       * not (`$(foo)` -> `foo`, but `$((foo))` -> `(foo)`). `exprBoundary` marks the
+       * position for a value-position `Condition` (§7.1).
+       */
+      return evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
     case 'Condition':
       /*
        * [condition-grammar] Every construct that CONSUMES a condition — Less
@@ -3479,7 +3530,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * inside `boolean()`, `if()` or a guard. It is FALSE for `.jess`, which by
        * ledger P17 has no `boolean()` at all — so `$( … )` is exactly where a real
        * comparison lands, and "reached the value lane" cannot be the discriminator.
-       * `Block.boundary` marks that position and is (OPERATIONS.md §7.1, phase 1).
+       * The `Expression` node marks that position (§7.1).
        */
       if (e.ev && e.exprBoundary) {
         return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
@@ -3823,6 +3874,48 @@ function lastVarMember(map: DeclMap, e: EvalCtx): DeclEntry | undefined {
     }
   }
   return hit;
+}
+
+/**
+ * [loose-key] Value-equality rescan for a bracket key that no NAME matched.
+ *
+ * `byProp`/`byVar` are keyed by BYTE identity. That is the right O(1) fast path
+ * and the wrong definition of "same key": `$foo['1px']` finds a `1px` member
+ * today only by byte coincidence, and `$foo[1px]` against a `'1px'` member
+ * misses outright (§1). Lookup is LOOSE — the same `=` the guards compare on —
+ * so a quoted key and the value it spells name the same member.
+ *
+ * Fast path PLUS fallback, never a replacement: this is reached only after every
+ * byte lookup has already missed, one step before the unresolved-symbol error,
+ * so a hit still costs one map probe and a miss costs the scan it was going to
+ * pay for with an error anyway. An O(n) scan cannot live on the hit path.
+ *
+ * The two namespaces stay DISJOINT (`#ns[a]` must not find `@a`): the rescan
+ * walks the same map the byte lookup did, and only a `member` key sees both.
+ */
+function looseMemberLookup(
+  map: DeclMap,
+  key: string,
+  kind: 'var' | 'prop' | 'member',
+  e: EvalCtx
+): DeclEntry | undefined {
+  const ev = e.ev;
+  if (!ev) {
+    return undefined;
+  }
+  const wanted = ev.materialize(key);
+  const scan = (candidates: Map<string, DeclEntry>): DeclEntry | undefined => {
+    for (const [name, entry] of candidates) {
+      if (name !== key && ev.compare('=', ev.materialize(name), wanted, e.modes)) {
+        return entry;
+      }
+    }
+    return undefined;
+  };
+  if (kind === 'member') {
+    return scan(map.byProp) ?? (map.unified ? undefined : scan(map.byVar));
+  }
+  return scan(mapForKind(map, kind));
 }
 
 function resolveDeclarationMember(
@@ -4276,8 +4369,18 @@ function resolveReferenceResult(
     }
     let matched: DeclEntry | undefined;
     let missingSymbol = node.raw;
+
+    /*
+     * [loose-key] The KEY a value-equality rescan would use, captured by the
+     * name-keyed branches only. See {@link looseMemberLookup} — this is the
+     * fallback arm of a fast path, not a replacement for it.
+     */
+    let looseKey: string | undefined;
+    let looseKind: 'var' | 'prop' | 'member' | undefined;
     if (step.type === 'LookupStep' && typeof step.name === 'string') {
       missingSymbol = step.name;
+      looseKey = step.name;
+      looseKind = 'member';
       const prop = map.byProp.get(step.name);
       const variable = map.unified ? undefined : map.byVar.get(step.name) ?? lookupVarMember(map, step.name, e);
       if (prop && variable) {
@@ -4334,6 +4437,8 @@ function resolveReferenceResult(
         missingSymbol = step.kind === 'var'
           ? `@${key}`
           : step.kind === 'prop' ? `$${key}` : key;
+        looseKey = key;
+        looseKind = step.kind === 'member' ? 'member' : step.kind === 'prop' ? 'prop' : 'var';
         if (step.kind === 'member') {
           const prop = map.byProp.get(key);
           const variable = map.unified ? undefined : map.byVar.get(key) ?? lookupVarMember(map, key, e);
@@ -4362,6 +4467,9 @@ function resolveReferenceResult(
       if (!matched) {
         return null;
       }
+    }
+    if (!matched && looseKey !== undefined && looseKind !== undefined) {
+      matched = looseMemberLookup(map, looseKey, looseKind, e);
     }
     if (!matched) {
       unresolvedSymbol(node, missingSymbol, e);
@@ -4999,9 +5107,18 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
 
 /** Fold a value node and return its emitted bytes. */
 function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+  /*
+   * [null] Captured SYNCHRONOUSLY: on the async lane the fold below resolves long
+   * after the installing site restored `e.elideSink`, so reading it at resolution
+   * time would report the wrong declaration's elision (or none).
+   */
+  const elideSink = e.elideSink;
   return mapMaybe(evalValueSlot(node, frame, e), (value) => {
     if (!isLiteral(value)) {
       validateValueGroupUnits(value, e.modes, Array.isArray(node) ? (node[0] ?? {}) : node, e);
+      if (elideSink !== undefined && isElided(value)) {
+        elideSink.elided = true;
+      }
     }
     return emitValue(value);
   });
@@ -5655,6 +5772,14 @@ interface Emit extends EvalCtx {
   pending: Array<{ i: number; p: Promise<string> }>;
 
   /*
+   * [null] Declarations whose value deferred to an async slot AND may still turn
+   * out to elide (§4.3). A sync elision rolls `chunks` straight back; an async one
+   * cannot, because the chunk range is already fixed, so the range is recorded
+   * here and blanked once every pending slot has settled.
+   */
+  drops: Array<{ from: number; to: number; sink: { elided: boolean } }>;
+
+  /*
    * [atrule] current block-nesting depth (0 = top level). At-rule bodies raise it
    * so declarations/selectors inside a block indent one level deeper.
    */
@@ -5764,6 +5889,7 @@ function scratchEmit(e: EvalCtx): Emit {
     off: 0,
     positions: null,
     pending: [],
+    drops: [],
     depth: 0,
     collapse: true,
     extends: null,
@@ -7631,6 +7757,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     propNames: new Set(),
     optional: options?.optional ?? false,
     pending: [],
+    drops: [],
     depth: 0,
     collapse: options?.collapseNesting !== false,
     extends: null,
@@ -7706,6 +7833,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
     pending: [], // async patches
+    drops: [], // [null] declarations that may still elide on the async lane
     depth: 0, // [atrule]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
     extends: null, // [extend] computed below (after selector-interp pre-pass)
@@ -7769,8 +7897,18 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     }
     emitLeadingDocumentBlockComments(e);
     const emitted = emitDocumentStatements(root.rules, rootFrame, e, importDocument);
-    const finalize = (): SerializeResult =>
-      e.positions ? { css: e.chunks.join(''), positions: e.positions } : { css: e.chunks.join('') };
+    const finalize = (): SerializeResult => {
+      /* [null] A declaration whose async value resolved to `null` is dropped here —
+       * blanked rather than spliced, because a pending slot addresses BY INDEX. */
+      for (const drop of e.drops) {
+        if (drop.sink.elided) {
+          for (let i = drop.from; i < drop.to; i++) {
+            e.chunks[i] = '';
+          }
+        }
+      }
+      return e.positions ? { css: e.chunks.join(''), positions: e.positions } : { css: e.chunks.join('') };
+    };
     const finish = (): SerializeReturn => {
       if (e.positions) {
         e.positions.push({ node: root, type: root.type, start, end: e.off });
@@ -10949,6 +11087,48 @@ function emitMergedLine(e: Emit, name: string, combined: string, important: bool
   }
 }
 
+/**
+ * [null] The emit cursor as it stood before a declaration's first byte, so a
+ * declaration that turns out to elide can be rolled back out of the output.
+ */
+interface DropMark {
+  readonly chunks: number;
+  readonly off: number;
+  readonly positions: number;
+  readonly sink: { elided: boolean };
+}
+
+const dropMark = (e: Emit): DropMark => ({
+  chunks: e.chunks.length,
+  off: e.off,
+  positions: e.positions === null ? 0 : e.positions.length,
+  sink: { elided: false }
+});
+
+/**
+ * [null] Drop a fully-elided declaration (§4.3): `$x: null; a { b: $x; c: red }`
+ * emits `a { c: red }`, never `b: ;`.
+ *
+ * A SYNC elision truncates back to the mark. A value that deferred to an async
+ * slot cannot — its chunk range is already fixed and later statements have been
+ * appended past it — so the range is recorded and blanked once every pending slot
+ * has settled. Blanking, not splicing: a pending slot addresses `chunks` BY INDEX.
+ */
+function finishDrop(e: Emit, mark: DropMark, deferred: boolean): void {
+  if (deferred) {
+    e.drops.push({ from: mark.chunks, to: e.chunks.length, sink: mark.sink });
+    return;
+  }
+  if (!mark.sink.elided) {
+    return;
+  }
+  e.chunks.length = mark.chunks;
+  e.off = mark.off;
+  if (e.positions !== null) {
+    e.positions.length = mark.positions;
+  }
+}
+
 function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
   const { node, frame } = leaf;
   const start = e.off;
@@ -10969,6 +11149,8 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
         meta: { what: name }
       });
     }
+    const mark = dropMark(e);
+    let deferred = false;
     put(e, idt);
     put(e, name); // resolve interpolated property name
     put(e, declarationHeadTriviaText(node, e));
@@ -10979,7 +11161,10 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
       ? customPropertyValueWithTrivia(node.value, frame, e)
       : null;
     if (customValue === null) {
-      putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
+      const prevElide = e.elideSink;
+      e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
+      deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine) === null; // [whitespace] continuation indent
+      e.elideSink = prevElide;
     } else if (isThenable(customValue)) {
       const i = e.chunks.length;
       e.chunks.push('');
@@ -10999,6 +11184,7 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     }
     emitInlineBlockCommentTriviaAfter(node, e);
     put(e, ';\n');
+    finishDrop(e, mark, deferred);
   } else if (node.type === 'Comment') {
     put(e, idt);
     put(e, node.text);
@@ -13105,6 +13291,7 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
   }
   if (node.type === 'Declaration') {
     assertDeclarationValueIsNotRuleset(node, frame, e);
+    const mark = dropMark(e);
     if (idt) {
       put(e, idt);
     }
@@ -13114,7 +13301,10 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
     put(e, onNewLine ? ':' : ': ');
     const valStart = e.off;
     const important = node.important === true || leaf.important === true;
-    putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
+    const prevElide = e.elideSink;
+    e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
+    const deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine) === null; // [whitespace] continuation indent
+    e.elideSink = prevElide;
     markSilentStatementBlockCommentTrivia(node, e);
     if (e.positions) {
       if (!isValueSlotArray(node.value)) {
@@ -13124,6 +13314,7 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
     }
     emitInlineBlockCommentTriviaAfter(node, e);
     put(e, ';\n');
+    finishDrop(e, mark, deferred);
   } else if (node.type === 'Comment') {
     if (idt) {
       put(e, idt);

@@ -19,7 +19,7 @@ export type {
   Keyword,
   Any,
   Bool,
-  Nil,
+  Null,
   List,
   ListSeparator,
   Block,
@@ -45,8 +45,9 @@ export {
   makeKeyword,
   makeAny,
   makeBool,
-  makeNil,
-  NIL,
+  makeNull,
+  NULL,
+  NULL_LITERAL,
   makeList,
   makeBlock,
   makeCollection,
@@ -73,6 +74,9 @@ export { isCollection, collectionEntries, collectionEntryIndex, collectionKeyInd
 export { HEX, RGB, HSL, serializeColor, hslToRgb } from './ast/color.js';
 export { serializeValue } from './ast/serialize-value.js';
 export { round } from './ast/round.js';
+
+// --- shared value COMPARISON primitive (§5.1) ---
+export { compareOrder } from './ast/value-guards.js';
 
 // --- unit table / conversion ---
 export { groupOf, unify, unitFactor } from './ast/value-units.js';

@@ -463,8 +463,7 @@ describe('Jess AST grammar facts', () => {
             type: 'Interpolation',
             parts: [{
               ref: {
-                type: 'Block',
-                boundary: true,
+                type: 'Expression',
                 value: {
                   type: 'Reference',
                   base: { type: 'Lookup', kind: 'entry', raw: '$' },
@@ -517,8 +516,7 @@ describe('Jess AST grammar facts', () => {
             type: 'Interpolation',
             parts: [{
               ref: {
-                type: 'Block',
-                boundary: true,
+                type: 'Expression',
                 value: { type: 'Dimension', number: 0.1, unit: '', src: '.1' }
               },
               unquote: true
@@ -548,8 +546,7 @@ describe('Jess AST grammar facts', () => {
             type: 'Interpolation',
             parts: [{
               ref: {
-                type: 'Block',
-                boundary: true,
+                type: 'Expression',
                 value: {
                   type: 'Operation',
                   operator: '+',
@@ -578,8 +575,7 @@ describe('Jess AST grammar facts', () => {
             type: 'Interpolation',
             parts: [{
               ref: {
-                type: 'Block',
-                boundary: true,
+                type: 'Expression',
                 value: {
                   type: 'Condition',
                   guard: {
@@ -608,8 +604,8 @@ describe('Jess AST grammar facts', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'tokens' },
         { type: 'Ruleset', rules: [
-          { name: 'root', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry', raw: '$' }, steps: [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], raw: '$.tokens.tone' } } }] } },
-          { name: 'ns', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry', raw: '$' }, steps: [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], raw: '$tokens.tone' } } }] } }
+          { name: 'root', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry', raw: '$' }, steps: [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], raw: '$.tokens.tone' } } }] } },
+          { name: 'ns', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry', raw: '$' }, steps: [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], raw: '$tokens.tone' } } }] } }
         ] }
       ]
     });
@@ -703,7 +699,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'w' },
         { type: 'Ruleset', rules: [
           { name: 'color', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'color-name', raw: '@color-name' }, unquote: true }] } },
-          { name: 'tone', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren' }, unquote: true }] } }
+          { name: 'tone', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression' }, unquote: true }] } }
         ] }
       ]
     });
@@ -783,7 +779,7 @@ describe('Jess AST grammar facts', () => {
     expect(parse('.a { width: $(2px * (2 + 1)); }')).toMatchObject({
       rules: [{ type: 'Ruleset', rules: [{
         name: 'width',
-        value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Operation', operator: '*', right: { type: 'Block' } } } }] }
+        value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '*', right: { type: 'Block' } } } }] }
       }] }]
     });
     const evaluator = buildEvaluator(makeLessRegistry());
@@ -798,7 +794,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'w' },
         { type: 'Ruleset', rules: [{
           name: 'width',
-          value: { type: 'Interpolation', parts: [{ ref: { type: 'Block' }, unquote: true }, { lit: 'px' }] }
+          value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression' }, unquote: true }, { lit: 'px' }] }
         }] }
       ]
     });
@@ -898,9 +894,9 @@ describe('Jess AST grammar facts', () => {
           { type: 'Declaration', name: 'signed', value: [{ type: 'Lookup', kind: 'var', name: 'w', raw: '@w' }, { type: 'Dimension', src: '-1' }] },
           { type: 'Declaration', name: 'slash', value: { type: 'List', sep: '/', value: [{ type: 'Lookup', kind: 'var', name: 'w', raw: '@w' }, { type: 'Dimension', src: '2' }] } },
           { type: 'Declaration', name: 'scoped', value: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'scoped' } },
-          { type: 'Declaration', name: 'wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '/' } }, unquote: true }] } },
-          { type: 'Declaration', name: 'scoped-wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '+', left: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'scoped' } } }, unquote: true }] } },
-          { type: 'Declaration', name: 'scoped-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '>', left: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'scoped' } } } }, unquote: true }] } }
+          { type: 'Declaration', name: 'wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '/' } }, unquote: true }] } },
+          { type: 'Declaration', name: 'scoped-wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+', left: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'scoped' } } }, unquote: true }] } },
+          { type: 'Declaration', name: 'scoped-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '>', left: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'scoped' } } } }, unquote: true }] } }
         ] }
       ]
     });
@@ -966,11 +962,11 @@ describe('Jess AST grammar facts', () => {
       rules: [{
         type: 'Ruleset',
         rules: [
-          { name: 'predicate', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '.type.isnumber(.math.e)' } } }] } },
-          { name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Operation', operator: '+', left: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '.w' } } } }] } },
-          { name: 'comparison', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Condition', guard: { g: 'cmp', op: '>', left: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '.w' } } } } }] } },
-          { name: 'rooted', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '$.decl' } } }] } },
-          { name: 'namespaced', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '$ns.decl' } } }] } },
+          { name: 'predicate', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '.type.isnumber(.math.e)' } } }] } },
+          { name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+', left: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '.w' } } } }] } },
+          { name: 'comparison', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '>', left: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '.w' } } } } }] } },
+          { name: 'rooted', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '$.decl' } } }] } },
+          { name: 'namespaced', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '$ns.decl' } } }] } },
           { name: 'decimal', value: { type: 'Dimension', number: 0.1, src: '.1' } }
         ]
       }]
@@ -2128,7 +2124,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Ruleset', rules: [{
         type: 'Declaration', value: {
           type: 'FunctionCall', args: [{
-            type: 'List', sep: '/', value: [[{ type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Operation', operator: '+' } }, unquote: true }] }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }], { type: 'Dimension', src: '0.22' }]
+            type: 'List', sep: '/', value: [[{ type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }], { type: 'Dimension', src: '0.22' }]
           }]
         }
       }]
@@ -2574,9 +2570,9 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'key', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'prop', name: 'theme', raw: '$["theme"]' }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'single-quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'prop', name: 'theme', raw: '$[\'theme\']' }, unquote: true }] } },
-        { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '+' } }, unquote: true }] } },
-        { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
-        { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-${tone}" = foo' } }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-${tone}" = foo' } }, unquote: true }] } },
         { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'content', value: { type: 'Interpolation' } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ type: 'Interpolation' }, { type: 'Interpolation' }, { type: 'Keyword', src: 'blue' }] } }] }
       ]
     });
@@ -3179,7 +3175,7 @@ describe('Jess AST grammar facts', () => {
             type: 'Interpolation',
             parts: [{
               ref: {
-                type: 'Block',
+                type: 'Expression',
                 value: {
                   type: 'Reference',
                   base: { type: 'Lookup', kind: 'var', name: 'd', raw: '@d' },

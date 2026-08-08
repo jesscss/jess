@@ -57,12 +57,12 @@ describe('value-domain defineFunction', () => {
     const registry = createFnRegistry();
     registry.register(twice);
     expect(registry.dispatch('twice', makeList([makeDimension(2, 'px')]), {
-      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
+      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve' },
       stringify: emitValue
     })).toEqual(makeDimension(4, 'px'));
     const invalidArgs = invoke(makeList, [{ value: makeDimension(2, 'px') }], ',');
     expect(() => invoke(registry.dispatch.bind(registry), 'twice', invalidArgs, {
-      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
+      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve' },
       stringify: value => value.bytes
     })).toThrow('structural value');
   });
@@ -97,7 +97,7 @@ describe('value-domain defineFunction', () => {
   it('dispatches unnamed positional specs without requiring record metadata', () => {
     const args = makeList([makeDimension(2, 'px')]);
     const ctx = {
-      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
+      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve' },
       stringify: emitValue
     } as const;
     expect(invoke(unnamedPositional, makeDimension(2, 'px'))).toEqual(makeDimension(4, 'px'));
@@ -108,7 +108,7 @@ describe('value-domain defineFunction', () => {
 
   it('applies the arity check on the registry route and feeds a rest parameter every trailing item', () => {
     const ctx = {
-      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
+      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve' },
       stringify: emitValue
     } as const;
     const registry = createFnRegistry();

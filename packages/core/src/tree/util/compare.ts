@@ -1,7 +1,6 @@
 import { isNode } from './is-node.js';
 import isObject from 'lodash-es/isObject.js';
 import { type Node } from '../node.js';
-import type { EqualityMode } from '../../types/modes.js';
 
 /** Normalize loose CSS value text for guard/comparison coercion. */
 export function normalizeComparableText(value: string): string {
@@ -13,7 +12,7 @@ export function normalizeComparableWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-export function compare(a: any, b: any, mode: EqualityMode = 'less') {
+export function compare(a: any, b: any) {
   if (a === b) {
     return 0;
   }
@@ -25,7 +24,7 @@ export function compare(a: any, b: any, mode: EqualityMode = 'less') {
   }
 
   /** Do comparison without strict equality */
-  if (mode !== 'exact' && a == b) {
+  if (a == b) {
     return 0;
   }
   return undefined;
@@ -84,7 +83,7 @@ export function comparePosition(a: Node, b: Node) {
   return a0.index! - b0.index!;
 }
 
-export function compareNodeArray(a: any[], b: any[], mode: EqualityMode = 'less'): 0 | 1 | -1 | undefined {
+export function compareNodeArray(a: any[], b: any[]): 0 | 1 | -1 | undefined {
   let output: 0 | 1 | -1 | undefined;
 
   if (a.length !== b.length) {
@@ -96,7 +95,7 @@ export function compareNodeArray(a: any[], b: any[], mode: EqualityMode = 'less'
    * Anything else is undefined.
    */
   for (let i = 0; i < a.length; i++) {
-    let result = compare(a[i]!, b[i]!, mode);
+    let result = compare(a[i]!, b[i]!);
     if (result === undefined) {
       return undefined;
     }

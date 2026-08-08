@@ -1,6 +1,6 @@
-import type { EqualityMode, FunctionMode, MathMode, UnitMode } from './modes.js';
+import type { FunctionMode, MathMode, UnitMode } from './modes.js';
 
-export type { EqualityMode, FunctionMode, MathMode, UnitMode };
+export type { FunctionMode, MathMode, UnitMode };
 export type SelectorPolicyKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 export type ExtendSelectorKind = SelectorPolicyKind;
 export type ApplySelectorKind = SelectorPolicyKind;
@@ -165,16 +165,6 @@ export interface LessOptions {
   functionMode?: FunctionMode;
 
   /**
-   * Guard-comparison compatibility rule for the shared evaluator (verified vs
-   * Less 4.6.3 + Dart Sass):
-   * - 'less': Less 4.x equality (numeric coercion; quoted vs unquoted distinct)
-   * - 'sass': Dart Sass equality (unit-strict; quote-insensitive strings)
-   * - 'exact': no coercion — same node type required
-   * @default 'less' when no compile/input configuration specifies a mode
-   */
-  equalityMode?: EqualityMode;
-
-  /**
    * @deprecated Use `mathMode` instead. This option maps to `mathMode` as follows:
    * - 0 or 'always' → 'always'
    * - 1 or 'parens-division' → 'parens-division'
@@ -256,7 +246,7 @@ export interface LessOptions {
   /**
    * Convenience preset. When `true`, sets the strict bundle for any of these left
    * `undefined` (individual options always win): `unitMode: 'strict'`,
-   * `equalityMode: 'exact'` (the no-coercion dialect), `leakyScope: false`,
+   * `leakyScope: false`,
    * `allowOverloadedImport: false`. Modeled after `tsconfig` `strict` — it only
    * sets semantic options, it is not itself a mode.
    * @default false

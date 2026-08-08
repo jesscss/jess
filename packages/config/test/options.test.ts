@@ -65,7 +65,6 @@ describe('getOptions', () => {
         compile: {
           mathMode: 'parens-division',
           unitMode: 'loose',
-          equalityMode: 'exact',
           processImports: false,
           allowExtendSelectors: ['simple']
         }
@@ -73,7 +72,6 @@ describe('getOptions', () => {
       const options = getOptions(config);
       expect(options.mathMode).toBe('parens-division');
       expect(options.unitMode).toBe('loose');
-      expect(options.equalityMode).toBe('exact');
       expect(options.processImports).toBe(false);
       expect(options.allowExtendSelectors).toEqual(['simple']);
     });
@@ -126,7 +124,6 @@ describe('getOptions', () => {
         compile: {
           mathMode: 'always',
           unitMode: 'loose',
-          equalityMode: 'exact',
           allowApplySelectors: ['class']
         },
         language: {
@@ -144,7 +141,6 @@ describe('getOptions', () => {
       };
       const options = getOptions(config, { input: 'src/styles.less', output: 'dist/styles.css' });
       expect(options.unitMode).toBe('loose'); // from compile
-      expect(options.equalityMode).toBe('exact'); // from compile
       expect(options.allowApplySelectors).toEqual(['class']); // from compile
       expect(options.leakyScope).toBe(true); // from language.less
       expect(options.mathMode).toBe('strict'); // from input (overrides language)
@@ -271,7 +267,6 @@ describe('applyStrictPreset', () => {
     expect(out).toMatchObject({
       strict: true,
       unitMode: 'strict',
-      equalityMode: 'exact',
       leakyScope: false,
       allowOverloadedImport: false
     });
@@ -281,13 +276,11 @@ describe('applyStrictPreset', () => {
     const out = applyStrictPreset({
       strict: true,
       unitMode: 'loose',
-      equalityMode: 'less',
       leakyScope: true,
       allowOverloadedImport: true
     });
     expect(out).toMatchObject({
       unitMode: 'loose',
-      equalityMode: 'less',
       leakyScope: true,
       allowOverloadedImport: true
     });

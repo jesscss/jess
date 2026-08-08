@@ -209,8 +209,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
   override compare(other: Node) {
     if (other instanceof Sequence) {
-      const equalityMode = this.sourceRoot?._treeContext?.options.equalityMode ?? 'less';
-      const result = compareNodeArray(this.value, other.value, equalityMode);
+      const result = compareNodeArray(this.value, other.value);
       return result;
     }
     if (other.type === 'Any') {

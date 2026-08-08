@@ -7,7 +7,7 @@
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
 import type {
-  Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Nil, Quoted, List, ListSeparator, ValueGroup
+  Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Null, Quoted, List, ListSeparator, ValueGroup
 } from './value-eval.js';
 import { colorRgb, colorSourceRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
@@ -140,9 +140,18 @@ export const makeAny = (bytes: string): Any => ({ type: 'Any', bytes });
 /** A boolean value result (`true`/`false` — the shape guards and `is*` predicates emit). */
 export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes: value ? 'true' : 'false' });
 
-/** The canonical empty / absent value. */
-export const NIL: Nil = { type: 'Nil', bytes: '' };
-export const makeNil = (): Nil => NIL;
+/**
+ * The canonical empty / absent value (§4.3). TWO frozen singletons, one per
+ * PROVENANCE — an authored `null` and an absent/unbound value are the same value
+ * and a different fact. Both share one shape, so no `Null` allocates and none
+ * splits the hidden class.
+ */
+export const NULL: Null = { type: 'Null', explicit: false, bytes: '' };
+
+/** The AUTHOR-WRITTEN `null` literal. */
+export const NULL_LITERAL: Null = { type: 'Null', explicit: true, bytes: '' };
+
+export const makeNull = (explicit = false): Null => (explicit ? NULL_LITERAL : NULL);
 
 export function makeList(
   value: readonly ValueGroup[],

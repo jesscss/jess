@@ -8,7 +8,7 @@ import {
   type Collection,
   type Dimension,
   type List,
-  type Nil,
+  type Null,
   type ValueGroup
 } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
@@ -67,9 +67,9 @@ function boolOf(value: ValueGroup): Bool {
   return value;
 }
 
-function nilOf(value: ValueGroup): Nil {
-  if (isValueGroupArray(value) || value.type !== 'Nil') {
-    throw new TypeError(`Expected Nil, got ${isValueGroupArray(value) ? 'sequence' : value.type}`);
+function nullOf(value: ValueGroup): Null {
+  if (isValueGroupArray(value) || value.type !== 'Null') {
+    throw new TypeError(`Expected Null, got ${isValueGroupArray(value) ? 'sequence' : value.type}`);
   }
   return value;
 }
@@ -88,9 +88,9 @@ describe('Sass map functions', () => {
       expect(dimensionOf(result).number).toBe(1);
     });
 
-    it('returns Nil when key not found', () => {
+    it('returns Null when key not found', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      expect(nilOf(sync(get(map, key('b'))))).toMatchObject({ type: 'Nil' });
+      expect(nullOf(sync(get(map, key('b'))))).toMatchObject({ type: 'Null' });
     });
 
     it('gets nested value', () => {
@@ -100,9 +100,9 @@ describe('Sass map functions', () => {
       expect(dimensionOf(result).number).toBe(2);
     });
 
-    it('returns Nil for non-map intermediate value', () => {
+    it('returns Null for non-map intermediate value', () => {
       const map = createMap([['a', makeDimension(1)]]);
-      expect(nilOf(sync(get(map, key('a'), key('b'))))).toMatchObject({ type: 'Nil' });
+      expect(nullOf(sync(get(map, key('a'), key('b'))))).toMatchObject({ type: 'Null' });
     });
 
     it('works with object parameters', () => {
@@ -133,7 +133,7 @@ describe('Sass map functions', () => {
       const result = collectionOf(sync(set(map, key('b'), makeDimension(2))));
 
       expect(dimensionOf(sync(get(map, key('a')))).number).toBe(1);
-      expect(nilOf(sync(get(map, key('b'))))).toMatchObject({ type: 'Nil' });
+      expect(nullOf(sync(get(map, key('b'))))).toMatchObject({ type: 'Null' });
       expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
     });
   });
@@ -159,15 +159,15 @@ describe('Sass map functions', () => {
     it('removes a key', () => {
       const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)]]);
       const result = collectionOf(sync(remove(map, key('a'))));
-      expect(nilOf(sync(get(result, key('a'))))).toMatchObject({ type: 'Nil' });
+      expect(nullOf(sync(get(result, key('a'))))).toMatchObject({ type: 'Null' });
       expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
     });
 
     it('removes multiple keys', () => {
       const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)], ['c', makeDimension(3)]]);
       const result = collectionOf(sync(remove(map, key('a'), quoted('b'))));
-      expect(nilOf(sync(get(result, key('a'))))).toMatchObject({ type: 'Nil' });
-      expect(nilOf(sync(get(result, key('b'))))).toMatchObject({ type: 'Nil' });
+      expect(nullOf(sync(get(result, key('a'))))).toMatchObject({ type: 'Null' });
+      expect(nullOf(sync(get(result, key('b'))))).toMatchObject({ type: 'Null' });
       expect(dimensionOf(sync(get(result, key('c')))).number).toBe(3);
     });
 

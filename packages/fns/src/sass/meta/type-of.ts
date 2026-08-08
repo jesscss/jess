@@ -37,7 +37,7 @@ const typeOf = defineFunction('type-of', {
       case 'Any': return makeKeyword('string');
       case 'Color': return makeKeyword('color');
       case 'Bool': return makeKeyword('bool');
-      case 'Nil': return makeKeyword('null');
+      case 'Null': return makeKeyword('null');
       case 'Collection': return makeKeyword('map');
       case 'List':
       case 'Block': return makeKeyword('list');

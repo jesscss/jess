@@ -110,7 +110,7 @@ describe('sass:math — random', () => {
   });
 
   it('spec core_functions/math/random.hrx § null', () => {
-    expect(dimensionOf(random({ type: 'Nil', bytes: '' })).number).toBeLessThan(1);
+    expect(dimensionOf(random({ type: 'Null', bytes: '' })).number).toBeLessThan(1);
   });
 
   it('spec core_functions/math/random.hrx § one', () => {

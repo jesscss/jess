@@ -36,7 +36,7 @@ describe('sass:meta — type-of', () => {
   });
 
   it('§ null', () => {
-    expect(text(typeOf({ type: 'Nil', bytes: '' }))).toBe('null');
+    expect(text(typeOf({ type: 'Null', bytes: '' }))).toBe('null');
   });
 
   it('§ list/empty and § list/non_empty', () => {
