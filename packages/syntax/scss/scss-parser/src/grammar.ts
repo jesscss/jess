@@ -23,8 +23,8 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, selectorBranchOf, decl, dimension, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, selectorBranchOf, decl, dimension, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -709,6 +709,8 @@ function isValue(value: unknown): value is ValueNode {
       return 'base' in value && 'steps' in value && Array.isArray(value.steps);
     case 'AnonymousMixin':
       return 'rules' in value && Array.isArray(value.rules);
+    case 'IfValue':
+      return 'branches' in value && Array.isArray(value.branches) && value.branches.length > 0;
     default:
       return false;
   }
@@ -854,7 +856,34 @@ function lowerMapGet(base: ValueNode, key: ValueNode): Reference {
   );
 }
 
-function reduceScssCall(name: string, children: readonly unknown[], minArgumentIndex: number): FunctionCall | Reference {
+/**
+ * Lower Sass `if(<cond>, a, b)` to the value-position `$if` (§4.5.3b).
+ *
+ * It wears call parentheses but it is SYNTAX, not a function (§4.5.3a) — it is
+ * branch-lazy and its first argument is a condition, neither of which a
+ * `sassFns` entry could express. Lowering it here, in the grammar that knows the
+ * dialect, is what lets ONE evaluator answer `if(0, T, F)` with `T` for `.scss`
+ * and `F` for `.less`: {@link scssTruth} fixes Sass's rule (falsy iff `false` or
+ * `null`) at parse time, Less's grammar fixes its own, and core never learns
+ * which dialect a guard came from.
+ *
+ * Anything but the three-argument form is left an ordinary call — plain CSS
+ * `if()` is not this construct.
+ */
+function lowerSassIf(args: readonly ValueSlot[]): IfValue | undefined {
+  const cond = args[0];
+  const taken = args[1];
+  const otherwise = args[2];
+  if (args.length !== 3 || cond === undefined || taken === undefined || otherwise === undefined) {
+    return undefined;
+  }
+  return ifValue([
+    { guard: scssTruth(cond), value: taken },
+    { guard: null, value: otherwise }
+  ]);
+}
+
+function reduceScssCall(name: string, children: readonly unknown[], minArgumentIndex: number): FunctionCall | Reference | IfValue {
   const lastIndex = children.length - 1;
   const firstIndex = children.findIndex((child, index) => index > minArgumentIndex && index < lastIndex && isValueSlotValue(child));
   if (firstIndex === -1) {
@@ -883,6 +912,12 @@ function reduceScssCall(name: string, children: readonly unknown[], minArgumentI
       args[0],
       args[1]
     );
+  }
+  if (call.name.toLowerCase() === 'if') {
+    const lowered = lowerSassIf(args);
+    if (lowered !== undefined) {
+      return lowered;
+    }
   }
   if (separators.length === args.length - 1) {
     withValueLayout(
@@ -1680,7 +1715,7 @@ const scssFactory = (g: ScssInputRules) => {
       return url(isValue(body) ? body : any(requireToken(body).value));
     }
   );
-  const Call = node<FunctionCall | Reference>(
+  const Call = node<FunctionCall | Reference | IfValue>(
     'Call',
     sequence(
       routed(),

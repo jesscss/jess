@@ -28,8 +28,8 @@ import {
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, boundaryBlock, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
@@ -143,11 +143,11 @@ type LessRules = {
   FunctionConditionTerm: Combinator<FunctionConditionFact>;
   FunctionConditionOperand: Combinator<ValueNode>;
   FunctionConditionParen: Combinator<FunctionConditionFact>;
-  Call: Combinator<FunctionCall>;
+  Call: Combinator<ValueNode>;
   CallArgumentFunction: Combinator<FunctionCall>;
-  FormatFunction: Combinator<FunctionCall>;
+  FormatFunction: Combinator<ValueNode>;
   CallArgumentValue: Combinator<MixinCallArgument['value']>;
-  FunctionStatement: Combinator<FunctionCall>;
+  FunctionStatement: Combinator<FunctionCall | If>;
   Value: Combinator<ValueNode>;
   SelectorCapture: Combinator<SelectorCapture>;
   MathAtom: Combinator<ValueNode>;
@@ -1291,6 +1291,7 @@ function isValueNode(value: unknown): value is ValueNode {
     case 'SelectorCapture':
     case 'AnonymousMixin':
     case 'Collection':
+    case 'IfValue':
       return true;
     case 'Quoted':
       return isQuoted(value);
@@ -1377,6 +1378,105 @@ function callWithLayout(
   return withSourceSpan(call, span);
 }
 
+/**
+ * The CONDITION an `if()` / `boolean()` / `not()` / `and()` / `or()` argument
+ * states, in Less's own terms.
+ *
+ * A structured {@link Condition} (the argument carried a comparison, `not(…)`
+ * or `and`/`or`) already IS a guard tree. Anything else is a bare operand, and
+ * Less's condition asks "is this literally the boolean `true`" — the same
+ * {@link lessTruth} rule `when (@x)` uses (§4.4.2). `"a"`, `red`, `0` and even
+ * the STRING `"true"` are all false under it.
+ */
+function lessConditionGuard(arg: ValueSlot): MixinGuard {
+  return !Array.isArray(arg) && isValueNode(arg) && arg.type === 'Condition' ? arg.guard : lessTruth(arg);
+}
+
+/**
+ * Lower Less's `if()` / `boolean()` — SYNTAX wearing call parentheses, never
+ * functions (§4.5.3a) — into the jess constructs they mean:
+ *
+ * ```
+ * boolean(<cond>)      ->  $( <cond> )                        an expression boundary
+ * not(<cond>)          ->  $( not(<cond>) )                   the native operator
+ * and(<c>, <c>, …)     ->  $( (<c>) and (<c>) … )             the native operator
+ * or(<c>, <c>, …)      ->  $( (<c>) or (<c>) … )              the native operator
+ * if(<cond>, a, b)     ->  $if (<cond>) { a } $else { b }     the VALUE-position $if
+ * ```
+ *
+ * Doing it HERE is the whole point. The condition is lowered by the grammar
+ * that knows the dialect, so nothing downstream needs to — core evaluates a
+ * guard tree that already means what `.less` meant, and the identical `.scss`
+ * spelling lowers to Sass's rule in its own grammar. A dialect switch in the
+ * evaluator would be the alternative, and there is no dialect in core.
+ *
+ * `not` / `and` / `or` land on the native logical operators (§4.5.5) rather than
+ * on `fns/` entries, which is the same ruling that puts them in this set at all.
+ */
+function lowerLogicalCall(call: FunctionCall): ValueNode {
+  const args = call.args;
+  const first = args[0];
+  if (first === undefined) {
+    return call;
+  }
+  const boundaryCondition = (guard: MixinGuard): Block =>
+    boundaryBlock(condition(guard, functionConditionSource(call)));
+
+  /* `and`/`or` are n-ary in Less and fold LEFT, so `and(a, b, c)` is
+   * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
+  const fold = (kind: 'and' | 'or'): MixinGuard =>
+    args.slice(1).reduce<MixinGuard>(
+      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg) }),
+      lessConditionGuard(first)
+    );
+  switch (call.name.toLowerCase()) {
+    case 'boolean':
+      return args.length === 1 ? boundaryCondition(lessConditionGuard(first)) : call;
+    case 'not':
+      return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first) }) : call;
+    case 'and':
+      return boundaryCondition(fold('and'));
+    case 'or':
+      return boundaryCondition(fold('or'));
+    case 'if': {
+      if (args.length < 2 || args.length > 3) {
+        return call;
+      }
+      const guard = lessConditionGuard(first);
+      const taken: IfValueBranch = { guard, value: args[1]! };
+      const otherwise = args[2];
+      return ifValue(otherwise === undefined ? [taken] : [taken, { guard: null, value: otherwise }]);
+    }
+    default:
+      return call;
+  }
+}
+
+/**
+ * STATEMENT-position `if(<cond>, {…}, {…});` is the STATEMENT `$if`, not the
+ * value form (§4.5.3b, §4.5.6): its arms are rule bodies, so they attach as
+ * statements rather than producing a value.
+ *
+ * Only detached-ruleset arms qualify. `if(true, 1, 2);` returns a VALUE, which
+ * lessc 4.6.3 rejects outright ("Dimension node returned by a function is not
+ * valid here"); it stays an ordinary call statement rather than being forced
+ * into a shape it does not have.
+ */
+function lowerLogicalCallStatement(call: FunctionCall): FunctionCall | If {
+  const args = call.args;
+  const first = args[0];
+  if (call.name.toLowerCase() !== 'if' || first === undefined || args.length < 2 || args.length > 3) {
+    return call;
+  }
+  const arms = args.slice(1);
+  if (!arms.every((arm): arm is AnonymousMixin => !Array.isArray(arm) && isValueNode(arm) && arm.type === 'AnonymousMixin')) {
+    return call;
+  }
+  const taken: IfBranch = { guard: lessConditionGuard(first), rules: arms[0]!.rules };
+  const otherwise = arms[1];
+  return ifNode(otherwise === undefined ? [taken] : [taken, { guard: null, rules: otherwise.rules }]);
+}
+
 function functionCallFromChildren(
   children: readonly unknown[],
   fields: FieldMap | undefined,
@@ -1384,7 +1484,7 @@ function functionCallFromChildren(
   triviaLog: readonly number[],
   state: unknown,
   rawChildren: readonly unknown[]
-): FunctionCall {
+): ValueNode {
   const name = functionNameFromOpener(children[0]);
   const args: ValueSlot[] = [];
   for (const child of children.slice(1, -1)) {
@@ -1393,9 +1493,16 @@ function functionCallFromChildren(
     }
   }
   const separators = functionSeparatorsFromFields(fields, rawChildren, triviaLog, state);
-  return callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span);
+  return lowerLogicalCall(callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span));
 }
 
+/**
+ * The STATEMENT lane's call (`foo();`). {@link lowerLogicalCall} deliberately
+ * does not run here: `if(…)` / `boolean(…)` are VALUE-position syntax, and a
+ * bare `if(true, 1, 2);` statement is not that construct — lessc 4.6.3 rejects
+ * it outright, and the un-lowered call keeps it an ordinary unknown-call
+ * statement rather than a value node in a statement slot.
+ */
 function argumentFunctionFromChildren(
   children: readonly unknown[],
   fields: FieldMap | undefined,
@@ -1905,7 +2012,7 @@ function mixinCallArgsFromInterior(interior: MixinInteriorFact): MixinCallArgume
  * `==` is load-bearing: with the loose `=` a `"true"` string would ground
  * against `true` and come out TRUE, which Less says it is not.
  */
-function lessTruth(value: ValueNode): MixinGuard {
+function lessTruth(value: ValueSlot): MixinGuard {
   return { g: 'cmp', op: '==', left: value, right: keyword('true') };
 }
 
@@ -3218,7 +3325,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (call === undefined) {
         throw new TypeError('Less function statement lost its call fact.');
       }
-      return call;
+      return lowerLogicalCallStatement(call);
     }
   );
   // `calc(` owns its boundary gaps for the same reason `Paren` below does: the

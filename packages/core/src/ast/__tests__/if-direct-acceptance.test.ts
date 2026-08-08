@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { atRuleBlock } from '../at-rule.js';
-import { condition, decl, dimension, funcCall, ifNode, keyword, mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference } from '../nodes.js';
+import { boundaryBlock, condition, decl, dimension, ifNode, keyword, mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 
 describe('If canonical AST emission', () => {
-  it('evaluates condition values as typed operands for logical function comparisons', () => {
+  /* `boolean(<cond>)` is not a call — the Less grammar lowers it to the `$( … )`
+   * expression boundary (§4.5.3a), so the canonical shape under test is a
+   * boundary block over a `Condition`, not `funcCall('boolean', …)`. */
+  it('evaluates condition values as typed operands inside an expression boundary', () => {
     const gtLeft = condition({
       g: 'cmp',
       op: '>',
@@ -23,12 +26,12 @@ describe('If canonical AST emission', () => {
     }, '(3 > 2)');
     const document = stylesheet([
       rule('.boolean', [
-        decl('value', funcCall('boolean', [condition({
+        decl('value', boundaryBlock(condition({
           g: 'cmp',
           op: '=',
           left: gtLeft,
           right: gtRight
-        }, '(2 > 1) = (3 > 2)')]))
+        }, '(2 > 1) = (3 > 2)')))
       ])
     ]);
 

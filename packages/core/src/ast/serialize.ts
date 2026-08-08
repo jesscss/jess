@@ -3112,7 +3112,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
        * branch value, not on its bytes. An unmatched chain has no value. */
       return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
-        ? literal('')
+        ? force(e, literal(''))
         : evalTypedSlot(taken, frame, e));
     case 'Range':
       /*
@@ -3426,8 +3426,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'Condition':
       /*
-       * [condition-grammar] The logical fns (`if`/`boolean`/…) read a condition's
-       * `guard` DIRECTLY (see `evalLogical`), so a `Condition` reaching this value
+       * [condition-grammar] Every construct that CONSUMES a condition — Less
+       * `if`/`boolean`/`not`/`and`/`or`, Sass `if`, a guard — is lowered by its
+       * own grammar into a guard tree (§4.5.3a), so a `Condition` reaching this value
        * lane is an UN-consumed condition — an ordinary/unknown call's arg that merely
        * happened to carry a top-level operator (e.g. a mis-parsed `url(…charset=utf-8…)`).
        * Emit it VERBATIM, exactly as it was spelled, rather than collapsing it to a bool.

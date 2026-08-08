@@ -3697,16 +3697,20 @@ describe('Less AST grammar facts', () => {
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
+
+    /* `boolean(<cond>)` is not a call (§4.5.3a): the grammar lowers it to the
+     * `$( … )` expression boundary over the SAME `Condition` a guard builds. */
     expect(result.value).toMatchObject({
       rules: [
         {
           value: {
-            args: [
-              {
-                type: 'Condition',
-                guard: { g: 'not', inner: { g: 'cmp', op: '<' } }
-              }
-            ]
+            type: 'Block',
+            delimiter: 'paren',
+            boundary: true,
+            value: {
+              type: 'Condition',
+              guard: { g: 'not', inner: { g: 'cmp', op: '<' } }
+            }
           }
         }
       ]
@@ -3725,18 +3729,22 @@ describe('Less AST grammar facts', () => {
       rules: [
         {
           value: {
-            args: [
-              {
-                type: 'FunctionCall',
-                name: 'foo',
-                args: [{ type: 'Condition', guard: { g: 'cmp', op: '=' } }]
+            type: 'Block',
+            boundary: true,
+            value: {
+              type: 'Condition',
+              guard: {
+                g: 'cmp',
+                left: { type: 'FunctionCall', name: 'foo', args: [{ type: 'Condition', guard: { g: 'cmp', op: '=' } }] }
               }
-            ]
+            }
           }
         },
         {
           value: {
-            args: [{ type: 'Condition', guard: { g: 'and' } }]
+            type: 'Block',
+            boundary: true,
+            value: { type: 'Condition', guard: { g: 'and' } }
           }
         },
         {
@@ -3807,7 +3815,9 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       rules: [
-        { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '=' } }] } },
+        /* `boolean(…)` lowers to the expression boundary; an ORDINARY call keeps
+         * its `Condition` argument, which is exactly the split under test. */
+        { value: { type: 'Block', boundary: true, value: { type: 'Condition', guard: { g: 'cmp', op: '=' } } } },
         { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '=' } }] } },
         { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '>=' } }] } }
       ]
@@ -3842,19 +3852,18 @@ describe('Less AST grammar facts', () => {
       rules: [
         {
           value: {
-            type: 'FunctionCall',
-            name: 'boolean',
-            args: [
-              {
-                type: 'Condition',
-                guard: {
-                  g: 'cmp',
-                  op: '=',
-                  left: { type: 'Condition', guard: { g: 'cmp', op: '>' } },
-                  right: { type: 'Condition', guard: { g: 'cmp', op: '>' } }
-                }
+            type: 'Block',
+            delimiter: 'paren',
+            boundary: true,
+            value: {
+              type: 'Condition',
+              guard: {
+                g: 'cmp',
+                op: '=',
+                left: { type: 'Condition', guard: { g: 'cmp', op: '>' } },
+                right: { type: 'Condition', guard: { g: 'cmp', op: '>' } }
               }
-            ]
+            }
           }
         }
       ]
@@ -4022,13 +4031,14 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       rules: [
         {
+          /* `if(<cond>, a, b)` lowers to the value-position `$if` (§4.5.3b), so
+           * the arms are BRANCHES, not call arguments — and each arm keeps its
+           * detached ruleset typed rather than flattened to bytes. */
           value: {
-            type: 'FunctionCall',
-            name: 'if',
-            args: [
-              { type: 'Condition' },
-              { type: 'AnonymousMixin' },
-              { type: 'AnonymousMixin' }
+            type: 'IfValue',
+            branches: [
+              { guard: { g: 'not' }, value: { type: 'AnonymousMixin' } },
+              { guard: null, value: { type: 'AnonymousMixin' } }
             ]
           }
         }
