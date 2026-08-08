@@ -432,8 +432,8 @@ must take the TRUE branch. That is where JavaScript is wrong for this domain
 | --- | --- | --- | --- |
 | `true` | truthy | truthy | **truthy** |
 | `false`, `null` | falsy | falsy | **falsy** |
-| `""`, `''` | falsy | truthy | **falsy** — diverges from Sass |
-| `()` empty list/map | *parse error* | truthy | **falsy** — diverges from Sass |
+| `""`, `''` | falsy | **falsy** — Sass+ shift, §4.4.6 | **falsy** |
+| `()` empty list/map | *parse error* | **falsy** — Sass+ shift, §4.4.6 | **falsy** |
 | `0`, `1`, `-1`, `0.0` | falsy | truthy | **truthy** |
 | `0px`, `1px`, `0%`, `1em` | falsy | truthy | **truthy** |
 | `"a"`, `"0"`, `"false"`, `"true"` | falsy | truthy | **truthy** |
@@ -465,7 +465,7 @@ everywhere else.
 
 ```
 .less   when (@x)   ->   $if($x == true)
-.scss   @if $x      ->   $if(not(($x == false) or ($x == null)))
+.scss   @if $x      ->   $if($x)            <- §4.4.6; was not(($x == false) or ($x == null))
 ```
 
 Both are writable `.jess`, which is the hard requirement: `.less` and `.scss`
@@ -509,6 +509,50 @@ it no lowering.
 The row that DOES matter is the authored one: `when ("true")` must stay falsy,
 and only `==` keeps it so. `=` would ground `"true"` against `true` as strings
 and answer truthy. That is the whole argument, and it is unaffected.
+
+#### 4.4.6 Sass+ adopts jess truthiness — the reference is defensible by HISTORY, not by PRINCIPLE
+
+**Owner ruling, 2026-08-07.** `.scss` stops preserving Sass's truthiness and
+takes §4.4's emptiness rule. `""` and `()` become FALSY in Sass+, and the `.scss`
+lowering collapses to plain `$if($x)`.
+
+**Why this is not merely "diverging from the reference".** §4.4 already made the
+argument without drawing the conclusion: Sass is *"half-right (`0` truthy, but
+`""` and `()` truthy too, **which it cannot explain**)"*. Sass documents its rule
+as "everything except `false` and `null`", so `""` truthy is documented — it is
+not a defect in the sense §3.1's `~"true"` is. But **documented and unexplainable
+is still a Law-of-Least-Surprise violation**: Sass has no principle under which
+an EMPTY string is truthy while `null` is falsy. §4.4's emptiness principle
+explains both. The reference here is defensible by HISTORY, not by PRINCIPLE, and
+that is the bar for shifting a dialect.
+
+**What forced it was internal contradiction, not the reference.** Lowering
+`or`/`and` to jess's native operators (§4.5.5) while lowering `@if` to Sass's
+condition (§4.4.2) made `.scss` disagree with ITSELF:
+
+```
+.scss  @if ""      ->  TRUE branch     (Sass truthiness)
+.scss  "" or 2     ->  2               (jess truthiness)
+```
+
+One dialect, one value, two answers, decided by which construct you wrote. No
+ruling asked for that. The alternative — lowering `or` to the `$if` condition
+form — fixes the contradiction but duplicates the operand, stops transpiled
+`.jess` resembling the author's code, and is the shape §4.5.5 rejects by name.
+Taking the emptiness rule fixes it in the direction that makes the lowering
+SIMPLER and the `.jess` representation the natural one (§12.0).
+
+**PREREQUISITE, and it is not optional.** `$if($x)` is only correct for `null` if
+`.scss`'s `null` is the value-domain `Null`, not the identifier. It is currently
+`keyword('null')` (`scss-parser/src/grammar.ts`), so `.scss` needs the
+`NullLiteral` production that §4.3 gave only the jess grammar. Land that FIRST or
+`@if null` silently takes the true branch.
+
+**Migration.** §4.4.5 says compiled `.scss` is unaffected and only a HAND port
+changes behaviour. This ruling widens that: `@if ""` and `@if ()` now change for
+COMPILED `.scss` too. Those are live idioms, and this is the widest behavioural
+change in this document. It belongs in the public Sass+ divergence doc, not only
+here.
 
 #### 4.4.3 `!=` is NOT required — deferred
 
