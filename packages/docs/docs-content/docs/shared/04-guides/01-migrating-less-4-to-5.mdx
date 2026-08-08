@@ -265,10 +265,28 @@ The bar for changing an evaluation result is high. Less 5 follows Less 4 unless 
 | `b > a` | `false` | **`true`** | Relational is now *trichotomous*. Less 4 answered `false` in **both** directions, so an author could not tell "not greater" from "never comparable". |
 | `1px > red` | `false` | **error** | No common ground. Ordering a length against a keyword is an author mistake, and Less 4 answered it meaninglessly. |
 | `a = "a"` | `false` | **`true`** | A value equals its own spelling. Less 4 separated text by quoting while coercing numbers — the reverse of Sass, and explicable as neither. |
-| `when (~"true")` | truthy | **falsy** | Less 4 re-parsed the escaped string's bytes back through evaluation, so `~"true"` arrived as the keyword `true`. **A quote is a quote** — its contents must not decide truthiness. |
+| `when (~"true")` | truthy | **falsy** | See *Truthiness* below — the one row where Less 4 promoted a **string** to truthy. |
 | `not(1 > 2)`, `and(…)`, `or(…)` | *parse error* | **`true`** | The logical operators are real operators in Less 5, not call-shaped syntax. |
 | `foo(bar=@v)` | `foo(bar=50)` | **`foo(bar=@v)`** | A `name=value` argument is verbatim bytes. The IE-filter form is dropped in Less 5, and resolving inside it had no purpose. |
 | `@import "x.less" screen;` | wraps in `@media` | **parse error** | A media postlude belongs to a **CSS** `@import`. On a compile-time import it is bogus, and the shape is now decided at parse time. |
+
+### Truthiness is unchanged — with one exception
+
+**In Less, nothing is truthy except the boolean `true`** (or an expression that evaluates to it, like `1 > 0`). That is Less 4's rule and Less 5 keeps it. A guard takes a *condition*; anything else needs an explicit comparison.
+
+Note this is **not** the Jess / Sass+ rule, where a non-empty string *is* truthy. Do not carry that intuition into `.less`.
+
+| guard | Less 4 | Less 5 |
+| --- | --- | --- |
+| `when (true)`, `when (1 > 0)` | truthy | truthy |
+| `when (1)`, `when (0)`, `when (1px)` | falsy | falsy |
+| `when ("a")`, `when ("")`, `when (~"a")` | falsy | falsy |
+| `when (red)`, `when (abc)` | falsy | falsy |
+| **`when (~"true")`** | **truthy** | **falsy** |
+
+Only the last row moves, and it moves *toward* the rule. `~"true"` is a string, and strings are not truthy in Less — `~"a"` is falsy in both versions. Less 4 made an exception for this one string because it re-parsed the escaped bytes back through evaluation and handed the guard the keyword `true`. Its **contents** decided the outcome, which is exactly what the rule says must not happen. Less 5 removes the exception.
+
+If you were relying on `when (~"true")`, write `when (true)`.
 
 ### Unaffected, and worth knowing
 
