@@ -1,0 +1,1270 @@
+{
+  "generated": "2026-08-08T19:48:09.619Z",
+  "foundation": "6.9.0",
+  "node": "v24.11.1",
+  "platform": "darwin/arm64",
+  "parse": {
+    "total": 136,
+    "pass": 57,
+    "blockerCounts": [
+      {
+        "name": "keyword argument ($name: v) in a function-call argument list",
+        "primary": 35,
+        "files": 48
+      },
+      {
+        "name": "@include with a trailing content block",
+        "primary": 24,
+        "files": 51
+      },
+      {
+        "name": "@error / @warn / @debug",
+        "primary": 7,
+        "files": 16
+      },
+      {
+        "name": "comparison (== / !=) inside a function-call argument list",
+        "primary": 5,
+        "files": 16
+      },
+      {
+        "name": "@return nested inside @if/@else",
+        "primary": 3,
+        "files": 7
+      },
+      {
+        "name": "@content",
+        "primary": 2,
+        "files": 5
+      },
+      {
+        "name": "@while",
+        "primary": 1,
+        "files": 2
+      },
+      {
+        "name": "chained unary `not not`",
+        "primary": 1,
+        "files": 1
+      },
+      {
+        "name": "nested selector list `type:pseudo, .class`",
+        "primary": 1,
+        "files": 1
+      },
+      {
+        "name": "interpolation inside a pseudo-class argument list",
+        "primary": 0,
+        "files": 5
+      },
+      {
+        "name": "@at-root with a selector prelude",
+        "primary": 0,
+        "files": 2
+      }
+    ],
+    "results": [
+      {
+        "file": "_vendor/sassy-lists/stylesheets/functions/_contain.scss",
+        "outcome": "fail",
+        "blockers": [
+          "chained unary `not not`"
+        ],
+        "primaryBlocker": "chained unary `not not`",
+        "detail": "SCSS condition cannot preserve Expression."
+      },
+      {
+        "file": "_vendor/sassy-lists/stylesheets/functions/_purge.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_vendor/sassy-lists/stylesheets/functions/_remove.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_vendor/sassy-lists/stylesheets/functions/_replace.scss",
+        "outcome": "fail",
+        "at": "30:2",
+        "source": "@while $running {",
+        "blockers": [
+          "@while"
+        ],
+        "primaryBlocker": "@while",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "_vendor/sassy-lists/stylesheets/functions/_to-list.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss",
+        "outcome": "fail",
+        "at": "21:4",
+        "source": "@error 'Unmet dependencies! The following functions are required: #{$missing-dependencies}.';",
+        "blockers": [
+          "@error / @warn / @debug"
+        ],
+        "primaryBlocker": "@error / @warn / @debug",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "_vendor/sassy-lists/stylesheets/helpers/_true.scss",
+        "outcome": "fail",
+        "at": "12:20",
+        "source": "@return if($value == null, false, $value and $value != null and $value != '' and $value != ());",
+        "blockers": [
+          "comparison (== / !=) inside a function-call argument list"
+        ],
+        "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "assets/foundation-float.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "assets/foundation-prototype.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "assets/foundation-rtl.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "assets/foundation.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "docs/assets/scss/_accordion-content.scss",
+        "outcome": "fail",
+        "at": "34:46",
+        "source": "color: color.adjust($dark-gray, $lightness: -10%);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "docs/assets/scss/_component-list.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "docs/assets/scss/_course-callout.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "docs/assets/scss/_docs-footer.scss",
+        "outcome": "fail",
+        "at": "3:0",
+        "source": ".footer-nav {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      },
+      {
+        "file": "docs/assets/scss/content/_install.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "docs/assets/scss/docs.scss",
+        "outcome": "fail",
+        "at": "129:64",
+        "source": "$global-nav-hover-color: color.adjust($global-nav-bg, $lightness: 10%);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "docs/assets/scss/examples/_buttons.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "docs/assets/scss/examples/_grid.scss",
+        "outcome": "fail",
+        "at": "17:47",
+        "source": "background: color.adjust(#eee, $lightness: -5%);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "docs/assets/scss/examples/_motion-ui.scss",
+        "outcome": "fail",
+        "at": "13:20",
+        "source": "@include mui-series {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      },
+      {
+        "file": "docs/assets/scss/examples/_off-canvas.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "docs/assets/scss/examples/_orbit.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "docs/assets/scss/examples/_responsive-embed.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "docs/assets/scss/examples/_reveal.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/_global.scss",
+        "outcome": "fail",
+        "at": "123:2",
+        "source": "@error 'In $foundation-palette, you must have a color named \"primary\".';",
+        "blockers": [
+          "comparison (== / !=) inside a function-call argument list",
+          "@error / @warn / @debug"
+        ],
+        "primaryBlocker": "@error / @warn / @debug",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/components/_accordion-menu.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_accordion.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_badge.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_breadcrumbs.scss",
+        "outcome": "fail",
+        "at": "84:44",
+        "source": "$separator: if($global-text-direction == 'ltr', $breadcrumbs-item-separator-item, $breadcrumbs-item-separator-item-rtl);",
+        "blockers": [
+          "comparison (== / !=) inside a function-call argument list"
+        ],
+        "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/components/_button-group.scss",
+        "outcome": "fail",
+        "at": "131:37",
+        "source": "&:first-child:nth-last-child(#{$i}) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "comparison (== / !=) inside a function-call argument list",
+          "interpolation inside a pseudo-class argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "SCSS parser error. Expected: \"(\", \"[\", \"\\\"\", \"'\", BlockCommentToken, /(?:[^()\\[\\]'\"#\\/]|#(?!\\{)|\\/(?!\\*))+/."
+      },
+      {
+        "file": "scss/components/_button.scss",
+        "outcome": "fail",
+        "at": "36:68",
+        "source": "$button-background-hover: scale-color($button-background, $lightness: -15%) !default;",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "comparison (== / !=) inside a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/components/_callout.scss",
+        "outcome": "fail",
+        "at": "71:45",
+        "source": "$background: scale-color($color, $lightness: $callout-background-fade);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/components/_card.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_close-button.scss",
+        "outcome": "fail",
+        "at": "68:4",
+        "source": "@return $value;",
+        "blockers": [
+          "@return nested inside @if/@else"
+        ],
+        "primaryBlocker": "@return nested inside @if/@else",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/components/_drilldown.scss",
+        "outcome": "fail",
+        "at": "108:56",
+        "source": "transform: translateX(if($global-text-direction == ltr, -100%, 100%));",
+        "blockers": [
+          "comparison (== / !=) inside a function-call argument list"
+        ],
+        "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/components/_dropdown-menu.scss",
+        "outcome": "fail",
+        "at": "84:4",
+        "source": "> li.opens-left { // sass-lint:disable-line no-qualifying-elements",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "@error / @warn / @debug"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/components/_dropdown.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_flex-video.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_flex.scss",
+        "outcome": "fail",
+        "at": "43:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/components/_float.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_label.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_media-object.scss",
+        "outcome": "fail",
+        "at": "35:4",
+        "source": "&.stack-for-#{$-zf-zero-breakpoint} {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/components/_menu-icon.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_menu.scss",
+        "outcome": "fail",
+        "at": "100:2",
+        "source": "@else {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "@error / @warn / @debug"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/components/_off-canvas.scss",
+        "outcome": "fail",
+        "at": "78:4",
+        "source": "@warn '$offcanvas-size is deprecated and not used anymore! Please update your settings and use the map $offcanvas-sizes ",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "comparison (== / !=) inside a function-call argument list",
+          "@error / @warn / @debug",
+          "@at-root with a selector prelude"
+        ],
+        "primaryBlocker": "@error / @warn / @debug",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/components/_orbit.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_pagination.scss",
+        "outcome": "fail",
+        "at": "91:2",
+        "source": "li {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/components/_progress-bar.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_responsive-embed.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_reveal.scss",
+        "outcome": "fail",
+        "at": "45:28",
+        "source": "@include breakpoint(medium) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      },
+      {
+        "file": "scss/components/_slider.scss",
+        "outcome": "fail",
+        "at": "70:71",
+        "source": "background-color: scale-color($slider-handle-background, $lightness: -15%);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/components/_sticky.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_switch.scss",
+        "outcome": "fail",
+        "at": "15:68",
+        "source": "$switch-background-focus: scale-color($switch-background, $lightness: -10%) !default;",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/components/_table.scss",
+        "outcome": "fail",
+        "at": "35:60",
+        "source": "$table-row-hover: color.adjust($table-background, $lightness: -$table-hover-scale) !default;",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "comparison (== / !=) inside a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/components/_tabs.scss",
+        "outcome": "fail",
+        "at": "99:43",
+        "source": "color: scale-color($color, $lightness: -14%);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/components/_thumbnail.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_title-bar.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_tooltip.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/components/_top-bar.scss",
+        "outcome": "fail",
+        "at": "129:2",
+        "source": ".top-bar {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/components/_visibility.scss",
+        "outcome": "fail",
+        "at": "14:34",
+        "source": "@include breakpoint($size down) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/forms/_checkbox.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/forms/_error.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/forms/_fieldset.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/forms/_forms.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/forms/_help-text.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/forms/_input-group.scss",
+        "outcome": "fail",
+        "at": "38:49",
+        "source": "border-radius: if($global-text-direction == rtl, 0 $input-radius $input-radius 0, $input-radius 0 0 $input-radius);",
+        "blockers": [
+          "comparison (== / !=) inside a function-call argument list"
+        ],
+        "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/forms/_label.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/forms/_meter.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/forms/_progress.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/forms/_range.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/forms/_select.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/forms/_text.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/foundation.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/grid/_classes.scss",
+        "outcome": "fail",
+        "at": "100:31",
+        "source": "@include -zf-each-breakpoint {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "interpolation inside a pseudo-class argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/grid/_column.scss",
+        "outcome": "fail",
+        "at": "19:55",
+        "source": "@return fraction-to-percentage($columns, $denominator: $grid-column-count);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/grid/_flex-grid.scss",
+        "outcome": "fail",
+        "at": "49:43",
+        "source": "@include grid-context($columns, $base) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "@content",
+          "@at-root with a selector prelude"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/grid/_grid.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/grid/_gutter.scss",
+        "outcome": "fail",
+        "at": "20:51",
+        "source": "@include -zf-breakpoint-value($gutter, $gutters) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/grid/_layout.scss",
+        "outcome": "fail",
+        "at": "33:43",
+        "source": "@include breakpoint($breakpoint) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "interpolation inside a pseudo-class argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/grid/_position.scss",
+        "outcome": "fail",
+        "at": "51:2",
+        "source": "@else {",
+        "blockers": [
+          "@error / @warn / @debug"
+        ],
+        "primaryBlocker": "@error / @warn / @debug",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/grid/_row.scss",
+        "outcome": "fail",
+        "at": "25:4",
+        "source": "@at-root { @content; }",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "@content"
+        ],
+        "primaryBlocker": "@content",
+        "detail": "SCSS parser error. Expected: \"(\", \"}\"."
+      },
+      {
+        "file": "scss/grid/_size.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/prototype/_arrow.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/prototype/_border-box.scss",
+        "outcome": "fail",
+        "at": "26:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_border-none.scss",
+        "outcome": "fail",
+        "at": "26:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_bordered.scss",
+        "outcome": "fail",
+        "at": "45:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_box.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/prototype/_display.scss",
+        "outcome": "fail",
+        "at": "39:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_font-styling.scss",
+        "outcome": "fail",
+        "at": "74:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_list-style-type.scss",
+        "outcome": "fail",
+        "at": "56:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_overflow.scss",
+        "outcome": "fail",
+        "at": "64:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_position.scss",
+        "outcome": "fail",
+        "at": "91:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_prototype.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/prototype/_relation.scss",
+        "outcome": "fail",
+        "at": "5:4",
+        "source": "&:first-child {",
+        "blockers": [
+          "@content",
+          "interpolation inside a pseudo-class argument list"
+        ],
+        "primaryBlocker": "@content",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_rotate.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/prototype/_rounded.scss",
+        "outcome": "fail",
+        "at": "49:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_separator.scss",
+        "outcome": "fail",
+        "at": "81:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_shadow.scss",
+        "outcome": "fail",
+        "at": "33:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_sizing.scss",
+        "outcome": "fail",
+        "at": "60:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_spacing.scss",
+        "outcome": "fail",
+        "at": "147:35",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_text-decoration.scss",
+        "outcome": "fail",
+        "at": "15:0",
+        "source": "$prototype-text-decoration: (",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      },
+      {
+        "file": "scss/prototype/_text-transformation.scss",
+        "outcome": "fail",
+        "at": "37:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/prototype/_text-utilities.scss",
+        "outcome": "fail",
+        "at": "67:33",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/settings/_settings.scss",
+        "outcome": "fail",
+        "at": "177:58",
+        "source": "$anchor-color-hover: scale-color($anchor-color, $lightness: -14%);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/typography/_alignment.scss",
+        "outcome": "fail",
+        "at": "7:31",
+        "source": "@include breakpoint($size) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/typography/_base.scss",
+        "outcome": "fail",
+        "at": "77:2",
+        "source": "@warn 'Note, that $header-sizes has been replaced with $header-styles. $header-sizes still works, but it is going to be ",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "@error / @warn / @debug"
+        ],
+        "primaryBlocker": "@error / @warn / @debug",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/typography/_helpers.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/typography/_print.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/typography/_typography.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/util/_breakpoint.scss",
+        "outcome": "fail",
+        "at": "42:2",
+        "source": "@error 'The first key in the $breakpoints map must have a value of \"0\".';",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@error / @warn / @debug",
+          "@return nested inside @if/@else",
+          "@content"
+        ],
+        "primaryBlocker": "@error / @warn / @debug",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/util/_color.scss",
+        "outcome": "fail",
+        "at": "29:52",
+        "source": "$red   : round(color.channel($color, \"red\", $space: rgb));",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@error / @warn / @debug",
+          "@return nested inside @if/@else"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/util/_direction.scss",
+        "outcome": "fail",
+        "at": "20:4",
+        "source": "@error 'direction-opposite: Invalid $dir parameter, expected a value from \"#{$dirs}\", found \"#{$dir}\".';",
+        "blockers": [
+          "@error / @warn / @debug"
+        ],
+        "primaryBlocker": "@error / @warn / @debug",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/util/_flex.scss",
+        "outcome": "fail",
+        "at": "3:31",
+        "source": "'left': if($text-direction == rtl, flex-end, flex-start),",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "comparison (== / !=) inside a function-call argument list",
+          "@error / @warn / @debug"
+        ],
+        "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/util/_math.scss",
+        "outcome": "fail",
+        "at": "20:4",
+        "source": "@return gcd($b, $a % $b);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@error / @warn / @debug",
+          "@return nested inside @if/@else",
+          "@while"
+        ],
+        "primaryBlocker": "@return nested inside @if/@else",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/util/_mixins.scss",
+        "outcome": "fail",
+        "at": "151:52",
+        "source": "$red   : round(color.channel($color, \"red\", $space: rgb));",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "comparison (== / !=) inside a function-call argument list",
+          "@error / @warn / @debug",
+          "@content",
+          "interpolation inside a pseudo-class argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/util/_selector.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/util/_typography.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/util/_unit.scss",
+        "outcome": "fail",
+        "at": "51:4",
+        "source": "@return -zf-to-rem($values, $base);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@error / @warn / @debug",
+          "@return nested inside @if/@else"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/util/_util.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/util/_value.scss",
+        "outcome": "fail",
+        "at": "16:4",
+        "source": "@return false;",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@error / @warn / @debug",
+          "@return nested inside @if/@else"
+        ],
+        "primaryBlocker": "@return nested inside @if/@else",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/vendor/normalize.scss",
+        "outcome": "fail",
+        "at": "176:23",
+        "source": "button:-moz-focusring,",
+        "blockers": [
+          "nested selector list `type:pseudo, .class`"
+        ],
+        "primaryBlocker": "nested selector list `type:pseudo, .class`",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/xy-grid/_cell.scss",
+        "outcome": "fail",
+        "at": "16:4",
+        "source": "@return 1 1 0;",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "comparison (== / !=) inside a function-call argument list",
+          "@error / @warn / @debug",
+          "@return nested inside @if/@else"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/xy-grid/_classes.scss",
+        "outcome": "fail",
+        "at": "53:33",
+        "source": "@include -zf-each-breakpoint() {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "comparison (== / !=) inside a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/xy-grid/_collapse.scss",
+        "outcome": "fail",
+        "at": "24:41",
+        "source": "@include breakpoint($min-breakpoint) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/xy-grid/_frame.scss",
+        "outcome": "fail",
+        "at": "26:35",
+        "source": "@include -zf-each-breakpoint() {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "comparison (== / !=) inside a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/xy-grid/_grid.scss",
+        "outcome": "fail",
+        "at": "32:28",
+        "source": "$direction: if($direction == 'horizontal', row, column);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "comparison (== / !=) inside a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/xy-grid/_gutters.scss",
+        "outcome": "fail",
+        "at": "28:50",
+        "source": "@include -zf-breakpoint-value(auto, $gutters) {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/xy-grid/_layout.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "scss/xy-grid/_position.scss",
+        "outcome": "fail",
+        "at": "23:59",
+        "source": "$breakpoint: -zf-current-breakpoint($breakpoint, $default: $-zf-zero-breakpoint);",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block",
+          "comparison (== / !=) inside a function-call argument list"
+        ],
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "scss/xy-grid/_xy-grid.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "test/sass/_breakpoint.scss",
+        "outcome": "fail",
+        "at": "7:35",
+        "source": "@include test-module('Breakpoint') {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      },
+      {
+        "file": "test/sass/_color.scss",
+        "outcome": "fail",
+        "at": "6:30",
+        "source": "@include test-module('Color') {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      },
+      {
+        "file": "test/sass/_components.scss",
+        "outcome": "fail",
+        "at": "8:35",
+        "source": "@include test-module('Components') {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      },
+      {
+        "file": "test/sass/_selector.scss",
+        "outcome": "fail",
+        "at": "5:33",
+        "source": "@include test-module('Selector') {",
+        "blockers": [
+          "keyword argument ($name: v) in a function-call argument list",
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      },
+      {
+        "file": "test/sass/_unit.scss",
+        "outcome": "fail",
+        "at": "5:30",
+        "source": "@include test-module('Units') {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      },
+      {
+        "file": "test/sass/_value.scss",
+        "outcome": "fail",
+        "at": "6:30",
+        "source": "@include test-module('Value') {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "primaryBlocker": "@include with a trailing content block",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      }
+    ]
+  },
+  "eval": {
+    "total": 5,
+    "pass": 0,
+    "results": [
+      {
+        "file": "assets/foundation.scss",
+        "outcome": "fail",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "assets/foundation-float.scss",
+        "outcome": "fail",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "assets/foundation-prototype.scss",
+        "outcome": "fail",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "assets/foundation-rtl.scss",
+        "outcome": "fail",
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "scss/foundation.scss",
+        "outcome": "fail",
+        "detail": "Missing closing brace."
+      }
+    ]
+  }
+}
