@@ -628,7 +628,6 @@ function walkNode(
     case 'Comment':
     case 'SelectorCapture':
     case 'Dimension':
-    case 'RawInline':
       break;
   }
   hooks.leaveNode?.(node, c);

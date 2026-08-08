@@ -32,9 +32,15 @@ describe('Less `name=value` call arguments', () => {
     expect(await render('.x { a: foo(bar = 1); }')).toBe('.x {\n  a: foo(bar=1);\n}\n');
   });
 
-  it('evaluates the assigned value', async () => {
+  /*
+   * DIVERGES FROM lessc 4.8.1, deliberately. Under §12.3 row 2 the pair is no
+   * longer a structured node with a live value — it is verbatim bytes — so `@v`
+   * is not resolved. The construct is dropped from Less v5 and resolving inside
+   * it has no utility, which is the whole reason `Assignment` was deleted.
+   */
+  it('does NOT evaluate the assigned value', async () => {
     expect(await render('@v: 50; .x { a: foo(bar=@v); }'))
-      .toBe('.x {\n  a: foo(bar=50);\n}\n');
+      .toBe('.x {\n  a: foo(bar=@v);\n}\n');
   });
 
   it('keeps a quoted assigned value quoted', async () => {

@@ -80,7 +80,6 @@ import type {
   Operation,
   PseudoSelector,
   Quoted,
-  RawInline,
   Range,
   RelativeSelector,
   Stylesheet,
@@ -7964,13 +7963,6 @@ function emitDocumentStatements(
         markAfterDocumentStatement(child);
         break;
 
-      // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
-      case 'RawInline':
-        emitBeforeDocumentStatement(child);
-        emitRawInline(child, e);
-        markAfterDocumentStatement(child);
-        break;
-
       // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
       case 'FunctionCall':
         emitBeforeDocumentStatement(child);
@@ -9024,30 +9016,6 @@ function walkBody(
             });
           }
           emitOpaqueAtRuleBlock(node, e);
-        }
-        break;
-      }
-
-      // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
-      case 'RawInline': {
-        const riNode = node;
-        if (partition) {
-          queueLeadingGroup(group, partition);
-          flushPending(partition);
-          partition.encounteredContainer = true;
-          partition.trailing.push(() => emitRawInline(riNode, e));
-        } else {
-          const flushed = flush();
-          if (isThenable(flushed)) {
-            return flushed.then(() => {
-              emitRawInline(node, e);
-              return walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              );
-            });
-          }
-          emitRawInline(node, e);
         }
         break;
       }
@@ -11200,7 +11168,7 @@ function emitImportAtRule(
     return mapMaybe(loadedRequest, (loaded) => {
       if (loaded !== undefined) {
         if ('inline' in loaded) {
-          emitRawInline({ type: 'RawInline', text: loaded.inline, ...(loaded.media !== null ? { media: loaded.media } : {}) }, e);
+          emitRawInline(loaded.inline, loaded.media, e);
           return;
         }
         if (request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
@@ -11549,25 +11517,21 @@ function emitOpaqueAtRuleBlock(node: OpaqueAtRuleBlock, e: Emit): void {
  * `\n}` — reproducing the media-feature colon spacing (`(min-width:…)` →
  * `(min-width: …)`) Less's media parser reprints.
  */
-function emitRawInline(node: RawInline, e: Emit): void {
-  const start = e.off;
-  if (node.media != null) {
+function emitRawInline(text: string, media: string | null, e: Emit): void {
+  if (media != null) {
     const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
     put(e, idt);
     put(e, '@media ');
-    put(e, normalizeMediaFeatures(node.media));
+    put(e, normalizeMediaFeatures(media));
     put(e, ' {\n');
     put(e, INDENT.repeat(e.depth + 1));
-    put(e, node.text);
+    put(e, text);
     put(e, '\n');
     put(e, idt);
     put(e, '}\n');
   } else {
-    put(e, node.text);
+    put(e, text);
     put(e, '\n');
-  }
-  if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off });
   }
 }
 
@@ -12303,11 +12267,6 @@ function emitAtRuleBody(
         return body ? emitAtRuleBody(body, frame, e) : undefined;
       }
 
-      // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
-      case 'RawInline':
-        flushDirect();
-        emitRawInline(node, e);
-        return undefined;
       case 'MixinDefinition':
         publishSelectedMixinDefinition(frame, node);
         return undefined;
@@ -13069,14 +13028,6 @@ function emitNestedBody(
           flushBuf();
           emitBeforeRootStatement(node);
           emitOpaqueAtRuleBlock(node, e);
-          markAfterRootStatement(node);
-          break;
-
-          // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
-        case 'RawInline':
-          flushBuf();
-          emitBeforeRootStatement(node);
-          emitRawInline(node, e);
           markAfterRootStatement(node);
           break;
 

@@ -907,23 +907,6 @@ export interface Comment extends SpanSlots {
   readonly text: string;
 }
 
-/**
- * [import:inline] Verbatim raw bytes produced by `@import (inline)`. The target
- * file's bytes are spliced UNPARSED at the import site; the serializer emits
- * `text` exactly (a single trailing newline separates it from the next
- * statement, matching Less's inline splice). Carries no scope and no structure.
- *
- * [import:inline-media] When the import carried a media-query postlude
- * (`@import (inline) "x" (min-width:…)`), `media` holds that prelude and the
- * serializer wraps the raw bytes in an `@media <media> { … }` block (matching
- * Less, which wraps the inline `Anonymous` in a media ruleset). `null`/absent =
- * a bare inline splice.
- */
-export interface RawInline {
-  readonly type: 'RawInline';
-  readonly text: string;
-  readonly media?: string | null;
-}
 
 /**
  * One `:extend()` instruction extracted from a ruleset body (or an attached
@@ -1141,7 +1124,6 @@ export type Statement =
   | If
   | StyleImport
   | ModuleImport
-  | RawInline
 
   /*
    * A bare value-position call in statement position (`e('/* … *\/');`): Less
@@ -1339,10 +1321,6 @@ export const collection = (entries: CollectionEntry[], base?: ValueSlot): Collec
   base === undefined ? { type: 'Collection', entries } : { type: 'Collection', entries, base };
 export const comment = (text: string): Comment => ({ type: 'Comment', text, _s: NO_SPAN, _e: NO_SPAN });
 
-/** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice).
- * `media` (optional) wraps the splice in an `@media <media> { … }` block. */
-export const rawInline = (text: string, media?: string | null): RawInline =>
-  media != null ? { type: 'RawInline', text, media } : { type: 'RawInline', text };
 /** A bound-variable reference — {@link Lookup} of kind `var`. `name` may be a
  *  NODE, which is how `@@indirect` is spelled now that it needs no own kind. */
 export const variableReference = (name: string | ValueNode, lookup: VariableLookup, raw?: string): Lookup =>
