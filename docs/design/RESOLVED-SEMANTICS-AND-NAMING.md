@@ -1936,6 +1936,60 @@ list, and it is measured as a parse error in value position today. The empty
 COLLECTION spelling `{}` is falsy and carries that row's intent. §4.4's `()` row
 needs revisiting against this.
 
+### 12.6b `mathMode` at EVAL is a v2 regression — the parse is CONTEXTUAL
+
+**Owner ruling, 2026-08-07.** The Chevrotain parser parsed contextually: math
+settings and paren POSITION decided, at parse time, whether a paren group was a
+computation or literal CSS. The parseman parsers must do the same. `mathMode`
+being an eval-time mode is an implementation mistake, not a design.
+
+Evidence, from the original source at `35dfff1a8`:
+
+```ts
+export type OperationOptions = { inCalc: boolean }
+...
+let inCalc = this.options?.inCalc
+if (inCalc) { /* resolve operands, never operate */ }
+```
+
+A parse-time flag ON THE NODE, set by the parser; `eval` branched on it first
+and never re-derived it. v2 inverted that — the fact became `e.modes.mathMode`,
+read from ambient config at **six** sites in `serialize.ts`, while the grammars
+hardcode `parens-division` and describe the behaviour only in COMMENTS. Grep the
+four grammars for `mathMode`: every hit is prose. The parser never receives it.
+
+This is the same class of defect as §12.6 — a parse-time contextual decision
+relocated into eval — and the same class as `equalityMode`, which §5.1 removed
+for precisely this reason: a dialect difference must be carried by WHAT THE
+LOWERED NODE SAYS, not by a flag the evaluator reads from ambient config.
+
+**Half of v1's flag is already back.** §10 Phase 6 landed `inMathFunction` as a
+non-optional parse-time field on `Operation` — which §4.6 describes as `inCalc`
+renamed ("the name broadens with the rule"). Nobody noticed it was a
+RESTORATION. `mathMode` is the other half, still at eval.
+
+**Why this blocks §12.6a.** The parens ruling needs the grammar to decide, per
+paren, from mode + position, whether to emit an `Expression` (computes) or a
+`Block` (literal CSS). It cannot, because the grammar has no mode to consult. So
+the order is forced:
+
+1. `mathMode` becomes a PARSE-TIME input to the Less/SCSS grammars.
+2. Those grammars choose `Expression` vs `Block` per paren from mode + position.
+3. jess admits a bare `( … )` as a `Block` — today it is a parse error, which is
+   why §12.6a is not yet observable in `.jess` at all.
+4. `Block`'s math-frame push is removed — by then a no-op in every dialect.
+
+Doing step 4 first moves ZERO `.jess` bytes and BREAKS `.less`/`.scss`: measured,
+`.less (4px / 2)` goes `2px` → `(4px / 2)`, `round((@r / 3))` goes `3px` →
+`round(9px / 3)`, and `.scss` the same. The serializer's `Block`-with-parens arm
+is dialect-blind, so it cannot be the place this lives.
+
+**Open, and it should be measured rather than assumed:** whether all six
+`mathMode` read sites are parse-decidable. §4.6 says the emitted result is the
+product of three inputs — `inMathFunction`, `unitMode`, `mathMode`. If
+`mathMode` joins `inMathFunction` at parse time, the only remaining eval-time
+input is `unitMode`.
+
 ### 12.7 `ExpressionQuoted` should be `Quoted`
 
 The repo's own convention is
