@@ -63,6 +63,8 @@
     "check:macro": "node scripts/check-macro-buildable.mjs",
     "test:fallback-detector": "node --test scripts/__tests__/parseman-fallback-detector.test.mjs",
     "oracle:prebuild": "pnpm --filter @jesscss/awaitable-pipe build && pnpm --filter @jesscss/core build",
+    "oracle:css:render-differential": "pnpm run oracle:prebuild && pnpm --filter @jesscss/css-parser build && node packages/syntax/css/css-parser/test/render-differential.mjs",
+    "oracle:css:render-differential:write": "pnpm run oracle:prebuild && pnpm --filter @jesscss/css-parser build && node packages/syntax/css/css-parser/test/render-differential.mjs --write",
     "oracle:less:byte-identity": "pnpm run oracle:prebuild && pnpm --filter @jesscss/css-parser build && pnpm --filter @jesscss/less-parser build && node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json",
     "oracle:less:byte-identity:write": "pnpm run oracle:prebuild && pnpm --filter @jesscss/css-parser build && pnpm --filter @jesscss/less-parser build && node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs > packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json.new",
     "oracle:scss:byte-identity": "pnpm run oracle:prebuild && pnpm --filter @jesscss/scss-parser build && node packages/syntax/scss/scss-parser/test/oracle-byte-identity.mjs packages/syntax/scss/scss-parser/test/oracle-byte-identity.baseline.json",

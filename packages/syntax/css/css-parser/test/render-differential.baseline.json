@@ -1,0 +1,735 @@
+{
+  "format": "css-render-differential/1",
+  "corpus": {
+    "total": 119,
+    "buckets": {
+      "bootstrap": 4,
+      "fixture": 13,
+      "repo": 102
+    },
+    "bootstrapVersion": "5.3.8"
+  },
+  "counts": {
+    "ok": 63,
+    "reject": 56,
+    "emitError": 0
+  },
+  "emittedBytes": 606465,
+  "aggregate": "34e352ae82546db886ddfb1feab58f5aaaf5b73624191e5d74828f2608d2fa9e",
+  "entries": {
+    "bootstrap/bootstrap-grid.css": {
+      "bucket": "bootstrap",
+      "status": "ok",
+      "bytes": 70161,
+      "fingerprint": "ab40422880dc18f7"
+    },
+    "bootstrap/bootstrap-reboot.css": {
+      "bucket": "bootstrap",
+      "status": "ok",
+      "bytes": 12092,
+      "fingerprint": "3fd6b3d7a124ed5f"
+    },
+    "bootstrap/bootstrap-utilities.css": {
+      "bucket": "bootstrap",
+      "status": "ok",
+      "bytes": 107436,
+      "fingerprint": "e92156d0b751984b"
+    },
+    "bootstrap/bootstrap.css": {
+      "bucket": "bootstrap",
+      "status": "ok",
+      "bytes": 279480,
+      "fingerprint": "12d06a8ad6910241"
+    },
+    "fixture/calc-associativity.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 347,
+      "fingerprint": "4e7a06964fe69c2d"
+    },
+    "fixture/calc-at-rule-prelude.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 535,
+      "fingerprint": "978253bbfe42a11b"
+    },
+    "fixture/calc-custom-property.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 425,
+      "fingerprint": "cbd3ee0b5b1ec342"
+    },
+    "fixture/calc-math-functions.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 469,
+      "fingerprint": "7cb7b948bf6b5cae"
+    },
+    "fixture/calc-nested-calc.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 406,
+      "fingerprint": "35961e9cde37c867"
+    },
+    "fixture/calc-operand-kinds.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 711,
+      "fingerprint": "4ebe9be310dd5ed3"
+    },
+    "fixture/calc-parens-depth.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 357,
+      "fingerprint": "ed91742c73da3e1b"
+    },
+    "fixture/calc-precedence.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 382,
+      "fingerprint": "49a0fd65bfd3aa6e"
+    },
+    "fixture/calc-real-world.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 727,
+      "fingerprint": "956ca71cd341443d"
+    },
+    "fixture/calc-rejects.css": {
+      "bucket": "fixture",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "e8937db8ffd3b127"
+    },
+    "fixture/calc-sequence.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 337,
+      "fingerprint": "aa81939a4fa8c912"
+    },
+    "fixture/calc-signs-whitespace.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 490,
+      "fingerprint": "57efbe57d6c0ccff"
+    },
+    "fixture/calc-units.css": {
+      "bucket": "fixture",
+      "status": "ok",
+      "bytes": 498,
+      "fingerprint": "5b0451458a945d5a"
+    },
+    "repo/packages/editor/vscode/test-fixtures/unformatted.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 43,
+      "fingerprint": "3b47f78ffde8f074"
+    },
+    "repo/packages/editor/vscode/test-fixtures/values.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/fns/test/files/alias.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 126,
+      "fingerprint": "bc313c33d7962a04"
+    },
+    "repo/packages/fns/test/files/color.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 584,
+      "fingerprint": "78441f3d564c7d68"
+    },
+    "repo/packages/fns/test/files/each.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 111,
+      "fingerprint": "9cbb16fb1d12dec1"
+    },
+    "repo/packages/fns/test/files/iif.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 176,
+      "fingerprint": "e0abc1907eba46e0"
+    },
+    "repo/packages/fns/test/files/math.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 66,
+      "fingerprint": "a966807596eef6ef"
+    },
+    "repo/packages/jess/benchmark/benchmark.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 123064,
+      "fingerprint": "f53eb8fdb5d9928e"
+    },
+    "repo/packages/jess/test/files/import-func.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 71,
+      "fingerprint": "0a3ec5ab538d2d88"
+    },
+    "repo/packages/jess/test/files/include.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 24,
+      "fingerprint": "9501861c4c0d2cd8"
+    },
+    "repo/packages/jess/test/files/mixin.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 40,
+      "fingerprint": "e60bcd84f029a14c"
+    },
+    "repo/packages/jess/test/files/nested.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/jess/test/files/simple.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 36,
+      "fingerprint": "63ee18eaabf991e6"
+    },
+    "repo/packages/jess/test/less/fixtures/merge-fallback-important.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 106,
+      "fingerprint": "08d4567c7b6e3bee"
+    },
+    "repo/packages/jess/test/less/test.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 30,
+      "fingerprint": "e3a89b108a67bec4"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/apply.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 128,
+      "fingerprint": "e30050cf6c086e38"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/atrule-decls.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 264,
+      "fingerprint": "800b8dc7d5b2907f"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/atrule-empty.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 18,
+      "fingerprint": "feb965f74c2f713c"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/atrule-inside.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 26,
+      "fingerprint": "8799c298e1d5176e"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/atrule-no-params.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 0,
+      "fingerprint": "174302501822d560"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/atrule-no-space.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 20,
+      "fingerprint": "d53d74afe6d27d1c"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/atrule-params.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 0,
+      "fingerprint": "174302501822d560"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/atrule-rules.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 169,
+      "fingerprint": "82ffb1253795baea"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/atrule-unknown.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 28,
+      "fingerprint": "94d8ca7e7e2fe94a"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/between.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 0,
+      "fingerprint": "174302501822d560"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/colon-selector.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 0,
+      "fingerprint": "174302501822d560"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/comments.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 174,
+      "fingerprint": "b5254eeb2b23f406"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/custom-properties.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 1016,
+      "fingerprint": "814c8fc23e961349"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/decls.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 43,
+      "fingerprint": "0bcb5f51b1c7d9da"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/empty.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 0,
+      "fingerprint": "174302501822d560"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/atrule-no-semicolon.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "58d7b8549339d0f6"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/atrule-numeric-name.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/calc-empty.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "ad18f58d5a0b4d71"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/calc-lone-operator.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "ad18f58d5a0b4d71"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/charset.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "020b9c8d02d10a6b"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/comment-eof-unclosed.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "a9e4e75b5f324834"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/declaration-empty-value.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/declaration-missing-colon.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/declaration-numeric-name.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/declaration-star-property.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/declaration-starts-colon.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/import-empty.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/important-boundary.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/important-doubled.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/important-lone.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/important-misplaced.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/invalid-selector.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-bad-ident-selector.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "ca0583819c1237aa"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-block-no-selector.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "ca0583819c1237aa"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-dimension-selector.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "ca0583819c1237aa"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-number-selector.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "ca0583819c1237aa"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/media-decl.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/media-empty.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/media-no-selector.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/media-unclosed-block.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/no-selector.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/root-declaration.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/ruleset-unclosed.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-anb-dangling-sign.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "b607113b45ff0de2"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-anb-noninteger.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "b607113b45ff0de2"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-attribute-numeric-name.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-bare-colon.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-class-numeric.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-double-combinator.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-double-comma.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-leading.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-trailing.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-hash-noname.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-leading-combinator.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-pseudo-element-noname.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-trailing-combinator.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-type-numeric.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/selector-unclosed-attribute.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/supports-bare-ident.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/supports-no-condition.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "7f31a3cf40b74a97"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/url-interior-whitespace.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/url-token-bare-quote.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/url-token-open-paren.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/value-stray-close-bracket.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/value-stray-close-paren.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/value-unclosed-bracket.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/value-unclosed-function.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "e8937db8ffd3b127"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/errors/value-unterminated-string.css": {
+      "bucket": "repo",
+      "status": "reject",
+      "bytes": null,
+      "fingerprint": "4386df26e9223296"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/escape.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 179,
+      "fingerprint": "8c46491b0fc67019"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/expressions.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 39,
+      "fingerprint": "9ffb5f54c377b337"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/font-face.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 89,
+      "fingerprint": "23b865f22016d238"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/function.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 199,
+      "fingerprint": "172351c07b36baf7"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/ie-progid.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 139,
+      "fingerprint": "0b735fac09f395ed"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/important.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 330,
+      "fingerprint": "fd2079c27e4436b0"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/keyframes.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 1223,
+      "fingerprint": "489d1cc0d26f38cc"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/legacy-prop.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 102,
+      "fingerprint": "14913ca46f910444"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/nesting-ident.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 36,
+      "fingerprint": "a57a4415a11a9305"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/nesting.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 2277,
+      "fingerprint": "15462a9e464f267c"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/prop.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 102,
+      "fingerprint": "14913ca46f910444"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/pseudo-selectors.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 332,
+      "fingerprint": "09b7e283fc51fb3b"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/quotes.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 59,
+      "fingerprint": "a7c76ba35b68e624"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/raw-decl.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 27,
+      "fingerprint": "ad1b778bb4dca493"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/rule-no-semicolon.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 22,
+      "fingerprint": "c43372eb35aa7204"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/selector.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 0,
+      "fingerprint": "174302501822d560"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/semicolons.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 22,
+      "fingerprint": "c43372eb35aa7204"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/star.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 50,
+      "fingerprint": "3dc7c873c8266f06"
+    },
+    "repo/packages/syntax/css/css-parser/test/css/tab.css": {
+      "bucket": "repo",
+      "status": "ok",
+      "bytes": 22,
+      "fingerprint": "c43372eb35aa7204"
+    }
+  }
+}

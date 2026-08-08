@@ -1,0 +1,11 @@
+/* Left-associative folds. Right association reparents every one of these. */
+.associativity {
+  a: calc(10px - 2px - 3px);
+  b: calc(100px / 5 / 2);
+  c: calc(1px - 2px + 3px - 4px);
+  d: calc(2 * 3 / 4 * 5);
+  e: calc(100% - 10px - 20px - 30px);
+  f: calc(1 - 2 - 3 - 4 - 5);
+  g: calc(64 / 2 / 2 / 2);
+  h: calc(1px + 2px - 3px + 4px - 5px);
+}
