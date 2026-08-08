@@ -1545,6 +1545,47 @@ not re-raised.
 Rows 1–3 and 5 are local. Row 4 is a family redesign and must be done as one
 piece; splitting it is how the duplication got there.
 
+### 12.3b `@import` is TWO nodes, and `ImportAtRule` is neither
+
+**Owner ruling, 2026-08-07, amending row 5.** There is `StyleImport`, which
+carries options and the rest, and there is `AtRule`. Nothing else. A plain CSS
+`@import` is *just an at-rule* and belongs in `AtRuleStatement`; every
+compile-time import — Less `@import` with options, SCSS `@use` / `@forward`,
+jess `@-import` / `@-compose` — is a `StyleImport`. `ImportAtRule` is a third
+node for something that was always one of those two, and it is deleted.
+
+`StyleImport` is already the SHARED fact set and its callers prove it: SCSS
+`@use` and `@forward` both build it (`scss grammar.ts:2607`, `:2630`), varying
+only by `mode` / `forward` / `namespace`, which is exactly the `@-import` vs
+`@-compose` difference — a name plus some eval behaviour. What it lacks is the
+option surface, which `ImportAtRule` already models and which `@use "x" with (…)`
+needs just as much as `@import (inline)` does. The SCSS grammar drops `with`
+entirely today. So the fields that move are the GENERIC carrier, not one boolean
+per dialect quirk:
+
+```
+options: List | null                   (inline), (reference), with (…), show/hide
+tail:    ValueNode | null              media / layer / supports postlude
+alias:   ValueNode | null              as …
+target:  Quoted | Url | Interpolation  not just Quoted
+```
+
+Row 5's "an inline flag — its own boolean" is superseded: a boolean per option
+is the same fusion it warns against, one level down.
+
+**The wrinkle, recorded because it is why the third node existed.** Which of the
+two an `@import` becomes is decided by `canLoadImport` (`serialize.ts:314`) from
+four inputs — the option words, `@import` vs `@-import`, `alias`, and the
+SPECIFIER. The first three are parse-time facts. The specifier is not, because it
+can be interpolated (`@import "@{name}.css"`), so the parser cannot always know.
+
+That does not justify a third node. The parser emits `StyleImport` whenever the
+form is a compile-time CANDIDATE, and resolution may still find it CSS-terminal
+and emit it as an ordinary at-rule. The unresolvable-at-parse-time case is a
+RESOLUTION outcome, not a separate kind — and resolution already lives outside
+the node (`emitStyleImport` only prints; the loader owns `importDocument`), which
+is what makes the unification cheap.
+
 **`RawInline` (row 5) needs two fields on `StyleImport`**, which today is
 `{ path, mode: 'compose' | 'import', namespace, forward }` (`nodes.ts:1093`):
 
