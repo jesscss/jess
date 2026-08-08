@@ -3099,12 +3099,29 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       if (node.delimiter === 'square') {
         return mapMaybe(evalTypedSlot(node.value, frame, e), value => makeBlock(value, 'square', node.escaped));
       }
-      return mapMaybe(
-        evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true) }),
-        value => !isValueGroupArray(value) && value.type === 'Keyword' && calcInner(value.bytes) !== null
-          ? makeKeyword(`(${calcInner(value.bytes)})`)
-          : value
-      );
+
+      /*
+       * The paren IS the math frame and nothing else. It is consumed here, and
+       * whatever the inner evaluated to is handed on UNCHANGED — in particular a
+       * PRESERVED expression stays spelled `calc(…)`, which is the carrier the
+       * value domain uses for one.
+       *
+       * This used to re-spell a `calc(…)` inner as a bare `(…)`, which threw that
+       * carrier away. `operate`'s calc-splice guard (`value-operate.ts:410`)
+       * recognizes `calc(…)` and nothing else, so the re-spelled operand fell
+       * through to the un-operable-keyword guard (`:418`) and the operation came
+       * back as RAW SOURCE with no math done — the paren consumed as a math
+       * frame, the multiplication never composed:
+       *
+       *   (100% * 100%) * 2   ->   (100% * 100%) * 2      (half-evaluated)
+       *    100% * 100%  * 2   ->   calc(100% * 100% * 2)  (correct)
+       *
+       * The inner paren was the only variable between those two, which is what
+       * makes this the rewrite's defect and not the preserve rule's. Any mode
+       * that preserves widens the input set that reaches it; the percentage
+       * product is merely the one preserve already produced.
+       */
+      return evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true) });
     case 'Collection':
       /*
        * A map reaching a TYPED position (a function argument, an operation) is

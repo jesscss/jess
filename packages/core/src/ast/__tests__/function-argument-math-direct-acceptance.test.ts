@@ -39,6 +39,31 @@ describe('direct canonical function-argument math', () => {
       + '}\n');
   });
 
+  /*
+   * A parenthesized operand is a MATH FRAME and nothing else: parenthesizing a
+   * sub-expression must not change the answer. It used to, whenever the inner
+   * PRESERVED — the paren was consumed as the frame while the outer
+   * multiplication was never performed, and the whole operation came back as
+   * raw source with the outer paren gone (`(100% * 100%) * 2`). The two spellings
+   * are asserted against each other rather than against a fixed string, because
+   * the defect was the DIVERGENCE; whatever `preserve` answers, it owes the same
+   * answer to both.
+   */
+  it('a parenthesized preserved sub-expression composes exactly as the unparenthesized one does', () => {
+    const percentSquared = () => operation('*', dimension(100, '%'), dimension(100, '%'));
+    const document = stylesheet([
+      rule('.math', [
+        decl('parenthesized', operation('*', block(percentSquared()), dimension(2))),
+        decl('bare', operation('*', percentSquared(), dimension(2)))
+      ])
+    ]);
+
+    expect(serialize(document, { evaluator }).css).toBe('.math {\n'
+      + '  parenthesized: calc(100% * 100% * 2);\n'
+      + '  bare: calc(100% * 100% * 2);\n'
+      + '}\n');
+  });
+
   it('unquotes an escaped Less string before typed calc arithmetic', () => {
     const document = stylesheet([
       rule('.math', [
