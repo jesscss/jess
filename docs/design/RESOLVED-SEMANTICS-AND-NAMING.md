@@ -1573,18 +1573,18 @@ target:  Quoted | Url | Interpolation  not just Quoted
 Row 5's "an inline flag — its own boolean" is superseded: a boolean per option
 is the same fusion it warns against, one level down.
 
-**The wrinkle, recorded because it is why the third node existed.** Which of the
-two an `@import` becomes is decided by `canLoadImport` (`serialize.ts:314`) from
-four inputs — the option words, `@import` vs `@-import`, `alias`, and the
-SPECIFIER. The first three are parse-time facts. The specifier is not, because it
-can be interpolated (`@import "@{name}.css"`), so the parser cannot always know.
+**The shape is decided at PARSE time.** Which of the two an `@import` becomes is
+`canLoadImport`'s question (`serialize.ts:314`) and all four of its inputs are
+syntactic: the option words, `@import` vs `@-import`, `alias`, and the target's
+authored spelling — a `url(…)` form, or a literal `.css` suffix. Interpolation
+does not obstruct this: in `@import "@{name}.css"` the extension is authored
+plainly and only the stem is substituted, so the parser reads the suffix without
+resolving anything.
 
-That does not justify a third node. The parser emits `StyleImport` whenever the
-form is a compile-time CANDIDATE, and resolution may still find it CSS-terminal
-and emit it as an ordinary at-rule. The unresolvable-at-parse-time case is a
-RESOLUTION outcome, not a separate kind — and resolution already lives outside
-the node (`emitStyleImport` only prints; the loader owns `importDocument`), which
-is what makes the unification cheap.
+So the parser picks the node, and nothing defers. That `canLoadImport` runs at
+serialize time today is an artifact of the third node existing, not a constraint
+— resolution already lives outside the node (`emitStyleImport` only prints; the
+loader owns `importDocument`), which is what makes the unification cheap.
 
 **`RawInline` (row 5) needs two fields on `StyleImport`**, which today is
 `{ path, mode: 'compose' | 'import', namespace, forward }` (`nodes.ts:1093`):
