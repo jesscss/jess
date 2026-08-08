@@ -1943,6 +1943,21 @@ settings and paren POSITION decided, at parse time, whether a paren group was a
 computation or literal CSS. The parseman parsers must do the same. `mathMode`
 being an eval-time mode is an implementation mistake, not a design.
 
+**The general rule, of which `mathMode` is one instance: PARSE AND LOWER from
+dialect + paren position + `inMathFunction`, at parse time, so that EVAL DOES
+VERY LITTLE WORK.** All three inputs are available to the grammar and to nothing
+else — the dialect IS which grammar is running, the position is structural, and
+`inMathFunction` is already a parse-time positional fact (§4.6). A node that
+reaches eval should already say what it is; eval walks it and obeys.
+
+This extends the standing rule that the parser owns STRUCTURE and core never
+re-derives it from bytes. Core must not re-derive SEMANTICS from ambient config
+either — a mode read at eval is the same defect in a different register, which
+is why `equalityMode` was deleted (§5.1) and why `mathMode` follows it.
+
+It is also the perf argument. Every eval-time mode read is work repeated per
+node per render for a fact that was knowable once, at parse.
+
 Evidence, from the original source at `35dfff1a8`:
 
 ```ts
