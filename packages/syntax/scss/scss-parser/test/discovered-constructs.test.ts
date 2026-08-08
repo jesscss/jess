@@ -402,11 +402,16 @@ describe('SCSS constructs discovered outside the parser suites', () => {
    * list that split never covered.
    *
    * These two cases are the missing check, not a fix. Opaque capture is NOT
-   * the fix for the first five: an evaluated directive emitted verbatim would
-   * put `@while` in the CSS output, which grammar.ts calls out as the reason
-   * these names are excluded at all. They need productions. The `@-…` compiler
-   * namespace is the same story — jess-parser routes all five, scss-parser
-   * routes none.
+   * the fix for the remaining names: an evaluated directive emitted verbatim
+   * would put the directive in the CSS output, which grammar.ts calls out as
+   * the reason these names are excluded at all. They need productions. The
+   * `@-…` compiler namespace is the same story — jess-parser routes all five,
+   * scss-parser routes none.
+   *
+   * `@while`, `@debug`, `@warn` and `@error` have since been routed and moved
+   * to the list above. `@while` builds the canonical `While`; the three
+   * diagnostics build NOTHING — they own no AST kind, so their production
+   * reduces to null and the statement collector drops it.
    */
   it.each([
     ['@use', '@use "x";'],
@@ -423,16 +428,16 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     ['@charset', '@charset "UTF-8";'],
     ['@namespace', '@namespace svg url(http://www.w3.org/2000/svg);'],
     ['@content', '@content;'],
-    ['@content with args', '@content(1);']
+    ['@content with args', '@content(1);'],
+    ['@while', '@while $i > 0 { a: b; }'],
+    ['@debug', '@debug 1;'],
+    ['@warn', '@warn 1;'],
+    ['@error', '@error 1;']
   ])('routes the excluded SCSS at-keyword %s to a typed production', (_label, source) => {
     expect(() => parse(source)).not.toThrow();
   });
 
   it.each([
-    ['@while', '@while $i > 0 { a: b; }'],
-    ['@debug', '@debug 1;'],
-    ['@warn', '@warn 1;'],
-    ['@error', '@error 1;'],
     ['@-use', '@-use "x";'],
     ['@-compose', '@-compose "x";'],
     ['@-export', '@-export "x";'],

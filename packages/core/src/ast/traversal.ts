@@ -6,6 +6,7 @@ import type {
   Declaration,
   FunctionCall,
   If,
+  While,
   Interpolation,
   MixinCall,
   MixinDefinition,
@@ -68,6 +69,8 @@ export type AstEdge =
   | 'for.rules'
   | 'if.branch.guard'
   | 'if.branch.rules'
+  | 'while.guard'
+  | 'while.rules'
   | 'module-import.path'
   | 'atrule.prelude'
   | 'atrule.rules'
@@ -412,6 +415,13 @@ function walkIf(node: If, hooks: AstVisitHooks, depth: number): void {
   }
 }
 
+function walkWhile(node: While, hooks: AstVisitHooks, depth: number): void {
+  walkGuard(node.guard, hooks, 'while.guard', node, 0, depth + 1);
+  for (let i = 0; i < node.rules.length; i++) {
+    walkNode(node.rules[i]!, hooks, 'while.rules', node, i, depth + 1);
+  }
+}
+
 function walkAtRuleBlock(node: AtRuleBlock, hooks: AstVisitHooks, depth: number): void {
   if (node.prelude !== null) {
     walkNode(node.prelude, hooks, 'atrule.prelude', node, 0, depth + 1);
@@ -508,6 +518,9 @@ function walkNode(
       break;
     case 'If':
       walkIf(node, hooks, depth);
+      break;
+    case 'While':
+      walkWhile(node, hooks, depth);
       break;
     case 'StyleImport':
       walkStyleImport(node, hooks, depth);

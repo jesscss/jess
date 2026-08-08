@@ -676,6 +676,19 @@ export const ERR = {
       ...args
     });
   },
+
+  /**
+   * A `$while` whose condition never settled false. The limit is a TERMINATION
+   * guarantee, not a tuning knob: without it a loop whose body never moves the
+   * condition hangs the compiler with no output and no message.
+   */
+  loopIterationLimit(args: Common & { meta: { limit: number } }) {
+    return makeJessError({
+      code: 'eval/loop-iteration-limit',
+      phase: 'eval',
+      ...args
+    });
+  },
   invalidUnitArithmetic(args: Common & { meta: { reason: string } }) {
     return makeJessError({
       code: 'eval/invalid-unit-arithmetic',

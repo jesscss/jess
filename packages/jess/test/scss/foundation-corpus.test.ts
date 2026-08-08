@@ -94,7 +94,8 @@ const PER_FILE_TIMEOUT_MS = 30_000;
  * match is a presence regex, so a construct that parses would keep attracting
  * files that fail for an unrelated reason in the `contains` column. Closed so
  * far: `@return` nested inside `@if`/`@else`, `@include` with a trailing content
- * block, and `@content`. Forgetting to remove one no longer corrupts the ranking
+ * block, `@content`, `@while`, `@error`/`@warn`/`@debug`, and chained unary
+ * `not not`. Forgetting to remove one no longer corrupts the ranking
  * — that column is read off the failure position — but it still inflates
  * `contains`.
  */
@@ -104,9 +105,6 @@ const BLOCKERS: Array<[string, RegExp]> = [
 
   // `$x: if($a == b, 1, 2);` — the same `==` parses fine in an @if condition.
   ['comparison (== / !=) inside a function-call argument list', /[a-z][\w.-]*\([^()]*(?:==|!=)/],
-
-  // `@mixin m { @error "boom"; }`
-  ['@error / @warn / @debug', /@(?:error|warn|debug)\b/],
 
   /*
    * `$m: (a, b, c,);` — a trailing comma in a parenthesized list. Surfaced by
@@ -118,14 +116,8 @@ const BLOCKERS: Array<[string, RegExp]> = [
   // `.a:nth-child(#{$i}) { color: red; }`
   ['interpolation inside a pseudo-class argument list', /:{1,2}[\w-]+\([^()]*#\{/],
 
-  // `@mixin m { @while $r { a: b; } }`
-  ['@while', /@while\b/],
-
   // `.a { @at-root .b { color: red; } }` — bare `@at-root { … }` does parse.
   ['@at-root with a selector prelude', /@at-root\s+[^{\s]/],
-
-  // `@function f($l, $v) { @return not not index($l, $v); }`
-  ['chained unary `not not`', /\bnot\s+not\b/],
 
   /*
    * `@mixin m() { div:hover, .b { color: red; } }` — the leading `div:` is
@@ -384,8 +376,10 @@ describe(`Foundation for Sites ${foundationVersion} SCSS corpus`, () => {
  * removing a name, which is visible in review.
  */
 const PARSE_PASS_BASELINE: readonly string[] = [
+  '_vendor/sassy-lists/stylesheets/functions/_contain.scss',
   '_vendor/sassy-lists/stylesheets/functions/_purge.scss',
   '_vendor/sassy-lists/stylesheets/functions/_remove.scss',
+  '_vendor/sassy-lists/stylesheets/functions/_replace.scss',
   '_vendor/sassy-lists/stylesheets/functions/_to-list.scss',
   'assets/foundation-float.scss',
   'assets/foundation-prototype.scss',
@@ -400,6 +394,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'docs/assets/scss/examples/_orbit.scss',
   'docs/assets/scss/examples/_responsive-embed.scss',
   'docs/assets/scss/examples/_reveal.scss',
+  'scss/_global.scss',
   'scss/components/_accordion-menu.scss',
   'scss/components/_accordion.scss',
   'scss/components/_badge.scss',
@@ -440,6 +435,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/grid/_flex-grid.scss',
   'scss/grid/_grid.scss',
   'scss/grid/_gutter.scss',
+  'scss/grid/_position.scss',
   'scss/grid/_row.scss',
   'scss/grid/_size.scss',
   'scss/prototype/_arrow.scss',
@@ -465,6 +461,8 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/typography/_helpers.scss',
   'scss/typography/_print.scss',
   'scss/typography/_typography.scss',
+  'scss/util/_direction.scss',
+  'scss/util/_flex.scss',
   'scss/util/_selector.scss',
   'scss/util/_typography.scss',
   'scss/util/_util.scss',
@@ -560,12 +558,12 @@ const STANDING_SECTIONS: readonly string[] = [
   '| --- | --- | --- |',
   '| 1 | keyword arg `$name: v` in a call arg list | **Real gap — OPEN, and it is an AST change, not a grammar change.** Less v5, Sass+ and Jess all admit direct assignment, keyed on what `defineFunction` exposes on the returned function object (`params`, each with a `name`). Not a Sass-only affordance. **No new AST kind is owed**: `.less` `.m(@a: 1)` already lowers to `MixinCall.args = [{name:\'a\', value}]`, i.e. `CallArg` (`packages/core/src/ast/mixin-dispatch.ts:30`), and `$name: value` is the same `.jess` spelling in either call — §12.0\'s first test makes them the SAME node. What blocks it is that `FunctionCall.args` is `ValueSlot[]` (`nodes.ts:277`) and cannot carry a name. Converting it to `CallArg[]` is a hidden-class change to the hottest value node in the tree and touches ~65 read sites (43 `.args` in `serialize.ts`, 22 in `packages/fns/src`) plus 29 `funcCall(` construction sites across all four grammars. Sized, designed, not started. |',
   '| 2 | `@include` with a trailing content block | **LANDED.** Lowers to `.jess` `$ > m(): @{ … }` — a `MixinCall` carrying the block on a `content` slot, with Sass `using (…)` becoming that block AnonymousMixin `params`. The block is NOT an argument: it binds the callee-visible `content` variable that #6 reads. No new AST kind. |',
-  '| 3 | `@error` / `@warn` / `@debug` | **They do not become NODES.** That is the operative point — not that they are no-ops. They are compile-time diagnostics with no `.jess` spelling, so by §12.0\'s law no AST kind is owed one. Plugin *visitor* support for specific cases is worth reasoning about separately; it does not require a node. |',
+  '| 3 | `@error` / `@warn` / `@debug` | **LANDED.** **They do not become NODES.** That is the operative point — not that they are no-ops. They are compile-time diagnostics with no `.jess` spelling, so by §12.0\'s law no AST kind is owed one. Plugin *visitor* support for specific cases is worth reasoning about separately; it does not require a node. |',
   '| 4 | `==` / `!=` inside a call arg list | **LANDED for `.scss`.** Becomes an `Expression` over a `Condition`, per §4.5.2: a call argument is value position, so a comparison there needs the `$( … )` boundary, and the lowering supplies it because Sass source has no `$( … )` to write. Neither kind is new. Implemented as the single `CallArgument` const in `scss-parser/src/grammar.ts`, referenced by both argument sites (`Call`\'s head and `ArgumentPair`\'s tail). `==` / `!=` lower to the `sass-equal` primitive, the same lowering `IfComparison` already performs, so a comparison cannot mean one thing in a guard and another in an argument. **`.jess` needs no change, and that is the rule rather than a gap**: §4.5.2 says "if it computes, it is inside `$( )` — no exceptions". Sass has no `$( … )` to write, so the lowering must supply the boundary; `.jess` HAS the marker, so a bare `f($x == 1)` must stay a parse error and the author writes `f($($x == 1))` — which already parses. `.less` already routes `if(@x = 1, …)` through `FunctionCondition` (§4.5.3a). So this blocker was only ever `.scss`. |',
   '| 5 | `@return` nested inside `@if`/`@else` | **LANDED.** Only top-level `@return` parsing was the bug: `ReturnRule` is now an `IfBody` arm too, building the same `result:` Declaration §4.5.3b already used — verified byte-equal to the tree a top-level `@return` builds. No new AST kind. |',
   '| 6 | `@content` | **LANDED (bare form).** Lowers to the documented built-in `$content()` — a `Reference` on a live `content` `Lookup` with one `Call` step, asserted EQUAL to the tree the Jess grammar builds for `$content()`. No new AST kind. The parameterised `$content($type)` form PARSES but does not EVALUATE: a statement-position call WITH arguments to a variable-bound `AnonymousMixin` is a pre-existing core gap that `.jess` own `$m: @($c) { … }` spelling cannot reach either. Foundation uses only the bare form. **A block-less `@include` makes `@content` a NO-OP** (owner ruling, 2026-08-08, matching dart-sass): the content block is OPTIONAL by design — a mixin that emits `@content` conditionally, or that is called both with and without a block, is the common idiom, and erroring would break every one of them. Not an exception for one name: it is the settled "a resolve failure is an eval error UNLESS the resolve is optional" rule, and `$content()` is precisely the optional case. Only the total MISS is silent — an ordinary `content` binding in scope still resolves, and every other unbound statement-position call still throws. |',
-  '| 7 | `@while` | Gets a **`$while`**, alongside `$if` / `$for`. |',
-  '| 8 | chained unary `not not` | Sass `not not $x` lowers to `.jess` `not(not($x))`. Falls out of §4.5.4\'s rule that `not` always takes parens. |',
+  '| 7 | `@while` | **LANDED.** Gets a **`$while`**, alongside `$if` / `$for`. |',
+  '| 8 | chained unary `not not` | **LANDED.** Sass `not not $x` lowers to `.jess` `not(not($x))`. Falls out of §4.5.4\'s rule that `not` always takes parens — it needed no special case, only the missing `Expression` arm in the condition-source spelling. |',
   '| 9 | nested selector list `type:pseudo, .class` | **A grammar defect, and the rule is fully specified — see below.** |',
   '| 10 | interpolation in a pseudo-class arg | Not yet ruled on. |',
   '| 11 | `@at-root` with a selector prelude | **Needs a decision.** Bare `@at-root { … }` already parses. |',

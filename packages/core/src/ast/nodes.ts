@@ -1121,6 +1121,23 @@ export interface If {
 }
 
 /**
+ * Jess `$while (<condition>) { … }` — the third control statement, alongside
+ * `$if` and `$for`, and shaped like both: `$if`'s `GuardNode` condition over
+ * `$for`'s statement body. SCSS `@while` lowers to it.
+ *
+ * It is a distinct node because it is a distinct `.jess` spelling (§12.0): a
+ * `$for` iterates a KNOWN iterable decided once, and no `$for` spelling
+ * re-evaluates a condition between iterations. Like `$if` and `$for`, a control
+ * block is not a scope — body declarations publish into the containing frame,
+ * which is exactly what lets the condition observe the counter the body writes.
+ */
+export interface While {
+  readonly type: 'While';
+  readonly guard: GuardNode;
+  readonly rules: Statement[];
+}
+
+/**
  * A compile-time stylesheet dependency; plugins resolve its authored target.
  *
  * There are exactly TWO import shapes and the parser picks between them: a plain
@@ -1217,6 +1234,7 @@ export type Statement =
   | Reference
   | For
   | If
+  | While
   | StyleImport
   | ModuleImport
 
@@ -1323,6 +1341,7 @@ export const forNode = (
   binding: ForBinding
 ): For => ({ type: 'For', iterable, rules, binding });
 export const ifNode = (branches: readonly [IfBranch, ...IfBranch[]]): If => ({ type: 'If', branches });
+export const whileNode = (guard: GuardNode, rules: Statement[]): While => ({ type: 'While', guard, rules });
 export const range = (
   start: ValueNode,
   end: ValueNode,

@@ -29,8 +29,8 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, keyword, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, keyword, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode, While } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -171,6 +171,7 @@ type JessRules = {
   ElseIfBranch: Combinator<IfBranch>;
   ElseBranch: Combinator<IfBranch>;
   If: Combinator<If>;
+  While: Combinator<While>;
   StyleImport: Combinator<StyleImport>;
   ModuleSpecifier: Combinator<ModuleImportSpecifier>;
   ModuleImport: Combinator<ModuleImport>;
@@ -1054,7 +1055,7 @@ function functionOpenName(child: unknown): string {
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isVarDeclaration(child) && !isMixinDefinition(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRuleset(child) && !isFor(child) && !isIf(child) && !isDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
+    if (!isVarDeclaration(child) && !isMixinDefinition(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRuleset(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
       throw new TypeError('Jess grammar produced a non-statement child.');
     }
     statements.push(child);
@@ -1250,6 +1251,16 @@ function isIf(value: unknown): value is If {
     && value.type === 'If'
     && 'branches' in value
     && Array.isArray(value.branches);
+}
+
+function isWhile(value: unknown): value is While {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'While'
+    && 'guard' in value
+    && 'rules' in value
+    && Array.isArray(value.rules);
 }
 
 function requireExactToken(value: unknown, expected: string): void {
@@ -4924,6 +4935,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.Extend,
     g.For,
     g.If,
+    g.While,
     g.Ruleset,
     g.SupportsAtRuleBlock,
     g.Keyframes,
@@ -4947,6 +4959,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.MixinDefinition,
     g.For,
     g.If,
+    g.While,
     g.ReferenceCall,
     g.Apply,
     g.Ruleset,
@@ -6094,6 +6107,30 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return ifNode(requireIfBranchTuple(branches));
     }
   );
+
+  /*
+   * `$while (…) { … }` — the third control statement, built from the SAME
+   * `IfCondition` and `IfBody` rungs `$if` uses. It is a node of its own and not
+   * a `$for` because the condition is re-read BETWEEN iterations: `$for`
+   * iterates an iterable decided once, and no `$for` spelling reproduces that.
+   *
+   * Like `$if`, a control block is not a scope, so the body's declarations
+   * publish into the containing frame — which is what lets the next condition
+   * observe the counter the last iteration wrote.
+   */
+  const While = node<While>(
+    'While',
+    sequence(
+      regex(/\$while(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      g.IfCondition,
+      g.IfBody
+    ),
+    children => whileNode(
+      requireGuardNode(children[1]),
+      requireStatementList(children[2])
+    )
+  );
+
   const Compound = node<SelectorTerm>(
     'Compound',
     noTrivia(oneOrMore(choice(
@@ -6201,6 +6238,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.MixinDefinition,
         g.For,
         g.If,
+        g.While,
         g.ReferenceCall,
         g.Apply,
         g.Extend,
@@ -6259,6 +6297,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.MixinDefinition,
         g.For,
         g.If,
+        g.While,
         g.ReferenceCall,
         g.Apply,
         g.Ruleset,
@@ -6452,6 +6491,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ElseIfBranch,
     ElseBranch,
     If,
+    While,
     rw: whitespace,
     whitespace,
     QueryValue,

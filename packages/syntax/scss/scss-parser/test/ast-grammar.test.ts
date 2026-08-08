@@ -2261,14 +2261,27 @@ describe('SCSS canonical-AST grammar', () => {
     expect(serialize(stylesheet(lineComment.value))).toEqual({ css: '@layer theme;\n' });
 
     for (const invalid of [
-      '@debug "note";',
-      '@warn "note";',
-      '@error "note";',
       '@namespace #{$prefix} url("https://example.test/svg");',
       '@layer #{$name};'
     ]) {
       const direct = run(scssGrammar.Stylesheet, invalid, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
+    }
+
+    /*
+     * `@debug`/`@warn`/`@error` PARSE, and produce no statement at all. They are
+     * compile-time diagnostics with no `.jess` spelling, so §12.0 owes them no
+     * AST kind — the assertion that matters is that the document is EMPTY, not
+     * that it holds an `AtRuleStatement` echoing the directive into CSS.
+     */
+    for (const dropped of [
+      '@debug "note";',
+      '@warn "note";',
+      '@error "note";'
+    ]) {
+      const direct = run(scssGrammar.Stylesheet, dropped, { trivia: scssGrammar.whitespace });
+      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), dropped).toBe(true);
+      expect(direct.ok && isStylesheet(direct.value) && direct.value.rules, dropped).toEqual([]);
     }
   });
 

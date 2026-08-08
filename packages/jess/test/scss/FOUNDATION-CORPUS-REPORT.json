@@ -1,26 +1,21 @@
 {
-  "generated": "2026-08-08T23:14:18.260Z",
+  "generated": "2026-08-08T23:21:17.156Z",
   "foundation": "6.9.0",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
   "parse": {
     "total": 136,
-    "pass": 94,
+    "pass": 100,
     "blockerCounts": [
       {
         "name": "keyword argument ($name: v) in a function-call argument list",
-        "primary": 20,
-        "files": 32
-      },
-      {
-        "name": "@error / @warn / @debug",
-        "primary": 8,
-        "files": 16
+        "primary": 21,
+        "files": 31
       },
       {
         "name": "trailing comma in a parenthesized list",
         "primary": 4,
-        "files": 12
+        "files": 10
       },
       {
         "name": "interpolation inside a pseudo-class argument list",
@@ -30,21 +25,11 @@
       {
         "name": "comparison (== / !=) inside a function-call argument list",
         "primary": 1,
-        "files": 11
-      },
-      {
-        "name": "@while",
-        "primary": 1,
-        "files": 2
+        "files": 9
       },
       {
         "name": "@at-root with a selector prelude",
-        "primary": 0,
-        "files": 1
-      },
-      {
-        "name": "chained unary `not not`",
-        "primary": 0,
+        "primary": 1,
         "files": 1
       },
       {
@@ -54,20 +39,17 @@
       }
     ],
     "unattributed": [
-      "_vendor/sassy-lists/stylesheets/functions/_contain.scss",
+      "_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss",
       "scss/components/_dropdown-menu.scss",
       "scss/components/_menu.scss",
       "scss/components/_reveal.scss",
+      "scss/util/_breakpoint.scss",
       "scss/util/_math.scss"
     ],
     "results": [
       {
         "file": "_vendor/sassy-lists/stylesheets/functions/_contain.scss",
-        "outcome": "fail",
-        "blockers": [
-          "chained unary `not not`"
-        ],
-        "detail": "SCSS condition cannot preserve Expression."
+        "outcome": "pass"
       },
       {
         "file": "_vendor/sassy-lists/stylesheets/functions/_purge.scss",
@@ -79,14 +61,7 @@
       },
       {
         "file": "_vendor/sassy-lists/stylesheets/functions/_replace.scss",
-        "outcome": "fail",
-        "at": "30:2",
-        "source": "@while $running {",
-        "blockers": [
-          "@while"
-        ],
-        "primaryBlocker": "@while",
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "_vendor/sassy-lists/stylesheets/functions/_to-list.scss",
@@ -95,12 +70,9 @@
       {
         "file": "_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss",
         "outcome": "fail",
-        "at": "21:4",
-        "source": "@error 'Unmet dependencies! The following functions are required: #{$missing-dependencies}.';",
-        "blockers": [
-          "@error / @warn / @debug"
-        ],
-        "primaryBlocker": "@error / @warn / @debug",
+        "at": "24:40",
+        "source": "@return length($missing-dependencies) > 0;",
+        "blockers": [],
         "detail": "Missing closing brace."
       },
       {
@@ -212,16 +184,7 @@
       },
       {
         "file": "scss/_global.scss",
-        "outcome": "fail",
-        "at": "123:2",
-        "source": "@error 'In $foundation-palette, you must have a color named \"primary\".';",
-        "blockers": [
-          "comparison (== / !=) inside a function-call argument list",
-          "@error / @warn / @debug",
-          "trailing comma in a parenthesized list"
-        ],
-        "primaryBlocker": "@error / @warn / @debug",
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_accordion-menu.scss",
@@ -295,8 +258,7 @@
         "at": "84:4",
         "source": "> li.opens-left { // sass-lint:disable-line no-qualifying-elements",
         "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "@error / @warn / @debug"
+          "keyword argument ($name: v) in a function-call argument list"
         ],
         "detail": "Missing closing brace."
       },
@@ -334,25 +296,23 @@
         "at": "100:2",
         "source": "@else {",
         "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "@error / @warn / @debug"
+          "keyword argument ($name: v) in a function-call argument list"
         ],
         "detail": "Missing closing brace."
       },
       {
         "file": "scss/components/_off-canvas.scss",
         "outcome": "fail",
-        "at": "78:4",
-        "source": "@warn '$offcanvas-size is deprecated and not used anymore! Please update your settings and use the map $offcanvas-sizes ",
+        "at": "207:4",
+        "source": "@at-root .#{$maincontent-class} .off-canvas.position-#{$position} {",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list",
           "comparison (== / !=) inside a function-call argument list",
-          "@error / @warn / @debug",
           "trailing comma in a parenthesized list",
           "@at-root with a selector prelude"
         ],
-        "primaryBlocker": "@error / @warn / @debug",
-        "detail": "Missing closing brace."
+        "primaryBlocker": "@at-root with a selector prelude",
+        "detail": "SCSS parser error. Expected: \"(\", \"{\"."
       },
       {
         "file": "scss/components/_orbit.scss",
@@ -551,14 +511,7 @@
       },
       {
         "file": "scss/grid/_position.scss",
-        "outcome": "fail",
-        "at": "51:2",
-        "source": "@else {",
-        "blockers": [
-          "@error / @warn / @debug"
-        ],
-        "primaryBlocker": "@error / @warn / @debug",
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/grid/_row.scss",
@@ -685,15 +638,14 @@
       {
         "file": "scss/typography/_base.scss",
         "outcome": "fail",
-        "at": "77:2",
-        "source": "@warn 'Note, that $header-sizes has been replaced with $header-styles. $header-sizes still works, but it is going to be ",
+        "at": "128:58",
+        "source": "$anchor-color-hover: scale-color($anchor-color, $lightness: -14%) !default;",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list",
-          "@error / @warn / @debug",
           "trailing comma in a parenthesized list"
         ],
-        "primaryBlocker": "@error / @warn / @debug",
-        "detail": "Missing closing brace."
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "detail": "Missing closing parenthesis."
       },
       {
         "file": "scss/typography/_helpers.scss",
@@ -710,14 +662,12 @@
       {
         "file": "scss/util/_breakpoint.scss",
         "outcome": "fail",
-        "at": "42:2",
-        "source": "@error 'The first key in the $breakpoints map must have a value of \"0\".';",
+        "at": "180:8",
+        "source": "@media print, screen and #{$str} {",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list",
-          "@error / @warn / @debug",
           "trailing comma in a parenthesized list"
         ],
-        "primaryBlocker": "@error / @warn / @debug",
         "detail": "Missing closing brace."
       },
       {
@@ -726,44 +676,24 @@
         "at": "29:52",
         "source": "$red   : round(color.channel($color, \"red\", $space: rgb));",
         "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "@error / @warn / @debug"
+          "keyword argument ($name: v) in a function-call argument list"
         ],
         "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
         "detail": "Missing closing parenthesis."
       },
       {
         "file": "scss/util/_direction.scss",
-        "outcome": "fail",
-        "at": "20:4",
-        "source": "@error 'direction-opposite: Invalid $dir parameter, expected a value from \"#{$dirs}\", found \"#{$dir}\".';",
-        "blockers": [
-          "@error / @warn / @debug"
-        ],
-        "primaryBlocker": "@error / @warn / @debug",
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/util/_flex.scss",
-        "outcome": "fail",
-        "at": "42:4",
-        "source": "@else {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list",
-          "@error / @warn / @debug",
-          "trailing comma in a parenthesized list"
-        ],
-        "primaryBlocker": "@error / @warn / @debug",
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/util/_math.scss",
         "outcome": "fail",
         "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "@error / @warn / @debug",
-          "@while"
+          "keyword argument ($name: v) in a function-call argument list"
         ],
         "detail": "SCSS grammar produced a non-value child."
       },
@@ -775,7 +705,6 @@
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list",
           "comparison (== / !=) inside a function-call argument list",
-          "@error / @warn / @debug",
           "interpolation inside a pseudo-class argument list"
         ],
         "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
@@ -795,8 +724,7 @@
         "at": "65:34",
         "source": "$value: rem-calc($value, $base: 16px);",
         "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "@error / @warn / @debug"
+          "keyword argument ($name: v) in a function-call argument list"
         ],
         "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
         "detail": "Missing closing parenthesis."
@@ -812,7 +740,6 @@
         "source": "@return if(type-of($map) != 'list', ($value,), $map);",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list",
-          "@error / @warn / @debug",
           "trailing comma in a parenthesized list"
         ],
         "primaryBlocker": "trailing comma in a parenthesized list",
@@ -829,8 +756,7 @@
         "source": "@else if ($size == 'shrink' or $size == 'full' or zf-is-fraction($size, $allow-no-denominator: true)) {",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list",
-          "@error / @warn / @debug"
+          "comparison (== / !=) inside a function-call argument list"
         ],
         "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
         "detail": "Missing closing parenthesis."

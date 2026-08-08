@@ -668,11 +668,17 @@ describe('@jesscss/scss-parser public parse API', () => {
     // A bare `@if $x` is now admitted everywhere a condition is (§4.4.2).
     expect(() => parse('@each $tone in blue { @if $enabled { .each { color: $tone; } } }')).not.toThrow();
 
-    for (const notThisBatch of [
-      '@mixin paint { @while true { color: red; } }'
-    ]) {
-      expect(() => parse(notThisBatch), notThisBatch).toThrow(SyntaxError);
-    }
+    /*
+     * `@while` builds the canonical `While` — the third control statement, and
+     * the same `IfCondition`/`IfBody` rungs `@if` uses.
+     */
+    expect(parse('@mixin paint { @while true { color: red; } }')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{
+        type: 'MixinDefinition',
+        rules: [{ type: 'While', guard: { g: 'truth', value: { src: 'true' } } }]
+      }]
+    });
   });
 
   it('parses descriptor-only @font-face through the public Stylesheet route', () => {

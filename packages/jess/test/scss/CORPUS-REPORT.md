@@ -8,13 +8,13 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-08-08T23:13:56.476Z`
+- Generated: `2026-08-08T23:21:17.073Z`
 - Bootstrap: `5.3.8`
 - Runner: `v24.11.1` on `darwin/arm64`
 
 ## Parse lane (all `bootstrap/scss/**/*.scss`)
 
-- files: **92**, parsed: **40**, failed: **52**
+- files: **92**, parsed: **43**, failed: **49**
 
 Blocking constructs, by number of failing files that contain them. Files
 usually hit several blockers, so these counts overlap by design.
@@ -22,14 +22,14 @@ usually hit several blockers, so these counts overlap by design.
 | blocking construct | failing files |
 |---|--:|
 | interpolation inside a var() name | 41 |
-| interpolation as a standalone selector compound | 39 |
-| bare-truthy @if condition | 24 |
+| interpolation as a standalone selector compound | 38 |
+| bare-truthy @if condition | 22 |
 | leading combinator (implicit &) | 19 |
-| @include with a trailing content block | 18 |
-| @warn / @error / @debug | 5 |
+| @include with a trailing content block | 17 |
 | multiline nested paren list | 4 |
-| @content | 3 |
 | interpolated pseudo-element | 3 |
+| @content | 2 |
+| @warn / @error / @debug | 2 |
 | @while | 2 |
 | line comment inside a paren list | 1 |
 
@@ -47,7 +47,7 @@ usually hit several blockers, so these counts overlap by design.
 | `_close.scss` | 6:0 | `.btn-close {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
 | `_containers.scss` | 29:10 | `.container#{breakpoint-infix($name, $grid-breakpoints)} {` | bare-truthy @if condition; @include with a trailing content block |
 | `_dropdown.scss` | 19:0 | `.dropdown-menu {` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
-| `_functions.scss` | 13:6 | `} @else if not comparable($prev-num, $num) {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @warn / @error / @debug; @while |
+| `_functions.scss` | 43:21 | `@return rgba(var(--#{$prefix}#{$identifier}-bg-rgb), var(--#{$prefix}#{$target}-opacity));` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @warn / @error / @debug; @while |
 | `_grid.scss` | 12:2 | `.row {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
 | `_list-group.scss` | 32:29 | `@include border-radius(var(--#{$prefix}list-group-border-radius));` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
 | `_maps.scss` | 114:26 | `"primary-emphasis": var(--#{$prefix}primary-text-emphasis),` | bare-truthy @if condition; interpolation inside a var() name; multiline nested paren list |
@@ -77,18 +77,15 @@ usually hit several blockers, so these counts overlap by design.
 | `helpers/_ratio.scss` | 9:21 | `padding-top: var(--#{$prefix}aspect-ratio);` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
 | `helpers/_stretched-link.scss` | 5:0 | `.stretched-link {` | interpolated pseudo-element |
 | `mixins/_alert.scss` | 11:26 | `background-image: var(--#{$prefix}gradient);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name |
-| `mixins/_breakpoints.scss` | 20:4 | `@error "breakpoint `#{$name}` not found in `#{$breakpoints}`";` | bare-truthy @if condition; @include with a trailing content block; @content; @warn / @error / @debug |
 | `mixins/_buttons.scss` | 67:14 | `@include rfs($font-size, --#{$prefix}btn-font-size);` | interpolation as a standalone selector compound |
 | `mixins/_container.scss` | 7:26 | `padding-right: calc(var(--#{$prefix}gutter-x) * .5); // stylelint-disable-line function-disallowed-list` | interpolation as a standalone selector compound; interpolation inside a var() name |
-| `mixins/_deprecate.scss` | 8:4 | `@warn "#{$name} has been deprecated as of #{$deprecate-version}. It will be removed entirely in #{$remove-version}.";` | interpolation as a standalone selector compound; @warn / @error / @debug |
 | `mixins/_forms.scss` | 7:24 | `.was-validated #{if(&, "&", "")}:#{$state},` | bare-truthy @if condition; interpolation as a standalone selector compound; @include with a trailing content block; @content; leading combinator (implicit &); interpolated pseudo-element |
 | `mixins/_gradients.scss` | 8:26 | `background-image: var(--#{$prefix}gradient);` | bare-truthy @if condition; interpolation inside a var() name |
 | `mixins/_grid.scss` | 11:28 | `margin-top: calc(-1 * var(--#{$prefix}gutter-y)); // stylelint-disable-line function-disallowed-list` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
 | `mixins/_pagination.scss` | 7:14 | `@include rfs($font-size, --#{$prefix}pagination-font-size);` | interpolation as a standalone selector compound |
 | `mixins/_table-variants.scss` | 20:15 | `color: var(--#{$prefix}table-color);` | interpolation as a standalone selector compound; interpolation inside a var() name |
-| `mixins/_transition.scss` | 10:8 | `@warn "The keyword 'none' or 'null' must be used as a single argument.";` | bare-truthy @if condition; @warn / @error / @debug |
 | `mixins/_utilities.scss` | 29:65 | `$infix: if($property-class == "" and str-slice($infix, 1, 1) == "-", str-slice($infix, 2), $infix);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolated pseudo-element |
-| `vendor/_rfs.scss` | 16:2 | `@error "`#{$rfs-unit}` is not a valid unit for $rfs-unit. Use `px` or `rem`.";` | bare-truthy @if condition; interpolation as a standalone selector compound; @include with a trailing content block; @content; @warn / @error / @debug; @while |
+| `vendor/_rfs.scss` | 56:39 | `$sign: if($dividend > 0 and $divisor > 0 or $dividend < 0 and $divisor < 0, 1, -1);` | bare-truthy @if condition; interpolation as a standalone selector compound; @include with a trailing content block; @content; @warn / @error / @debug; @while |
 
 ## Eval lane (self-contained entry points)
 
@@ -96,9 +93,9 @@ usually hit several blockers, so these counts overlap by design.
 
 | entry | outcome | detail |
 |---|---|---|
-| `bootstrap.scss` | fail | Missing closing brace. |
+| `bootstrap.scss` | fail | Missing closing parenthesis. |
 | `bootstrap-grid.scss` | fail | Missing closing parenthesis. |
-| `bootstrap-reboot.scss` | fail | Missing closing brace. |
-| `bootstrap-utilities.scss` | fail | Missing closing brace. |
+| `bootstrap-reboot.scss` | fail | Missing closing parenthesis. |
+| `bootstrap-utilities.scss` | fail | Missing closing parenthesis. |
 
 <!-- HAND-MAINTAINED BELOW — the generator never writes past this line. -->

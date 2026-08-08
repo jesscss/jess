@@ -73,7 +73,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'control flow', name: '@each with destructuring', src: '@each $k, $v in $map { .k-#{$k} { color: $v; } }', supported: true },
   { group: 'control flow', name: '@each over a function call', src: '@each $b in map-keys($grid) { .b-#{$b} { color: red; } }', supported: true },
   { group: 'control flow', name: '@for', src: '@for $i from 1 through 3 { .a-#{$i} { width: $i; } }', supported: true },
-  { group: 'control flow', name: '@while', src: '@while $i > 0 { .a { width: 1px; } }', supported: false },
+  { group: 'control flow', name: '@while', src: '@while $i > 0 { .a { width: 1px; } }', supported: true },
 
   // ── mixins and functions ───────────────────────────────────────────────────
   { group: 'mixins', name: '@mixin without args', src: '@mixin m { color: red; }', supported: true },
@@ -171,9 +171,9 @@ const CONSTRUCTS: Construct[] = [
   { group: 'module system', name: '@forward', src: '@forward "x";', supported: true },
   { group: 'module system', name: 'namespaced module function call', src: '.a { w: math.div(1, 2); }', supported: true },
   { group: 'module system', name: 'namespaced module variable', src: '.a { w: math.$pi; }', supported: true },
-  { group: 'diagnostics', name: '@warn', src: '@mixin m { @warn "x"; }', supported: false },
-  { group: 'diagnostics', name: '@error', src: '@mixin m { @error "x"; }', supported: false },
-  { group: 'diagnostics', name: '@debug', src: '@debug "x";', supported: false },
+  { group: 'diagnostics', name: '@warn', src: '@mixin m { @warn "x"; }', supported: true },
+  { group: 'diagnostics', name: '@error', src: '@mixin m { @error "x"; }', supported: true },
+  { group: 'diagnostics', name: '@debug', src: '@debug "x";', supported: true },
   { group: 'misc', name: '@at-root', src: '.a { @at-root .b { color: red; } }', supported: false },
   { group: 'misc', name: 'if() function in a value', src: '.a { w: if($x, 1, 2); }', supported: true },
   { group: 'misc', name: 'interpolation in a media query', src: '@media (min-width: #{$x}) { .a { color: red; } }', supported: true },

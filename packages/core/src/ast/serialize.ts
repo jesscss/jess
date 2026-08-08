@@ -70,6 +70,7 @@ import type {
   Dimension,
   For,
   If,
+  While,
   IfValue,
   FunctionCall,
   Interpolation,
@@ -961,6 +962,16 @@ function collectSelectedDeclIndex(
         if (branch) {
           visit(branch);
         }
+      } else if (statement.type === 'While') {
+        /*
+         * Unconditional, unlike an `$if` arm: a `$while` has exactly one body and
+         * no alternative to select, so its declarations belong to this index the
+         * moment the loop is reachable. This is what makes `$i: $i - 1` inside the
+         * body a REASSIGNMENT of the containing `$i` rather than a self-reference
+         * — without it the body's own declaration is invisible here and the
+         * recursion guard fires on the first iteration.
+         */
+        visit(statement.rules);
       }
     }
   };
@@ -8200,6 +8211,20 @@ function emitDocumentStatements(
         };
         return mapMaybe(walkBody(body, null, null, frame, group, flush, null, e), flush);
       }
+      case 'While': {
+        const group: Leaf[] = [];
+        const flush = (): MaybePromise<void> => {
+          if (group.length) {
+            return mapMaybe(flushBlock([], group, e), () => {
+              group.length = 0;
+            });
+          }
+        };
+        return mapMaybe(
+          runWhile(child, frame, e, rules => walkBody(rules, null, null, frame, group, flush, null, e)),
+          flush
+        );
+      }
       case 'Declaration':
       case 'Comment':
         if (e.referenceImportDepth === 0) {
@@ -8399,6 +8424,64 @@ function selectedIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
     return branch.rules;
   }
   return null;
+}
+
+/**
+ * The `$while` termination guarantee. A condition the body never moves would
+ * otherwise hang the compiler with no output and no message; stopping with a
+ * positioned error names the loop instead.
+ */
+const MAX_WHILE_ITERATIONS = 10_000;
+
+/** The empty selection a `$while` presents when no `$if` arm has been chosen yet. */
+const EMPTY_SELECTED_IF_BODIES: ReadonlyMap<If, Statement[]> = new Map();
+
+/**
+ * Drive a `$while`: re-evaluate the condition in the CONTAINING frame before
+ * every iteration, and walk the body through the caller's own emitter.
+ *
+ * The frame is the caller's on purpose — a control block is not a scope, so the
+ * body's declarations publish into the containing frame, and that is precisely
+ * what lets the next condition read the counter the last iteration wrote. This
+ * is the same frame discipline `$if` uses; `$for` differs only because its
+ * bindings are per-iteration.
+ *
+ * The synchronous path stays a LOOP, not recursion: a bounded 10 000 iterations
+ * of sync body emission would otherwise be 10 000 stack frames.
+ */
+function runWhile(
+  node: While,
+  frame: Frame,
+  e: Emit,
+  emitBody: (rules: Statement[]) => MaybePromise<void>
+): MaybePromise<void> {
+  /*
+   * Publish the body's declarations into this frame's index BEFORE the first
+   * condition runs. `$if` gets the same index through `selectIfBodyForRender`;
+   * a `$while` has no arm to select, so it registers its one body directly.
+   */
+  frame.selectedDeclIndex = collectSelectedDeclIndex(
+    frame.statements ?? [],
+    frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES,
+    frame.declIndex
+  );
+  const step = (start: number): MaybePromise<void> => {
+    for (let i = start; i < MAX_WHILE_ITERATIONS; i++) {
+      if (!settledGuard(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), '$while condition', node, e)) {
+        return;
+      }
+      const emitted = emitBody(node.rules);
+      if (isThenable(emitted)) {
+        return emitted.then(() => step(i + 1));
+      }
+    }
+    throw ERR.loopIterationLimit({
+      node,
+      ...callSiteLocation(node, e),
+      meta: { limit: MAX_WHILE_ITERATIONS }
+    });
+  };
+  return step(0);
 }
 
 /** Select one `$if` branch and publish only that branch into this activation's scoped index. */
@@ -9086,6 +9169,18 @@ function walkBody(
               partition, e, imp, forceLeading, propertyScope, applyExpansion
             ));
           }
+        }
+        break;
+      }
+      case 'While': {
+        const emitted = runWhile(node, frame, e, rules => walkBody(
+          rules, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion
+        ));
+        if (isThenable(emitted)) {
+          return emitted.then(() => walkBody(
+            statements.slice(index + 1), composed, ancestor, frame, group, flush,
+            partition, e, imp, forceLeading, propertyScope, applyExpansion
+          ));
         }
         break;
       }
@@ -12559,6 +12654,8 @@ function emitAtRuleBody(
         const body = selectIfBodyForRender(node, frame, e);
         return body ? emitAtRuleBody(body, frame, e) : undefined;
       }
+      case 'While':
+        return runWhile(node, frame, e, rules => emitAtRuleBody(rules, frame, e));
 
       case 'MixinDefinition':
         publishSelectedMixinDefinition(frame, node);
@@ -12969,6 +13066,13 @@ function emitBubbleBody(
           }
           break;
         }
+        case 'While': {
+          const emitted = runWhile(node, frame, e, rules => emitBubbleBody(rules, ctx, frame, e));
+          if (isThenable(emitted)) {
+            return emitted.then(() => run(index + 1));
+          }
+          break;
+        }
         case 'MixinDefinition':
           publishSelectedMixinDefinition(frame, node);
           break;
@@ -13247,6 +13351,14 @@ function emitNestedBody(
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
+          }
+          break;
+        }
+        case 'While': {
+          flushBuf();
+          const emitted = runWhile(node, frame, e, rules => emitNestedBody(rules, frame, e, hoist, imp, source, placement, undefined, applyExpansion));
+          if (isThenable(emitted)) {
+            return emitted.then(() => run(index + 1));
           }
           break;
         }

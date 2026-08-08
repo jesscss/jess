@@ -1,11 +1,11 @@
 {
-  "generated": "2026-08-08T23:13:56.476Z",
+  "generated": "2026-08-08T23:21:17.073Z",
   "bootstrap": "5.3.8",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
   "parse": {
     "total": 92,
-    "pass": 40,
+    "pass": 43,
     "blockerCounts": [
       {
         "name": "interpolation inside a var() name",
@@ -13,11 +13,11 @@
       },
       {
         "name": "interpolation as a standalone selector compound",
-        "files": 39
+        "files": 38
       },
       {
         "name": "bare-truthy @if condition",
-        "files": 24
+        "files": 22
       },
       {
         "name": "leading combinator (implicit &)",
@@ -25,23 +25,23 @@
       },
       {
         "name": "@include with a trailing content block",
-        "files": 18
-      },
-      {
-        "name": "@warn / @error / @debug",
-        "files": 5
+        "files": 17
       },
       {
         "name": "multiline nested paren list",
         "files": 4
       },
       {
-        "name": "@content",
+        "name": "interpolated pseudo-element",
         "files": 3
       },
       {
-        "name": "interpolated pseudo-element",
-        "files": 3
+        "name": "@content",
+        "files": 2
+      },
+      {
+        "name": "@warn / @error / @debug",
+        "files": 2
       },
       {
         "name": "@while",
@@ -188,8 +188,8 @@
       {
         "file": "_functions.scss",
         "outcome": "fail",
-        "at": "13:6",
-        "source": "} @else if not comparable($prev-num, $num) {",
+        "at": "43:21",
+        "source": "@return rgba(var(--#{$prefix}#{$identifier}-bg-rgb), var(--#{$prefix}#{$target}-opacity));",
         "blockers": [
           "bare-truthy @if condition",
           "interpolation as a standalone selector compound",
@@ -197,7 +197,7 @@
           "@warn / @error / @debug",
           "@while"
         ],
-        "detail": "Missing closing brace."
+        "detail": "Missing closing parenthesis."
       },
       {
         "file": "_grid.scss",
@@ -648,16 +648,7 @@
       },
       {
         "file": "mixins/_breakpoints.scss",
-        "outcome": "fail",
-        "at": "20:4",
-        "source": "@error \"breakpoint `#{$name}` not found in `#{$breakpoints}`\";",
-        "blockers": [
-          "bare-truthy @if condition",
-          "@include with a trailing content block",
-          "@content",
-          "@warn / @error / @debug"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "mixins/_buttons.scss",
@@ -698,14 +689,7 @@
       },
       {
         "file": "mixins/_deprecate.scss",
-        "outcome": "fail",
-        "at": "8:4",
-        "source": "@warn \"#{$name} has been deprecated as of #{$deprecate-version}. It will be removed entirely in #{$remove-version}.\";",
-        "blockers": [
-          "interpolation as a standalone selector compound",
-          "@warn / @error / @debug"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "mixins/_forms.scss",
@@ -794,14 +778,7 @@
       },
       {
         "file": "mixins/_transition.scss",
-        "outcome": "fail",
-        "at": "10:8",
-        "source": "@warn \"The keyword 'none' or 'null' must be used as a single argument.\";",
-        "blockers": [
-          "bare-truthy @if condition",
-          "@warn / @error / @debug"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "mixins/_utilities.scss",
@@ -826,8 +803,8 @@
       {
         "file": "vendor/_rfs.scss",
         "outcome": "fail",
-        "at": "16:2",
-        "source": "@error \"`#{$rfs-unit}` is not a valid unit for $rfs-unit. Use `px` or `rem`.\";",
+        "at": "56:39",
+        "source": "$sign: if($dividend > 0 and $divisor > 0 or $dividend < 0 and $divisor < 0, 1, -1);",
         "blockers": [
           "bare-truthy @if condition",
           "interpolation as a standalone selector compound",
@@ -836,7 +813,7 @@
           "@warn / @error / @debug",
           "@while"
         ],
-        "detail": "Missing closing brace."
+        "detail": "Missing closing parenthesis."
       }
     ]
   },
@@ -847,7 +824,7 @@
       {
         "file": "bootstrap.scss",
         "outcome": "fail",
-        "detail": "Missing closing brace."
+        "detail": "Missing closing parenthesis."
       },
       {
         "file": "bootstrap-grid.scss",
@@ -857,12 +834,12 @@
       {
         "file": "bootstrap-reboot.scss",
         "outcome": "fail",
-        "detail": "Missing closing brace."
+        "detail": "Missing closing parenthesis."
       },
       {
         "file": "bootstrap-utilities.scss",
         "outcome": "fail",
-        "detail": "Missing closing brace."
+        "detail": "Missing closing parenthesis."
       }
     ]
   }

@@ -37,6 +37,7 @@ export type JessErrorCode =
   | 'eval/ruleset-on-property'
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
+  | 'eval/loop-iteration-limit'
   | 'eval/invalid-unit-arithmetic'
   | 'eval/unexpressible-unit'
   | 'eval/incomparable-operands'
@@ -271,6 +272,15 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Recursive reference',
       reason: '${kind} ${symbol} refers to itself while it is being evaluated.',
       fix: 'Break the cycle by assigning through an earlier value or a different name.'
+    }
+  ],
+  [
+    'eval/loop-iteration-limit',
+    {
+      summary: 'Loop did not terminate',
+      reason:
+        'A $while condition was still true after ${limit} iterations, so the loop was stopped rather than run forever.',
+      fix: 'Make the body change a value the condition reads, or rewrite the loop as a $for over a bounded range.'
     }
   ],
   [

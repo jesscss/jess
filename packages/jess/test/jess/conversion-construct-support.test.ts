@@ -121,18 +121,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'control-flow', name: '$else if', src: '$a: 1;\n$if ($a = 1) { .x {} } $else if ($a = 2) { .y {} }', supported: true, origin: 'sass' },
   { group: 'control-flow', name: '$for over a list (from @each)', src: '$l: 1, 2;\n$for ($v of $l) { .a { width: $v; } }', supported: true, origin: 'sass' },
   { group: 'control-flow', name: '$for with value and key', src: '$l: 1, 2;\n$for ($v, $k of $l) { .a { width: $v; } }', supported: true, origin: 'sass' },
-  {
-    group: 'control-flow',
-    name: '$while',
-    src: '$i: 0;\n$while ($i < 3) { .a { color: red; } }',
-    supported: false,
-    origin: 'sass',
-    scope: 'gap',
-    note:
-      '`$while` is named in the repo as an intended Sass+ lowering target for `@while` (it is one '
-      + 'of the two constructs cited as proving the eval model), but no parser accepts it — not '
-      + '`.jess`, and not scss. The Sass `@while` side is likewise unsupported.'
-  },
+  { group: 'control-flow', name: '$while', src: '$i: 0;\n$while ($i < 3) { .a { color: red; } }', supported: true, origin: 'sass' },
 
   // ── mixins ─────────────────────────────────────────────────────────────────
   { group: 'mixins', name: 'guard: when (cond)', src: '.m($x) when ($x = 1) { w: $x; }', supported: true, origin: 'less' },
@@ -362,6 +351,7 @@ const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
     '$for over a list (from @each)',
     '$for with value and key',
     '$var reference (from Sass $var)',
+    '$while',
     '@-compose ... as',
     '@-compose module',
     'collection lookup $m[k]',
@@ -375,7 +365,6 @@ const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
 const GAP_SCOPE_BASELINE: Record<'gap' | 'by-design' | 'undecided', readonly string[]> = {
   gap: [
     '!important on a mixin call',
-    '$while',
     '&:extend() in a rule body',
     '@-compose ... with { } configuration',
     '@import (css)',

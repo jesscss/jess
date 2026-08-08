@@ -23,8 +23,8 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, Null, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, Null, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -116,6 +116,8 @@ type ScssRules = {
   IfBodyRule: Combinator<Ruleset>;
   IfBodyConditionalBlock: Combinator<AtRuleBlock>;
   IfRule: Combinator<If>;
+  WhileRule: Combinator<While>;
+  DiagnosticDirective: Combinator<null>;
   QueryValue: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
@@ -796,6 +798,10 @@ function isIf(value: unknown): value is If {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'If';
 }
 
+function isWhile(value: unknown): value is While {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'While';
+}
+
 function isAtRuleBlock(value: unknown): value is AtRuleBlock {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AtRuleBlock';
 }
@@ -1029,6 +1035,17 @@ function scssConditionSource(value: ValueSlot): string {
     case 'Lookup': return node.raw;
     case 'Reference': return node.raw;
     case 'Condition': return node.src;
+
+    /*
+     * The operand of an OUTER `not` when the inner one already lowered: `not
+     * not $x` is `not` applied to the `Expression` the inner `not` produced.
+     * The boundary is a computation marker, not authored bytes, so it
+     * contributes none of its own — the spelling is the inner condition's, and
+     * the outer prefix is prepended by the caller. No case is owed to chained
+     * unaries beyond this one: `not` recurses at the unary rung already, so the
+     * general rule reaches any depth.
+     */
+    case 'Expression': return scssConditionSource(node.value);
     case 'FunctionCall': return `${node.name}(${node.args.map(scssConditionSource).join(', ')})`;
     case 'Operation': return `${scssConditionSource(node.left)} ${node.operator} ${scssConditionSource(node.right)}`;
     case 'Block': return node.boundary
@@ -1142,6 +1159,7 @@ function isStatementChild(child: unknown, allowDeclarations: boolean): child is 
     || isMixinCall(child)
     || isFor(child)
     || isIf(child)
+    || isWhile(child)
     || isRuleset(child)
     || isOpaqueAtRuleBlock(child)
 
@@ -1162,6 +1180,15 @@ function isOpaqueAtRuleBlock(value: unknown): value is OpaqueAtRuleBlock {
 function statements(children: readonly unknown[], allowDeclarations = false): Statement[] {
   const result: Statement[] = [];
   for (const child of children) {
+    /*
+     * `null` is the ONE deliberate non-statement: `@debug`/`@warn`/`@error`
+     * reduce to it because they own no AST kind (§12.0). Everything else that is
+     * not a statement is a recognition defect and must still throw — dropping
+     * unknown shapes silently is how a lowering goes missing without a failure.
+     */
+    if (child === null) {
+      continue;
+    }
     if (!isStatementChild(
       child,
       allowDeclarations
@@ -3857,6 +3884,56 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
+   * `@while <condition> { … }` lowers to the canonical `While` — jess's `$while`,
+   * the third control statement alongside `$if` and `$for`. It is built from the
+   * SAME `IfCondition` and `IfBody` as `@if`, which is the whole reason it is a
+   * node and not a `$for` in disguise: the condition is re-read between
+   * iterations, and no `$for` spelling does that.
+   *
+   * Sass writes the condition unparenthesized (`@while $running {`), exactly as
+   * `@if` does, so no separate condition rung is owed one.
+   */
+  const WhileRule = node<While>(
+    'WhileRule',
+    sequence(
+      routed(),
+      g.IfCondition,
+      g.IfBody
+    ),
+    children => whileNode(
+      requireGuardNode(children[1]),
+      requireStatementList(children[2])
+    )
+  );
+
+  /*
+   * `@debug` / `@warn` / `@error` — Sass's compile-time diagnostics.
+   *
+   * ONE production serves all three because all three lower to the same thing:
+   * NOTHING. By §12.0 a node exists only where there is a `.jess` spelling to
+   * read it off, and these have none — they are not CSS output, not a value, and
+   * not control flow. So the reduction returns `null` and `statementChildren`
+   * drops it, adding no AST kind. That is the ruling, and it is why the three
+   * at-keywords are three dispatch arms over one tail rather than three rules.
+   *
+   * The message is recognized as an ordinary `Value` because that is what Sass
+   * spells there — `@error 'need #{$fns}.'` is an interpolated string, and the
+   * at-rule prelude scanners deliberately stop at `#{`, reserving interpolation
+   * for the typed productions. Recognizing it properly costs nothing (the value
+   * is discarded by the reduction) and it is the difference between the whole
+   * directive parsing and it failing at the first `#{`.
+   */
+  const DiagnosticDirective = node<null>(
+    'DiagnosticDirective',
+    sequence(
+      routed(),
+      g.Value,
+      literal(';')
+    ),
+    () => null
+  );
+
+  /*
    * Non-interpolated conditional-group preludes are structured in the grammar. The public
    * SCSS CST also accepts `#{...}` query preludes for language-service recovery,
    * but public `parse() -> Stylesheet` intentionally rejects that CST-only form
@@ -4428,6 +4505,10 @@ const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('@each', g.EachRule),
     caseInsensitive('@for', g.ForRule),
     caseInsensitive('@content', g.ContentRule),
+    caseInsensitive('@while', g.WhileRule),
+    caseInsensitive('@debug', g.DiagnosticDirective),
+    caseInsensitive('@warn', g.DiagnosticDirective),
+    caseInsensitive('@error', g.DiagnosticDirective),
     caseInsensitive('@at-root', g.AtRootContinuation)
   );
   const SassNestedDirective = dispatch(
@@ -4438,13 +4519,21 @@ const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('@each', g.EachRule),
     caseInsensitive('@for', g.ForRule),
     caseInsensitive('@content', g.ContentRule),
+    caseInsensitive('@while', g.WhileRule),
+    caseInsensitive('@debug', g.DiagnosticDirective),
+    caseInsensitive('@warn', g.DiagnosticDirective),
+    caseInsensitive('@error', g.DiagnosticDirective),
     caseInsensitive('@at-root', g.AtRootContinuation)
   );
   const SassControlDirective = dispatch(
     g.AtRuleKeyword,
     caseInsensitive('@if', g.IfRule),
     caseInsensitive('@each', g.EachRule),
-    caseInsensitive('@for', g.ForRule)
+    caseInsensitive('@for', g.ForRule),
+    caseInsensitive('@while', g.WhileRule),
+    caseInsensitive('@debug', g.DiagnosticDirective),
+    caseInsensitive('@warn', g.DiagnosticDirective),
+    caseInsensitive('@error', g.DiagnosticDirective)
   );
 
   /*
@@ -5715,6 +5804,8 @@ const scssFactory = (g: ScssInputRules) => {
     IfBodyRule,
     IfBodyConditionalBlock,
     IfRule,
+    WhileRule,
+    DiagnosticDirective,
     QueryValue,
     QueryFeature,
     QueryFunction,
