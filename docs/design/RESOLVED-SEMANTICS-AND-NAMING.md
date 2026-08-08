@@ -121,6 +121,21 @@ except the literal keyword `true`.** Not two points on a scale — Less's rule i
 a *byte* test, Sass's is a *type* test. Note `0` and `""` are truthy in Sass; it
 is not JavaScript.
 
+**The byte test, pinned.** Measured on lessc 4.6.3, the escaped forms settle what
+"byte test" means — Less asks whether the EMITTED BYTES spell `true`, and nothing
+else:
+
+| operand | lessc 4.6.3 |
+|---|---|
+| `~"true"` | **truthy** |
+| `e("true")` | **truthy** |
+| `~"TRUE"` | falsy — case-sensitive |
+| `~"1"`, `~""`, `~"false"` | falsy |
+
+`~"true"` is a *string*, and it is truthy while the bare number `1` is not. No
+type predicate produces that answer; only a byte comparison does. This row is
+also the one case `.jess` cannot reproduce — see §4.4.2.
+
 ### 3.2 Equality
 
 | expression | dart-sass | lessc 4.6.3 |
@@ -464,6 +479,19 @@ so `!=` is not required (§4.4.3):
 
 `=`'s grounds are deliberately generous (§4.1); "is this literally that value" is
 the type-strict question.
+
+**The evidence is two-sided, and `==` is still the answer.** An earlier revision
+of this table cited only the row where `=` fails. The row where `==` fails is
+`~"true"`, which §3.1 now records as truthy on lessc 4.6.3: under `==` the
+operand is an `Any` and `true` is a boolean, so the types differ and the guard
+comes out **false**.
+
+Neither operator reproduces Less, and neither can — Less's condition is a BYTE
+test (§3.1) and no single `.jess` comparison against `true` is a byte test. So
+one row has to give, and it is the escaped one: `when ("true")` is ordinary
+authored Less and must stay falsy, while `when (~"true")` is an escaped string in
+condition position, which is vanishingly rare and arguably an abuse of the
+escape hatch. **Accepted divergence**, recorded rather than hidden.
 
 #### 4.4.3 `!=` is NOT required — deferred
 
