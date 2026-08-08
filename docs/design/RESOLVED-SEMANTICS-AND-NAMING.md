@@ -1772,7 +1772,7 @@ Interface names drifted too — `ReferenceCall` is the interface for kind `'Call
 (`nodes.ts:430`). A rename pass fixes both sides or it only relocates the
 confusion.
 
-### 12.6 Open — `$( … )` currently lowers to `Block`
+### 12.6 RESOLVED — restore `Expression`; `$( … )` on `Block` is a v2 REGRESSION
 
 The `Expression` reducer builds
 `interpolation([{ ref: boundaryBlock(…) }])`, i.e. the CSS `Block` node carrying
@@ -1783,6 +1783,41 @@ from `escaped` (drops delimiters *and* the context). But `Block` is the node for
 authored `( … )` and `[ … ]`; using it for `$( … )` means a CSS value node
 carries a jess syntax marker whose whole content is "these delimiters are not
 mine". The math-context fact needs a home that is not the CSS block node.
+
+**Owner ruling, 2026-08-07: `Expression` IS `$( … )`, and it has nothing to do
+with `Block`. This is not a design question — AST v1 HAD the node and v2 dropped
+it.** `tree/expression.ts` defines a real `Expression` class — *"An expression is
+a node that returns a value. It can contain values, references, and
+operations."*
+
+The two are categorically different and were never related. A `Block` is a
+DELIMITED VALUE: the parens are part of the value's own authored syntax, and
+`(1 + 2)` means something in CSS on its own. An `Expression` is a COMPUTATION
+BOUNDARY: `$(` and `)` are the marker that says *evaluate this*, they are not
+delimiters around a value at all, and they never emit. Representing one as the
+other and papering the difference with a flag is the whole defect.
+
+So `boundary` is not a flag to relocate — it is the residue of a node that went
+missing. Restore `Expression` and it has nothing left to describe.
+
+Four things the substitution costs, all of which the restore fixes:
+
+- **Layering.** `Block` is the CSS base node; `boundary` is a jess-only marker on
+  it, so the base knows a construct only the superset has — the same inversion
+  §6 names for the calc-shaped math ladder.
+- **Its content is a negation.** A node whose defining property is delimiters,
+  carrying a field that says its delimiters are not real.
+- **A measured perf cost.** §9 already cites it as the anti-precedent:
+  "`Block.boundary` is NOT the precedent to copy: it realizes three hidden
+  classes."
+- **It is load-bearing for SEMANTICS, not just emission.** §10 phase 1 threaded
+  it through as `exprBoundary` to decide when a `Condition` in value position
+  evaluates — because `.jess` has no `boolean()`, so `$( … )` is where a real
+  comparison lands (§7.1). A borrowed flag now gates evaluation.
+
+§12.2 already recorded half of this: jess's `Expression` is a CST label with no
+AST kind, listed there as one of the live label/kind mismatches. The mismatch is
+the regression, not a naming quirk.
 
 ### 12.7 `ExpressionQuoted` should be `Quoted`
 
