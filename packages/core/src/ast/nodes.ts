@@ -276,6 +276,30 @@ export interface Condition {
   readonly src: string;
 }
 
+/** One ordered arm of a VALUE-position `$if` chain. A null guard is the final
+ * `$else`. The arm carries a VALUE, never a declaration list — that is the whole
+ * distinction between this and the statement {@link If} (§4.5.3b). */
+export interface IfValueBranch {
+  readonly guard: GuardNode | null;
+  readonly value: ValueSlot;
+}
+
+/**
+ * The VALUE form of jess `$if` — `foo: $if ($bar) { blah } $else { blarp };`
+ * (§4.5.3b). Branch guards are evaluated left-to-right and only the TAKEN arm's
+ * value is evaluated, so the form is branch-lazy by construction.
+ *
+ * This is the lowering target every dialect's value-position conditional lands
+ * in: Less `if(<cond>, a, b)` and Sass `if(<cond>, a, b)` are SYNTAX, not
+ * functions (§4.5.3a), and each grammar lowers its own truthiness rule (§4.4.2)
+ * into `guard` before the node is built. Core therefore evaluates a condition
+ * that is ALREADY dialect-specific and carries no dialect knowledge itself.
+ */
+export interface IfValue {
+  readonly type: 'IfValue';
+  readonly branches: readonly [IfValueBranch, ...IfValueBranch[]];
+}
+
 /* -------------------------------------------------------------- value */
 
 /**
@@ -449,6 +473,7 @@ export type ValueNode =
   | FunctionCall
   | Block
   | Condition
+  | IfValue
   | Interpolation
   | AnonymousMixin
   | Collection
@@ -1361,6 +1386,8 @@ export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren',
 export const boundaryBlock = (value: ValueSlot): Block =>
   ({ type: 'Block', value, delimiter: 'paren', boundary: true, _s: NO_SPAN, _e: NO_SPAN });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
+export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]]): IfValue =>
+  ({ type: 'IfValue', branches });
 export const variableDeclaration = (
   name: string,
   value: ValueSlot | MixinCall,

@@ -575,6 +575,15 @@ function walkNode(
     case 'Condition':
       walkGuard(node.guard, hooks, 'value.condition.guard', node, 0, depth + 1);
       break;
+    case 'IfValue':
+      for (let i = 0; i < node.branches.length; i++) {
+        const branch = node.branches[i]!;
+        if (branch.guard !== null) {
+          walkGuard(branch.guard, hooks, 'value.ifValue.guard', node, i, depth + 1);
+        }
+        walkValueSlot(branch.value, hooks, 'value.ifValue.value', node, i, depth + 1);
+      }
+      break;
     case 'Reference':
       walkReference(node, hooks, depth);
       break;

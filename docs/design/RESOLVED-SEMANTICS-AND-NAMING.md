@@ -133,8 +133,14 @@ else:
 | `~"1"`, `~""`, `~"false"` | falsy |
 
 `~"true"` is a *string*, and it is truthy while the bare number `1` is not. No
-type predicate produces that answer; only a byte comparison does. This row is
-also the one case `.jess` cannot reproduce — see §4.4.2.
+type predicate produces that answer; only a byte comparison does.
+
+**These rows are MECHANISM, not intent.** Less 4.x reaches them by re-parsing an
+escaped string's bytes back through evaluation, so `~"true"` arrives at the guard
+as the keyword `true`. That is an artifact of how 4.x is built, not a decision
+about what a condition means, and v5 does not owe it — see §4.4.2. They are
+recorded here only because they are what makes the *bare-keyword* rows above
+legible as a byte test.
 
 ### 3.2 Equality
 
@@ -480,18 +486,16 @@ so `!=` is not required (§4.4.3):
 `=`'s grounds are deliberately generous (§4.1); "is this literally that value" is
 the type-strict question.
 
-**The evidence is two-sided, and `==` is still the answer.** An earlier revision
-of this table cited only the row where `=` fails. The row where `==` fails is
-`~"true"`, which §3.1 now records as truthy on lessc 4.6.3: under `==` the
-operand is an `Any` and `true` is a boolean, so the types differ and the guard
-comes out **false**.
+**One row of 4.x's behaviour is deliberately NOT reproduced, and it is not a
+divergence worth the name.** Under `==`, `when (~"true")` is false, where lessc
+4.6.3 says truthy. That row exists in 4.x only because it RE-PARSES the escaped
+string's bytes back through evaluation, delivering the keyword `true` to the
+guard (§3.1). It is mechanism leaking into semantics — the thing this document
+declines to port — so v5 simply does not do it, and no lowering is owed for it.
 
-Neither operator reproduces Less, and neither can — Less's condition is a BYTE
-test (§3.1) and no single `.jess` comparison against `true` is a byte test. So
-one row has to give, and it is the escaped one: `when ("true")` is ordinary
-authored Less and must stay falsy, while `when (~"true")` is an escaped string in
-condition position, which is vanishingly rare and arguably an abuse of the
-escape hatch. **Accepted divergence**, recorded rather than hidden.
+The row that DOES matter is the authored one: `when ("true")` must stay falsy,
+and only `==` keeps it so. `=` would ground `"true"` against `true` as strings
+and answer truthy. That is the whole argument, and it is unaffected.
 
 #### 4.4.3 `!=` is NOT required — deferred
 

@@ -2183,6 +2183,11 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
       return callValueContainsVarRef(value.start, name, lookup)
         || callValueContainsVarRef(value.end, name, lookup)
         || (value.step !== null && callValueContainsVarRef(value.step, name, lookup));
+    case 'IfValue':
+      /* Arm VALUES only, the same reach a `Condition` gets here: a guard tree is
+       * not a value slot, so a self-reference inside one is out of this walk's
+       * domain in both nodes alike. */
+      return value.branches.some(branch => callValueContainsVarRef(branch.value, name, lookup));
     default:
       return false;
   }
@@ -3102,6 +3107,12 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       return mapMaybe(evalCall(node, frame, e, true), v => force(e, v));
     case 'Condition':
       return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
+    case 'IfValue':
+      /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
+       * branch value, not on its bytes. An unmatched chain has no value. */
+      return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
+        ? literal('')
+        : evalTypedSlot(taken, frame, e));
     case 'Range':
       /*
        * Ranges are consumed structurally by `forItems`; a value-position use
@@ -3472,6 +3483,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'FunctionCall':
       return evalCall(node, frame, e, false);
+    case 'IfValue':
+      /* An unmatched chain (`$if` with no `$else`, or Less `if(@c, a)`) is empty
+       * bytes, exactly what an absent value emits. */
+      return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
+        ? literal('')
+        : evalValueSlot(taken, frame, e));
     case 'Interpolation':
       return evalInterp(node, frame, e);
     case 'Reference':
@@ -4440,59 +4457,37 @@ function guardDeps(frame: Frame | null, e: EvalCtx): {
   return { resolveTyped: makeTypedResolver(frame, e), ev: e.ev, modes: e.modes, isDefault: () => false };
 }
 
-/** The `GuardNode` an argument of a logical fn contributes: a structured
- *  `Condition` carries its own guard tree; any other value takes the LESS
- *  condition lowering (§4.4.2) — `if(@x, …)` means `if(@x == true, …)`, the same
- *  rule `when (@x)` uses, because `if`/`boolean` are Less syntax (§4.5.3a) and
- *  Less's condition is "is this literally the boolean true", not `.jess`'s
- *  emptiness test. */
-function condGuard(node: ValueSlot): GuardNode {
-  return !isValueSlotArray(node) && node.type === 'Condition'
-    ? node.guard
-    : { g: 'cmp', op: '==', left: node, right: TRUE_LITERAL };
-}
-
-/** The `true` operand every Less condition lowering compares against (§4.4.2). */
-const TRUE_LITERAL: Keyword = { type: 'Keyword', src: 'true' };
-
-/** The Less logical / conditional fns whose argument is a boolean CONDITION (a
- *  guard tree), not an ordinary value — dispatched here (not via `ev.call`) so the
- *  condition evaluates through the guard evaluator and `if` stays branch-lazy. */
-const LOGICAL_FNS = new Set(['if', 'boolean', 'not', 'and', 'or']);
-
-/** Evaluate a logical / conditional fn (`if`/`boolean`/`not`/`and`/`or`). `if` is
- *  LAZY — only the taken branch folds; an absent else is empty bytes. */
-function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+/**
+ * The taken arm of a value-position `$if` chain (§4.5.3b), or `undefined` when
+ * every guard is false and no `$else` arm was written.
+ *
+ * Guards are evaluated left-to-right and SHORT-CIRCUIT: only the selected arm's
+ * value is ever evaluated, so the form is branch-lazy by construction rather
+ * than by a special case in one built-in. The walk stays synchronous until a
+ * guard actually needs to await.
+ *
+ * Every guard here arrives ALREADY LOWERED by the grammar that produced it
+ * (§4.4.2) — `.less` compares against `true`, `.scss` excludes `false`/`null`,
+ * `.jess` uses its own truth node. Core does not know, and must never learn,
+ * which dialect the branch came from.
+ */
+function pickIfValue(node: IfValue, frame: Frame | null, e: EvalCtx): MaybePromise<ValueSlot | undefined> {
   const deps = guardDeps(frame, e);
-  const truthOf = (a: ValueSlot | undefined): MaybePromise<boolean> =>
-    a === undefined ? false : withUnitErrors(node, e, () => evalGuard(condGuard(a), deps));
-
-  /**
-   * Fold the argument conditions left-to-right, SHORT-CIRCUITING on `stopOn`
-   * exactly as `Array.every`/`Array.some` did. The walk stays synchronous until
-   * one condition actually needs to await, so an all-sync `and`/`or` never
-   * allocates a promise and never evaluates an argument the old code skipped.
-   */
-  const fold = (stopOn: boolean, index: number): MaybePromise<boolean> => {
-    if (index >= node.args.length) {
-      return !stopOn;
+  const step = (index: number): MaybePromise<ValueSlot | undefined> => {
+    const branch = node.branches[index];
+    if (branch === undefined) {
+      return undefined;
     }
-    return mapMaybe(truthOf(node.args[index]), value => value === stopOn
-      ? stopOn
-      : fold(stopOn, index + 1));
+    const guard = branch.guard;
+    if (guard === null) {
+      return branch.value;
+    }
+    return mapMaybe(
+      withUnitErrors(node, e, () => evalGuard(guard, deps)),
+      taken => taken ? branch.value : step(index + 1)
+    );
   };
-  switch (name) {
-    case 'if':
-      // LAZY: only the taken branch folds.
-      return mapMaybe(truthOf(node.args[0]), (taken) => {
-        const branch = taken ? node.args[1] : node.args[2];
-        return branch === undefined ? literal('') : evalValueSlot(branch, frame, e);
-      });
-    case 'not': return mapMaybe(truthOf(node.args[0]), value => makeBool(!value));
-    case 'and': return mapMaybe(fold(false, 0), makeBool);
-    case 'or': return mapMaybe(fold(true, 0), makeBool);
-    default: return mapMaybe(truthOf(node.args[0]), makeBool); // boolean
-  }
+  return step(0);
 }
 
 /**
@@ -4751,9 +4746,6 @@ function evalCall(
     });
   }
   const lname = node.name.toLowerCase();
-  if (LOGICAL_FNS.has(lname)) {
-    return evalLogical(lname, node, frame, e);
-  }
 
   /*
    * CSS-shaped color constructors are optional CSS value calls in a bare value

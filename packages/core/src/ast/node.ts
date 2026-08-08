@@ -51,7 +51,8 @@ import type {
   If,
   StyleImport,
   ModuleImport,
-  Condition
+  Condition,
+  IfValue
 } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 
@@ -60,7 +61,7 @@ export type NodeType =
   | 'Stylesheet' | 'Ruleset' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'ComplexSelector' | 'RelativeSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
   | 'Sequence' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
-  | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition'
+  | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition' | 'IfValue'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation'
   | 'AnonymousMixin' | 'Collection' | 'CollectionEntry' | 'Reference' | 'Range' | 'For' | 'If' | 'StyleImport' | 'ModuleImport';
 
@@ -83,7 +84,7 @@ export function renderCombinator(comb: Combinator): string {
 export type Node =
   | Stylesheet | Ruleset | Declaration | Comment | SelectorList | ComplexSelector | RelativeSelector | CompoundSelector
   | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | Sequence | List | Lookup | MixinDefinition | MixinCall
-  | VariableDeclaration | Important | Operation | FunctionCall | Block | Condition
+  | VariableDeclaration | Important | Operation | FunctionCall | Block | Condition | IfValue
   | AtRuleBlock | AtRuleStatement | Plugin | OpaqueAtRuleBlock | Interpolation | AnonymousMixin | Collection
   | CollectionEntry | Reference | Range | For | If | StyleImport | ModuleImport;
 
@@ -106,7 +107,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Stylesheet', 'Ruleset', 'Declaration', 'Comment', 'SelectorList',
   'ComplexSelector', 'RelativeSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
   'Sequence', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
-  'Important', 'Operation', 'FunctionCall', 'Block', 'Condition',
+  'Important', 'Operation', 'FunctionCall', 'Block', 'Condition', 'IfValue',
   'AtRuleBlock', 'AtRuleStatement', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation',
   'AnonymousMixin', 'Collection', 'CollectionEntry', 'Reference', 'Range', 'For', 'If', 'StyleImport', 'ModuleImport'
 ]);
