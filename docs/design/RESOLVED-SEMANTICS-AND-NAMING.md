@@ -486,12 +486,23 @@ so `!=` is not required (§4.4.3):
 `=`'s grounds are deliberately generous (§4.1); "is this literally that value" is
 the type-strict question.
 
-**One row of 4.x's behaviour is deliberately NOT reproduced, and it is not a
-divergence worth the name.** Under `==`, `when (~"true")` is false, where lessc
-4.6.3 says truthy. That row exists in 4.x only because it RE-PARSES the escaped
-string's bytes back through evaluation, delivering the keyword `true` to the
-guard (§3.1). It is mechanism leaking into semantics — the thing this document
-declines to port — so v5 simply does not do it, and no lowering is owed for it.
+**A quote is a quote; an escaped quote is an escaped quote. The CONTENTS must
+not change the outcome.** That is the rule, and both lowerings already obey it:
+
+| operand | `.less` `$x == true` | `.jess` §4.4 |
+| --- | --- | --- |
+| `"true"` / `"anything"` | false | truthy |
+| `~"true"` / `~"anything"` | false | truthy |
+
+Under `==` every string is falsy whatever it spells, because a string is not a
+boolean; under §4.4 every non-empty string is truthy whatever it spells, because
+the question is emptiness. Neither reads the bytes.
+
+lessc 4.6.3 is the one that breaks this: `when (~"true")` is truthy there while
+`when (~"1")` is not, so the CONTENTS decide. It reaches that by re-parsing the
+escaped string's bytes back through evaluation, delivering the keyword `true` to
+the guard (§3.1) — mechanism leaking into semantics. v5 does not reproduce it,
+and no lowering is owed for it.
 
 The row that DOES matter is the authored one: `when ("true")` must stay falsy,
 and only `==` keeps it so. `=` would ground `"true"` against `true` as strings

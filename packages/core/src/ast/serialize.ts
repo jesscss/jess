@@ -8053,7 +8053,7 @@ function emitDocumentStatements(
  * asynchronously, so this is a real limitation, not merely a legacy-plugin one.
  * Tracked in docs/architecture/core/HANDOFF.md.
  */
-function settledGuard(value: MaybePromise<boolean>, where: string, node: object, e: EvalCtx): boolean {
+function settledGuard<T>(value: MaybePromise<T>, where: string, node: object, e: EvalCtx): T {
   if (isThenable(value)) {
     observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({ node, ...callSiteLocation(node, e), meta: { where } });
@@ -9586,14 +9586,11 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
   }
 }
 
-/** The taken branch value of an `if(cond, then, else)` call — its condition
- *  evaluated through the guard evaluator (same rule `evalLogical` applies). The
- *  `else` branch may be absent, so the result can be `undefined`. */
-function pickIfBranch(node: FunctionCall, frame: Frame | null, e: EvalCtx): ValueSlot | undefined {
-  const cond = node.args[0];
-  const taken = cond !== undefined
-    && settledGuard(withUnitErrors(node, e, () => evalGuard(condGuard(cond), guardDeps(frame, e))), 'if() block resolution', node, e);
-  return taken ? node.args[1] : node.args[2];
+/** The taken arm of a value-position `$if`, resolved on the SYNCHRONOUS lane —
+ *  `@x: $if (…) { {…} } $else { {…} }; @x();` splices the chosen arm's
+ *  declarations. `undefined` when no arm matches. */
+function pickIfBranch(node: IfValue, frame: Frame | null, e: EvalCtx): ValueSlot | undefined {
+  return settledGuard(pickIfValue(node, frame, e), '$if value-arm block resolution', node, e);
 }
 
 /**
@@ -9658,7 +9655,7 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): Valu
       cursor = resolved?.frame ?? cursor;
       continue;
     }
-    if (cur.type === 'FunctionCall' && cur.name.toLowerCase() === 'if') {
+    if (cur.type === 'IfValue') {
       cur = pickIfBranch(cur, cursor, e);
       continue;
     }
