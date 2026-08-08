@@ -62,6 +62,7 @@ export type AstEdge =
   | 'mixin.guard'
   | 'mixin.rules'
   | 'mixin-call.arg'
+  | 'mixin-call.content'
   | 'apply.selector'
   | 'for.iterable'
   | 'for.rules'
@@ -345,6 +346,9 @@ function walkVariableDeclaration(node: VariableDeclaration, hooks: AstVisitHooks
 function walkMixinCall(node: MixinCall, hooks: AstVisitHooks, depth: number): void {
   for (let i = 0; i < node.args.length; i++) {
     walkCallArg(node.args[i]!, hooks, 'mixin-call.arg', node, i, depth + 1);
+  }
+  if (node.content !== null) {
+    walkNode(node.content, hooks, 'mixin-call.content', node, 0, depth + 1);
   }
 }
 

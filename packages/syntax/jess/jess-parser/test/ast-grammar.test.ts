@@ -2809,8 +2809,8 @@ describe('Jess AST grammar facts', () => {
           type: 'Ruleset',
           selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.button', interp: null }] },
           rules: [
-            { type: 'MixinCall', name: 'button-base', args: [], path: [], important: false },
-            { type: 'MixinCall', name: '.inner', args: [], path: [{ combinator: '>', selector: '#ns' }], important: false }
+            { type: 'MixinCall', name: 'button-base', args: [], path: [], important: false, content: null },
+            { type: 'MixinCall', name: '.inner', args: [], path: [{ combinator: '>', selector: '#ns' }], important: false, content: null }
           ]
         }
       ]

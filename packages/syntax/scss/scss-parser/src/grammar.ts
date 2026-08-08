@@ -24,7 +24,7 @@ import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
 import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, Null, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, Null, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -99,7 +99,9 @@ type ScssRules = {
   MixinParameter: Combinator<Param>;
   MixinParameters: Combinator<Param[]>;
   MixinCallArgument: Combinator<ScssCallArg>;
+  MixinContentBlock: Combinator<AnonymousMixin>;
   MixinCallRule: Combinator<MixinCall>;
+  ContentRule: Combinator<Reference>;
   MixinDefinitionRule: Combinator<MixinDefinition>;
   EachVariableName: Combinator<string>;
   EachBinding: Combinator<ForBinding>;
@@ -448,6 +450,10 @@ function isParam(value: unknown): value is Param {
 
 function isParamArray(value: unknown): value is Param[] {
   return Array.isArray(value) && value.every(isParam);
+}
+
+function isAnonymousMixin(value: unknown): value is AnonymousMixin {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AnonymousMixin';
 }
 
 function isForBinding(value: unknown): value is ForBinding {
@@ -863,6 +869,14 @@ function referenceKeyRaw(node: ValueNode): string {
   return 'src' in node && typeof node.src === 'string' ? node.src : '';
 }
 
+/** The `.jess` spelling of one `@content(…)` argument, used to build the lowered
+ *  `$content(…)` Reference `raw`. Same read as {@link referenceKeyRaw}, plus the
+ *  `$name:` prefix a named argument carries. */
+function contentArgRaw(arg: ScssCallArg): string {
+  const value = Array.isArray(arg.value) ? '' : referenceKeyRaw(arg.value);
+  return arg.name === undefined ? value : `$${arg.name}: ${value}`;
+}
+
 /** `map.get` is the `sass:map` module spelling of the global `map-get`. Both are
  *  the same function, so both lower to the same accessor read — a grammar that
  *  accepted only one spelling into the accessor form would emit two different
@@ -1130,7 +1144,15 @@ function isStatementChild(child: unknown, allowDeclarations: boolean): child is 
     || isIf(child)
     || isRuleset(child)
     || isOpaqueAtRuleBlock(child)
+
+    /* `$content()` — a statement-position Reference; core's `Statement` already
+     * admits one, and this is the only production that puts one here. */
+    || isReferenceStatement(child)
     || (allowDeclarations && isDeclaration(child));
+}
+
+function isReferenceStatement(value: unknown): value is Reference {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Reference';
 }
 
 function isOpaqueAtRuleBlock(value: unknown): value is OpaqueAtRuleBlock {
@@ -3049,6 +3071,38 @@ const scssFactory = (g: ScssInputRules) => {
         : { value };
     }
   );
+
+  /*
+   * The block trailing an `@include` is the mixin's CONTENT block. It lowers to
+   * the `.jess` `$ > m(): @{ … }` — an anonymous mixin ASSIGNED to the call —
+   * and Sass's `using ($a, $b)` names that block's parameters, which is the same
+   * `@($a, $b) { … }` param list `AnonymousMixin.params` already carries for a
+   * lowered `@function`. Nothing new: the body reuses `nestedBody`, the params
+   * reuse `MixinParameters`, and the result is the existing `AnonymousMixin`.
+   * `params` stays OMITTED for the bare block so that shape remains monomorphic.
+   */
+  const MixinContentBlock = node<AnonymousMixin>(
+    'MixinContentBlock',
+    sequence(
+      optional(sequence(
+        regex(/using(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.MixinParameters
+      )),
+      literal('{'),
+      g.nestedBody,
+      literal('}')
+    ),
+    (children) => {
+      const params = children.find(isParamArray);
+      return anonymousMixin(
+        statementChildren(
+          children,
+          true
+        ),
+        params !== undefined && params.length > 0 ? params : undefined
+      );
+    }
+  );
   const MixinCallRule = node<MixinCall>(
     'MixinCall',
     sequence(
@@ -3066,12 +3120,55 @@ const scssFactory = (g: ScssInputRules) => {
         )),
         literal(')')
       )),
+      optional(g.MixinContentBlock),
       optional(literal(';'))
     ),
     children => mixinCall(
       requireToken(children[1]).value,
-      children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isValueSlotValue(child.value))
+      children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isValueSlotValue(child.value)),
+      children.find(isAnonymousMixin) ?? null
     )
+  );
+
+  /*
+   * `@content` renders the block the caller assigned to this `@include`. Owner
+   * ruling: it is ALREADY the documented built-in `$content()` mixin, and
+   * `$content()` has no node of its own — it is what calling any variable-bound
+   * anonymous mixin is in `.jess`: a `Reference` whose base is a live `content`
+   * lookup and whose one step is a `Call`. `@content(a, b)` passes arguments to
+   * that block's `using (…)` params and is the same node with a non-empty step.
+   * `raw` is the lowered `.jess` spelling, so an unresolved chain re-emits the
+   * construct it means rather than the `@content` bytes, which are never CSS.
+   */
+  const ContentRule = node<Reference>(
+    'ContentRule',
+    sequence(
+      routed(),
+      optional(sequence(
+        literal('('),
+        optional(sequence(
+          g.MixinCallArgument,
+          many(sequence(
+            literal(','),
+            g.MixinCallArgument
+          )),
+          optional(literal(','))
+        )),
+        literal(')')
+      )),
+      optional(literal(';'))
+    ),
+    (children) => {
+      const args = children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isValueSlotValue(child.value));
+      return reference(
+        variableReference(
+          'content',
+          'live'
+        ),
+        [{ type: 'Call', args: args.slice() }],
+        `$content(${args.map(arg => contentArgRaw(arg)).join(', ')})`
+      );
+    }
   );
 
   /*
@@ -3528,6 +3625,18 @@ const scssFactory = (g: ScssInputRules) => {
       return guard;
     }
   );
+
+  /*
+   * `@return` is admitted here, not only in the `@function` body. A conditional
+   * return (`@if $b != 0 { @return gcd($b, $a % $b); } @else { @return $a; }`) is
+   * the ordinary way a Sass function is written, and it lowers to exactly the
+   * `result:` declaration `ReturnRule` already builds — one lowering that was
+   * wired into too narrow a position, not a second construct. `@return` opens on
+   * `@return`, an at-keyword no other arm owns, so the placement is
+   * firstMatch-order-preserving. Whether a `result:` is REACHABLE from a given
+   * body is a semantic question the language service owns; the grammar accepts
+   * the shape.
+   */
   const IfBody = node<Statement[]>(
     'IfBody',
     sequence(
@@ -3542,6 +3651,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.DocumentBlock,
         g.PageBlock,
         g.FontFeatureValuesBlock,
+        g.ReturnRule,
         g.SassNestedDirective,
         g.IfBodyRule
       )),
@@ -3615,7 +3725,19 @@ const scssFactory = (g: ScssInputRules) => {
       return atRuleBlock(
         requireToken(children[0]).value,
         optionalValue(children[1]),
-        statements(body)
+
+        /*
+         * `IfBody` collects its children WITH declarations (`@if $a { @media
+         * screen { display: none; } }` — a bubbling at-rule body is a
+         * declaration site), so re-validating them without is a straight
+         * contradiction that raised the internal "non-statement child"
+         * TypeError. The sibling `IfBodyRule` already reads the same array
+         * through `requireStatementList`, which passes `true`.
+         */
+        statements(
+          body,
+          true
+        )
       );
     }
   );
@@ -4233,6 +4355,7 @@ const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('@if', g.IfRule),
     caseInsensitive('@each', g.EachRule),
     caseInsensitive('@for', g.ForRule),
+    caseInsensitive('@content', g.ContentRule),
     caseInsensitive('@at-root', g.AtRootContinuation)
   );
   const SassNestedDirective = dispatch(
@@ -4242,6 +4365,7 @@ const scssFactory = (g: ScssInputRules) => {
     caseInsensitive('@if', g.IfRule),
     caseInsensitive('@each', g.EachRule),
     caseInsensitive('@for', g.ForRule),
+    caseInsensitive('@content', g.ContentRule),
     caseInsensitive('@at-root', g.AtRootContinuation)
   );
   const SassControlDirective = dispatch(
@@ -5502,7 +5626,9 @@ const scssFactory = (g: ScssInputRules) => {
     MixinParameter,
     MixinParameters,
     MixinCallArgument,
+    MixinContentBlock,
     MixinCallRule,
+    ContentRule,
     MixinDefinitionRule,
     EachVariableName,
     EachBinding,

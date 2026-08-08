@@ -227,6 +227,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'forms/_labels.scss',
   'forms/_validation.scss',
   'helpers/_clearfix.scss',
+  'helpers/_position.scss',
   'helpers/_stacks.scss',
   'helpers/_text-truncation.scss',
   'helpers/_visually-hidden.scss',
@@ -237,13 +238,16 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'mixins/_box-shadow.scss',
   'mixins/_caret.scss',
   'mixins/_clearfix.scss',
+  'mixins/_color-mode.scss',
+  'mixins/_color-scheme.scss',
   'mixins/_image.scss',
   'mixins/_list-group.scss',
   'mixins/_lists.scss',
   'mixins/_reset-text.scss',
   'mixins/_resize.scss',
   'mixins/_text-truncate.scss',
-  'mixins/_visually-hidden.scss'
+  'mixins/_visually-hidden.scss',
+  'utilities/_api.scss'
 ];
 
 /** Entry points known to evaluate end-to-end. Add each one as it graduates. */

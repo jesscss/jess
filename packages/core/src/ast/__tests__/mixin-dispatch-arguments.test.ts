@@ -100,7 +100,8 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
       name: '.mixin',
       args: [{ value: [[any('1px'), any('2px')]] }],
       path: [],
-      important: false
+      important: false,
+      content: null
     };
     expect(argumentsText(def, call)).toBe('1px 2px 20px 30px');
   });

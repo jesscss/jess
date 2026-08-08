@@ -1014,7 +1014,7 @@ describe('StyleImport', () => {
     const importedCall = {
       type: 'MixinCall' as const,
       name: '.add-one', args: [{ value: dimension(1, 'px', '1px') }],
-      path: [{ combinator: ' ' as const, selector: '#library' }], important: false
+      path: [{ combinator: ' ' as const, selector: '#library' }], important: false, content: null
     };
     const document = stylesheet([
       authoredImport('@import', quoted('"library.less"', 'library.less', '"', false)),
@@ -1036,7 +1036,7 @@ describe('StyleImport', () => {
     const importedCall = {
       type: 'MixinCall' as const,
       name: '.add-one', args: [{ value: dimension(1, 'px', '1px') }],
-      path: [{ combinator: ' ' as const, selector: '#library' }], important: false
+      path: [{ combinator: ' ' as const, selector: '#library' }], important: false, content: null
     };
     const document = stylesheet([
       authoredImport('@import', quoted('"library.less"', 'library.less', '"', false)),

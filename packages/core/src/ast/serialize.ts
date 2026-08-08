@@ -4247,7 +4247,7 @@ function invokeValueLambda(
     /* a synthetic lambda wrapper carries no source position of its own */
     _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN
   };
-  const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false, _s: NO_SPAN, _e: NO_SPAN };
+  const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN };
   const resolveCaller = makeResolver(callerFrame, e);
   const resolveDefault: DefaultResolver = (v, boundSoFar) => {
     const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
@@ -10663,7 +10663,7 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MaybeP
       }
       pushSpread(args, resolved);
     }
-    return { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, _s: call._s, _e: call._e };
+    return { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e };
   };
   return step(0);
 }
@@ -10718,7 +10718,7 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
     return a;
   });
   return changed
-    ? { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, _s: call._s, _e: call._e }
+    ? { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e }
     : call;
 }
 

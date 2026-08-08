@@ -143,6 +143,17 @@ export function bindArgs(
   }
 
   const bound = new Map<string, CallValue>();
+
+  /*
+   * An assigned content block (`$ > m(): @{ … }`, the lowering of Sass
+   * `@include m { … }`) is NOT an argument: it binds the callee-visible variable
+   * `content`, which the documented built-in `$content()` reads as an ordinary
+   * variable-bound anonymous mixin. It is seeded before the param walk so a param
+   * literally named `$content` still wins, and so a param DEFAULT may read it.
+   */
+  if (call.content !== null) {
+    bound.set('content', call.content);
+  }
   const argumentSlots: ValueSlot[] = [];
   let pi = 0;
 

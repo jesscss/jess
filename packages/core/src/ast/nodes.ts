@@ -1053,6 +1053,14 @@ export interface MixinPathSegment {
  * `path` is the namespace descent prefix for `#ns .a .b()` (empty for a
  * plain flat `.mixin()` call — byte-unchanged flat dispatch). `.m() !important`
  * promotes every declaration the body emits.
+ *
+ * `content` is the block ASSIGNED to the call — `.jess` `$ > m(): @{ … }`, the
+ * lowering target of Sass `@include m { … }`. It is not an argument: it does not
+ * bind to a param, it binds the callee-visible variable `content`, which is what
+ * the documented built-in `$content()` reads (`$content()` is an ordinary
+ * `Reference` on a live `content` lookup, exactly like calling any other
+ * variable-bound {@link AnonymousMixin}). `null` when the call assigns no block —
+ * always PRESENT so every MixinCall keeps one hidden class.
  */
 export interface MixinCall extends SpanSlots {
   readonly type: 'MixinCall';
@@ -1060,6 +1068,7 @@ export interface MixinCall extends SpanSlots {
   readonly args: CallArg[];
   readonly path: MixinPathSegment[];
   readonly important: boolean;
+  readonly content: AnonymousMixin | null;
 }
 
 /**
@@ -1452,13 +1461,19 @@ export const mixinDef = (
   guard?: GuardNode // [guards]
 ): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard !== undefined ? { guard } : {}), _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
 
-/** [guards] Args may be bare value nodes (positional) or `{ value, name? }`. */
-export const mixinCall = (name: string, args: readonly (ValueNode | CallArg)[] = []): MixinCall => ({
+/** [guards] Args may be bare value nodes (positional) or `{ value, name? }`.
+ *  `content` is the assigned block (`$ > m(): @{ … }`), not an argument. */
+export const mixinCall = (
+  name: string,
+  args: readonly (ValueNode | CallArg)[] = [],
+  content: AnonymousMixin | null = null
+): MixinCall => ({
   type: 'MixinCall',
   name,
   args: args.map(a => ('type' in a ? { value: a } : a)),
   path: [],
   important: false,
+  content,
   _s: NO_SPAN, _e: NO_SPAN
 });
 export const apply = (selectors: readonly SelectorTerm[]): Apply => ({ type: 'Apply', selectors });

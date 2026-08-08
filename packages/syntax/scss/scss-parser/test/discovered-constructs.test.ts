@@ -246,6 +246,7 @@ describe('SCSS constructs discovered outside the parser suites', () => {
   it.each([
     ['flat bracket list', 'a { b: [1, 2] }'],
     ['single nested bracket list', 'a { b: [[1, 2]] }'],
+
     /*
      * A SPACE separator inside the brackets makes the interior slot an array,
      * which the reducer used to narrow to a single node — throwing a bare
@@ -389,10 +390,12 @@ describe('SCSS constructs discovered outside the parser suites', () => {
    * leaves — but this SCSS-only half is a second copy of "which names have a
    * typed route", and NOTHING checks it against the routes.
    *
-   * It has drifted. Ten of its twenty-four names have no production anywhere
+   * It has drifted. Nine of its twenty-four names have no production anywhere
    * in the grammar, so the exclusion removes their only remaining route: they
-   * are neither typed nor opaque, and `@while`/`@content`/`@debug`/`@warn`/
-   * `@error` are ordinary Sass that this parser now rejects outright. That is
+   * are neither typed nor opaque, and `@while`/`@debug`/`@warn`/
+   * `@error` are ordinary Sass that this parser now rejects outright. (`@content`
+   * was the tenth; it now routes to `ContentRule`, which lowers it to the
+   * documented built-in `$content()`.) That is
    * the failure mode `descriptorAtKeywordCssOnly` was split out to prevent
    * (recognition.ts: "excluding a name it cannot otherwise parse makes that
    * at-rule unparseable rather than better-diagnosed") — the same bug, on the
@@ -418,14 +421,15 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     ['@extend', '.x { @extend .y; }'],
     ['@at-root', '.x { @at-root { a: b; } }'],
     ['@charset', '@charset "UTF-8";'],
-    ['@namespace', '@namespace svg url(http://www.w3.org/2000/svg);']
+    ['@namespace', '@namespace svg url(http://www.w3.org/2000/svg);'],
+    ['@content', '@content;'],
+    ['@content with args', '@content(1);']
   ])('routes the excluded SCSS at-keyword %s to a typed production', (_label, source) => {
     expect(() => parse(source)).not.toThrow();
   });
 
   it.each([
     ['@while', '@while $i > 0 { a: b; }'],
-    ['@content', '@content;'],
     ['@debug', '@debug 1;'],
     ['@warn', '@warn 1;'],
     ['@error', '@error 1;'],

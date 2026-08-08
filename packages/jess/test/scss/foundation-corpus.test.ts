@@ -86,13 +86,16 @@ const PER_FILE_TIMEOUT_MS = 30_000;
  * several, so these counts overlap by design. The report additionally ranks
  * by the EARLIEST blocker in each file, which is the one the parser actually
  * gave up on.
+ *
+ * An entry is REMOVED when the construct starts parsing, not left at zero: the
+ * match is a presence regex, so a construct that parses would keep attracting
+ * files that fail for an unrelated reason and would keep ranking as the
+ * "earliest blocker" it no longer is. Closed so far: `@return` nested inside
+ * `@if`/`@else`, `@include` with a trailing content block, and `@content`.
  */
 const BLOCKERS: Array<[string, RegExp]> = [
   // `$x: f($lightness: 1);`
   ['keyword argument ($name: v) in a function-call argument list', /[a-z][\w.-]*\(\s*(?:[^()]*?,\s*)?\$[\w-]+\s*:/],
-
-  // `.a { @include m { color: red; } }`
-  ['@include with a trailing content block', /@include[^;{}]*\{[ \t]*(?:\/\/.*)?$/m],
 
   // `$x: if($a == b, 1, 2);` — the same `==` parses fine in an @if condition.
   ['comparison (== / !=) inside a function-call argument list', /[a-z][\w.-]*\([^()]*(?:==|!=)/],
@@ -101,13 +104,11 @@ const BLOCKERS: Array<[string, RegExp]> = [
   ['@error / @warn / @debug', /@(?:error|warn|debug)\b/],
 
   /*
-   * `@function f($v) { @if $v { @return 1; } @return 2; }` — only a @return
-   * directly in the @function body parses.
+   * `$m: (a, b, c,);` — a trailing comma in a parenthesized list. Surfaced by
+   * closing the `@include`-content-block blocker: files now parse far enough to
+   * reach it.
    */
-  ['@return nested inside @if/@else', /@(?:if|else)[^{}]*\{[^{}]*@return/],
-
-  // `@mixin m { @content; }`
-  ['@content', /@content\b/],
+  ['trailing comma in a parenthesized list', /,\s*\)/],
 
   // `.a:nth-child(#{$i}) { color: red; }`
   ['interpolation inside a pseudo-class argument list', /:{1,2}[\w-]+\([^()]*#\{/],
@@ -306,6 +307,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'docs/assets/scss/_course-callout.scss',
   'docs/assets/scss/content/_install.scss',
   'docs/assets/scss/examples/_buttons.scss',
+  'docs/assets/scss/examples/_motion-ui.scss',
   'docs/assets/scss/examples/_off-canvas.scss',
   'docs/assets/scss/examples/_orbit.scss',
   'docs/assets/scss/examples/_responsive-embed.scss',
@@ -315,19 +317,25 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/components/_badge.scss',
   'scss/components/_breadcrumbs.scss',
   'scss/components/_card.scss',
+  'scss/components/_close-button.scss',
   'scss/components/_drilldown.scss',
   'scss/components/_dropdown.scss',
   'scss/components/_flex-video.scss',
+  'scss/components/_flex.scss',
   'scss/components/_float.scss',
   'scss/components/_label.scss',
+  'scss/components/_media-object.scss',
   'scss/components/_menu-icon.scss',
   'scss/components/_orbit.scss',
+  'scss/components/_pagination.scss',
   'scss/components/_progress-bar.scss',
   'scss/components/_responsive-embed.scss',
   'scss/components/_sticky.scss',
   'scss/components/_thumbnail.scss',
   'scss/components/_title-bar.scss',
   'scss/components/_tooltip.scss',
+  'scss/components/_top-bar.scss',
+  'scss/components/_visibility.scss',
   'scss/forms/_checkbox.scss',
   'scss/forms/_error.scss',
   'scss/forms/_fieldset.scss',
@@ -341,21 +349,46 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/forms/_select.scss',
   'scss/forms/_text.scss',
   'scss/foundation.scss',
+  'scss/grid/_flex-grid.scss',
   'scss/grid/_grid.scss',
+  'scss/grid/_gutter.scss',
+  'scss/grid/_row.scss',
   'scss/grid/_size.scss',
   'scss/prototype/_arrow.scss',
+  'scss/prototype/_border-box.scss',
+  'scss/prototype/_border-none.scss',
+  'scss/prototype/_bordered.scss',
   'scss/prototype/_box.scss',
+  'scss/prototype/_display.scss',
+  'scss/prototype/_font-styling.scss',
+  'scss/prototype/_list-style-type.scss',
+  'scss/prototype/_overflow.scss',
+  'scss/prototype/_position.scss',
   'scss/prototype/_prototype.scss',
   'scss/prototype/_rotate.scss',
+  'scss/prototype/_rounded.scss',
+  'scss/prototype/_separator.scss',
+  'scss/prototype/_shadow.scss',
+  'scss/prototype/_sizing.scss',
+  'scss/prototype/_spacing.scss',
+  'scss/prototype/_text-transformation.scss',
+  'scss/prototype/_text-utilities.scss',
+  'scss/typography/_alignment.scss',
   'scss/typography/_helpers.scss',
   'scss/typography/_print.scss',
   'scss/typography/_typography.scss',
   'scss/util/_selector.scss',
   'scss/util/_typography.scss',
   'scss/util/_util.scss',
+  'scss/xy-grid/_collapse.scss',
+  'scss/xy-grid/_frame.scss',
   'scss/xy-grid/_grid.scss',
+  'scss/xy-grid/_gutters.scss',
   'scss/xy-grid/_layout.scss',
-  'scss/xy-grid/_xy-grid.scss'
+  'scss/xy-grid/_xy-grid.scss',
+  'test/sass/_breakpoint.scss',
+  'test/sass/_components.scss',
+  'test/sass/_unit.scss'
 ];
 
 /** Entry points known to evaluate end-to-end. Add each one as it graduates. */
@@ -406,6 +439,87 @@ describe('Foundation SCSS corpus ratchet', () => {
 });
 
 // ── report ───────────────────────────────────────────────────────────────────
+
+/**
+ * The report tail that is NOT derived from a run: the owner rulings on each
+ * blocker, and the ident-start disambiguation rule.
+ *
+ * It lives HERE rather than in the .md because `writeReport` rewrites that file
+ * WHOLESALE — a hand-appended section is silently deleted by the next
+ * regeneration, which is exactly what happened on 2026-08-08. Emitting it from
+ * the generator makes that loss impossible instead of merely warned about.
+ */
+const STANDING_SECTIONS: readonly string[] = [
+  '## Owner rulings on each blocker (2026-08-08)',
+  '',
+  '> **This section is hand-written but generator-OWNED.** It used to live only in',
+  '> this file, where `JESS_SCSS_CORPUS_REPORT=1` deleted it on every regeneration',
+  '> (it did, on 2026-08-08, and was restored from git). It now lives in',
+  '> `STANDING_SECTIONS` in `foundation-corpus.test.ts` and is re-emitted by',
+  '> `writeReport`, so regeneration preserves it. Edit it THERE, not here — an edit',
+  '> made here is what the next regeneration overwrites.',
+  '',
+  'Recorded against the ranked table above. These decide WHAT each construct lowers',
+  'to. Rows marked LANDED are implemented; the rest are still design-only.',
+  '',
+  '| # | blocker | ruling |',
+  '| --- | --- | --- |',
+  '| 1 | keyword arg `$name: v` in a call arg list | **Real gap — OPEN, and it is an AST change, not a grammar change.** Less v5, Sass+ and Jess all admit direct assignment, keyed on what `defineFunction` exposes on the returned function object (`params`, each with a `name`). Not a Sass-only affordance. **No new AST kind is owed**: `.less` `.m(@a: 1)` already lowers to `MixinCall.args = [{name:\'a\', value}]`, i.e. `CallArg` (`packages/core/src/ast/mixin-dispatch.ts:30`), and `$name: value` is the same `.jess` spelling in either call — §12.0\'s first test makes them the SAME node. What blocks it is that `FunctionCall.args` is `ValueSlot[]` (`nodes.ts:277`) and cannot carry a name. Converting it to `CallArg[]` is a hidden-class change to the hottest value node in the tree and touches ~65 read sites (43 `.args` in `serialize.ts`, 22 in `packages/fns/src`) plus 29 `funcCall(` construction sites across all four grammars. Sized, designed, not started. |',
+  '| 2 | `@include` with a trailing content block | **LANDED.** Lowers to `.jess` `$ > m(): @{ … }` — a `MixinCall` carrying the block on a `content` slot, with Sass `using (…)` becoming that block AnonymousMixin `params`. The block is NOT an argument: it binds the callee-visible `content` variable that #6 reads. No new AST kind. |',
+  '| 3 | `@error` / `@warn` / `@debug` | **They do not become NODES.** That is the operative point — not that they are no-ops. They are compile-time diagnostics with no `.jess` spelling, so by §12.0\'s law no AST kind is owed one. Plugin *visitor* support for specific cases is worth reasoning about separately; it does not require a node. |',
+  '| 4 | `==` / `!=` inside a call arg list | **LANDED for `.scss`.** Becomes an `Expression` over a `Condition`, per §4.5.2: a call argument is value position, so a comparison there needs the `$( … )` boundary, and the lowering supplies it because Sass source has no `$( … )` to write. Neither kind is new. Implemented as the single `CallArgument` const in `scss-parser/src/grammar.ts`, referenced by both argument sites (`Call`\'s head and `ArgumentPair`\'s tail). `==` / `!=` lower to the `sass-equal` primitive, the same lowering `IfComparison` already performs, so a comparison cannot mean one thing in a guard and another in an argument. **`.jess` needs no change, and that is the rule rather than a gap**: §4.5.2 says "if it computes, it is inside `$( )` — no exceptions". Sass has no `$( … )` to write, so the lowering must supply the boundary; `.jess` HAS the marker, so a bare `f($x == 1)` must stay a parse error and the author writes `f($($x == 1))` — which already parses. `.less` already routes `if(@x = 1, …)` through `FunctionCondition` (§4.5.3a). So this blocker was only ever `.scss`. |',
+  '| 5 | `@return` nested inside `@if`/`@else` | **LANDED.** Only top-level `@return` parsing was the bug: `ReturnRule` is now an `IfBody` arm too, building the same `result:` Declaration §4.5.3b already used — verified byte-equal to the tree a top-level `@return` builds. No new AST kind. |',
+  '| 6 | `@content` | **LANDED (bare form).** Lowers to the documented built-in `$content()` — a `Reference` on a live `content` `Lookup` with one `Call` step, asserted EQUAL to the tree the Jess grammar builds for `$content()`. No new AST kind. The parameterised `$content($type)` form PARSES but does not EVALUATE: a statement-position call WITH arguments to a variable-bound `AnonymousMixin` is a pre-existing core gap that `.jess` own `$m: @($c) { … }` spelling cannot reach either. Foundation uses only the bare form. |',
+  '| 7 | `@while` | Gets a **`$while`**, alongside `$if` / `$for`. |',
+  '| 8 | chained unary `not not` | Sass `not not $x` lowers to `.jess` `not(not($x))`. Falls out of §4.5.4\'s rule that `not` always takes parens. |',
+  '| 9 | nested selector list `type:pseudo, .class` | **A grammar defect, and the rule is fully specified — see below.** |',
+  '| 10 | interpolation in a pseudo-class arg | Not yet ruled on. |',
+  '| 11 | `@at-root` with a selector prelude | **Needs a decision.** Bare `@at-root { … }` already parses. |',
+  '',
+  '**Sequencing note:** #2, #5 and #6 are LANDED, together — #6 IS the lowering',
+  'target for #2, so neither closes alone. #1 and #9 are defects. #10 and #11 are',
+  'the only ones still needing a ruling. Closing these three surfaced one new entry',
+  'in the ranked table above: a trailing comma in a parenthesized list, which files',
+  'only reach now that the `@include` content block no longer stops the parse.',
+  '',
+  '',
+  '## The ident-start disambiguation rule (blocker #9)',
+  '',
+  '**Owner ruling, 2026-08-08.** At an ident start, PEEK for a non-wrapped opening',
+  '`{` to decide declaration-vs-nested-rule **only when the construct is genuinely',
+  'ambiguous** — that is, when ALL of:',
+  '',
+  '1. the ident is followed by a colon, **and**',
+  '2. the colon is **not** followed by a space, **and**',
+  '3. what follows the colon **is an identifier** — i.e. it could be a valid',
+  '   pseudo-class.',
+  '',
+  'Anything failing one of those is unambiguous and commits immediately, with no',
+  'lookahead:',
+  '',
+  '| source | ambiguous? | why |',
+  '| --- | --- | --- |',
+  '| `div:hover {` / `color:red;` | **YES — peek** | `hover` / `red` are identifiers, so element-plus-pseudo-class is a live reading. Only the `{` separates `color:red { … }` (a nested RULE) from `color:red;` (a DECLARATION). |',
+  '| `color: red` | no | a pseudo-class cannot have a space after its colon |',
+  '| **`div:1px`** | no | `1px` is not an identifier, so it cannot be a pseudo-class — declaration, decided |',
+  '| `a b {` | no | no colon |',
+  '',
+  'The peek is therefore the NARROW case, not the default. Today the parser does',
+  'the opposite: a leading `div:` commits to the declaration path unconditionally,',
+  'which is why `div:hover, span` and `div:hover, [a]` parse while `div:hover, .b`',
+  'does not — the difference is only what may follow in a VALUE, nothing about',
+  'selectors.',
+  '',
+  '**Spell the colon condition with parseman\'s adjacency combinators, not a',
+  'hand-rolled lookahead.** `adjacent()` / `notAdjacent()` are exported from',
+  '`parseman` (`src/combinators/adjacency.ts`) and carry a real `AdjacencyDef` with',
+  'polarity, so "colon not followed by a space" is a first-class grammar fact rather',
+  'than a regex — and it keeps adjacency spelled negatively, per ledger G24.',
+  '',
+  '**It belongs in the CSS base and the supersets must REUSE it.** This is ordinary',
+  'CSS disambiguation; every dialect reimplementing its own is how they drifted',
+  'apart in the first place.'
+];
 
 function writeReport(parseLane: LaneResult[], evalLane: LaneResult[]) {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -472,6 +586,8 @@ function writeReport(parseLane: LaneResult[], evalLane: LaneResult[]) {
   evalLane.forEach(r => l.push(
     `| \`${r.file}\` | ${r.outcome} | ${r.detail ?? (r.bytes ? `${r.bytes}B css` : '—')} |`
   ));
+  l.push('');
+  l.push(...STANDING_SECTIONS);
   l.push('');
   writeFileSync(path.join(here, 'FOUNDATION-CORPUS-REPORT.md'), l.join('\n'), 'utf8');
 }
