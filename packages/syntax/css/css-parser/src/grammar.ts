@@ -509,7 +509,7 @@ function isValue(value: unknown): value is ValueNode {
     && 'type' in value
     && (value.type === 'Keyword' || value.type === 'Color' || value.type === 'Dimension'
       || value.type === 'Quoted' || value.type === 'Url' || value.type === 'FunctionCall'
-      || value.type === 'Block' || value.type === 'Operation' || value.type === 'SpacedValue'
+      || value.type === 'Block' || value.type === 'Operation' || value.type === 'Sequence'
       || value.type === 'List' || value.type === 'Any');
 }
 
@@ -524,10 +524,10 @@ function valueSlot(value: ValueSlot): ValueSlot {
   if (!isValue(value)) {
     return value;
   }
-  if (value.type === 'SpacedValue') {
+  if (value.type === 'Sequence') {
     return value.parts;
   }
-  if (value.type === 'Block' && isValue(value.value) && value.value.type === 'SpacedValue') {
+  if (value.type === 'Block' && isValue(value.value) && value.value.type === 'Sequence') {
     return { ...value, value: value.value.parts };
   }
   return value;
@@ -681,10 +681,10 @@ function valueChildren(children: readonly unknown[]): ValueNode[] {
   return values;
 }
 
-function flattenSpacedValues(values: readonly ValueNode[]): ValueNode[] {
+function flattenSequences(values: readonly ValueNode[]): ValueNode[] {
   const flattened: ValueNode[] = [];
   for (const value of values) {
-    if (value.type === 'SpacedValue') {
+    if (value.type === 'Sequence') {
       flattened.push(...value.parts);
       continue;
     }
@@ -2662,7 +2662,7 @@ const cssFactory = (g: GrammarSelf) => {
          * A declaration value is a component-value sequence. In particular, a
          * structured function is one component, not the entire value: `url(x)
          * / cover`, `var(--x) solid`, and `foo(bar) baz` all retain the
-         * existing structured leaves inside a SpacedValue. Identifier-shaped
+         * existing structured leaves inside a Sequence. Identifier-shaped
          * components route from one opener, so a malformed known function such
          * as `calc()` cannot degrade into a keyword plus punctuation.
          */
@@ -3198,7 +3198,7 @@ const cssFactory = (g: GrammarSelf) => {
    * A clause is one `<media-query>`: whitespace-joined terms only. The comma
    * belongs to the enclosing `<media-query-list>` (mediaqueries-4 §2.1), so it
    * must not be an optional separator here — swallowing it collapsed
-   * `screen, print` into a SpacedValue instead of the List the other three
+   * `screen, print` into a Sequence instead of the List the other three
    * dialects produce.
    */
   const QueryClause = node(
@@ -3276,7 +3276,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.ContainerQueryPrelude
     ),
     (children) => {
-      const values = flattenSpacedValues(valueChildren(children));
+      const values = flattenSequences(valueChildren(children));
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );

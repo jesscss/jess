@@ -375,7 +375,7 @@ function isTypedGuardValue(v: CallValue): v is ValueSlot {
   if (v.type === 'List') {
     return v.value.every(isTypedGuardValue);
   }
-  return v.type === 'SpacedValue' && v.parts.every(isTypedGuardValue);
+  return v.type === 'Sequence' && v.parts.every(isTypedGuardValue);
 }
 
 /** Eager-resolve a DEFAULT param value with the params-bound-so-far overlay

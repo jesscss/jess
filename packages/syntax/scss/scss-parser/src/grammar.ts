@@ -692,7 +692,7 @@ function isValue(value: unknown): value is ValueNode {
       return 'src' in value && typeof value.src === 'string';
     case 'Url':
       return 'value' in value && isValue(value.value);
-    case 'SpacedValue':
+    case 'Sequence':
       return 'parts' in value && Array.isArray(value.parts);
     case 'List':
       return 'value' in value && Array.isArray(value.value);
@@ -714,17 +714,17 @@ function isValue(value: unknown): value is ValueNode {
 }
 
 function valueSlot(value: ValueNode): ValueSlot {
-  if (value.type === 'SpacedValue') {
+  if (value.type === 'Sequence') {
     return value.parts;
   }
-  if (value.type === 'Block' && isSpacedValue(value.value)) {
+  if (value.type === 'Block' && isSequence(value.value)) {
     return { ...value, value: value.value.parts };
   }
   return value;
 }
 
-function isSpacedValue(value: ValueSlot): value is Extract<ValueNode, { type: 'SpacedValue' }> {
-  return isValue(value) && value.type === 'SpacedValue';
+function isSequence(value: ValueSlot): value is Extract<ValueNode, { type: 'Sequence' }> {
+  return isValue(value) && value.type === 'Sequence';
 }
 
 function isValueSlotValue(value: unknown): value is ValueSlot {
@@ -2510,7 +2510,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       const values = children.filter(isValue).flatMap(value =>
-        typeof value === 'object' && value !== null && 'type' in value && value.type === 'SpacedValue'
+        typeof value === 'object' && value !== null && 'type' in value && value.type === 'Sequence'
           ? value.parts
           : [value]);
       if (values.length === 0) {

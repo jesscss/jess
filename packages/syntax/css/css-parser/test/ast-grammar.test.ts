@@ -723,7 +723,7 @@ describe('CSS canonical-AST grammar', () => {
 
   it('uses `only` only before a media type', () => {
     expect(parseAst('@media only screen and (min-width: 1px) { .card { color: red; } }')).toMatchObject({
-      rules: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
+      rules: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'Sequence' } }]
     });
     expect(() => parseAst('@media only (min-width: 1px) { .card { color: red; } }')).toThrow();
     expect(() => parseAst('@media layer { .card { color: red; } }')).toThrow();
@@ -761,15 +761,15 @@ describe('CSS canonical-AST grammar', () => {
       type: 'AtRuleBlock',
       name: '@supports',
       prelude: {
-        type: 'SpacedValue',
+        type: 'Sequence',
         parts: [
           { type: 'Keyword', src: 'not' },
-          { type: 'Block', delimiter: 'paren', value: { type: 'SpacedValue' } }
+          { type: 'Block', delimiter: 'paren', value: { type: 'Sequence' } }
         ]
       }
     });
     expect(parseAst('@SUPPORTS NOT (display: grid) { .grid { display: grid; } }').rules[0]).toMatchObject({
-      name: '@SUPPORTS', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'NOT' }, { type: 'Block', delimiter: 'paren' }] }
+      name: '@SUPPORTS', prelude: { type: 'Sequence', parts: [{ type: 'Keyword', src: 'NOT' }, { type: 'Block', delimiter: 'paren' }] }
     });
 
     for (const source of [
@@ -882,7 +882,7 @@ describe('CSS canonical-AST grammar', () => {
     const document = parseAst(source);
     expect(document.rules).toMatchObject([
       { type: 'AtRuleBlock', name: '@SUPPORTS', prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }, rules: [{ type: 'Ruleset' }] },
-      { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '>' } }] }, rules: [{ type: 'Ruleset' }] },
+      { type: 'AtRuleBlock', name: '@container', prelude: { type: 'Sequence', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '>' } }] }, rules: [{ type: 'Ruleset' }] },
       { type: 'AtRuleBlock', name: '@FONT-FACE', prelude: null, rules: [{ type: 'Declaration', name: 'font-family' }, { type: 'Declaration', name: 'src' }] },
       { type: 'AtRuleBlock', name: '@property', prelude: { type: 'Any', src: '--angle' }, rules: [{ type: 'Declaration', name: 'syntax' }, { type: 'Declaration', name: 'inherits' }, { type: 'Declaration', name: 'initial-value' }] },
       { type: 'AtRuleBlock', name: '@scope', prelude: { type: 'Any', src: '(.card) to (.edge)' }, rules: [{ type: 'Declaration', name: 'color' }, { type: 'Ruleset' }] }
@@ -1006,7 +1006,7 @@ describe('CSS canonical-AST grammar', () => {
       type: 'AtRuleBlock',
       name: '@container',
       prelude: {
-        type: 'SpacedValue',
+        type: 'Sequence',
         parts: [
           { type: 'Keyword', src: 'sidebar' },
           { type: 'FunctionCall', name: 'style', args: [{ type: 'Any', src: '--theme: dark' }] },

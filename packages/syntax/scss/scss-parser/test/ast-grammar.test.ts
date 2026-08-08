@@ -349,7 +349,7 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet', rules: [{
         type: 'ImportAtRule',
         tail: {
-          type: 'SpacedValue', parts: [
+          type: 'Sequence', parts: [
             { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
             { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
             { type: 'Keyword', src: 'screen' }
@@ -384,14 +384,14 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet', rules: [{
         type: 'ImportAtRule',
         tail: {
-          type: 'SpacedValue', parts: [
+          type: 'Sequence', parts: [
             { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
             { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
             {
               type: 'List', sep: ',', value: [
-                { type: 'SpacedValue', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
+                { type: 'Sequence', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
                 { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'color' } },
-                { type: 'SpacedValue', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] }
+                { type: 'Sequence', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] }
               ]
             }
           ]
@@ -1099,10 +1099,10 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet',
       rules: [
         // The `// media` line comment is trivia and leaves no node behind.
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' }, rules: [{ type: 'Ruleset' }] },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Keyword', src: 'screen' }] }, rules: [{ type: 'Ruleset' }] },
-        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'SpacedValue' }, rules: [{ type: 'Ruleset' }] },
-        { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue' }, rules: [{ type: 'Ruleset' }] },
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'Sequence' }, rules: [{ type: 'Ruleset' }] },
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'Sequence', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Keyword', src: 'screen' }] }, rules: [{ type: 'Ruleset' }] },
+        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Sequence' }, rules: [{ type: 'Ruleset' }] },
+        { type: 'AtRuleBlock', name: '@container', prelude: { type: 'Sequence' }, rules: [{ type: 'Ruleset' }] },
         { type: 'Ruleset', rules: [{ type: 'AtRuleBlock', name: '@media', rules: [{ type: 'VariableDeclaration' }, { type: 'Declaration' }] }] }
       ]
     });
@@ -1250,7 +1250,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('accepts `only` only as a media-type modifier', () => {
     expect(parse('@media only screen and (min-width: 1px) { .card { color: red; } }')).toMatchObject({
-      rules: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
+      rules: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'Sequence' } }]
     });
     expect(() => parse('@media only (min-width: 1px) { .card { color: red; } }')).toThrow(SyntaxError);
     expect(parse('@media not (min-width: 1px) { .card { color: red; } }')).toMatchObject({
@@ -1269,8 +1269,8 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [{
         type: 'AtRuleBlock', name: '@supports',
         prelude: {
-          type: 'SpacedValue',
-          parts: [{ type: 'Keyword', src: 'not' }, { type: 'Block', delimiter: 'paren', value: { type: 'SpacedValue' } }]
+          type: 'Sequence',
+          parts: [{ type: 'Keyword', src: 'not' }, { type: 'Block', delimiter: 'paren', value: { type: 'Sequence' } }]
         }
       }]
     });

@@ -1581,7 +1581,7 @@ describe('Jess AST grammar facts', () => {
 
   it('uses `only` only before a static media type', () => {
     expect(parse('@media only screen and (min-width: 1px) { .card { color: red; } }')).toMatchObject({
-      rules: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
+      rules: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'Sequence' } }]
     });
     const invalid = '@media only (min-width: 1px) { .card { color: red; } }';
     const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
@@ -1601,7 +1601,7 @@ describe('Jess AST grammar facts', () => {
     expect(parse('@container only (width > 10px) { .card { color: red; } }').rules[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@container',
-      prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Block' }] }
+      prelude: { type: 'Sequence', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Block' }] }
     });
     expect(serialize(parse('@container only { .card { color: red; } }'))).toEqual({
       css: '@container only {\n  .card {\n    color: red;\n  }\n}\n'
@@ -1632,7 +1632,7 @@ describe('Jess AST grammar facts', () => {
         type: 'AtRuleBlock',
         prelude: source.startsWith('@media')
           ? { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator } }
-          : { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator } }] }
+          : { type: 'Sequence', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator } }] }
       });
     }
     expect(serialize(parse('@container sidebar (30rem < width < 80rem) { .card { color: blue; } }'))).toEqual({
@@ -1694,7 +1694,7 @@ describe('Jess AST grammar facts', () => {
 
     expect(root).toMatchObject({
       type: 'Stylesheet', rules: [
-        { type: 'AtRuleStatement', name: '@namespace', prelude: { type: 'SpacedValue', parts: [
+        { type: 'AtRuleStatement', name: '@namespace', prelude: { type: 'Sequence', parts: [
           { type: 'Keyword', src: 'svg' }, { type: 'Url', value: { type: 'Quoted', value: 'http://www.w3.org/2000/svg' } }
         ] } },
         { type: 'AtRuleBlock', name: '@document', prelude: { type: 'Url', value: { type: 'Any', src: 'site.css' } }, rules: [{ type: 'Ruleset' }] }
@@ -1899,17 +1899,17 @@ describe('Jess AST grammar facts', () => {
       type: 'AtRuleBlock',
       name: '@supports',
       prelude: {
-        type: 'SpacedValue',
+        type: 'Sequence',
         parts: [
           { type: 'Keyword', src: 'not' },
-          { type: 'Block', delimiter: 'paren', value: { type: 'SpacedValue' } }
+          { type: 'Block', delimiter: 'paren', value: { type: 'Sequence' } }
         ]
       },
       rules: [{ type: 'Ruleset' }]
     });
     expect(parse('@supports (display: grid) or (width: 1px) { .card { color: blue; } }').rules[0]).toMatchObject({
       type: 'AtRuleBlock',
-      prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren' }, { type: 'Keyword', src: 'or' }, { type: 'Block', delimiter: 'paren' }] }
+      prelude: { type: 'Sequence', parts: [{ type: 'Block', delimiter: 'paren' }, { type: 'Keyword', src: 'or' }, { type: 'Block', delimiter: 'paren' }] }
     });
     expect(serialize(root, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@supports not ((display: grid) and (color)) {\n  .card {\n    color: blue;\n  }\n}\n'

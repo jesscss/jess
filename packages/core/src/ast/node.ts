@@ -31,7 +31,6 @@ import type {
   Any,
   Url,
   Dimension,
-  SpacedValue,
   List,
   Lookup,
   MixinDefinition,
@@ -60,8 +59,8 @@ import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plu
 export type NodeType =
   | 'Stylesheet' | 'Ruleset' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'ComplexSelector' | 'RelativeSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
-  | 'SpacedValue' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
-  | 'Sequence' | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition'
+  | 'Sequence' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
+  | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation'
   | 'AnonymousMixin' | 'Collection' | 'CollectionEntry' | 'Reference' | 'Range' | 'For' | 'If' | 'StyleImport' | 'ModuleImport';
 
@@ -83,8 +82,8 @@ export function renderCombinator(comb: Combinator): string {
  */
 export type Node =
   | Stylesheet | Ruleset | Declaration | Comment | SelectorList | ComplexSelector | RelativeSelector | CompoundSelector
-  | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | Lookup | MixinDefinition | MixinCall
-  | VariableDeclaration | Sequence | Important | Operation | FunctionCall | Block | Condition
+  | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | Sequence | List | Lookup | MixinDefinition | MixinCall
+  | VariableDeclaration | Important | Operation | FunctionCall | Block | Condition
   | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | AnonymousMixin | Collection
   | CollectionEntry | Reference | Range | For | If | StyleImport | ModuleImport;
 
@@ -106,8 +105,8 @@ export type Node =
 export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Stylesheet', 'Ruleset', 'Declaration', 'Comment', 'SelectorList',
   'ComplexSelector', 'RelativeSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
-  'SpacedValue', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
-  'Sequence', 'Important', 'Operation', 'FunctionCall', 'Block', 'Condition',
+  'Sequence', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
+  'Important', 'Operation', 'FunctionCall', 'Block', 'Condition',
   'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation',
   'AnonymousMixin', 'Collection', 'CollectionEntry', 'Reference', 'Range', 'For', 'If', 'StyleImport', 'ModuleImport'
 ]);

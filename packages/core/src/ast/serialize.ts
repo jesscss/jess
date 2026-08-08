@@ -83,7 +83,7 @@ import type {
   RelativeSelector,
   Stylesheet,
   Ruleset,
-  SpacedValue,
+  Sequence,
   SelectorBranch,
   SimpleSelector,
   SimpleToken,
@@ -137,7 +137,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueLayoutOf, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -2159,7 +2159,7 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
         : callValueContainsVarRef(value.name, name, lookup);
     case 'Url':
       return callValueContainsVarRef(value.value, name, lookup);
-    case 'SpacedValue':
+    case 'Sequence':
       return value.parts.some(part => callValueContainsVarRef(part, name, lookup));
     case 'List':
       return value.value.some(part => callValueContainsVarRef(part, name, lookup));
@@ -3047,14 +3047,14 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       const typed = node.value.map(it => evalTypedSlot(it, frame, e));
       return combineAll(typed, vals => makeList(vals, node.sep));
     }
-    case 'SpacedValue': {
+    case 'Sequence': {
       /*
        * A structured SPACE-list (`@v: a b c` / `1px solid @c`) materializes to the
        * value-domain `List` with a space separator, so `extract` / `length` index
        * its structure directly (each part resolved) instead of re-splitting a joined
        * string. Typed consumption only — the emit path (`evalValue`) still joins the
        * parts to bytes, so an un-consumed space value serializes exactly as before.
-       * EXCEPT a preserved-division slash group (`10px / 2`, built as a `SpacedValue`
+       * EXCEPT a preserved-division slash group (`10px / 2`, built as a `Sequence`
        * `[left, '/', right]` by value-expr) is NOT a list — it is one arithmetic
        * value that must fold to bytes so an outer operation keeps it verbatim (guard
        * 3). Fall through to the joined-bytes path for it.
@@ -3082,7 +3082,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       return mapMaybe(evalValue(node, frame, e), v => force(e, v));
     default:
       /*
-       * Computed / joined shapes (Operation, FunctionCall, Concat, SpacedValue,
+       * Computed / joined shapes (Operation, FunctionCall, Sequence,
        * Interpolation, VarIndirect, Reference, …): fold to a Value then force. A
        * computed string has no parse tag → the evaluator sniffs.
        */
@@ -3091,13 +3091,13 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
 }
 
 /**
- * A preserved-division slash group — the `SpacedValue` `[left, '/', right]` that
+ * A preserved-division slash group — the `Sequence` `[left, '/', right]` that
  * value-expr builds for `a / b` when the division is kept verbatim (parens-division
  * math mode). It is ONE arithmetic value, not a space list, so it must NOT
  * materialize to a value-domain `List` (that would break an outer operation and
  * misreport `length`/`extract`). Detected by a top-level `/` literal part.
  */
-function isSlashGroup(node: SpacedValue): boolean {
+function isSlashGroup(node: Sequence): boolean {
   /*
    * The direct Less grammar owns separator tokens as `Keyword` leaves; older
    * hand-built AST tests may still use opaque `Any`. Both are the same typed
@@ -3113,7 +3113,7 @@ function isSlashGroup(node: SpacedValue): boolean {
  * explicit spaced group.  Materialize only this temporary evaluator view; do
  * not change the authored AST or wrap ordinary arrays outside calc.
  */
-function slashGroupOfSlot(slot: ValueSlot): SpacedValue | null {
+function slashGroupOfSlot(slot: ValueSlot): Sequence | null {
   if (!isValueSlotArray(slot)) {
     return null;
   }
@@ -3133,10 +3133,9 @@ function slashGroupOfSlot(slot: ValueSlot): SpacedValue | null {
       parts.push(part);
     }
   }
+  const node: Sequence = { type: 'Sequence', parts };
   const separators = valueLayoutOf(slot);
-  return separators === undefined
-    ? { type: 'SpacedValue', parts }
-    : { type: 'SpacedValue', parts, separators };
+  return separators === undefined ? node : withValueLayout(node, separators);
 }
 
 /**
@@ -3145,9 +3144,9 @@ function slashGroupOfSlot(slot: ValueSlot): SpacedValue | null {
  * COMPUTES in a `calc(…)` math context. Returns `null` for a shape that is not a
  * clean `operand ('/' operand)+` chain (e.g. an interleaved space list carrying a
  * `/`), leaving it to fold verbatim. Each operand is a single part, or the run of
- * parts between two slashes wrapped back into a `SpacedValue`.
+ * parts between two slashes wrapped back into a `Sequence`.
  */
-function slashGroupToOperation(node: SpacedValue): Operation | null {
+function slashGroupToOperation(node: Sequence): Operation | null {
   const operands: ValueNode[] = [];
   let run: ValueNode[] = [];
   let sawSlash = false;
@@ -3298,8 +3297,6 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       }
       return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
     }
-    case 'Sequence':
-      return joinBytes(node.parts, '', frame, e);
     case 'Important':
       /*
        * [important] Less `importantScope`: the importance rides on this wrapper, NOT
@@ -3314,7 +3311,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         e.mergeImportant = true;
       }
       return evalValueSlot(node.value, frame, e);
-    case 'SpacedValue': {
+    case 'Sequence': {
       /*
        * Inside `calc(…)`, `/` is DIVISION (math), not a preserved slash separator:
        * a variable holding a preserved-division slash group (`@var: 50vh/2`) spliced
@@ -4122,7 +4119,7 @@ function resolveReferenceResult(
       continue;
     }
     if (step.type === 'LookupStep' && typeof step.name !== 'string' && step.kind === 'index' && typeof step.name === 'number'
-      && (isValueSlotArray(value) || (!isValueSlotArray(value) && (value.type === 'List' || value.type === 'SpacedValue')))) {
+      && (isValueSlotArray(value) || (!isValueSlotArray(value) && (value.type === 'List' || value.type === 'Sequence')))) {
       const items = isValueSlotArray(value)
         ? value
         : value.type === 'List' ? value.value : value.parts;
@@ -4867,24 +4864,18 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: EvalCtx): ne
   });
 }
 
-/** Join value parts to bytes (Concat = '', SpacedValue = ' '); stays a literal. */
-function joinBytes(
-  parts: ValueNode[],
-  sep: string,
-  frame: Frame | null,
-  e: EvalCtx
-): MaybePromise<EvalValue> {
-  const items = parts.map(p => evalValue(p, frame, e));
-  return combineAll(items, vals => literal(vals.map(emitValue).join(sep)));
-}
-
-/** Emit a parser-owned spaced value without rediscovering its authored layout. */
-function joinSpacedBytes(node: SpacedValue, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+/**
+ * Emit a parser-owned {@link Sequence} without rediscovering its authored layout.
+ * The default join is one space; an authored boundary run is replayed from the
+ * `withValueLayout` side table, never from a field on the node.
+ */
+function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+  const authored = valueLayoutOf(node);
   const items = node.parts.map(part => evalValue(part, frame, e));
   return combineAll(items, (values) => {
     let out = emitValue(values[0]!);
     for (let index = 1; index < values.length; index++) {
-      out += node.separators?.[index - 1] ?? ' ';
+      out += authored?.[index - 1] ?? ' ';
       out += emitValue(values[index]!);
     }
     return literal(out);
@@ -10070,7 +10061,7 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
   if (base.type === 'List') {
     return base.value.map(value => ({ value, key: null }));
   }
-  if (base.type === 'SpacedValue') {
+  if (base.type === 'Sequence') {
     return base.parts.map(value => ({ value, key: null }));
   }
   if (base.type === 'Any' || base.type === 'Keyword') {
@@ -10142,7 +10133,7 @@ function bindForEntry(node: For, value: ValueSlot, key: ValueNode | null, index:
     bindings.set(binding.names[0], key ?? index);
     bindings.set(binding.names[1], value);
   } else {
-    const values = isValueSlotArray(value) ? value : value.type === 'SpacedValue' ? value.parts : value.type === 'List' ? value.value : [value];
+    const values = isValueSlotArray(value) ? value : value.type === 'Sequence' ? value.parts : value.type === 'List' ? value.value : [value];
     for (let i = 0; i < binding.names.length && i < values.length; i++) {
       bindings.set(binding.names[i]!, values[i]!);
     }
@@ -10395,7 +10386,7 @@ function pushSpread(args: CallArg[], rawBytes: string): void {
 /** Replace `@rs` args (a VariableReference bound to a detached ruleset) with the
  * resolved value-block node so it binds by reference. */
 /**
- * Recognize a mixin-call-shaped VALUE — a `SpacedValue` of a `.`/`#` selector head
+ * Recognize a mixin-call-shaped VALUE — a `Sequence` of a `.`/`#` selector head
  * (`Any`) glued to a `Block` arg group (`.something(foo)`, `#library.core.colors()`)
  * — and build the `MixinCall` it denotes, so a mixin call passed as an arg value
  * (`.wrapper(.something(foo))`) binds as a callable. Returns `undefined` for any
@@ -11822,7 +11813,7 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
         plain(node.operator === ':' ? ': ' : ` ${node.operator} `),
         evalSupportsPrelude(node.right, frame, e)
       ]);
-    case 'SpacedValue': {
+    case 'Sequence': {
       const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.parts.length; index += 1) {
         if (index > 0) {
@@ -11904,7 +11895,7 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
         node.operator === ':' ? ': ' : ` ${node.operator} `,
         evalQueryPrelude(node.right, frame, e)
       ]);
-    case 'SpacedValue': {
+    case 'Sequence': {
       const parts: Array<MaybePromise<string>> = [];
       for (let index = 0; index < node.parts.length; index += 1) {
         if (index > 0) {

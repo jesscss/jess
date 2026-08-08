@@ -1,4 +1,5 @@
 import { run } from 'parseman';
+import { valueLayoutOf } from '@jesscss/core/ast';
 import type { Ruleset, SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseLessCst, type LessCstChild } from '../src/cst.js';
@@ -273,7 +274,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'AtRuleBlock',
           name: '@unknown',
-          prelude: { type: 'SpacedValue' },
+          prelude: { type: 'Sequence' },
           rules: [{ type: 'Ruleset' }]
         }
       ]
@@ -806,7 +807,7 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleBlock',
           name: '@unknown',
           prelude: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               { type: 'Keyword', src: 'foo' },
               { type: 'Dimension', src: '42' },
@@ -1934,15 +1935,14 @@ describe('Less AST grammar facts', () => {
           type: 'VariableDeclaration',
           name: 'trivia',
           value: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               { type: 'Dimension', src: '12px' },
               { type: 'Keyword', src: '/' },
               { type: 'Dimension', src: '1.5' },
               { type: 'Keyword', src: '/' },
               { type: 'Dimension', src: '3' }
-            ],
-            separators: [' ', ' ', ' ', ' ']
+            ]
           }
         },
         {
@@ -1989,6 +1989,16 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
+
+    /* Authored boundary runs live in the layout side table, NOT on the node: the
+     * `Sequence` shape is `{ type, parts }` and nothing else. */
+    const trivia = (result.value as Stylesheet).rules[0];
+    if (trivia?.type !== 'VariableDeclaration') {
+      throw new TypeError('expected a VariableDeclaration');
+    }
+    expect(trivia.value).not.toHaveProperty('separators');
+    expect(valueLayoutOf(trivia)).toBeUndefined();
+    expect(valueLayoutOf(trivia.value)).toEqual([' ', ' ', ' ', ' ']);
 
     const malformed = run(
       lessGrammar.Document,
@@ -4332,7 +4342,7 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleStatement',
           name: '@namespace',
           prelude: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               { type: 'Keyword', src: 'foo' },
               {
@@ -4493,7 +4503,7 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleStatement',
           name: '@namespace',
           prelude: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               {
                 type: 'Interpolation',
@@ -4875,13 +4885,13 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleBlock',
           name: '@supports',
           prelude: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               {
                 type: 'Block',
                 delimiter: 'paren',
                 value: {
-                  type: 'SpacedValue',
+                  type: 'Sequence',
                   parts: [
                     {
                       type: 'Block',
@@ -4948,7 +4958,7 @@ describe('Less AST grammar facts', () => {
       type: 'AtRuleBlock',
       name: '@supports',
       prelude: {
-        type: 'SpacedValue',
+        type: 'Sequence',
         parts: [
           {
             type: 'Block',
@@ -4956,7 +4966,7 @@ describe('Less AST grammar facts', () => {
             value: {
               type: 'Operation',
               operator: ':',
-              right: { type: 'SpacedValue' }
+              right: { type: 'Sequence' }
             }
           },
           { type: 'Keyword', src: 'or' },
@@ -4966,7 +4976,7 @@ describe('Less AST grammar facts', () => {
             value: {
               type: 'Operation',
               operator: ':',
-              right: { type: 'SpacedValue' }
+              right: { type: 'Sequence' }
             }
           }
         ]
@@ -5001,7 +5011,7 @@ describe('Less AST grammar facts', () => {
             sep: ',',
             value: [
               {
-                type: 'SpacedValue',
+                type: 'Sequence',
                 parts: [
                   { type: 'Keyword', src: 'screen' },
                   { type: 'Keyword', src: 'and' },
@@ -5090,7 +5100,7 @@ describe('Less AST grammar facts', () => {
 
       /*
        * The comparison form used to take the value-position slash group and
-       * reduce `16/9` to a SpacedValue instead of the ratio operation.
+       * reduce `16/9` to a Sequence instead of the ratio operation.
        */
       ['@media (aspect-ratio >= 16/9) { .card { color: red; } }', '>=']
     ] as const) {
@@ -5167,7 +5177,7 @@ describe('Less AST grammar facts', () => {
               {
                 type: 'Operation',
                 operator: ':',
-                right: { type: 'SpacedValue' }
+                right: { type: 'Sequence' }
               }
             ]
           }
@@ -5308,7 +5318,7 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleBlock',
           name: '@media',
           prelude: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               { type: 'Keyword', src: 'not' },
               {
@@ -5343,7 +5353,7 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleBlock',
           name: '@container',
           prelude: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               {
                 type: 'Block',
@@ -5355,7 +5365,7 @@ describe('Less AST grammar facts', () => {
                 type: 'Block',
                 delimiter: 'paren',
                 value: {
-                  type: 'SpacedValue',
+                  type: 'Sequence',
                   parts: [
                     { type: 'Keyword', src: 'not' },
                     {
@@ -5435,7 +5445,7 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleBlock',
           name: '@container',
           prelude: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               {
                 type: 'Interpolation',
@@ -6143,7 +6153,7 @@ describe('Less AST grammar facts', () => {
                 {
                   value: [
                     { type: 'Url' },
-                    { type: 'SpacedValue' },
+                    { type: 'Sequence' },
                     { type: 'Keyword', src: 'no-repeat' }
                   ]
                 }

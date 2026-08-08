@@ -30,7 +30,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, forNode, funcCall, ifNode, interpolation, keyword, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode } from '@jesscss/core/ast';
+import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -511,7 +511,7 @@ function isValueNode(value: unknown): value is ValueNode {
       || value.type === 'Operation'
       || value.type === 'Condition'
       || value.type === 'Interpolation'
-      || value.type === 'SpacedValue'
+      || value.type === 'Sequence'
       || value.type === 'List'
       || value.type === 'Block'
       || value.type === 'Url'
@@ -532,17 +532,17 @@ function valueSlot(value: ValueSlot): ValueSlot {
   if (isValueSlotArray(value)) {
     return value;
   }
-  if (value.type === 'SpacedValue') {
+  if (value.type === 'Sequence') {
     return value.parts;
   }
-  if (value.type === 'Block' && isSpacedValue(value.value)) {
+  if (value.type === 'Block' && isSequence(value.value)) {
     return { ...value, value: value.value.parts };
   }
   return value;
 }
 
-function isSpacedValue(value: ValueSlot): value is SpacedValue {
-  return isValueNode(value) && value.type === 'SpacedValue';
+function isSequence(value: ValueSlot): value is Sequence {
+  return isValueNode(value) && value.type === 'Sequence';
 }
 
 function isValueSlotValue(value: unknown): value is ValueSlot {

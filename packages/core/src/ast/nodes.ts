@@ -28,7 +28,7 @@
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
 import type { CallArg } from './mixin-dispatch.js'; // [guards]
-import { NO_SPAN, type BodySpanSlots, type SpanSlots, type TriviaSlot } from './provenance.js';
+import { NO_SPAN, withValueLayout, type BodySpanSlots, type SpanSlots, type TriviaSlot } from './provenance.js';
 
 /* ------------------------------------------------------------------ values */
 
@@ -119,14 +119,16 @@ export interface Dimension {
 /**
  * An internal structured space value, e.g. `1px solid black`. Ordinary
  * declaration/value adjacency is a raw recursive `ValueSlot[]`, not this
- * wrapper. `separators` is retained only when this non-value/prelude shape
- * needs authored boundary runs—including comments, line breaks, or
- * continuation indentation—to survive serialization.
+ * wrapper.
+ *
+ * The shape is `{ parts }` and nothing else: authored boundary runs (comments,
+ * line breaks, continuation indentation) live in the `withValueLayout` side
+ * table keyed by this node, exactly as they do for a raw `ValueSlot[]` and a
+ * `List`. A value node never grows a `separators` array of its own.
  */
-export interface SpacedValue {
-  readonly type: 'SpacedValue';
+export interface Sequence {
+  readonly type: 'Sequence';
   readonly parts: ValueNode[];
-  readonly separators?: readonly string[];
 }
 
 /**
@@ -195,18 +197,6 @@ export interface Lookup extends SpanSlots {
    * their own.
    */
   readonly raw: string;
-}
-
-/**
- * A value template: literal text and `@var` references concatenated with NO
- * separator (the literal parts already carry their own spacing). This is how a
- * static value that embeds variable references is represented — e.g.
- * `1px solid @c` => Sequence[Any('1px solid '), VariableReference('c')]. Reference
- * substitution only (this rung): no arithmetic, no function evaluation.
- */
-export interface Sequence {
-  readonly type: 'Sequence';
-  readonly parts: ValueNode[];
 }
 
 /**
@@ -452,10 +442,9 @@ export type ValueNode =
   | Url
   | SelectorCapture
   | Dimension
-  | SpacedValue
+  | Sequence
   | List
   | Lookup
-  | Sequence
   | Important
   | Operation
   | FunctionCall
@@ -1140,9 +1129,15 @@ export const isLiteralNode = (n: ValueNode): n is Keyword | Color | Dimension | 
  *  Such a literal binds BY REFERENCE across a mixin boundary (its type survives). */
 export const isTypedLiteral = (n: ValueNode): boolean => isLiteralNode(n) && n.type !== 'Any';
 
-export const spaced = (parts: ValueNode[], separators?: readonly string[]): SpacedValue => {
-  const retained = separators?.some(separator => /[\n\r]/u.test(separator)) ? separators : undefined;
-  return retained === undefined ? { type: 'SpacedValue', parts } : { type: 'SpacedValue', parts, separators: retained };
+/**
+ * A space-run {@link Sequence}. Authored boundary runs are retained ONLY when one
+ * carries a line break — the emitter's default join is a single space, so any
+ * other run is an implied fact — and they are retained OUT OF BAND, in the same
+ * `withValueLayout` side table a raw `ValueSlot[]` and a `List` already use.
+ */
+export const spaced = (parts: ValueNode[], separators?: readonly string[]): Sequence => {
+  const node: Sequence = { type: 'Sequence', parts };
+  return separators?.some(separator => /[\n\r]/u.test(separator)) ? withValueLayout(node, separators) : node;
 };
 export const list = (
   value: ValueSlot[],
@@ -1312,11 +1307,7 @@ export const declarationReference = (raw: string = '$'): Lookup =>
 /** One lookup step in a {@link Reference} chain (dot or bracket — one node). */
 export const lookupStep = (kind: LookupKind, name: string | ValueNode | number, indexBase?: 0 | 1): LookupStep =>
   indexBase === undefined ? { type: 'LookupStep', kind, name } : { type: 'LookupStep', kind, name, indexBase };
-export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
 export const important = (value: ValueSlot): Important => ({ type: 'Important', value });
-
-/** @deprecated Renamed to {@link sequence}; kept one cycle for straddling callers. */
-export const concat = sequence;
 export const operation = (operator: string, left: ValueNode, right: ValueNode): Operation =>
   ({ type: 'Operation', operator, left, right, _s: NO_SPAN, _e: NO_SPAN });
 export const funcCall = (name: string, args: ValueSlot[], modern = false): FunctionCall =>

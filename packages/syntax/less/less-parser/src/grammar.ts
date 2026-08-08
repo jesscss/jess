@@ -698,7 +698,7 @@ function mixinArgumentSource(value: CallValue): string {
     case 'FunctionCall': return `${node.name}(${node.args.map(mixinArgumentSource).join(', ')})`;
     case 'Block': return `${node.escaped ? '~' : ''}${node.delimiter === 'square' ? '[' : '('}${mixinArgumentSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     case 'Operation': return `${mixinArgumentSource(node.left)} ${node.operator} ${mixinArgumentSource(node.right)}`;
-    case 'SpacedValue': return node.parts.map(mixinArgumentSource).join(' ');
+    case 'Sequence': return node.parts.map(mixinArgumentSource).join(' ');
     case 'List': return node.value.map(mixinArgumentSource).join(node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ');
     case 'Important': return `${mixinArgumentSource(node.value)} !important`;
     default: throw new TypeError(`Less mixin-reference raw source cannot represent ${node.type}.`);
@@ -1149,7 +1149,7 @@ function layoutFromTriviaBoundaries(
   return separators;
 }
 
-/** Space-join value/terminal children into a single SpacedValue. */
+/** Space-join value/terminal children into a single Sequence. */
 function spacedFromValueChildren(
   children: readonly unknown[],
   triviaLog: readonly number[] = [],
@@ -1177,7 +1177,7 @@ function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
 }
 
 /** Space-separated query clause reduction: keyword/value children join into a
- * SpacedValue, and a single value collapses to itself. */
+ * Sequence, and a single value collapses to itself. */
 function queryClauseReducer(
   children: readonly unknown[],
   triviaLog: readonly number[] = [],
@@ -1276,7 +1276,7 @@ function isValueNode(value: unknown): value is ValueNode {
     case 'Dimension':
     case 'Url':
     case 'FunctionCall':
-    case 'SpacedValue':
+    case 'Sequence':
     case 'List':
     case 'Operation':
     case 'Condition':
@@ -1306,17 +1306,17 @@ function valueSlot(value: ValueSlot): ValueSlot {
   if (Array.isArray(value)) {
     return value;
   }
-  if (isSpacedValue(value)) {
+  if (isSequence(value)) {
     return value.parts;
   }
-  if (isValueNode(value) && value.type === 'Block' && isSpacedValue(value.value)) {
+  if (isValueNode(value) && value.type === 'Block' && isSequence(value.value)) {
     return { ...value, value: value.value.parts };
   }
   return value;
 }
 
-function isSpacedValue(value: ValueSlot): value is Extract<ValueNode, { type: 'SpacedValue' }> {
-  return isValueNode(value) && value.type === 'SpacedValue';
+function isSequence(value: ValueSlot): value is Extract<ValueNode, { type: 'Sequence' }> {
+  return isValueNode(value) && value.type === 'Sequence';
 }
 
 function variableValueSlot(value: unknown): ValueSlot {
@@ -1331,17 +1331,24 @@ function variableValueSlot(value: unknown): ValueSlot {
     const hasSlash = slot.some(part =>
       isValueNode(part) && (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
     if (hasSlash && layout?.some(separator => separator.length > 0)) {
-      return { type: 'SpacedValue', parts: slot, separators: layout };
+      const parts: ValueNode[] = [];
+      for (const part of slot) {
+        if (!isValueNode(part)) {
+          return slot;
+        }
+        parts.push(part);
+      }
+      return withValueLayout(spaced(parts), layout);
     }
     return slot;
   }
-  if (isSpacedValue(slot)) {
+  if (isSequence(slot)) {
     const preservedDivision = slot.parts.some(part =>
       (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
-    const authoredBoundary = slot.separators?.some(separator => separator.length > 0) === true;
+    const authoredBoundary = valueLayoutOf(slot)?.some(separator => separator.length > 0) === true;
     return preservedDivision && authoredBoundary ? slot : slot.parts;
   }
-  if (isValueNode(slot) && slot.type === 'Block' && isSpacedValue(slot.value)) {
+  if (isValueNode(slot) && slot.type === 'Block' && isSequence(slot.value)) {
     const preservedDivision = slot.value.parts.some(part =>
       (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
     return preservedDivision ? slot : { ...slot, value: slot.value.parts };
@@ -1941,7 +1948,7 @@ function functionConditionSource(value: ValueSlot): string {
     case 'FunctionCall': return `${node.name}(${node.args.map(functionConditionSource).join(', ')})`;
     case 'Operation': return `${functionConditionSource(node.left)} ${node.operator} ${functionConditionSource(node.right)}`;
     case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
-    case 'SpacedValue': return node.parts.map(functionConditionSource).join(' ');
+    case 'Sequence': return node.parts.map(functionConditionSource).join(' ');
     case 'Condition': return node.src;
     default: throw new TypeError(`Less function condition cannot preserve ${node.type}.`);
   }
@@ -3316,7 +3323,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // both left-associative.  Top-level declarations deliberately exclude `/`:
   // with Less's default parens-division mode it is a preserved slash group, not
   // an eager division Operation.  The existing serializer already recognizes
-  // that SpacedValue shape and reinterprets it only inside calc().
+  // that Sequence shape and reinterprets it only inside calc().
   const MathProduct = node(
     'MathProduct',
     noTrivia(sequence(g.MathAtom, many(sequence(productOperator, g.MathAtom)))),
@@ -3365,17 +3372,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         }
       }
       const separators = slashBoundaries.flatMap(boundary => [boundary.before, boundary.after]);
-      return {
-        type: 'SpacedValue',
-        parts,
-        separators: separators.length === parts.length - 1
+      return withValueLayout(
+        spaced(parts),
+        separators.length === parts.length - 1
           ? separators
           : Array.from({ length: parts.length - 1 }, () => '')
-      };
+      );
     }
   );
   // Value pieces are separated by grammar-owned whitespace. Keeping that token
-  // here is what lets canonical SpacedValue retain multiline CSS layout without
+  // here is what lets a canonical Sequence retain multiline CSS layout without
   // scanning/re-splitting a completed declaration value later.
   // Left-factored `TopSum (/ TopSum)*`: the value-piece choice used to try
   // `PreservedDivision` (a full `TopSum` + REQUIRED slash tail) and, on the
@@ -3383,7 +3389,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // same position (the two arms share `TopSum`'s first-set, so the `choice` is
   // not disjoint and cannot dispatch past the redundant descent). Parsing
   // `TopSum` once and taking an OPTIONAL slash tail yields byte-identical values
-  // — a bare `TopSum` when no slash follows, the same `SpacedValue` when one
+  // — a bare `TopSum` when no slash follows, the same `Sequence` when one
   // does — without the second full value descent per non-slash piece.
   const topSumMaybeDivision = node(
     'TopSumMaybeDivision',
@@ -3407,13 +3413,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         }
       }
       const separators = slashBoundaries.flatMap(boundary => [boundary.before, boundary.after]);
-      return {
-        type: 'SpacedValue',
-        parts,
-        separators: separators.length === parts.length - 1
+      return withValueLayout(
+        spaced(parts),
+        separators.length === parts.length - 1
           ? separators
           : Array.from({ length: parts.length - 1 }, () => '')
-      };
+      );
     }
   );
   const valuePiece = choice(g.UnicodeRange, topSumMaybeDivision, literal('/'), literal('-'), literal('%'));
@@ -3737,7 +3742,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // A lone line break after `:` is ordinary parser layout and canonicalizes
       // back to `: value`. Preserve the declaration break only when the value
       // itself carries multiline separator facts (grid-area style output).
-      const layout = Array.isArray(value) ? valueLayoutOf(value) : isSpacedValue(value) ? value.separators : undefined;
+      const layout = Array.isArray(value) || isSequence(value) ? valueLayoutOf(value) : undefined;
       const valueOnNewLine = (valueGap.includes('\n') || valueGap.includes('\r'))
         && layout?.some(separator => separator.includes('\n') || separator.includes('\r')) === true;
       if (merge !== null && merge !== ',' && merge !== ' ') {
@@ -4727,7 +4732,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `<number> [ / <number> ]?` — as in `(aspect-ratio >= 16/9)`. The colon form
   // already folds that slash into a typed `/` Operation through its math value;
   // the comparison and range forms took the value-position leaf, where Less's
-  // `parens-division` slash group turned the same ratio into a SpacedValue. Fold
+  // `parens-division` slash group turned the same ratio into a Sequence. Fold
   // it here so every feature form — and every dialect — carries one ratio shape.
   // `style(--x: …)` keeps QueryValue above: that payload is a
   // declaration, so its slash stays a value-position slash group.

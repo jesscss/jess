@@ -155,7 +155,6 @@ function valueUsesDefault(v: ValueSlot): boolean {
     case 'Operation':
       return valueUsesDefault(v.left) || valueUsesDefault(v.right);
     case 'Sequence':
-    case 'SpacedValue':
       return v.parts.some(valueUsesDefault);
     case 'List':
       return v.value.some(valueUsesDefault);

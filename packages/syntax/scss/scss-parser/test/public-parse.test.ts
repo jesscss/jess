@@ -386,7 +386,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         target: { type: 'Quoted', src: '"a.css"', value: 'a.css', quote: '"', escaped: false },
         alias: null,
         tail: {
-          type: 'SpacedValue',
+          type: 'Sequence',
           parts: [
             { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'foo' }], modern: false },
             { type: 'Keyword', src: 'screen' }
@@ -439,7 +439,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(layered).toMatchObject({
       rules: [{
         tail: {
-          type: 'SpacedValue', parts: [
+          type: 'Sequence', parts: [
             { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
             { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
             { type: 'Keyword', src: 'screen' }
@@ -470,14 +470,14 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet', rules: [{
         type: 'ImportAtRule',
         tail: {
-          type: 'SpacedValue', parts: [
+          type: 'Sequence', parts: [
             { type: 'FunctionCall', name: 'layer' },
             { type: 'FunctionCall', name: 'supports' },
             {
               type: 'List', sep: ',', value: [
-                { type: 'SpacedValue', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren' }] },
+                { type: 'Sequence', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren' }] },
                 { type: 'Block', delimiter: 'paren', value: { src: 'color' } },
-                { type: 'SpacedValue', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren' }] }
+                { type: 'Sequence', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren' }] }
               ]
             }
           ]
@@ -488,7 +488,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       css: '@import "theme.css" layer(tokens) supports((display : grid)) only screen and (min-width: 1px), (color), not (color: red);\n'
     });
     expect(parse('@import "theme.css" (color) or (monochrome);')).toMatchObject({
-      rules: [{ type: 'ImportAtRule', tail: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren' }, { src: 'or' }, { type: 'Block', delimiter: 'paren' }] } }]
+      rules: [{ type: 'ImportAtRule', tail: { type: 'Sequence', parts: [{ type: 'Block', delimiter: 'paren' }, { src: 'or' }, { type: 'Block', delimiter: 'paren' }] } }]
     });
 
     /* See the matching note in ast-grammar.test.ts for why three entries left. */

@@ -554,7 +554,6 @@ function walkNode(
     case 'Url':
       walkNode(node.value, hooks, 'value.url.value', node, 0, depth + 1);
       break;
-    case 'SpacedValue':
     case 'Sequence':
       for (let i = 0; i < node.parts.length; i++) {
         walkNode(node.parts[i]!, hooks, 'value.parts', node, i, depth + 1);

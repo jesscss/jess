@@ -268,7 +268,7 @@ describe('public CSS parse()', () => {
         type: 'AtRuleBlock',
         name: '@container',
         prelude: {
-          type: 'SpacedValue',
+          type: 'Sequence',
           parts: [
             { type: 'Keyword', src: 'scroll-state' },
             { type: 'Block', delimiter: 'paren' }

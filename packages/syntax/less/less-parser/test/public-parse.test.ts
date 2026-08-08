@@ -2382,12 +2382,12 @@ describe('public Less parse()', () => {
           type: 'AtRuleBlock',
           name: '@supports',
           prelude: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               {
                 type: 'Block',
                 delimiter: 'paren',
-                value: { type: 'SpacedValue' }
+                value: { type: 'Sequence' }
               },
               { type: 'Keyword', src: 'and' },
               {
@@ -2424,7 +2424,7 @@ describe('public Less parse()', () => {
             sep: ',',
             value: [
               {
-                type: 'SpacedValue',
+                type: 'Sequence',
                 parts: [
                   { type: 'Keyword', src: 'only' },
                   { type: 'Keyword', src: 'screen' },
@@ -2444,7 +2444,7 @@ describe('public Less parse()', () => {
           type: 'AtRuleBlock',
           name: '@container',
           prelude: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               { type: 'Keyword', src: 'sidebar' },
               {
@@ -2550,7 +2550,7 @@ describe('public Less parse()', () => {
           type: 'AtRuleBlock',
           name: '@media',
           prelude: {
-            type: 'SpacedValue',
+            type: 'Sequence',
             parts: [
               { type: 'Interpolation' },
               { type: 'Keyword', src: 'and' },

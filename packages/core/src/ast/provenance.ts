@@ -40,7 +40,7 @@ export type AstSourceSpan = Readonly<{ start: number; end: number }>;
  * evidence that the load sites are not megamorphic today, not a guarantee.
  *
  * That measurement is why the slots stop where they do. `Dimension`, `Keyword`,
- * `Color`, `Quoted`, `List`, `SpacedValue`, and `Url` — 6,088 nodes, 95.1 KiB
+ * `Color`, `Quoted`, `List`, `Sequence`, and `Url` — 6,088 nodes, 95.1 KiB
  * per document at 16 B/node — NEVER receive a span: no path in any of the four
  * grammars passes one to `withSourceSpan`/`withBodySpan`, so slotting them
  * would buy no shape and cost real memory. Do not add them "for symmetry";
@@ -131,13 +131,14 @@ function gapHasCommentKind(gap: ParserRootTriviaGap): boolean {
   return COMMENT_TRIVIA_KINDS.some(kind => gap.hasKind?.(kind) === true);
 }
 
-/** Authored separator/trivia facts for a raw ValueSlot array.
+/** Authored separator/trivia facts for a raw ValueSlot array, a `List`, or a
+ * `Sequence`.
  *
- * ValueSlot deliberately stays a plain readonly array in the public AST.  A
- * parser may still retain each exact authored boundary run—ordinary spaces or
- * tabs, comments, line breaks, and continuation indentation—in this side
- * table, rather than adding a dialect-specific field to the array or turning
- * the array back into a SpacedValue node.
+ * ValueSlot deliberately stays a plain readonly array in the public AST, and no
+ * value node carries a `separators` field.  A parser may still retain each exact
+ * authored boundary run—ordinary spaces or tabs, comments, line breaks, and
+ * continuation indentation—in this side table, rather than adding a
+ * dialect-specific field to the array or to the node.
  */
 export type ValueLayout = readonly string[];
 
@@ -427,7 +428,8 @@ export function bodySpanOf(node: object): AstSourceSpan | undefined {
   return { start, end: slots._be ?? NO_SPAN };
 }
 
-/** Retain authored separator/trivia runs for a raw ValueSlot array or List fact.
+/** Retain authored separator/trivia runs for a raw ValueSlot array, a List, or a
+ * Sequence.
  *
  * The carrier deliberately remains out-of-band: neither recursive ValueSlot
  * arrays nor the public List shape grows a dialect-specific `separators` field.
@@ -454,10 +456,15 @@ export function withValueLayout<T extends object>(value: T, separators: ValueLay
 }
 
 function hasTopLevelSlash(value: object): boolean {
-  if (!Array.isArray(value)) {
+  /* The same preserved-division fact reaches this table in two spellings: the raw
+   * `ValueSlot[]` a declaration value keeps, and the `Sequence` a variable
+   * declaration / value piece wraps it in. Both must keep the boundary explicit. */
+  const own: unknown = 'parts' in value ? value.parts : undefined;
+  const parts = Array.isArray(value) ? value : Array.isArray(own) ? own : null;
+  if (parts === null) {
     return false;
   }
-  for (const part of value) {
+  for (const part of parts) {
     if (
       typeof part === 'object'
       && part !== null
@@ -471,7 +478,7 @@ function hasTopLevelSlash(value: object): boolean {
   return false;
 }
 
-/** Read parser-authored separators for a raw ValueSlot array. */
+/** Read parser-authored separators for a raw ValueSlot array, List, or Sequence. */
 export function valueLayoutOf(value: object): ValueLayout | undefined {
   return layouts.get(value);
 }
