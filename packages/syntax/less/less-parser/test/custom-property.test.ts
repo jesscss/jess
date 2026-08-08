@@ -102,7 +102,7 @@ describe('Less custom properties', () => {
               name: '--color',
               value: {
                 type: 'Interpolation',
-                parts: [{ ref: { type: 'VariableReference', name: 'value', lookup: 'scoped' }, unquote: false }]
+                parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'scoped' }, unquote: false }]
               }
             },
             {
@@ -112,7 +112,7 @@ describe('Less custom properties', () => {
                 type: 'Interpolation',
                 parts: [
                   { lit: 'solid ' },
-                  { ref: { type: 'VariableReference', name: 'value', lookup: 'scoped' }, unquote: false }
+                  { ref: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'scoped' }, unquote: false }
                 ]
               }
             }

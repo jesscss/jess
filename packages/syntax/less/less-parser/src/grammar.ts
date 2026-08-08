@@ -28,8 +28,8 @@ import {
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, assignment, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
+import { any, assignment, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +37,10 @@ import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInline
 // ---------------------------------------------------------------------------
 
 type Token = { readonly value: string };
+/** A `Lookup` whose target is named literally — the `@name` / `$prop` shapes. */
+type VarRef = Lookup & { readonly name: string };
+/** A `Lookup` whose target is named by a nested node — Less `@@name`. */
+type IndirectRef = Lookup & { readonly name: ValueNode };
 type ChildContainer = { readonly rules: readonly unknown[] };
 type InterpolationFact = { readonly ref: ValueNode; readonly src: string };
 type InterpolationAccessorFact = { readonly key: ValueNode | number; readonly keyKind: 'var' | 'prop' | 'index'; readonly src: string };
@@ -49,7 +53,7 @@ type MixinGuard = NonNullable<MixinDefinition['guard']>;
 type MixinCallArgument = MixinCall['args'][number];
 type CallValue = ValueSlot | MixinCall;
 type MixinInteriorItem =
-  | { readonly kind: 'binding'; readonly reference: VariableReference; readonly default?: CallValue; readonly rest: boolean }
+  | { readonly kind: 'binding'; readonly reference: VarRef; readonly default?: CallValue; readonly rest: boolean }
   | { readonly kind: 'anonymous-rest' }
   | { readonly kind: 'positional'; readonly value: CallValue };
 type MixinInteriorFact = {
@@ -84,7 +88,7 @@ type RulesetTailFact = {
   readonly bodySpan?: SourceSpan;
   readonly terminated?: true;
 };
-type CustomValuePart = string | InterpolationFact | VariableReference | readonly CustomValuePart[];
+type CustomValuePart = string | InterpolationFact | Lookup | readonly CustomValuePart[];
 type GeneralEnclosedNameFact = { readonly name: string };
 type FunctionConditionFact = {
   readonly guard: MixinGuard;
@@ -104,9 +108,9 @@ type LessRules = {
   PluginDirective: Combinator<Plugin>;
   ValueBlockDeclaration: Combinator<VariableDeclaration>;
   ValueBlock: Combinator<ValueNode>;
-  IndirectVariableReference: Combinator<VarIndirect>;
+  IndirectVariableReference: Combinator<Lookup>;
   VariableReferenceChain: Combinator<ValueNode>;
-  VariableReference: Combinator<VariableReference>;
+  VariableReference: Combinator<Lookup>;
   PropertyReference: Combinator<ValueNode>;
   VariableInterpolation: Combinator<InterpolationFact>;
   PropertyInterpolation: Combinator<InterpolationFact>;
@@ -603,29 +607,35 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
     && (isValueSlotValue(value.value) || isMixinCall(value.value));
 }
 
-function isVarRef(value: unknown): value is VariableReference {
+function isVarRef(value: unknown): value is VarRef {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
-    && value.type === 'VariableReference'
+    && value.type === 'Lookup'
+    && 'kind' in value
+    && value.kind === 'var'
     && 'name' in value
     && typeof value.name === 'string';
 }
 
-function isVarIndirect(value: unknown): value is VarIndirect {
+function isVarIndirect(value: unknown): value is IndirectRef {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
-    && value.type === 'VarIndirect'
-    && 'nameRef' in value
-    && isValueNode(value.nameRef);
+    && value.type === 'Lookup'
+    && 'kind' in value
+    && value.kind === 'var'
+    && 'name' in value
+    && isValueNode(value.name);
 }
 
-function isPropRef(value: unknown): value is ValueNode & { readonly type: 'PropertyReference'; readonly name: string; readonly raw: string } {
+function isPropRef(value: unknown): value is VarRef {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
-    && value.type === 'PropertyReference'
+    && value.type === 'Lookup'
+    && 'kind' in value
+    && value.kind === 'prop'
     && 'name' in value
     && typeof value.name === 'string'
     && 'raw' in value
@@ -661,7 +671,7 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
   for (const child of accessors) {
     const accessor = requireInterpolationAccessorFact(child);
     raw += `[${accessor.src}]`;
-    steps.push({ type: 'BracketLookup', key: accessor.key, keyKind: accessor.keyKind });
+    steps.push({ type: 'LookupStep', kind: accessor.keyKind, name: accessor.key });
   }
   return reference(base, steps, raw);
 }
@@ -681,9 +691,9 @@ function mixinArgumentSource(value: CallValue): string {
   switch (node.type) {
     case 'Keyword': case 'Color': case 'Dimension': case 'Any': case 'SelectorCapture': return node.src;
     case 'Quoted': return node.src;
-    case 'VariableReference': return `@${node.name}`;
-    case 'PropertyReference': return node.raw;
-    case 'VarIndirect': return `@${mixinArgumentSource(node.nameRef)}`;
+    case 'Lookup': return node.kind === 'var'
+      ? `@${typeof node.name === 'string' ? node.name : mixinArgumentSource(node.name)}`
+      : node.raw;
     case 'Reference': return node.raw;
     case 'FunctionCall': return `${node.name}(${node.args.map(mixinArgumentSource).join(', ')})`;
     case 'Block': return `${node.escaped ? '~' : ''}${node.delimiter === 'square' ? '[' : '('}${mixinArgumentSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
@@ -1272,8 +1282,7 @@ function isValueNode(value: unknown): value is ValueNode {
     case 'Condition':
     case 'Assignment':
     case 'Block':
-    case 'PropertyReference':
-    case 'VarIndirect':
+    case 'Lookup':
     case 'Reference':
     case 'Interpolation':
     case 'Important':
@@ -1286,8 +1295,6 @@ function isValueNode(value: unknown): value is ValueNode {
       return isQuoted(value);
     case 'Any':
       return isAny(value);
-    case 'VariableReference':
-      return isVarRef(value);
     default:
       return false;
   }
@@ -1930,7 +1937,9 @@ function functionConditionSource(value: ValueSlot): string {
   const node = requireValueNode(value);
   switch (node.type) {
     case 'Keyword': case 'Color': case 'Quoted': case 'Any': case 'Dimension': return node.src;
-    case 'VariableReference': return `@${node.name}`;
+    case 'Lookup': return node.kind === 'var'
+      ? `@${typeof node.name === 'string' ? node.name : functionConditionSource(node.name)}`
+      : node.raw;
     case 'FunctionCall': return `${node.name}(${node.args.map(functionConditionSource).join(', ')})`;
     case 'Operation': return `${functionConditionSource(node.left)} ${node.operator} ${functionConditionSource(node.right)}`;
     case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
@@ -2405,7 +2414,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     (children, _fields, span) => {
       const name = requireSupportedVariableName(children[1], span.start, span.end);
       return withSourceSpan(
-        varIndirect(variableReference(name, 'scoped'), 'scoped'),
+        variableReference(variableReference(name, 'scoped'), 'scoped', `@@${name}`),
         span
       );
     }
@@ -2470,7 +2479,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       (children): InterpolationAccessorFact => {
         const key = children[1];
         if (isVarIndirect(key)) {
-          const nameRef = key.nameRef;
+          const nameRef = key.name;
           if (!isVarRef(nameRef)) {
             throw new TypeError('Less indirect map key must retain its variable reference.');
           }
@@ -3913,7 +3922,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.InterpolationAccessor,
       (children): ReferenceTailFact => {
         const accessor = requireInterpolationAccessorFact(children[0]);
-        return { step: { type: 'BracketLookup', key: accessor.key, keyKind: accessor.keyKind }, src: `[${accessor.src}]` };
+        return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
       }
     ),
     node(
@@ -3921,7 +3930,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(literal('.'), g.VariableNameToken),
       (children): ReferenceTailFact => {
         const name = requireToken(children[1]).value;
-        return { step: { type: 'DotLookup', name }, src: `.${name}` };
+        return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
       }
     ),
     node(
@@ -3963,10 +3972,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       noTrivia(sequence(routed(), g.IndirectVariableReference, literal(']'))),
       (children) => {
         const key = requireValueNode(children[1]);
-        if (!isVarIndirect(key) || !isVarRef(key.nameRef)) {
+        if (!isVarIndirect(key) || !isVarRef(key.name)) {
           throw new TypeError('Less indirect map key must retain its variable reference.');
         }
-        return { key, keyKind: 'var', src: `@@${key.nameRef.name}` };
+        return { key, keyKind: 'var', src: `@@${key.name.name}` };
       }
     ),
     node(
@@ -4005,7 +4014,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     InterpolationLastAccessorFromRouted,
     (children): ReferenceTailFact => {
       const accessor = requireInterpolationAccessorFact(children[0]);
-      return { step: { type: 'BracketLookup', key: accessor.key, keyKind: accessor.keyKind }, src: `[${accessor.src}]` };
+      return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
     }
   );
   const ReferenceBracketTailFromRouted = node(
@@ -4017,7 +4026,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children): ReferenceTailFact => {
       const accessor = requireInterpolationAccessorFact(children[0]);
-      return { step: { type: 'BracketLookup', key: accessor.key, keyKind: accessor.keyKind }, src: `[${accessor.src}]` };
+      return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
     }
   );
   const ReferenceDotTailFromRouted = node(
@@ -4025,7 +4034,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(routed(), g.VariableNameToken),
     (children): ReferenceTailFact => {
       const name = requireToken(children[1]).value;
-      return { step: { type: 'DotLookup', name }, src: `.${name}` };
+      return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
     }
   );
   const ReferenceCallTailFromRouted = node(

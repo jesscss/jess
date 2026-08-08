@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
-import { decl, dimension, forNode, ifNode, keyword, mixinCall, mixinDef, rule, spaced, stylesheet, varIndirect, variableDeclaration, variableReference } from '../nodes.js';
+import { decl, dimension, forNode, ifNode, keyword, mixinCall, mixinDef, rule, spaced, stylesheet, variableDeclaration, variableReference } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
@@ -11,7 +11,7 @@ describe('R3 live and scoped variable stores', () => {
   it('keeps live reassignment separate from the immutable scoped declaration stack', () => {
     const document = stylesheet([
       variableDeclaration('tone', keyword('navy'), { mode: 'declare' }),
-      variableDeclaration('tone', keyword('blue'), { mode: 'reassign', lookup: 'live' }),
+      variableDeclaration('tone', keyword('blue'), { mode: 'reassign', scope: 'live' }),
       rule('.card', [
         decl('live', variableReference('tone', 'live')),
         decl('scoped', variableReference('tone', 'scoped'))
@@ -23,7 +23,7 @@ describe('R3 live and scoped variable stores', () => {
 
   it('targets conditional assignment at the requested lookup store', () => {
     const live = stylesheet([
-      variableDeclaration('tone', keyword('navy'), { mode: 'if-absent', lookup: 'live' }),
+      variableDeclaration('tone', keyword('navy'), { mode: 'if-absent', scope: 'live' }),
       variableDeclaration('tone', keyword('blue'), { mode: 'declare' }),
       rule('.live', [
         decl('live', variableReference('tone', 'live')),
@@ -31,7 +31,7 @@ describe('R3 live and scoped variable stores', () => {
       ])
     ]);
     const scoped = stylesheet([
-      variableDeclaration('tone', keyword('navy'), { mode: 'if-absent', lookup: 'scoped' }),
+      variableDeclaration('tone', keyword('navy'), { mode: 'if-absent', scope: 'scoped' }),
       variableDeclaration('tone', keyword('blue'), { mode: 'declare' }),
       rule('.scoped', [
         decl('live', variableReference('tone', 'live')),
@@ -46,7 +46,7 @@ describe('R3 live and scoped variable stores', () => {
   it('updates only the requested store for scoped reassignment and excludes a declaration while evaluating it', () => {
     const document = stylesheet([
       variableDeclaration('tone', keyword('navy'), { mode: 'declare' }),
-      variableDeclaration('tone', keyword('blue'), { mode: 'reassign', lookup: 'scoped' }),
+      variableDeclaration('tone', keyword('blue'), { mode: 'reassign', scope: 'scoped' }),
       variableDeclaration('cycle', keyword('first'), { mode: 'declare' }),
       variableDeclaration('cycle', variableReference('cycle', 'scoped'), { mode: 'declare' }),
       rule('.card', [
@@ -63,10 +63,10 @@ describe('R3 live and scoped variable stores', () => {
     const document = stylesheet([
       variableDeclaration('name', keyword('tone'), { mode: 'declare' }),
       variableDeclaration('tone', keyword('navy'), { mode: 'declare' }),
-      variableDeclaration('tone', keyword('blue'), { mode: 'reassign', lookup: 'live' }),
+      variableDeclaration('tone', keyword('blue'), { mode: 'reassign', scope: 'live' }),
       rule('.card', [
-        decl('live', varIndirect(variableReference('name', 'live'), 'live')),
-        decl('scoped', varIndirect(variableReference('name', 'live'), 'scoped'))
+        decl('live', variableReference(variableReference('name', 'live'), 'live')),
+        decl('scoped', variableReference(variableReference('name', 'live'), 'scoped'))
       ])
     ]);
 
@@ -116,10 +116,10 @@ describe('R3 live and scoped variable stores', () => {
           guard: null,
           rules: [
             variableDeclaration('tone', keyword('blue'), { mode: 'declare' }),
-            variableDeclaration('tone', keyword('navy'), { mode: 'if-absent', lookup: 'live' }),
-            variableDeclaration('tone', keyword('white'), { mode: 'if-absent', lookup: 'scoped' }),
-            variableDeclaration('tone', keyword('green'), { mode: 'reassign', lookup: 'live' }),
-            variableDeclaration('tone', keyword('black'), { mode: 'reassign', lookup: 'scoped' })
+            variableDeclaration('tone', keyword('navy'), { mode: 'if-absent', scope: 'live' }),
+            variableDeclaration('tone', keyword('white'), { mode: 'if-absent', scope: 'scoped' }),
+            variableDeclaration('tone', keyword('green'), { mode: 'reassign', scope: 'live' }),
+            variableDeclaration('tone', keyword('black'), { mode: 'reassign', scope: 'scoped' })
           ]
         }
       ]),

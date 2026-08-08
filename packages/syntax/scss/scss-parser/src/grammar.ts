@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, selectorBranchOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -45,7 +45,7 @@ type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
   VariableDeclaration: Combinator<VariableDeclaration>;
   Comment: Combinator<Comment>;
-  VariableReference: Combinator<VariableReference>;
+  VariableReference: Combinator<Lookup>;
   SassInterpolation: Combinator<Interpolation>;
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
@@ -472,11 +472,13 @@ function requireString(value: unknown): string {
   return value;
 }
 
-function isVarRef(value: unknown): value is VariableReference {
+function isVarRef(value: unknown): value is Lookup {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
-    && value.type === 'VariableReference'
+    && value.type === 'Lookup'
+    && 'kind' in value
+    && value.kind === 'var'
     && 'name' in value
     && typeof value.name === 'string';
 }
@@ -676,7 +678,7 @@ function isValue(value: unknown): value is ValueNode {
   switch (value.type) {
     case 'Quoted':
       return isQuoted(value);
-    case 'VariableReference':
+    case 'Lookup':
       return isVarRef(value);
     case 'Color':
       return isColor(value);
@@ -822,8 +824,8 @@ function requireKeyword(value: unknown): Keyword {
 
 /** The best-effort authored spelling of a value node for a Reference `raw`. */
 function referenceKeyRaw(node: ValueNode): string {
-  if (node.type === 'VariableReference') {
-    return `$${node.name}`;
+  if (node.type === 'Lookup' && node.kind === 'var') {
+    return typeof node.name === 'string' ? `$${node.name}` : node.raw;
   }
   if (node.type === 'Quoted') {
     return node.src;
@@ -838,13 +840,13 @@ function referenceKeyRaw(node: ValueNode): string {
 const MAP_GET_SPELLINGS = new Set(['map-get', 'map.get']);
 
 /** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
- *  whose single BracketLookup step carries the key. A `$var` key selects the
+ *  whose single LookupStep carries the key. A `$var` key selects the
  *  variable-namespace lookup; every other key is a value-equality member lookup
  *  (map keys compare by value, never by position, so `index` is never used). */
 function lowerMapGet(base: ValueNode, key: ValueNode): Reference {
-  const step: ReferenceStep = key.type === 'VariableReference'
-    ? { type: 'BracketLookup', key, keyKind: 'var' }
-    : { type: 'BracketLookup', key, keyKind: 'member' };
+  const step: ReferenceStep = key.type === 'Lookup' && key.kind === 'var'
+    ? { type: 'LookupStep', kind: 'var', name: key }
+    : { type: 'LookupStep', kind: 'member', name: key };
   const baseRaw = base.type === 'Reference' ? base.raw : referenceKeyRaw(base);
   return reference(
     base,
@@ -1271,7 +1273,7 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const doubleQuotedText = regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))*/);
   const singleQuotedText = regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))*/);
-  const VariableReference = node<VariableReference>(
+  const VariableReference = node<Lookup>(
     'VariableReference',
     scssVarSigilName,
     children => variableReference(
@@ -1691,7 +1693,7 @@ const scssFactory = (g: ScssInputRules) => {
 
   /*
    * `ns.$var` is a member READ, not a call, so it lowers to the shared `$[…]`
-   * accessor Reference the same way `map-get` already does — a `DotLookup` step
+   * accessor Reference the same way `map-get` already does — a `member` step
    * would drop the `$` and stop telling a variable member from a property
    * member. The base is the authored namespace token as written: the parser has
    * no binding table and must not invent a `$ns` variable reference. `raw` is
@@ -1708,7 +1710,7 @@ const scssFactory = (g: ScssInputRules) => {
           0,
           dot
         )),
-        [{ type: 'BracketLookup', key: variableReference(raw.slice(dot + 2), 'live'), keyKind: 'var' }],
+        [{ type: 'LookupStep', kind: 'var', name: variableReference(raw.slice(dot + 2), 'live') }],
         raw
       );
     }
@@ -1999,9 +2001,9 @@ const scssFactory = (g: ScssInputRules) => {
         && typeof child.value === 'string'
         && (child.value === '!default' || child.value === '!global'));
       const write = modifier?.value === '!default'
-        ? { mode: 'if-absent' as const, lookup: 'scoped' as const }
+        ? { mode: 'if-absent' as const, scope: 'scoped' as const }
         : modifier?.value === '!global'
-          ? { mode: 'reassign' as const, lookup: 'scoped' as const }
+          ? { mode: 'reassign' as const, scope: 'scoped' as const }
           : { mode: 'declare' as const };
       return variableDeclaration(
         requireToken(children[1]).value,

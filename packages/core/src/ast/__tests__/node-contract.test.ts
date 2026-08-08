@@ -9,7 +9,6 @@ import {
   interpolation,
   keyword,
   selectorCapture,
-  varIndirect,
   reference,
   variableDeclaration,
   variableReference
@@ -65,7 +64,7 @@ describe('AST node contract', () => {
 
     expect(bare(call)).toEqual({
       type: 'Reference',
-      base: { type: 'VariableReference', name: 'content', lookup: 'scoped' },
+      base: { type: 'Lookup', kind: 'var', scope: 'scoped', name: 'content', raw: '@content' },
       steps: [{ type: 'Call', args: [] }],
       raw: '@content()'
     });
@@ -73,12 +72,12 @@ describe('AST node contract', () => {
   });
 
   it('publishes declaration-member references as public AST facts', () => {
-    const member: Node = reference(declarationReference('$'), [{ type: 'DotLookup', name: 'tone' }], '$.tone');
+    const member: Node = reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'tone' }], '$.tone');
 
     expect(bare(member)).toEqual({
       type: 'Reference',
-      base: { type: 'DeclarationReference', raw: '$' },
-      steps: [{ type: 'DotLookup', name: 'tone' }],
+      base: { type: 'Lookup', kind: 'entry', scope: 'scoped', name: '', raw: '$' },
+      steps: [{ type: 'LookupStep', kind: 'member', name: 'tone' }],
       raw: '$.tone'
     });
     expect(isNode(declarationReference('$'))).toBe(true);
@@ -87,26 +86,29 @@ describe('AST node contract', () => {
 
   it('retains variable lookup and write operations as public AST facts', () => {
     expect(bare(variableReference('current', 'live'))).toEqual({
-      type: 'VariableReference', name: 'current', lookup: 'live'
+      type: 'Lookup', kind: 'var', scope: 'live', name: 'current', raw: '@current'
     });
     expect(bare(variableReference('final', 'scoped'))).toEqual({
-      type: 'VariableReference', name: 'final', lookup: 'scoped'
+      type: 'Lookup', kind: 'var', scope: 'scoped', name: 'final', raw: '@final'
     });
-    expect(bare(varIndirect(variableReference('name', 'live'), 'live'))).toEqual({
-      type: 'VarIndirect', nameRef: bare(variableReference('name', 'live')), lookup: 'live'
+
+    /* `@@name` — a var lookup whose NAME is a node, which is the entire reason
+     * the separate `VarIndirect` kind existed. */
+    expect(bare(variableReference(variableReference('name', 'live'), 'live'))).toEqual({
+      type: 'Lookup', kind: 'var', scope: 'live', name: bare(variableReference('name', 'live')), raw: ''
     });
     expect(bare(variableDeclaration('both', keyword('blue'), { mode: 'declare' }))).toEqual({
       type: 'VariableDeclaration', name: 'both', value: keyword('blue'), write: { mode: 'declare' }
     });
     expect(variableDeclaration('ifMissing', keyword('blue'), {
-      mode: 'if-absent', lookup: 'live'
+      mode: 'if-absent', scope: 'live'
     })).toMatchObject({
-      type: 'VariableDeclaration', write: { mode: 'if-absent', lookup: 'live' }
+      type: 'VariableDeclaration', write: { mode: 'if-absent', scope: 'live' }
     });
     expect(variableDeclaration('final', keyword('blue'), {
-      mode: 'reassign', lookup: 'scoped'
+      mode: 'reassign', scope: 'scoped'
     })).toMatchObject({
-      type: 'VariableDeclaration', write: { mode: 'reassign', lookup: 'scoped' }
+      type: 'VariableDeclaration', write: { mode: 'reassign', scope: 'scoped' }
     });
   });
 });

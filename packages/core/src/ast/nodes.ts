@@ -898,9 +898,14 @@ export interface Declaration extends SpanSlots {
  * (mirroring how {@link For.iterable} admits a `MixinCall`), dispatched lazily when
  * the binding is read, so `value` is `ValueSlot | MixinCall`.
  */
+/*
+ * `scope`, not `lookup`: §12.3a counts this as the FIFTH private copy of the
+ * same fact, sitting outside the reference family proper. It spells it the way
+ * {@link Lookup} does, so "which binding store" has one name repo-wide.
+ */
 export type VariableWrite =
   | { readonly mode: 'declare' }
-  | { readonly mode: 'if-absent' | 'reassign'; readonly lookup: VariableLookup };
+  | { readonly mode: 'if-absent' | 'reassign'; readonly scope: VariableLookup };
 
 export interface VariableDeclaration extends SpanSlots {
   readonly type: 'VariableDeclaration';

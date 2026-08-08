@@ -182,8 +182,8 @@ describe('Jess AST grammar facts', () => {
           type: 'If',
           branches: [{
             rules: [
-              { type: 'VariableDeclaration', name: 'tone', write: { mode: 'reassign', lookup: 'live' } },
-              { type: 'VariableDeclaration', name: 'tone', write: { mode: 'reassign', lookup: 'scoped' } },
+              { type: 'VariableDeclaration', name: 'tone', write: { mode: 'reassign', scope: 'live' } },
+              { type: 'VariableDeclaration', name: 'tone', write: { mode: 'reassign', scope: 'scoped' } },
               { type: 'If', branches: [{ rules: [{ type: 'VariableDeclaration', name: 'nested', write: { mode: 'declare' } }] }] }
             ]
           }]
@@ -260,7 +260,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration' },
         { type: 'Ruleset', rules: [{ type: 'If', branches: [{ rules: [
           { type: 'MixinCall', name: 'paint' },
-          { type: 'Reference', base: { type: 'VariableReference', name: 'held', lookup: 'live' }, steps: [{ type: 'Call', args: [] }], raw: '$held()' },
+          { type: 'Reference', base: { type: 'Lookup', kind: 'var', name: 'held', raw: '@held', scope: 'live' }, steps: [{ type: 'Call', args: [] }], raw: '$held()' },
           { type: 'Apply', selectors: [{ type: 'SimpleSelector', text: '.unused' }] },
           { type: 'For', binding: { kind: 'single', name: 'item' } }
         ] }] }] }
@@ -376,7 +376,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [
         { type: 'VariableDeclaration', name: 'tone' },
-        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'tone' } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color', value: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' } }] }
       ]
     });
     expect(parse('.card:hover { color: blue; }')).toMatchObject({
@@ -394,16 +394,16 @@ describe('Jess AST grammar facts', () => {
     expect(direct.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
         { type: 'Declaration', name: 'member', value: {
-          type: 'Reference', base: { type: 'DeclarationReference', raw: '$' },
-          steps: [{ type: 'DotLookup', name: 'theme' }, { type: 'DotLookup', name: 'colors' }, { type: 'DotLookup', name: 'primary' }], raw: '$theme.colors.primary'
+          type: 'Reference', base: { type: 'Lookup', kind: 'entry', raw: '$' },
+          steps: [{ type: 'LookupStep', kind: 'member', name: 'theme' }, { type: 'LookupStep', kind: 'member', name: 'colors' }, { type: 'LookupStep', kind: 'member', name: 'primary' }], raw: '$theme.colors.primary'
         } },
         { type: 'Declaration', name: 'last', value: {
-          type: 'Reference', base: { type: 'VariableReference', name: 'sizes', lookup: 'live' },
-          steps: [{ type: 'BracketLookup', key: -1, keyKind: 'index', indexBase: 0 }], raw: '$sizes[-1]'
+          type: 'Reference', base: { type: 'Lookup', kind: 'var', name: 'sizes', raw: '@sizes', scope: 'live' },
+          steps: [{ type: 'LookupStep', name: -1, kind: 'index', indexBase: 0 }], raw: '$sizes[-1]'
         } },
         { type: 'Declaration', name: 'dynamic', value: {
-          type: 'Reference', base: { type: 'VariableReference', name: 'theme', lookup: 'live' },
-          steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'key', lookup: 'live' }, keyKind: 'var' }], raw: '$theme[$key]'
+          type: 'Reference', base: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme', scope: 'live' },
+          steps: [{ type: 'LookupStep', name: { type: 'Lookup', kind: 'var', name: 'key', raw: '@key', scope: 'live' }, kind: 'var' }], raw: '$theme[$key]'
         } }
       ] }]
     });
@@ -428,13 +428,13 @@ describe('Jess AST grammar facts', () => {
     expect(hasCstGrammar(cst.tree, 'DeclarationReference')).toBe(true);
     expect(parse(source)).toMatchObject({
       rules: [{ type: 'Ruleset', rules: [
-        { name: 'live', value: { type: 'VariableReference', name: 'tone', lookup: 'live' } },
-        { name: 'scoped', value: { type: 'VariableReference', name: 'tone', lookup: 'scoped' } },
+        { name: 'live', value: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone', scope: 'live' } },
+        { name: 'scoped', value: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone', scope: 'scoped' } },
         {
           name: 'rooted', value: {
             type: 'Reference',
-            base: { type: 'DeclarationReference', raw: '$' },
-            steps: [{ type: 'DotLookup', name: 'theme' }, { type: 'DotLookup', name: 'colors' }],
+            base: { type: 'Lookup', kind: 'entry', raw: '$' },
+            steps: [{ type: 'LookupStep', kind: 'member', name: 'theme' }, { type: 'LookupStep', kind: 'member', name: 'colors' }],
             raw: '$.theme.colors'
           }
         },
@@ -467,17 +467,17 @@ describe('Jess AST grammar facts', () => {
                 boundary: true,
                 value: {
                   type: 'Reference',
-                  base: { type: 'DeclarationReference', raw: '$' },
+                  base: { type: 'Lookup', kind: 'entry', raw: '$' },
                   steps: [
-                    { type: 'DotLookup', name: 'type' },
-                    { type: 'DotLookup', name: 'isnumber' },
+                    { type: 'LookupStep', kind: 'member', name: 'type' },
+                    { type: 'LookupStep', kind: 'member', name: 'isnumber' },
                     {
                       type: 'Call',
                       args: [{
                         value: {
                           type: 'Reference',
-                          base: { type: 'DeclarationReference', raw: '$' },
-                          steps: [{ type: 'DotLookup', name: 'math' }, { type: 'DotLookup', name: 'e' }],
+                          base: { type: 'Lookup', kind: 'entry', raw: '$' },
+                          steps: [{ type: 'LookupStep', kind: 'member', name: 'math' }, { type: 'LookupStep', kind: 'member', name: 'e' }],
                           raw: '.math.e'
                         }
                       }]
@@ -495,8 +495,8 @@ describe('Jess AST grammar facts', () => {
           name: 'namespaced',
           value: {
             type: 'Reference',
-            base: { type: 'DeclarationReference', raw: '$' },
-            steps: [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }],
+            base: { type: 'Lookup', kind: 'entry', raw: '$' },
+            steps: [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }],
             raw: '$tokens.tone'
           }
         },
@@ -505,8 +505,8 @@ describe('Jess AST grammar facts', () => {
           name: 'normal',
           value: {
             type: 'Reference',
-            base: { type: 'DeclarationReference', raw: '$' },
-            steps: [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }],
+            base: { type: 'Lookup', kind: 'entry', raw: '$' },
+            steps: [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }],
             raw: '$.tokens.tone'
           }
         },
@@ -555,8 +555,8 @@ describe('Jess AST grammar facts', () => {
                   operator: '+',
                   left: {
                     type: 'Reference',
-                    base: { type: 'DeclarationReference', raw: '$' },
-                    steps: [{ type: 'DotLookup', name: 'w' }],
+                    base: { type: 'Lookup', kind: 'entry', raw: '$' },
+                    steps: [{ type: 'LookupStep', kind: 'member', name: 'w' }],
                     raw: '.w'
                   },
                   right: { type: 'Dimension', number: 1, unit: '', src: '1' }
@@ -587,8 +587,8 @@ describe('Jess AST grammar facts', () => {
                     op: '>',
                     left: {
                       type: 'Reference',
-                      base: { type: 'DeclarationReference', raw: '$' },
-                      steps: [{ type: 'DotLookup', name: 'w' }],
+                      base: { type: 'Lookup', kind: 'entry', raw: '$' },
+                      steps: [{ type: 'LookupStep', kind: 'member', name: 'w' }],
                       raw: '.w'
                     },
                     right: { type: 'Dimension', number: 0, unit: '', src: '0' }
@@ -608,8 +608,8 @@ describe('Jess AST grammar facts', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'tokens' },
         { type: 'Ruleset', rules: [
-          { name: 'root', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'DeclarationReference', raw: '$' }, steps: [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }], raw: '$.tokens.tone' } } }] } },
-          { name: 'ns', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'DeclarationReference', raw: '$' }, steps: [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }], raw: '$tokens.tone' } } }] } }
+          { name: 'root', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry', raw: '$' }, steps: [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], raw: '$.tokens.tone' } } }] } },
+          { name: 'ns', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry', raw: '$' }, steps: [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], raw: '$tokens.tone' } } }] } }
         ] }
       ]
     });
@@ -636,21 +636,21 @@ describe('Jess AST grammar facts', () => {
       rules: [
         { name: 'live', write: { mode: 'declare' } },
         { name: 'scoped', write: { mode: 'declare' } },
-        { name: 'live', write: { mode: 'if-absent', lookup: 'live' } },
-        { name: 'scoped', write: { mode: 'if-absent', lookup: 'scoped' } },
-        { name: 'live', write: { mode: 'reassign', lookup: 'live' } },
-        { name: 'scoped', write: { mode: 'reassign', lookup: 'scoped' } },
+        { name: 'live', write: { mode: 'if-absent', scope: 'live' } },
+        { name: 'scoped', write: { mode: 'if-absent', scope: 'scoped' } },
+        { name: 'live', write: { mode: 'reassign', scope: 'live' } },
+        { name: 'scoped', write: { mode: 'reassign', scope: 'scoped' } },
         { type: 'Ruleset', rules: [
-          { value: { type: 'VariableReference', name: 'live', lookup: 'live' } },
-          { value: { type: 'VariableReference', name: 'scoped', lookup: 'scoped' } }
+          { value: { type: 'Lookup', kind: 'var', name: 'live', raw: '@live', scope: 'live' } },
+          { value: { type: 'Lookup', kind: 'var', name: 'scoped', raw: '@scoped', scope: 'scoped' } }
         ] }
       ]
     });
     expect(parse(source)).toMatchObject({
       rules: [
         { write: { mode: 'declare' } }, { write: { mode: 'declare' } },
-        { write: { mode: 'if-absent', lookup: 'live' } }, { write: { mode: 'if-absent', lookup: 'scoped' } },
-        { write: { mode: 'reassign', lookup: 'live' } }, { write: { mode: 'reassign', lookup: 'scoped' } },
+        { write: { mode: 'if-absent', scope: 'live' } }, { write: { mode: 'if-absent', scope: 'scoped' } },
+        { write: { mode: 'reassign', scope: 'live' } }, { write: { mode: 'reassign', scope: 'scoped' } },
         { type: 'Ruleset' }
       ]
     });
@@ -688,7 +688,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'Ruleset', rules: [{
           type: 'Declaration',
           name: 'value',
-          value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'theme' }, unquote: true }] }
+          value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' }, unquote: true }] }
         }] }
       ]
     });
@@ -702,7 +702,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'color-name' },
         { type: 'VariableDeclaration', name: 'w' },
         { type: 'Ruleset', rules: [
-          { name: 'color', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'color-name' }, unquote: true }] } },
+          { name: 'color', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'color-name', raw: '@color-name' }, unquote: true }] } },
           { name: 'tone', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren' }, unquote: true }] } }
         ] }
       ]
@@ -895,20 +895,20 @@ describe('Jess AST grammar facts', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'w' },
         { type: 'Ruleset', rules: [
-          { type: 'Declaration', name: 'signed', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '-1' }] },
-          { type: 'Declaration', name: 'slash', value: { type: 'List', sep: '/', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '2' }] } },
-          { type: 'Declaration', name: 'scoped', value: { type: 'VariableReference', name: 'w', lookup: 'scoped' } },
+          { type: 'Declaration', name: 'signed', value: [{ type: 'Lookup', kind: 'var', name: 'w', raw: '@w' }, { type: 'Dimension', src: '-1' }] },
+          { type: 'Declaration', name: 'slash', value: { type: 'List', sep: '/', value: [{ type: 'Lookup', kind: 'var', name: 'w', raw: '@w' }, { type: 'Dimension', src: '2' }] } },
+          { type: 'Declaration', name: 'scoped', value: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'scoped' } },
           { type: 'Declaration', name: 'wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '/' } }, unquote: true }] } },
-          { type: 'Declaration', name: 'scoped-wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '+', left: { type: 'VariableReference', name: 'w', lookup: 'scoped' } } }, unquote: true }] } },
-          { type: 'Declaration', name: 'scoped-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '>', left: { type: 'VariableReference', name: 'w', lookup: 'scoped' } } } }, unquote: true }] } }
+          { type: 'Declaration', name: 'scoped-wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '+', left: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'scoped' } } }, unquote: true }] } },
+          { type: 'Declaration', name: 'scoped-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '>', left: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'scoped' } } } }, unquote: true }] } }
         ] }
       ]
     });
     expect(parse(source)).toMatchObject({
       rules: [{ type: 'VariableDeclaration' }, { type: 'Ruleset', rules: [
-        { value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '-1' }] },
+        { value: [{ type: 'Lookup', kind: 'var', name: 'w', raw: '@w' }, { type: 'Dimension', src: '-1' }] },
         { value: { type: 'List', sep: '/' } },
-        { value: { type: 'VariableReference', name: 'w', lookup: 'scoped' } },
+        { value: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w', scope: 'scoped' } },
         { value: { type: 'Interpolation' } },
         { value: { type: 'Interpolation' } },
         { value: { type: 'Interpolation' } }
@@ -934,7 +934,7 @@ describe('Jess AST grammar facts', () => {
       rules: [
         { type: 'VariableDeclaration' },
         { type: 'Ruleset', rules: [
-          { name: 'glued-plus', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '+1' }] }
+          { name: 'glued-plus', value: [{ type: 'Lookup', kind: 'var', name: 'w', raw: '@w' }, { type: 'Dimension', src: '+1' }] }
         ] }
       ]
     });
@@ -966,11 +966,11 @@ describe('Jess AST grammar facts', () => {
       rules: [{
         type: 'Ruleset',
         rules: [
-          { name: 'predicate', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'DeclarationReference' }, raw: '.type.isnumber(.math.e)' } } }] } },
-          { name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Operation', operator: '+', left: { type: 'Reference', base: { type: 'DeclarationReference' }, raw: '.w' } } } }] } },
-          { name: 'comparison', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Condition', guard: { g: 'cmp', op: '>', left: { type: 'Reference', base: { type: 'DeclarationReference' }, raw: '.w' } } } } }] } },
-          { name: 'rooted', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'DeclarationReference' }, raw: '$.decl' } } }] } },
-          { name: 'namespaced', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'DeclarationReference' }, raw: '$ns.decl' } } }] } },
+          { name: 'predicate', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '.type.isnumber(.math.e)' } } }] } },
+          { name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Operation', operator: '+', left: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '.w' } } } }] } },
+          { name: 'comparison', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Condition', guard: { g: 'cmp', op: '>', left: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '.w' } } } } }] } },
+          { name: 'rooted', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '$.decl' } } }] } },
+          { name: 'namespaced', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', value: { type: 'Reference', base: { type: 'Lookup', kind: 'entry' }, raw: '$ns.decl' } } }] } },
           { name: 'decimal', value: { type: 'Dimension', number: 0.1, src: '.1' } }
         ]
       }]
@@ -1512,7 +1512,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'type' },
         {
           type: 'AtRuleBlock', name: '@media',
-          prelude: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'type' }, unquote: true }] }
+          prelude: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'type', raw: '@type' }, unquote: true }] }
         }
       ]
     });
@@ -1818,8 +1818,8 @@ describe('Jess AST grammar facts', () => {
         type: 'AtRuleBlock', name: '@supports', prelude: {
           type: 'GeneralEnclosed', form: 'function', name: 'selector', content: {
             type: 'Interpolation', parts: [
-              { lit: '.card-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true },
-              { lit: ':has([data-x="' }, { ref: { type: 'VariableReference', name: 'state' }, unquote: true }, { lit: '"])' }
+              { lit: '.card-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true },
+              { lit: ':has([data-x="' }, { ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state' }, unquote: true }, { lit: '"])' }
             ]
           }
         }
@@ -2033,7 +2033,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [
         { type: 'VariableDeclaration', name: 'base', value: { type: 'Quoted', src: '"dark"', value: 'dark', quote: '"', escaped: false }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'tone', value: { type: 'VariableReference', name: 'base', lookup: 'live' }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'tone', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base', scope: 'live' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'accent', value: { type: 'Keyword', src: 'blue' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'hex', value: { type: 'Color', src: '#0a1B2c' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'gap', value: { type: 'Dimension', number: -150, unit: 'rem', src: '-1.5e2rem' }, write: { mode: 'declare' } },
@@ -2053,7 +2053,7 @@ describe('Jess AST grammar facts', () => {
                 name: 'mix',
                 args: [
                   { type: 'Keyword', src: 'blue' },
-                  { type: 'VariableReference', name: 'percent', lookup: 'live' }
+                  { type: 'Lookup', kind: 'var', name: 'percent', raw: '@percent', scope: 'live' }
                 ],
                 modern: false
               }
@@ -2069,7 +2069,7 @@ describe('Jess AST grammar facts', () => {
             selectors: [{ type: 'SimpleSelector', text: '.card', interp: null }]
           },
           rules: [
-            { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'tone', lookup: 'live' }, merge: null, important: false },
+            { type: 'Declaration', name: 'color', value: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone', scope: 'live' }, merge: null, important: false },
             { type: 'Declaration', name: 'margin', value: { type: 'Dimension', number: 1, unit: 'rem', src: '1rem' }, merge: null, important: false },
             { type: 'Declaration', name: 'filter', value: { type: 'FunctionCall', name: 'blur', args: [{ type: 'Dimension', number: 2, unit: 'px', src: '2px' }], modern: false }, merge: null, important: false }
           ]
@@ -2162,8 +2162,8 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'path' },
         { type: 'VariableDeclaration', name: 'file' },
         { type: 'Ruleset', rules: [
-          { type: 'Declaration', name: 'direct', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'path' }, unquote: true }] } } },
-          { type: 'Declaration', name: 'joined', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: 'images/' }, { ref: { type: 'VariableReference', name: 'file' }, unquote: true }, { lit: '.svg' }] } } },
+          { type: 'Declaration', name: 'direct', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'path', raw: '@path' }, unquote: true }] } } },
+          { type: 'Declaration', name: 'joined', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: 'images/' }, { ref: { type: 'Lookup', kind: 'var', name: 'file', raw: '@file' }, unquote: true }, { lit: '.svg' }] } } },
           { type: 'Declaration', name: 'quoted', value: { type: 'Url', value: { type: 'Interpolation' } } }
         ] }
       ]
@@ -2202,7 +2202,7 @@ describe('Jess AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     const publicDocument = parse(source);
     expect(publicDocument.rules[2]).toMatchObject({
-      type: 'VariableDeclaration', name: 'color', write: { mode: 'reassign', lookup: 'live' }
+      type: 'VariableDeclaration', name: 'color', write: { mode: 'reassign', scope: 'live' }
     });
     const publicRule = publicDocument.rules[3];
     expect(publicRule).toMatchObject({ type: 'Ruleset' });
@@ -2210,10 +2210,10 @@ describe('Jess AST grammar facts', () => {
       throw new TypeError('Expected the dynamic-reference rule.');
     }
     expect(publicRule.rules[0]).toMatchObject({
-      type: 'Declaration', name: 'dynamic', value: { type: 'Interpolation', parts: [{ ref: { type: 'VarIndirect', lookup: 'live', nameRef: { type: 'VariableReference', name: 'name', lookup: 'live' } }, unquote: true }] }
+      type: 'Declaration', name: 'dynamic', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', scope: 'live', name: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name', scope: 'live' } }, unquote: true }] }
     });
     expect(publicRule.rules[1]).toMatchObject({
-      type: 'Declaration', name: 'existing', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'color', lookup: 'live' }, unquote: true }] }
+      type: 'Declaration', name: 'existing', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'color', raw: '@color', scope: 'live' }, unquote: true }] }
     });
     expect(serialize(publicDocument)).toEqual({
       css: '.card {\n  dynamic: blue;\n  existing: blue;\n  color: red;\n  property: blue;\n}\n'
@@ -2430,7 +2430,7 @@ describe('Jess AST grammar facts', () => {
             text: null,
             interp: {
               type: 'Interpolation',
-              parts: [{ lit: '&-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true }]
+              parts: [{ lit: '&-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }]
             }
           }]
         }
@@ -2498,9 +2498,9 @@ describe('Jess AST grammar facts', () => {
                 type: 'Interpolation',
                 parts: [
                   { lit: '.widget-' },
-                  { ref: { type: 'VariableReference', name: 'side' }, unquote: true },
+                  { ref: { type: 'Lookup', kind: 'var', name: 'side', raw: '@side' }, unquote: true },
                   { lit: '-' },
-                  { ref: { type: 'PropertyReference', name: 'tone', raw: '${[tone]}' }, unquote: true }
+                  { ref: { type: 'Lookup', kind: 'prop', name: 'tone', raw: '${[tone]}' }, unquote: true }
                 ]
               }
             }]
@@ -2571,9 +2571,9 @@ describe('Jess AST grammar facts', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'tone' },
         { type: 'VariableDeclaration', name: 'gap' },
-        { type: 'VariableDeclaration', name: 'key', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'tone' }, unquote: true }] } },
-        { type: 'VariableDeclaration', name: 'quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'PropertyReference', name: 'theme', raw: '$["theme"]' }, unquote: true }] } },
-        { type: 'VariableDeclaration', name: 'single-quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'PropertyReference', name: 'theme', raw: '$[\'theme\']' }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'key', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'prop', name: 'theme', raw: '$["theme"]' }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'single-quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'prop', name: 'theme', raw: '$[\'theme\']' }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '+' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-${tone}" = foo' } }, unquote: true }] } },
@@ -2592,8 +2592,8 @@ describe('Jess AST grammar facts', () => {
           type: 'Ruleset',
           rules: [
             { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'blue' } },
-            { type: 'Declaration', name: 'bare', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'tone' }, unquote: true }] } },
-            { type: 'Declaration', name: 'quoted', value: { type: 'Interpolation', parts: [{ ref: { type: 'PropertyReference', name: 'color', raw: '$["color"]' }, unquote: true }] } }
+            { type: 'Declaration', name: 'bare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }] } },
+            { type: 'Declaration', name: 'quoted', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'prop', name: 'color', raw: '$["color"]' }, unquote: true }] } }
           ]
         }
       ]
@@ -2616,37 +2616,37 @@ describe('Jess AST grammar facts', () => {
         {
           type: 'For',
           binding: { kind: 'single', name: 'item' },
-          iterable: { type: 'VariableReference', name: 'items', lookup: 'live' },
+          iterable: { type: 'Lookup', kind: 'var', name: 'items', raw: '@items', scope: 'live' },
           rules: [{
             type: 'Ruleset',
             selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.single', interp: null }] },
-            rules: [{ type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'item', lookup: 'live' }, merge: null, important: false }]
+            rules: [{ type: 'Declaration', name: 'value', value: { type: 'Lookup', kind: 'var', name: 'item', raw: '@item', scope: 'live' }, merge: null, important: false }]
           }]
         },
         {
           type: 'For',
           binding: { kind: 'comma', names: ['item', 'key', 'counter'] },
-          iterable: { type: 'VariableReference', name: 'items', lookup: 'live' },
+          iterable: { type: 'Lookup', kind: 'var', name: 'items', raw: '@items', scope: 'live' },
           rules: [{
             type: 'Ruleset',
             selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.comma', interp: null }] },
             rules: [
-              { type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'item', lookup: 'live' }, merge: null, important: false },
-              { type: 'Declaration', name: 'key', value: { type: 'VariableReference', name: 'key', lookup: 'live' }, merge: null, important: false },
-              { type: 'Declaration', name: 'counter', value: { type: 'VariableReference', name: 'counter', lookup: 'live' }, merge: null, important: false }
+              { type: 'Declaration', name: 'value', value: { type: 'Lookup', kind: 'var', name: 'item', raw: '@item', scope: 'live' }, merge: null, important: false },
+              { type: 'Declaration', name: 'key', value: { type: 'Lookup', kind: 'var', name: 'key', raw: '@key', scope: 'live' }, merge: null, important: false },
+              { type: 'Declaration', name: 'counter', value: { type: 'Lookup', kind: 'var', name: 'counter', raw: '@counter', scope: 'live' }, merge: null, important: false }
             ]
           }]
         },
         {
           type: 'For',
           binding: { kind: 'bracket', names: ['key', 'value'] },
-          iterable: { type: 'VariableReference', name: 'collection', lookup: 'live' },
+          iterable: { type: 'Lookup', kind: 'var', name: 'collection', raw: '@collection', scope: 'live' },
           rules: [{
             type: 'Ruleset',
             selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.bracket', interp: null }] },
             rules: [
-              { type: 'Declaration', name: 'key', value: { type: 'VariableReference', name: 'key', lookup: 'live' }, merge: null, important: false },
-              { type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'value', lookup: 'live' }, merge: null, important: false }
+              { type: 'Declaration', name: 'key', value: { type: 'Lookup', kind: 'var', name: 'key', raw: '@key', scope: 'live' }, merge: null, important: false },
+              { type: 'Declaration', name: 'value', value: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'live' }, merge: null, important: false }
             ]
           }]
         }
@@ -2663,7 +2663,7 @@ describe('Jess AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'For',
       binding: { kind: 'single', name: 'item' },
-      iterable: { type: 'VariableReference', name: 'items', lookup: 'live' },
+      iterable: { type: 'Lookup', kind: 'var', name: 'items', raw: '@items', scope: 'live' },
       rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'value' }] }]
     });
   });
@@ -2768,9 +2768,9 @@ describe('Jess AST grammar facts', () => {
           binding: { kind: 'single', name: 'i' },
           iterable: {
             type: 'Range',
-            start: { type: 'VariableReference', name: 'start' },
-            end: { type: 'VariableReference', name: 'end' },
-            step: { type: 'VariableReference', name: 'step' },
+            start: { type: 'Lookup', kind: 'var', name: 'start', raw: '@start' },
+            end: { type: 'Lookup', kind: 'var', name: 'end', raw: '@end' },
+            step: { type: 'Lookup', kind: 'var', name: 'step', raw: '@step' },
             includeStart: false,
             includeEnd: false
           }
@@ -2798,8 +2798,8 @@ describe('Jess AST grammar facts', () => {
             { name: 'pad', default: { type: 'Dimension', number: 1, unit: 'rem', src: '1rem' } }
           ],
           rules: [
-            { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'bg', lookup: 'live' }, merge: null, important: false },
-            { type: 'Declaration', name: 'padding', value: { type: 'VariableReference', name: 'pad', lookup: 'live' }, merge: null, important: false }
+            { type: 'Declaration', name: 'color', value: { type: 'Lookup', kind: 'var', name: 'bg', raw: '@bg', scope: 'live' }, merge: null, important: false },
+            { type: 'Declaration', name: 'padding', value: { type: 'Lookup', kind: 'var', name: 'pad', raw: '@pad', scope: 'live' }, merge: null, important: false }
           ]
         },
         {
@@ -2852,7 +2852,7 @@ describe('Jess AST grammar facts', () => {
           { name: 'pad', value: { type: 'Dimension', number: 2, unit: 'px' } },
           { name: 'bg', value: { type: 'Keyword', src: 'red' } }
         ] },
-        { type: 'MixinCall', args: [{ value: { type: 'VariableReference', name: 'tone', lookup: 'live' } }] }
+        { type: 'MixinCall', args: [{ value: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone', scope: 'live' } }] }
       ]
     }] });
   });
@@ -2863,7 +2863,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [
         { type: 'VariableDeclaration', name: 'my-mixin', value: { type: 'AnonymousMixin' } },
-        { type: 'Ruleset', rules: [{ type: 'Reference', base: { type: 'VariableReference', name: 'my-mixin', lookup: 'live' }, steps: [{ type: 'Call', args: [] }], raw: '$my-mixin()' }] }
+        { type: 'Ruleset', rules: [{ type: 'Reference', base: { type: 'Lookup', kind: 'var', name: 'my-mixin', raw: '@my-mixin', scope: 'live' }, steps: [{ type: 'Call', args: [] }], raw: '$my-mixin()' }] }
       ]
     });
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
@@ -2894,8 +2894,8 @@ describe('Jess AST grammar facts', () => {
       },
       { type: 'MixinDefinition', name: 'fallback', guard: { g: 'default' } },
       { type: 'MixinDefinition', name: 'either', guard: { g: 'or', left: { g: 'truth' }, right: { g: 'truth' } } },
-      { type: 'MixinDefinition', name: 'numeric', guard: { g: 'call', name: 'isnumber', args: [{ type: 'VariableReference', name: 'value' }] } },
-      { type: 'MixinDefinition', name: 'unit', guard: { g: 'call', name: 'isunit', args: [{ type: 'VariableReference', name: 'value' }, { type: 'Keyword', src: 'px' }] } }
+      { type: 'MixinDefinition', name: 'numeric', guard: { g: 'call', name: 'isnumber', args: [{ type: 'Lookup', kind: 'var', name: 'value', raw: '@value' }] } },
+      { type: 'MixinDefinition', name: 'unit', guard: { g: 'call', name: 'isunit', args: [{ type: 'Lookup', kind: 'var', name: 'value', raw: '@value' }, { type: 'Keyword', src: 'px' }] } }
     ]);
     expect(bare(parse(source))).toEqual(bare(direct.value));
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
@@ -2949,8 +2949,8 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'radius' },
         { type: 'VariableDeclaration', name: 'property' },
         { type: 'Ruleset', rules: [
-          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'border-' }, { ref: { type: 'VariableReference', name: 'radius', lookup: 'live' }, unquote: true }, { lit: '-radius' }] } },
-          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'property', lookup: 'live' }, unquote: true }] } }
+          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'border-' }, { ref: { type: 'Lookup', kind: 'var', name: 'radius', raw: '@radius', scope: 'live' }, unquote: true }, { lit: '-radius' }] } },
+          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'property', raw: '@property', scope: 'live' }, unquote: true }] } }
         ] }
       ]
     });
@@ -3023,23 +3023,23 @@ describe('Jess AST grammar facts', () => {
     };
 
     expect(parts('.w-${side} { a: b; }')).toMatchObject({
-      ref: { type: 'VariableReference', name: 'side', lookup: 'live' }
+      ref: { type: 'Lookup', kind: 'var', name: 'side', raw: '@side', scope: 'live' }
     });
     expect(parts('.w-${[tone]} { a: b; }')).toMatchObject({
-      ref: { type: 'PropertyReference', name: 'tone', raw: '${[tone]}' }
+      ref: { type: 'Lookup', kind: 'prop', name: 'tone', raw: '${[tone]}' }
     });
 
     // Quotes are escaping only — `a b` is not a valid identifier.
     expect(parts('.w-${["a b"]} { a: b; }')).toMatchObject({
-      ref: { type: 'PropertyReference', name: 'a b' }
+      ref: { type: 'Lookup', kind: 'prop', name: 'a b' }
     });
     expect(parts('.w-${[\'a b\']} { a: b; }')).toMatchObject({
-      ref: { type: 'PropertyReference', name: 'a b' }
+      ref: { type: 'Lookup', kind: 'prop', name: 'a b' }
     });
 
     // A computed key stays the two-step indirection.
     expect(parts('.w-${[$k]} { a: b; }')).toMatchObject({
-      ref: { type: 'VarIndirect', nameRef: { type: 'VariableReference', name: 'k' } }
+      ref: { type: 'Lookup', kind: 'var', name: { type: 'Lookup', kind: 'var', name: 'k', raw: '@k' } }
     });
   });
 
@@ -3126,7 +3126,7 @@ describe('Jess AST grammar facts', () => {
             name: 'output',
             value: {
               type: 'Reference',
-              base: { type: 'VariableReference', name: 'foo' },
+              base: { type: 'Lookup', kind: 'var', name: 'foo', raw: '@foo' },
               steps: [{ type: 'Call', args: [{ value: { src: '1' } }, { value: { src: '2' } }] }]
             }
           }]
@@ -3182,13 +3182,13 @@ describe('Jess AST grammar facts', () => {
                 type: 'Block',
                 value: {
                   type: 'Reference',
-                  base: { type: 'VariableReference', name: 'd' },
+                  base: { type: 'Lookup', kind: 'var', name: 'd', raw: '@d' },
                   steps: [{
                     type: 'Call',
                     args: [{
                       value: {
                         type: 'Reference',
-                        base: { type: 'VariableReference', name: 'd' },
+                        base: { type: 'Lookup', kind: 'var', name: 'd', raw: '@d' },
                         steps: [{ type: 'Call', args: [{ value: { src: '2' } }] }]
                       }
                     }]
@@ -3203,7 +3203,7 @@ describe('Jess AST grammar facts', () => {
 
     // A plain reference is still a plain reference — no empty call step.
     expect(parse('.box { width: $($n); }')).toMatchObject({
-      rules: [{ rules: [{ value: { parts: [{ ref: { value: { type: 'VariableReference', name: 'n' } } }] } }] }]
+      rules: [{ rules: [{ value: { parts: [{ ref: { value: { type: 'Lookup', kind: 'var', name: 'n', raw: '@n' } } }] } }] }]
     });
   });
 

@@ -45,8 +45,8 @@ describe('@jesscss/scss-parser public parse API', () => {
         type: 'AtRuleBlock', name: '@supports', prelude: {
           type: 'GeneralEnclosed', form: 'function', name: 'selector', content: {
             type: 'Interpolation', parts: [
-              { lit: '.card-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true },
-              { lit: ':has([data-x="' }, { ref: { type: 'VariableReference', name: 'state' }, unquote: true }, { lit: '"])' }
+              { lit: '.card-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true },
+              { lit: ':has([data-x="' }, { ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state' }, unquote: true }, { lit: '"])' }
             ]
           }
         }
@@ -62,7 +62,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet',
       rules: [
         { type: 'VariableDeclaration', name: 'tone', value: { type: 'Keyword', src: 'blue' } },
-        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'tone' } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color', value: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' } }] }
       ]
     });
     expect(parseScssDoc(source).tree).not.toBeNull();
@@ -116,8 +116,8 @@ describe('@jesscss/scss-parser public parse API', () => {
   it('parses typed structural property interpolation without CST fallback', () => {
     expect(parse('.card { #{$property}: blue; margin-#{$side}: 1rem; }')).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
-        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'property' } }] } },
-        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'margin-' }, { ref: { type: 'VariableReference', name: 'side' } }] } }
+        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'property', raw: '@property' } }] } },
+        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'margin-' }, { ref: { type: 'Lookup', kind: 'var', name: 'side', raw: '@side' } }] } }
       ] }]
     });
   });
@@ -126,8 +126,8 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(parse('$base: 2; .card { result: 1 + 2 * 3; neg: - $base; pos: + ($base); minus-list: 1 -2; ratio: 1 / 2; grouped: (1 / 2); values: 1 2 + 3; }')).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'VariableDeclaration' }, { type: 'Ruleset', rules: [
         { name: 'result', value: { type: 'Operation', operator: '+', right: { type: 'Operation', operator: '*' } } },
-        { name: 'neg', value: { type: 'Operation', operator: '*', left: { src: '-1' }, right: { type: 'VariableReference', name: 'base' } } },
-        { name: 'pos', value: { type: 'Block', delimiter: 'paren', value: { type: 'VariableReference', name: 'base' } } },
+        { name: 'neg', value: { type: 'Operation', operator: '*', left: { src: '-1' }, right: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' } } },
+        { name: 'pos', value: { type: 'Block', delimiter: 'paren', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' } } },
         { name: 'minus-list', value: [{ src: '1' }, { src: '-2' }] },
         { name: 'ratio', value: { type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }] } },
         { name: 'grouped', value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '/' } } },
@@ -185,7 +185,7 @@ describe('@jesscss/scss-parser public parse API', () => {
           simpleSelector('.card'),
           simpleSelector(null, { interp: { type: 'Interpolation', parts: [
             { lit: '[data-state="' },
-            { ref: { type: 'VariableReference', name: 'state', lookup: 'live' }, unquote: true },
+            { ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state', scope: 'live' }, unquote: true },
             { lit: '"]' }
           ] } })
         )] }
@@ -202,10 +202,10 @@ describe('@jesscss/scss-parser public parse API', () => {
       rules: [{ type: 'VariableDeclaration' }, {
         type: 'Ruleset', selector: { selectors: [
           simpleSelector(null, { interp: { type: 'Interpolation', parts: [
-            { lit: '.' }, { ref: { type: 'VariableReference', name: 'kind', lookup: 'live' }, unquote: true }, { lit: '-header' }
+            { lit: '.' }, { ref: { type: 'Lookup', kind: 'var', name: 'kind', raw: '@kind', scope: 'live' }, unquote: true }, { lit: '-header' }
           ] } }),
           simpleSelector(null, { interp: { type: 'Interpolation', parts: [
-            { lit: '#main-' }, { ref: { type: 'VariableReference', name: 'kind', lookup: 'live' }, unquote: true }
+            { lit: '#main-' }, { ref: { type: 'Lookup', kind: 'var', name: 'kind', raw: '@kind', scope: 'live' }, unquote: true }
           ] } })
         ] }
       }]
@@ -275,14 +275,14 @@ describe('@jesscss/scss-parser public parse API', () => {
     const dynamic = parse(interpolated);
     expect(dynamic).toMatchObject({
       rules: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'Ruleset', rules: [
-        { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, value: { type: 'Collection', entries: [
+        { name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'Collection', entries: [
           { key: { type: 'Keyword', src: 'color' }, value: { src: 'red' } }
         ] } },
         { name: 'font', value: { type: 'Collection', entries: [
-          { key: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: 'bold' } }
+          { key: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'part', raw: '@part' } }] }, value: { src: 'bold' } }
         ] } },
-        { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, value: { type: 'Collection', entries: [
-          { key: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: '700' } }
+        { name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'Collection', entries: [
+          { key: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'part', raw: '@part' } }] }, value: { src: '700' } }
         ] } }
       ] }]
     });
@@ -342,8 +342,8 @@ describe('@jesscss/scss-parser public parse API', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'asset' },
         { type: 'Ruleset', rules: [
-          { type: 'Declaration', name: 'bare', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'asset' }, unquote: true }] } } },
-          { type: 'Declaration', name: 'joined', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: 'images/' }, { ref: { type: 'VariableReference', name: 'asset' }, unquote: true }, { lit: '.svg' }] } } }
+          { type: 'Declaration', name: 'bare', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'asset', raw: '@asset' }, unquote: true }] } } },
+          { type: 'Declaration', name: 'joined', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: 'images/' }, { ref: { type: 'Lookup', kind: 'var', name: 'asset', raw: '@asset' }, unquote: true }, { lit: '.svg' }] } } }
         ] }
       ]
     });
@@ -627,7 +627,7 @@ describe('@jesscss/scss-parser public parse API', () => {
   it('parses descriptor-only @font-face through the public Stylesheet route', () => {
     expect(parse('@font-face { font-family: $font; src: url("font.woff2"); }')).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'AtRuleBlock', name: '@font-face', rules: [
-        { type: 'Declaration', value: { type: 'VariableReference', name: 'font' } }, { type: 'Declaration', value: { type: 'Url' } }
+        { type: 'Declaration', value: { type: 'Lookup', kind: 'var', name: 'font', raw: '@font' } }, { type: 'Declaration', value: { type: 'Url' } }
       ] }]
     });
   });

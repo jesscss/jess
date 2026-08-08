@@ -15,6 +15,7 @@ import {
   parse
 } from '@jesscss/less-parser';
 import { parseLessCst, parseLessDoc } from '@jesscss/less-parser/cst';
+
 /*
  * Relative source imports, not the `/positions` package subpaths: vitest aliases
  * only the BARE package name to `src`, so a subpath import would resolve to
@@ -152,7 +153,7 @@ describe('public Less parse()', () => {
                 type: 'FunctionCall',
                 name: 'lighten',
                 args: [
-                  { type: 'VariableReference', name: 'tone', lookup: 'scoped' },
+                  { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone', scope: 'scoped' },
                   { type: 'Dimension', src: '10%' }
                 ]
               }
@@ -406,7 +407,7 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'VariableReference', name: 'tone' }
+              value: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }
             }
           ]
         }
@@ -611,9 +612,10 @@ describe('public Less parse()', () => {
                 { lit: '.' },
                 {
                   ref: {
-                    type: 'VariableReference',
+                    type: 'Lookup', kind: 'var',
                     name: 'kind',
-                    lookup: 'scoped'
+                    raw: '@kind',
+                    scope: 'scoped'
                   },
                   unquote: true
                 },
@@ -1112,7 +1114,7 @@ describe('public Less parse()', () => {
             parts: [
               { lit: '"theme-' },
               {
-                ref: { type: 'VariableReference', name: 'name' },
+                ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
                 unquote: true
               },
               { lit: '.css"' }
@@ -1139,9 +1141,10 @@ describe('public Less parse()', () => {
             parts: [
               {
                 ref: {
-                  type: 'VariableReference',
+                  type: 'Lookup', kind: 'var',
                   name: 'media',
-                  lookup: 'scoped'
+                  raw: '@media',
+                  scope: 'scoped'
                 },
                 unquote: true
               }
@@ -1290,7 +1293,7 @@ describe('public Less parse()', () => {
                 parts: [
                   { lit: 'pre-' },
                   {
-                    ref: { type: 'VariableReference', name: 'name' },
+                    ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
                     unquote: true
                   }
                 ]
@@ -1342,7 +1345,7 @@ describe('public Less parse()', () => {
           rules: [
             {
               type: 'Reference',
-              base: { type: 'VariableReference' },
+              base: { type: 'Lookup', kind: 'var' },
               steps: [{ type: 'Call', args: [] }]
             }
           ]
@@ -1445,8 +1448,8 @@ describe('public Less parse()', () => {
               type: 'Declaration',
               value: {
                 type: 'Reference',
-                base: { type: 'VariableReference', name: 'map' },
-                steps: [{ type: 'BracketLookup', keyKind: 'prop' }]
+                base: { type: 'Lookup', kind: 'var', name: 'map', raw: '@map' },
+                steps: [{ type: 'LookupStep', kind: 'prop' }]
               }
             }
           ]
@@ -1457,9 +1460,10 @@ describe('public Less parse()', () => {
             {
               type: 'Reference',
               base: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'map',
-                lookup: 'scoped'
+                raw: '@map',
+                scope: 'scoped'
               },
               steps: [{ type: 'Call', args: [] }]
             }
@@ -1523,7 +1527,7 @@ describe('public Less parse()', () => {
                   path: [{ combinator: ' ', selector: '.library' }],
                   args: []
                 },
-                steps: [{ type: 'BracketLookup', keyKind: 'index', key: -1 }],
+                steps: [{ type: 'LookupStep', kind: 'index', name: -1 }],
                 raw: '.library .answer[-1]'
               }
             }
@@ -1562,7 +1566,7 @@ describe('public Less parse()', () => {
           rules: [
             {
               type: 'Reference',
-              base: { type: 'VariableReference' },
+              base: { type: 'Lookup', kind: 'var' },
               steps: [{ type: 'Call', args: [] }]
             }
           ]
@@ -1693,14 +1697,22 @@ describe('public Less parse()', () => {
               name: 'color',
               merge: null,
               important: false,
+
+              /*
+               * `@@name` is one `Lookup` whose NAME is another `Lookup` — the
+               * shape that retires the separate `VarIndirect` kind, which
+               * existed only because a name could not be a node.
+               */
               value: {
-                type: 'VarIndirect',
-                nameRef: {
-                  type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
+                name: {
+                  type: 'Lookup', kind: 'var',
                   name: 'name',
-                  lookup: 'scoped'
+                  raw: '@name',
+                  scope: 'scoped'
                 },
-                lookup: 'scoped'
+                raw: '@@name',
+                scope: 'scoped'
               }
             }
           ]
@@ -1767,11 +1779,11 @@ describe('public Less parse()', () => {
                   type: 'Interpolation',
                   parts: [
                     {
-                      ref: { type: 'VariableReference', name: 'cap-a' },
+                      ref: { type: 'Lookup', kind: 'var', name: 'cap-a', raw: '@cap-a' },
                       unquote: true
                     },
                     {
-                      ref: { type: 'VariableReference', name: 'cap-b' },
+                      ref: { type: 'Lookup', kind: 'var', name: 'cap-b', raw: '@cap-b' },
                       unquote: true
                     }
                   ]
@@ -1783,14 +1795,14 @@ describe('public Less parse()', () => {
                   parts: [
                     {
                       ref: {
-                        type: 'VariableReference',
+                        type: 'Lookup', kind: 'var',
                         name: 'quoted-a'
                       },
                       unquote: true
                     },
                     {
                       ref: {
-                        type: 'VariableReference',
+                        type: 'Lookup', kind: 'var',
                         name: 'quoted-b'
                       },
                       unquote: true
@@ -1866,7 +1878,7 @@ describe('public Less parse()', () => {
               type: 'Declaration',
               name: 'border-color',
               value: {
-                type: 'PropertyReference',
+                type: 'Lookup', kind: 'prop',
                 name: 'color',
                 raw: '$color'
               }
@@ -1910,19 +1922,19 @@ describe('public Less parse()', () => {
               value: {
                 type: 'Reference',
                 base: {
-                  type: 'VariableReference',
+                  type: 'Lookup', kind: 'var',
                   name: 'defaults',
-                  lookup: 'scoped'
+                  raw: '@defaults',
+                  scope: 'scoped'
                 },
                 steps: [
                   {
-                    type: 'BracketLookup',
-                    key: {
-                      type: 'VariableReference',
+                    type: 'LookupStep', name: {
+                      type: 'Lookup', kind: 'var',
                       name: 'default-color',
-                      lookup: 'scoped'
-                    },
-                    keyKind: 'var'
+                      raw: '@default-color',
+                      scope: 'scoped' },
+                    kind: 'var'
                   }
                 ],
                 raw: '@defaults[@default-color]'
@@ -1953,15 +1965,14 @@ describe('public Less parse()', () => {
                 raw: '@defaults[@@key]',
                 steps: [
                   {
-                    type: 'BracketLookup',
-                    keyKind: 'var',
-                    key: {
-                      type: 'VarIndirect',
-                      nameRef: {
-                        type: 'VariableReference',
+                    type: 'LookupStep', kind: 'var',
+                    name: {
+                      type: 'Lookup', kind: 'var',
+                      name: {
+                        type: 'Lookup', kind: 'var',
                         name: 'key',
-                        lookup: 'scoped'
-                      }
+                        raw: '@key',
+                        scope: 'scoped' }
                     }
                   }
                 ]
@@ -2010,7 +2021,7 @@ describe('public Less parse()', () => {
               name: 'unarySpace',
               value: [
                 { type: 'Keyword', src: '-' },
-                { type: 'VariableReference', name: 'a', lookup: 'scoped' }
+                { type: 'Lookup', kind: 'var', name: 'a', raw: '@a', scope: 'scoped' }
               ]
             },
             {
@@ -2171,9 +2182,9 @@ describe('public Less parse()', () => {
                     type: 'Interpolation',
                     parts: [
                       { lit: '[data-' },
-                      { ref: { type: 'VariableReference', name: 'field' } },
+                      { ref: { type: 'Lookup', kind: 'var', name: 'field', raw: '@field' } },
                       { lit: '=' },
-                      { ref: { type: 'VariableReference', name: 'value' } },
+                      { ref: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value' } },
                       { lit: ']' }
                     ]
                   }
@@ -2183,10 +2194,10 @@ describe('public Less parse()', () => {
                     type: 'Interpolation',
                     parts: [
                       { lit: '[svg|' },
-                      { ref: { type: 'VariableReference', name: 'name' } },
+                      { ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' } },
                       { lit: '="' },
                       {
-                        ref: { type: 'VariableReference', name: 'quoted' }
+                        ref: { type: 'Lookup', kind: 'var', name: 'quoted', raw: '@quoted' }
                       },
                       { lit: '"]' }
                     ]
@@ -2505,7 +2516,7 @@ describe('public Less parse()', () => {
             type: 'Block',
             value: {
               type: 'Operation',
-              right: { type: 'VariableReference', name: 'w' }
+              right: { type: 'Lookup', kind: 'var', name: 'w', raw: '@w' }
             }
           }
         }
@@ -2718,9 +2729,10 @@ describe('public Less parse()', () => {
                         { lit: '.' },
                         {
                           ref: {
-                            type: 'VariableReference',
+                            type: 'Lookup', kind: 'var',
                             name: 'name',
-                            lookup: 'scoped'
+                            raw: '@name',
+                            scope: 'scoped'
                           },
                           unquote: true
                         }
@@ -2866,14 +2878,14 @@ describe('public Less parse()', () => {
               type: 'MixinCall',
               name: '.join',
               args: [
-                { value: { type: 'VariableReference', name: 'first' } },
+                { value: { type: 'Lookup', kind: 'var', name: 'first', raw: '@first' } },
                 {
                   value: {
                     type: 'List',
                     sep: ',',
                     value: [
-                      { type: 'VariableReference', name: 'second' },
-                      { type: 'VariableReference', name: 'third' }
+                      { type: 'Lookup', kind: 'var', name: 'second', raw: '@second' },
+                      { type: 'Lookup', kind: 'var', name: 'third', raw: '@third' }
                     ]
                   }
                 }
@@ -2886,7 +2898,7 @@ describe('public Less parse()', () => {
                 value: {
                   type: 'Operation',
                   operator: '-',
-                  left: { type: 'VariableReference', name: 'first' },
+                  left: { type: 'Lookup', kind: 'var', name: 'first', raw: '@first' },
                   right: { type: 'Dimension', number: 1 }
                 }
               }]

@@ -88,8 +88,8 @@ describe('SCSS canonical-AST grammar', () => {
         type: 'AtRuleBlock', name: '@supports', prelude: {
           type: 'GeneralEnclosed', form: 'function', name: 'selector', content: {
             type: 'Interpolation', parts: [
-              { lit: '.card-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true },
-              { lit: ':has([data-x="' }, { ref: { type: 'VariableReference', name: 'state' }, unquote: true }, { lit: '"])' }
+              { lit: '.card-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true },
+              { lit: ':has([data-x="' }, { ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state' }, unquote: true }, { lit: '"])' }
             ]
           }
         }
@@ -451,8 +451,8 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.value).toMatchObject({
         type: 'Stylesheet',
         rules: [{ type: 'ImportAtRule', target: source.includes('url(')
-          ? { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'VariableReference', name: 'mode' }, unquote: true }, { lit: '.css"' }] } }
-          : { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'VariableReference', name: 'mode' }, unquote: true }, { lit: '.css"' }] }
+          ? { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }, { lit: '.css"' }] } }
+          : { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }, { lit: '.css"' }] }
         }]
       });
     }
@@ -572,7 +572,7 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet',
       rules: [
         { type: 'VariableDeclaration', name: 'base', value: { type: 'Keyword', src: 'blue' }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'theme', value: { type: 'VariableReference', name: 'base', lookup: 'live' }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'theme', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base', scope: 'live' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'font', value: { type: 'Quoted', src: '"Inter"', value: 'Inter', quote: '"', escaped: false }, write: { mode: 'declare' } },
 
         /*
@@ -633,16 +633,16 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet',
       rules: [
         { type: 'VariableDeclaration', name: 'base', write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'fallback', write: { mode: 'if-absent', lookup: 'scoped' } },
-        { type: 'VariableDeclaration', name: 'global', write: { mode: 'reassign', lookup: 'scoped' } },
-        { type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'VariableReference', name: 'base', lookup: 'live' } }] }
+        { type: 'VariableDeclaration', name: 'fallback', write: { mode: 'if-absent', scope: 'scoped' } },
+        { type: 'VariableDeclaration', name: 'global', write: { mode: 'reassign', scope: 'scoped' } },
+        { type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base', scope: 'live' } }] }
       ]
     });
     expect(parse(source)).toMatchObject({
       rules: [
         { write: { mode: 'declare' } },
-        { write: { mode: 'if-absent', lookup: 'scoped' } },
-        { write: { mode: 'reassign', lookup: 'scoped' } },
+        { write: { mode: 'if-absent', scope: 'scoped' } },
+        { write: { mode: 'reassign', scope: 'scoped' } },
         { type: 'Ruleset' }
       ]
     });
@@ -720,16 +720,16 @@ describe('SCSS canonical-AST grammar', () => {
         } },
         { type: 'VariableDeclaration', name: 'signed', value: {
           type: 'Operation', operator: '*', left: {
-            type: 'Operation', operator: '*', left: { src: '-1' }, right: { type: 'VariableReference', name: 'base' }
+            type: 'Operation', operator: '*', left: { src: '-1' }, right: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' }
           }, right: { src: '2' }
         } },
         { type: 'VariableDeclaration', name: 'spaced-signed', value: {
           type: 'Operation', operator: '*', left: {
-            type: 'Operation', operator: '*', left: { src: '-1' }, right: { type: 'VariableReference', name: 'base' }
+            type: 'Operation', operator: '*', left: { src: '-1' }, right: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' }
           }, right: { src: '2' }
         } },
         { type: 'VariableDeclaration', name: 'spaced-positive', value: {
-          type: 'Block', delimiter: 'paren', value: { type: 'VariableReference', name: 'base' }
+          type: 'Block', delimiter: 'paren', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' }
         } },
         { type: 'VariableDeclaration', name: 'minus-list', value: [{ src: '1' }, { src: '-2' }] },
         { type: 'VariableDeclaration', name: 'legacy-plus', value: { type: 'Operation', operator: '+' } },
@@ -818,14 +818,14 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'VariableDeclaration', name: 'prefix' }, { type: 'VariableDeclaration', name: 'part' }, {
         type: 'Ruleset', rules: [
-          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, value: { type: 'Collection', entries: [
+          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'Collection', entries: [
             { type: 'CollectionEntry', key: { type: 'Keyword', src: 'color' }, value: { src: 'red' } }
           ] } },
           { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [
-            { type: 'CollectionEntry', key: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: 'bold' } }
+            { type: 'CollectionEntry', key: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'part', raw: '@part' } }] }, value: { src: 'bold' } }
           ] } },
-          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, value: { type: 'Collection', entries: [
-            { type: 'CollectionEntry', key: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: '700' } }
+          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'Collection', entries: [
+            { type: 'CollectionEntry', key: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'part', raw: '@part' } }] }, value: { src: '700' } }
           ] } }
         ]
       }]
@@ -909,8 +909,8 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'tone' },
         { type: 'Ruleset', rules: [
-          { type: 'Declaration', name: 'content', value: { type: 'Interpolation', parts: [{ lit: '"tone-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true }, { lit: '"' }] } },
-          { type: 'Declaration', name: 'color', value: { type: 'Interpolation', parts: [{ lit: 'shade-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true }, { lit: '-strong' }] } }
+          { type: 'Declaration', name: 'content', value: { type: 'Interpolation', parts: [{ lit: '"tone-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }, { lit: '"' }] } },
+          { type: 'Declaration', name: 'color', value: { type: 'Interpolation', parts: [{ lit: 'shade-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true }, { lit: '-strong' }] } }
         ] }
       ]
     });
@@ -927,9 +927,9 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
-        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'property' }, unquote: true }] } },
-        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'margin-' }, { ref: { type: 'VariableReference', name: 'side' }, unquote: true }] } },
-        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: '--theme-' }, { ref: { type: 'VariableReference', name: 'mode' }, unquote: true }] } }
+        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'property', raw: '@property' }, unquote: true }] } },
+        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'margin-' }, { ref: { type: 'Lookup', kind: 'var', name: 'side', raw: '@side' }, unquote: true }] } },
+        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: '--theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }] } }
       ] }]
     });
   });
@@ -945,7 +945,7 @@ describe('SCSS canonical-AST grammar', () => {
         { type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'VariableDeclaration' },
         { type: 'Ruleset', rules: [
           { name: { type: 'Interpolation', parts: [{ ref: { name: 'property' } }] }, value: { type: 'Interpolation', parts: [{ ref: { name: 'value' } }] } },
-          { name: { type: 'Interpolation', parts: [{ lit: 'margin-' }, { ref: { name: 'side' } }, { lit: '-' }, { ref: { name: 'mode' } }] }, value: { type: 'VariableReference', name: 'value' } },
+          { name: { type: 'Interpolation', parts: [{ lit: 'margin-' }, { ref: { name: 'side' } }, { lit: '-' }, { ref: { name: 'mode' } }] }, value: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value' } },
           { name: { type: 'Interpolation', parts: [{ lit: '--theme-' }, { ref: { name: 'mode' } }] } }
         ] },
         { type: 'AtRuleBlock', name: '@font-face', rules: [{ name: { type: 'Interpolation', parts: [{ lit: 'font-' }, { ref: { name: 'side' } }] } }] }
@@ -979,7 +979,7 @@ describe('SCSS canonical-AST grammar', () => {
         },
         rules: [
           { type: 'VariableDeclaration', name: 'accent', value: { type: 'Color', src: '#00f' }, write: { mode: 'declare' } },
-          { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'accent', lookup: 'live' }, merge: null, important: false },
+          { type: 'Declaration', name: 'color', value: { type: 'Lookup', kind: 'var', name: 'accent', raw: '@accent', scope: 'live' }, merge: null, important: false },
           {
             type: 'Ruleset',
             selector: {
@@ -1143,7 +1143,7 @@ describe('SCSS canonical-AST grammar', () => {
      */
     for (const [source, inner] of [
       ['@media (aspect-ratio: 1) { .card { color: red; } }', { type: 'Dimension', src: '1' }],
-      ['@media (min-width: $size) { .card { color: red; } }', { type: 'VariableReference', name: 'size' }],
+      ['@media (min-width: $size) { .card { color: red; } }', { type: 'Lookup', kind: 'var', name: 'size', raw: '@size' }],
       ['@media (min-width: #{$size}) { .card { color: red; } }', { type: 'Interpolation' }]
     ] as const) {
       expect(parse(source).rules[0], source).toMatchObject({
@@ -1213,7 +1213,7 @@ describe('SCSS canonical-AST grammar', () => {
       }],
 
       // A bound may be any SCSS feature value, so a variable reads as one too.
-      ['@media ($min < width) { .card { color: red; } }', { type: 'Operation', operator: '<', left: { type: 'VariableReference', name: 'min' }, right: width }]
+      ['@media ($min < width) { .card { color: red; } }', { type: 'Operation', operator: '<', left: { type: 'Lookup', kind: 'var', name: 'min', raw: '@min' }, right: width }]
     ] as const) {
       expect(parseScssCst(source).errors, source).toHaveLength(0);
       const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
@@ -1318,7 +1318,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleBlock', name: '@font-face', prelude: null, rules: [
-      { type: 'Declaration', name: 'font-family', value: { type: 'VariableReference', name: 'font' } },
+      { type: 'Declaration', name: 'font-family', value: { type: 'Lookup', kind: 'var', name: 'font', raw: '@font' } },
       { type: 'Declaration', name: 'src', value: { type: 'Url', value: { type: 'Quoted', value: 'font.woff2' } } }
     ] }] });
   });
@@ -1610,7 +1610,7 @@ describe('SCSS canonical-AST grammar', () => {
           { type: 'SimpleSelector', text: '.card' },
           { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
             { lit: '[data-state="' },
-            { ref: { type: 'VariableReference', name: 'state', lookup: 'live' }, unquote: true },
+            { ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state', scope: 'live' }, unquote: true },
             { lit: '"]' }
           ] } }
         ] }] }
@@ -1730,7 +1730,7 @@ describe('SCSS canonical-AST grammar', () => {
         { type: 'SimpleSelector', text: '.x' },
         { type: 'PseudoSelector', name: ':is', text: null, crossable: true, args: { type: 'SelectorList', selectors: [
           { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
-            { ref: { type: 'VariableReference', name: 'sel' } }
+            { ref: { type: 'Lookup', kind: 'var', name: 'sel', raw: '@sel' } }
           ] } }
         ] } }
       ] }] } }]
@@ -1890,11 +1890,11 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet', rules: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, {
         type: 'Ruleset', selector: { selectors: [
           { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
-            { lit: '.' }, { ref: { type: 'VariableReference', name: 'name', lookup: 'live' }, unquote: true },
-            { lit: '-' }, { ref: { type: 'VariableReference', name: 'state', lookup: 'live' }, unquote: true }
+            { lit: '.' }, { ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name', scope: 'live' }, unquote: true },
+            { lit: '-' }, { ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state', scope: 'live' }, unquote: true }
           ] } },
           { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
-            { lit: '#item-' }, { ref: { type: 'VariableReference', name: 'name', lookup: 'live' }, unquote: true }
+            { lit: '#item-' }, { ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name', scope: 'live' }, unquote: true }
           ] } }
         ] }
       }]
@@ -1924,7 +1924,7 @@ describe('SCSS canonical-AST grammar', () => {
         { type: 'SimpleSelector', text: '.card' },
         { type: 'PseudoSelector', name: ':not', text: null, crossable: false, args: { type: 'SelectorList', selectors: [
           { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
-            { ref: { type: 'VariableReference', name: 'disabled' } }
+            { ref: { type: 'Lookup', kind: 'var', name: 'disabled', raw: '@disabled' } }
           ] } }
         ] } }
       ] }] } }]
@@ -2053,8 +2053,8 @@ describe('SCSS canonical-AST grammar', () => {
             { name: 'rest', rest: true }
           ],
           rules: [
-            { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'color' } },
-            { type: 'Declaration', name: 'margin', value: { type: 'VariableReference', name: 'gap' } },
+            { type: 'Declaration', name: 'color', value: { type: 'Lookup', kind: 'var', name: 'color', raw: '@color' } },
+            { type: 'Declaration', name: 'margin', value: { type: 'Lookup', kind: 'var', name: 'gap', raw: '@gap' } },
             { type: 'MixinCall', name: 'normalize', args: [{ value: { type: 'Dimension', number: 0, unit: '', src: '0' } }], path: [], important: false },
             { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'padding' }] }
           ]
@@ -2065,7 +2065,7 @@ describe('SCSS canonical-AST grammar', () => {
             args: [
               { value: { type: 'Keyword', src: 'blue' } },
               { name: 'gap', value: { type: 'Dimension', number: 4, unit: 'px', src: '4px' } },
-              { value: { type: 'VariableReference', name: 'rest' }, spread: true }
+              { value: { type: 'Lookup', kind: 'var', name: 'rest', raw: '@rest' }, spread: true }
             ]
           }]
         }
@@ -2111,7 +2111,7 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [{
         type: 'For', binding: { kind: 'single', name: 'tone' },
         iterable: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }],
-        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'tone' } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color', value: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' } }] }]
       }]
     });
   });
@@ -2312,15 +2312,15 @@ describe('SCSS canonical-AST grammar', () => {
         type: 'Declaration', name: 'color',
         value: {
           type: 'Reference',
-          base: { type: 'VariableReference', name: 'm', lookup: 'live' },
-          steps: [{ type: 'BracketLookup', key: { type: 'Keyword', src: 'a' }, keyKind: 'member' }],
+          base: { type: 'Lookup', kind: 'var', name: 'm', raw: '@m', scope: 'live' },
+          steps: [{ type: 'LookupStep', name: { type: 'Keyword', src: 'a' }, kind: 'member' }],
           raw: '$m[a]'
         }
       }]
     });
 
     expect(parse('.x { color: map-get($m, $k); }').rules[0]).toMatchObject({
-      rules: [{ value: { type: 'Reference', steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'k' }, keyKind: 'var' }], raw: '$m[$k]' } }]
+      rules: [{ value: { type: 'Reference', steps: [{ type: 'LookupStep', name: { type: 'Lookup', kind: 'var', name: 'k', raw: '@k' }, kind: 'var' }], raw: '$m[$k]' } }]
     });
 
     // A non-canonical arity stays a plain FunctionCall for `fns` routing.
@@ -2341,7 +2341,7 @@ describe('SCSS canonical-AST grammar', () => {
 
     // `map.get` is the module spelling of `map-get`; one semantics, one tree.
     expect(parse('a { b: map.get($m, k); }').rules[0]).toMatchObject({
-      rules: [{ value: { type: 'Reference', base: { type: 'VariableReference', name: 'm' }, raw: '$m[k]' } }]
+      rules: [{ value: { type: 'Reference', base: { type: 'Lookup', kind: 'var', name: 'm', raw: '@m' }, raw: '$m[k]' } }]
     });
   });
 
@@ -2351,7 +2351,7 @@ describe('SCSS canonical-AST grammar', () => {
         value: {
           type: 'Reference',
           base: { type: 'Keyword', src: 'theme' },
-          steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'primary', lookup: 'live' }, keyKind: 'var' }],
+          steps: [{ type: 'LookupStep', name: { type: 'Lookup', kind: 'var', name: 'primary', raw: '@primary', scope: 'live' }, kind: 'var' }],
           raw: 'theme.$primary'
         }
       }]
@@ -2392,7 +2392,7 @@ describe('SCSS canonical-AST grammar', () => {
       value: {
         type: 'AnonymousMixin',
         params: [{ name: 'n' }],
-        rules: [{ type: 'Declaration', name: 'result', value: { type: 'Operation', operator: '*', left: { type: 'VariableReference', name: 'n', lookup: 'live' }, right: { type: 'Dimension', number: 2, unit: '', src: '2' } }, merge: null, important: false }]
+        rules: [{ type: 'Declaration', name: 'result', value: { type: 'Operation', operator: '*', left: { type: 'Lookup', kind: 'var', name: 'n', raw: '@n', scope: 'live' }, right: { type: 'Dimension', number: 2, unit: '', src: '2' } }, merge: null, important: false }]
       }
     });
   });

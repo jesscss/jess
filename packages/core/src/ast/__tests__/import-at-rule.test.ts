@@ -969,7 +969,7 @@ describe('ImportAtRule', () => {
     const document = stylesheet([
       importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),
       rule('#library', [mixinDef('.add-one', [{ name: 'value' }], [variableDeclaration('return', dimension(3, 'px', '3px'), { mode: 'declare' })])]),
-      rule('.bar', [decl('height', reference(importedCall, [{ type: 'BracketLookup', keyKind: 'var', key: variableReference('return', 'scoped') }], '#library.add-one(1px)[@return]'))])
+      rule('.bar', [decl('height', reference(importedCall, [{ type: 'LookupStep', kind: 'var', name: variableReference('return', 'scoped') }], '#library.add-one(1px)[@return]'))])
     ]);
 
     await expect(serialize(document, {
@@ -991,7 +991,7 @@ describe('ImportAtRule', () => {
     const document = stylesheet([
       importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),
       rule('.bar', [decl('height', reference(importedCall, [
-        { type: 'BracketLookup', keyKind: 'var', key: variableReference('return', 'scoped') }
+        { type: 'LookupStep', kind: 'var', name: variableReference('return', 'scoped') }
       ], '#library.add-one(1px)[@return]'))])
     ]);
 

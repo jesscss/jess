@@ -29,8 +29,8 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, Declaration, Collection, CollectionEntry, DeclarationReference, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -50,9 +50,9 @@ type JessRules = {
   BlockLambda: Combinator<AnonymousMixin>;
   ExpressionLambda: Combinator<AnonymousMixin>;
   ValueBlock: Combinator<ValueNode>;
-  VariableReference: Combinator<VariableReference>;
-  ExpressionScopedReference: Combinator<VariableReference>;
-  DeclarationReference: Combinator<DeclarationReference>;
+  VariableReference: Combinator<Lookup>;
+  ExpressionScopedReference: Combinator<Lookup>;
+  DeclarationReference: Combinator<Lookup>;
   ReferenceTail: Combinator<JessReferenceTail>;
   ReferenceCallTail: Combinator<JessReferenceTail>;
   DollarValue: Combinator<ValueNode>;
@@ -502,10 +502,8 @@ function isValueNode(value: unknown): value is ValueNode {
     && (value.type === 'Any'
       || value.type === 'Keyword'
       || value.type === 'Quoted'
-      || value.type === 'VariableReference'
+      || value.type === 'Lookup'
       || value.type === 'Reference'
-      || value.type === 'DeclarationReference'
-      || value.type === 'PropertyReference'
       || value.type === 'Color'
       || value.type === 'Dimension'
       || value.type === 'SelectorCapture'
@@ -736,13 +734,22 @@ function foldExpression(children: readonly unknown[]): ExpressionFact {
   return fact;
 }
 
+/**
+ * A {@link Lookup} name is `string | ValueNode` now that `@@indirect` is spelled
+ * as a node-valued name; a literal name is its own spelling, a node-valued one
+ * defers to the expression printer.
+ */
+function lookupNameSource(name: string | ValueNode): string {
+  return typeof name === 'string' ? name : expressionSource(name);
+}
+
 function expressionSource(value: ValueNode): string {
   switch (value.type) {
     case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
-    case 'VariableReference': return value.lookup === 'scoped' ? `^${value.name}` : `$${value.name}`;
+    case 'Lookup': return value.kind === 'var'
+      ? `${value.scope === 'scoped' ? '^' : '$'}${lookupNameSource(value.name)}`
+      : value.raw;
     case 'Reference': return value.raw;
-    case 'DeclarationReference': return value.raw;
-    case 'PropertyReference': return value.raw;
     case 'Operation': return `${expressionSource(value.left)} ${value.operator} ${expressionSource(value.right)}`;
     case 'Condition': return value.src;
     case 'Interpolation': return value.parts.map(part => 'lit' in part ? part.lit : expressionSource(part.ref)).join('');
@@ -752,26 +759,37 @@ function expressionSource(value: ValueNode): string {
 
 function referenceBaseSource(value: ValueNode): string {
   switch (value.type) {
-    case 'VariableReference': return value.lookup === 'scoped' ? `^${value.name}` : `$${value.name}`;
-    case 'DeclarationReference': return value.raw;
+    case 'Lookup':
+      if (value.kind === 'var') {
+        return `${value.scope === 'scoped' ? '^' : '$'}${lookupNameSource(value.name)}`;
+      }
+      if (value.kind === 'entry') {
+        return value.raw;
+      }
+      throw new TypeError(`Jess expression reference cannot start from ${value.type}.`);
     default: throw new TypeError(`Jess expression reference cannot start from ${value.type}.`);
   }
 }
 
+/** A member step is a `LookupStep` whose name is a literal — the old `DotLookup`. */
+function isMemberStep(step: JessReferenceTail['step'] | undefined): boolean {
+  return step !== undefined && step.type === 'LookupStep' && typeof step.name === 'string';
+}
+
 function declarationMemberReferenceFromVariableBase(
-  base: VariableReference,
+  base: Lookup,
   tails: readonly JessReferenceTail[]
 ): Reference | null {
-  if (base.lookup !== 'live' || base.name === 'type' || tails[0]?.step.type !== 'DotLookup') {
+  if (base.scope !== 'live' || base.name === 'type' || !isMemberStep(tails[0]?.step)) {
     return null;
   }
   return reference(
     declarationReference('$'),
     [
-      { type: 'DotLookup', name: base.name },
+      lookupStep('member', base.name),
       ...tails.map(tail => tail.step)
     ],
-    `$${base.name}${tails.map(tail => tail.src).join('')}`
+    `$${lookupNameSource(base.name)}${tails.map(tail => tail.src).join('')}`
   );
 }
 
@@ -791,7 +809,7 @@ function interpolationFromChildren(
         span
       );
     }
-    return interpolation([{ ref: varIndirect(
+    return interpolation([{ ref: variableReference(
       ref,
       'live'
     ), unquote: true }]);
@@ -856,7 +874,7 @@ function dollarBraceInterpolation(
         span
       );
     }
-    return interpolation([{ ref: varIndirect(
+    return interpolation([{ ref: variableReference(
       named,
       'live'
     ), unquote: true }]);
@@ -883,8 +901,10 @@ function referenceArgSource(value: JessMixinCallArgument['value']): string {
   }
   switch (value.type) {
     case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
-    case 'VariableReference': return `${value.lookup === 'scoped' ? '$^' : '$'}${value.name}`;
-    case 'Reference': case 'DeclarationReference': case 'PropertyReference': return value.raw;
+    case 'Lookup': return value.kind === 'var'
+      ? `${value.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(value.name)}`
+      : value.raw;
+    case 'Reference': return value.raw;
     case 'Operation': case 'Condition': case 'Interpolation': return expressionSource(value);
     default: return '';
   }
@@ -1244,9 +1264,9 @@ function reduceVarDeclaration(children: readonly unknown[]): VariableDeclaration
   const operator = requireToken(children[operatorIndex]).value;
   const lookup = operatorIndex === 3 ? 'scoped' as const : 'live' as const;
   const write = operator === '?:'
-    ? { mode: 'if-absent' as const, lookup }
+    ? { mode: 'if-absent' as const, scope: lookup }
     : operator === ':='
-      ? { mode: 'reassign' as const, lookup }
+      ? { mode: 'reassign' as const, scope: lookup }
       : { mode: 'declare' as const };
   return variableDeclaration(
     requireToken(children[operatorIndex - 1]).value,
@@ -1679,7 +1699,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     '@-use', '@-compose', '@-export', '@-import', '@-from'
   ];
 
-  const VariableReference = node<VariableReference>(
+  const VariableReference = node<Lookup>(
     'VariableReference',
     choice(
       noTrivia(sequence(
@@ -1699,7 +1719,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       span
     )
   );
-  const ExpressionScopedReference = node<VariableReference>(
+  const ExpressionScopedReference = node<Lookup>(
     'VariableReference',
     noTrivia(sequence(
       literal('^'),
@@ -1713,7 +1733,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       span
     )
   );
-  const DeclarationReference = node<DeclarationReference>(
+  const DeclarationReference = node<Lookup>(
     'DeclarationReference',
     noTrivia(literal('$')),
     (_children, _fields, span) => withSourceSpan(declarationReference('$'), span)
@@ -1802,7 +1822,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ))
     )),
     (children, _fields, span) => {
-      const rooted = children.some(child => isValueNode(child) && child.type === 'DeclarationReference');
+      const rooted = children.some(child => isValueNode(child) && child.type === 'Lookup' && child.kind === 'entry');
       const name = requireToken(children.find((child): child is Token => isToken(child) && child.value !== '.')).value;
       const sourceRoot = rooted ? '$' : '';
       const base = withSourceSpan(declarationReference('$'), span);
@@ -1811,7 +1831,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return { value: reference(
         base,
         [
-          { type: 'DotLookup', name },
+          lookupStep('member', name),
           ...tails.map(tail => tail.step)
         ],
         raw
@@ -1928,11 +1948,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       }
       if (isJessReferenceTail(children[1])) {
         const base = requireValueNode(children[0]);
-        if (base.type !== 'VariableReference' && base.type !== 'DeclarationReference') {
+        if (base.type !== 'Lookup' || (base.kind !== 'var' && base.kind !== 'entry')) {
           throw new TypeError('Jess expression reference base must be a variable or declaration reference.');
         }
         const tails = children.slice(1).map(requireJessReferenceTail);
-        if (base.type === 'VariableReference') {
+        if (base.kind === 'var') {
           const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
           if (memberReference) {
             return { value: memberReference, src: memberReference.raw };
@@ -3389,7 +3409,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )),
       (children) => {
         const name = requireToken(children[1]).value;
-        return { step: { type: 'DotLookup', name }, src: `.${name}` };
+        return { step: lookupStep('member', name), src: `.${name}` };
       }
     ),
     node<JessReferenceTail>(
@@ -3406,17 +3426,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )),
       (children) => {
         const key = children[1];
-        if (isValueNode(key) && key.type === 'VariableReference') {
-          return { step: { type: 'BracketLookup', key, keyKind: 'var' }, src: `[${key.lookup === 'scoped' ? '$^' : '$'}${key.name}]` };
+        if (isValueNode(key) && key.type === 'Lookup' && key.kind === 'var') {
+          return { step: lookupStep('var', key), src: `[${key.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(key.name)}]` };
         }
         if (isValueNode(key) && key.type === 'Quoted') {
-          return { step: { type: 'BracketLookup', key, keyKind: 'member' }, src: `[${key.src}]` };
+          return { step: lookupStep('member', key), src: `[${key.src}]` };
         }
         if (isToken(key)) {
-          return { step: { type: 'BracketLookup', key: Number(key.value), keyKind: 'index', indexBase: 0 }, src: `[${key.value}]` };
+          return { step: lookupStep('index', Number(key.value), 0), src: `[${key.value}]` };
         }
         if (isValueNode(key) && key.type === 'Keyword') {
-          return { step: { type: 'BracketLookup', key, keyKind: 'member' }, src: `[${key.src}]` };
+          return { step: lookupStep('member', key), src: `[${key.src}]` };
         }
         throw new TypeError('Jess reference bracket key must be a typed value.');
       }
@@ -3475,12 +3495,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(literal('$^'), dollarName),
     sequence(literal('$'), dollarName)
   )));
-  const RoutedDeclarationReference = node<DeclarationReference>(
+  const RoutedDeclarationReference = node<Lookup>(
     'DeclarationReference',
     routed(),
     (_children, _fields, span) => withSourceSpan(declarationReference('$'), span)
   );
-  const RoutedVariableReference = node<VariableReference>(
+  const RoutedVariableReference = node<Lookup>(
     'VariableReference',
     routed(),
     (children, _fields, span) => {
@@ -3536,25 +3556,25 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children) => {
       const base = requireValueNode(children[0]);
       if (children.length === 1) {
-        if (base.type !== 'VariableReference') {
+        if (base.type !== 'Lookup' || base.kind !== 'var') {
           throw new TypeError('Jess reference base must be a variable reference.');
         }
         return base;
       }
       const rest = children.slice(1);
-      if (base.type === 'DeclarationReference') {
+      if (base.type === 'Lookup' && base.kind === 'entry') {
         const name = requireToken(rest[0]).value;
         const tails = rest.slice(1).map(requireJessReferenceTail);
         return reference(
           base,
           [
-            { type: 'DotLookup', name },
+            lookupStep('member', name),
             ...tails.map(tail => tail.step)
           ],
           `${base.raw}.${name}${tails.map(tail => tail.src).join('')}`
         );
       }
-      if (base.type !== 'VariableReference') {
+      if (base.type !== 'Lookup' || base.kind !== 'var') {
         throw new TypeError('Jess reference base must be a variable reference.');
       }
       if (isJessReferenceTail(rest[0])) {
@@ -3566,7 +3586,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         return reference(
           base,
           tails.map(tail => tail.step),
-          `${base.lookup === 'scoped' ? '$^' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`
+          `${base.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(base.name)}${tails.map(tail => tail.src).join('')}`
         );
       }
       if (rest.some(child => isToken(child) && child.value === '/')) {

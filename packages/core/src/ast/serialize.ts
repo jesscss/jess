@@ -2226,7 +2226,7 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
     (e.lambdaFunctionNames ??= new Set()).add(node.name);
   }
   if (node.write.mode === 'if-absent') {
-    const found = node.write.lookup === 'live'
+    const found = node.write.scope === 'live'
       ? lookupLiveCell(frame, node.name)
       : lookupScopedBinding(frame, node.name, e);
     if (found) {
@@ -2237,7 +2237,7 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
     return;
   }
   if (node.write.mode === 'reassign') {
-    if (node.write.lookup === 'live') {
+    if (node.write.scope === 'live') {
       const found = lookupLiveCell(frame, node.name);
       if (!found) {
         throw new ReferenceError(`live variable $${node.name} is undefined`);
@@ -2980,6 +2980,14 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Url':
       return mapMaybe(evalValue(node, frame, e), v => force(e, v));
     case 'Lookup':
+      /*
+       * Only a VAR lookup resolves here. A `prop`/`entry` lookup falls through
+       * to the default byte path, exactly as `PropertyReference` and
+       * `DeclarationReference` did before they shared this kind.
+       */
+      if (node.kind !== 'var') {
+        return mapMaybe(evalValue(node, frame, e), v => force(e, v));
+      }
       return mapMaybe(lookupName(node, frame, e), (nm) => {
         const hit = resolveVarRef(frame, nm, node.scope, e);
         if (!hit) {
@@ -11944,6 +11952,10 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
       return joinPreludeParts(parts);
     }
     case 'Lookup':
+      /* Var only — see the typed lane above. */
+      if (node.kind !== 'var') {
+        return evalBytes(node, frame, e);
+      }
       return mapMaybe(lookupName(node, frame, e), (nm) => {
         const hit = resolveVarRef(frame, nm, node.scope, e);
         if (!hit) {

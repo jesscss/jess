@@ -171,7 +171,7 @@ describe('direct canonical value access', () => {
       ])
     ]);
 
-    expect(render(document)).toBe('.out {\n  foo: dos;\n  name: callee;\n  returned: callee-return;\n}\n');
+    expect(render(document)).toBe('.out {\n  foo: dos;\n  key: callee;\n  returned: callee-return;\n}\n');
   });
 
   it('uses the final local variable as a mixin call empty-bracket result', () => {

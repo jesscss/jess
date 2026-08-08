@@ -691,7 +691,7 @@ describe('Less AST grammar facts', () => {
                                 { lit: ':lang(' },
                                 {
                                   ref: {
-                                    type: 'VariableReference',
+                                    type: 'Lookup', kind: 'var',
                                     name: 'lang'
                                   },
                                   unquote: true
@@ -915,9 +915,10 @@ describe('Less AST grammar facts', () => {
         {
           type: 'For',
           iterable: {
-            type: 'VariableReference',
+            type: 'Lookup', kind: 'var',
             name: 'items',
-            lookup: 'scoped'
+            raw: '@items',
+            scope: 'scoped'
           },
           binding: { kind: 'single', name: 'entry' },
           rules: [
@@ -925,9 +926,10 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'value',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'entry',
-                lookup: 'scoped'
+                raw: '@entry',
+                scope: 'scoped'
               },
               merge: null,
               important: false
@@ -937,9 +939,10 @@ describe('Less AST grammar facts', () => {
         {
           type: 'For',
           iterable: {
-            type: 'VariableReference',
+            type: 'Lookup', kind: 'var',
             name: 'items',
-            lookup: 'scoped'
+            raw: '@items',
+            scope: 'scoped'
           },
           binding: { kind: 'comma', names: ['item', 'key', 'index'] },
           rules: [
@@ -947,9 +950,10 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'value',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'item',
-                lookup: 'scoped'
+                raw: '@item',
+                scope: 'scoped'
               },
               merge: null,
               important: false
@@ -958,9 +962,10 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'key',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'key',
-                lookup: 'scoped'
+                raw: '@key',
+                scope: 'scoped'
               },
               merge: null,
               important: false
@@ -969,9 +974,10 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'index',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'index',
-                lookup: 'scoped'
+                raw: '@index',
+                scope: 'scoped'
               },
               merge: null,
               important: false
@@ -981,9 +987,10 @@ describe('Less AST grammar facts', () => {
         {
           type: 'For',
           iterable: {
-            type: 'VariableReference',
+            type: 'Lookup', kind: 'var',
             name: 'items',
-            lookup: 'scoped'
+            raw: '@items',
+            scope: 'scoped'
           },
           binding: { kind: 'comma', names: ['value', 'key', 'index'] },
           rules: [
@@ -991,9 +998,10 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'value',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'value',
-                lookup: 'scoped'
+                raw: '@value',
+                scope: 'scoped'
               },
               merge: null,
               important: false
@@ -1002,9 +1010,10 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'key',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'key',
-                lookup: 'scoped'
+                raw: '@key',
+                scope: 'scoped'
               },
               merge: null,
               important: false
@@ -1013,9 +1022,10 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'index',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'index',
-                lookup: 'scoped'
+                raw: '@index',
+                scope: 'scoped'
               },
               merge: null,
               important: false
@@ -1052,9 +1062,10 @@ describe('Less AST grammar facts', () => {
         {
           type: 'For',
           iterable: {
-            type: 'VariableReference',
+            type: 'Lookup', kind: 'var',
             name: 'items',
-            lookup: 'scoped'
+            raw: '@items',
+            scope: 'scoped'
           },
           binding: { kind: 'comma', names: ['item', 'key', undefined] },
           rules: [
@@ -1062,18 +1073,20 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'value',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'item',
-                lookup: 'scoped'
+                raw: '@item',
+                scope: 'scoped'
               }
             },
             {
               type: 'Declaration',
               name: 'key',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'key',
-                lookup: 'scoped'
+                raw: '@key',
+                scope: 'scoped'
               }
             }
           ]
@@ -1394,13 +1407,14 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'color',
               value: {
-                type: 'VarIndirect',
-                nameRef: {
-                  type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
+                name: {
+                  type: 'Lookup', kind: 'var',
                   name: 'name',
-                  lookup: 'scoped'
+                  raw: '@name',
+                  scope: 'scoped'
                 },
-                lookup: 'scoped'
+                scope: 'scoped'
               }
             }
           ]
@@ -2000,7 +2014,7 @@ describe('Less AST grammar facts', () => {
       rules: [
         {
           type: 'Reference',
-          base: { type: 'VariableReference', name: 'theme', lookup: 'scoped' },
+          base: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme', scope: 'scoped' },
           steps: [{ type: 'Call', args: [] }],
           raw: '@theme()'
         },
@@ -2010,9 +2024,10 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Reference',
               base: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'theme',
-                lookup: 'scoped'
+                raw: '@theme',
+                scope: 'scoped'
               },
               steps: [{ type: 'Call', args: [] }],
               raw: '@theme()'
@@ -2570,7 +2585,7 @@ describe('Less AST grammar facts', () => {
               {
                 type: 'Declaration',
                 name: 'color',
-                value: { type: 'VariableReference', name: 'accent' }
+                value: { type: 'Lookup', kind: 'var', name: 'accent', raw: '@accent' }
               }
             ]
           }
@@ -2790,7 +2805,7 @@ describe('Less AST grammar facts', () => {
       rules: [
         {
           type: 'Reference',
-          base: { type: 'VariableReference', name: 'theme', lookup: 'scoped' },
+          base: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme', scope: 'scoped' },
           steps: [
             { type: 'Call', args: [{ value: { type: 'Color', src: 'red' } }] }
           ]
@@ -3125,9 +3140,10 @@ describe('Less AST grammar facts', () => {
               operator: ':',
               left: { type: 'Keyword', src: 'min-width' },
               right: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'var',
-                lookup: 'scoped'
+                raw: '@var',
+                scope: 'scoped'
               }
             }
           }
@@ -3163,7 +3179,7 @@ describe('Less AST grammar facts', () => {
             parts: [
               { lit: '"theme-' },
               {
-                ref: { type: 'VariableReference', name: 'name' },
+                ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
                 unquote: true
               },
               { lit: '.css"' }
@@ -3200,9 +3216,10 @@ describe('Less AST grammar facts', () => {
             parts: [
               {
                 ref: {
-                  type: 'VariableReference',
+                  type: 'Lookup', kind: 'var',
                   name: 'media',
-                  lookup: 'scoped'
+                  raw: '@media',
+                  scope: 'scoped'
                 },
                 unquote: true
               }
@@ -3238,7 +3255,7 @@ describe('Less AST grammar facts', () => {
                 value: {
                   type: 'Interpolation',
                   parts: [
-                    { ref: { type: 'VariableReference', name: 'asset' } },
+                    { ref: { type: 'Lookup', kind: 'var', name: 'asset', raw: '@asset' } },
                     { lit: '/path.svg' }
                   ]
                 }
@@ -3252,7 +3269,7 @@ describe('Less AST grammar facts', () => {
                 value: {
                   type: 'Interpolation',
                   parts: [
-                    { ref: { type: 'VariableReference', name: 'theme' } },
+                    { ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' } },
                     { lit: '/icon.svg' }
                   ]
                 }
@@ -3267,7 +3284,7 @@ describe('Less AST grammar facts', () => {
             value: {
               type: 'Interpolation',
               parts: [
-                { ref: { type: 'VariableReference', name: 'theme' } },
+                { ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' } },
                 { lit: '.css' }
               ]
             }
@@ -3353,7 +3370,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'VariableDeclaration',
           name: 'theme',
-          value: { type: 'VariableReference', name: 'base', lookup: 'scoped' },
+          value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base', scope: 'scoped' },
           write: { mode: 'declare' }
         },
         {
@@ -3369,9 +3386,10 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'color',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'theme',
-                lookup: 'scoped'
+                raw: '@theme',
+                scope: 'scoped'
               },
               merge: null,
               important: false
@@ -3686,7 +3704,7 @@ describe('Less AST grammar facts', () => {
         },
         {
           value: {
-            args: [{ type: 'Assignment', key: 'bar', value: { type: 'VariableReference', name: 'v' } }]
+            args: [{ type: 'Assignment', key: 'bar', value: { type: 'Lookup', kind: 'var', name: 'v', raw: '@v' } }]
           }
         }
       ]
@@ -3892,9 +3910,10 @@ describe('Less AST grammar facts', () => {
                 args: [
                   { type: 'Color', src: 'blue' },
                   {
-                    type: 'VariableReference',
+                    type: 'Lookup', kind: 'var',
                     name: 'color',
-                    lookup: 'scoped'
+                    raw: '@color',
+                    scope: 'scoped'
                   },
                   { type: 'Dimension', src: '50%' }
                 ]
@@ -4110,7 +4129,7 @@ describe('Less AST grammar facts', () => {
               name: 'direct',
               value: {
                 type: 'Url',
-                value: { type: 'VariableReference', name: 'asset' }
+                value: { type: 'Lookup', kind: 'var', name: 'asset', raw: '@asset' }
               }
             },
             {
@@ -4122,7 +4141,7 @@ describe('Less AST grammar facts', () => {
                   type: 'Interpolation',
                   parts: [
                     {
-                      ref: { type: 'VariableReference', name: 'asset' },
+                      ref: { type: 'Lookup', kind: 'var', name: 'asset', raw: '@asset' },
                       unquote: true
                     },
                     { lit: '.svg' }
@@ -4140,7 +4159,7 @@ describe('Less AST grammar facts', () => {
                   parts: [
                     { lit: '"' },
                     {
-                      ref: { type: 'VariableReference', name: 'base' },
+                      ref: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base' },
                       unquote: true
                     },
                     { lit: '/icon.svg"' }
@@ -4246,9 +4265,10 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'box-shadow',
               value: {
-                type: 'VariableReference',
+                type: 'Lookup', kind: 'var',
                 name: 'accent',
-                lookup: 'scoped'
+                raw: '@accent',
+                scope: 'scoped'
               },
               merge: ',',
               important: false
@@ -4473,9 +4493,10 @@ describe('Less AST grammar facts', () => {
                 parts: [
                   {
                     ref: {
-                      type: 'VariableReference',
+                      type: 'Lookup', kind: 'var',
                       name: 'ns',
-                      lookup: 'scoped'
+                      raw: '@ns',
+                      scope: 'scoped'
                     },
                     unquote: true
                   }
@@ -4607,7 +4628,7 @@ describe('Less AST grammar facts', () => {
             type: 'Interpolation',
             parts: [
               {
-                ref: { type: 'VariableReference', name: 'layer-name' },
+                ref: { type: 'Lookup', kind: 'var', name: 'layer-name', raw: '@layer-name' },
                 unquote: true
               }
             ]
@@ -4983,7 +5004,7 @@ describe('Less AST grammar facts', () => {
                     value: {
                       type: 'Operation',
                       operator: ':',
-                      right: { type: 'VariableReference', name: 'limit' }
+                      right: { type: 'Lookup', kind: 'var', name: 'limit', raw: '@limit' }
                     }
                   }
                 ]
@@ -5002,7 +5023,7 @@ describe('Less AST grammar facts', () => {
             value: {
               type: 'Operation',
               operator: '<',
-              right: { type: 'VariableReference', name: 'limit' }
+              right: { type: 'Lookup', kind: 'var', name: 'limit', raw: '@limit' }
             }
           },
           rules: [{ type: 'Ruleset' }]
@@ -5177,7 +5198,7 @@ describe('Less AST grammar facts', () => {
               type: 'Operation',
               operator: ':',
               left: { type: 'Keyword', src: 'min-width' },
-              right: { type: 'VariableReference', name: 'size' }
+              right: { type: 'Lookup', kind: 'var', name: 'size', raw: '@size' }
             }
           }
         },
@@ -5247,9 +5268,8 @@ describe('Less AST grammar facts', () => {
             },
             steps: [
               {
-                type: 'BracketLookup',
-                keyKind: 'var',
-                key: { type: 'VariableReference', name: 'max' }
+                type: 'LookupStep', kind: 'var',
+                name: { type: 'Lookup', kind: 'var', name: 'max', raw: '@max' }
               }
             ]
           }
@@ -5414,7 +5434,7 @@ describe('Less AST grammar facts', () => {
                 type: 'Interpolation',
                 parts: [
                   {
-                    ref: { type: 'VariableReference', name: 'name' },
+                    ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
                     unquote: true
                   }
                 ]
@@ -5425,7 +5445,7 @@ describe('Less AST grammar facts', () => {
                 value: {
                   type: 'Operation',
                   operator: '>',
-                  right: { type: 'VariableReference', name: 'limit' }
+                  right: { type: 'Lookup', kind: 'var', name: 'limit', raw: '@limit' }
                 }
               }
             ]
@@ -5533,7 +5553,7 @@ describe('Less AST grammar facts', () => {
             type: 'Interpolation',
             parts: [
               {
-                ref: { type: 'VariableReference', name: 'query' },
+                ref: { type: 'Lookup', kind: 'var', name: 'query', raw: '@query' },
                 unquote: true
               }
             ]
@@ -5546,7 +5566,7 @@ describe('Less AST grammar facts', () => {
             type: 'Interpolation',
             parts: [
               {
-                ref: { type: 'VariableReference', name: 'condition' },
+                ref: { type: 'Lookup', kind: 'var', name: 'condition', raw: '@condition' },
                 unquote: true
               }
             ]
@@ -5559,7 +5579,7 @@ describe('Less AST grammar facts', () => {
             type: 'Interpolation',
             parts: [
               {
-                ref: { type: 'VariableReference', name: 'animation' },
+                ref: { type: 'Lookup', kind: 'var', name: 'animation', raw: '@animation' },
                 unquote: true
               }
             ]
@@ -5604,9 +5624,10 @@ describe('Less AST grammar facts', () => {
                 { lit: '  .card-' },
                 {
                   ref: {
-                    type: 'VariableReference',
+                    type: 'Lookup', kind: 'var',
                     name: 'feature',
-                    lookup: 'scoped'
+                    raw: '@feature',
+                    scope: 'scoped'
                   },
                   unquote: true
                 },
@@ -5683,12 +5704,12 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'padding',
-              value: { type: 'VariableReference', name: 'amount' }
+              value: { type: 'Lookup', kind: 'var', name: 'amount', raw: '@amount' }
             },
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'VariableReference', name: 'color' }
+              value: { type: 'Lookup', kind: 'var', name: 'color', raw: '@color' }
             }
           ]
         },
@@ -5882,9 +5903,10 @@ describe('Less AST grammar facts', () => {
                 {
                   type: 'Reference',
                   base: {
-                    type: 'VariableReference',
+                    type: 'Lookup', kind: 'var',
                     name: 'rules',
-                    lookup: 'scoped'
+                    raw: '@rules',
+                    scope: 'scoped'
                   },
                   steps: [{ type: 'Call', args: [] }]
                 }
@@ -5911,9 +5933,10 @@ describe('Less AST grammar facts', () => {
                           parts: [
                             {
                               ref: {
-                                type: 'VariableReference',
+                                type: 'Lookup', kind: 'var',
                                 name: 'replace',
-                                lookup: 'scoped'
+                                raw: '@replace',
+                                scope: 'scoped'
                               }
                             }
                           ]
@@ -6210,9 +6233,10 @@ describe('Less AST grammar facts', () => {
               args: [
                 {
                   value: {
-                    type: 'VariableReference',
+                    type: 'Lookup', kind: 'var',
                     name: 'args',
-                    lookup: 'scoped'
+                    raw: '@args',
+                    scope: 'scoped'
                   },
                   spread: true
                 }
@@ -6335,9 +6359,8 @@ describe('Less AST grammar facts', () => {
                 base: { type: 'MixinCall', name: '#ns1', path: [], args: [] },
                 steps: [
                   {
-                    type: 'BracketLookup',
-                    keyKind: 'prop',
-                    key: { type: 'Keyword', src: 'foo' }
+                    type: 'LookupStep', kind: 'prop',
+                    name: { type: 'Keyword', src: 'foo' }
                   }
                 ],
                 raw: '#ns1[foo]'
@@ -6356,9 +6379,8 @@ describe('Less AST grammar facts', () => {
                 },
                 steps: [
                   {
-                    type: 'BracketLookup',
-                    keyKind: 'prop',
-                    key: { type: 'PropertyReference', name: 'sub' }
+                    type: 'LookupStep', kind: 'prop',
+                    name: { type: 'Lookup', kind: 'prop', name: 'sub' }
                   }
                 ],
                 raw: '#ns1 .vars[$sub]'
@@ -6377,9 +6399,8 @@ describe('Less AST grammar facts', () => {
                 },
                 steps: [
                   {
-                    type: 'BracketLookup',
-                    keyKind: 'prop',
-                    key: { type: 'Keyword', src: 'primary' }
+                    type: 'LookupStep', kind: 'prop',
+                    name: { type: 'Keyword', src: 'primary' }
                   }
                 ],
                 raw: '#DEF .colors[primary]'
@@ -6398,9 +6419,8 @@ describe('Less AST grammar facts', () => {
                 },
                 steps: [
                   {
-                    type: 'BracketLookup',
-                    keyKind: 'var',
-                    key: { type: 'VariableReference', name: 'return' }
+                    type: 'LookupStep', kind: 'var',
+                    name: { type: 'Lookup', kind: 'var', name: 'return', raw: '@return' }
                   }
                 ],
                 raw: '#library .add-one(1px)[@return]'
@@ -6446,22 +6466,20 @@ describe('Less AST grammar facts', () => {
                 },
                 steps: [
                   {
-                    type: 'BracketLookup',
-                    keyKind: 'var',
-                    key: {
-                      type: 'VariableReference',
+                    type: 'LookupStep', kind: 'var',
+                    name: {
+                      type: 'Lookup', kind: 'var',
                       name: 'next',
-                      lookup: 'scoped'
-                    }
+                      raw: '@next',
+                      scope: 'scoped' }
                   },
                   {
                     type: 'Call',
                     args: [{ value: { type: 'Dimension', src: '42' } }]
                   },
                   {
-                    type: 'BracketLookup',
-                    keyKind: 'prop',
-                    key: { type: 'Keyword', src: 'answer' }
+                    type: 'LookupStep', kind: 'prop',
+                    name: { type: 'Keyword', src: 'answer' }
                   }
                 ],
                 raw: '#library .seed()[@next](42)[answer]'
@@ -6473,17 +6491,17 @@ describe('Less AST grammar facts', () => {
               value: {
                 type: 'Reference',
                 base: {
-                  type: 'VariableReference',
+                  type: 'Lookup', kind: 'var',
                   name: 'theme',
-                  lookup: 'scoped'
+                  raw: '@theme',
+                  scope: 'scoped'
                 },
                 steps: [
                   {
-                    type: 'BracketLookup',
-                    keyKind: 'prop',
-                    key: { type: 'Keyword', src: 'key' }
+                    type: 'LookupStep', kind: 'prop',
+                    name: { type: 'Keyword', src: 'key' }
                   },
-                  { type: 'DotLookup', name: 'next' },
+                  { type: 'LookupStep', kind: 'member', name: 'next' },
                   {
                     type: 'Call',
                     args: [{ value: { type: 'Dimension', src: '1' } }]
@@ -6533,13 +6551,12 @@ describe('Less AST grammar facts', () => {
                 },
                 steps: [
                   {
-                    type: 'BracketLookup',
-                    keyKind: 'prop',
-                    key: {
-                      type: 'VariableReference',
+                    type: 'LookupStep', kind: 'prop',
+                    name: {
+                      type: 'Lookup', kind: 'var',
                       name: 'prop-name',
-                      lookup: 'scoped'
-                    }
+                      raw: '@prop-name',
+                      scope: 'scoped' }
                   }
                 ],
                 raw: '#namespace[$@prop-name]'
@@ -6621,33 +6638,31 @@ describe('Less AST grammar facts', () => {
                     },
                     steps: [
                       {
-                        type: 'BracketLookup',
-                        keyKind: 'prop',
-                        key: { type: 'Keyword', src: 'val1' }
+                        type: 'LookupStep', kind: 'prop',
+                        name: { type: 'Keyword', src: 'val1' }
                       }
                     ]
                   },
                   right: {
                     type: 'Reference',
                     base: {
-                      type: 'VariableReference',
+                      type: 'Lookup', kind: 'var',
                       name: 'ns',
-                      lookup: 'scoped'
+                      raw: '@ns',
+                      scope: 'scoped'
                     },
                     steps: [
                       {
-                        type: 'BracketLookup',
-                        keyKind: 'var',
-                        key: {
-                          type: 'VariableReference',
+                        type: 'LookupStep', kind: 'var',
+                        name: {
+                          type: 'Lookup', kind: 'var',
                           name: 'options',
-                          lookup: 'scoped'
-                        }
+                          raw: '@options',
+                          scope: 'scoped' }
                       },
                       {
-                        type: 'BracketLookup',
-                        keyKind: 'prop',
-                        key: { type: 'Keyword', src: 'val2' }
+                        type: 'LookupStep', kind: 'prop',
+                        name: { type: 'Keyword', src: 'val2' }
                       }
                     ]
                   }
@@ -6763,7 +6778,7 @@ describe('Less AST grammar facts', () => {
     }
     expect(outputRule.rules[0]).toMatchObject({
       type: 'Reference',
-      base: { type: 'VariableReference', name: 'defaults', lookup: 'scoped' },
+      base: { type: 'Lookup', kind: 'var', name: 'defaults', raw: '@defaults', scope: 'scoped' },
       steps: [{ type: 'Call', args: [] }],
       raw: '@defaults()'
     });
@@ -6955,7 +6970,7 @@ describe('Less AST grammar facts', () => {
           guard: {
             g: 'cmp',
             op: '>=',
-            left: { type: 'VariableReference', name: 'width' },
+            left: { type: 'Lookup', kind: 'var', name: 'width', raw: '@width' },
             right: { type: 'Dimension', number: 20, unit: 'px', src: '20px' }
           }
         },
@@ -7021,9 +7036,8 @@ describe('Less AST grammar facts', () => {
             },
             steps: [
               {
-                type: 'BracketLookup',
-                keyKind: 'prop',
-                key: { type: 'Keyword', src: 'option' }
+                type: 'LookupStep', kind: 'prop',
+                name: { type: 'Keyword', src: 'option' }
               }
             ],
             raw: '#ns .options[option]'
@@ -7045,9 +7059,8 @@ describe('Less AST grammar facts', () => {
             },
             steps: [
               {
-                type: 'BracketLookup',
-                keyKind: 'prop',
-                key: { type: 'Keyword', src: 'option' }
+                type: 'LookupStep', kind: 'prop',
+                name: { type: 'Keyword', src: 'option' }
               }
             ],
             raw: '#ns .options[option]'
@@ -7063,24 +7076,23 @@ describe('Less AST grammar facts', () => {
           left: {
             type: 'Reference',
             base: {
-              type: 'VariableReference',
+              type: 'Lookup', kind: 'var',
               name: 'ns',
-              lookup: 'scoped'
+              raw: '@ns',
+              scope: 'scoped'
             },
             steps: [
               {
-                type: 'BracketLookup',
-                keyKind: 'var',
-                key: {
-                  type: 'VariableReference',
+                type: 'LookupStep', kind: 'var',
+                name: {
+                  type: 'Lookup', kind: 'var',
                   name: 'options',
-                  lookup: 'scoped'
-                }
+                  raw: '@options',
+                  scope: 'scoped' }
               },
               {
-                type: 'BracketLookup',
-                keyKind: 'prop',
-                key: { type: 'Keyword', src: 'option' }
+                type: 'LookupStep', kind: 'prop',
+                name: { type: 'Keyword', src: 'option' }
               }
             ],
             raw: '@ns[@options][option]'
@@ -7107,7 +7119,7 @@ describe('Less AST grammar facts', () => {
       guard: {
         g: 'cmp',
         op: '=',
-        left: { type: 'VariableReference', name: 'value', lookup: 'scoped' },
+        left: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'scoped' },
         right: {
           type: 'Quoted',
           src: '"ok"',
@@ -7146,7 +7158,7 @@ describe('Less AST grammar facts', () => {
                 inner: {
                   g: 'cmp',
                   op: '<',
-                  left: { type: 'VariableReference', name: 'value' },
+                  left: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value' },
                   right: { type: 'Dimension', number: 2, unit: '', src: '2' }
                 }
               },
@@ -7182,9 +7194,10 @@ describe('Less AST grammar facts', () => {
             g: 'cmp',
             op: '=',
             left: {
-              type: 'VariableReference',
+              type: 'Lookup', kind: 'var',
               name: 'value',
-              lookup: 'scoped'
+              raw: '@value',
+              scope: 'scoped'
             },
             right: { type: 'FunctionCall', name: 'default', args: [] }
           }
@@ -7331,7 +7344,7 @@ describe('Less AST grammar facts', () => {
                 type: 'Interpolation',
                 parts: [
                   { lit: 'foo-' },
-                  { ref: { type: 'VariableReference', name: 'tone' } }
+                  { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' } }
                 ]
               }
             },
@@ -7340,7 +7353,7 @@ describe('Less AST grammar facts', () => {
               name: 'asset',
               value: {
                 type: 'Url',
-                value: { type: 'VariableReference', name: 'asset' }
+                value: { type: 'Lookup', kind: 'var', name: 'asset', raw: '@asset' }
               }
             },
             {
@@ -7512,13 +7525,13 @@ describe('Less AST grammar facts', () => {
                 parts: [
                   { lit: '"pre-' },
                   {
-                    ref: { type: 'VariableReference', name: 'theme' },
+                    ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
                     unquote: true
                   },
                   { lit: '-' },
                   {
                     ref: {
-                      type: 'PropertyReference',
+                      type: 'Lookup', kind: 'prop',
                       name: 'tone',
                       raw: '$tone'
                     },
@@ -7538,15 +7551,15 @@ describe('Less AST grammar facts', () => {
                     ref: {
                       type: 'Reference',
                       base: {
-                        type: 'VariableReference',
+                        type: 'Lookup', kind: 'var',
                         name: 'map',
-                        lookup: 'scoped'
+                        raw: '@map',
+                        scope: 'scoped'
                       },
                       steps: [
                         {
-                          type: 'BracketLookup',
-                          key: { type: 'Keyword', src: 'key' },
-                          keyKind: 'prop'
+                          type: 'LookupStep', name: { type: 'Keyword', src: 'key' },
+                          kind: 'prop'
                         }
                       ],
                       raw: '@map[key]'
@@ -7564,7 +7577,7 @@ describe('Less AST grammar facts', () => {
                 parts: [
                   {
                     ref: {
-                      type: 'PropertyReference',
+                      type: 'Lookup', kind: 'prop',
                       name: 'tone',
                       raw: '$tone'
                     },
@@ -7581,13 +7594,13 @@ describe('Less AST grammar facts', () => {
                 parts: [
                   { lit: 'pre-' },
                   {
-                    ref: { type: 'VariableReference', name: 'theme' },
+                    ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
                     unquote: true
                   },
                   { lit: '-' },
                   {
                     ref: {
-                      type: 'PropertyReference',
+                      type: 'Lookup', kind: 'prop',
                       name: 'tone',
                       raw: '$tone'
                     },
@@ -7639,19 +7652,19 @@ describe('Less AST grammar facts', () => {
                 parts: [
                   { lit: 'pre-' },
                   {
-                    ref: { type: 'VariableReference', name: 'name' },
+                    ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
                     unquote: true
                   },
                   { lit: '-post (' },
                   { ref: { type: 'Reference' }, unquote: true },
                   { lit: ') [' },
                   {
-                    ref: { type: 'VariableReference', name: 'index' },
+                    ref: { type: 'Lookup', kind: 'var', name: 'index', raw: '@index' },
                     unquote: true
                   },
                   { lit: '] { ' },
                   {
-                    ref: { type: 'VariableReference', name: 'nested' },
+                    ref: { type: 'Lookup', kind: 'var', name: 'nested', raw: '@nested' },
                     unquote: true
                   },
                   { lit: ' }' }
@@ -7665,7 +7678,7 @@ describe('Less AST grammar facts', () => {
                 type: 'Interpolation',
                 parts: [
                   {
-                    ref: { type: 'VariableReference', name: 'name', lookup: 'scoped' },
+                    ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name', scope: 'scoped' },
                     unquote: false
                   }
                 ]
@@ -7753,7 +7766,7 @@ describe('Less AST grammar facts', () => {
                 type: 'Interpolation',
                 parts: [
                   {
-                    ref: { type: 'VariableReference', name: 'n' },
+                    ref: { type: 'Lookup', kind: 'var', name: 'n', raw: '@n' },
                     unquote: true
                   }
                 ]
@@ -7766,7 +7779,7 @@ describe('Less AST grammar facts', () => {
                 type: 'Interpolation',
                 parts: [
                   { lit: '--' },
-                  { ref: { type: 'VariableReference', name: 'n' } }
+                  { ref: { type: 'Lookup', kind: 'var', name: 'n', raw: '@n' } }
                 ]
               },
               value: { type: 'Any', src: 'red' },
@@ -7906,7 +7919,7 @@ describe('Less AST grammar facts', () => {
                   { lit: '"a\\"b\\@{literal}-' },
                   {
                     ref: {
-                      type: 'PropertyReference',
+                      type: 'Lookup', kind: 'prop',
                       name: 'tone',
                       raw: '$tone'
                     },
@@ -7924,13 +7937,13 @@ describe('Less AST grammar facts', () => {
                 parts: [
                   { lit: '"a\\"b\\@{literal}-' },
                   {
-                    ref: { type: 'VariableReference', name: 'theme' },
+                    ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' },
                     unquote: true
                   },
                   { lit: '-' },
                   {
                     ref: {
-                      type: 'PropertyReference',
+                      type: 'Lookup', kind: 'prop',
                       name: 'tone',
                       raw: '$tone'
                     },
@@ -8026,9 +8039,10 @@ describe('Less AST grammar facts', () => {
                   { lit: 'pre-' },
                   {
                     ref: {
-                      type: 'VariableReference',
+                      type: 'Lookup', kind: 'var',
                       name: 'tone',
-                      lookup: 'scoped'
+                      raw: '@tone',
+                      scope: 'scoped'
                     },
                     unquote: true
                   }
@@ -8366,7 +8380,7 @@ describe('Less AST grammar facts', () => {
                   parts: [
                     { lit: '.' },
                     {
-                      ref: { type: 'VariableReference', name: 'name' },
+                      ref: { type: 'Lookup', kind: 'var', name: 'name', raw: '@name' },
                       unquote: true
                     },
                     { lit: '-item' }
@@ -8381,7 +8395,7 @@ describe('Less AST grammar facts', () => {
                   parts: [
                     { lit: '#tone-' },
                     {
-                      ref: { type: 'VariableReference', name: 'state' },
+                      ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state' },
                       unquote: true
                     }
                   ]
@@ -8408,7 +8422,7 @@ describe('Less AST grammar facts', () => {
                             { lit: '.' },
                             {
                               ref: {
-                                type: 'VariableReference',
+                                type: 'Lookup', kind: 'var',
                                 name: 'state'
                               },
                               unquote: true
@@ -8463,9 +8477,10 @@ describe('Less AST grammar facts', () => {
                         parts: [
                           {
                             ref: {
-                              type: 'VariableReference',
+                              type: 'Lookup', kind: 'var',
                               name: 'base',
-                              lookup: 'scoped'
+                              raw: '@base',
+                              scope: 'scoped'
                             },
                             unquote: true
                           },
@@ -8512,17 +8527,19 @@ describe('Less AST grammar facts', () => {
                   parts: [
                     {
                       ref: {
-                        type: 'VariableReference',
+                        type: 'Lookup', kind: 'var',
                         name: 'cap-a',
-                        lookup: 'scoped'
+                        raw: '@cap-a',
+                        scope: 'scoped'
                       },
                       unquote: true
                     },
                     {
                       ref: {
-                        type: 'VariableReference',
+                        type: 'Lookup', kind: 'var',
                         name: 'cap-b',
-                        lookup: 'scoped'
+                        raw: '@cap-b',
+                        scope: 'scoped'
                       },
                       unquote: true
                     }
@@ -8537,17 +8554,19 @@ describe('Less AST grammar facts', () => {
                   parts: [
                     {
                       ref: {
-                        type: 'VariableReference',
+                        type: 'Lookup', kind: 'var',
                         name: 'quoted-a',
-                        lookup: 'scoped'
+                        raw: '@quoted-a',
+                        scope: 'scoped'
                       },
                       unquote: true
                     },
                     {
                       ref: {
-                        type: 'VariableReference',
+                        type: 'Lookup', kind: 'var',
                         name: 'quoted-b',
-                        lookup: 'scoped'
+                        raw: '@quoted-b',
+                        scope: 'scoped'
                       },
                       unquote: true
                     }
@@ -8595,7 +8614,7 @@ describe('Less AST grammar facts', () => {
                         { lit: '&-' },
                         {
                           ref: {
-                            type: 'VariableReference',
+                            type: 'Lookup', kind: 'var',
                             name: 'suffix'
                           }
                         }
@@ -8611,14 +8630,14 @@ describe('Less AST grammar facts', () => {
                         { lit: '&' },
                         {
                           ref: {
-                            type: 'VariableReference',
+                            type: 'Lookup', kind: 'var',
                             name: 'left'
                           }
                         },
                         { lit: '-' },
                         {
                           ref: {
-                            type: 'VariableReference',
+                            type: 'Lookup', kind: 'var',
                             name: 'right'
                           }
                         }
@@ -8688,7 +8707,7 @@ describe('Less AST grammar facts', () => {
                       parts: [
                         { lit: ':' },
                         {
-                          ref: { type: 'VariableReference', name: 'pseudo' }
+                          ref: { type: 'Lookup', kind: 'var', name: 'pseudo', raw: '@pseudo' }
                         }
                       ]
                     }
@@ -9573,18 +9592,20 @@ describe('Less AST grammar facts', () => {
                         { lit: '[data-' },
                         {
                           ref: {
-                            type: 'VariableReference',
+                            type: 'Lookup', kind: 'var',
                             name: 'field',
-                            lookup: 'scoped'
+                            raw: '@field',
+                            scope: 'scoped'
                           },
                           unquote: true
                         },
                         { lit: '=' },
                         {
                           ref: {
-                            type: 'VariableReference',
+                            type: 'Lookup', kind: 'var',
                             name: 'value',
-                            lookup: 'scoped'
+                            raw: '@value',
+                            scope: 'scoped'
                           },
                           unquote: false
                         },
@@ -9601,18 +9622,20 @@ describe('Less AST grammar facts', () => {
                         { lit: '[svg|' },
                         {
                           ref: {
-                            type: 'VariableReference',
+                            type: 'Lookup', kind: 'var',
                             name: 'name',
-                            lookup: 'scoped'
+                            raw: '@name',
+                            scope: 'scoped'
                           },
                           unquote: true
                         },
                         { lit: '="' },
                         {
                           ref: {
-                            type: 'VariableReference',
+                            type: 'Lookup', kind: 'var',
                             name: 'quoted',
-                            lookup: 'scoped'
+                            raw: '@quoted',
+                            scope: 'scoped'
                           },
                           unquote: true
                         },
@@ -9690,7 +9713,7 @@ describe('Less AST grammar facts', () => {
                   parts: [
                     { lit: '[prop|="value' },
                     {
-                      ref: { type: 'VariableReference', name: 'num' },
+                      ref: { type: 'Lookup', kind: 'var', name: 'num', raw: '@num' },
                       unquote: true
                     },
                     { lit: '"]' }
