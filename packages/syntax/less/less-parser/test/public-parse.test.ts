@@ -3040,7 +3040,7 @@ describe('public Less parse()', () => {
           name: '@import',
           prelude: { type: 'Quoted', escaped: true, value: 'foo.css' }
         },
-        { type: 'MixinDefinition', guard: { g: 'cmp', op: '=' } },
+        { type: 'MixinDefinition', guard: { g: 'match', op: '=' } },
         {
           type: 'Ruleset',
           rules: [

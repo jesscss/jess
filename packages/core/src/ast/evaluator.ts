@@ -16,7 +16,7 @@ import type { Fn, FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { operate } from './value-operate.js';
-import { compare as compareValues, typeCheck as typeCheckValues } from './value-guards.js';
+import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import { sniffLiteral } from './literal-tag.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { dispatchFn } from './value-dispatch.js';
@@ -133,6 +133,9 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
   const compare = (op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean =>
     compareValues(op, left, right, modes.unitMode);
 
+  const compareMatch = (op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean =>
+    compareMatchValues(op, left, right, modes.unitMode);
+
   const typeCheck = (name: string, args: ValueGroup, _modes: EvalModes): boolean => {
     const values: Value[] = [];
     for (const value of groupItems(args)) {
@@ -144,5 +147,5 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return typeCheckValues(name, values);
   };
 
-  return { materialize, operate, call, compare, typeCheck };
+  return { materialize, operate, call, compare, compareMatch, typeCheck };
 }

@@ -25,9 +25,26 @@ import { type EvalModes, type ValueEvaluator, type ValueGroup } from './value-ev
 import { makeList } from './value-factory.js';
 import { isTruthy } from './value-truth.js';
 
-/** A guard condition tree. Never serialized to CSS — evaluated to a boolean. */
+/**
+ * A guard condition tree. Never serialized to CSS — evaluated to a boolean.
+ *
+ * `cmp` and `match` are the SAME comparison in the two positions §4.2a
+ * distinguishes, and carry the identical shape so they are one hidden class:
+ *
+ *  - `cmp` — VALUE position (`if(@a < @b, …)`, `$( … )`, `@if`). An ASSERTION:
+ *    operands with no common ground raise, because "is a less than b" has no
+ *    honest answer and `false` in both directions is a lie (§4.2).
+ *  - `match` — GUARD position (`when ( … )`). A MATCH TEST: no common ground
+ *    means this definition does not apply to these arguments, which IS an
+ *    answer. `.m(1, true) when (@a < @b)` must not fail the compile.
+ *
+ * Which one a comparison is, is decided by the front end at PARSE time from the
+ * position it was written in (§12.0 — lower to the `.jess` you want, then read
+ * off the node). Nothing at eval time inspects context or a mode to choose.
+ */
 export type GuardNode =
   | { readonly g: 'cmp'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot }
+  | { readonly g: 'match'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot }
   | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode }
   | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode }
   | { readonly g: 'not'; readonly inner: GuardNode }
@@ -105,14 +122,22 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
       const value = deps.resolveTyped(node.value);
       return isThenable(value) ? value.then(isTruthy) : isTruthy(value);
     }
-    case 'cmp': {
+    case 'cmp':
+    case 'match': {
       const ev = deps.ev;
       if (!ev) {
         return false;
       }
       const left = deps.resolveTyped(node.left);
       const right = deps.resolveTyped(node.right);
-      const compare = (a: ValueGroup, b: ValueGroup): boolean => ev.compare(node.op, a, b, deps.modes);
+      /*
+       * The node's own `g` picks the primitive — the assertion or the match test
+       * (§4.2a). Both read the SAME ground; they differ only in what they make
+       * of a pair that has none, so the two positions cannot drift apart.
+       */
+      const compare = node.g === 'match'
+        ? (a: ValueGroup, b: ValueGroup): boolean => ev.compareMatch(node.op, a, b, deps.modes)
+        : (a: ValueGroup, b: ValueGroup): boolean => ev.compare(node.op, a, b, deps.modes);
       return isThenable(left) || isThenable(right)
         ? Promise.all([left, right]).then(([a, b]) => compare(a, b))
         : compare(left, right);
@@ -190,6 +215,7 @@ export function guardUsesDefault(node: GuardNode | undefined): boolean {
     case 'not':
       return guardUsesDefault(node.inner);
     case 'cmp':
+    case 'match':
       return valueUsesDefault(node.left) || valueUsesDefault(node.right);
     case 'call':
       return node.args.some(valueUsesDefault);

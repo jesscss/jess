@@ -2884,7 +2884,9 @@ describe('Jess AST grammar facts', () => {
         type: 'MixinDefinition', name: 'match',
         guard: {
           g: 'and',
-          left: { g: 'cmp', op: '=' },
+          // GUARD position, so the comparison is a MATCH test, not the
+          // value-position assertion `$if` builds (§4.2a).
+          left: { g: 'match', op: '=' },
           right: { g: 'not', inner: { g: 'truth' } }
         }
       },

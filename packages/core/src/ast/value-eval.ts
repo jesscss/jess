@@ -559,8 +559,12 @@ export interface ValueEvaluator {
     scopedFn?: Fn,
   ): MaybePromise<ValueGroup>;
 
-  /** Guard comparison leaf (`@a > 0`) on typed operands -> boolean. */
+  /** Comparison leaf in VALUE position (`if(@a > 0, …)`) on typed operands -> boolean. */
   compare(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;
+
+  /** Comparison leaf in GUARD position (`when (@a > 0)`) -> boolean; groundless is a
+   *  non-match rather than a raise (§4.2a). */
+  compareMatch(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;
 
   /** Guard type-function leaf (`iscolor(@a)`) on typed args -> boolean. */
   typeCheck(name: string, args: ValueGroup, modes: EvalModes): boolean;

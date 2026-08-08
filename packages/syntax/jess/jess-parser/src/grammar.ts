@@ -600,6 +600,7 @@ function isGuardNode(value: unknown): value is GuardNode {
     case 'truth':
       return 'value' in value && isValueNode(value.value);
     case 'cmp':
+    case 'match':
       return 'op' in value && typeof value.op === 'string'
         && 'left' in value && isValueNode(value.left)
         && 'right' in value && isValueNode(value.right);
@@ -1282,15 +1283,33 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
 
 /*
  * Shared guard reducers. `$if` and mixin guards recognize the same GuardNode
- * shapes through distinct combinator arms; only the recognition differs, so the
- * reduction bodies are identical and shared here.
+ * shapes through distinct combinator arms, so the logical and truth reductions
+ * are identical and shared here. COMPARISON is the one rung where the two
+ * positions genuinely differ (§4.2a) and it gets a reducer each, below.
  */
 function reduceGuardTruth(children: readonly unknown[]): GuardNode {
   return { g: 'truth', value: requireExpressionFact(children[0]).value };
 }
-function reduceGuardCompare(children: readonly unknown[]): GuardNode {
+/*
+ * The two comparison POSITIONS (§4.2a). `$if` asserts — a groundless relational
+ * pair raises, because the author asked which value is greater and there is no
+ * answer. A mixin `when` clause TESTS — a groundless pair means this definition
+ * does not apply, which is an answer, and raising there would turn a non-match
+ * into a hard compile stop. Same operands, same ground; only the verdict on a
+ * groundless pair differs, so they are two `g` spellings over one shape rather
+ * than one node plus an eval-time context read.
+ */
+function reduceIfCompare(children: readonly unknown[]): GuardNode {
   return {
     g: 'cmp',
+    op: requireToken(children[1]).value.trim(),
+    left: requireExpressionFact(children[0]).value,
+    right: requireExpressionFact(children[2]).value
+  };
+}
+function reduceGuardCompare(children: readonly unknown[]): GuardNode {
+  return {
+    g: 'match',
     op: requireToken(children[1]).value.trim(),
     left: requireExpressionFact(children[0]).value,
     right: requireExpressionFact(children[2]).value
@@ -5975,7 +5994,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ifGuardCompareOperator,
       g.ExpressionSum
     )),
-    reduceGuardCompare
+    reduceIfCompare
   );
   const IfGuardPrimary = node<GuardNode>(
     'IfGuardPrimary',

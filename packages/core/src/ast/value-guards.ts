@@ -390,21 +390,16 @@ export function compareOrder(left: ValueGroup, right: ValueGroup, unitMode?: Uni
 }
 
 /**
- * Guard comparison (`@a > 0`) on typed operands, faithful to less.js `Node.compare`
- * (see {@link compareNodes}): dimensions reconcile units, quoted strings compare
- * lexically, colors/lists by structural equality, and same-kind operands
- * lexicographically on their own spelling (§4.2's trichotomy).
+ * The ANSWER table over a settled {@link Compared} — the one definition of what
+ * each operator makes of the ground, read by both {@link compare} and
+ * {@link compareMatch} so the two positions cannot drift.
  *
- * A pair that HAS a ground but no order on it is `false` for every operator. A
- * pair with NO ground is `false` for equality and an ERROR for relational.
+ * {@link NO_GROUND} needs no arm: every operator here asks the outcome to be a
+ * specific number, and the symbol is none of them, so a groundless pair answers
+ * `false` throughout. That is the WHOLE answer for a match test; an assertion
+ * adds a raise on top of it, and adds it before arriving here.
  */
-export function compare(
-  op: string,
-  left: ValueGroup,
-  right: ValueGroup,
-  unitMode?: UnitMode
-): boolean {
-  const c = compareGroups(left, right, unitMode);
+function answer(op: string, c: Compared, left: ValueGroup, right: ValueGroup): boolean {
   switch (op) {
     case '=': return c === 0;
 
@@ -428,30 +423,77 @@ export function compare(
      */
     case '==': return c === 0 && sameType(left, right);
 
-    /*
-     * RELATIONAL is trichotomous (§4.2). A pair with no common ground cannot be
-     * ordered and must not silently answer `false` in both directions, so it
-     * raises here — the one place relational and equality part company.
-     */
-    case '>':
-    case '<':
-    case '>=':
+    case '>': return c === 1;
+    case '<': return c === -1;
+    case '>=': return c === 0 || c === 1;
     case '<=':
-    case '=<': {
-      if (c === NO_GROUND) {
+    case '=<': return c === 0 || c === -1;
+  }
+  return false;
+}
+
+/**
+ * Comparison in VALUE position (`if(@a > 0, …)`, `$(…)`) on typed operands,
+ * faithful to less.js `Node.compare` (see {@link compareNodes}): dimensions
+ * reconcile units, quoted strings compare lexically, colors/lists by structural
+ * equality, and same-kind operands lexicographically on their own spelling
+ * (§4.2's trichotomy).
+ *
+ * A pair that HAS a ground but no order on it is `false` for every operator. A
+ * pair with NO ground is `false` for equality and an ERROR for relational: the
+ * author asked which of two values is greater and there is no answer, so
+ * answering `false` in both directions would be a lie (§4.2).
+ */
+export function compare(
+  op: string,
+  left: ValueGroup,
+  right: ValueGroup,
+  unitMode?: UnitMode
+): boolean {
+  const c = compareGroups(left, right, unitMode);
+  if (c === NO_GROUND) {
+    /*
+     * RELATIONAL is trichotomous (§4.2), so a groundless pair raises rather than
+     * answering meaninglessly — the one place relational and equality part
+     * company. Equality falls through to {@link answer}'s plain `false`.
+     */
+    switch (op) {
+      case '>':
+      case '<':
+      case '>=':
+      case '<=':
+      case '=<':
         throw new IncomparableOperandsError(
           `Incomparable operands. '${groupBytes(left)}' and '${groupBytes(right)}' share no common ground, so '${op}' has no answer.`
         );
-      }
-      switch (op) {
-        case '>': return c === 1;
-        case '<': return c === -1;
-        case '>=': return c === 0 || c === 1;
-        default: return c === 0 || c === -1;
-      }
     }
   }
-  return false;
+  return answer(op, c, left, right);
+}
+
+/**
+ * Comparison in GUARD position (`when ( … )`) — §4.2a. Identical to
+ * {@link compare} on every pair that has a ground; a pair with NO ground is
+ * simply `false`, for relational as well as equality.
+ *
+ * A guard is not an assertion, it is a MATCH TEST: `.m(@a, @b) when (@a < @b)`
+ * asks whether this definition applies to these arguments, and a pair that
+ * cannot be ordered is an answer to that question — no — not a failure to
+ * answer it. Raising there would turn a non-match into a hard compile stop, so
+ * one unrelated candidate in an overload set could fail a stylesheet that never
+ * selects it.
+ *
+ * Which of the two a comparison gets is fixed at PARSE time by the `g` its
+ * front end lowers to (`'match'` vs `'cmp'`), never by a mode this function or
+ * its callers read.
+ */
+export function compareMatch(
+  op: string,
+  left: ValueGroup,
+  right: ValueGroup,
+  unitMode?: UnitMode
+): boolean {
+  return answer(op, compareGroups(left, right, unitMode), left, right);
 }
 
 /** An operand's authored spelling, for the incomparable-operands message. */

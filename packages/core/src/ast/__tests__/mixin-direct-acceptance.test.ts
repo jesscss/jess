@@ -396,4 +396,46 @@ describe('Mixin canonical AST emission', () => {
     expect(nested).toContain('.multi {\n  &-literal {\n    .inside {\n      x: 1;\n    }\n    .inside {\n      x: 1;\n    }\n  }\n}\n');
     expect(render(document)).toContain('.host-one .inside {\n  x: 1;\n}\n');
   });
+
+  /*
+   * §4.2a. A groundless relational in GUARD position is a NON-MATCH, not a
+   * compile error: `.generic(1, true)` selects only the definitions whose guards
+   * can answer, and the `<` / `>` overloads simply do not apply. lessc 4.6.3
+   * emits exactly this, and so does the owner-maintained expected CSS for
+   * `tests-unit/mixins-guards/mixins-guards.less`.
+   *
+   * Erroring here is the regression this pins: one non-matching candidate in an
+   * overload set would fail a stylesheet that never selects it.
+   */
+  it('treats a groundless relational mixin guard as a non-match, not an error', () => {
+    const params: MixinDefinition['params'] = [{ name: 'a' }, { name: 'b' }];
+    const left = variableReference('a', 'scoped');
+    const right = variableReference('b', 'scoped');
+    const document = stylesheet([
+      mixin('.generic', params, [decl('content', keyword('less'))], { g: 'match', op: '<', left, right }),
+      mixin('.generic', params, [decl('content', keyword('greater'))], { g: 'match', op: '>', left, right }),
+      mixin('.generic', params, [decl('content', keyword('unequal'))], {
+        g: 'not', inner: { g: 'match', op: '=', left, right }
+      }),
+      rule('.out', [call('.generic', [{ value: dimension(1) }, { value: keyword('true') }])])
+    ]);
+
+    expect(render(document)).toBe('.out {\n  content: unequal;\n}\n');
+  });
+
+  /*
+   * The same operand pair in VALUE position still raises (§4.2). The two
+   * positions are distinguished by the node's own `g` and by nothing else, so
+   * pinning one without the other would not show the distinction exists.
+   */
+  it('still errors for the same groundless pair in value position', () => {
+    const document = stylesheet([
+      mixin('.generic', [{ name: 'a' }, { name: 'b' }], [decl('content', keyword('less'))], {
+        g: 'cmp', op: '<', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped')
+      }),
+      rule('.out', [call('.generic', [{ value: dimension(1) }, { value: keyword('true') }])])
+    ]);
+
+    expect(() => render(document)).toThrow(/share no common ground/);
+  });
 });

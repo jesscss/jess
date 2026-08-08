@@ -12,7 +12,7 @@
  * false to that AND to `bar < foo`, which §4.2 rules out — see the row below.
  */
 import { describe, expect, it } from 'vitest';
-import { compare } from '../value-guards.js';
+import { compare, compareMatch } from '../value-guards.js';
 import { makeAny, makeColorRgb, makeDimension, makeKeyword, makeQuoted } from '../value-factory.js';
 import { IncomparableOperandsError, UnitArithmeticError, type Value } from '../value-eval.js';
 
@@ -118,6 +118,54 @@ describe('compare — dimension unit reconciliation (vs less@4.6.3)', () => {
   it('shares no ground between a bare keyword and a number', () => {
     expect(compare('=', dim(1), makeKeyword('true'))).toBe(false);
     expect(() => compare('<', dim(1), makeKeyword('true'))).toThrow(IncomparableOperandsError);
+  });
+});
+
+/*
+ * §4.2a. The guard-position primitive. Ground truth here IS less@4.6.3, which
+ * emits the non-match for `.generic(1, true) when (@a < @b)` rather than
+ * failing — as does the owner-maintained expected CSS for
+ * `tests-unit/mixins-guards/mixins-guards.less`.
+ */
+describe('compareMatch — guard position answers, never raises on a groundless pair', () => {
+  it('is false rather than an error for every relational operator', () => {
+    const red = makeColorRgb([255, 0, 0], 1, 1);
+    for (const op of ['<', '>', '<=', '>=', '=<']) {
+      expect(compareMatch(op, dim(1), makeKeyword('true'))).toBe(false);
+      expect(compareMatch(op, dim(1, 'px'), red)).toBe(false);
+    }
+    expect(compareMatch('=', dim(1), makeKeyword('true'))).toBe(false);
+  });
+
+  /*
+   * The two positions must differ ONLY on the groundless pair. Every row that
+   * has a ground is the same answer from both, which is what makes them two
+   * readers of one table rather than two comparison semantics.
+   */
+  it('agrees with compare on every pair that HAS a ground', () => {
+    const rows: Array<[string, Value, Value]> = [
+      ['<', dim(1, 'cm'), dim(2, 'cm')],
+      ['>', dim(1, 's'), dim(500, 'ms')],
+      ['=', dim(1), dim(1, 'px')],
+      ['==', dim(1), dim(1, 'px')],
+      ['>', makeQuoted('b'), makeQuoted('a')],
+      ['<', makeKeyword('a'), makeKeyword('b')],
+      ['>', dim(5), makeAny('4')],
+      ['<=', dim(2, 'px'), dim(1, 'em')]
+    ];
+    for (const [op, left, right] of rows) {
+      expect(compareMatch(op, left, right)).toBe(compare(op, left, right));
+    }
+  });
+
+  /*
+   * `unitMode: 'strict'` still RAISES through a guard. An incompatible unit pair
+   * is a different defect from a groundless one — the operands do share numeric
+   * ground and the author asked for a conversion that does not exist — so §4.2a
+   * does not swallow it, and a guard is not a place errors go to die.
+   */
+  it('still raises for strict-mode incompatible units', () => {
+    expect(() => compareMatch('>', dim(2, 'px'), dim(1, 'em'), 'strict')).toThrow(UnitArithmeticError);
   });
 });
 

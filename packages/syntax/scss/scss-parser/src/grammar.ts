@@ -1083,6 +1083,7 @@ function isGuardNode(value: unknown): value is GuardNode {
     case 'truth':
       return 'value' in value && isValue(value.value);
     case 'cmp':
+    case 'match':
       return 'op' in value && typeof value.op === 'string'
         && 'left' in value && isValue(value.left)
         && 'right' in value && isValue(value.right);

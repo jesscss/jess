@@ -2017,9 +2017,16 @@ function lessTruth(value: ValueSlot): MixinGuard {
   return { g: 'cmp', op: '==', left: value, right: keyword('true') };
 }
 
+/** {@link lessTruth} in `when` position — the same lowering, as a MATCH test
+ *  (§4.2a), so a `when` tree contains no value-position assertion. `==` never
+ *  raises, so this changes no answer; it keeps the invariant readable. */
+function lessGuardTruth(value: ValueSlot): MixinGuard {
+  return { g: 'match', op: '==', left: value, right: keyword('true') };
+}
+
 function isMixinGuard(value: unknown): value is MixinGuard {
   return typeof value === 'object' && value !== null && 'g' in value
-    && (value.g === 'cmp' || value.g === 'and' || value.g === 'or' || value.g === 'not'
+    && (value.g === 'cmp' || value.g === 'match' || value.g === 'and' || value.g === 'or' || value.g === 'not'
       || value.g === 'truth' || value.g === 'call' || value.g === 'default');
 }
 
@@ -4404,14 +4411,23 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           } else if (call !== null) {
             guard = { g: 'call', name: call.name, args: call.args.map(requireValueNode) };
           } else {
-            guard = lessTruth(left);
+            guard = lessGuardTruth(left);
           }
         } else {
           const right = values[1];
           if (right === undefined) {
             throw new TypeError('Less grammar produced a comparison guard without a right operand.');
           }
-          guard = { g: 'cmp', op: operator, left, right };
+          /*
+           * GUARD position, so the comparison lowers to the MATCH test (§4.2a).
+           * This production family is reached only from `g.MixinGuard` — the
+           * `when` clause of a mixin definition or a CSS guard — and both ask
+           * whether a definition APPLIES. `.generic(1, true) when (@a < @b)`
+           * has no ordering and therefore does not match; lessc 4.6.3 agrees,
+           * and so does the owner-maintained expected CSS. Value position keeps
+           * the assertion, built separately in `FunctionConditionTerm`.
+           */
+          guard = { g: 'match', op: operator, left, right };
         }
       }
       return children.some(child => isTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;

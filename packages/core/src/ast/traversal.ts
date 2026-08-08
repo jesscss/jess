@@ -247,6 +247,7 @@ function walkGuard(
   }
   switch (guard.g) {
     case 'cmp':
+    case 'match':
       walkValueSlot(guard.left, hooks, 'guard.cmp.left', guard, 0, depth + 1);
       walkValueSlot(guard.right, hooks, 'guard.cmp.right', guard, 1, depth + 1);
       break;

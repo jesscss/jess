@@ -372,6 +372,62 @@ not bare idents — the same construct, two answers, decided by quoting. Sass
 refuses the whole class. `.jess` is total over every pair that has a ground and
 errors on the rest.
 
+### 4.2a Groundless relational ERRORS in value position, NON-MATCHES in guard position
+
+**Owner ruling, 2026-08-08. §4.1's last row and §4.2's "no common ground →
+error" are stated over VALUE position. In GUARD position — a `when ( … )` clause
+— a groundless pair is `false`, for relational exactly as for equality.**
+
+§4.2's error is right where it was aimed. `$(1px > red)` is an author asking
+which of two values is greater when the question has no answer, and `false` in
+both directions hides the mistake. But a guard is not asking that. It is
+overload resolution:
+
+```less
+.generic(@a, @b) when (@a < @b) { content: @a is less than @b; }
+.generic(@a, @b) when not(@a = @b) { content: @a is not equal to @b; }
+
+.x { .generic(1, true); }
+```
+
+`@a < @b` here does not assert an ordering; it asks **does this definition apply
+to these arguments**. `1` and `true` have no ground, so it does not — and that
+is an ANSWER, not a failure to produce one. Erroring converts one non-matching
+candidate into a hard compile stop, so an unrelated overload can fail a
+stylesheet that never selects it. Both oracles agree: lessc 4.6.3 emits the
+non-match, and the owner-maintained `tests-unit/mixins-guards/mixins-guards.css`
+expects `1 is not equal to true` with no `less than` / `greater than` row and no
+error.
+
+This does NOT weaken §4.2. A guard that HAS a ground stays trichotomous, so
+`when ('abc' < "abd")` still matches and `when (@b > @a)` still answers the
+lexicographic truth. Only the groundless pair differs, and only in this
+position.
+
+**Carried by the node, never by a mode.** The two positions are two `g`
+spellings over one identical shape:
+
+| `g` | position | groundless relational |
+| --- | --- | --- |
+| `cmp` | value — `if( … )`, `$( … )`, `@if` | **error** |
+| `match` | guard — `when ( … )` | **false** (no match) |
+
+A front end picks one at PARSE time from the position the comparison was written
+in; `evalGuard` reads `g` off the node and nothing else. This is §12.0 applied:
+the positional difference is a fact about the lowered tree, not a question the
+evaluator asks its context. It is deliberately NOT an option, a dialect flag, or
+an argument threaded down the guard walk — that is what `equalityMode` was, and
+it was deleted for this exact reason (§5.1).
+
+The two share one ground and one answer table (`compareGroups` + `answer` in
+`value-guards.ts`); `compare` adds the raise on top. Neither position can drift
+from the other by construction.
+
+`.less` reaches `match` from the `MixinGuard` production family, which covers
+both the mixin `when` and the CSS-guard `when`; `.jess` reaches it from
+`GuardCompare`, and `$if`'s `IfGuardCompare` keeps `cmp`. `.scss` has no `when`
+and is unaffected — `@if` is value position, and dart-sass errors there too.
+
 ### 4.3 `null`
 
 `.jess` gets a `null` literal, spelled as Sass spells it rather than as a new

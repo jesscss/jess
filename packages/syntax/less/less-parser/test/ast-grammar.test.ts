@@ -7057,7 +7057,7 @@ describe('Less AST grammar facts', () => {
           type: 'MixinDefinition',
           name: '.wide',
           guard: {
-            g: 'cmp',
+            g: 'match',
             op: '>=',
             left: { type: 'Lookup', kind: 'var', name: 'width', raw: '@width' },
             right: { type: 'Dimension', number: 20, unit: 'px', src: '20px' }
@@ -7067,11 +7067,12 @@ describe('Less AST grammar facts', () => {
           type: 'MixinDefinition',
           name: '.enabled',
 
-          /* `when (@x)` lowers to `$if($x == true)` — the Less condition
-           * written in plain `.jess` (§4.4.2), so `.less` -> `.jess` -> `.css`
-           * stays reachable and the truth node is `.jess`'s alone. */
+          /* `when (@x)` lowers to `@x == true` — the Less condition written in
+           * plain `.jess` (§4.4.2), so `.less` -> `.jess` -> `.css` stays
+           * reachable and the truth node is `.jess`'s alone. `match`, not
+           * `cmp`, because this is GUARD position (§4.2a). */
           guard: {
-            g: 'cmp',
+            g: 'match',
             op: '==',
             left: { type: 'Keyword', src: 'true' },
             right: { type: 'Keyword', src: 'true' }
@@ -7123,7 +7124,7 @@ describe('Less AST grammar facts', () => {
       {
         type: 'Ruleset',
         guard: {
-          g: 'cmp',
+          g: 'match',
           op: '==',
           left: {
             type: 'Reference',
@@ -7146,7 +7147,7 @@ describe('Less AST grammar facts', () => {
       {
         type: 'Ruleset',
         guard: {
-          g: 'cmp',
+          g: 'match',
           op: '=',
           left: {
             type: 'Reference',
@@ -7170,7 +7171,7 @@ describe('Less AST grammar facts', () => {
       {
         type: 'Ruleset',
         guard: {
-          g: 'cmp',
+          g: 'match',
           op: '=',
           left: {
             type: 'Reference',
@@ -7216,7 +7217,7 @@ describe('Less AST grammar facts', () => {
       type: 'MixinDefinition',
       name: '.match',
       guard: {
-        g: 'cmp',
+        g: 'match',
         op: '=',
         left: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'scoped' },
         right: {
@@ -7255,7 +7256,7 @@ describe('Less AST grammar facts', () => {
               left: {
                 g: 'not',
                 inner: {
-                  g: 'cmp',
+                  g: 'match',
                   op: '<',
                   left: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value' },
                   right: { type: 'Dimension', number: 2, unit: '', src: '2' }
@@ -7290,7 +7291,7 @@ describe('Less AST grammar facts', () => {
           type: 'MixinDefinition',
           name: '.fallback',
           guard: {
-            g: 'cmp',
+            g: 'match',
             op: '=',
             left: {
               type: 'Lookup', kind: 'var',
