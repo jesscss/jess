@@ -147,7 +147,7 @@ to; none of them is implemented yet.
 | 6 | `@content` | **Already resolved and PUBLICLY DOCUMENTED** as the built-in `$content()` mixin — see `packages/docs/docs-content/docs/jess/02-Language/05-mixins.mdx`, including the parameterised `$content($type)` form. This is an implementation gap, not a design question, and it is also the lowering target for #2. |
 | 7 | `@while` | Gets a **`$while`**, alongside `$if` / `$for`. |
 | 8 | chained unary `not not` | Sass `not not $x` lowers to `.jess` `not(not($x))`. Falls out of §4.5.4's rule that `not` always takes parens. |
-| 9 | nested selector list `type:pseudo, .class` | **A grammar defect, not a design question.** `div:hover, span` and `div:hover, [a]` parse; `div:hover, .b` does not, because the leading `div:` commits to the declaration path and `.`/`#` cannot follow in a value. Fix the rule. |
+| 9 | nested selector list `type:pseudo, .class` | **A grammar defect, and the cause is named.** Ident-start nested parsing is supposed to PEEK for a non-wrapped opening `{` to decide declaration-vs-nested-rule. CSS is supposed to carry that rule and every dialect should be REUSING it, not reimplementing the disambiguation. Today the leading `div:` commits to the declaration path, so `div:hover, span` and `div:hover, [a]` parse while `div:hover, .b` does not. Fix it in the CSS base and let the supersets inherit. |
 | 10 | interpolation in a pseudo-class arg | Not yet ruled on. |
 | 11 | `@at-root` with a selector prelude | **Needs a decision.** Bare `@at-root { … }` already parses. |
 
