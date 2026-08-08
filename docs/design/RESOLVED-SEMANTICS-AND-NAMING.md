@@ -1436,6 +1436,48 @@ reimplementing them.
 Settled 2026-08-04 (owner) except where marked. This is about **node names and
 node kinds**, not about parser-internal `const` names.
 
+### 12.0 The governing law — lower to the `.jess` you want, then read off the node
+
+**Owner ruling, 2026-08-07.** Do not model the AST directly. Ask what `.jess`
+you would want as the OUTCOME, write that, and the node is whatever represents
+it. Two tests fall out, and both are checkable rather than matters of taste:
+
+- **If two things lower to the same `.jess` source, they are the SAME node.**
+- **If a node has no `.jess` spelling, it should NOT EXIST.**
+
+| source | the `.jess` you want | ∴ the node |
+| --- | --- | --- |
+| `.scss` `(1 + 2)` | `$(1 + 2)` | `Expression` |
+| `.scss` `(1 2)` | `1 2` | `List` — no delimiter node at all |
+| `.scss` `(a: 1)` | `{ a: 1 }` | `Collection` |
+| `.jess` `( … )` | itself, verbatim | `Block` |
+| `.jess` `$( … )` | itself | `Expression` |
+
+**This law was derived after the fact, and that is the evidence for it.** Every
+node deletion in §12.3 was decided on its own merits, by a different argument
+each time, before this rule was stated — and the rule independently reproduces
+all of them:
+
+| ruling | the law's verdict |
+| --- | --- |
+| `Block.boundary` is wrong (§12.6) | `$( … )` and `( … )` are two `.jess` spellings, so they cannot be one node with a flag |
+| `SpacedValue` → `Sequence` (row 1) | same spelling ⇒ same node |
+| `VarIndirect` → `Lookup` (row 4) | `@@x` and `@x` are one spelling shape with a different name payload |
+| `Assignment` → `Any` (row 2) | there is no `.jess` spelling for a live `name=value` pair, so the node should not exist |
+| `GeneralEnclosed` → `Call` + `Block` (row 3) | two forms, two spellings, two nodes |
+
+Five independent rulings, one rule behind all of them.
+
+**Two limits, stated so the law is not overextended.**
+
+1. It decides node IDENTITY, not node SHAPE. It says `Lookup` is one kind; it
+   does not say the kind carries `{scope, kind, name, raw}`. That remains design
+   (§12.3a).
+2. Where `.jess` has no spelling yet, it does not answer the AST question — it
+   converts it into a LANGUAGE question. That is a feature, not a gap: it is
+   exactly what surfaced `()` in §4.4 (no `.jess` spelling; a parse error in
+   value position) and `null` (no literal until §4.3 lands).
+
 ### 12.1 Precedence rungs are not nodes
 
 `Atom`, `Product` and `Sum` are not language concepts — they are how precedence
