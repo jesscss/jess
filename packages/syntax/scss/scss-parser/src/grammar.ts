@@ -2509,7 +2509,37 @@ const scssFactory = (g: ScssInputRules) => {
           g.Value,
           optional(g.Important)
         )),
-        optional(literal(';'))
+
+        /*
+         * The CSS declaration-vs-nested-rule decision, as ONE guard.
+         *
+         * CSS reaches it with two facts: `not(literal('{'))` inside `Declaration`
+         * and a required terminator in `declarationListDeclaration`
+         * (`choice(literal(';'), peek(literal('}')))`). SCSS cannot take the
+         * terminator wholesale — it deliberately ADMITS unterminated declarations
+         * (before a nested at-rule, and with a comment between value and `;`) —
+         * and it must not take the two as separate combinators either: measured
+         * on a declaration-only corpus, each guard alone is free (7.41ms vs a
+         * 7.52ms baseline) but the two together cost 56% (11.72ms), because the
+         * pair pushes this production past the compiler's fusion threshold.
+         *
+         * Folded into one `choice`, the cost returns to baseline and the decision
+         * is unchanged. A terminated declaration is settled by its own `;`. An
+         * UNTERMINATED one may not be followed by:
+         *   `{` — that block makes this a nested rule (`color:red { … }`), and
+         *   `,` — the value stopped part-way through a selector list, the reading
+         *         that made `div:hover, .b { … }` match as `div: hover` and
+         *         strand `, .b { … }`.
+         * Anything else still ends an unterminated declaration, so the at-rule
+         * and trailing-comment allowances survive.
+         */
+        choice(
+          literal(';'),
+          not(choice(
+            literal('{'),
+            literal(',')
+          ))
+        )
       )
     ),
     (children, fields) => {
@@ -2596,7 +2626,49 @@ const scssFactory = (g: ScssInputRules) => {
    * precedes any terminator). Single `not` is a predicate — it emits no child,
    * so the positional reducer below is unaffected.
    */
+  /*
+   * NECESSARY but not SUFFICIENT fast reject. Every nested property opens a `{`
+   * before its statement terminates, so this single zero-width `not` skips the
+   * arm whenever a `;`/`}` is reachable through non-brace bytes first. Every
+   * nested RULE satisfies it too, which is why it cannot decide the arm alone —
+   * `nestedPropertyColon` supplies the sufficient half.
+   *
+   * It is the FAST REJECT that keeps this arm off the ordinary-declaration hot
+   * path. Deleting it costs ~70% on a declaration-only corpus, because every
+   * `color: red;` then speculatively parses its whole value before failing on
+   * the absent `{` and handing the same bytes to `Declaration` to re-parse.
+   */
   const directNestedPropertyAhead = not(regex(/[^{};]*[;}]/));
+
+  /*
+   * The SUFFICIENT half, and the reason this arm no longer pre-empts the CSS
+   * declaration-vs-rule decision. A pseudo-class colon is ADJACENT to its name
+   * (`div:hover`), so a colon followed by whitespace — or by the block itself
+   * (`font: { … }`) — cannot begin a pseudo-class and is unambiguously a nested
+   * property. A colon with no space is a pseudo-class candidate and is left to
+   * the CSS path, which yields the Ruleset it should.
+   */
+  const nestedPropertyColon = regex(/:(?=[ \t\n\r\f]|\{)/);
+
+  /*
+   * A nested property is an ADDITION layered after the CSS declaration-vs-rule
+   * decision, never an override of it. CSS already decides this correctly:
+   * `Declaration` carries `not(literal('{'))`, so an ident-colon construct that
+   * is followed by a block falls through to `Ruleset`. SCSS only has to say
+   * which of those blocks is a nested property instead.
+   *
+   * The discriminator is the SPACE after the colon. A pseudo-class colon is
+   * adjacent to its name (`div:hover`), so a colon followed by whitespace — or
+   * by the block itself (`font: { … }`) — cannot begin a pseudo-class and is
+   * unambiguously a nested property. `div:hover, span { … }` has no space and
+   * is therefore left to the CSS path, which yields the Ruleset it should.
+   *
+   * This replaces a `not(regex(/[^{};]*[;}]/))` lookahead that ran BEFORE the
+   * declaration arm and pre-empted it. That gate asked only "is there a `{`
+   * before any `;`/`}`", which is true of every nested rule as well, so SCSS
+   * silently turned `div:hover, span { … }` into a Declaration named `div` that
+   * swallowed the block.
+   */
   const NestedPropertyDeclaration = node<Declaration>(
     'NestedPropertyDeclaration',
     sequence(
@@ -2608,7 +2680,7 @@ const scssFactory = (g: ScssInputRules) => {
           g.InterpolatedProperty,
           propertyIdentifier
         ),
-        literal(':'),
+        nestedPropertyColon,
         optional(g.Value),
         literal('{'),
         many(g.NestedPropertyMember),

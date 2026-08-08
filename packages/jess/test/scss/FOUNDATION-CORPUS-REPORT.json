@@ -1,11 +1,11 @@
 {
-  "generated": "2026-08-08T23:09:40.547Z",
+  "generated": "2026-08-08T23:14:18.260Z",
   "foundation": "6.9.0",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
   "parse": {
     "total": 136,
-    "pass": 93,
+    "pass": 94,
     "blockerCounts": [
       {
         "name": "keyword argument ($name: v) in a function-call argument list",
@@ -38,11 +38,6 @@
         "files": 2
       },
       {
-        "name": "nested selector list `type:pseudo, .class`",
-        "primary": 1,
-        "files": 1
-      },
-      {
         "name": "@at-root with a selector prelude",
         "primary": 0,
         "files": 1
@@ -51,6 +46,11 @@
         "name": "chained unary `not not`",
         "primary": 0,
         "files": 1
+      },
+      {
+        "name": "nested selector list `type:pseudo, .class`",
+        "primary": 0,
+        "files": 0
       }
     ],
     "unattributed": [
@@ -820,14 +820,7 @@
       },
       {
         "file": "scss/vendor/normalize.scss",
-        "outcome": "fail",
-        "at": "176:23",
-        "source": "button:-moz-focusring,",
-        "blockers": [
-          "nested selector list `type:pseudo, .class`"
-        ],
-        "primaryBlocker": "nested selector list `type:pseudo, .class`",
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "scss/xy-grid/_cell.scss",

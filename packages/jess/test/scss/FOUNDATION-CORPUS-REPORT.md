@@ -8,13 +8,13 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-08-08T23:09:40.547Z`
+- Generated: `2026-08-08T23:14:18.260Z`
 - Foundation for Sites: `6.9.0`
 - Runner: `v24.11.1` on `darwin/arm64`
 
 ## Parse lane (all `foundation-sites/**/*.scss`)
 
-- files: **136**, parsed: **93**, failed: **43**
+- files: **136**, parsed: **94**, failed: **42**
 
 Blocking constructs. `gives up on` counts files whose `gave up at` POSITION lands
 on this blocker — the one the parser actually stopped at, so that column ranks
@@ -31,9 +31,9 @@ plausible name: it means this list is missing an entry.
 | interpolation inside a pseudo-class argument list | 3 | 5 |
 | comparison (== / !=) inside a function-call argument list | 1 | 11 |
 | @while | 1 | 2 |
-| nested selector list `type:pseudo, .class` | 1 | 1 |
 | @at-root with a selector prelude | 0 | 1 |
 | chained unary `not not` | 0 | 1 |
+| nested selector list `type:pseudo, .class` | 0 | 0 |
 | _unattributed — no listed blocker at the failure position_ | 5 | — |
 
 Unattributed failures:
@@ -84,7 +84,6 @@ Unattributed failures:
 | `scss/util/_mixins.scss` | 151:52 | `$red   : round(color.channel($color, "red", $space: rgb));` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; @error / @warn / @debug; interpolation inside a pseudo-class argument list |
 | `scss/util/_unit.scss` | 65:34 | `$value: rem-calc($value, $base: 16px);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug |
 | `scss/util/_value.scss` | 123:36 | `@return if(type-of($map) != 'list', ($value,), $map);` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list |
-| `scss/vendor/normalize.scss` | 176:23 | `button:-moz-focusring,` | nested selector list `type:pseudo, .class` | nested selector list `type:pseudo, .class` |
 | `scss/xy-grid/_cell.scss` | 21:95 | `@else if ($size == 'shrink' or $size == 'full' or zf-is-fraction($size, $allow-no-denominator: true)) {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; @error / @warn / @debug |
 | `scss/xy-grid/_classes.scss` | 83:6 | `.grid-x > .#{$-zf-size}-shrink {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list |
 | `scss/xy-grid/_position.scss` | 23:59 | `$breakpoint: -zf-current-breakpoint($breakpoint, $default: $-zf-zero-breakpoint);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list |
@@ -164,20 +163,55 @@ lookahead:
 | **`div:1px`** | no | `1px` is not an identifier, so it cannot be a pseudo-class — declaration, decided |
 | `a b {` | no | no colon |
 
-The peek is therefore the NARROW case, not the default. Today the parser does
-the opposite: a leading `div:` commits to the declaration path unconditionally,
-which is why `div:hover, span` and `div:hover, [a]` parse while `div:hover, .b`
-does not — the difference is only what may follow in a VALUE, nothing about
-selectors.
+The peek is therefore the NARROW case, not the default.
 
-**Spell the colon condition with parseman's adjacency combinators, not a
-hand-rolled lookahead.** `adjacent()` / `notAdjacent()` are exported from
-`parseman` (`src/combinators/adjacency.ts`) and carry a real `AdjacencyDef` with
-polarity, so "colon not followed by a space" is a first-class grammar fact rather
-than a regex — and it keeps adjacency spelled negatively, per ledger G24.
+### CLOSED (2026-08-08) — and the premise above was wrong
 
-**It belongs in the CSS base and the supersets must REUSE it.** This is ordinary
-CSS disambiguation; every dialect reimplementing its own is how they drifted
-apart in the first place.
+Measured at `a22594121` by probing the NODE each dialect produced, not whether
+the parse succeeded. **The CSS base and Less already satisfied the table on
+every row.** `css-parser`'s `Declaration` carries `not(literal('{'))`, so an
+ident-colon construct followed by a block already fell through to `Ruleset`.
+Nothing in css or less needed changing, and nothing in them was changed.
+
+The defect was in the two supersets, and in SCSS it was worse than a parse
+failure — it was SILENT. `div:hover, span { … }` produced a `Declaration` named
+`div` that swallowed the nested rule and its body. The two rows this document
+listed as already working (`div:hover, span`, `div:hover, [a]`) were wrong
+nodes, not passes; verifying parse success alone would have ratified the bug.
+
+| source | css | less | scss (was) | jess (was) |
+| --- | --- | --- | --- | --- |
+| `div:hover, .b { … }` | Ruleset | Ruleset | **fail** | **fail** |
+| `div:hover, span { … }` | Ruleset | Ruleset | **Declaration(div)** | **fail** |
+| `color:red { … }` | Ruleset | Ruleset | **Declaration(color)** | **fail** |
+
+Root cause in SCSS was its own fork of the decision, `directNestedPropertyAhead`
+(`not(regex(/[^{};]*[;}]/))`), gating `NestedPropertyDeclaration` AHEAD of the
+declaration arm. It asks only "is there a `{` before any `;`/`}`" — true of
+every nested RULE as well — so it is NECESSARY but not SUFFICIENT. Jess simply
+lacked the CSS guard.
+
+The fix is subtractive in effect: both supersets now reach the CSS decision.
+`directNestedPropertyAhead` is retained as the cheap FAST REJECT (deleting it
+costs ~70% on a declaration-only corpus, because every `color: red;` then
+speculatively parses its whole value before failing on the absent `{`), and a
+new `nestedPropertyColon` supplies the sufficient half.
+
+**The discriminator is the space after the colon, so nested properties survive.**
+A pseudo-class colon is adjacent to its name (`div:hover`), so a colon followed
+by whitespace — or by the block itself — cannot begin a pseudo-class:
+`font: 12px { weight: bold }` and `font: { weight: bold }` remain nested
+properties, while `color:red { … }` becomes the Ruleset the table requires.
+
+Two notes for whoever reads this next:
+
+- `adjacent()` / `notAdjacent()` **do not exist in parseman 0.46.0** (verified
+  against the installed package's exports). The condition is spelled with
+  `regex()`/`not()` instead; ledger G24's "spell adjacency negatively" is
+  honoured by the `not(...)` forms.
+- The rule could not live in `css-parser/src/grammar.ts` for the supersets to
+  import: the four grammars do not import each other, and a cross-module
+  combinator const does not macro-fuse. No third copy was authored — css and
+  less were left untouched and the supersets converged onto their decision.
 
 <!-- HAND-MAINTAINED BELOW — the generator never writes past this line. -->

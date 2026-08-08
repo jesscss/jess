@@ -5387,9 +5387,26 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           ),
           literal(':'),
           g.Value,
+
+          /*
+           * The CSS base's declaration-vs-nested-rule decision, unchanged:
+           * `css-parser/src/grammar.ts` puts `not(literal('{'))` in exactly this
+           * position so an ident-colon construct followed by a block falls
+           * through to `Ruleset` instead of matching as a declaration.
+           */
+          not(literal('{')),
           optional(g.Important)
         )),
-        optional(literal(';'))
+
+        /*
+         * A declaration may not strand a selector comma — see the same guard in
+         * `scss-parser/src/grammar.ts`. Without it `div:hover, .b { … }` matches
+         * as `div: hover` and strands `, .b { … }`.
+         */
+        choice(
+          literal(';'),
+          not(literal(','))
+        )
       )
     ),
     (children, fields) => {
