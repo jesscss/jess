@@ -1819,6 +1819,53 @@ Four things the substitution costs, all of which the restore fixes:
 AST kind, listed there as one of the live label/kind mismatches. The mismatch is
 the regression, not a naming quirk.
 
+### 12.6a `.jess` bare parens are CSS, preserved as written
+
+**Owner ruling, 2026-08-07.** In `.jess`, `( … )` and `[ … ]` are ORDINARY CSS
+VALUES. They are parsed as CSS — valid or not — and preserved exactly as
+written. They never compute. `$( … )` is the only compute marker there is.
+
+This is what makes {@link 12.6} simple rather than positional. Measured on
+dart-sass, Sass parens NEVER reach the output (`(1 + 2)` → `3`, and even
+`(1 2)` → `1 2`, so being *data* does not make them print) while Sass brackets
+ALWAYS do (`[1 2]` → `[1 2]`). An earlier draft of this reasoning concluded the
+node therefore had to be chosen by POSITION — `Block` inside a math function so
+its parens could print, `Expression` or `List` elsewhere. That is not needed:
+
+| construct | `.jess` |
+| --- | --- |
+| `( … )`, `[ … ]` | `Block` — a delimited CSS value, emitted verbatim |
+| `$( … )` | `Expression` — a computation boundary; its delimiters never emit |
+
+`Block` recovers exactly one meaning, which is the one it was introduced for: a
+value that can be literally printed in CSS. It needs no `boundary` flag, no
+positional rule, and — note for §6 / §4.6 — **it should not open a math context
+either.** Today its paren branch bumps `parenDepth`; under this ruling only
+`Expression` does. `calc((1px + 2px) * 3)` then preserves for the ordinary
+reason that parens preserve, not by a math-function special case.
+
+The one place parens still GROUP arithmetically is INSIDE `$( … )`, where
+`$((1 + 2) * 3)` is `9`. That is not a second rule — it is §4.5.2's "expression
+position is contagious inward".
+
+**Lowering follows directly**, and answers the question §12.6 left open about
+`.scss`/`.less` conversion. Delimiters survive into the lowered `.jess` source
+exactly when they survive into the CSS output:
+
+```
+.scss  (1 + 2)                ->  $(1 + 2)          parens vanish; jess needs the marker (P17)
+.scss  (1 2)  /  (1, 2)       ->  1 2  /  1, 2      parens were never output
+.scss  (a: 1)                 ->  { a: 1 }          map -> Collection
+.scss  [1 2]                  ->  [1 2]             brackets ARE output
+.less  (1 + 2)                ->  $(1 + 2)          same rule
+```
+
+**Consequence to re-examine (§4.4).** The falsy set lists `()` — an empty list /
+map. Under this ruling `()` in `.jess` is a literal empty paren, not an empty
+list, and it is measured as a parse error in value position today. The empty
+COLLECTION spelling `{}` is falsy and carries that row's intent. §4.4's `()` row
+needs revisiting against this.
+
 ### 12.7 `ExpressionQuoted` should be `Quoted`
 
 The repo's own convention is
