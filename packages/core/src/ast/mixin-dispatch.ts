@@ -26,6 +26,13 @@ import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
+/**
+ * The callee-visible name a mixin call's content block binds — the variable the
+ * documented built-in `$content()` reads. Named once so the binder and the
+ * resolver's optional-miss rule cannot drift apart.
+ */
+export const CONTENT_BINDING = 'content';
+
 /** One resolved call argument: positional (no name) or named. */
 export interface CallArg {
   value: CallValue;
@@ -152,7 +159,7 @@ export function bindArgs(
    * literally named `$content` still wins, and so a param DEFAULT may read it.
    */
   if (call.content !== null) {
-    bound.set('content', call.content);
+    bound.set(CONTENT_BINDING, call.content);
   }
   const argumentSlots: ValueSlot[] = [];
   let pi = 0;

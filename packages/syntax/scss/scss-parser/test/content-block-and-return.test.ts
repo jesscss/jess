@@ -105,16 +105,22 @@ describe('the two halves compose end to end', () => {
   });
 
   /*
-   * Because `@content` IS `$content()` and nothing else, an `@include` that
-   * assigns no block leaves `content` unbound, and an unbound reference is an
-   * eval error — the settled v5 rule, not a special case written for `@content`.
-   * dart-sass instead treats it as a no-op. Recording the divergence here rather
-   * than papering over it: making it silent would mean teaching the evaluator
-   * that one particular name may go unresolved, which is the leak §12.0 exists
-   * to prevent. OWNER RULING NEEDED if Sass parity is wanted.
+   * OWNER RULING: a block-less `@include` makes `@content` a NO-OP. The content
+   * block is OPTIONAL by design — a mixin that emits `@content` conditionally, or
+   * that is called both with and without a block, is the common idiom, and
+   * erroring would break every one of them. This is not an exception written for
+   * one name: it is the settled "a resolve failure is an eval error UNLESS the
+   * resolve is optional" rule, and `$content()` is precisely the optional case.
+   * Matches dart-sass.
    */
-  it('raises the ordinary unbound-reference error when no block was assigned', async () => {
-    await expect(render('@mixin m { .in { @content; } }\n.a { @include m; }'))
-      .rejects.toMatchObject({ code: 'resolve/name-not-found' });
+  it('renders nothing where @content sits when no block was assigned', async () => {
+    expect(await render('@mixin m { .in { @content; } }\n.a { @include m; }')).toBe('');
+  });
+
+  /* The no-op is the MISS, not the name: an ordinary `content` binding in scope
+   * is still read, and every other unbound statement-position call still throws. */
+  it('still raises the unbound-reference error for any other name', async () => {
+    await expect(render('@mixin m { .in { @include nope-not-bound; } }\n.a { @include m; }'))
+      .rejects.toBeTruthy();
   });
 });
