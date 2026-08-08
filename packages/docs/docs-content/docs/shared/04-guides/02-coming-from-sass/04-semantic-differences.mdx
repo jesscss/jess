@@ -1,0 +1,76 @@
+---
+title: Where Sass+ evaluates differently
+sidebar_label: Sass+ Semantic Differences
+audiences:
+  - jess
+  - sass
+origin: jess
+---
+[Sass+ Strictness](./stricter-than-sass) covers input Sass+ **refuses to parse**. This page covers the smaller, more important set: input that parses in both, and **evaluates to something different**.
+
+The bar for landing on this page is deliberately high. "Sass does it differently" is not enough — Sass+ follows Sass unless the Sass behaviour is **defensible by history rather than by principle**, meaning Sass documents *what* it does but has no rule that explains *why*. Every entry below states the principle Sass+ follows instead, and what it measured before changing.
+
+## Truthiness: empty is falsy
+
+**Sass:** everything is truthy except `false` and `null`.
+**Sass+:** falsy for exactly `false`, `null`, `""` (and `''`), and `()`.
+
+| value | Sass | Sass+ |
+| --- | --- | --- |
+| `false`, `null` | falsy | falsy |
+| `0`, `0px`, `0%`, `"0"` | truthy | truthy |
+| `red`, `transparent`, `rgba(0,0,0,0)` | truthy | truthy |
+| `"a"`, `a`, `none` | truthy | truthy |
+| **`""`, `''`** | truthy | **falsy** |
+| **`()`** (empty list / map) | truthy | **falsy** |
+
+Only two rows move, and both move in the same direction.
+
+### Why
+
+The principle is **emptiness, not zero-ness**.
+
+`0` is a real CSS value — `margin: 0` means something — so it is *not* an absence and stays truthy. That is where JavaScript is wrong for this domain, treating both `0` and `""` as falsy.
+
+Sass gets the `0` half right, but then calls `""` and `()` truthy as well, and has no principle that distinguishes them from `null`. An empty string and an empty list *are* absences in exactly the way `null` is. Sass's rule is documented, but it is a list of exceptions rather than an explanation — which is the bar described above.
+
+Sass+ applies one rule: **falsy if absent or empty**.
+
+### What this changes in practice
+
+Only a **bare truth test** on a value that is `""` or `()`:
+
+```scss
+$name: "";
+
+@if $name        { /* Sass: runs.  Sass+: does not run. */ }
+@if $name == ""  { /* identical in both — an explicit comparison */ }
+@if $name != ""  { /* identical in both */ }
+```
+
+The same applies to `and` / `or`, which return an operand rather than a boolean in both languages:
+
+```scss
+$name: "";
+$label: $name or "fallback";   // Sass: ""   Sass+: "fallback"
+```
+
+Anything written as an explicit comparison against `""`, `()` or `null` is **unaffected**, because the comparison decides, not the truthiness rule.
+
+### Measured before changing
+
+Bootstrap 5 (134 `.scss` files) was audited for reliance on this:
+
+- **60** bare `@if $x` truth tests — every one on a boolean flag (`$enable-*`), or on a `map-get()` / `str-index()` result, which returns `null` and is falsy under **both** rules.
+- The variables Bootstrap actually holds `""` in — notably `$infix` — are **never** truth-tested. Every use is an explicit comparison: `@if not ($infix == "")`.
+- Variables defaulted to `()` (`$utilities`, `$result`, `$_map`, `$_args`, `$merged-maps`) never appear in an `@if` at all.
+
+**Result: zero affected sites in Bootstrap.**
+
+That is one library, not the ecosystem. If you maintain a Sass library that relies on `""` or `()` being truthy in a bare `@if`, this is the change that affects you, and the fix is to write the comparison explicitly — which is portable to both.
+
+## See also
+
+- [Sass+ Strictness](./stricter-than-sass) — invalid CSS that Sass+ rejects at parse time
+- [Unsupported Sass+ features](./unsupported-sass-features) — parsed but not evaluated
+- [Sass (SCSS) compatibility](./scss-compatibility) — how Sass at-rules map to Jess

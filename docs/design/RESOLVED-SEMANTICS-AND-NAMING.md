@@ -548,11 +548,33 @@ SIMPLER and the `.jess` representation the natural one (§12.0).
 `NullLiteral` production that §4.3 gave only the jess grammar. Land that FIRST or
 `@if null` silently takes the true branch.
 
+**MEASURED before ruling, on the owner's caveat that library reliance could
+shift this.** Bootstrap 5, 134 `.scss` files:
+
+- **60** bare `@if $x` truth tests — every one on a boolean flag (`$enable-*`) or
+  on a `map-get()` / `str-index()` result, which returns `null` and is falsy
+  under BOTH rules.
+- The variables Bootstrap actually holds `""` in — notably `$infix` — are NEVER
+  truth-tested. Every use is an explicit comparison: `@if not ($infix == "")`.
+- Variables defaulted to `()` (`$utilities`, `$result`, `$_map`, `$_args`,
+  `$merged-maps`) never appear in an `@if` at all.
+
+**Zero affected sites in Bootstrap.** The standing rule holds: if a popular
+library DID rely on these forms, the answer is to lower to the equivalent
+`.jess` form even if more complicated (the `$if` condition form of §4.4.2),
+rather than to shift the dialect. It does not, so the simpler lowering wins.
+
+LIMIT, stated: n = 1 library. bourbon, foundation-sites and include-media are
+not in this repo — §10 Phase 5 could not verify §4.4's corpus claim about them
+for the same reason. They are the obvious next check.
+
 **Migration.** §4.4.5 says compiled `.scss` is unaffected and only a HAND port
 changes behaviour. This ruling widens that: `@if ""` and `@if ()` now change for
-COMPILED `.scss` too. Those are live idioms, and this is the widest behavioural
-change in this document. It belongs in the public Sass+ divergence doc, not only
-here.
+COMPILED `.scss` too. Documented publicly at
+`packages/docs/docs-content/docs/shared/04-guides/02-coming-from-sass/04-semantic-differences.mdx`,
+which is where divergences of this kind belong — the existing
+`stricter-than-sass` page is scoped to PARSE-time strictness, and this is a
+runtime semantic difference.
 
 #### 4.4.3 `!=` is NOT required — deferred
 
