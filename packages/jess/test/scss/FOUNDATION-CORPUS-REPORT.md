@@ -141,7 +141,7 @@ to; none of them is implemented yet.
 | --- | --- | --- |
 | 1 | keyword arg `$name: v` in a call arg list | **Real gap.** Less v5, Sass+ and Jess all admit direct assignment, keyed on what `defineFunction` exposes on the returned function object. Not a Sass-only affordance. |
 | 2 | `@include` with a trailing content block | Likely needs LOWERING (owner: "we may need to lower this"). See #6 — the target already exists. |
-| 3 | `@error` / `@warn` / `@debug` | Become **no-ops** (owner, tentative). |
+| 3 | `@error` / `@warn` / `@debug` | **They do not become NODES.** That is the operative point — not that they are no-ops. They are compile-time diagnostics with no `.jess` spelling, so by §12.0's law no AST kind is owed one. Plugin *visitor* support for specific cases is worth reasoning about separately; it does not require a node. |
 | 4 | `==` / `!=` inside a call arg list | Become **Expressions**. Consistent with §4.5.2: a call argument is value position, so a comparison there needs the `$( … )` boundary. |
 | 5 | `@return` nested inside `@if`/`@else` | **Only top-level `@return` parsing is a BUG.** It lowers to `result:` — the same target §4.5.3b/SCSS-lowering already uses for a function's return value. |
 | 6 | `@content` | **Already resolved and PUBLICLY DOCUMENTED** as the built-in `$content()` mixin — see `packages/docs/docs-content/docs/jess/02-Language/05-mixins.mdx`, including the parameterised `$content($type)` form. This is an implementation gap, not a design question, and it is also the lowering target for #2. |
