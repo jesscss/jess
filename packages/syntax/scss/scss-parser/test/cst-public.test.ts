@@ -82,7 +82,7 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     const { grammarTypes } = stats(result.tree);
-    expect(grammarTypes.get('GeneralEnclosed')).toBe(1);
+    expect(grammarTypes.get('Enclosed')).toBe(1);
     expect(grammarTypes.get('GeneralTemplateGroup')).toBe(3);
     expect(grammarTypes.get('GeneralTemplateQuoted')).toBe(1);
     expect([...grammarTypes.keys()].some(type => type.startsWith('SupportsGeneralTemplate'))).toBe(false);

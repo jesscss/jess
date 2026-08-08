@@ -603,10 +603,9 @@ describe('public Less parse()', () => {
           type: 'AtRuleBlock',
           name: '@supports',
           prelude: {
-            type: 'GeneralEnclosed',
-            form: 'function',
+            type: 'FunctionCall',
             name: 'selector',
-            content: {
+            args: [{
               type: 'Interpolation',
               parts: [
                 { lit: '.' },
@@ -621,7 +620,7 @@ describe('public Less parse()', () => {
                 },
                 { lit: ' /* keep */ :is(.a, .b)' }
               ]
-            }
+            }]
           }
         }
       ]

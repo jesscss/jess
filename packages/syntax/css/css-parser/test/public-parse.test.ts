@@ -135,8 +135,8 @@ describe('public CSS parse()', () => {
       type: 'Stylesheet',
       rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
-          type: 'GeneralEnclosed', form: 'function', name: 'selector',
-          content: { type: 'Interpolation', parts: [{ lit: '.grid /* keep */ :is(.a, .b)' }] }
+          type: 'FunctionCall', name: 'selector',
+          args: [{ type: 'Interpolation', parts: [{ lit: '.grid /* keep */ :is(.a, .b)' }] }]
         }
       }]
     });

@@ -22,8 +22,8 @@ import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, selectorBranchOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, selectorBranchOf, decl, dimension, forNode, funcCall, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -121,7 +121,7 @@ type ScssRules = {
   GeneralTemplate: Combinator<Interpolation>;
   GeneralTemplateGroup: Combinator<Interpolation>;
   GeneralTemplateQuoted: Combinator<Interpolation>;
-  GeneralEnclosed: Combinator<GeneralEnclosed>;
+  Enclosed: Combinator<FunctionCall | Block>;
   SupportsFeature: Combinator<ValueNode>;
   SupportsInParens: Combinator<ValueNode>;
   SupportsNotKeyword: Combinator<Keyword>;
@@ -688,8 +688,6 @@ function isValue(value: unknown): value is ValueNode {
       return isFunctionCall(value);
     case 'Interpolation':
       return isInterpolation(value);
-    case 'GeneralEnclosed':
-      return 'content' in value && isInterpolation(value.content);
     case 'Any':
       return 'src' in value && typeof value.src === 'string';
     case 'Url':
@@ -1351,7 +1349,7 @@ const scssFactory = (g: ScssInputRules) => {
    * NOT a copy of `Quoted`: this is the *static-only* quoted string, `Quoted`
    * minus its two interpolation arms. It exists so that a real `#{` opener is
    * left unconsumed and the caller can fall through to an arm that owns the
-   * dynamic form — `SupportsAtom` to `GeneralEnclosed`'s template, and
+   * dynamic form — `SupportsAtom` to `Enclosed`'s template, and
    * `PseudoArgument` to the structured interpolated pseudo-argument. Reduced
    * through the same `staticQuoted` fact and the same escape-bearing text
    * regexes as `Quoted`, so the accepted string language is identical; only
@@ -3602,8 +3600,8 @@ const scssFactory = (g: ScssInputRules) => {
     )),
     interpolationFromTemplateChildren
   );
-  const GeneralEnclosed = node<GeneralEnclosed>(
-    'GeneralEnclosed',
+  const Enclosed = node<FunctionCall | Block>(
+    'Enclosed',
     choice(
       sequence(
         g.Identifier,
@@ -3618,16 +3616,11 @@ const scssFactory = (g: ScssInputRules) => {
       )
     ),
     children => children.length === 4
-      ? generalEnclosed(
-          'function',
+      ? funcCall(
           requireToken(children[0]).value,
-          requireInterpolation(children[2])
+          [requireInterpolation(children[2])]
         )
-      : generalEnclosed(
-          'paren',
-          null,
-          requireInterpolation(children[1])
-        )
+      : block(requireInterpolation(children[1]))
   );
   const SupportsFeature = node<ValueNode>(
     'SupportsFeature',
@@ -3666,7 +3659,7 @@ const scssFactory = (g: ScssInputRules) => {
         literal(')')
       ),
       g.SupportsFeature,
-      g.GeneralEnclosed
+      g.Enclosed
     ),
     (children) => {
       const value = children.find(isValue);
@@ -5185,7 +5178,7 @@ const scssFactory = (g: ScssInputRules) => {
     GeneralTemplate,
     GeneralTemplateGroup,
     GeneralTemplateQuoted,
-    GeneralEnclosed,
+    Enclosed,
     SupportsFeature,
     SupportsInParens,
     SupportsNotKeyword,

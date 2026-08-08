@@ -28,8 +28,8 @@ import {
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, Block, Important, ImportAtRule, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
@@ -89,7 +89,7 @@ type RulesetTailFact = {
   readonly terminated?: true;
 };
 type CustomValuePart = string | InterpolationFact | Lookup | readonly CustomValuePart[];
-type GeneralEnclosedNameFact = { readonly name: string };
+type EnclosedNameFact = { readonly name: string };
 type FunctionConditionFact = {
   readonly guard: MixinGuard;
   readonly src: string;
@@ -197,11 +197,11 @@ type LessRules = {
   SupportsFeature: Combinator<ValueNode>;
   SupportsInParens: Combinator<ValueNode>;
   SupportsCondition: Combinator<ValueNode>;
-  GeneralEnclosedContent: Combinator<Interpolation>;
-  GeneralEnclosedGroup: Combinator<Interpolation>;
-  GeneralEnclosedQuoted: Combinator<Interpolation>;
-  GeneralEnclosedFunctionName: Combinator<GeneralEnclosedNameFact>;
-  GeneralEnclosed: Combinator<GeneralEnclosed>;
+  EnclosedContent: Combinator<Interpolation>;
+  EnclosedGroup: Combinator<Interpolation>;
+  EnclosedQuoted: Combinator<Interpolation>;
+  EnclosedFunctionName: Combinator<EnclosedNameFact>;
+  Enclosed: Combinator<FunctionCall | Block>;
   SupportsBlock: Combinator<AtRuleBlock>;
   QueryValue: Combinator<ValueNode>;
   QueryColonFeature: Combinator<ValueNode>;
@@ -790,7 +790,7 @@ function appendInterpolationLiteral(parts: Interpolation['parts'], lit: string):
   }
 }
 
-function appendGeneralEnclosedLiteral(parts: Interpolation['parts'], lit: string): void {
+function appendEnclosedLiteral(parts: Interpolation['parts'], lit: string): void {
   if (lit.length === 0) {
     return;
   }
@@ -802,7 +802,7 @@ function appendGeneralEnclosedLiteral(parts: Interpolation['parts'], lit: string
   }
 }
 
-function generalEnclosedInterpolationFromChildren(children: readonly unknown[]): Interpolation {
+function enclosedInterpolationFromChildren(children: readonly unknown[]): Interpolation {
   const parts: Interpolation['parts'] = [];
   const append = (child: unknown): void => {
     if (child === undefined || child === null || child === false) {
@@ -816,7 +816,7 @@ function generalEnclosedInterpolationFromChildren(children: readonly unknown[]):
       }
       for (const part of child.parts) {
         if ('lit' in part) {
-          appendGeneralEnclosedLiteral(parts, part.lit);
+          appendEnclosedLiteral(parts, part.lit);
         } else {
           parts.push(part);
         }
@@ -826,9 +826,9 @@ function generalEnclosedInterpolationFromChildren(children: readonly unknown[]):
         append(nested);
       }
     } else if (typeof child === 'string') {
-      appendGeneralEnclosedLiteral(parts, child);
+      appendEnclosedLiteral(parts, child);
     } else {
-      appendGeneralEnclosedLiteral(parts, requireToken(child).value);
+      appendEnclosedLiteral(parts, requireToken(child).value);
     }
   };
   for (const child of children) {
@@ -1288,7 +1288,6 @@ function isValueNode(value: unknown): value is ValueNode {
     case 'SelectorCapture':
     case 'AnonymousMixin':
     case 'Collection':
-    case 'GeneralEnclosed':
       return true;
     case 'Quoted':
       return isQuoted(value);
@@ -2374,9 +2373,9 @@ const staticPseudoChunk = regex(/(?:[^()\[\]'"@/]|@(?![@{_a-zA-Z\u0080-\uffff-])
 // delimiters, strings, comments, and `@{…}` each have their own grammar arm.
 // This terminal owns only the remaining literal bytes; no completed source span
 // is scanned or re-parsed after recognition.
-const generalEnclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
-const generalEnclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
-const generalEnclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
+const enclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
+const enclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
+const enclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
 const lessSupportedVariableName = regex(/[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const lessUnsupportedNumericVariableName = node(
   'UnsupportedVariableName',
@@ -2783,7 +2782,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   // `@plugin` is a compile-time directive, not an unknown CSS at-rule. Its
   // target and the *inner* option string are grammar facts so the evaluator
-  // never rediscovers either from raw prelude bytes. GeneralEnclosedContent
+  // never rediscovers either from raw prelude bytes. EnclosedContent
   // recursively closes delimiters and preserves arbitrary option text as
   // interpolation literal/ref segments, matching Less's opaque option string.
   const PluginDirective = node(
@@ -2794,7 +2793,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         '-_a-zA-Z0-9\\u0080-\\uFFFF',
         { caseInsensitive: true }
       ),
-      optional(sequence(literal('('), field('options', g.GeneralEnclosedContent), literal(')'))),
+      optional(sequence(literal('('), field('options', g.EnclosedContent), literal(')'))),
       field('target', quotedOrUrlTarget),
       literal(';')
     ),
@@ -4569,57 +4568,57 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding);
     }
   );
-  const generalEnclosedRaw = node(
-    'GeneralEnclosedRaw',
-    noTrivia(choice(g.BlockCommentToken, generalEnclosedText)),
+  const enclosedRaw = node(
+    'EnclosedRaw',
+    noTrivia(choice(g.BlockCommentToken, enclosedText)),
     children => requireToken(children[0]).value
   );
-  const GeneralEnclosedQuoted = node(
-    'GeneralEnclosedQuoted',
+  const EnclosedQuoted = node(
+    'EnclosedQuoted',
     choice(
-      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.BareVariableInterpolation, generalEnclosedDoubleChunk)), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.BareVariableInterpolation, generalEnclosedSingleChunk)), literal('\'')))
+      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.BareVariableInterpolation, enclosedDoubleChunk)), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.BareVariableInterpolation, enclosedSingleChunk)), literal('\'')))
     ),
-    generalEnclosedInterpolationFromChildren
+    enclosedInterpolationFromChildren
   );
-  const GeneralEnclosedGroup = node(
-    'GeneralEnclosedGroup',
+  const EnclosedGroup = node(
+    'EnclosedGroup',
     choice(
-      noTrivia(sequence(literal('('), g.GeneralEnclosedContent, literal(')'))),
-      noTrivia(sequence(literal('['), g.GeneralEnclosedContent, literal(']'))),
-      noTrivia(sequence(literal('{'), g.GeneralEnclosedContent, literal('}')))
+      noTrivia(sequence(literal('('), g.EnclosedContent, literal(')'))),
+      noTrivia(sequence(literal('['), g.EnclosedContent, literal(']'))),
+      noTrivia(sequence(literal('{'), g.EnclosedContent, literal('}')))
     ),
-    generalEnclosedInterpolationFromChildren
+    enclosedInterpolationFromChildren
   );
-  const GeneralEnclosedContent = node(
-    'GeneralEnclosedContent',
+  const EnclosedContent = node(
+    'EnclosedContent',
     noTrivia(many(choice(
       g.BareVariableInterpolation,
-      generalEnclosedRaw,
+      enclosedRaw,
       g.VariableInterpolation,
-      g.GeneralEnclosedQuoted,
-      g.GeneralEnclosedGroup
+      g.EnclosedQuoted,
+      g.EnclosedGroup
     ))),
-    generalEnclosedInterpolationFromChildren
+    enclosedInterpolationFromChildren
   );
-  const GeneralEnclosedFunctionName = node(
-    'GeneralEnclosedFunctionName',
+  const EnclosedFunctionName = node(
+    'EnclosedFunctionName',
     token(noTrivia(sequence(g.QueryFunctionName, literal('(')))),
     children => ({ name: functionNameFromOpener(children[0]) })
   );
-  const GeneralEnclosed = node(
-    'GeneralEnclosed',
+  const Enclosed = node(
+    'Enclosed',
     choice(
-      noTrivia(sequence(g.GeneralEnclosedFunctionName, g.GeneralEnclosedContent, literal(')'))),
-      noTrivia(sequence(literal('('), g.GeneralEnclosedContent, literal(')')))
+      noTrivia(sequence(g.EnclosedFunctionName, g.EnclosedContent, literal(')'))),
+      noTrivia(sequence(literal('('), g.EnclosedContent, literal(')')))
     ),
     (children) => {
       const content = children.find((child): child is Interpolation => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Interpolation');
       if (content === undefined) {
         throw new TypeError('Less general-enclosed lost its grammar-owned content.');
       }
-      const name = children.find((child): child is GeneralEnclosedNameFact => typeof child === 'object' && child !== null && 'name' in child);
-      return name === undefined ? generalEnclosed('paren', null, content) : generalEnclosed('function', name.name, content);
+      const name = children.find((child): child is EnclosedNameFact => typeof child === 'object' && child !== null && 'name' in child);
+      return name === undefined ? block(content) : funcCall(name.name, [content]);
     }
   );
   // `@supports` has its own typed condition grammar. Keep this narrower than
@@ -4658,7 +4657,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(
       sequence(literal('('), g.SupportsCondition, literal(')')),
       g.SupportsFeature,
-      g.GeneralEnclosed
+      g.Enclosed
     ),
     children => children.length === 1
       ? requireValueNode(children[0])
@@ -6433,11 +6432,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     SupportsFeature,
     SupportsInParens,
     SupportsCondition,
-    GeneralEnclosedContent,
-    GeneralEnclosedGroup,
-    GeneralEnclosedQuoted,
-    GeneralEnclosedFunctionName,
-    GeneralEnclosed,
+    EnclosedContent,
+    EnclosedGroup,
+    EnclosedQuoted,
+    EnclosedFunctionName,
+    Enclosed,
     SupportsBlock,
     QueryValue,
     QueryColonFeature,

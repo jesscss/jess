@@ -579,9 +579,6 @@ function walkNode(
     case 'Interpolation':
       walkInterpolation(node, hooks, depth);
       break;
-    case 'GeneralEnclosed':
-      walkNode(node.content, hooks, 'value.general.content', node, 0, depth + 1);
-      break;
     case 'Lookup':
       /* A `@@indirect` is a Lookup whose NAME is a node; a plain `@x` is a leaf. */
       if (typeof node.name === 'object') {

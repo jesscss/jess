@@ -311,20 +311,6 @@ export interface Interpolation extends SpanSlots {
 }
 
 /**
- * CSS conditional general-enclosed syntax. Its content intentionally remains a
- * grammar-owned interpolation template: it is never interpreted as a CSS
- * function call or a parenthesized value expression.
- */
-export interface GeneralEnclosed {
-  readonly type: 'GeneralEnclosed';
-  readonly form: 'function' | 'paren';
-
-  /** The glued function name, or null for the parenthesized form. */
-  readonly name: string | null;
-  readonly content: Interpolation;
-}
-
-/**
  * An anonymous mixin value `@rs: { … }` / `$x: { … }`: an executable block bound
  * to a value, callable (`@rs()`) to splice its rules at the call site. Unlike a
  * {@link Collection} (a data map), its rules CAN contain rulesets, at-rules, and
@@ -476,7 +462,6 @@ export type ValueNode =
   | Block
   | Condition
   | Interpolation
-  | GeneralEnclosed
   | AnonymousMixin
   | Collection
   | Reference
@@ -1189,11 +1174,6 @@ export const pseudoSelector = (
   interp: Interpolation | null = null
 ): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts, _s: NO_SPAN, _e: NO_SPAN });
-export const generalEnclosed = (
-  form: GeneralEnclosed['form'],
-  name: string | null,
-  content: Interpolation
-): GeneralEnclosed => ({ type: 'GeneralEnclosed', form, name, content });
 export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
   params === undefined ? { type: 'AnonymousMixin', rules } : { type: 'AnonymousMixin', rules, params };
 

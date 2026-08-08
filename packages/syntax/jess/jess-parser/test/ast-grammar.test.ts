@@ -1816,12 +1816,12 @@ describe('Jess AST grammar facts', () => {
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
-          type: 'GeneralEnclosed', form: 'function', name: 'selector', content: {
+          type: 'FunctionCall', name: 'selector', args: [{
             type: 'Interpolation', parts: [
               { lit: '.card-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true },
               { lit: ':has([data-x="' }, { ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state' }, unquote: true }, { lit: '"])' }
             ]
-          }
+          }]
         }
       }]
     });
@@ -1887,7 +1887,7 @@ describe('Jess AST grammar facts', () => {
 
     expect(parse('@supports selector("$(x)") { .card { color: blue; } }').rules[0]).toMatchObject({
       type: 'AtRuleBlock', name: '@supports',
-      prelude: { type: 'GeneralEnclosed', form: 'function', name: 'selector' }
+      prelude: { type: 'FunctionCall', name: 'selector' }
     });
   });
 

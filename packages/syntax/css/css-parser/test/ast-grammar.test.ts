@@ -813,8 +813,8 @@ describe('CSS canonical-AST grammar', () => {
       type: 'Stylesheet',
       rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
-          type: 'GeneralEnclosed', form: 'function', name: 'selector',
-          content: { type: 'Interpolation', parts: [{ lit: '  .grid /* keep */ [data-kind=")"] :is(.a, .b) ' }] }
+          type: 'FunctionCall', name: 'selector',
+          args: [{ type: 'Interpolation', parts: [{ lit: '  .grid /* keep */ [data-kind=")"] :is(.a, .b) ' }] }]
         }
       }]
     });
@@ -824,8 +824,8 @@ describe('CSS canonical-AST grammar', () => {
     expect(parseAst(paren)).toMatchObject({
       rules: [{
         prelude: {
-          type: 'GeneralEnclosed', form: 'paren', name: null,
-          content: { type: 'Interpolation', parts: [{ lit: 'future-feature "quoted ) byte" [x]' }] }
+          type: 'Block', delimiter: 'paren',
+          value: { type: 'Interpolation', parts: [{ lit: 'future-feature "quoted ) byte" [x]' }] }
         }
       }]
     });
@@ -977,7 +977,7 @@ describe('CSS canonical-AST grammar', () => {
      * hands the whole payload to general-enclosed instead of hard-failing.
      */
     expect(parseAst('@supports (a b / c) { .card { color: red; } }').rules[0]).toMatchObject({
-      prelude: { type: 'GeneralEnclosed', form: 'paren', name: null }
+      prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Interpolation' } }
     });
   });
 

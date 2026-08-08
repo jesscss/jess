@@ -33,7 +33,6 @@ import {
   decl,
   dimension,
   funcCall,
-  generalEnclosed,
   interpolation,
   keyword,
   list,
@@ -151,10 +150,10 @@ type GrammarRuleName =
   | 'DocumentBlock'
   | 'FeatureValueBlock'
   | 'FontFeatureValuesBlock'
-  | 'GeneralEnclosed'
-  | 'GeneralEnclosedContent'
-  | 'GeneralEnclosedGroup'
-  | 'GeneralEnclosedQuoted'
+  | 'Enclosed'
+  | 'EnclosedContent'
+  | 'EnclosedGroup'
+  | 'EnclosedQuoted'
   | 'ImportStatement'
   | 'ImportTail'
   | 'ImportTailBody'
@@ -511,7 +510,7 @@ function isValue(value: unknown): value is ValueNode {
     && (value.type === 'Keyword' || value.type === 'Color' || value.type === 'Dimension'
       || value.type === 'Quoted' || value.type === 'Url' || value.type === 'FunctionCall'
       || value.type === 'Block' || value.type === 'Operation' || value.type === 'SpacedValue'
-      || value.type === 'List' || value.type === 'Any' || value.type === 'GeneralEnclosed');
+      || value.type === 'List' || value.type === 'Any');
 }
 
 function isValueSlotArray(value: unknown): value is readonly ValueSlot[] {
@@ -1050,7 +1049,7 @@ const balancedBraces = balanced(
  * comments, and balanced groups below own those bytes instead. It is a Parseman
  * terminal, not a source scan or a post-parse text recovery step.
  */
-const generalEnclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/'"()[\]{}]+)+/);
+const enclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/'"()[\]{}]+)+/);
 
 /*
  * A custom property is a CSS `<declaration-value>`: its opaque bytes must be
@@ -3286,20 +3285,20 @@ const cssFactory = (g: GrammarSelf) => {
    * A supports condition is deliberately distinct from the media/container
    * query prelude above. In particular it has no bare-keyword form: `@supports
    * color {}` must fail rather than being lowered to an opaque Any prelude.
-   * General-enclosed carries its own raw-template content model, so it can be
-   * admitted in supports without pretending that arbitrary CSS bytes are
-   * FunctionCall arguments or parenthesized value expressions.
+   * General-enclosed carries its own raw-template content model: the payload is
+   * one `Interpolation`, so the `FunctionCall` / `Block` it builds is never read
+   * as structured call arguments or a parenthesized value expression.
    */
-  const GeneralEnclosedRaw = node(
-    'GeneralEnclosedRaw',
+  const EnclosedRaw = node(
+    'EnclosedRaw',
     noTrivia(choice(
       blockComment,
-      generalEnclosedText
+      enclosedText
     )),
     children => tokenText(children[0]!)
   );
-  const GeneralEnclosedQuoted = node(
-    'GeneralEnclosedQuoted',
+  const EnclosedQuoted = node(
+    'EnclosedQuoted',
     choice(
       noTrivia(sequence(
         literal('"'),
@@ -3314,22 +3313,22 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     children => children.map(tokenText).join('')
   );
-  const GeneralEnclosedGroup = node(
-    'GeneralEnclosedGroup',
+  const EnclosedGroup = node(
+    'EnclosedGroup',
     choice(
       noTrivia(sequence(
         literal('('),
-        g.GeneralEnclosedContent,
+        g.EnclosedContent,
         literal(')')
       )),
       noTrivia(sequence(
         literal('['),
-        g.GeneralEnclosedContent,
+        g.EnclosedContent,
         literal(']')
       )),
       noTrivia(sequence(
         literal('{'),
-        g.GeneralEnclosedContent,
+        g.EnclosedContent,
         literal('}')
       ))
     ),
@@ -3337,26 +3336,26 @@ const cssFactory = (g: GrammarSelf) => {
       ? child.parts.map(part => 'lit' in part ? part.lit : '').join('')
       : tokenText(child)).join('')
   );
-  const GeneralEnclosedContent = node(
-    'GeneralEnclosedContent',
+  const EnclosedContent = node(
+    'EnclosedContent',
     noTrivia(many(choice(
-      GeneralEnclosedRaw,
-      g.GeneralEnclosedQuoted,
-      g.GeneralEnclosedGroup
+      EnclosedRaw,
+      g.EnclosedQuoted,
+      g.EnclosedGroup
     ))),
     children => interpolation([{ lit: children.map(tokenText).join('') }])
   );
-  const GeneralEnclosed = node(
-    'GeneralEnclosed',
+  const Enclosed = node(
+    'Enclosed',
     choice(
       noTrivia(sequence(
         g.QueryFunctionOpen,
-        g.GeneralEnclosedContent,
+        g.EnclosedContent,
         literal(')')
       )),
       noTrivia(sequence(
         literal('('),
-        g.GeneralEnclosedContent,
+        g.EnclosedContent,
         literal(')')
       ))
     ),
@@ -3370,16 +3369,11 @@ const cssFactory = (g: GrammarSelf) => {
       }
       const head = children[0];
       return isTerminalText(head) && tokenText(head) !== '('
-        ? generalEnclosed(
-            'function',
+        ? funcCall(
             tokenText(head),
-            content
+            [content]
           )
-        : generalEnclosed(
-            'paren',
-            null,
-            content
-          );
+        : block(content);
     }
   );
   const QueryFunction = node(
@@ -3402,7 +3396,7 @@ const cssFactory = (g: GrammarSelf) => {
         literal(')')
       ),
       g.QueryFeature,
-      g.GeneralEnclosed
+      g.Enclosed
     ),
     (children) => {
       const value = firstValue(children);
@@ -4043,10 +4037,10 @@ const cssFactory = (g: GrammarSelf) => {
     ContainerQueryPrelude,
     ContainerPrelude,
     QueryFunction,
-    GeneralEnclosed,
-    GeneralEnclosedContent,
-    GeneralEnclosedGroup,
-    GeneralEnclosedQuoted,
+    Enclosed,
+    EnclosedContent,
+    EnclosedGroup,
+    EnclosedQuoted,
     SupportsInParens,
     SupportsCondition,
     SupportsPrelude,

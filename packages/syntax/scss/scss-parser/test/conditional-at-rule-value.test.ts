@@ -209,8 +209,8 @@ const NOT_A_LINTER: Array<[string, string, object]> = [
  * `Block(Operation)` as a media feature; `not`/`and`/`or` compose into a
  * `SpacedValue`. A form the dialect does not model as a declaration — a
  * `selector()` test, or a custom property, whose value grammar is
- * `<declaration-value>` — is preserved as `GeneralEnclosed` rather than being
- * flattened to raw text.
+ * `<declaration-value>` — is preserved as a call / block over one grammar-owned
+ * `Interpolation` rather than being flattened to raw text.
  */
 const SUPPORTS: Array<[string, string, object]> = [
   ['a supported declaration', '@supports (display: grid) { a { color: red; } }', paren(op(':', kw('display'), kw('grid')))],
@@ -220,11 +220,11 @@ const SUPPORTS: Array<[string, string, object]> = [
     { type: 'SpacedValue', parts: [paren(op(':', kw('display'), kw('grid'))), kw('and'), paren(op(':', kw('gap'), dim('1px')))] }],
   ['an or chain', '@supports (display: grid) or (display: flex) { a { color: red; } }',
     { type: 'SpacedValue', parts: [paren(op(':', kw('display'), kw('grid'))), kw('or'), paren(op(':', kw('display'), kw('flex')))] }],
-  ['a selector() test', '@supports selector(a:hover) { a { color: red; } }', { type: 'GeneralEnclosed', name: 'selector' }],
-  ['a complex selector() test', '@supports selector(h2 > p) { a { color: red; } }', { type: 'GeneralEnclosed', name: 'selector' }],
-  ['a font-tech() test', '@supports font-tech(color-COLRv1) { a { color: red; } }', { type: 'GeneralEnclosed', name: 'font-tech' }],
-  ['a font-format() test', '@supports font-format(opentype) { a { color: red; } }', { type: 'GeneralEnclosed', name: 'font-format' }],
-  ['a custom-property test', '@supports (--x: red) { a { color: red; } }', { type: 'GeneralEnclosed' }]
+  ['a selector() test', '@supports selector(a:hover) { a { color: red; } }', { type: 'FunctionCall', name: 'selector' }],
+  ['a complex selector() test', '@supports selector(h2 > p) { a { color: red; } }', { type: 'FunctionCall', name: 'selector' }],
+  ['a font-tech() test', '@supports font-tech(color-COLRv1) { a { color: red; } }', { type: 'FunctionCall', name: 'font-tech' }],
+  ['a font-format() test', '@supports font-format(opentype) { a { color: red; } }', { type: 'FunctionCall', name: 'font-format' }],
+  ['a custom-property test', '@supports (--x: red) { a { color: red; } }', { type: 'Block', delimiter: 'paren' }]
 ];
 
 function descriptorValue(source: string): unknown {

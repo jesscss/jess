@@ -5622,10 +5622,9 @@ describe('Less AST grammar facts', () => {
           type: 'AtRuleBlock',
           name: '@supports',
           prelude: {
-            type: 'GeneralEnclosed',
-            form: 'function',
+            type: 'FunctionCall',
             name: 'selector',
-            content: {
+            args: [{
               type: 'Interpolation',
               parts: [
                 { lit: '  .card-' },
@@ -5640,7 +5639,7 @@ describe('Less AST grammar facts', () => {
                 },
                 { lit: ' /* keep */ :is(.a, .b) ' }
               ]
-            }
+            }]
           }
         }
       ]

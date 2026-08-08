@@ -226,7 +226,6 @@ Core must own the child-edge table. Consumers must never recurse with
 | `Operation` | `value.operation.left`, `value.operation.right` |
 | `FunctionCall` | `value.function.arg` for each arg |
 | `Interpolation` | `value.interpolation.ref` for every part with `ref` |
-| `GeneralEnclosed` | `value.general.content` |
 | `VarIndirect` | `value.var-indirect.name` |
 | `Condition` | `value.condition.guard` |
 | `Reference` | `value.reference.base` for `ValueNode` or `MixinCall`; `value.reference.bracket-key` for value keys; `value.reference.call-arg` for call args using the shared `CallValue` rule |

@@ -43,7 +43,6 @@ import type {
   FunctionCall,
   Block,
   Interpolation,
-  GeneralEnclosed,
   AnonymousMixin,
   Collection,
   CollectionEntry,
@@ -63,7 +62,7 @@ export type NodeType =
   | 'ComplexSelector' | 'RelativeSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
   | 'SpacedValue' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
   | 'Sequence' | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition'
-  | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation' | 'GeneralEnclosed'
+  | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation'
   | 'AnonymousMixin' | 'Collection' | 'CollectionEntry' | 'Reference' | 'Range' | 'For' | 'If' | 'StyleImport' | 'ModuleImport';
 
 /** Combinator between two compounds in a complex selector. `|` is the CSS
@@ -86,7 +85,7 @@ export type Node =
   | Stylesheet | Ruleset | Declaration | Comment | SelectorList | ComplexSelector | RelativeSelector | CompoundSelector
   | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | Lookup | MixinDefinition | MixinCall
   | VariableDeclaration | Sequence | Important | Operation | FunctionCall | Block | Condition
-  | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | GeneralEnclosed | AnonymousMixin | Collection
+  | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | AnonymousMixin | Collection
   | CollectionEntry | Reference | Range | For | If | StyleImport | ModuleImport;
 
 /**
@@ -109,7 +108,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'ComplexSelector', 'RelativeSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
   'SpacedValue', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
   'Sequence', 'Important', 'Operation', 'FunctionCall', 'Block', 'Condition',
-  'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation', 'GeneralEnclosed',
+  'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation',
   'AnonymousMixin', 'Collection', 'CollectionEntry', 'Reference', 'Range', 'For', 'If', 'StyleImport', 'ModuleImport'
 ]);
 

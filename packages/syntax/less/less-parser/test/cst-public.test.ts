@@ -458,7 +458,7 @@ describe('Less direct-AST closure CST contract', () => {
       ['.x { color: feature(1px, 2px); }', 'Call', ['feature(', '1', 'px', ', ', '2', 'px', ')']],
       ['.x { color: calc(1px + 2px); }', 'CalcCall', ['calc(', '1', 'px', '+', '2', 'px', ')']],
       ['.x { color: url(foo); }', 'Url', ['url(', 'foo', ')']],
-      ['@supports selector(a:hover) { a { color: red; } }', 'GeneralEnclosedFunctionName', ['selector(']],
+      ['@supports selector(a:hover) { a { color: red; } }', 'EnclosedFunctionName', ['selector(']],
       ['@container style(--responsive: true) { .card { color: red; } }', 'ContainerStyleQuery', ['style(', '--responsive', ':', 'true', ')']]
     ];
 

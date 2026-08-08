@@ -29,8 +29,8 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, forNode, funcCall, ifNode, interpolation, keyword, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -190,7 +190,7 @@ type JessRules = {
   GeneralTemplateQuoted: Combinator<Interpolation>;
   GeneralQuotedTemplate: Combinator<Interpolation>;
   GeneralQuotedTemplateGroup: Combinator<Interpolation>;
-  GeneralEnclosed: Combinator<GeneralEnclosed>;
+  Enclosed: Combinator<FunctionCall | Block>;
   SupportsNot: Combinator<Keyword>;
   SupportsLogical: Combinator<Keyword>;
   SupportsFeature: Combinator<ValueNode>;
@@ -511,7 +511,6 @@ function isValueNode(value: unknown): value is ValueNode {
       || value.type === 'Operation'
       || value.type === 'Condition'
       || value.type === 'Interpolation'
-      || value.type === 'GeneralEnclosed'
       || value.type === 'SpacedValue'
       || value.type === 'List'
       || value.type === 'Block'
@@ -4349,7 +4348,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * A supported declaration's value is the same plain CSS component value a
    * media feature takes — `@supports (width: min(1px, 2px))` and
    * `@supports (background: url(a.png))` are ordinary CSS. A third private copy
-   * of the leaf set is what let those degrade to opaque GeneralEnclosed text.
+   * of the leaf set is what let those degrade to opaque general-enclosed text.
    */
   const SupportsAtom = node<ValueNode>(
     'SupportsAtom',
@@ -4442,8 +4441,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     )),
     templateInterpolationFromChildren
   );
-  const GeneralEnclosed = node<GeneralEnclosed>(
-    'GeneralEnclosed',
+  const Enclosed = node<FunctionCall | Block>(
+    'Enclosed',
     choice(
       sequence(
         g.Identifier,
@@ -4458,16 +4457,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )
     ),
     children => children.length === 4
-      ? generalEnclosed(
-          'function',
+      ? funcCall(
           requireToken(children[0]).value,
-          requireInterpolation(children[2])
+          [requireInterpolation(children[2])]
         )
-      : generalEnclosed(
-          'paren',
-          null,
-          requireInterpolation(children[1])
-        )
+      : block(requireInterpolation(children[1]))
   );
   const SupportsNot = node<Keyword>(
     'SupportsNot',
@@ -4515,7 +4509,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(')')
       ),
       g.SupportsFeature,
-      g.GeneralEnclosed
+      g.Enclosed
     ),
     (children) => {
       const value = children.find(isValueNode);
@@ -6018,7 +6012,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     GeneralTemplateQuoted,
     GeneralQuotedTemplate,
     GeneralQuotedTemplateGroup,
-    GeneralEnclosed,
+    Enclosed,
     SupportsNot,
     SupportsLogical,
     SupportsFeature,

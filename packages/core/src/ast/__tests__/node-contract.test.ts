@@ -3,8 +3,9 @@ import { isNode, type Node } from '../node.js';
 import {
   collection,
   collectionEntry,
+  block,
   declarationReference,
-  generalEnclosed,
+  funcCall,
   important,
   interpolation,
   keyword,
@@ -43,20 +44,23 @@ describe('AST node contract', () => {
     expect(isNode(value)).toBe(true);
   });
 
-  it('publishes GeneralEnclosed with structured Interpolation content', () => {
-    const enclosed: Node = generalEnclosed(
-      'function',
-      'selector',
-      interpolation([{ lit: '.card' }])
-    );
+  it('publishes both general-enclosed forms as a call and a block over one Interpolation', () => {
+    const fn: Node = funcCall('selector', [interpolation([{ lit: '.card' }])]);
+    const paren: Node = block(interpolation([{ lit: '--x: red' }]));
 
-    expect(bare(enclosed)).toEqual({
-      type: 'GeneralEnclosed',
-      form: 'function',
+    expect(bare(fn)).toEqual({
+      type: 'FunctionCall',
       name: 'selector',
-      content: { type: 'Interpolation', parts: [{ lit: '.card' }] }
+      modern: false,
+      args: [{ type: 'Interpolation', parts: [{ lit: '.card' }] }]
     });
-    expect(isNode(enclosed)).toBe(true);
+    expect(bare(paren)).toEqual({
+      type: 'Block',
+      delimiter: 'paren',
+      value: { type: 'Interpolation', parts: [{ lit: '--x: red' }] }
+    });
+    expect(isNode(fn)).toBe(true);
+    expect(isNode(paren)).toBe(true);
   });
 
   it('publishes variable-held calls as final Reference call steps', () => {

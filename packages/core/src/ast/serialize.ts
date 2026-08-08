@@ -71,7 +71,6 @@ import type {
   If,
   FunctionCall,
   Interpolation,
-  GeneralEnclosed,
   Keyword,
   Reference,
   MixinCall,
@@ -2177,8 +2176,6 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
       return callValueContainsVarRef(value.value, name, lookup);
     case 'Interpolation':
       return value.parts.some(part => 'ref' in part && callValueContainsVarRef(part.ref, name, lookup));
-    case 'GeneralEnclosed':
-      return callValueContainsVarRef(value.content, name, lookup);
     case 'Reference':
       return callValueContainsVarRef(value.base, name, lookup)
         || value.steps.some((step) => {
@@ -3451,9 +3448,6 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       return evalCall(node, frame, e, false);
     case 'Interpolation':
       return evalInterp(node, frame, e);
-    case 'GeneralEnclosed':
-      return mapMaybe(evalInterp(node.content, frame, e), value =>
-        literal(generalEnclosedBytes(node, emitValue(value))));
     case 'Reference':
       return evalReference(node, frame, e);
     case 'Range': {
@@ -4923,12 +4917,6 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
  */
 function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   return mapMaybe(evalValue(node, frame, e), emitValue);
-}
-
-function generalEnclosedBytes(node: GeneralEnclosed, content: string): string {
-  return node.form === 'function'
-    ? `${node.name ?? ''}(${content})`
-    : `(${content})`;
 }
 
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
@@ -11706,6 +11694,20 @@ function staysNested(name: string): boolean {
 /** A prelude fragment whose grammar owns its bytes (not merely their values). */
 type SupportsPreludePart = { bytes: string; protected: boolean };
 
+/**
+ * The grammar-owned template of a general-enclosed function form, or `null` when
+ * the call is an ordinary one. A single `Interpolation` argument is the shape no
+ * structured call can have: every structured argument path yields a typed value
+ * node, so the template is the discriminator, not a flag.
+ */
+function generalEnclosedPayload(args: readonly ValueSlot[]): Interpolation | null {
+  if (args.length !== 1) {
+    return null;
+  }
+  const only = args[0]!;
+  return !isValueSlotArray(only) && only.type === 'Interpolation' ? only : null;
+}
+
 function normalizeSupportsBytes(p: string): string {
   let out = '';
   let plainStart = 0;
@@ -11789,12 +11791,29 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
     return concatPreludeParts(parts);
   }
   switch (node.type) {
-    case 'GeneralEnclosed':
-      return mapMaybe(evalBytes(node.content, frame, e), content =>
-        [{ bytes: generalEnclosedBytes(node, content), protected: true }]);
+    /*
+     * [general-enclosed] The two general-enclosed spellings — `selector(…)` and a
+     * bare `(…)` the condition grammar could not structure — are an ordinary
+     * `FunctionCall` / `Block` whose sole payload is the grammar-owned
+     * `Interpolation` template. Their bytes are the author's, not a value's, so
+     * they are emitted whole and marked protected: normalization must not touch
+     * the payload's spacing, comments, or quoting.
+     */
+    case 'FunctionCall': {
+      const payload = generalEnclosedPayload(node.args);
+      if (payload === null) {
+        return mapMaybe(evalBytes(node, frame, e), plain);
+      }
+      return mapMaybe(evalBytes(payload, frame, e), content =>
+        [{ bytes: `${node.name}(${content})`, protected: true }]);
+    }
     case 'Block': {
       const open = node.delimiter === 'square' ? '[' : '(';
       const close = node.delimiter === 'square' ? ']' : ')';
+      if (!isValueSlotArray(node.value) && node.value.type === 'Interpolation') {
+        return mapMaybe(evalBytes(node.value, frame, e), content =>
+          [{ bytes: `${open}${content}${close}`, protected: true }]);
+      }
       return concatPreludeParts([plain(open), evalSupportsPrelude(node.value, frame, e), plain(close)]);
     }
     case 'Operation':
