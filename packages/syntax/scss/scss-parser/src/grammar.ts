@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, selectorBranchOf, decl, dimension, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, boundaryBlock, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -69,6 +69,8 @@ type ScssRules = {
   MathSum: Combinator<ValueNode>;
   MathTopProduct: Combinator<ValueNode>;
   MathTopSum: Combinator<ValueNode>;
+  ValueLogicalAnd: Combinator<ValueNode>;
+  ValueLogicalOr: Combinator<ValueNode>;
   ValueTerm: Combinator<ValueSlot>;
   ValuePair: Combinator<ScssValuePair>;
   ArgumentPair: Combinator<ScssValuePair>;
@@ -711,6 +713,8 @@ function isValue(value: unknown): value is ValueNode {
       return 'rules' in value && Array.isArray(value.rules);
     case 'IfValue':
       return 'branches' in value && Array.isArray(value.branches) && value.branches.length > 0;
+    case 'Condition':
+      return 'guard' in value && isGuardNode(value.guard) && 'src' in value && typeof value.src === 'string';
     default:
       return false;
   }
@@ -948,14 +952,74 @@ function mapKeyValue(node: ValueNode): ValueSlot {
  * `0 = null` grounds numerically and `0` would come out falsy.
  */
 function scssTruth(value: ValueSlot): GuardNode {
+  return { g: 'not', inner: scssNegation(value) };
+}
+
+/**
+ * Sass's `not <value>` — the NEGATION of {@link scssTruth}, which is the same
+ * expression with the `not(…)` wrapper removed:
+ *
+ * ```
+ * .scss   not $x   ->   ($x == false) or ($x == null)
+ * ```
+ *
+ * No double negation, and no separate rule to keep in step: §4.4.2 already
+ * states Sass truthiness as `not(($x == false) or ($x == null))`, so negating it
+ * is literally dropping the wrapper. Every measured row follows — `not 0` is
+ * `false or false`, `not false` short-circuits on the left, `not null` on the
+ * right, and `not ""` / `not red` are false because neither is `false` or
+ * `null`. The result is always a `Bool` with no coercion, because `or` returns
+ * an operand and both operands are `==` results.
+ */
+function scssNegation(value: ValueSlot): GuardNode {
   return {
-    g: 'not',
-    inner: {
-      g: 'or',
-      left: { g: 'cmp', op: '==', left: value, right: keyword('false') },
-      right: { g: 'cmp', op: '==', left: value, right: keyword('null') }
-    }
+    g: 'or',
+    left: { g: 'cmp', op: '==', left: value, right: keyword('false') },
+    right: { g: 'cmp', op: '==', left: value, right: keyword('null') }
   };
+}
+
+/**
+ * The authored spelling of a `not` operand, kept so the {@link Condition} it
+ * lowers to can replay verbatim when no evaluator is injected. Same job — and
+ * the same explicit type list — as the Less grammar's condition source: a shape
+ * with no known spelling is a recognition defect, not something to guess at.
+ */
+function scssConditionSource(value: ValueSlot): string {
+  if (Array.isArray(value)) {
+    return value.map(part => scssConditionSource(part)).join(' ');
+  }
+  const node = requireValue(value);
+  switch (node.type) {
+    case 'Keyword': case 'Color': case 'Quoted': case 'Any': case 'Dimension': return node.src;
+    case 'Lookup': return node.raw;
+    case 'Reference': return node.raw;
+    case 'Condition': return node.src;
+    case 'FunctionCall': return `${node.name}(${node.args.map(scssConditionSource).join(', ')})`;
+    case 'Operation': return `${scssConditionSource(node.left)} ${node.operator} ${scssConditionSource(node.right)}`;
+    case 'Block': return node.boundary
+      ? scssConditionSource(node.value)
+      : `${node.delimiter === 'square' ? '[' : '('}${scssConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
+    case 'Sequence': return node.parts.map(scssConditionSource).join(' ');
+    case 'List': return node.value.map(scssConditionSource).join(node.sep === ',' ? ', ' : ' / ');
+    default: throw new TypeError(`SCSS condition cannot preserve ${node.type}.`);
+  }
+}
+
+/**
+ * Fold one logical rung left-associatively onto `Operation` nodes carrying the
+ * word itself as the operator. The operator token is kept out of the fold by
+ * shape (only values participate), so the rung reduces the same way whether it
+ * spelled `and` or `or`.
+ */
+function foldLogicalOperation(children: readonly unknown[]): ValueNode {
+  const values = children.filter(isValue);
+  const operators = children.filter(isToken).map(token => token.value.trim().toLowerCase()).filter(text => text === 'and' || text === 'or');
+  let result = requireValue(values[0]);
+  for (let index = 1; index < values.length; index += 1) {
+    result = operation(operators[index - 1]!, result, values[index]!);
+  }
+  return result;
 }
 
 function isGuardNode(value: unknown): value is GuardNode {
@@ -1174,6 +1238,17 @@ const sumOperator = choice(
 );
 const space = regex(/[ \t\n\r\f]+/);
 const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
+
+/*
+ * Sass's logical operators are SYNTAX, not functions (§4.5.5), and the same
+ * three spellings serve both the guard ladder (`@if`) and the VALUE ladder
+ * below, so they are stated once here rather than twice. The trailing
+ * non-identifier lookahead is what keeps `not-a-var`, `android` and `origin`
+ * ordinary identifiers.
+ */
+const scssNotKeyword = regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const scssAndKeyword = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const scssOrKeyword = regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 
 /*
@@ -1822,6 +1897,23 @@ const scssFactory = (g: ScssInputRules) => {
   const MathUnary = node<ValueNode>(
     'MathUnary',
     choice(
+
+      /*
+       * `not` is a PREFIX UNARY OPERATOR, and this arm goes FIRST so `not(0)`
+       * never reaches `IdentifierOrFunction`: there is no `not()` function to
+       * reach, which is why dart-sass answers `not(0)` and `not (0)` alike —
+       * the parens are the operand's GROUPING, not a call's argument list.
+       *
+       * It sits at the unary rung because that is where dart-sass binds it:
+       * `not 1px + 1px` is `(not 1px) + 1px` (measured: `false1px`), so `not`
+       * takes an operand tighter than a sum, and the recursion is what carries
+       * `not not 0`.
+       */
+      noTrivia(sequence(
+        scssNotKeyword,
+        optional(valueTrivia),
+        g.MathUnary
+      )),
       noTrivia(sequence(
         regex(/-(?=[ \t\n\r\f]*[\$(])/),
         optional(space),
@@ -1839,6 +1931,20 @@ const scssFactory = (g: ScssInputRules) => {
         return requireValue(children[0]);
       }
       const sign = requireToken(children[0]).value;
+      if (sign.toLowerCase() === 'not') {
+        const operand = requireValue(children[children.length - 1]);
+
+        /*
+         * The boundary block is what makes the condition EVALUATE rather than
+         * replay its own spelling: a bare `Condition` in a value lane is an
+         * un-consumed one, and core emits those verbatim on purpose. `$( … )`
+         * is the marker that says this position computes (§4.5.2).
+         */
+        return boundaryBlock(condition(
+          scssNegation(operand),
+          `not ${scssConditionSource(operand)}`
+        ));
+      }
       const value = requireValue(children[children.length - 1]);
       return sign === '-'
         ? operation(
@@ -1903,18 +2009,58 @@ const scssFactory = (g: ScssInputRules) => {
     )),
     foldOperation
   );
+
+  /*
+   * `and` / `or` in VALUE position (§4.5.5). They are NATIVE operators that
+   * return an OPERAND and short-circuit — `0 and 1` is `1`, `false or 2` is `2`
+   * — never a `Bool` and never a function call, since an argument list would be
+   * evaluated before dispatch and `false and (1px + 1em)` must not raise.
+   *
+   * The rung is chosen by measurement, not convention. `1 2 and 3 4` renders
+   * `1 3 4` in dart-sass, so the operands are single terms and the RESULT is one
+   * item of the surrounding space list — the logical rungs therefore sit between
+   * `MathTopSum` and the list built by `ValueTerm`, not above the list.
+   * Precedence within them is conventional (§3.4): `not` > `and` > `or`, matching
+   * `1 or 2 and 3` -> `1` and `2 and 3 * 4` -> `12`.
+   */
+  const ValueLogicalAnd = node<ValueNode>(
+    'ValueLogicalAnd',
+    noTrivia(sequence(
+      g.MathTopSum,
+      many(sequence(
+        valueTrivia,
+        scssAndKeyword,
+        valueTrivia,
+        g.MathTopSum
+      ))
+    )),
+    children => foldLogicalOperation(children)
+  );
+  const ValueLogicalOr = node<ValueNode>(
+    'ValueLogicalOr',
+    noTrivia(sequence(
+      g.ValueLogicalAnd,
+      many(sequence(
+        valueTrivia,
+        scssOrKeyword,
+        valueTrivia,
+        g.ValueLogicalAnd
+      ))
+    )),
+    children => foldLogicalOperation(children)
+  );
   const ValueTail = node<ScssValueTail>(
     'ValueTail',
     choice(
       sequence(
         valueTrivia,
-        g.MathTopSum
+        g.ValueLogicalOr
       ),
       sequence(
         optional(space),
         literal('/'),
         optional(space),
-        g.MathTopSum
+        g.ValueLogicalOr
       )
     ),
     (children) => {
@@ -1932,7 +2078,7 @@ const scssFactory = (g: ScssInputRules) => {
   const ValueTerm = node<ValueSlot>(
     'ValueTerm',
     noTrivia(sequence(
-      g.MathTopSum,
+      g.ValueLogicalOr,
       many(ValueTail)
     )),
     (children) => {
@@ -3176,9 +3322,6 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const scssTrueKeyword = regex(/true(?![-_a-zA-Z0-9\u0080-\uffff])/i);
   const scssFalseKeyword = regex(/false(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-  const scssNotKeyword = regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-  const scssAndKeyword = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-  const scssOrKeyword = regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/i);
   const IfComparison = node<GuardNode>(
     'IfComparison',
     sequence(
@@ -5228,6 +5371,8 @@ const scssFactory = (g: ScssInputRules) => {
     MathSum,
     MathTopProduct,
     MathTopSum,
+    ValueLogicalAnd,
+    ValueLogicalOr,
     ValueTerm,
     ValuePair,
     ArgumentPair,

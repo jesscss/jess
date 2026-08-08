@@ -131,6 +131,7 @@ import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList } f
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './extend/plan.js';
@@ -3219,6 +3220,37 @@ function slashGroupToOperation(node: Sequence): Operation | null {
 }
 
 /**
+ * `and` / `or` in VALUE position (§4.5.5). They are NATIVE operators, not `fns/`
+ * entries and not an `if(…)` rewrite: each returns one of its OPERANDS and
+ * SHORT-CIRCUITS, so `$a or $default` is `$a` when truthy and the right operand
+ * is never evaluated. That is why they cannot be a `FunctionCall` — an argument
+ * list is evaluated before dispatch, and `false and (1px + 1em)` must not raise
+ * the unit error its right operand carries (§3.4).
+ *
+ * The test is {@link isTruthy}, §4.4's ONE typed predicate — the same one the
+ * `truth` guard uses. No dialect knowledge enters here: a dialect whose
+ * truthiness differs lowers its OWN rule into a guard in its OWN grammar
+ * (§4.4.2), exactly as `not` does.
+ *
+ * Unlike arithmetic these do not consult the math mode: there is no CSS value
+ * meaning for the words `and` / `or` in this position to preserve, so there is
+ * nothing for a `parens-division`-style guard to protect.
+ */
+function evalLogicalOperation(node: Operation, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+  if (!e.ev) {
+    // Fallback: un-evaluated, variable-resolved source assembly (no folding).
+    const left = evalValue(node.left, frame, e);
+    const right = evalValue(node.right, frame, e);
+    return combineAll([left, right], values =>
+      literal(`${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`));
+  }
+  const decidesLeft = node.operator === 'or';
+  return mapMaybe(evalTyped(node.left, frame, e), left => isTruthy(left) === decidesLeft
+    ? left
+    : evalTyped(node.right, frame, e));
+}
+
+/**
  * Fold a value AST node bottom-up to an internal eval value (a bare-string literal
  * for the static path, or a typed value node/group for a computed
  * operation/function). Lifts to `MaybePromise` only when a function call returns
@@ -3444,6 +3476,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       }
       return literal(node.src);
     case 'Operation': {
+      if (node.operator === 'and' || node.operator === 'or') {
+        return evalLogicalOperation(node, frame, e);
+      }
       if (!e.ev) {
         // Fallback: un-evaluated, variable-resolved source assembly (no math).
         const l = evalValue(node.left, frame, e);

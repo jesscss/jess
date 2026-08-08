@@ -71,6 +71,11 @@ type JessRules = {
   ExpressionProduct: Combinator<ExpressionFact>;
   ExpressionSum: Combinator<ExpressionFact>;
   ExpressionCompare: Combinator<ExpressionFact>;
+  ExpressionNot: Combinator<ExpressionFact>;
+  ExpressionLogicalOperand: Combinator<ExpressionFact>;
+  ExpressionAnd: Combinator<ExpressionFact>;
+  ExpressionOr: Combinator<ExpressionFact>;
+  ExpressionLogical: Combinator<ExpressionFact>;
   GuardValue: Combinator<GuardNode>;
   GuardCompare: Combinator<GuardNode>;
   GuardCall: Combinator<GuardNode>;
@@ -754,6 +759,26 @@ function expressionSource(value: ValueNode): string {
     case 'Interpolation': return value.parts.map(part => 'lit' in part ? part.lit : expressionSource(part.ref)).join('');
     default: throw new TypeError(`Jess expression cannot preserve source for ${value.type}.`);
   }
+}
+
+/**
+ * Fold one logical rung left-associatively (§4.5.5). The result is an
+ * `Operation` carrying the word itself as its operator — the node that means
+ * "return one of these operands, short-circuiting" — so the transpiled `.jess`
+ * still reads `$a or $default` rather than a rewritten `$if` that duplicates
+ * the operand and no direct author would write.
+ */
+function foldLogicalExpression(kind: 'and' | 'or', children: readonly unknown[]): ExpressionFact {
+  const facts = children.filter(isExpressionFact);
+  let fact = requireExpressionFact(facts[0]);
+  for (let index = 1; index < facts.length; index += 1) {
+    const right = facts[index]!;
+    fact = {
+      value: operation(kind, fact.value, right.value),
+      src: `${fact.src} ${kind} ${right.src}`
+    };
+  }
+  return fact;
 }
 
 function referenceBaseSource(value: ValueNode): string {
@@ -1844,9 +1869,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal('$'),
         dollarName,
         literal(':'),
-        g.ExpressionCompare
+        g.ExpressionLogical
       ),
-      g.ExpressionCompare
+      g.ExpressionLogical
     ),
     (children) => {
       const fact = children.find(isExpressionFact);
@@ -1927,7 +1952,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       g.ExpressionQuoted,
       sequence(
         literal('('),
-        g.ExpressionCompare,
+        g.ExpressionLogical,
         literal(')')
       ),
 
@@ -2015,6 +2040,89 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         src
       ), src };
     }
+  );
+
+  /*
+   * `not` / `and` / `or` in EXPRESSION VALUE position (§4.5.5). They are
+   * operators in their own right, never calls: `and` / `or` return an OPERAND
+   * and short-circuit (`$a or $default` is `$a` when truthy), and `not` returns
+   * a `Bool`. Conditions truthiness-test the result (§4.4), which is what makes
+   * `truthy($a and $b)` exactly `truthy($a) and truthy($b)` and lets ONE
+   * semantics serve both this ladder and the guard ladder.
+   *
+   * This ladder and `IfGuardAnd`/`IfGuardOr` stay DISTINCT productions even
+   * though they agree observationally in condition position (§4.5.5): one folds
+   * VALUES, the other folds guard nodes.
+   *
+   * §4.5.4's two constraints are structural here, not checks bolted on:
+   *   - `not` ALWAYS takes parens, because `literal('(')` follows the keyword
+   *     with nothing optional between them — `not true` never matches.
+   *   - a bare comparison is not an `and`/`or` operand, because the operand is
+   *     `ExpressionSum`; `($x = 1px or $x = 2px)` therefore stays a parse error
+   *     while `(($x = 1px) or ($x = 2px))` reaches the same operand through the
+   *     atom's parenthesized arm.
+   */
+  const ExpressionNot = node<ExpressionFact>(
+    'ExpressionNot',
+    sequence(
+      regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      literal('('),
+      g.ExpressionLogical,
+      literal(')')
+    ),
+    (children) => {
+      const inner = requireExpressionFact(children[2]);
+      const src = `not(${inner.src})`;
+      return { value: condition({ g: 'not', inner: { g: 'truth', value: inner.value } }, src), src };
+    }
+  );
+  const ExpressionLogicalOperand = node<ExpressionFact>(
+    'ExpressionLogicalOperand',
+    choice(
+      g.ExpressionNot,
+      g.ExpressionSum
+    ),
+    children => requireExpressionFact(children[0])
+  );
+  const ExpressionAnd = node<ExpressionFact>(
+    'ExpressionAnd',
+    sequence(
+      g.ExpressionLogicalOperand,
+      oneOrMore(sequence(
+        regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        g.ExpressionLogicalOperand
+      ))
+    ),
+    children => foldLogicalExpression('and', children)
+  );
+  const ExpressionOr = node<ExpressionFact>(
+    'ExpressionOr',
+    sequence(
+      g.ExpressionLogicalOperand,
+      oneOrMore(sequence(
+        regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        g.ExpressionLogicalOperand
+      ))
+    ),
+    children => foldLogicalExpression('or', children)
+  );
+  const ExpressionLogical = node<ExpressionFact>(
+    'ExpressionLogical',
+
+    /*
+     * Both chained arms share their first operand with the shorter forms, so
+     * they are transactional for the same reason `IfGuard` makes its comparison
+     * arm transactional: a missing `and` must return recognition to `or`, and a
+     * missing operator to the bare comparison, rather than committing the head.
+     * Mixed chains group explicitly, exactly as the guard ladder requires.
+     */
+    choice(
+      attempt(g.ExpressionAnd),
+      attempt(g.ExpressionOr),
+      g.ExpressionNot,
+      g.ExpressionCompare
+    ),
+    children => requireExpressionFact(children[0])
   );
 
   /*
@@ -2134,7 +2242,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'Expression',
     sequence(
       literal('$('),
-      g.ExpressionCompare,
+      g.ExpressionLogical,
       literal(')')
     ),
 
@@ -2151,7 +2259,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'ExpressionInterpolation',
     sequence(
       literal('$('),
-      g.ExpressionCompare,
+      g.ExpressionLogical,
       literal(')')
     ),
     (children) => {
@@ -5964,6 +6072,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ExpressionProduct,
     ExpressionSum,
     ExpressionCompare,
+    ExpressionNot,
+    ExpressionLogicalOperand,
+    ExpressionAnd,
+    ExpressionOr,
+    ExpressionLogical,
     GuardValue,
     GuardCompare,
     GuardCall,
