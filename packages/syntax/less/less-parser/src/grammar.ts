@@ -28,7 +28,7 @@ import {
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, assignment, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
@@ -1280,7 +1280,6 @@ function isValueNode(value: unknown): value is ValueNode {
     case 'List':
     case 'Operation':
     case 'Condition':
-    case 'Assignment':
     case 'Block':
     case 'Lookup':
     case 'Reference':
@@ -3065,7 +3064,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (value === undefined) {
         throw new TypeError('Less function assignment argument lost its value.');
       }
-      return assignment(staticText(requireField(fields, 'key').value), value);
+      /*
+       * §12.3 row 2: the pair is VERBATIM BYTES, not a node. Resolving `@x` in
+       * `alpha(opacity=@x)` has no utility — the construct is dropped from
+       * Less v5 — so this keeps the authored spelling and stops pretending the
+       * value is live. The `=` re-emits unspaced, exactly as `Assignment` did.
+       */
+      return any(`${staticText(requireField(fields, 'key').value)}=${mixinArgumentSource(value)}`);
     }
   );
   const FunctionArgument = node(

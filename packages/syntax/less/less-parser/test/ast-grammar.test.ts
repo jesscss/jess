@@ -3672,7 +3672,14 @@ describe('Less AST grammar facts', () => {
     expect(parsesCompleteStylesheet('x: boolean(foo(1 = 1) and);')).toBe(false);
   });
 
-  it('constructs an assignment argument for `name=value`, not an equality comparison', () => {
+  it('keeps `name=value` as verbatim bytes, not an equality comparison', () => {
+    /*
+     * §12.3 row 2: `Assignment` is deleted and the pair becomes an opaque `Any`.
+     * Resolving `@v` in `foo(bar=@v)` has no utility — the construct is dropped
+     * from Less v5 — so the argument keeps its authored spelling and nothing
+     * inside it is live. What still matters is the SHAPE split: this is one
+     * argument, not a comparison, which is what the `d:` row pins.
+     */
     const result = run(
       lessGrammar.Document,
       'a: alpha(opacity=50); b: foo(bar=1, baz=2); c: foo(bar = 1); d: foo(bar=@v);',
@@ -3686,25 +3693,25 @@ describe('Less AST grammar facts', () => {
           value: {
             type: 'FunctionCall',
             name: 'alpha',
-            args: [{ type: 'Assignment', key: 'opacity', value: { type: 'Dimension', src: '50' } }]
+            args: [{ type: 'Any', src: 'opacity=50' }]
           }
         },
         {
           value: {
             args: [
-              { type: 'Assignment', key: 'bar', value: { type: 'Dimension', src: '1' } },
-              { type: 'Assignment', key: 'baz', value: { type: 'Dimension', src: '2' } }
+              { type: 'Any', src: 'bar=1' },
+              { type: 'Any', src: 'baz=2' }
             ]
           }
         },
         {
           value: {
-            args: [{ type: 'Assignment', key: 'bar', value: { type: 'Dimension', src: '1' } }]
+            args: [{ type: 'Any', src: 'bar=1' }]
           }
         },
         {
           value: {
-            args: [{ type: 'Assignment', key: 'bar', value: { type: 'Lookup', kind: 'var', name: 'v', raw: '@v' } }]
+            args: [{ type: 'Any', src: 'bar=@v' }]
           }
         }
       ]

@@ -54,8 +54,7 @@ import type {
   StyleImport,
   ModuleImport,
   RawInline,
-  Condition,
-  Assignment
+  Condition
 } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 
@@ -64,7 +63,7 @@ export type NodeType =
   | 'Stylesheet' | 'Ruleset' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'ComplexSelector' | 'RelativeSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
   | 'SpacedValue' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
-  | 'Sequence' | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition' | 'Assignment'
+  | 'Sequence' | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation' | 'GeneralEnclosed'
   | 'AnonymousMixin' | 'Collection' | 'CollectionEntry' | 'Reference' | 'Range' | 'For' | 'If' | 'StyleImport' | 'ModuleImport' | 'RawInline';
 
@@ -87,7 +86,7 @@ export function renderCombinator(comb: Combinator): string {
 export type Node =
   | Stylesheet | Ruleset | Declaration | Comment | SelectorList | ComplexSelector | RelativeSelector | CompoundSelector
   | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | Lookup | MixinDefinition | MixinCall
-  | VariableDeclaration | Sequence | Important | Operation | FunctionCall | Block | Condition | Assignment
+  | VariableDeclaration | Sequence | Important | Operation | FunctionCall | Block | Condition
   | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | GeneralEnclosed | AnonymousMixin | Collection
   | CollectionEntry | Reference | Range | For | If | StyleImport | ModuleImport | RawInline;
 
@@ -110,7 +109,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Stylesheet', 'Ruleset', 'Declaration', 'Comment', 'SelectorList',
   'ComplexSelector', 'RelativeSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
   'SpacedValue', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
-  'Sequence', 'Important', 'Operation', 'FunctionCall', 'Block', 'Condition', 'Assignment',
+  'Sequence', 'Important', 'Operation', 'FunctionCall', 'Block', 'Condition',
   'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation', 'GeneralEnclosed',
   'AnonymousMixin', 'Collection', 'CollectionEntry', 'Reference', 'Range', 'For', 'If', 'StyleImport', 'ModuleImport', 'RawInline'
 ]);

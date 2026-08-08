@@ -3408,13 +3408,6 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
       }
       return literal(node.src);
-    case 'Assignment':
-      /*
-       * A `name=value` call argument is a PAIR, never a comparison. The key is
-       * verbatim; the value evaluates like any other value slot (`foo(bar=@v)`),
-       * and the pair always re-emits in the unspaced spelling.
-       */
-      return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`${node.key}=${emitValue(v)}`));
     case 'Operation': {
       if (!e.ev) {
         // Fallback: un-evaluated, variable-resolved source assembly (no math).
