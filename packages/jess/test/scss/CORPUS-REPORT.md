@@ -8,7 +8,7 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-08-08T22:57:19.893Z`
+- Generated: `2026-08-08T23:09:40.461Z`
 - Bootstrap: `5.3.8`
 - Runner: `v24.11.1` on `darwin/arm64`
 
@@ -100,3 +100,5 @@ usually hit several blockers, so these counts overlap by design.
 | `bootstrap-grid.scss` | fail | Missing closing parenthesis. |
 | `bootstrap-reboot.scss` | fail | Missing closing brace. |
 | `bootstrap-utilities.scss` | fail | Missing closing brace. |
+
+<!-- HAND-MAINTAINED BELOW — the generator never writes past this line. -->

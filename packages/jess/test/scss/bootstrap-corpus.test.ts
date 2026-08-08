@@ -24,7 +24,8 @@
  * this file measures how far it reaches across a real-world codebase.
  *
  * `JESS_SCSS_CORPUS_REPORT=1` rewrites CORPUS-REPORT.json / CORPUS-REPORT.md
- * next to this file.
+ * next to this file — everything except the hand-maintained tail of the `.md`,
+ * which `corpus-report-tail.ts` copies through untouched.
  */
 import { describe, expect, it } from 'vitest';
 import * as glob from 'glob';
@@ -35,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { parse } from '@jesscss/scss-parser';
 import { Compiler } from '../../src/index.js';
 import scssPlugin from '@jesscss/plugin-scss';
+import { writeReportPreservingTail } from './corpus-report-tail.js';
 
 const req = createRequire(import.meta.url);
 const bootstrapRoot = path.dirname(req.resolve('bootstrap/package.json'));
@@ -357,5 +359,5 @@ function writeReport(parseLane: LaneResult[], evalLane: LaneResult[]) {
     `| \`${r.file}\` | ${r.outcome} | ${r.detail ?? (r.bytes ? `${r.bytes}B css` : '—')} |`
   ));
   l.push('');
-  writeFileSync(path.join(here, 'CORPUS-REPORT.md'), l.join('\n'), 'utf8');
+  writeReportPreservingTail(path.join(here, 'CORPUS-REPORT.md'), l.join('\n'));
 }

@@ -8,7 +8,7 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-08-08T23:00:17.493Z`
+- Generated: `2026-08-08T23:09:40.547Z`
 - Foundation for Sites: `6.9.0`
 - Runner: `v24.11.1` on `darwin/arm64`
 
@@ -112,6 +112,11 @@ Unattributed failures:
 > `STANDING_SECTIONS` in `foundation-corpus.test.ts` and is re-emitted by
 > `writeReport`, so regeneration preserves it. Edit it THERE, not here — an edit
 > made here is what the next regeneration overwrites.
+>
+> Anything you want to hand-write DIRECTLY in this file goes BELOW the
+> `HAND-MAINTAINED BELOW` marker at the end. `corpus-report-tail.ts` copies that
+> tail through byte-for-byte and THROWS if the marker is missing, so a hand-edit
+> down there can never be silently discarded.
 
 Recorded against the ranked table above. These decide WHAT each construct lowers
 to. Rows marked LANDED are implemented; the rest are still design-only.
@@ -129,11 +134,12 @@ to. Rows marked LANDED are implemented; the rest are still design-only.
 | 9 | nested selector list `type:pseudo, .class` | **A grammar defect, and the rule is fully specified — see below.** |
 | 10 | interpolation in a pseudo-class arg | Not yet ruled on. |
 | 11 | `@at-root` with a selector prelude | **Needs a decision.** Bare `@at-root { … }` already parses. |
+| 12 | `@extend %placeholder` — a placeholder-selector extend | **NEEDS AN OWNER RULING. Not on the original eleven-item list**; it was found by the position-based attribution, which left `scss/components/_reveal.scss` unattributed and thereby named the gap instead of hiding it. That file gives up at `108:2` on `@extend %reveal-centered;`. `%name` is a Sass selector that emits nothing on its own and exists only to be extended; `.less` has no spelling for it, and `.jess` has not been given one, so the question is what it LOWERS TO before it is a grammar question. Recorded, deliberately not implemented here. |
 
 **Sequencing note:** #2, #5 and #6 are LANDED, together — #6 IS the lowering
-target for #2, so neither closes alone. #1 and #9 are defects. #10 and #11 are
-the only ones still needing a ruling. Closing these three surfaced one new entry
-in the ranked table above: a trailing comma in a parenthesized list, which files
+target for #2, so neither closes alone. #1 and #9 are defects. #10, #11 and #12
+are the ones still needing a ruling. Closing #2/#5/#6 surfaced one new entry in
+the ranked table above: a trailing comma in a parenthesized list, which files
 only reach now that the `@include` content block no longer stops the parse.
 
 
@@ -173,3 +179,5 @@ than a regex — and it keeps adjacency spelled negatively, per ledger G24.
 **It belongs in the CSS base and the supersets must REUSE it.** This is ordinary
 CSS disambiguation; every dialect reimplementing its own is how they drifted
 apart in the first place.
+
+<!-- HAND-MAINTAINED BELOW — the generator never writes past this line. -->

@@ -40,7 +40,9 @@
  * codebase.
  *
  * `JESS_SCSS_CORPUS_REPORT=1` rewrites FOUNDATION-CORPUS-REPORT.json /
- * FOUNDATION-CORPUS-REPORT.md next to this file.
+ * FOUNDATION-CORPUS-REPORT.md next to this file — everything except the
+ * hand-maintained tail of the `.md`, which `corpus-report-tail.ts` copies
+ * through untouched.
  */
 import { describe, expect, it } from 'vitest';
 import * as glob from 'glob';
@@ -51,6 +53,7 @@ import { fileURLToPath } from 'node:url';
 import { parse } from '@jesscss/scss-parser';
 import { Compiler } from '../../src/index.js';
 import scssPlugin from '@jesscss/plugin-scss';
+import { writeReportPreservingTail } from './corpus-report-tail.js';
 
 const req = createRequire(import.meta.url);
 const foundationRoot = path.dirname(req.resolve('foundation-sites/package.json'));
@@ -543,6 +546,11 @@ const STANDING_SECTIONS: readonly string[] = [
   '> `STANDING_SECTIONS` in `foundation-corpus.test.ts` and is re-emitted by',
   '> `writeReport`, so regeneration preserves it. Edit it THERE, not here — an edit',
   '> made here is what the next regeneration overwrites.',
+  '>',
+  '> Anything you want to hand-write DIRECTLY in this file goes BELOW the',
+  '> `HAND-MAINTAINED BELOW` marker at the end. `corpus-report-tail.ts` copies that',
+  '> tail through byte-for-byte and THROWS if the marker is missing, so a hand-edit',
+  '> down there can never be silently discarded.',
   '',
   'Recorded against the ranked table above. These decide WHAT each construct lowers',
   'to. Rows marked LANDED are implemented; the rest are still design-only.',
@@ -560,11 +568,12 @@ const STANDING_SECTIONS: readonly string[] = [
   '| 9 | nested selector list `type:pseudo, .class` | **A grammar defect, and the rule is fully specified — see below.** |',
   '| 10 | interpolation in a pseudo-class arg | Not yet ruled on. |',
   '| 11 | `@at-root` with a selector prelude | **Needs a decision.** Bare `@at-root { … }` already parses. |',
+  '| 12 | `@extend %placeholder` — a placeholder-selector extend | **NEEDS AN OWNER RULING. Not on the original eleven-item list**; it was found by the position-based attribution, which left `scss/components/_reveal.scss` unattributed and thereby named the gap instead of hiding it. That file gives up at `108:2` on `@extend %reveal-centered;`. `%name` is a Sass selector that emits nothing on its own and exists only to be extended; `.less` has no spelling for it, and `.jess` has not been given one, so the question is what it LOWERS TO before it is a grammar question. Recorded, deliberately not implemented here. |',
   '',
   '**Sequencing note:** #2, #5 and #6 are LANDED, together — #6 IS the lowering',
-  'target for #2, so neither closes alone. #1 and #9 are defects. #10 and #11 are',
-  'the only ones still needing a ruling. Closing these three surfaced one new entry',
-  'in the ranked table above: a trailing comma in a parenthesized list, which files',
+  'target for #2, so neither closes alone. #1 and #9 are defects. #10, #11 and #12',
+  'are the ones still needing a ruling. Closing #2/#5/#6 surfaced one new entry in',
+  'the ranked table above: a trailing comma in a parenthesized list, which files',
   'only reach now that the `@include` content block no longer stops the parse.',
   '',
   '',
@@ -689,6 +698,5 @@ function writeReport(parseLane: LaneResult[], evalLane: LaneResult[]) {
   ));
   l.push('');
   l.push(...STANDING_SECTIONS);
-  l.push('');
-  writeFileSync(path.join(here, 'FOUNDATION-CORPUS-REPORT.md'), l.join('\n'), 'utf8');
+  writeReportPreservingTail(path.join(here, 'FOUNDATION-CORPUS-REPORT.md'), l.join('\n'));
 }
