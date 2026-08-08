@@ -220,6 +220,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'bootstrap-reboot.scss',
   'bootstrap-utilities.scss',
   'bootstrap.scss',
+  'forms/_form-control.scss',
   'forms/_form-range.scss',
   'forms/_form-text.scss',
   'forms/_input-group.scss',
