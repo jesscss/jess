@@ -147,10 +147,43 @@ to; none of them is implemented yet.
 | 6 | `@content` | **Already resolved and PUBLICLY DOCUMENTED** as the built-in `$content()` mixin — see `packages/docs/docs-content/docs/jess/02-Language/05-mixins.mdx`, including the parameterised `$content($type)` form. This is an implementation gap, not a design question, and it is also the lowering target for #2. |
 | 7 | `@while` | Gets a **`$while`**, alongside `$if` / `$for`. |
 | 8 | chained unary `not not` | Sass `not not $x` lowers to `.jess` `not(not($x))`. Falls out of §4.5.4's rule that `not` always takes parens. |
-| 9 | nested selector list `type:pseudo, .class` | **A grammar defect, and the cause is named.** Ident-start nested parsing is supposed to PEEK for a non-wrapped opening `{` to decide declaration-vs-nested-rule. CSS is supposed to carry that rule and every dialect should be REUSING it, not reimplementing the disambiguation. Today the leading `div:` commits to the declaration path, so `div:hover, span` and `div:hover, [a]` parse while `div:hover, .b` does not. Fix it in the CSS base and let the supersets inherit. |
+| 9 | nested selector list `type:pseudo, .class` | **A grammar defect, and the rule is fully specified — see below.** |
 | 10 | interpolation in a pseudo-class arg | Not yet ruled on. |
 | 11 | `@at-root` with a selector prelude | **Needs a decision.** Bare `@at-root { … }` already parses. |
 
 **Sequencing note:** #6 unblocks #2, and #5's `result:` target already exists, so
 three of the eleven are implementation against a settled design. #1 and #9 are
 defects. #10 and #11 are the only ones still needing a ruling.
+
+
+## The ident-start disambiguation rule (blocker #9)
+
+**Owner ruling, 2026-08-08.** An ident-start nested construct must PEEK for a
+non-wrapped opening `{` to decide declaration-vs-nested-rule — but **only when
+the ident is followed by a colon AND that colon is NOT followed by a space.**
+
+That condition is not a heuristic; it is exactly where the ambiguity lives:
+
+| source | ambiguous? | why |
+| --- | --- | --- |
+| `a:b` | **YES** | could be element `a` with pseudo-class `b`, or the declaration `a:b` |
+| `a: b` | no | a pseudo-class cannot have a space after its colon, so this is a declaration, full stop |
+| `a b` | no | no colon |
+
+So `color:red { … }` is a nested RULE and `color:red;` is a DECLARATION, and only
+the `{` distinguishes them. `color: red` needs no peek at all.
+
+Today the leading `div:` commits to the declaration path unconditionally, which
+is why `div:hover, span` and `div:hover, [a]` parse while `div:hover, .b` does
+not — the difference is only what may follow in a VALUE, nothing about selectors.
+
+**Spell it with parseman's adjacency combinators, not a hand-rolled lookahead.**
+`adjacent()` / `notAdjacent()` are exported from `parseman`
+(`src/combinators/adjacency.ts`), carrying a real `AdjacencyDef` with polarity —
+so "colon not followed by a space" is a first-class grammar fact rather than a
+regex. This also satisfies the standing rule that adjacency is spelled
+NEGATIVELY where possible (ledger G24).
+
+**It belongs in the CSS base and the supersets must REUSE it.** The rule is
+ordinary CSS; every dialect reimplementing its own disambiguation is how they
+drifted apart in the first place.
