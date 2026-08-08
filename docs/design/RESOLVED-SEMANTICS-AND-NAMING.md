@@ -564,9 +564,26 @@ library DID rely on these forms, the answer is to lower to the equivalent
 `.jess` form even if more complicated (the `$if` condition form of §4.4.2),
 rather than to shift the dialect. It does not, so the simpler lowering wins.
 
-LIMIT, stated: n = 1 library. bourbon, foundation-sites and include-media are
-not in this repo — §10 Phase 5 could not verify §4.4's corpus claim about them
-for the same reason. They are the obvious next check.
+**Extended to four libraries, ~333 `.scss` files. Still zero.** bourbon (46
+files), foundation-sites (136) and include-media (17) were installed and audited
+the same way:
+
+| library | bare `@if $x` | vars holding `""` / `()` | of those, bare-tested |
+| --- | --- | --- | --- |
+| bootstrap 5 | 60 | 8 | **0** |
+| foundation-sites | 101 | 15 | **0** |
+| bourbon | 1 | 4 | **0** |
+| include-media | 0 | 3 | **0** |
+
+The detector was control-tested before the negatives were trusted — run against
+a known bare-tested variable (`$global-flexbox`, foundation) it returns 48 hits,
+so the zeros are real and not a broken regex.
+
+**Real Sass code does not truth-test emptiness.** It writes the comparison:
+`@if length($missing-dependencies) > 0` (foundation), `@if not ($infix == "")`
+(bootstrap). Both spellings are unaffected by this ruling, and both are portable
+to Sass and Sass+ alike. The accumulate-a-list-then-test-it pattern — the one
+most likely to rely on `()` being truthy — uses `length()` in practice.
 
 **Migration.** §4.4.5 says compiled `.scss` is unaffected and only a HAND port
 changes behaviour. This ruling widens that: `@if ""` and `@if ()` now change for

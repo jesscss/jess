@@ -67,7 +67,23 @@ Bootstrap 5 (134 `.scss` files) was audited for reliance on this:
 
 **Result: zero affected sites in Bootstrap.**
 
-That is one library, not the ecosystem. If you maintain a Sass library that relies on `""` or `()` being truthy in a bare `@if`, this is the change that affects you, and the fix is to write the comparison explicitly — which is portable to both.
+The same audit was run against three more libraries — **bourbon**, **foundation-sites** and **include-media** — for a combined **~333 `.scss` files**:
+
+| library | bare `@if $x` | variables holding `""` / `()` | of those, bare-tested |
+| --- | --- | --- | --- |
+| bootstrap 5 | 60 | 8 | **0** |
+| foundation-sites | 101 | 15 | **0** |
+| bourbon | 1 | 4 | **0** |
+| include-media | 0 | 3 | **0** |
+
+**Zero affected sites in any of them.** Real Sass code does not truth-test emptiness — it writes the comparison:
+
+```scss
+@if length($missing-dependencies) > 0 { … }   // foundation-sites
+@if not ($infix == "")                { … }   // bootstrap
+```
+
+Both spellings are unaffected here, and both behave identically in Sass and Sass+. If you maintain a Sass library that *does* rely on `""` or `()` being truthy in a bare `@if`, this is the change that affects you, and the fix is to write the comparison explicitly — which is portable to both.
 
 ## See also
 
