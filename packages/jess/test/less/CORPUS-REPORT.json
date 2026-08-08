@@ -1,7 +1,7 @@
 {
   "provenance": {
-    "generatedAt": "2026-07-31T06:05:44.875Z",
-    "jessCommit": "5f9405787716c4e3a68f86ff5b833d6221cb5c39",
+    "generatedAt": "2026-08-08T20:23:03.787Z",
+    "jessCommit": "a22594121e06c4e83ee26ef7f7ec466598036e42",
     "route": "src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts",
     "configuration": {
       "baseOutput": {
@@ -39,7 +39,8 @@
     {
       "file": "tests-unit/urls/urls.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Import not found"
     },
     {
       "file": "tests-unit/tailwind/tailwind.less",
@@ -85,7 +86,7 @@
       "file": "tests-unit/plugin-preeval/plugin-preeval.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Plugin \"../../plugin/plugin-preeval\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-preeval.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-unit/plugin-preeval\""
+      "detail": "Plugin \"../../plugin/plugin-preeval\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-preeval.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-unit/plugin-preeval\""
     },
     {
       "file": "tests-unit/plugin-module/plugin-module.less",
@@ -97,7 +98,7 @@
       "file": "tests-unit/plugin/plugin.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Plugin \"../../plugin/plugin-global\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-global.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-unit/plugin\""
+      "detail": "Plugin \"../../plugin/plugin-global\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-global.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-unit/plugin\""
     },
     {
       "file": "tests-unit/plugi/plugi.less",
@@ -188,7 +189,8 @@
     {
       "file": "tests-unit/mixins-guards/mixins-guards.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "error",
+      "detail": "Incomparable operands. '1' and 'true' share no common ground, so '<' has no answer."
     },
     {
       "file": "tests-unit/mixins-closure/mixins-closure.less",
@@ -245,7 +247,7 @@
       "file": "tests-unit/import/import.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Plugin \"../../plugin/plugin-simple\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-simple.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-unit/import\""
+      "detail": "A compile-time @import cannot carry a media query."
     },
     {
       "file": "tests-unit/import/import-remote.less",
@@ -280,7 +282,8 @@
     {
       "file": "tests-unit/import/import-inline.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "error",
+      "detail": "A compile-time @import cannot carry a media query."
     },
     {
       "file": "tests-unit/impor/impor.less",
@@ -343,7 +346,7 @@
     {
       "file": "tests-unit/extend/extend.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/empty/empty.less",
@@ -703,7 +706,7 @@
       "file": "tests-config/3rd-party/bootstrap4.less",
       "kind": "render",
       "outcome": "error",
-      "detail": "Unexpected Less input after a complete stylesheet."
+      "detail": "Plugin function \"breakpoint-min\" threw"
     }
   ],
   "error": [
@@ -920,7 +923,7 @@
       "file": "tests-error/eval/root-func-undefined-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes.js\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes.js\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/root-func-undefined-1.less",
@@ -1116,31 +1119,31 @@
       "file": "tests-error/eval/functions-9-expression.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-8-element.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-7-dimension.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-6-condition.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-5-color.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-5-color-2.less",
@@ -1152,55 +1155,55 @@
       "file": "tests-error/eval/functions-4-call.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-3-assignment.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-15-value.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-14-url.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-13-selector.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-12-quoted.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-11-operation.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-10-keyword.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/functions-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/worktrees/jess/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/jess/.claude/worktrees/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/extend-no-selector.less",

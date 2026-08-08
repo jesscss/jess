@@ -426,7 +426,8 @@ The node set is what everything downstream is stated over, so it moves first.
 - **§12.3 rows 1–3 and 5** — delete `SpacedValue`, `Assignment`, `GeneralEnclosed`,
   `RawInline`. Independent of the descriptor and of each other.
 - **§10 Phases 0–6** — Part I's semantics in core (comparison evaluates, `==`,
-  trichotomous relational, `equalityMode` collapse, truthiness, recognition). Phases 0–3
+  trichotomous relational, truthiness, recognition). Phase 4, the collapse of
+  `equalityMode` into the lowered comparison primitives, has LANDED. Phases 0–3
   and 5 are marked unblocked and do not wait on the node work.
 *Done when:* the union in `packages/core/src/ast/nodes.ts` is the intended set, every
 switch over it compiles, and no reference node carries a private spelling of scope or kind.

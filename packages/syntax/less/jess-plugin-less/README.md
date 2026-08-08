@@ -25,11 +25,18 @@ The defaults this plugin applies:
 - `collapseNesting: false` — **nesting is preserved by default.** Less 4.x
   flattened selectors; in v5 that flattening is an explicit opt-in
   (`--collapse-nesting` on the CLI).
-- `mathMode: 'parens-division'`, `unitMode: 'preserve'`, `equalityMode: 'less'`,
-  `leakyScope: true`, `bubbleRootAtRules: true`.
+- `mathMode: 'parens-division'`, `unitMode: 'preserve'`, `leakyScope: true`,
+  `bubbleRootAtRules: true`.
 
 These keep the current Less-facing surface aligned on one set of output
 semantics.
+
+Equality is not among them, because it is not a mode. The Less grammar lowers
+`=` to the loose comparison primitive, and that lowered node is what the
+evaluator reads — there is no `equalityMode` for this plugin to set. See
+`docs/design/RESOLVED-SEMANTICS-AND-NAMING.md` §5.1 and §7.3 for the full `op`
+table, and §5.2 for the one `.less` behaviour this shifts: a quoted operand now
+compares on string ground, so `a = "a"` is true where Less 4.x answers false.
 
 ## Status
 

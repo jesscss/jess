@@ -199,7 +199,9 @@ language-service autocomplete.
 Two concerns were provisionally split:
 - **Strictness** (semantic — *what counts as a violation*, e.g. does an
   unverifiable value violate; does bare `16` satisfy `16px`) — on the **type**;
-  coercion consumes existing `equalityMode`.
+  coercion consumes the existing comparison primitives — `=` loose, `==`
+  type-equal — not a mode, because there is no `equalityMode` to consume
+  (`RESOLVED-SEMANTICS-AND-NAMING.md` §5.1).
 - **Severity** (reporting — *how loud*: warn/error/off) — on the **constraint**,
   as a bang-suffix mirroring `!important`.
 
@@ -378,8 +380,10 @@ to an opt-in visitor. Deserves its own doc.
   grammar) — see ledger in §16.
 - `packages/core/src/ast/serialize.ts` — `emitLeaf` / `case 'Declaration'`: the
   single choke point for post-op checks and (later) transform dispatch.
-- `packages/config/src/types.ts` — `unitMode`/`equalityMode`/`functionMode`/
-  `strict` + per-glob `input[]`/`output[]`: the type system **consumes** these.
+- `packages/config/src/types.ts` — `unitMode`/`functionMode`/`strict` + per-glob
+  `input[]`/`output[]`: the type system **consumes** these. There is no
+  `equalityMode` here; equality is decided by the primitive the dialect lowers
+  to, and the type system reads that node rather than a config flag.
 - `known-css-properties` (dep of `less-parser`) + `mdn-data` — property→grammar.
 - `packages/docs-content/docs/jess/02-Language/09-values-and-types.mdx` —
   older experimental notation to retire in favor of CSS value definition syntax.
@@ -395,8 +399,12 @@ to an opt-in visitor. Deserves its own doc.
    constant-folder for the on-scale case? (§9)
 4. **`var()` propagation depth** — chains (`--a: var(--b)`), partially-typed
    graphs. (Cycles are fine — type-to-type, not value.)
-5. **Coercion policy detail** — how `equalityMode` maps to satisfies-relations
-   (does `16` satisfy `16px`? `<length>` satisfy `<length-percentage>`?).
+5. **Coercion policy detail** — how the comparison primitives map to
+   satisfies-relations (does `16` satisfy `16px`? `<length>` satisfy
+   `<length-percentage>`?). The coercions the language already admits are
+   `=`'s common ground and `==`'s refusal of it
+   (`RESOLVED-SEMANTICS-AND-NAMING.md` §4.1); this question is whether
+   satisfies-relations reuse them.
 6. **Multiple supertypes** — `<Spacing>` is a subtype of `<length>`,
    `<length-percentage>`, `<dimension>`… which token does substitution target?
    (tie-break: most-specific matching token.)

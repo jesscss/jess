@@ -137,23 +137,23 @@ a blanket optimization exemption or a new active architecture queue.
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/evaluator-call-boundary.test.ts"]}
   },
   {
-    "id": "ast-value-guard-equality-modes",
+    "id": "ast-value-guard-comparison-op",
     "kind": "semantic-boundary",
-    "surface": "typed guard equality compatibility modes",
+    "surface": "typed guard comparison kind, carried by the lowered node's op",
     "files": ["packages/core/src/ast/value-guards.ts"],
     "semanticBoundary": {
-      "trigger": "a typed guard comparison receives Less, Sass, or exact equalityMode",
-      "scope": "Only typed guard comparison owns mode-specific equality: Less permits unitless numeric coercion and emitted escaped-word equality, Sass keeps unit distinctions while comparing quoted and keyword text, and exact retains the structural distinction. Function dispatch, variable resolution, and declaration rendering do not enter this branch.",
-      "cases": ["less-unitless-dimension", "sass-quoted-keyword", "exact-structural-distinction"],
+      "trigger": "a typed guard comparison receives op '=', '==' or 'sass-equal'",
+      "scope": "Only typed guard comparison owns the comparison KIND, and it reads it from the node's own op rather than from ambient config: '=' is loose over the operand pair's common ground, '==' is that plus sameType, and 'sass-equal' dispatches on operand type (type-equal for a numeric pair, loose otherwise). There is no equalityMode. Function dispatch, variable resolution, and declaration rendering do not enter this branch.",
+      "cases": ["loose-common-ground", "type-equal-declines-coercion", "sass-equal-numeric-dispatch"],
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "sourceCheck": {
       "file": "packages/core/src/ast/value-guards.ts",
-      "caller": "function compareNodes(",
-      "guard": "if (equalityMode === 'sass')",
-      "call": "selfCompare(a, b, equalityMode)"
+      "caller": "export function compare(",
+      "guard": "case SASS_EQUAL:",
+      "call": "compareGroups(left, right, unitMode)"
     },
-    "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/equality-mode.test.ts"]}
+    "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/less-equality.test.ts", "packages/jess/test/scss/sass-equality-primitive.test.ts"]}
   },
   {
     "id": "ast-value-guard-negate-result",
