@@ -158,32 +158,37 @@ defects. #10 and #11 are the only ones still needing a ruling.
 
 ## The ident-start disambiguation rule (blocker #9)
 
-**Owner ruling, 2026-08-08.** An ident-start nested construct must PEEK for a
-non-wrapped opening `{` to decide declaration-vs-nested-rule — but **only when
-the ident is followed by a colon AND that colon is NOT followed by a space.**
+**Owner ruling, 2026-08-08.** At an ident start, PEEK for a non-wrapped opening
+`{` to decide declaration-vs-nested-rule **only when the construct is genuinely
+ambiguous** — that is, when ALL of:
 
-That condition is not a heuristic; it is exactly where the ambiguity lives:
+1. the ident is followed by a colon, **and**
+2. the colon is **not** followed by a space, **and**
+3. what follows the colon **is an identifier** — i.e. it could be a valid
+   pseudo-class.
+
+Anything failing one of those is unambiguous and commits immediately, with no
+lookahead:
 
 | source | ambiguous? | why |
 | --- | --- | --- |
-| `a:b` | **YES** | could be element `a` with pseudo-class `b`, or the declaration `a:b` |
-| `a: b` | no | a pseudo-class cannot have a space after its colon, so this is a declaration, full stop |
-| `a b` | no | no colon |
+| `div:hover {` / `color:red;` | **YES — peek** | `hover` / `red` are identifiers, so element-plus-pseudo-class is a live reading. Only the `{` separates `color:red { … }` (a nested RULE) from `color:red;` (a DECLARATION). |
+| `color: red` | no | a pseudo-class cannot have a space after its colon |
+| **`div:1px`** | no | `1px` is not an identifier, so it cannot be a pseudo-class — declaration, decided |
+| `a b {` | no | no colon |
 
-So `color:red { … }` is a nested RULE and `color:red;` is a DECLARATION, and only
-the `{` distinguishes them. `color: red` needs no peek at all.
+The peek is therefore the NARROW case, not the default. Today the parser does
+the opposite: a leading `div:` commits to the declaration path unconditionally,
+which is why `div:hover, span` and `div:hover, [a]` parse while `div:hover, .b`
+does not — the difference is only what may follow in a VALUE, nothing about
+selectors.
 
-Today the leading `div:` commits to the declaration path unconditionally, which
-is why `div:hover, span` and `div:hover, [a]` parse while `div:hover, .b` does
-not — the difference is only what may follow in a VALUE, nothing about selectors.
+**Spell the colon condition with parseman's adjacency combinators, not a
+hand-rolled lookahead.** `adjacent()` / `notAdjacent()` are exported from
+`parseman` (`src/combinators/adjacency.ts`) and carry a real `AdjacencyDef` with
+polarity, so "colon not followed by a space" is a first-class grammar fact rather
+than a regex — and it keeps adjacency spelled negatively, per ledger G24.
 
-**Spell it with parseman's adjacency combinators, not a hand-rolled lookahead.**
-`adjacent()` / `notAdjacent()` are exported from `parseman`
-(`src/combinators/adjacency.ts`), carrying a real `AdjacencyDef` with polarity —
-so "colon not followed by a space" is a first-class grammar fact rather than a
-regex. This also satisfies the standing rule that adjacency is spelled
-NEGATIVELY where possible (ledger G24).
-
-**It belongs in the CSS base and the supersets must REUSE it.** The rule is
-ordinary CSS; every dialect reimplementing its own disambiguation is how they
-drifted apart in the first place.
+**It belongs in the CSS base and the supersets must REUSE it.** This is ordinary
+CSS disambiguation; every dialect reimplementing its own is how they drifted
+apart in the first place.
