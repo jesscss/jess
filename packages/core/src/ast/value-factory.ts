@@ -71,11 +71,15 @@ export function makeCompoundDimension(
   unit: string,
   numerator: readonly string[],
   denominator: readonly string[],
-  backupUnit: string | undefined
+  backupUnit: string | undefined,
+  preserved?: string
 ): Dimension {
   const n: Mutable<Dimension> = { type: 'Dimension', number, unit, numerator, denominator, bytes: '' };
   if (backupUnit !== undefined) {
     n.backupUnit = backupUnit;
+  }
+  if (preserved !== undefined) {
+    n.preserved = preserved;
   }
   n.bytes = serializeDimension(n);
   return n;

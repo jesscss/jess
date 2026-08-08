@@ -55,8 +55,18 @@ describe('Less strict-unit final validation', () => {
       extension: '.less'
     });
     expect(eager).toContain('first: 7em;');
-    expect(eager).toContain('second: 4.4em;');
-    expect(eager).toContain('same-unit: 2em;');
+
+    /*
+     * §4.7 row h — `2 / 5em` is a reciprocal, and there is no `em⁻¹` in CSS, so
+     * the sum it feeds carries no expressible unit either. Less 4.x answers
+     * `4.4em`, which is dimensionally false. The value IS computed (0.4, with
+     * `em` in the denominator); `preserve` only declines to pin a unit on it,
+     * and says the authored expression back instead.
+     */
+    expect(eager).toContain('second: calc(4 + 2 / 5em);');
+
+    // §4.7 row g2 — like units CANCEL, so `2em/1em` is a genuine unitless 2.
+    expect(eager).toContain('same-unit: 2;');
     expect(eager).toContain('shorthand: normal small / 20px;');
     expect(eager).toContain('bare-parens-mode: 5px;');
     expect(eager).toContain('grouped: 5px;');

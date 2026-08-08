@@ -26,6 +26,16 @@ import { serializeColor } from './color.js';
  * {@link formatNumber} (ledger **V7**) rather than re-decided per emit site.
  */
 export function serializeDimension(n: Dimension): string {
+  /*
+   * §4.7 — a computed dimension whose unit CSS cannot express says the AUTHORED
+   * expression back instead of pinning a fabricated unit onto the magnitude
+   * (`1px * 2px` is an area; there is no area unit, and `2px` is a lie). The
+   * value itself is unchanged and still fully computed — this is the one place
+   * that spelling is decided, so no consumer of a `Dimension` has to know.
+   */
+  if (n.preserved !== undefined) {
+    return `calc(${n.preserved})`;
+  }
   const { unit } = n;
   const s = formatNumber(n.number);
   return unit ? `${s}${unit}` : s;

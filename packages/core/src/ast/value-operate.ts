@@ -168,18 +168,46 @@ function cancel(u: UnitSet): void {
 }
 
 /**
+ * Compose `b`'s unit multiset into `a`'s under `*` or `/`, then cancel — the
+ * shared half of `*`/`/` unit arithmetic.
+ */
+function composeUnits(u: UnitSet, bu: UnitSet, op: string): void {
+  if (op === '*') {
+    u.num = u.num.concat(bu.num);
+    u.den = u.den.concat(bu.den);
+  } else {
+    u.num = u.num.concat(bu.den);
+    u.den = u.den.concat(bu.num);
+  }
+  cancel(u);
+}
+
+/**
+ * Whether a composed unit set has a CSS spelling. Exactly two shapes do: one
+ * surviving numerator unit (`4em / 2cm` → `em`), and the empty set, which is a
+ * genuine unitless number (`2px / 1px` → `2`). Anything else — a unit PRODUCT
+ * (`px·px`, `px·%`) or a bare reciprocal (`px⁻¹`) — has no CSS unit at all, and
+ * naming one means fabricating it out of `backupUnit` or a denominator.
+ */
+function expressible(u: UnitSet): boolean {
+  return u.num.length === 1 || (u.num.length === 0 && u.den.length === 0);
+}
+
+/**
  * less.js `Unit.genCSS` display rule: a singular numerator emits that unit;
  * else the `backupUnit`; else the first denominator; else empty (a pure number).
  * Strict-mode singularity is validated only when the final value is consumed;
  * intermediate compound units must remain available for a later operation to
- * cancel. A fully cancelled strict result is therefore a unitless number even
- * when its intermediate `backupUnit` was authored (e.g. `1px / 1px` → `1`).
+ * cancel. A fully cancelled result is a unitless number in EVERY mode even when
+ * its intermediate `backupUnit` was authored (`2px / 1px` → `2`, §4 row g2):
+ * like units cancelling is the one composition that is honestly expressible, so
+ * reaching for the backup there would re-attach a unit the value no longer has.
  */
-function displayUnit(u: UnitSet, isStrict: boolean): string {
+function displayUnit(u: UnitSet): string {
   if (u.num.length === 1) {
     return u.num[0]!;
   }
-  if (isStrict && u.num.length === 0 && u.den.length === 0) {
+  if (u.num.length === 0 && u.den.length === 0) {
     return '';
   }
   if (u.backup) {
@@ -261,26 +289,41 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       }
       value = calculate(a.number, op, bVal);
     }
-  } else if (op === '*') {
-    u.num = u.num.concat(bu.num);
-    u.den = u.den.concat(bu.den);
-    cancel(u);
-  } else if (op === '/') {
-    u.num = u.num.concat(bu.den);
-    u.den = u.den.concat(bu.num);
-    cancel(u);
+  } else if (op === '*' || op === '/') {
+    composeUnits(u, bu, op);
   }
 
-  const unit = displayUnit(u, isStrict);
+  const unit = displayUnit(u);
 
   /*
    * Persist the multiset only when it isn't a plain single numerator (so chained
    * ops can still cancel); a singular/empty unit round-trips through `makeDimension`.
+   *
+   * An expressible result NEVER carries a preserved spelling, which is what lets
+   * a chain come back from an unexpressible intermediate: `1px * 1px` has no CSS
+   * unit and preserves, then `/ 1px` cancels the multiset to a plain `px` and the
+   * value is spelled `1px` again. Dropping the spelling here is the whole reason
+   * the ladder can afford to keep computing.
    */
   if (u.num.length === 1 && u.den.length === 0) {
     return makeDimension(value, unit);
   }
-  return makeCompoundDimension(value, unit, u.num, u.den, u.backup);
+  return makeCompoundDimension(value, unit, u.num, u.den, u.backup,
+    modes.unitMode === 'preserve' && !expressible(u) ? preservedSpelling(a, op, b) : undefined);
+}
+
+/**
+ * The authored expression for a preserved result, in AUTHORED OPERAND ORDER
+ * (`10% * 1px` stays `10% * 1px`; dart-sass reorders it, we do not).
+ *
+ * An operand that is itself preserved contributes its own spelling rather than
+ * its bytes, which is what flattens a chain into ONE expression
+ * (`(1.4em * 14px) * 10cm` → `1.4em * 14px * 10cm`) instead of nesting `calc()`
+ * inside `calc()`. CSS flattens nested calc anyway, so the flat form is also the
+ * one CSS would have produced.
+ */
+function preservedSpelling(a: Dimension, op: string, b: Dimension): string {
+  return `${a.preserved ?? a.bytes} ${op} ${b.preserved ?? b.bytes}`;
 }
 
 /** Dimension ⊕ Color: coerce the dimension to a color (unit ignored, per less.js
@@ -383,7 +426,9 @@ function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
  * Binary operation. Guard order (byte-faithful):
  *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc),
  *   2. an un-operable keyword operand → preserve source `l op r`,
- *   3. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
+ *   3. inside `calc(…)`, a cross-unit dimension op → flat `calc(l op r)`,
+ *   4. a §4.7 unexpressible unit composition in `preserve` mode → `calc(l op r)`,
+ *   5. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
  *      `calc(l op r)` fallback.
  */
 export function operate(op: string, left: Value, right: Value, modes: EvalModes): Value {
@@ -430,15 +475,21 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
   }
 
   /*
-   * A percentage product has no standalone CSS dimensional value. Preserve it
-   * as calc in the dialect's preserve mode even before an explicit calc wrapper;
-   * otherwise a lazy variable binding such as `@x: 100% * 100%` collapses to the
-   * invented scalar `10000%` and later composition cannot recover its semantics.
+   * §4.7's ladder is deliberately NOT a guard here. `preserve` governs how an
+   * UNEXPRESSIBLE RESULT IS SPELLED, not whether the arithmetic happens — an
+   * operated value must compute in every mode, and `dimensionOperate` is what
+   * computes it. Declining the operation here instead (returning an opaque
+   * `calc(…)` keyword) discarded the magnitude and the unit multiset at the first
+   * unexpressible INTERMEDIATE, so `1px * 1px / 1px` could never cancel back to
+   * `1px`, `8cats * 9dogs / 4cats` could never reach `18dogs`, and `unit()` — a
+   * function whose entire job is to read the magnitude and replace the unit — got
+   * a keyword it had to decline, emitting `unit(calc(…))` into the stylesheet.
+   *
+   * The three rungs part company on the RESULT: `loose` fabricates a unit from
+   * `backupUnit`, `preserve` carries the authored spelling (`Dimension.preserved`),
+   * and `strict` carries neither, so `validateFinalUnits` rejects the non-singular
+   * unit at the consuming boundary. One computation, three spellings.
    */
-  if (modes.unitMode === 'preserve' && op === '*' && left.type === 'Dimension' && right.type === 'Dimension'
-    && left.unit === '%' && right.unit === '%') {
-    return makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
-  }
   try {
     if (left.type === 'Dimension' && right.type === 'Dimension') {
       return dimensionOperate(left, right, op, modes);

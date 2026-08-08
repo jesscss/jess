@@ -820,6 +820,24 @@ export const WARN = {
       ...args
     });
   },
+
+  /**
+   * §4.7 — a value whose composed unit CSS cannot express. Raised on the
+   * `loose` and `preserve` rungs of the `unitMode` ladder, which both PRODUCE a
+   * value: `loose` folds to Less 4.x's dimensionally false answer and
+   * `preserve` says the authored expression back as `calc(…)`. Neither is
+   * silent, because a plausible-looking wrong answer is worse than a
+   * diagnostic. Only `strict`, which refuses the value outright, reports
+   * through `ERR` instead.
+   */
+  unexpressibleUnit(args: Common & { meta: { expr: string } }) {
+    return makeJessError({
+      severity: 'warn',
+      code: 'eval/unexpressible-unit',
+      phase: 'eval',
+      ...args
+    });
+  },
   unitConversion(args: Common & { meta: { value: string } }) {
     return makeJessError({
       severity: 'warn',

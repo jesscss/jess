@@ -61,6 +61,24 @@ export interface Dimension {
   /** less.js `Unit.backupUnit`: the authored unit, shown when the numerator isn't singular. */
   readonly backupUnit?: string;
 
+  /**
+   * §4.7 — the AUTHORED expression this value was computed from, WITHOUT a
+   * `calc()` wrapper (`1.4em * 14px`), in authored operand order.
+   *
+   * Present only under `unitMode: 'preserve'` and only while the composed unit
+   * multiset has no CSS spelling. It is a SPELLING, never the value: `number`
+   * and `numerator`/`denominator` remain the computed truth, so `unit()` reads a
+   * real magnitude and a later operation still cancels the multiset
+   * (`1px * 1px / 1px` → `1px`, at which point the unit is expressible again and
+   * this field is simply not carried forward).
+   *
+   * This is why `preserve` is not "decline to compute". Every rung of the ladder
+   * computes; they differ only in what an unexpressible RESULT is allowed to look
+   * like — `loose` fabricates a unit from `backupUnit`, `preserve` says the
+   * expression back, `strict` refuses at the consuming boundary.
+   */
+  readonly preserved?: string;
+
   /** Canonical emitted bytes (byte-faithful; produced by the free serializer). */
   readonly bytes: string;
 }

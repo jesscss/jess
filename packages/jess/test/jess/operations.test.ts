@@ -50,18 +50,17 @@ describe('OPERATIONS §4 — arithmetic', () => {
     await expect(value('$(1px / 2)')).resolves.toBe('0.5px');
   });
 
-  it.fails('PENDING §4.7 — a reciprocal unit is not expressible, so `1 / 2px` preserves (row h)', async () => {
+  it('a reciprocal unit is not expressible, so `1 / 2px` preserves (row h)', async () => {
     /*
      * There is no `px⁻¹` in CSS. Less 4.x answers `0.5px`, which is
-     * dimensionally false, and that is what we answer today — silently, which
-     * §4.7 rules out on its own ("no mode is silent"). Under the DEFAULT
-     * `preserve` mode the honest outcome is the preserved expression plus a
-     * warning; `loose` gives Less's answer plus a warning; `strict` throws.
+     * dimensionally false. Under the DEFAULT `preserve` mode the honest outcome
+     * is the preserved expression plus a warning; `loose` gives Less's answer
+     * plus a warning; `strict` throws. No rung is silent (§4.7).
      */
     await expect(value('$(1 / 2px)')).resolves.toBe('calc(1 / 2px)');
   });
 
-  it.fails('PENDING phase 6 — a unit product preserves rather than fabricating (rows f, f2, f3)', async () => {
+  it('a unit product preserves rather than fabricating (rows f, f2, f3)', async () => {
     /*
      * `1px * 2px` is an area, and CSS has no area unit; `1px * 10%` does not
      * commensurate at all. Less 4.x answers `2px` / `10px` — dimensionally
@@ -73,7 +72,7 @@ describe('OPERATIONS §4 — arithmetic', () => {
     await expect(value('$(10% * 1px)')).resolves.toBe('calc(10% * 1px)');
   });
 
-  it.fails('PENDING phase 6 — like units cancel to a unitless number (row g2)', async () => {
+  it('like units cancel to a unitless number (row g2)', async () => {
     await expect(value('$(2px / 1px)')).resolves.toBe('2');
   });
 

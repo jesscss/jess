@@ -140,7 +140,7 @@ import type { Branch, Level } from './extend/ir.js';
 import { mkBranch } from './extend/ir.js';
 import type { Context } from '../context.js';
 import { Deprecation } from '../deprecation.js';
-import { ERR, toDiagnostic } from '../error/diagnostics.js';
+import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
 import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
@@ -2915,7 +2915,15 @@ function evalTypedSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
   return combineAll(values, resolved => resolved);
 }
 
-const strictUnitOwners = new WeakMap<Value, Operation>();
+/**
+ * The operation that produced a value whose unit CSS cannot express, kept so the
+ * consuming boundary can report a SOURCE LOCATION for it.
+ *
+ * Recorded in every mode, not just `strict`. All three rungs of the §4.7 ladder
+ * answer the same question at the same boundary — `strict` throws, `loose` and
+ * `preserve` warn — so they need the same location.
+ */
+const unitOwners = new WeakMap<Value, Operation>();
 
 function hasInvalidFinalUnits(value: Value): boolean {
   if (value.type !== 'Dimension') {
@@ -2926,9 +2934,9 @@ function hasInvalidFinalUnits(value: Value): boolean {
   return numerator.length > 1 || denominator.length > 0;
 }
 
-function rememberStrictUnitOwner(value: Value, node: Operation, modes: EvalModes): Value {
-  if (modes.unitMode === 'strict' && hasInvalidFinalUnits(value)) {
-    strictUnitOwners.set(value, node);
+function rememberUnitOwner(value: Value, node: Operation): Value {
+  if (hasInvalidFinalUnits(value)) {
+    unitOwners.set(value, node);
   }
   return value;
 }
@@ -2961,6 +2969,30 @@ function arithmeticSiteLocation(node: object, e: EvalCtx): {
   }
   const operatorLocation = lineColAt(source, operatorOffset, e.context?.sourceContext?.file);
   return { ...location, line: operatorLocation.line, column: operatorLocation.column };
+}
+
+/**
+ * §4.7 — NO RUNG OF THE `unitMode` LADDER IS SILENT. A value whose unit CSS
+ * cannot express (`1px * 2px`, `1 / 2px`) warns in `loose` (which folds to Less
+ * 4.x's dimensionally false answer) and in the default `preserve` (which says
+ * the expression back as `calc(…)`); only `strict`, which throws, says nothing
+ * extra. Silent preservation is the worst of the three: the author gets output
+ * that looks fine and never learns the expression was meaningless.
+ *
+ * Raised at the CONSUMING BOUNDARY, beside the `strict` throw, rather than at
+ * each operation. The three rungs are three answers to one question — "may this
+ * value be emitted?" — and that question is only answerable about a FINAL value.
+ * Asking it per-operation reports intermediates that the rest of the chain
+ * resolves: `1px * 1px / 1px` is an honest `1px`, and warning about the `1px * 1px`
+ * inside it is a false positive about an expression the author got right.
+ */
+function warnUnexpressibleUnit(value: Value, owner: object, e: EvalCtx): void {
+  const site = unitOwners.get(value) ?? owner;
+  e.context?.warn(WARN.unexpressibleUnit({
+    node: site,
+    ...arithmeticSiteLocation(site, e),
+    meta: { expr: (value.type === 'Dimension' ? value.preserved : undefined) ?? value.bytes }
+  }));
 }
 
 function throwUnitArithmetic(error: unknown, node: object, e: EvalCtx): never {
@@ -3019,7 +3051,17 @@ function validateValueGroupUnits(value: ValueGroup, modes: EvalModes, owner: obj
   try {
     validateFinalUnits(value, modes);
   } catch (error) {
-    throwUnitArithmetic(error, strictUnitOwners.get(value) ?? owner, e);
+    throwUnitArithmetic(error, unitOwners.get(value) ?? owner, e);
+  }
+
+  /*
+   * §4.7 — the other two rungs, at the same boundary and on the same condition
+   * `strict` throws on. `inCalc` is exempt: an operation the author WROTE inside
+   * a math function is preserved because they asked for it (§4.6), not because
+   * we declined to fabricate a unit, so there is nothing to report.
+   */
+  if (modes.unitMode !== 'strict' && !modes.inCalc && hasInvalidFinalUnits(value)) {
+    warnUnexpressibleUnit(value, owner, e);
   }
 }
 
@@ -3625,13 +3667,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // Inside `calc(…)`, flag the modes so cross-unit math preserves (guard 3).
       const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { ...e.modes, inCalc: true } : e.modes;
       return combineAll([l, r], (values) => {
+        const lv = requireScalarValue(values[0]!, `operator ${node.operator}`);
+        const rv = requireScalarValue(values[1]!, `operator ${node.operator}`);
         try {
-          return rememberStrictUnitOwner(ev.operate(
-            node.operator,
-            requireScalarValue(values[0]!, `operator ${node.operator}`),
-            requireScalarValue(values[1]!, `operator ${node.operator}`),
-            m
-          ), node, m);
+          return rememberUnitOwner(ev.operate(node.operator, lv, rv, m), node);
         } catch (error) {
           throwUnitArithmetic(error, node, e);
         }
@@ -10556,7 +10595,19 @@ function dispatch(
           meta: { callee: `${call.name}()` }
         });
       }
-      throw error;
+
+      /*
+       * §9 — `mixin-dispatch.ts` runs `evalGuard` for overload selection with no
+       * `withUnitErrors` around it, so a MIXIN guard's unit clash or
+       * no-common-ground comparison escaped as the bare value-domain class and
+       * surfaced from the public API as `internal/unknown` with no location,
+       * while the very same guard evaluated by any other lane produced a
+       * structured diagnostic. Dispatch cannot wrap it itself (it holds no
+       * `EvalCtx` and must not import this module), so the mapping is attached
+       * where the call site is known — here, on BOTH lanes, exactly as the
+       * `default()` ambiguity mapping already is.
+       */
+      throwUnitArithmetic(error, call, e);
     };
     try {
       const selected = selectDefinitions(
