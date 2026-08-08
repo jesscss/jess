@@ -472,11 +472,28 @@ interface DeclIndex {
   readonly byName: Map<string, VariableDeclaration[]>;
 }
 
-/** One activation's current binding for a name. */
+/**
+ * One activation's current binding for a name, plus the same-activation bindings
+ * it SHADOWED, newest first.
+ *
+ * `prev` is what makes the live store obey the same rule the scoped store gets
+ * from {@link DeclIndex}: a read resolves against declarations `1..N-1` with the
+ * declaration being evaluated (`N`) excluded. `declIndex` keeps every same-name
+ * declaration in a source-order stack, so `lookupScopedBinding` can skip the
+ * excluded one and land on the previous. A live cell used to be a SINGLE slot,
+ * so write `N` destroyed `N-1` and the skip had nothing left to land on —
+ * `$i: 3; $i: $i - 1` reported a false `Recursive reference`. The chain restores
+ * the missing history; the exclusion set itself is untouched.
+ *
+ * The chain is only extended when the incoming value can actually read the name
+ * back (see {@link activateVariableDeclaration}), so a plain overwrite sequence
+ * stays O(1) and only a genuine read-then-write retains its predecessor.
+ */
 interface BindingCell {
   declaration: VariableDeclaration;
   value: Binding;
   valueFrame?: Frame;
+  prev: BindingCell | null;
 }
 
 /** Render-local closure/source facts for one detached-ruleset binding. */
@@ -991,7 +1008,9 @@ function cellsForParams(
   for (const [name, value] of params) {
     const declaration = variableDeclaration(name, value, { mode: 'declare' });
     const valueFrame = valueFrames?.get(value);
-    cells.set(name, valueFrame ? { declaration, value, valueFrame } : { declaration, value });
+    cells.set(name, valueFrame
+      ? { declaration, value, valueFrame, prev: null }
+      : { declaration, value, prev: null });
   }
   return cells;
 }
@@ -1953,6 +1972,9 @@ function findPathCandidates(frame: Frame, call: MixinCall, e: EvalCtx, homes: Ma
  *   - Variable half — `resolveVarStack` / `resolvePropRef` `continue` past any
  *     value node in `e.excluded` (the declaration whose value is currently being
  *     evaluated), so `@a: @a + 1` skips its own node and binds an earlier `@a`.
+ *     Skipping only works where the store still HOLDS the earlier binding, which
+ *     is why both stores keep per-name history: `declIndex` for scoped reads, and
+ *     `BindingCell.prev` for live ones.
  *   - Mixin half (here) — a NON-PARAMETRIC ruleset self-call excludes its own
  *     enclosing frame from the candidate set, so `.recursion { .recursion(); }`
  *     re-binds to a same-name parametric def (or no-ops) instead of re-entering
@@ -1991,9 +2013,12 @@ function parentExcludes(frame: Frame | null, rules: Statement[]): boolean {
 function lookupLiveCell(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const hit = f.cells?.get(name);
-    if (hit && !e?.excluded.has(hit.value)) {
-      return { value: hit.value, frame: hit.valueFrame ?? f };
+    /* Newest binding first, then the ones it shadowed — the live-store twin of
+     * `lookupScopedBinding`'s backward walk over the per-name declaration stack. */
+    for (let hit: BindingCell | null | undefined = f.cells?.get(name); hit; hit = hit.prev) {
+      if (!e?.excluded.has(hit.value)) {
+        return { value: hit.value, frame: hit.valueFrame ?? f };
+      }
     }
     if (f.fallback && !fb) {
       fb = f.fallback;
@@ -2008,9 +2033,10 @@ function lookupLiveCell(frame: Frame | null, name: string, e?: EvalCtx): { value
 function hasExcludedLiveCell(frame: Frame | null, name: string, e: EvalCtx): boolean {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const hit = f.cells?.get(name);
-    if (hit && e.excluded.has(hit.value)) {
-      return true;
+    for (let hit: BindingCell | null | undefined = f.cells?.get(name); hit; hit = hit.prev) {
+      if (e.excluded.has(hit.value)) {
+        return true;
+      }
     }
     if (f.fallback && !fb) {
       fb = f.fallback;
@@ -2137,7 +2163,14 @@ function lookupVar(frame: Frame | null, name: string): Binding | undefined {
  * the cycle guard: `@a: @a + 1` excludes its own node → skips it → falls back to
  * an earlier `@a` (or misses); `@a: @b; @b: @a` accumulates both exclusions and
  * terminates at any depth. There is NO depth cap. The value is returned with its
- * OWNING frame so it evaluates in its declaration scope. */
+ * OWNING frame so it evaluates in its declaration scope.
+ *
+ * Both stores must therefore keep the EARLIER same-name bindings, or the skip has
+ * nothing to land on. `scoped` reads get that from `declIndex`, a source-order
+ * stack per name. `live` reads get it from `BindingCell.prev`; until that existed
+ * a live cell was a single slot, so write `N` destroyed `N-1` and `$i: 3;
+ * $i: $i - 1` reported a false `Recursive reference` — the read correctly skipped
+ * its own node and then found nothing behind it. */
 function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: EvalCtx): { value: Binding; frame: Frame } | undefined {
   return lookup === 'live'
     ? lookupLiveCell(frame, name, e)
@@ -2207,6 +2240,32 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
   }
 }
 
+/**
+ * The same-activation binding a new live write for `node.name` SHADOWS.
+ *
+ * This is the live-store equivalent of v1's `declarationBucketsByName`
+ * (`tree/scope-frame.ts:211`), the per-name source-order history v1 kept
+ * ALONGSIDE its current-value map. v2 collapsed the live store to one slot per
+ * name, which is what left the exclusion walk with nothing to fall back onto.
+ *
+ * A re-executed declaration in a SHARED frame (a control block re-entered by a
+ * loop) presents the SAME value node again. Chaining a node to itself would only
+ * add a link the exclusion walk skips anyway — identity is what exclusion tests —
+ * so an unchanged head is not stacked. That keeps the chain bounded by the
+ * DISTINCT declarations of a name, exactly as v1's buckets were, rather than by
+ * iteration count.
+ */
+function liveCellPredecessor(
+  cells: Map<string, BindingCell> | null,
+  node: VariableDeclaration
+): BindingCell | null {
+  const existing = cells?.get(node.name);
+  if (existing === undefined) {
+    return null;
+  }
+  return existing.value === node.value ? existing.prev : existing;
+}
+
 function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: EvalCtx): void {
   if (
     node.write.mode === 'declare'
@@ -2240,7 +2299,8 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
     if (found) {
       return;
     }
-    (frame.cells ??= new Map()).set(node.name, { declaration: node, value: node.value });
+    const cells = frame.cells ??= new Map();
+    cells.set(node.name, { declaration: node, value: node.value, prev: liveCellPredecessor(cells, node) });
     (frame.reassign ??= new Map()).set(node.name, node);
     return;
   }
@@ -2250,7 +2310,8 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
       if (!found) {
         throw new ReferenceError(`live variable $${node.name} is undefined`);
       }
-      found.frame.cells!.set(node.name, { declaration: node, value: node.value });
+      const cells = found.frame.cells!;
+      cells.set(node.name, { declaration: node, value: node.value, prev: liveCellPredecessor(cells, node) });
       return;
     }
     const found = lookupScopedBinding(frame, node.name, e);
@@ -2260,7 +2321,8 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
     (found.frame.reassign ??= new Map()).set(node.name, node);
     return;
   }
-  (frame.cells ??= new Map()).set(node.name, { declaration: node, value: node.value });
+  const cells = frame.cells ??= new Map();
+  cells.set(node.name, { declaration: node, value: node.value, prev: liveCellPredecessor(cells, node) });
 }
 
 /**
