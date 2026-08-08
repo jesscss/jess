@@ -8,13 +8,13 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-08-08T20:25:37.074Z`
+- Generated: `2026-08-08T22:57:19.893Z`
 - Bootstrap: `5.3.8`
 - Runner: `v24.11.1` on `darwin/arm64`
 
 ## Parse lane (all `bootstrap/scss/**/*.scss`)
 
-- files: **92**, parsed: **35**, failed: **57**
+- files: **92**, parsed: **40**, failed: **52**
 
 Blocking constructs, by number of failing files that contain them. Files
 usually hit several blockers, so these counts overlap by design.
@@ -22,13 +22,13 @@ usually hit several blockers, so these counts overlap by design.
 | blocking construct | failing files |
 |---|--:|
 | interpolation inside a var() name | 41 |
-| interpolation as a standalone selector compound | 40 |
-| bare-truthy @if condition | 26 |
-| @include with a trailing content block | 20 |
+| interpolation as a standalone selector compound | 39 |
+| bare-truthy @if condition | 24 |
 | leading combinator (implicit &) | 19 |
-| @content | 5 |
+| @include with a trailing content block | 18 |
 | @warn / @error / @debug | 5 |
 | multiline nested paren list | 4 |
+| @content | 3 |
 | interpolated pseudo-element | 3 |
 | @while | 2 |
 | line comment inside a paren list | 1 |
@@ -45,7 +45,7 @@ usually hit several blockers, so these counts overlap by design.
 | `_card.scss` | 32:14 | `height: var(--#{$prefix}card-height);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
 | `_carousel.scss` | 102:14 | `filter: var(--#{$prefix}carousel-control-icon-filter);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
 | `_close.scss` | 6:0 | `.btn-close {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
-| `_containers.scss` | 19:65 | `@include media-breakpoint-up($breakpoint, $grid-breakpoints) {` | bare-truthy @if condition; @include with a trailing content block |
+| `_containers.scss` | 29:10 | `.container#{breakpoint-infix($name, $grid-breakpoints)} {` | bare-truthy @if condition; @include with a trailing content block |
 | `_dropdown.scss` | 19:0 | `.dropdown-menu {` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
 | `_functions.scss` | 13:6 | `} @else if not comparable($prev-num, $num) {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @warn / @error / @debug; @while |
 | `_grid.scss` | 12:2 | `.row {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
@@ -53,7 +53,7 @@ usually hit several blockers, so these counts overlap by design.
 | `_maps.scss` | 114:26 | `"primary-emphasis": var(--#{$prefix}primary-text-emphasis),` | bare-truthy @if condition; interpolation inside a var() name; multiline nested paren list |
 | `_modal.scss` | 38:15 | `z-index: var(--#{$prefix}modal-zindex);` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
 | `_nav.scss` | 6:0 | `.nav {` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
-| `_navbar.scss` | 8:55 | `--#{$prefix}navbar-padding-x: #{if($navbar-padding-x == null, 0, $navbar-padding-x)};` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
+| `_navbar.scss` | 35:15 | `padding: var(--#{$prefix}navbar-padding-y) var(--#{$prefix}navbar-padding-x);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
 | `_offcanvas.scss` | — | `` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
 | `_pagination.scss` | 1:0 | `.pagination {` | interpolation as a standalone selector compound; interpolation inside a var() name |
 | `_popover.scss` | 1:0 | `.popover {` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
@@ -69,20 +69,16 @@ usually hit several blockers, so these counts overlap by design.
 | `bootstrap-grid.scss` | 25:12 | `$utilities,` | multiline nested paren list |
 | `forms/_floating-labels.scss` | 21:20 | `color: rgba(var(--#{$prefix}body-color-rgb), #{$form-floating-label-opacity});` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
 | `forms/_form-check.scss` | 38:24 | `background-color: var(--#{$prefix}form-check-bg);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
-| `forms/_form-control.scss` | 59:40 | `height: if(unit($input-line-height) == "", $input-line-height * 1em, $input-line-height);` | bare-truthy @if condition |
 | `forms/_form-select.scss` | 19:24 | `background-image: var(--#{$prefix}form-select-bg-img), var(--#{$prefix}form-select-bg-icon, none);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
 | `helpers/_color-bg.scss` | 4:64 | `color: color-contrast($value) if($enable-important-utilities, !important, null);` | interpolation inside a var() name |
 | `helpers/_colored-links.scss` | 4:20 | `color: RGBA(var(--#{$prefix}#{$color}-rgb), var(--#{$prefix}link-opacity, 1)) if($enable-important-utilities, !important` | interpolation inside a var() name |
 | `helpers/_focus-ring.scss` | 4:18 | `box-shadow: var(--#{$prefix}focus-ring-x, 0) var(--#{$prefix}focus-ring-y, 0) var(--#{$prefix}focus-ring-blur, 0) var(--` | interpolation inside a var() name |
 | `helpers/_icon-link.scss` | 5:34 | `text-decoration-color: rgba(var(--#{$prefix}link-color-rgb), var(--#{$prefix}link-opacity, .5));` | interpolation inside a var() name; leading combinator (implicit &) |
-| `helpers/_position.scss` | 21:44 | `@include media-breakpoint-up($breakpoint) {` | @include with a trailing content block |
 | `helpers/_ratio.scss` | 9:21 | `padding-top: var(--#{$prefix}aspect-ratio);` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
 | `helpers/_stretched-link.scss` | 5:0 | `.stretched-link {` | interpolated pseudo-element |
 | `mixins/_alert.scss` | 11:26 | `background-image: var(--#{$prefix}gradient);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name |
 | `mixins/_breakpoints.scss` | 20:4 | `@error "breakpoint `#{$name}` not found in `#{$breakpoints}`";` | bare-truthy @if condition; @include with a trailing content block; @content; @warn / @error / @debug |
-| `mixins/_buttons.scss` | 11:2 | `$hover-background: if($color == $color-contrast-light, shade-color($background, $btn-hover-bg-shade-amount), tint-color(` | interpolation as a standalone selector compound |
-| `mixins/_color-mode.scss` | 5:6 | `@media (prefers-color-scheme: $mode) {` | @content |
-| `mixins/_color-scheme.scss` | 3:2 | `@media (prefers-color-scheme: #{$name}) {` | interpolation as a standalone selector compound; @content |
+| `mixins/_buttons.scss` | 67:14 | `@include rfs($font-size, --#{$prefix}btn-font-size);` | interpolation as a standalone selector compound |
 | `mixins/_container.scss` | 7:26 | `padding-right: calc(var(--#{$prefix}gutter-x) * .5); // stylelint-disable-line function-disallowed-list` | interpolation as a standalone selector compound; interpolation inside a var() name |
 | `mixins/_deprecate.scss` | 8:4 | `@warn "#{$name} has been deprecated as of #{$deprecate-version}. It will be removed entirely in #{$remove-version}.";` | interpolation as a standalone selector compound; @warn / @error / @debug |
 | `mixins/_forms.scss` | 7:24 | `.was-validated #{if(&, "&", "")}:#{$state},` | bare-truthy @if condition; interpolation as a standalone selector compound; @include with a trailing content block; @content; leading combinator (implicit &); interpolated pseudo-element |
@@ -91,8 +87,7 @@ usually hit several blockers, so these counts overlap by design.
 | `mixins/_pagination.scss` | 7:14 | `@include rfs($font-size, --#{$prefix}pagination-font-size);` | interpolation as a standalone selector compound |
 | `mixins/_table-variants.scss` | 20:15 | `color: var(--#{$prefix}table-color);` | interpolation as a standalone selector compound; interpolation inside a var() name |
 | `mixins/_transition.scss` | 10:8 | `@warn "The keyword 'none' or 'null' must be used as a single argument.";` | bare-truthy @if condition; @warn / @error / @debug |
-| `mixins/_utilities.scss` | 21:40 | `$property-class: if($property-class == null, "", $property-class);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolated pseudo-element |
-| `utilities/_api.scss` | 5:44 | `@include media-breakpoint-up($breakpoint) {` | bare-truthy @if condition; @include with a trailing content block |
+| `mixins/_utilities.scss` | 29:65 | `$infix: if($property-class == "" and str-slice($infix, 1, 1) == "-", str-slice($infix, 2), $infix);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolated pseudo-element |
 | `vendor/_rfs.scss` | 16:2 | `@error "`#{$rfs-unit}` is not a valid unit for $rfs-unit. Use `px` or `rem`.";` | bare-truthy @if condition; interpolation as a standalone selector compound; @include with a trailing content block; @content; @warn / @error / @debug; @while |
 
 ## Eval lane (self-contained entry points)

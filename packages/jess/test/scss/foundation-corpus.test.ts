@@ -83,15 +83,17 @@ const PER_FILE_TIMEOUT_MS = 30_000;
  * with a failing file. The reduced snippet is quoted with each entry.
  *
  * A file is attributed to every blocker it contains — files usually hit
- * several, so these counts overlap by design. The report additionally ranks
- * by the EARLIEST blocker in each file, which is the one the parser actually
- * gave up on.
+ * several, so these counts overlap by design. The report additionally ranks by
+ * the blocker sitting at each file's reported failure POSITION, which is the one
+ * the parser actually gave up on; see `blockerAt`.
  *
  * An entry is REMOVED when the construct starts parsing, not left at zero: the
  * match is a presence regex, so a construct that parses would keep attracting
- * files that fail for an unrelated reason and would keep ranking as the
- * "earliest blocker" it no longer is. Closed so far: `@return` nested inside
- * `@if`/`@else`, `@include` with a trailing content block, and `@content`.
+ * files that fail for an unrelated reason in the `contains` column. Closed so
+ * far: `@return` nested inside `@if`/`@else`, `@include` with a trailing content
+ * block, and `@content`. Forgetting to remove one no longer corrupts the ranking
+ * — that column is read off the failure position — but it still inflates
+ * `contains`.
  */
 const BLOCKERS: Array<[string, RegExp]> = [
   // `$x: f($lightness: 1);`
@@ -145,8 +147,9 @@ interface LaneResult {
   blockers?: string[];
 
   /**
-   * The blocker that occurs EARLIEST in the source — the one the parser
-   * actually gave up on. `blockers` over-counts by design; this does not.
+   * The blocker at `at` — the one the parser actually gave up on. `blockers`
+   * over-counts by design; this does not. Absent when no listed blocker sits at
+   * the failure position, which means the list is missing an entry.
    */
   primaryBlocker?: string;
   detail?: string;
@@ -161,18 +164,98 @@ const firstLine = (e: unknown): string => {
 const blockersIn = (src: string): string[] =>
   BLOCKERS.filter(([, re]) => re.test(src)).map(([name]) => name);
 
-/** The blocker with the lowest match index — i.e. the first one the parser meets. */
-const primaryBlockerIn = (src: string): string | undefined => {
-  let best: string | undefined;
-  let bestAt = Number.POSITIVE_INFINITY;
-  for (const [name, re] of BLOCKERS) {
-    const match = src.match(re);
-    if (match?.index !== undefined && match.index < bestAt) {
-      bestAt = match.index;
-      best = name;
+/** Every [start, end] span of a blocker in a source file. */
+const spansOf = (re: RegExp, src: string): Array<[number, number]> => {
+  const scan = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+  const spans: Array<[number, number]> = [];
+  for (const match of src.matchAll(scan)) {
+    if (match.index !== undefined) {
+      spans.push([match.index, match.index + match[0].length]);
     }
   }
-  return best;
+  return spans;
+};
+
+/**
+ * The end of the construct the parser was inside when it gave up: the first
+ * `;` or `}` at bracket depth zero from `offset` onward.
+ *
+ * Deliberately a scan and not a parse — it bounds a report heuristic, and the
+ * one thing it must not do is claim a blocker fifty lines away in an unrelated
+ * block. Strings and comments are not skipped; SCSS interpolation inside them
+ * is brace-balanced, so it cancels out.
+ */
+const constructEnd = (src: string, offset: number): number => {
+  let depth = 0;
+  for (let i = offset; i < src.length; i++) {
+    const c = src[i];
+    if (c === '{' || c === '(') {
+      depth++;
+    } else if (c === '}' || c === ')') {
+      if (depth === 0) {
+        return i;
+      }
+      depth--;
+    } else if (c === ';' && depth === 0) {
+      return i;
+    }
+  }
+  return src.length;
+};
+
+/**
+ * The blocker at the position where the parser ACTUALLY gave up.
+ *
+ * This used to take the blocker with the lowest match index in the whole file,
+ * which answers a different question — "which listed construct appears first" —
+ * and answers it wrongly the moment a construct starts parsing. Files kept the
+ * name of a blocker they now sail past while their `gave up at` moved tens of
+ * lines further down, so the ranked table pointed at constructs that were
+ * already fixed. `gave up at` is the truth; this reads from it.
+ *
+ * Two positional cases, because the parser reports two kinds of offset:
+ *
+ *   1. the offset falls INSIDE a blocker's match — the precise case, e.g.
+ *      `color.adjust($dark-gray, $lightness: -10%)` gives up on the keyword
+ *      colon, which is inside the keyword-argument match. The innermost (latest
+ *      starting) containing match wins.
+ *   2. the offset is the START of the construct that failed, because the real
+ *      blocker is in its body — `@else {` at `42:4` in `scss/util/_flex.scss`,
+ *      whose next line is the `@error` it gave up on. Then the nearest blocker
+ *      after the offset wins, but only WITHIN that construct (`constructEnd`).
+ *      Unbounded, this degenerates into the bug being fixed: the nearest match
+ *      in the rest of the file is not evidence, and it labelled
+ *      `scss/components/_dropdown-menu.scss` with an `@error` 57 lines below.
+ *
+ * When neither applies the file is left unattributed rather than assigned a
+ * blocker it does not fail on. An unattributed failure means the blocker list is
+ * missing an entry, which is a fact worth reading off the report — not one worth
+ * hiding behind a plausible name.
+ */
+const blockerAt = (src: string, offset: number | undefined): string | undefined => {
+  if (offset === undefined) {
+    return undefined;
+  }
+  const limit = constructEnd(src, offset);
+  let containing: string | undefined;
+  let containingStart = -1;
+  let following: string | undefined;
+  let followingStart = Number.POSITIVE_INFINITY;
+
+  for (const [name, re] of BLOCKERS) {
+    for (const [start, end] of spansOf(re, src)) {
+      if (start <= offset && offset <= end) {
+        if (start > containingStart) {
+          containingStart = start;
+          containing = name;
+        }
+      } else if (start > offset && start <= limit && start < followingStart) {
+        followingStart = start;
+        following = name;
+      }
+    }
+  }
+  return containing ?? following;
 };
 
 /** Turn the parser's byte offset into a `line:col` plus the offending line. */
@@ -208,6 +291,7 @@ const runParse = (file: string): LaneResult => {
    */
   let at: string | undefined;
   let sourceLine: string | undefined;
+  let offset: number | undefined;
   try {
     parse(source);
   } catch (error) {
@@ -215,6 +299,7 @@ const runParse = (file: string): LaneResult => {
       typeof error === 'object' && error !== null
       && 'offset' in error && typeof error.offset === 'number'
     ) {
+      offset = error.offset;
       ({ at, source: sourceLine } = locate(source, error.offset));
     }
   }
@@ -224,7 +309,7 @@ const runParse = (file: string): LaneResult => {
     at,
     source: sourceLine,
     blockers: blockersIn(source),
-    primaryBlocker: primaryBlockerIn(source),
+    primaryBlocker: blockerAt(source, offset),
     detail: result.errors.length > 0 ? firstLine(result.errors[0]) : 'no document returned'
   };
 };
@@ -528,12 +613,15 @@ function writeReport(parseLane: LaneResult[], evalLane: LaneResult[]) {
   const counts = BLOCKERS.map(([name]) => ({
     name,
 
-    /** Files whose FIRST blocker this is — sums to the failure count. */
+    /** Files that give up ON this blocker — with `unattributed`, sums to the failure count. */
     primary: failed.filter(r => r.primaryBlocker === name).length,
 
     /** Files that contain it anywhere — overlapping, so it over-counts. */
     files: failed.filter(r => r.blockers?.includes(name)).length
   })).sort((a, b) => b.primary - a.primary || b.files - a.files);
+
+  /** Failures whose give-up position matches no listed blocker. */
+  const unattributed = failed.filter(r => r.primaryBlocker === undefined);
 
   const json = {
     generated: new Date().toISOString(),
@@ -544,6 +632,7 @@ function writeReport(parseLane: LaneResult[], evalLane: LaneResult[]) {
       total: parseLane.length,
       pass: parseLane.length - failed.length,
       blockerCounts: counts,
+      unattributed: unattributed.map(r => r.file),
       results: parseLane
     },
     eval: {
@@ -566,15 +655,27 @@ function writeReport(parseLane: LaneResult[], evalLane: LaneResult[]) {
   l.push(`- Runner: \`${process.version}\` on \`${json.platform}\``, '');
   l.push('## Parse lane (all `foundation-sites/**/*.scss`)', '');
   l.push(`- files: **${json.parse.total}**, parsed: **${json.parse.pass}**, failed: **${failed.length}**`, '');
-  l.push('Blocking constructs. `first` counts files where this is the EARLIEST blocker —');
-  l.push('the one the parser actually gave up on, so that column sums to the failure');
-  l.push('count and ranks what to fix next. `contains` counts files holding it anywhere,');
-  l.push('which overlaps by design and shows the total reach of a fix.', '');
-  l.push('| blocking construct | first | contains |', '|---|--:|--:|');
+  l.push('Blocking constructs. `gives up on` counts files whose `gave up at` POSITION lands');
+  l.push('on this blocker — the one the parser actually stopped at, so that column ranks');
+  l.push('what to fix next. `contains` counts files holding it anywhere, which overlaps by');
+  l.push('design and shows the total reach of a fix. A failure whose position matches no');
+  l.push('listed blocker is counted as unattributed rather than given the nearest');
+  l.push('plausible name: it means this list is missing an entry.', '');
+  l.push('| blocking construct | gives up on | contains |', '|---|--:|--:|');
   counts.forEach(c => l.push(`| ${c.name} | ${c.primary} | ${c.files} |`));
+  l.push(`| _unattributed — no listed blocker at the failure position_ | ${unattributed.length} | — |`);
   l.push('');
+  if (unattributed.length > 0) {
+    l.push('Unattributed failures:', '');
+    unattributed.forEach(r => l.push(
+      r.at === undefined
+        ? `- \`${r.file}\` — the parser reported no position, so nothing can be attributed`
+        : `- \`${r.file}\` — ${r.at} \`${(r.source ?? '').replace(/\|/g, '\\|')}\``
+    ));
+    l.push('');
+  }
   l.push('### Parse failures', '');
-  l.push('| file | gave up at | source | first blocker | all blockers |', '|---|---|---|---|---|');
+  l.push('| file | gave up at | source | blocker at that position | all blockers |', '|---|---|---|---|---|');
   failed.forEach(r => l.push(
     `| \`${r.file}\` | ${r.at ?? '—'} | \`${(r.source ?? '').replace(/\|/g, '\\|')}\``
     + ` | ${r.primaryBlocker ?? '—'} | ${(r.blockers ?? []).join('; ') || '—'} |`

@@ -8,7 +8,7 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-08-08T22:40:28.095Z`
+- Generated: `2026-08-08T23:00:17.493Z`
 - Foundation for Sites: `6.9.0`
 - Runner: `v24.11.1` on `darwin/arm64`
 
@@ -16,28 +16,39 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 - files: **136**, parsed: **93**, failed: **43**
 
-Blocking constructs. `first` counts files where this is the EARLIEST blocker —
-the one the parser actually gave up on, so that column sums to the failure
-count and ranks what to fix next. `contains` counts files holding it anywhere,
-which overlaps by design and shows the total reach of a fix.
+Blocking constructs. `gives up on` counts files whose `gave up at` POSITION lands
+on this blocker — the one the parser actually stopped at, so that column ranks
+what to fix next. `contains` counts files holding it anywhere, which overlaps by
+design and shows the total reach of a fix. A failure whose position matches no
+listed blocker is counted as unattributed rather than given the nearest
+plausible name: it means this list is missing an entry.
 
-| blocking construct | first | contains |
+| blocking construct | gives up on | contains |
 |---|--:|--:|
-| keyword argument ($name: v) in a function-call argument list | 25 | 32 |
-| trailing comma in a parenthesized list | 9 | 12 |
-| @error / @warn / @debug | 3 | 16 |
-| comparison (== / !=) inside a function-call argument list | 2 | 11 |
-| interpolation inside a pseudo-class argument list | 1 | 5 |
+| keyword argument ($name: v) in a function-call argument list | 20 | 32 |
+| @error / @warn / @debug | 8 | 16 |
+| trailing comma in a parenthesized list | 4 | 12 |
+| interpolation inside a pseudo-class argument list | 3 | 5 |
+| comparison (== / !=) inside a function-call argument list | 1 | 11 |
 | @while | 1 | 2 |
-| chained unary `not not` | 1 | 1 |
 | nested selector list `type:pseudo, .class` | 1 | 1 |
 | @at-root with a selector prelude | 0 | 1 |
+| chained unary `not not` | 0 | 1 |
+| _unattributed — no listed blocker at the failure position_ | 5 | — |
+
+Unattributed failures:
+
+- `_vendor/sassy-lists/stylesheets/functions/_contain.scss` — the parser reported no position, so nothing can be attributed
+- `scss/components/_dropdown-menu.scss` — 84:4 `> li.opens-left { // sass-lint:disable-line no-qualifying-elements`
+- `scss/components/_menu.scss` — 100:2 `@else {`
+- `scss/components/_reveal.scss` — 108:2 `@extend %reveal-centered;`
+- `scss/util/_math.scss` — the parser reported no position, so nothing can be attributed
 
 ### Parse failures
 
-| file | gave up at | source | first blocker | all blockers |
+| file | gave up at | source | blocker at that position | all blockers |
 |---|---|---|---|---|
-| `_vendor/sassy-lists/stylesheets/functions/_contain.scss` | — | `` | chained unary `not not` | chained unary `not not` |
+| `_vendor/sassy-lists/stylesheets/functions/_contain.scss` | — | `` | — | chained unary `not not` |
 | `_vendor/sassy-lists/stylesheets/functions/_replace.scss` | 30:2 | `@while $running {` | @while | @while |
 | `_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss` | 21:4 | `@error 'Unmet dependencies! The following functions are required: #{$missing-dependencies}.';` | @error / @warn / @debug | @error / @warn / @debug |
 | `_vendor/sassy-lists/stylesheets/helpers/_true.scss` | 12:73 | `@return if($value == null, false, $value and $value != null and $value != '' and $value != ());` | comparison (== / !=) inside a function-call argument list | comparison (== / !=) inside a function-call argument list |
@@ -45,31 +56,31 @@ which overlaps by design and shows the total reach of a fix.
 | `docs/assets/scss/_docs-footer.scss` | 26:44 | `color: color.adjust($white, $lightness: -10%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `docs/assets/scss/docs.scss` | 129:64 | `$global-nav-hover-color: color.adjust($global-nav-bg, $lightness: 10%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `docs/assets/scss/examples/_grid.scss` | 17:47 | `background: color.adjust(#eee, $lightness: -5%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
-| `scss/_global.scss` | 123:2 | `@error 'In $foundation-palette, you must have a color named "primary".';` | trailing comma in a parenthesized list | comparison (== / !=) inside a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list |
-| `scss/components/_button-group.scss` | 131:37 | `&:first-child:nth-last-child(#{$i}) {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; interpolation inside a pseudo-class argument list |
+| `scss/_global.scss` | 123:2 | `@error 'In $foundation-palette, you must have a color named "primary".';` | @error / @warn / @debug | comparison (== / !=) inside a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list |
+| `scss/components/_button-group.scss` | 131:37 | `&:first-child:nth-last-child(#{$i}) {` | interpolation inside a pseudo-class argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; interpolation inside a pseudo-class argument list |
 | `scss/components/_button.scss` | 36:68 | `$button-background-hover: scale-color($button-background, $lightness: -15%) !default;` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; trailing comma in a parenthesized list |
-| `scss/components/_callout.scss` | 71:45 | `$background: scale-color($color, $lightness: $callout-background-fade);` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
-| `scss/components/_dropdown-menu.scss` | 84:4 | `> li.opens-left { // sass-lint:disable-line no-qualifying-elements` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug |
-| `scss/components/_menu.scss` | 100:2 | `@else {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug |
-| `scss/components/_off-canvas.scss` | 78:4 | `@warn '$offcanvas-size is deprecated and not used anymore! Please update your settings and use the map $offcanvas-sizes ` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list; @at-root with a selector prelude |
-| `scss/components/_reveal.scss` | 108:2 | `@extend %reveal-centered;` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
+| `scss/components/_callout.scss` | 71:45 | `$background: scale-color($color, $lightness: $callout-background-fade);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
+| `scss/components/_dropdown-menu.scss` | 84:4 | `> li.opens-left { // sass-lint:disable-line no-qualifying-elements` | — | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug |
+| `scss/components/_menu.scss` | 100:2 | `@else {` | — | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug |
+| `scss/components/_off-canvas.scss` | 78:4 | `@warn '$offcanvas-size is deprecated and not used anymore! Please update your settings and use the map $offcanvas-sizes ` | @error / @warn / @debug | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list; @at-root with a selector prelude |
+| `scss/components/_reveal.scss` | 108:2 | `@extend %reveal-centered;` | — | keyword argument ($name: v) in a function-call argument list |
 | `scss/components/_slider.scss` | 70:71 | `background-color: scale-color($slider-handle-background, $lightness: -15%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `scss/components/_switch.scss` | 15:68 | `$switch-background-focus: scale-color($switch-background, $lightness: -10%) !default;` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `scss/components/_table.scss` | 35:60 | `$table-row-hover: color.adjust($table-background, $lightness: -$table-hover-scale) !default;` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list |
 | `scss/components/_tabs.scss` | 99:43 | `color: scale-color($color, $lightness: -14%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
-| `scss/grid/_classes.scss` | 100:31 | `@include -zf-each-breakpoint {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list; interpolation inside a pseudo-class argument list |
+| `scss/grid/_classes.scss` | 100:31 | `@include -zf-each-breakpoint {` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list; interpolation inside a pseudo-class argument list |
 | `scss/grid/_column.scss` | 19:55 | `@return fraction-to-percentage($columns, $denominator: $grid-column-count);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
-| `scss/grid/_layout.scss` | 50:18 | `&:nth-of-type(#{$n}n+1) {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; interpolation inside a pseudo-class argument list |
+| `scss/grid/_layout.scss` | 50:18 | `&:nth-of-type(#{$n}n+1) {` | interpolation inside a pseudo-class argument list | keyword argument ($name: v) in a function-call argument list; interpolation inside a pseudo-class argument list |
 | `scss/grid/_position.scss` | 51:2 | `@else {` | @error / @warn / @debug | @error / @warn / @debug |
 | `scss/prototype/_relation.scss` | 9:16 | `&:nth-child(-n + #{$num}) {` | interpolation inside a pseudo-class argument list | interpolation inside a pseudo-class argument list |
 | `scss/prototype/_text-decoration.scss` | 15:0 | `$prototype-text-decoration: (` | trailing comma in a parenthesized list | trailing comma in a parenthesized list |
-| `scss/settings/_settings.scss` | 177:58 | `$anchor-color-hover: scale-color($anchor-color, $lightness: -14%);` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
-| `scss/typography/_base.scss` | 77:2 | `@warn 'Note, that $header-sizes has been replaced with $header-styles. $header-sizes still works, but it is going to be ` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list |
-| `scss/util/_breakpoint.scss` | 42:2 | `@error 'The first key in the $breakpoints map must have a value of "0".';` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list |
+| `scss/settings/_settings.scss` | 177:58 | `$anchor-color-hover: scale-color($anchor-color, $lightness: -14%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
+| `scss/typography/_base.scss` | 77:2 | `@warn 'Note, that $header-sizes has been replaced with $header-styles. $header-sizes still works, but it is going to be ` | @error / @warn / @debug | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list |
+| `scss/util/_breakpoint.scss` | 42:2 | `@error 'The first key in the $breakpoints map must have a value of "0".';` | @error / @warn / @debug | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list |
 | `scss/util/_color.scss` | 29:52 | `$red   : round(color.channel($color, "red", $space: rgb));` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug |
 | `scss/util/_direction.scss` | 20:4 | `@error 'direction-opposite: Invalid $dir parameter, expected a value from "#{$dirs}", found "#{$dir}".';` | @error / @warn / @debug | @error / @warn / @debug |
-| `scss/util/_flex.scss` | 42:4 | `@else {` | comparison (== / !=) inside a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list |
-| `scss/util/_math.scss` | — | `` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; @while |
+| `scss/util/_flex.scss` | 42:4 | `@else {` | @error / @warn / @debug | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list |
+| `scss/util/_math.scss` | — | `` | — | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; @while |
 | `scss/util/_mixins.scss` | 151:52 | `$red   : round(color.channel($color, "red", $space: rgb));` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; @error / @warn / @debug; interpolation inside a pseudo-class argument list |
 | `scss/util/_unit.scss` | 65:34 | `$value: rem-calc($value, $base: 16px);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug |
 | `scss/util/_value.scss` | 123:36 | `@return if(type-of($map) != 'list', ($value,), $map);` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; trailing comma in a parenthesized list |

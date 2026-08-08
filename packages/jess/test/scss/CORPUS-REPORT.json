@@ -1,11 +1,11 @@
 {
-  "generated": "2026-08-08T20:25:37.074Z",
+  "generated": "2026-08-08T22:57:19.893Z",
   "bootstrap": "5.3.8",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
   "parse": {
     "total": 92,
-    "pass": 35,
+    "pass": 40,
     "blockerCounts": [
       {
         "name": "interpolation inside a var() name",
@@ -13,23 +13,19 @@
       },
       {
         "name": "interpolation as a standalone selector compound",
-        "files": 40
+        "files": 39
       },
       {
         "name": "bare-truthy @if condition",
-        "files": 26
-      },
-      {
-        "name": "@include with a trailing content block",
-        "files": 20
+        "files": 24
       },
       {
         "name": "leading combinator (implicit &)",
         "files": 19
       },
       {
-        "name": "@content",
-        "files": 5
+        "name": "@include with a trailing content block",
+        "files": 18
       },
       {
         "name": "@warn / @error / @debug",
@@ -38,6 +34,10 @@
       {
         "name": "multiline nested paren list",
         "files": 4
+      },
+      {
+        "name": "@content",
+        "files": 3
       },
       {
         "name": "interpolated pseudo-element",
@@ -160,8 +160,8 @@
       {
         "file": "_containers.scss",
         "outcome": "fail",
-        "at": "19:65",
-        "source": "@include media-breakpoint-up($breakpoint, $grid-breakpoints) {",
+        "at": "29:10",
+        "source": ".container#{breakpoint-infix($name, $grid-breakpoints)} {",
         "blockers": [
           "bare-truthy @if condition",
           "@include with a trailing content block"
@@ -277,8 +277,8 @@
       {
         "file": "_navbar.scss",
         "outcome": "fail",
-        "at": "8:55",
-        "source": "--#{$prefix}navbar-padding-x: #{if($navbar-padding-x == null, 0, $navbar-padding-x)};",
+        "at": "35:15",
+        "source": "padding: var(--#{$prefix}navbar-padding-y) var(--#{$prefix}navbar-padding-x);",
         "blockers": [
           "bare-truthy @if condition",
           "interpolation as a standalone selector compound",
@@ -496,13 +496,7 @@
       },
       {
         "file": "forms/_form-control.scss",
-        "outcome": "fail",
-        "at": "59:40",
-        "source": "height: if(unit($input-line-height) == \"\", $input-line-height * 1em, $input-line-height);",
-        "blockers": [
-          "bare-truthy @if condition"
-        ],
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "forms/_form-range.scss",
@@ -584,13 +578,7 @@
       },
       {
         "file": "helpers/_position.scss",
-        "outcome": "fail",
-        "at": "21:44",
-        "source": "@include media-breakpoint-up($breakpoint) {",
-        "blockers": [
-          "@include with a trailing content block"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "helpers/_ratio.scss",
@@ -674,12 +662,12 @@
       {
         "file": "mixins/_buttons.scss",
         "outcome": "fail",
-        "at": "11:2",
-        "source": "$hover-background: if($color == $color-contrast-light, shade-color($background, $btn-hover-bg-shade-amount), tint-color(",
+        "at": "67:14",
+        "source": "@include rfs($font-size, --#{$prefix}btn-font-size);",
         "blockers": [
           "interpolation as a standalone selector compound"
         ],
-        "detail": "Missing closing parenthesis."
+        "detail": "Missing closing brace."
       },
       {
         "file": "mixins/_caret.scss",
@@ -691,24 +679,11 @@
       },
       {
         "file": "mixins/_color-mode.scss",
-        "outcome": "fail",
-        "at": "5:6",
-        "source": "@media (prefers-color-scheme: $mode) {",
-        "blockers": [
-          "@content"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "mixins/_color-scheme.scss",
-        "outcome": "fail",
-        "at": "3:2",
-        "source": "@media (prefers-color-scheme: #{$name}) {",
-        "blockers": [
-          "interpolation as a standalone selector compound",
-          "@content"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "mixins/_container.scss",
@@ -831,8 +806,8 @@
       {
         "file": "mixins/_utilities.scss",
         "outcome": "fail",
-        "at": "21:40",
-        "source": "$property-class: if($property-class == null, \"\", $property-class);",
+        "at": "29:65",
+        "source": "$infix: if($property-class == \"\" and str-slice($infix, 1, 1) == \"-\", str-slice($infix, 2), $infix);",
         "blockers": [
           "bare-truthy @if condition",
           "interpolation as a standalone selector compound",
@@ -846,14 +821,7 @@
       },
       {
         "file": "utilities/_api.scss",
-        "outcome": "fail",
-        "at": "5:44",
-        "source": "@include media-breakpoint-up($breakpoint) {",
-        "blockers": [
-          "bare-truthy @if condition",
-          "@include with a trailing content block"
-        ],
-        "detail": "Missing closing brace."
+        "outcome": "pass"
       },
       {
         "file": "vendor/_rfs.scss",

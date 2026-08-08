@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-08T22:40:28.095Z",
+  "generated": "2026-08-08T23:00:17.493Z",
   "foundation": "6.9.0",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
@@ -9,38 +9,33 @@
     "blockerCounts": [
       {
         "name": "keyword argument ($name: v) in a function-call argument list",
-        "primary": 25,
+        "primary": 20,
         "files": 32
       },
       {
-        "name": "trailing comma in a parenthesized list",
-        "primary": 9,
-        "files": 12
-      },
-      {
         "name": "@error / @warn / @debug",
-        "primary": 3,
+        "primary": 8,
         "files": 16
       },
       {
-        "name": "comparison (== / !=) inside a function-call argument list",
-        "primary": 2,
-        "files": 11
+        "name": "trailing comma in a parenthesized list",
+        "primary": 4,
+        "files": 12
       },
       {
         "name": "interpolation inside a pseudo-class argument list",
-        "primary": 1,
+        "primary": 3,
         "files": 5
+      },
+      {
+        "name": "comparison (== / !=) inside a function-call argument list",
+        "primary": 1,
+        "files": 11
       },
       {
         "name": "@while",
         "primary": 1,
         "files": 2
-      },
-      {
-        "name": "chained unary `not not`",
-        "primary": 1,
-        "files": 1
       },
       {
         "name": "nested selector list `type:pseudo, .class`",
@@ -51,7 +46,19 @@
         "name": "@at-root with a selector prelude",
         "primary": 0,
         "files": 1
+      },
+      {
+        "name": "chained unary `not not`",
+        "primary": 0,
+        "files": 1
       }
+    ],
+    "unattributed": [
+      "_vendor/sassy-lists/stylesheets/functions/_contain.scss",
+      "scss/components/_dropdown-menu.scss",
+      "scss/components/_menu.scss",
+      "scss/components/_reveal.scss",
+      "scss/util/_math.scss"
     ],
     "results": [
       {
@@ -60,7 +67,6 @@
         "blockers": [
           "chained unary `not not`"
         ],
-        "primaryBlocker": "chained unary `not not`",
         "detail": "SCSS condition cannot preserve Expression."
       },
       {
@@ -214,7 +220,7 @@
           "@error / @warn / @debug",
           "trailing comma in a parenthesized list"
         ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
+        "primaryBlocker": "@error / @warn / @debug",
         "detail": "Missing closing brace."
       },
       {
@@ -243,7 +249,7 @@
           "comparison (== / !=) inside a function-call argument list",
           "interpolation inside a pseudo-class argument list"
         ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "primaryBlocker": "interpolation inside a pseudo-class argument list",
         "detail": "SCSS parser error. Expected: \"(\", \"[\", \"\\\"\", \"'\", BlockCommentToken, /(?:[^()\\[\\]'\"#\\/]|#(?!\\{)|\\/(?!\\*))+/."
       },
       {
@@ -268,7 +274,7 @@
           "keyword argument ($name: v) in a function-call argument list",
           "trailing comma in a parenthesized list"
         ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
         "detail": "Missing closing parenthesis."
       },
       {
@@ -292,7 +298,6 @@
           "keyword argument ($name: v) in a function-call argument list",
           "@error / @warn / @debug"
         ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
         "detail": "Missing closing brace."
       },
       {
@@ -332,7 +337,6 @@
           "keyword argument ($name: v) in a function-call argument list",
           "@error / @warn / @debug"
         ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
         "detail": "Missing closing brace."
       },
       {
@@ -347,7 +351,7 @@
           "trailing comma in a parenthesized list",
           "@at-root with a selector prelude"
         ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
+        "primaryBlocker": "@error / @warn / @debug",
         "detail": "Missing closing brace."
       },
       {
@@ -374,7 +378,6 @@
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list"
         ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
         "detail": "Missing closing brace."
       },
       {
@@ -508,7 +511,7 @@
           "trailing comma in a parenthesized list",
           "interpolation inside a pseudo-class argument list"
         ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "primaryBlocker": "trailing comma in a parenthesized list",
         "detail": "Missing closing brace."
       },
       {
@@ -543,7 +546,7 @@
           "keyword argument ($name: v) in a function-call argument list",
           "interpolation inside a pseudo-class argument list"
         ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
+        "primaryBlocker": "interpolation inside a pseudo-class argument list",
         "detail": "SCSS parser error. Expected: \"(\", \"[\", \"\\\"\", \"'\", BlockCommentToken, /(?:[^()\\[\\]'\"#\\/]|#(?!\\{)|\\/(?!\\*))+/."
       },
       {
@@ -672,7 +675,7 @@
           "keyword argument ($name: v) in a function-call argument list",
           "trailing comma in a parenthesized list"
         ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
+        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
         "detail": "Missing closing parenthesis."
       },
       {
@@ -689,7 +692,7 @@
           "@error / @warn / @debug",
           "trailing comma in a parenthesized list"
         ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
+        "primaryBlocker": "@error / @warn / @debug",
         "detail": "Missing closing brace."
       },
       {
@@ -714,7 +717,7 @@
           "@error / @warn / @debug",
           "trailing comma in a parenthesized list"
         ],
-        "primaryBlocker": "trailing comma in a parenthesized list",
+        "primaryBlocker": "@error / @warn / @debug",
         "detail": "Missing closing brace."
       },
       {
@@ -751,7 +754,7 @@
           "@error / @warn / @debug",
           "trailing comma in a parenthesized list"
         ],
-        "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
+        "primaryBlocker": "@error / @warn / @debug",
         "detail": "Missing closing brace."
       },
       {
@@ -762,7 +765,6 @@
           "@error / @warn / @debug",
           "@while"
         ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
         "detail": "SCSS grammar produced a non-value child."
       },
       {
