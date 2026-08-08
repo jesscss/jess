@@ -85,6 +85,38 @@ The same audit was run against three more libraries — **bourbon**, **foundatio
 
 Both spellings are unaffected here, and both behave identically in Sass and Sass+. If you maintain a Sass library that *does* rely on `""` or `()` being truthy in a bare `@if`, this is the change that affects you, and the fix is to write the comparison explicitly — which is portable to both.
 
+## Unexpressible units: same rule, different spelling
+
+**Sass:** an operation whose unit CSS cannot name is preserved as `calc(…)`, *normalized* — coefficients folded into one number, units rewritten as `1<unit>` factors.
+**Sass+:** the same value, preserved as `calc(…)` in the **operands you wrote**.
+
+The *rule* is identical, and that is the important half: `1px * 2px` is an area, CSS has no area unit, and both engines refuse to invent one. Both still do the arithmetic, so a chain that cancels back to a real unit lands there in both — `(1px * 1px / 1px)` is `1px` and `(8cats * 9dogs / 4cats)` is `18dogs` in Sass and Sass+ alike.
+
+Only the bytes inside the `calc(…)` differ:
+
+| expression | Sass | Sass+ |
+| --- | --- | --- |
+| `1px * 2px` | `calc(2px * 1px)` | `calc(1px * 2px)` |
+| `(1.4em * 14px) * 10cm` | `calc(196em * 1px * 1cm)` | `calc(1.4em * 14px * 10cm)` |
+| `10% * 1px` | `calc(10% * 1px)` | `calc(10% * 1px)` |
+
+### Why
+
+The principle is that **a preserved expression is preserved, not rewritten**.
+
+Preservation exists here because the engine cannot name the result — it is handing the expression back to the browser. An expression handed back should be the one that was written, so the output is traceable to its source line. Sass's normalization is not wrong arithmetically, but folding `1.4em * 14px * 10cm` into `196em * 1px * 1cm` discards every operand the author typed, and there is no rule that says why a value the engine declined to name should nevertheless be rewritten.
+
+The third row shows the divergence is only about rewriting: where there is nothing to normalize, the two agree byte-for-byte.
+
+### Measured before changing
+
+Measured on **dart-sass 1.101.0** against Sass+ at `c906c2f9e`, the commit that landed this rule:
+
+- `1px * 2px`, `(1.4em * 14px) * 10cm`, `10% * 1px` — the three rows above.
+- `(1px * 1px / 1px)` → `1px`, `(8cats * 9dogs / 4cats)` → `18dogs`, `(2px / 1px)` → `2` — identical in both, so the cancelling chains are unaffected. (Sass deprecates `/` for division outside `calc()` but still computes it, and Sass's own `math.div` spelling gives the same answers.)
+
+One thing Sass+ adds that Sass does not: an unexpressible result also **warns** (`eval/unexpressible-unit`), and the `unitMode` option chooses between preserving it (default), folding it to a dimensionally false answer, or rejecting it. Sass has no equivalent lever and does not warn.
+
 ## See also
 
 - [Sass+ Strictness](./stricter-than-sass) — invalid CSS that Sass+ rejects at parse time

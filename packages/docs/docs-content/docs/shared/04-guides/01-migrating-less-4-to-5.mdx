@@ -265,6 +265,9 @@ The bar for changing an evaluation result is high. Less 5 follows Less 4 unless 
 | `b > a` | `false` | **`true`** | Relational is now *trichotomous*. Less 4 answered `false` in **both** directions, so an author could not tell "not greater" from "never comparable". |
 | `1px > red` | `false` | **error** | No common ground. Ordering a length against a keyword is an author mistake, and Less 4 answered it meaninglessly. |
 | `a = "a"` | `false` | **`true`** | A value equals its own spelling. Less 4 separated text by quoting while coercing numbers — the reverse of Sass, and explicable as neither. |
+| `(2px / 1px)` | `2px` | **`2`** | Like units cancel. A ratio of two lengths *is* a number; Less 4 re-attached a unit the value no longer carried. |
+| `(1px * 2px)` | `2px` | **`calc(1px * 2px)`** | An area has no CSS unit. Less 4 kept the left operand's unit, which is dimensionally false. See *Unit algebra* below. |
+| `(1 / 2px)` | `0.5px` | **`calc(1 / 2px)`** | There is no `px⁻¹` in CSS. Same rule as the row above. |
 | `when (~"true")` | truthy | **falsy** | See *Truthiness* below — the one row where Less 4 promoted a **string** to truthy. |
 | `not(1 > 2)`, `and(…)`, `or(…)` | *parse error* | **`true`** | The logical operators are real operators in Less 5, not call-shaped syntax. |
 | `foo(bar=@v)` | `foo(bar=50)` | **`foo(bar=@v)`** | A `name=value` argument is verbatim bytes. The IE-filter form is dropped in Less 5, and resolving inside it had no purpose. |
@@ -287,6 +290,73 @@ Note this is **not** the Jess / Sass+ rule, where a non-empty string *is* truthy
 Only the last row moves, and it moves *toward* the rule. `~"true"` is a string, and strings are not truthy in Less — `~"a"` is falsy in both versions. Less 4 made an exception for this one string because it re-parsed the escaped bytes back through evaluation and handed the guard the keyword `true`. Its **contents** decided the outcome, which is exactly what the rule says must not happen. Less 5 removes the exception.
 
 If you were relying on `when (~"true")`, write `when (true)`.
+
+### Unit algebra: a unit CSS cannot spell changes the *spelling*, not the arithmetic
+
+Multiplying or dividing two united operands can produce a unit CSS has no name
+for — `1px * 2px` is an area, `1 / 2px` is a reciprocal length. Less 4 invented a
+unit for these, keeping the left operand's (`1px * 2px` → `2px`). That answer
+looks plausible and is dimensionally false.
+
+Less 5 keeps the number and the units, and only changes how the result is
+*written*: an unexpressible result is composed as `calc(…)`, in the operand order
+you wrote. **The arithmetic always happens.** That is what lets a chain recover
+the moment a later operation cancels back to a real unit:
+
+| expression | Less 4 | Less 5 |
+| --- | --- | --- |
+| `(2px / 1px)` | `2px` | **`2`** |
+| `(1px * 2px)` | `2px` | **`calc(1px * 2px)`** |
+| `(1 / 2px)` | `0.5px` | **`calc(1 / 2px)`** |
+| `(10% * 1px)` | `10%` | **`calc(10% * 1px)`** |
+| `(1px * 1px / 1px)` | `1px` | `1px` |
+| `(8cats * 9dogs / 4cats)` | `18dogs` | `18dogs` |
+| `unit((1px * 4em / 2cm))` | `2` | `2` |
+
+The last three rows are the point: they are **unchanged**. `1px * 1px` has no CSS
+spelling, but it is still a computed value carrying `1` and the units `px·px`, so
+dividing by `1px` cancels back to an honest `1px`. Only a result that is
+*emitted* while still unexpressible gets the `calc(…)` spelling.
+
+An unexpressible result also warns (`eval/unexpressible-unit`), and the
+`unitMode` option decides what happens to it:
+
+| `unitMode` | `(1 / 2px)` | |
+| --- | --- | --- |
+| `loose` | `0.5px` | Less 4's answer, **plus a warning** |
+| **`preserve`** (default) | `calc(1 / 2px)` | **plus a warning** |
+| `strict` | rejected | set by the `strict` preset |
+
+No mode is silent. Silent preservation is the worst outcome — the stylesheet
+looks fine and you never learn the expression was meaningless.
+
+The canonical statement of this rule is §4.7 of
+`docs/design/RESOLVED-SEMANTICS-AND-NAMING.md` in the repository.
+
+### A guard *selects*; it does not assert
+
+The `1px > red` row above is about a **value**: `@x: (1px > red)` has no answer,
+so it errors. In a **guard** the same comparison does not error — the definition
+simply does not match, and overload resolution moves on:
+
+```less
+.generic(@a, @b) when (@a < @b) { r: less; }
+.generic(@a, @b) when (@a > @b) { r: greater; }
+.generic(@a, @b)                { r: fallback; }
+
+a { .generic(1, true); }   // r: fallback — neither guard matches, nothing errors
+```
+
+This is **unchanged from Less 4**, which answers `r: fallback` here as well. It
+is called out because the value-position rows above might otherwise suggest a
+guard would now fail the compile. It does not: a guard asks *does this definition
+apply?*, and "these operands share no ground" is a perfectly good "no".
+
+This is not a mode the evaluator switches on. The two positions are lowered to
+two different nodes when the file is parsed — a comparison in a value, a *match*
+in a guard — over one shared ground computation and one shared answer table, so
+the two positions cannot drift apart. See §4.2a of
+`docs/design/RESOLVED-SEMANTICS-AND-NAMING.md`.
 
 ### Unaffected, and worth knowing
 
