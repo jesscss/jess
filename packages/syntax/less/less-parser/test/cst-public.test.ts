@@ -65,7 +65,7 @@ describe('@jesscss/less-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
-    expect(result.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
+    expect(result.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
     expectNoModeLabels(result.tree);
   });
 
@@ -119,10 +119,10 @@ describe('@jesscss/less-parser/cst', () => {
     expect(expanded.errors).toHaveLength(0);
     expect(collapsed.errors).toHaveLength(0);
     expect([...stats(expanded.tree).types]).not.toContain('Unknown');
-    expect(stats(expanded.tree).types).toContain('VarDeclaration');
+    expect(stats(expanded.tree).types).toContain('VariableDeclaration');
     expect(stats(collapsed.tree).grammarTypes.get('Reference') ?? 0).toBeLessThanOrEqual(stats(expanded.tree).grammarTypes.get('Reference') ?? 0);
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
-    expect(collapsed.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
+    expect(collapsed.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
     expectNoModeLabels(expanded.tree);
     expectNoModeLabels(collapsed.tree);
   });
@@ -355,8 +355,8 @@ describe('Less direct-AST closure CST contract', () => {
    * one atomic pass; it must not introduce a partial AST-producing grammar.
    */
   const cases: readonly [label: string, source: string, grammarType: string][] = [
-    ['top-level variable declaration', '@color: red;', 'VarDeclaration'],
-    ['detached-ruleset binding', '@theme: { color: red; };', 'VarDeclaration'],
+    ['top-level variable declaration', '@color: red;', 'VariableDeclaration'],
+    ['detached-ruleset binding', '@theme: { color: red; };', 'VariableDeclaration'],
     ['top-level detached-ruleset call', '@rules();', 'VarCall'],
     ['nested detached-ruleset call', '.a { @rules(); }', 'VarCall'],
     ['query at-rule block', '@media (min-width: 1px) { .a { color: red; } }', 'QueryAtRuleBlock'],
@@ -412,7 +412,21 @@ describe('Less direct-AST closure CST contract', () => {
       ['.inline'],
       ['.sibling']
     ]);
-    expect(findNodes(result.tree, 'ExtendTargetComplex').map(leafValues)).toEqual([
+
+    /*
+     * `Complex`, `ExtendComplex` and `ExtendTargetComplex` all reduce with
+     * `selectorBranchOf`, so they share the one label their node actually has.
+     * The extend target is still pinned exactly — as the branch owned by the
+     * `ExtendTarget` production, not by being the only node with a name.
+     */
+    expect(findNodes(result.tree, 'ComplexSelector').map(leafValues)).toEqual([
+      ['.inline'],
+      ['.target'],
+      ['.sibling']
+    ]);
+    const extendTargets = findNodes(result.tree, 'ExtendTarget');
+    expect(extendTargets).toHaveLength(1);
+    expect(findNodes(extendTargets[0]!, 'ComplexSelector').map(leafValues)).toEqual([
       ['.target']
     ]);
   });

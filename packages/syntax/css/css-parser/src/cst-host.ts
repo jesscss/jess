@@ -79,7 +79,6 @@ const TYPE_NAMES: Record<string, CssCstType> = {
   Url: 'Url',
   Call: 'Function',
   Operation: 'Operation',
-  Paren: 'SimpleBlock',
   Quoted: 'String',
   QueryCondition: 'QueryCondition',
   QueryInParens: 'QueryInParens',
@@ -99,11 +98,13 @@ const TYPE_NAMES: Record<string, CssCstType> = {
  * name at all — it survives only as a legacy `core/src/tree/` type — so no CST
  * node ever presents it.
  *
- * `NamedColor` is a Less-only node; css, scss and jess emit none, so collapse
- * mode is a no-op for them. It is also a no-op under parseman 0.44, whose
- * fused grammar only offers the hook on a node that carries no reducer.
+ * `Color` is the Less named-colour production (labelled `NamedColor` until the
+ * §12.4 rename); css, scss and jess reach the same label only through arms that
+ * carry a reducer, so collapse mode is a no-op for them. It is also a no-op
+ * under parseman 0.44, whose fused grammar only offers the hook on a node that
+ * carries no reducer.
  */
-const COLLAPSIBLE_GRAMMAR_TYPES = new Set(['NamedColor']);
+const COLLAPSIBLE_GRAMMAR_TYPES = new Set(['Color']);
 
 function publicTypeName(grammarType: string): CssCstType {
   /*

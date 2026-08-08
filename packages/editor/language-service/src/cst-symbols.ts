@@ -25,7 +25,7 @@ import type { TextDocument } from 'vscode-languageserver-textdocument';
 import { buildCstIndex, cstChildrenOf, type CstIndexEntry } from './cst-analysis.js';
 
 const VAR_REF_TYPES = new Set(['Reference', 'VariableReference']);
-const VAR_DECL_TYPES = new Set(['VarDeclaration', 'VariableDeclaration']);
+const VAR_DECL_TYPES = new Set(['VariableDeclaration']);
 
 // A mixin CALL site: Less/Jess selector + `MixinCall` / SCSS `@include foo`.
 const MIXIN_REF_TYPES = new Set(['MixinCall']);

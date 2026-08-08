@@ -52,8 +52,8 @@ const SEMANTIC_TOKEN_TYPE_INDEX = new Map<SemanticTokenType, number>(SEMANTIC_TO
 
 const NUMBER_TYPES = new Set(['Num', 'Dimension', 'Color']);
 const VARIABLE_REFERENCE_TYPES = new Set(['Reference', 'VariableReference']);
-const VARIABLE_DECLARATION_TYPES = new Set(['VarDeclaration', 'VariableDeclaration']);
-const STATIC_SIMPLE_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector', 'Simple']);
+const VARIABLE_DECLARATION_TYPES = new Set(['VariableDeclaration']);
+const STATIC_SIMPLE_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector', 'Simple', 'SimpleSelector']);
 
 /*
  * Genuine at-rule grammarTypes whose leading `@keyword` is a `namespace` token.

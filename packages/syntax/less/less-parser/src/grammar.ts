@@ -2995,7 +2995,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     (children, _fields, span) => `@${requireSupportedVariableName(children[1], span.start, span.end)}`
   );
   const VarDeclaration = node(
-    'VarDeclaration',
+    'VariableDeclaration',
     sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), declarationEnd),
     (children, _fields, span) => {
       const name = requireTerminalText(children[0]).slice(1);
@@ -3007,7 +3007,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     }
   );
   const ValueBlockDeclaration = node(
-    'VarDeclaration',
+    'VariableDeclaration',
     sequence(
       variableName,
       literal(':'),
@@ -3031,7 +3031,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     children => keyword(requireToken(children[0]).value)
   );
   const NamedColor = node(
-    'NamedColor',
+    'Color',
     g.NamedColorToken,
     children => color(requireToken(children[0]).value)
   );
@@ -3379,7 +3379,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // parentheses, while the inner list remains indexable by `each()` and list
   // functions.  This is grammar construction, not a raw source-value escape.
   const EscapedParen = node(
-    'EscapedParen',
+    'Block',
     noTrivia(sequence(literal('~('), g.ValueList, literal(')'))),
     (children, _fields, span) => withSourceSpan(
       block(requireValueSlot(children[1]), 'paren', true),
@@ -3390,7 +3390,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // have their own productions above; do not widen this value position into a
   // permissive raw list.
   const Paren = node(
-    'Paren',
+    'Block',
     // Math itself is deliberately no-trivia so space-list and glued-sign rules
     // stay exact. Parentheses own their boundary gaps, including Less `//`
     // comments before the first or after the final operand.
@@ -4224,7 +4224,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // paths, dynamic names, and call-level modifiers have no approved binding
   // contract in this direct slice.
   const FlatMixinCall = node(
-    'FlatMixinCall',
+    'MixinCall',
     sequence(
       mixinName,
       literal('('),
@@ -4239,7 +4239,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // are not iterable values.  The resulting `path` is the ordinary MixinCall
   // path already consumed by `forItemsFromMixinCall` / `expandCall`.
   const NamespacedMixinCall = node(
-    'NamespacedMixinCall',
+    'MixinCall',
     sequence(
       mixinName,
       oneOrMore(MixinPathTail),
@@ -6095,7 +6095,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     }
   );
   const Complex = node(
-    'Complex',
+    'ComplexSelector',
     sequence(
       g.Compound,
       many(sequence(not(whenGuardAhead), g.ComplexTail))
@@ -6133,12 +6133,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     children => children.find(isSelectorBranch)!
   );
   const Selector = node(
-    'Selector',
+    'SelectorList',
     parser({ trivia: outerSelectorTrivia }, sequence(g.Complex, many(g.SelectorTail))),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
   const RelativeSelector = node(
-    'RelativeSelector',
+    'SelectorList',
     parser({ trivia: outerSelectorTrivia }, sequence(g.RelativeComplex, many(g.SelectorTail))),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
@@ -6157,7 +6157,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     combinatorTailReducer
   );
   const ExtendComplex = node(
-    'ExtendComplex',
+    'ComplexSelector',
     sequence(
       InlineExtendSubjectCompound,
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), InlineExtendSubjectComplexTail))
@@ -6176,7 +6176,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     combinatorTailReducer
   );
   const ExtendTargetComplex = node(
-    'ExtendTargetComplex',
+    'ComplexSelector',
     sequence(
       // An extend target can carry a typed selector interpolation, unlike its
       // inline subject. Keep `.@{name}` in the AST rather than rescanning it.

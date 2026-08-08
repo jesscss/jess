@@ -1588,7 +1588,7 @@ const cssFactory = (g: GrammarSelf) => {
    * nested-rule serialization.
    */
   const NestingSelector = node(
-    'NestingSelector',
+    'SimpleSelector',
     literal('&'),
     () => simpleSelector('&')
   );
@@ -1739,7 +1739,7 @@ const cssFactory = (g: GrammarSelf) => {
     children => any(tokenText(children[0]))
   );
   const Percentage = node(
-    'Percentage',
+    'Dimension',
     noTrivia(sequence(
       numberValue,
       literal('%')
@@ -1867,7 +1867,7 @@ const cssFactory = (g: GrammarSelf) => {
    * preserve math precedence in the AST.
    */
   const CalcParen = node(
-    'CalcParen',
+    'Block',
     noTrivia(sequence(
       literal('('),
       optional(cssValueTrivia),
@@ -2354,7 +2354,7 @@ const cssFactory = (g: GrammarSelf) => {
    * `a{color:()}` instead of rejecting it. Do not copy that call here.
    */
   const SquareValue = node(
-    'SquareValue',
+    'Block',
     sequence(
       literal('['),
       optional(cssValueTrivia),
@@ -3955,7 +3955,7 @@ const cssFactory = (g: GrammarSelf) => {
     ), rawChildren), span)
   );
   const keyframeSelector = node(
-    'keyframeSelector',
+    'SimpleSelector',
     choice(
       keyframeEndpoint,
       g.Percentage

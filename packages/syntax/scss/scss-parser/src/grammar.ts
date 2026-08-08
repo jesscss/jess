@@ -1428,7 +1428,7 @@ const scssFactory = (g: ScssInputRules) => {
     )
   );
   const SassInterpolation = node<Interpolation>(
-    'SassInterpolation',
+    'Interpolation',
     sequence(
       literal('#{'),
       g.Value,
@@ -1654,7 +1654,7 @@ const scssFactory = (g: ScssInputRules) => {
    * rejected exactly as hard as `(/* c *\/ c)` was.
    */
   const Paren = node<ValueNode>(
-    'Paren',
+    'Block',
     choice(
       noTrivia(sequence(
         literal('('),
@@ -1687,7 +1687,7 @@ const scssFactory = (g: ScssInputRules) => {
    * index reaches the interior. The paren sibling reads it the same way.
    */
   const Square = node<ValueNode>(
-    'Square',
+    'Block',
     noTrivia(sequence(
       literal('['),
       optional(valueTrivia),
@@ -1708,7 +1708,7 @@ const scssFactory = (g: ScssInputRules) => {
    * to a typed Collection entry, preserving the authored key value node.
    */
   const MapEntry = node<CollectionEntry>(
-    'MapEntry',
+    'CollectionEntry',
     noTrivia(sequence(
       g.MathTopSum,
       optional(valueTrivia),
@@ -1731,7 +1731,7 @@ const scssFactory = (g: ScssInputRules) => {
    * list/arithmetic form.
    */
   const Map = node<Collection>(
-    'Map',
+    'Collection',
     choice(
       noTrivia(sequence(
         literal('('),
@@ -4745,7 +4745,7 @@ const scssFactory = (g: ScssInputRules) => {
    * follow-up families rather than being flattened into a string fallback.
    */
   const Simple = node<SimpleSelector>(
-    'Simple',
+    'SimpleSelector',
     g.SimpleSelectorToken,
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -4794,7 +4794,7 @@ const scssFactory = (g: ScssInputRules) => {
    * typed interpolation model and are deliberately excluded.
    */
   const Placeholder = node<SimpleSelector>(
-    'Placeholder',
+    'SimpleSelector',
     regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/),
     children => simpleSelector(requireToken(children[0]).value)
   );

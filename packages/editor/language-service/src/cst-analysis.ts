@@ -264,7 +264,7 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
     } else if (ATRULE_TYPES.has(gt)) {
       const name = sliceOf(node).split(/[{;]/)[0]!.trim();
       add(name || 'at-rule', SymbolKind.Namespace, node, null, true);
-    } else if (gt === 'VarDeclaration' || gt === 'VariableDeclaration') {
+    } else if (gt === 'VariableDeclaration') {
       const name = sliceOf(node).split(':')[0]!.trim();
       add(name || 'variable', SymbolKind.Variable, node, null, false);
     } else if (isMixinDefinitionNode(node)) {

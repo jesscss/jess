@@ -127,7 +127,7 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(grammarTypes.get('UseRule')).toBe(1);
     expect(grammarTypes.get('ForwardRule')).toBe(1);
     expect(grammarTypes.get('AttributeSelector')).toBeGreaterThan(1);
-    expect(grammarTypes.get('SassInterpolation')).toBeGreaterThan(0);
+    expect(grammarTypes.get('Interpolation')).toBeGreaterThan(0);
     expect(grammarTypes.get('PseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('SelectorOnlyPseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('IfBodyRule')).toBeGreaterThan(0);

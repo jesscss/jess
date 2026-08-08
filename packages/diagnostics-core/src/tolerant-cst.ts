@@ -310,10 +310,10 @@ const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
 const IMPORT_RULE_TYPES = new Set(['ImportStatement']);
 const MODULE_LOAD_TYPES = new Set(['UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport']);
 const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'ImportTarget', 'Url']);
-const EXTEND_TARGET_TYPES = new Set(['ExtendTargetComplex', 'Selector', 'PseudoSelectorComplex']);
+const EXTEND_TARGET_TYPES = new Set(['ComplexSelector', 'Selector', 'PseudoSelectorComplex']);
 const EXTERNAL_SOURCE_TYPES = new Set(['ImportStatement', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
-const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'Map', 'ValueBlock']);
+const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'ValueBlock']);
 const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
 const ANB_PSEUDO_CLASSES = new Set([
@@ -340,7 +340,7 @@ const CLASS_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector']);
 const TYPE_SELECTOR_TYPES = new Set(['BasicSelector', 'TypeSelector']);
 const ATTRIBUTE_SELECTOR_TYPES = new Set(['AttributeSelector']);
 const SELECTOR_LIST_TYPES = new Set(['SelectorList', 'TopLevelSelectorList']);
-const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector', 'RelativeSelector']);
+const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector']);
 const RULE_SELECTOR_TYPES = new Set(['SelectorList', 'TopLevelSelectorList', 'SelectorListWithExtends', 'Selector']);
 const RULE_SELECTOR_BRANCH_TYPES = new Set([...SELECTOR_BRANCH_TYPES, 'SelectorBranch', 'Complex']);
 const LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS = new Set(['before', 'after', 'first-line', 'first-letter']);
@@ -2916,7 +2916,7 @@ const STATIC_VALUE_WRAPPER_TYPES = new Set([
   'TopSum',
   'FunctionScalarArgument',
   'Keyword',
-  'NamedColor',
+  'Color',
   'Number'
 ]);
 const GUARD_COMPARISON_OPERATORS = new Set(['=', '==', '!=', '<', '>', '<=', '>=', '=<', '=>']);
@@ -2927,7 +2927,6 @@ const DYNAMIC_GUARD_VALUE_TYPES = new Set([
   'Call',
   'GuardCall',
   'Interpolation',
-  'SassInterpolation',
   'VariableInterpolation'
 ]);
 
@@ -3287,7 +3286,7 @@ function variableDeclarationOf(source: string, node: CssCstNode, language: JessL
   if (language === 'css') {
     return null;
   }
-  if (node.grammarType !== 'VarDeclaration' && node.grammarType !== 'VariableDeclaration' && node.grammarType !== 'ValueBlockDeclaration') {
+  if (node.grammarType !== 'VariableDeclaration' && node.grammarType !== 'ValueBlockDeclaration') {
     return null;
   }
   const nameNode = firstChildNodeOf(node, 'VariableName');
@@ -3600,11 +3599,11 @@ function variableDeclarationIsMapLike(node: CssCstNode, language: JessLanguage):
     return false;
   }
   if (language === 'less') {
-    return node.grammarType === 'VarDeclaration' && firstChildNodeOf(node, 'ValueBlock') !== undefined;
+    return node.grammarType === 'VariableDeclaration' && firstChildNodeOf(node, 'ValueBlock') !== undefined;
   }
   if (language === 'scss') {
     const value = firstChildNodeOf(node, 'Value');
-    return node.grammarType === 'VariableDeclaration' && value !== undefined && nodeContainsExactDescendant(value, 'Map');
+    return node.grammarType === 'VariableDeclaration' && value !== undefined && nodeContainsExactDescendant(value, 'Collection');
   }
   const value = firstChildNodeMatching(node, MAP_LIKE_VALUE_TYPES);
   return value !== undefined && nodeContainsExactDescendant(value, 'Collection');
@@ -6217,7 +6216,7 @@ export function cstLintDiagnostics(
         if (!isCstNode(child) || !KEYFRAME_BLOCK_TYPES.has(child.grammarType)) {
           continue;
         }
-        const selector = firstChildNodeOf(child, 'keyframeSelector');
+        const selector = firstChildNodeOf(child, 'SimpleSelector');
         if (!selector) {
           continue;
         }
