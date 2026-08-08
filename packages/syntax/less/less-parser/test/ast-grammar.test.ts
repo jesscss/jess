@@ -7,6 +7,7 @@ import { lessGrammar } from '../src/grammar.js';
 import {
   LessBareVariableInterpolationError,
   LessDynamicCharsetError,
+  LessImportPostludeError,
   LessInlineJavaScriptError,
   LessUnsupportedMixinNameError,
   LessUnsupportedVariableNameError
@@ -1354,7 +1355,7 @@ describe('Less AST grammar facts', () => {
           ]
         },
         {
-          type: 'ImportAtRule',
+          type: 'StyleImport',
           name: '@import',
           options: null,
           target: {
@@ -1365,10 +1366,12 @@ describe('Less AST grammar facts', () => {
             escaped: false
           },
           alias: null,
-          tail: null
+          mode: 'import',
+          namespace: null,
+          forward: false
         },
         {
-          type: 'ImportAtRule',
+          type: 'StyleImport',
           name: '@-import',
           options: null,
           target: {
@@ -1379,7 +1382,9 @@ describe('Less AST grammar facts', () => {
             escaped: false
           },
           alias: null,
-          tail: null
+          mode: 'import',
+          namespace: null,
+          forward: false
         }
       ]
     });
@@ -3089,9 +3094,21 @@ describe('Less AST grammar facts', () => {
   });
 
   it('constructs static import options, url targets, and recursively balanced tails directly', () => {
-    const result = run(
+    /*
+     * A media/supports/layer postlude is only legal on the plain-CSS `@import`
+     * form, so the option clause and the balanced tail are now separate facts:
+     * `(less, …)` makes the import compile-time, and a postlude on that form is
+     * a parse error rather than a carried query.
+     */
+    expect(() => run(
       lessGrammar.Document,
       '@import (less, multiple) url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");',
+      { trivia: lessGrammar.whitespace }
+    )).toThrow(LessImportPostludeError);
+
+    const result = run(
+      lessGrammar.Document,
+      '@import (less, multiple) url(theme.less);',
       { trivia: lessGrammar.whitespace }
     );
 
@@ -3102,7 +3119,7 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [
         {
-          type: 'ImportAtRule',
+          type: 'StyleImport',
           name: '@import',
           options: {
             type: 'List',
@@ -3112,11 +3129,39 @@ describe('Less AST grammar facts', () => {
             ],
             sep: ','
           },
-          target: { type: 'Url', value: { type: 'Any', src: 'theme.css' } },
+          target: { type: 'Url', value: { type: 'Any', src: 'theme.less' } },
           alias: null,
-          tail: {
-            type: 'Any',
-            src: 'screen and (min-width: 600px) supports(label: "wide mode")'
+          mode: 'import',
+          namespace: null,
+          forward: false
+        }
+      ]
+    });
+
+    const cssImport = run(
+      lessGrammar.Document,
+      '@import url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");',
+      { trivia: lessGrammar.whitespace }
+    );
+
+    expect(cssImport.ok).toBe(true);
+    expect(cssImport.unconsumedFrom).toBeNull();
+    expect(isStylesheet(cssImport.value)).toBe(true);
+    expect(bare(cssImport.value)).toEqual({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'AtRuleStatement',
+          name: '@import',
+          prelude: {
+            type: 'Sequence',
+            parts: [
+              { type: 'Url', value: { type: 'Any', src: 'theme.css' } },
+              {
+                type: 'Any',
+                src: 'screen and (min-width: 600px) supports(label: "wide mode")'
+              }
+            ]
           }
         }
       ]
@@ -3137,25 +3182,31 @@ describe('Less AST grammar facts', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'var' },
         {
-          type: 'ImportAtRule',
-          target: {
-            type: 'Url',
-            value: { type: 'Quoted', value: '//ha.com/file.css' }
-          },
-          tail: {
-            type: 'Block',
-            delimiter: 'paren',
-            value: {
-              type: 'Operation',
-              operator: ':',
-              left: { type: 'Keyword', src: 'min-width' },
-              right: {
-                type: 'Lookup', kind: 'var',
-                name: 'var',
-                raw: '@var',
-                scope: 'scoped'
+          type: 'AtRuleStatement',
+          name: '@import',
+          prelude: {
+            type: 'Sequence',
+            parts: [
+              {
+                type: 'Url',
+                value: { type: 'Quoted', value: '//ha.com/file.css' }
+              },
+              {
+                type: 'Block',
+                delimiter: 'paren',
+                value: {
+                  type: 'Operation',
+                  operator: ':',
+                  left: { type: 'Keyword', src: 'min-width' },
+                  right: {
+                    type: 'Lookup', kind: 'var',
+                    name: 'var',
+                    raw: '@var',
+                    scope: 'scoped'
+                  }
+                }
               }
-            }
+            ]
           }
         }
       ]
@@ -3165,7 +3216,7 @@ describe('Less AST grammar facts', () => {
   it('constructs quoted Less import interpolation as a structural target fact', () => {
     const result = run(
       lessGrammar.Document,
-      '@import (less, multiple) "theme-@{name}.css" screen;',
+      '@import (less, multiple) "theme-@{name}.css";',
       { trivia: lessGrammar.whitespace }
     );
 
@@ -3175,7 +3226,7 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [
         {
-          type: 'ImportAtRule',
+          type: 'StyleImport',
           options: {
             type: 'List',
             sep: ',',
@@ -3194,17 +3245,26 @@ describe('Less AST grammar facts', () => {
               },
               { lit: '.css"' }
             ]
-          },
-          tail: { type: 'Any', src: 'screen' }
+          }
         }
       ]
     });
+
+    /*
+     * The same target with a `screen` postlude is a compile-time import
+     * carrying a media query, which is rejected outright.
+     */
+    expect(() => run(
+      lessGrammar.Document,
+      '@import (less, multiple) "theme-@{name}.css" screen;',
+      { trivia: lessGrammar.whitespace }
+    )).toThrow(LessImportPostludeError);
   });
 
   it('constructs one complete interpolated import tail as a structural fact', () => {
     const result = run(
       lessGrammar.Document,
-      '@import (reference) "theme.less" @{media};',
+      '@import "theme.css" @{media};',
       { trivia: lessGrammar.whitespace }
     );
 
@@ -3214,30 +3274,38 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [
         {
-          type: 'ImportAtRule',
-          options: {
-            type: 'List',
-            sep: ',',
-            value: [{ type: 'Any', src: 'reference' }]
-          },
-          target: { type: 'Quoted', value: 'theme.less' },
-          tail: {
-            type: 'Interpolation',
+          type: 'AtRuleStatement',
+          name: '@import',
+          prelude: {
+            type: 'Sequence',
             parts: [
+              { type: 'Quoted', value: 'theme.css' },
               {
-                ref: {
-                  type: 'Lookup', kind: 'var',
-                  name: 'media',
-                  raw: '@media',
-                  scope: 'scoped'
-                },
-                unquote: true
+                type: 'Interpolation',
+                parts: [
+                  {
+                    ref: {
+                      type: 'Lookup', kind: 'var',
+                      name: 'media',
+                      raw: '@media',
+                      scope: 'scoped'
+                    },
+                    unquote: true
+                  }
+                ]
               }
             ]
           }
         }
       ]
     });
+
+    // The identical tail on a compile-time import is a parse error.
+    expect(() => run(
+      lessGrammar.Document,
+      '@import (reference) "theme.less" @{media};',
+      { trivia: lessGrammar.whitespace }
+    )).toThrow(LessImportPostludeError);
   });
 
   it('constructs unquoted dynamic URL values and import targets as typed interpolation', () => {
@@ -3288,8 +3356,9 @@ describe('Less AST grammar facts', () => {
           ]
         },
         {
-          type: 'ImportAtRule',
-          target: {
+          type: 'AtRuleStatement',
+          name: '@import',
+          prelude: {
             type: 'Url',
             value: {
               type: 'Interpolation',
@@ -3320,7 +3389,7 @@ describe('Less AST grammar facts', () => {
         source
       ).toBe(true);
       expect(result.value).toMatchObject({
-        rules: [{ type: 'ImportAtRule', target: { type: 'Quoted' } }]
+        rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted' } }]
       });
     }
   });

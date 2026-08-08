@@ -2362,26 +2362,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       const names = children.slice(2).filter(isToken)
         .map(requireToken).map(token => token.value);
       if (source === '@-compose') {
-        return styleImport(
-          path,
-          'compose',
-          names.find(name => name !== 'as' && name !== ';') ?? null,
-          false
-        );
+        return styleImport('@-compose', path, {
+          mode: 'compose',
+          namespace: names.find(name => name !== 'as' && name !== ';') ?? null
+        });
       }
       if (source === '@-export') {
-        return styleImport(
-          path,
-          'compose',
-          null,
-          true
-        );
+        return styleImport('@-export', path, { mode: 'compose', forward: true });
       }
       if (source === '@-import') {
-        return styleImport(
-          path,
-          'import'
-        );
+        return styleImport('@-import', path, { mode: 'import' });
       }
       throw new TypeError('Jess grammar produced an unknown style import form.');
     }

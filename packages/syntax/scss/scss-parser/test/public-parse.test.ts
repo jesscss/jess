@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parse } from '@jesscss/scss-parser';
+import { parse, ScssImportPostludeError } from '@jesscss/scss-parser';
 import { parseScssCst, parseScssDoc } from '@jesscss/scss-parser/cst';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
@@ -80,8 +80,10 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(trivia).toBeDefined();
     expect(trivia?.lookup(12, 'after')).toBeUndefined();
 
-    // A call site is left exactly as authored: whether `double` names a user
-    // `@function` or a builtin is a scope question, decided at eval, not here.
+    /*
+     * A call site is left exactly as authored: whether `double` names a user
+     * `@function` or a builtin is a scope question, decided at eval, not here.
+     */
     expect(root.rules.find(child => child.type === 'Ruleset')).toMatchObject({
       type: 'Ruleset',
       rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'double' } }]
@@ -101,9 +103,9 @@ describe('@jesscss/scss-parser public parse API', () => {
 
     expect(root).toMatchObject({
       type: 'Stylesheet', rules: [
-        { type: 'If', branches: [{ rules: [{ type: 'ImportAtRule', target: { value: 'selected.css' } }] }] },
+        { type: 'If', branches: [{ rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'selected.css' } }] }] },
         { type: 'Ruleset', rules: [
-          { type: 'ImportAtRule', target: { type: 'Url', value: { value: 'nested.css' } } },
+          { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Url', value: { value: 'nested.css' } } },
           { type: 'Declaration', name: 'color' }
         ] }
       ]
@@ -306,18 +308,20 @@ describe('@jesscss/scss-parser public parse API', () => {
 
   it('parses a static SCSS url import through the public Stylesheet route', () => {
     expect(parse('@import url("theme.css");')).toMatchObject({
-      type: 'Stylesheet', rules: [{ type: 'ImportAtRule', target: { type: 'Url', value: { type: 'Quoted', value: 'theme.css' } } }]
+      type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Url', value: { type: 'Quoted', value: 'theme.css' } } }]
     });
   });
 
   it('parses and renders the public-CST-valid empty SCSS url import through the public route', () => {
     const root = parse('@import url();');
+
+    // An empty target spells no `.css`, so it takes the compile-time branch.
     expect(bare(root)).toEqual({
       type: 'Stylesheet',
       rules: [{
-        type: 'ImportAtRule', name: '@import', options: null,
+        type: 'StyleImport', name: '@import', options: null,
         target: { type: 'Url', value: { type: 'Any', src: '' } },
-        alias: null, tail: null
+        alias: null, mode: 'import', namespace: null, forward: false
       }]
     });
     expect(serialize(root)).toEqual({ css: '@import url();\n' });
@@ -327,7 +331,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     for (const source of ['@import "theme-#{$mode}.css";', '@import url("theme-#{$mode}.css");']) {
       expect(parse(source)).toMatchObject({
         type: 'Stylesheet',
-        rules: [{ type: 'ImportAtRule', target: source.includes('url(')
+        rules: [{ type: 'AtRuleStatement', name: '@import', prelude: source.includes('url(')
           ? { type: 'Url', value: { type: 'Interpolation' } }
           : { type: 'Interpolation' } }]
       });
@@ -368,28 +372,59 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(() => parse(source)).toThrow(SyntaxError);
   });
 
-  it('preserves the bounded static SCSS CSS-import tail as ImportAtRule.tail', () => {
+  it('rejects a media/supports/layer postlude on a compile-time SCSS import', () => {
+    /*
+     * A postlude describes a linked CSS resource. Once the target's spelling has
+     * put the import on the compile-time branch, the partial's rules are spliced
+     * into this document and there is nothing left for the query to describe.
+     */
+    for (const source of [
+      '@import "partial" screen;',
+      '@import "partial" layer(tokens);',
+      '@import "partial" supports((display: grid));',
+      '@import url(partial) screen;'
+    ]) {
+      expect(() => parse(source), source).toThrow(ScssImportPostludeError);
+    }
+
+    // The same postludes stay legal on the plain-CSS form.
+    for (const source of ['@import "theme.css" screen;', '@import url("theme.css") screen;']) {
+      expect(parse(source), source).toMatchObject({
+        rules: [{ type: 'AtRuleStatement', name: '@import' }]
+      });
+    }
+  });
+
+  it('preserves the bounded static SCSS CSS-import tail in the AtRuleStatement prelude', () => {
     const media = parse('@import "print.css" print;');
     const layer = parse('@import "theme.css" layer(theme);');
     const layeredMedia = parse('@import "a.css" layer(foo) screen;');
 
     expect(media).toMatchObject({
-      rules: [{ type: 'ImportAtRule', target: { value: 'print.css' }, tail: { type: 'Keyword', src: 'print' } }]
+      rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence', parts: [
+        { value: 'print.css' }, { type: 'Keyword', src: 'print' }
+      ] } }]
     });
     expect(layer).toMatchObject({
-      rules: [{ type: 'ImportAtRule', target: { value: 'theme.css' }, tail: { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'theme' }] } }]
+      rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence', parts: [
+        { value: 'theme.css' }, { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'theme' }] }
+      ] } }]
     });
     expect(bare(layeredMedia)).toEqual({
       type: 'Stylesheet',
       rules: [{
-        type: 'ImportAtRule', name: '@import', options: null,
-        target: { type: 'Quoted', src: '"a.css"', value: 'a.css', quote: '"', escaped: false },
-        alias: null,
-        tail: {
+        type: 'AtRuleStatement', name: '@import',
+        prelude: {
           type: 'Sequence',
           parts: [
-            { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'foo' }], modern: false },
-            { type: 'Keyword', src: 'screen' }
+            { type: 'Quoted', src: '"a.css"', value: 'a.css', quote: '"', escaped: false },
+            {
+              type: 'Sequence',
+              parts: [
+                { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'foo' }], modern: false },
+                { type: 'Keyword', src: 'screen' }
+              ]
+            }
           ]
         }
       }]
@@ -426,23 +461,31 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(bare(supported)).toEqual({
       type: 'Stylesheet',
       rules: [{
-        type: 'ImportAtRule', name: '@import', options: null,
-        target: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false },
-        alias: null,
-        tail: {
-          type: 'FunctionCall', name: 'supports', modern: false,
-          args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'display' }, right: { type: 'Keyword', src: 'grid' } } }]
+        type: 'AtRuleStatement', name: '@import',
+        prelude: {
+          type: 'Sequence',
+          parts: [
+            { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false },
+            {
+              type: 'FunctionCall', name: 'supports', modern: false,
+              args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'display' }, right: { type: 'Keyword', src: 'grid' } } }]
+            }
+          ]
         }
       }]
     });
     expect(bare(simple)).toEqual(bare(supported));
     expect(layered).toMatchObject({
       rules: [{
-        tail: {
+        type: 'AtRuleStatement', name: '@import',
+        prelude: {
           type: 'Sequence', parts: [
-            { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
-            { type: 'Keyword', src: 'screen' }
+            { type: 'Quoted', value: 'theme.css' },
+            { type: 'Sequence', parts: [
+              { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
+              { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
+              { type: 'Keyword', src: 'screen' }
+            ] }
           ]
         }
       }]
@@ -468,18 +511,21 @@ describe('@jesscss/scss-parser public parse API', () => {
     const root = parse('@import "theme.css" layer(tokens) supports((display: grid)) only screen and (min-width: 1px), (color), not (color: red);');
     expect(root).toMatchObject({
       type: 'Stylesheet', rules: [{
-        type: 'ImportAtRule',
-        tail: {
+        type: 'AtRuleStatement', name: '@import',
+        prelude: {
           type: 'Sequence', parts: [
-            { type: 'FunctionCall', name: 'layer' },
-            { type: 'FunctionCall', name: 'supports' },
-            {
-              type: 'List', sep: ',', value: [
-                { type: 'Sequence', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren' }] },
-                { type: 'Block', delimiter: 'paren', value: { src: 'color' } },
-                { type: 'Sequence', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren' }] }
-              ]
-            }
+            { type: 'Quoted', value: 'theme.css' },
+            { type: 'Sequence', parts: [
+              { type: 'FunctionCall', name: 'layer' },
+              { type: 'FunctionCall', name: 'supports' },
+              {
+                type: 'List', sep: ',', value: [
+                  { type: 'Sequence', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren' }] },
+                  { type: 'Block', delimiter: 'paren', value: { src: 'color' } },
+                  { type: 'Sequence', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren' }] }
+                ]
+              }
+            ] }
           ]
         }
       }]
@@ -488,7 +534,10 @@ describe('@jesscss/scss-parser public parse API', () => {
       css: '@import "theme.css" layer(tokens) supports((display : grid)) only screen and (min-width: 1px), (color), not (color: red);\n'
     });
     expect(parse('@import "theme.css" (color) or (monochrome);')).toMatchObject({
-      rules: [{ type: 'ImportAtRule', tail: { type: 'Sequence', parts: [{ type: 'Block', delimiter: 'paren' }, { src: 'or' }, { type: 'Block', delimiter: 'paren' }] } }]
+      rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence', parts: [
+        { type: 'Quoted', value: 'theme.css' },
+        { type: 'Sequence', parts: [{ type: 'Block', delimiter: 'paren' }, { src: 'or' }, { type: 'Block', delimiter: 'paren' }] }
+      ] } }]
     });
 
     /* See the matching note in ast-grammar.test.ts for why three entries left. */
@@ -506,8 +555,8 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(parse('@use "sass:math" as math; @use "./theme.scss" as theme; @forward "./public.scss";')).toMatchObject({
       type: 'Stylesheet', rules: [
         { type: 'ModuleImport', mode: 'use', path: { value: '#sass/math' }, namespace: 'math' },
-        { type: 'StyleImport', mode: 'compose', path: { value: './theme.scss' }, namespace: 'theme', forward: false },
-        { type: 'StyleImport', mode: 'compose', path: { value: './public.scss' }, namespace: null, forward: true }
+        { type: 'StyleImport', name: '@-compose', mode: 'compose', target: { value: './theme.scss' }, namespace: 'theme', forward: false },
+        { type: 'StyleImport', name: '@-export', mode: 'compose', target: { value: './public.scss' }, namespace: null, forward: true }
       ]
     });
   });
@@ -543,9 +592,9 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet', rules: [
         { type: 'Comment' }, { type: 'VariableDeclaration', name: 'theme' },
-        { type: 'StyleImport', path: { value: './theme.scss' }, forward: false },
-        { type: 'Comment' }, { type: 'StyleImport', path: { value: './public.scss' }, forward: true },
-        { type: 'ImportAtRule' }
+        { type: 'StyleImport', target: { value: './theme.scss' }, forward: false },
+        { type: 'Comment' }, { type: 'StyleImport', target: { value: './public.scss' }, forward: true },
+        { type: 'AtRuleStatement', name: '@import' }
       ]
     });
   });
@@ -738,6 +787,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
+
     /*
      * DESIGN-DECISIONS.md P20: `é` is an ident code point (css-syntax-3
      * §4.3.11), so `@documenté` is ONE unknown at-keyword and keeps its full

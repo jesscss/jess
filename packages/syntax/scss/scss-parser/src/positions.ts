@@ -11,7 +11,7 @@ import type { Stylesheet } from '@jesscss/core/ast';
 import { scssPositionsGrammar } from './grammar/ast/positions.js';
 import { parseWith } from './parse-with.js';
 
-export { ScssParseError } from './parse-error.js';
+export { ScssImportPostludeError, ScssParseError } from './parse-error.js';
 
 /** Parse SCSS into the canonical AST v2 document with line/column facts. */
 export function parse(input: string): Stylesheet {

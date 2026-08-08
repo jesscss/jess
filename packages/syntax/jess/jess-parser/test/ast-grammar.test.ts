@@ -1263,10 +1263,10 @@ describe('Jess AST grammar facts', () => {
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
       rules: [
-        { type: 'StyleImport', mode: 'compose', path: { type: 'Quoted', value: './theme.jess' }, namespace: 'theme', forward: false },
-        { type: 'StyleImport', mode: 'compose', path: { type: 'Quoted', value: './public.jess' }, namespace: '*', forward: false },
-        { type: 'StyleImport', mode: 'compose', path: { type: 'Quoted', value: './tokens.jess' }, namespace: null, forward: true },
-        { type: 'StyleImport', mode: 'import', path: { type: 'Quoted', value: './legacy.less' }, namespace: null, forward: false },
+        { type: 'StyleImport', mode: 'compose', target: { type: 'Quoted', value: './theme.jess' }, namespace: 'theme', forward: false },
+        { type: 'StyleImport', mode: 'compose', target: { type: 'Quoted', value: './public.jess' }, namespace: '*', forward: false },
+        { type: 'StyleImport', mode: 'compose', target: { type: 'Quoted', value: './tokens.jess' }, namespace: null, forward: true },
+        { type: 'StyleImport', mode: 'import', target: { type: 'Quoted', value: './legacy.less' }, namespace: null, forward: false },
         { type: 'ModuleImport', mode: 'use', path: { type: 'Quoted', value: '#sass/math' }, defaultImport: null, namespace: 'math', imports: [] },
         { type: 'ModuleImport', mode: 'use', path: { type: 'Quoted', value: '#sass/color' }, defaultImport: null, namespace: '*', imports: [] },
         { type: 'ModuleImport', mode: 'from', path: { type: 'Quoted', value: './default.ts' }, defaultImport: 'main', namespace: null, imports: [{ name: 'named', alias: 'alias' }] },
@@ -1354,7 +1354,7 @@ describe('Jess AST grammar facts', () => {
     expect(compilerBeforeLiteralDirect.unconsumedFrom).toBeNull();
     expect(parse(compilerBeforeLiteral)).toMatchObject({
       rules: [
-        { type: 'StyleImport', mode: 'import', path: { type: 'Quoted', value: 'legacy.less' } },
+        { type: 'StyleImport', mode: 'import', target: { type: 'Quoted', value: 'legacy.less' } },
         { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Any', src: 'url(theme.css)' } }
       ]
     });
@@ -1380,7 +1380,7 @@ describe('Jess AST grammar facts', () => {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
     expect(parse('.card { color: blue; } @-import "legacy.less";')).toMatchObject({
-      rules: [{ type: 'Ruleset' }, { type: 'StyleImport', mode: 'import', path: { value: 'legacy.less' } }]
+      rules: [{ type: 'Ruleset' }, { type: 'StyleImport', mode: 'import', target: { value: 'legacy.less' } }]
     });
   });
 

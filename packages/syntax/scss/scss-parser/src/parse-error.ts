@@ -43,3 +43,29 @@ export class ScssParseError extends SyntaxError {
     this.fix = options.fix;
   }
 }
+
+/**
+ * A media/layer/supports postlude belongs to the plain CSS `@import` form only.
+ *
+ * Once the parser has decided an `@import` is compile-time — a Sass partial
+ * rather than a `.css` file or a URL — a trailing query has nothing left to
+ * describe: the partial's rules are spliced into this document, not linked as a
+ * separate CSS resource.
+ */
+export class ScssImportPostludeError extends SyntaxError {
+  readonly code = 'parse/import-postlude-on-compile-time-import' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason =
+    'A media, layer, or supports query is only valid on a plain CSS @import.';
+
+  readonly fix =
+    'Drop the query, or wrap the import in an explicit @media/@supports/@layer block.';
+
+  constructor(offset: number, endOffset: number) {
+    super('A compile-time @import cannot carry a media query.');
+    this.name = 'ScssImportPostludeError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}

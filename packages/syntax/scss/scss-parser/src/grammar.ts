@@ -22,8 +22,9 @@ import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, selectorBranchOf, decl, dimension, forNode, funcCall, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { ScssImportPostludeError } from './parse-error.js';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, selectorBranchOf, decl, dimension, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
@@ -83,7 +84,7 @@ type ScssRules = {
   Declaration: Combinator<Declaration>;
   NestedPropertyMember: Combinator<CollectionEntry>;
   NestedPropertyDeclaration: Combinator<Declaration>;
-  ImportAtRule: Combinator<ImportAtRule>;
+  ImportStatement: Combinator<StyleImport | AtRuleStatement>;
   UseNamespace: Combinator<string>;
   ModuleDirective: Combinator<StyleImport | ModuleImport>;
   ImportUrl: Combinator<Url>;
@@ -746,6 +747,9 @@ function isDeclaration(value: unknown): value is Declaration {
     && isValueSlotValue(value.value);
 }
 
+function isCollection(value: unknown): value is Collection {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Collection';
+}
 function isCollectionEntry(value: unknown): value is CollectionEntry {
   return typeof value === 'object'
     && value !== null
@@ -787,9 +791,6 @@ function isAtRuleStatement(value: unknown): value is AtRuleStatement {
 
 function isComment(value: unknown): value is Comment {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Comment';
-}
-function isImport(value: unknown): value is ImportAtRule {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ImportAtRule';
 }
 function isStyleImport(value: unknown): value is StyleImport {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'StyleImport';
@@ -975,7 +976,6 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
  */
 function isStatementChild(child: unknown, allowDeclarations: boolean): child is Statement {
   return isComment(child)
-    || isImport(child)
     || isStyleImport(child)
     || isModuleImport(child)
     || isAtRuleBlock(child)
@@ -2519,8 +2519,20 @@ const scssFactory = (g: ScssInputRules) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const ImportAtRule = node<ImportAtRule>(
-    'ImportAtRule',
+
+  /*
+   * There are TWO import nodes and this reducer picks between them. A plain CSS
+   * `@import` — a `.css` file or a URL — is an ordinary `AtRuleStatement`; a Sass
+   * partial import is a compile-time `StyleImport`. `importIsCompileTime` is the
+   * ONE definition of that split, shared with every other dialect, and all of its
+   * inputs are authored syntax, so nothing about the shape defers to eval.
+   *
+   * A postlude on the COMPILE-TIME branch is rejected here rather than carried:
+   * a media/layer/supports query describes a linked CSS resource, and a partial's
+   * rules are spliced into this document instead.
+   */
+  const ImportStatement = node<StyleImport | AtRuleStatement>(
+    'ImportStatement',
     sequence(
       regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       choice(
@@ -2530,20 +2542,20 @@ const scssFactory = (g: ScssInputRules) => {
       optional(g.ImportTail),
       literal(';')
     ),
-    (children) => {
+    (children, _fields, span) => {
       const targetIndex = children.findIndex(isImportTarget);
       const target = children[targetIndex];
       if (!isImportTarget(target)) {
-        throw new TypeError('ImportAtRule requires a typed target.');
+        throw new TypeError('SCSS @import requires a typed target.');
       }
       const tail = children.slice(targetIndex + 1).find(isValue) ?? null;
-      return importAtRule(
-        '@import',
-        target,
-        null,
-        null,
-        tail
-      );
+      if (importIsCompileTime('@import', target)) {
+        if (tail !== null) {
+          throw new ScssImportPostludeError(span.start, span.end);
+        }
+        return styleImport('@import', target, { mode: 'import' });
+      }
+      return atRuleStatement('@import', tail === null ? target : spaced([target, tail]));
     }
   );
   const moduleNamespaceName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -2571,12 +2583,36 @@ const scssFactory = (g: ScssInputRules) => {
    * below rejects a non-static path — the grammar must still recognize the
    * shape, or an escape-bearing path fails to parse at all.
    */
+
+  /*
+   * `UseRule ::= … WithClause?`, `WithClause ::= 'with' '(' … ')'` (Sass spec,
+   * `spec/at-rules/use.md`). The configuration is a `key: value` clause with the
+   * exact shape of a Sass map literal, so it IS `g.Map` — a second spelling of
+   * the map production would be the copy the standing brief forbids. It lands in
+   * the shared, generic `options` carrier that `@import (inline)` also uses; a
+   * per-dialect `with` field would be one boolean per quirk, one level down.
+   */
+  const WithClause = node<Collection>(
+    'WithClause',
+    sequence(
+      regex(/with(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      g.Map
+    ),
+    (children) => {
+      const config = children[1];
+      if (!isCollection(config)) {
+        throw new TypeError('SCSS @use with-clause requires a configuration map.');
+      }
+      return config;
+    }
+  );
   const UseRule = node<StyleImport | ModuleImport>(
     'UseRule',
     sequence(
       routed(),
       g.Quoted,
       optional(g.UseNamespace),
+      optional(WithClause),
       literal(';')
     ),
     (children) => {
@@ -2585,6 +2621,7 @@ const scssFactory = (g: ScssInputRules) => {
         throw new TypeError('SCSS @use requires a quoted module path.');
       }
       const namespace = children.find((child): child is string => typeof child === 'string') ?? null;
+      const config = children.find(isCollection) ?? null;
       if (path.value.startsWith('sass:')) {
         const rewritten = `#sass/${path.value.slice('sass:'.length)}`;
         return moduleImport(
@@ -2604,12 +2641,11 @@ const scssFactory = (g: ScssInputRules) => {
             'use',
             namespace
           )
-        : styleImport(
-            path,
-            'compose',
+        : styleImport('@-compose', path, {
+            options: config === null ? null : list([config], ','),
             namespace,
-            false
-          );
+            mode: 'compose'
+          });
     }
   );
 
@@ -2628,12 +2664,7 @@ const scssFactory = (g: ScssInputRules) => {
       if (!isQuoted(children[1])) {
         throw new TypeError('SCSS @forward requires a quoted module path.');
       }
-      return styleImport(
-        children[1],
-        'compose',
-        null,
-        true
-      );
+      return styleImport('@-export', children[1], { mode: 'compose', forward: true });
     }
   );
 
@@ -2824,7 +2855,7 @@ const scssFactory = (g: ScssInputRules) => {
     g.NestedPropertyDeclaration,
     g.Declaration,
     g.Comment,
-    g.ImportAtRule,
+    g.ImportStatement,
     g.VariableDeclaration,
     literal(';')
   );
@@ -2859,7 +2890,7 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const conditionalBlockBody = many(choice(
     g.Comment,
-    g.ImportAtRule,
+    g.ImportStatement,
     g.SassNestedDirective,
     g.ConditionalBlock,
     g.StartingStyleBlock,
@@ -2875,7 +2906,7 @@ const scssFactory = (g: ScssInputRules) => {
   ));
   const startingLayerBlockBody = many(choice(
     g.Comment,
-    g.ImportAtRule,
+    g.ImportStatement,
     g.SassNestedDirective,
     g.ConditionalBlock,
     g.StartingStyleBlock,
@@ -3187,7 +3218,7 @@ const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.Comment,
-        g.ImportAtRule,
+        g.ImportStatement,
         g.VariableDeclaration,
         g.NestedPropertyDeclaration,
         g.Declaration,
@@ -3917,7 +3948,7 @@ const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.Comment,
-        g.ImportAtRule,
+        g.ImportStatement,
         g.VariableDeclaration,
         g.SassNestedDirective,
         g.ConditionalBlock,
@@ -5075,7 +5106,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       many(choice(
         g.Comment,
-        g.ImportAtRule,
+        g.ImportStatement,
         g.AtRuleStatement,
         g.VariableDeclaration,
         g.SassDirective,
@@ -5140,7 +5171,7 @@ const scssFactory = (g: ScssInputRules) => {
     Declaration,
     NestedPropertyMember,
     NestedPropertyDeclaration,
-    ImportAtRule,
+    ImportStatement,
     UseNamespace,
     ModuleDirective,
     ImportUrl,

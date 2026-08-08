@@ -53,7 +53,7 @@ import type {
   ModuleImport,
   Condition
 } from './nodes.js';
-import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 
 /** Every tree2 node's PascalCase `type` discriminant (Less-matching). */
 export type NodeType =
@@ -61,7 +61,7 @@ export type NodeType =
   | 'ComplexSelector' | 'RelativeSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
   | 'Sequence' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
   | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition'
-  | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation'
+  | 'AtRuleBlock' | 'AtRuleStatement' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation'
   | 'AnonymousMixin' | 'Collection' | 'CollectionEntry' | 'Reference' | 'Range' | 'For' | 'If' | 'StyleImport' | 'ModuleImport';
 
 /** Combinator between two compounds in a complex selector. `|` is the CSS
@@ -84,7 +84,7 @@ export type Node =
   | Stylesheet | Ruleset | Declaration | Comment | SelectorList | ComplexSelector | RelativeSelector | CompoundSelector
   | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | Sequence | List | Lookup | MixinDefinition | MixinCall
   | VariableDeclaration | Important | Operation | FunctionCall | Block | Condition
-  | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | AnonymousMixin | Collection
+  | AtRuleBlock | AtRuleStatement | Plugin | OpaqueAtRuleBlock | Interpolation | AnonymousMixin | Collection
   | CollectionEntry | Reference | Range | For | If | StyleImport | ModuleImport;
 
 /**
@@ -107,7 +107,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'ComplexSelector', 'RelativeSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
   'Sequence', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
   'Important', 'Operation', 'FunctionCall', 'Block', 'Condition',
-  'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation',
+  'AtRuleBlock', 'AtRuleStatement', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation',
   'AnonymousMixin', 'Collection', 'CollectionEntry', 'Reference', 'Range', 'For', 'If', 'StyleImport', 'ModuleImport'
 ]);
 

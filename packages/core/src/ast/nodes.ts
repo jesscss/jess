@@ -276,7 +276,6 @@ export interface Condition {
   readonly src: string;
 }
 
-
 /* -------------------------------------------------------------- value */
 
 /**
@@ -881,7 +880,6 @@ export interface Comment extends SpanSlots {
   readonly text: string;
 }
 
-
 /**
  * One `:extend()` instruction extracted from a ruleset body (or an attached
  * `.a:extend(...)`). The SUBJECT (the thing appended / substituted-in) is the
@@ -1041,13 +1039,56 @@ export interface If {
   readonly branches: readonly [IfBranch, ...IfBranch[]];
 }
 
-/** A compile-time stylesheet dependency; plugins resolve its authored path. */
-export interface StyleImport {
+/**
+ * A compile-time stylesheet dependency; plugins resolve its authored target.
+ *
+ * There are exactly TWO import shapes and the parser picks between them: a plain
+ * CSS `@import` is an ordinary `AtRuleStatement`, and every compile-time import —
+ * Less `@import` with options, SCSS `@use` / `@forward`, jess `@-import` /
+ * `@-compose` — is a `StyleImport`. Nothing defers that choice to eval: its four
+ * inputs (the option words, the at-keyword, an `as` alias, and the target's
+ * authored spelling) are all syntactic.
+ *
+ * The option surface is a GENERIC carrier, not one boolean per dialect quirk:
+ * `(inline)`, `(reference)`, `with (…)` and `show`/`hide` all land in `options`.
+ */
+export interface StyleImport extends SpanSlots {
   readonly type: 'StyleImport';
-  readonly path: Quoted;
+
+  /** The lowered at-keyword this import prints as (`@import`, `@-compose`, …). */
+  readonly name: string;
+
+  /** A quoted path, `url(…)`, or interpolated quoted template. */
+  readonly target: Quoted | Url | Interpolation;
+
+  /** Grammar-owned comma list from the parenthesized/`with` option clause. */
+  readonly options: List | null;
+
+  /** Grammar-owned `as …` clause, if the dialect admits a value-shaped one. */
+  readonly alias: ValueNode | null;
+
+  /*
+   * There is deliberately NO postlude field. A media/layer/supports tail belongs
+   * to the plain CSS `@import` form, which is an `AtRuleStatement` and carries it
+   * in the prelude. Once the parser has decided an import is compile-time, a
+   * trailing query is rejected AT PARSE TIME, so no `StyleImport` can ever hold
+   * one and nothing downstream may act on one. This diverges deliberately from
+   * Less 4.x, which accepts `@import "a.less" screen` and wraps the loaded rules
+   * in `@media screen`.
+   */
+
   readonly mode: 'compose' | 'import';
   readonly namespace: string | null;
   readonly forward: boolean;
+}
+
+/** Optional `StyleImport` facts; every dialect fills only the ones it spells. */
+export interface StyleImportFields {
+  options?: List | null;
+  alias?: ValueNode | null;
+  mode?: StyleImport['mode'];
+  namespace?: string | null;
+  forward?: boolean;
 }
 
 /** A selected ESM binding in a Jess `@-from` statement. */
@@ -1078,7 +1119,7 @@ export interface Stylesheet extends SpanSlots, TriviaSlot {
  * [atrule] at-rule nodes are valid body/stylesheet statements; type-only import keeps
  * nodes.ts free of a runtime dependency on the sibling at-rule module.
  */
-import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 
 export type Statement =
   | Ruleset
@@ -1090,7 +1131,6 @@ export type Statement =
   | VariableDeclaration
   | AtRuleBlock
   | AtRuleStatement
-  | ImportAtRule
   | Plugin
   | OpaqueAtRuleBlock
   | Reference
@@ -1210,6 +1250,7 @@ export const reference = (
   steps: readonly ReferenceStep[],
   raw: string
 ): Reference => ({ type: 'Reference', base, steps, raw, _s: NO_SPAN, _e: NO_SPAN });
+
 /** A Less property accessor `$name` — {@link Lookup} of kind `prop`. */
 export const propertyReference = (name: string, raw: string = `$${name}`): Lookup =>
   ({ type: 'Lookup', scope: 'scoped', kind: 'prop', name, raw, _s: NO_SPAN, _e: NO_SPAN });
@@ -1300,6 +1341,7 @@ export const comment = (text: string): Comment => ({ type: 'Comment', text, _s: 
  *  NODE, which is how `@@indirect` is spelled now that it needs no own kind. */
 export const variableReference = (name: string | ValueNode, lookup: VariableLookup, raw?: string): Lookup =>
   ({ type: 'Lookup', scope: lookup, kind: 'var', name, raw: raw ?? (typeof name === 'string' ? `@${name}` : ''), _s: NO_SPAN, _e: NO_SPAN });
+
 /** The current declaration-entry surface — {@link Lookup} of kind `entry`. */
 export const declarationReference = (raw: string = '$'): Lookup =>
   ({ type: 'Lookup', scope: 'scoped', kind: 'entry', name: '', raw, _s: NO_SPAN, _e: NO_SPAN });
@@ -1372,12 +1414,117 @@ export const rule = (
     _be: NO_SPAN
   };
 };
+
+/**
+ * The AUTHORED spelling of an import target: the bytes between the quotes as the
+ * author typed them, with every interpolation hole read as empty. Nothing is
+ * resolved — `@import "@{name}.css"` answers `.css` for the only question asked
+ * of it, because the extension is authored plainly and only the stem substitutes.
+ */
+export const importTargetSpelling = (target: Quoted | Url | Interpolation): string => {
+  if (target.type === 'Quoted') {
+    return target.value;
+  }
+  const inner = target.type === 'Url' ? target.value : target;
+  if (inner.type === 'Quoted') {
+    return inner.value;
+  }
+  if (inner.type === 'Any') {
+    return inner.src;
+  }
+  if (inner.type !== 'Interpolation') {
+    return '';
+  }
+  let bytes = '';
+  for (const part of inner.parts) {
+    if ('lit' in part) {
+      bytes += part.lit;
+    }
+  }
+  const quote = bytes[0];
+  if (quote === '"' || quote === '\'') {
+    bytes = bytes.slice(1);
+    if (bytes.endsWith(quote)) {
+      bytes = bytes.slice(0, -1);
+    }
+  }
+  return bytes;
+};
+
+/** The lowercase option words of an import's option clause, in authored order. */
+export const importOptionWords = (options: List | null): string[] => {
+  if (options === null) {
+    return [];
+  }
+  const words: string[] = [];
+  for (const option of options.value) {
+    if (option !== null && typeof option === 'object' && 'type' in option
+      && (option.type === 'Any' || option.type === 'Keyword')) {
+      words.push(option.src.trim().toLowerCase());
+    }
+  }
+  return words;
+};
+
+/**
+ * A CSS-terminal target: a `.css` file, query/fragment allowed.
+ *
+ * A URL-scheme target is deliberately NOT terminal here. Whether an external
+ * identifier resolves is a plugin's answer at load time, not a syntactic one:
+ * a claimed `https://…` import loads through the dispatcher, and an unclaimed
+ * one is declined and printed. Only the authored `.css` extension is a fact the
+ * parser can read.
+ */
+const CSS_TARGET = /\.css(?:[?#].*)?$/iu;
+
+/**
+ * WHICH of the two import nodes an `@import` becomes — decided from SYNTAX, by
+ * the grammar, never deferred to eval. `true` ⇒ build a {@link StyleImport};
+ * `false` ⇒ it is a plain CSS `@import` and belongs in an `AtRuleStatement`.
+ *
+ * All four inputs are authored facts: the option words, the at-keyword, an `as`
+ * alias, and the target's spelling. `(inline)` answers `true` even though it
+ * loads bytes rather than a document — raw-byte IO is still compile-time work.
+ *
+ * `(optional)` is deliberately NOT terminal: it selects what happens when the
+ * load FAILS, so an optional import must still be attempted and resolve normally
+ * when the file exists.
+ */
+export const importIsCompileTime = (
+  name: string,
+  target: Quoted | Url | Interpolation,
+  options: List | null = null,
+  alias: ValueNode | null = null
+): boolean => {
+  const words = importOptionWords(options);
+  if (words.includes('inline')) {
+    return true;
+  }
+  if (words.includes('css') || alias !== null) {
+    return false;
+  }
+  if (words.includes('less') || name.toLowerCase() === '@-import') {
+    return true;
+  }
+  return !CSS_TARGET.test(importTargetSpelling(target));
+};
+
 export const styleImport = (
-  path: Quoted,
-  mode: StyleImport['mode'] = 'compose',
-  namespace: string | null = null,
-  forward = false
-): StyleImport => ({ type: 'StyleImport', path, mode, namespace, forward });
+  name: string,
+  target: Quoted | Url | Interpolation,
+  fields: StyleImportFields = {}
+): StyleImport => ({
+  type: 'StyleImport',
+  name,
+  target,
+  options: fields.options ?? null,
+  alias: fields.alias ?? null,
+  mode: fields.mode ?? 'compose',
+  namespace: fields.namespace ?? null,
+  forward: fields.forward ?? false,
+  _s: NO_SPAN,
+  _e: NO_SPAN
+});
 export const moduleImport = (
   path: Quoted,
   mode: ModuleImport['mode'],

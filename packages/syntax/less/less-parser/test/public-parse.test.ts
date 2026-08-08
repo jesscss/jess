@@ -10,6 +10,7 @@ import {
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import {
   LessBareVariableInterpolationError,
+  LessImportPostludeError,
   LessParseError,
   LessUnsupportedVariableNameError,
   parse
@@ -694,8 +695,9 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           rules: [
             {
-              type: 'ImportAtRule',
-              target: { type: 'Url', value: { value: 'nested.css' } }
+              type: 'AtRuleStatement',
+              name: '@import',
+              prelude: { type: 'Url', value: { value: 'nested.css' } }
             },
             { type: 'Declaration', name: 'color' }
           ]
@@ -1100,14 +1102,14 @@ describe('public Less parse()', () => {
 
   it('returns a structural interpolated quoted import target directly', () => {
     const document = parse(
-      '@import (less, multiple) "theme-@{name}.css" screen;'
+      '@import (less, multiple) "theme-@{name}.css";'
     );
 
     expect(document).toMatchObject({
       type: 'Stylesheet',
       rules: [
         {
-          type: 'ImportAtRule',
+          type: 'StyleImport',
           target: {
             type: 'Interpolation',
             parts: [
@@ -1123,29 +1125,42 @@ describe('public Less parse()', () => {
       ]
     });
     expect(() => parse('@import "theme-@{name}.css;')).toThrow(SyntaxError);
+
+    /*
+     * The same target with a media postlude is a compile-time import carrying
+     * a media query, which is rejected outright.
+     */
+    expect(() => parse('@import (less, multiple) "theme-@{name}.css" screen;'))
+      .toThrow(LessImportPostludeError);
   });
 
   it('returns and renders one complete interpolated import tail directly', () => {
-    const document = parse('@media: print; @import "theme.less" @{media};');
+    const document = parse('@media: print; @import "theme.css" @{media};');
 
     expect(document).toMatchObject({
       type: 'Stylesheet',
       rules: [
         { type: 'VariableDeclaration', name: 'media' },
         {
-          type: 'ImportAtRule',
-          target: { type: 'Quoted', value: 'theme.less' },
-          tail: {
-            type: 'Interpolation',
+          type: 'AtRuleStatement',
+          name: '@import',
+          prelude: {
+            type: 'Sequence',
             parts: [
+              { type: 'Quoted', value: 'theme.css' },
               {
-                ref: {
-                  type: 'Lookup', kind: 'var',
-                  name: 'media',
-                  raw: '@media',
-                  scope: 'scoped'
-                },
-                unquote: true
+                type: 'Interpolation',
+                parts: [
+                  {
+                    ref: {
+                      type: 'Lookup', kind: 'var',
+                      name: 'media',
+                      raw: '@media',
+                      scope: 'scoped'
+                    },
+                    unquote: true
+                  }
+                ]
               }
             ]
           }
@@ -1154,12 +1169,16 @@ describe('public Less parse()', () => {
     });
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
-    ).toBe('@import "theme.less" print;\n');
+    ).toBe('@import "theme.css" print;\n');
+
+    // The identical tail on a compile-time import is a parse error.
+    expect(() => parse('@import "theme.less" @{media};'))
+      .toThrow(LessImportPostludeError);
 
     for (const invalid of [
-      '@import "theme.less" @{media} screen;',
-      '@import "theme.less" screen @{media};',
-      '@import "theme.less" @{media}@{print};'
+      '@import "theme.css" @{media} screen;',
+      '@import "theme.css" screen @{media};',
+      '@import "theme.css" @{media}@{print};'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -1174,15 +1193,21 @@ describe('public Less parse()', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'var' },
         {
-          type: 'ImportAtRule',
-          target: {
-            type: 'Url',
-            value: { type: 'Quoted', value: '//ha.com/file.css' }
-          },
-          tail: {
-            type: 'Block',
-            delimiter: 'paren',
-            value: { type: 'Operation', operator: ':' }
+          type: 'AtRuleStatement',
+          name: '@import',
+          prelude: {
+            type: 'Sequence',
+            parts: [
+              {
+                type: 'Url',
+                value: { type: 'Quoted', value: '//ha.com/file.css' }
+              },
+              {
+                type: 'Block',
+                delimiter: 'paren',
+                value: { type: 'Operation', operator: ':' }
+              }
+            ]
           }
         }
       ]
@@ -1221,8 +1246,9 @@ describe('public Less parse()', () => {
           ]
         },
         {
-          type: 'ImportAtRule',
-          target: { type: 'Url', value: { type: 'Interpolation' } }
+          type: 'AtRuleStatement',
+          name: '@import',
+          prelude: { type: 'Url', value: { type: 'Interpolation' } }
         },
         {
           type: 'AtRuleBlock',
@@ -1267,7 +1293,7 @@ describe('public Less parse()', () => {
       '@import "theme-@{}.css";'
     ]) {
       expect(parse(source)).toMatchObject({
-        rules: [{ type: 'ImportAtRule', target: { type: 'Quoted' } }]
+        rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted' } }]
       });
     }
   });
@@ -3010,8 +3036,9 @@ describe('public Less parse()', () => {
           value: { type: 'Quoted', escaped: true, value: 'yes' }
         },
         {
-          type: 'ImportAtRule',
-          target: { type: 'Quoted', escaped: true, value: 'foo.css' }
+          type: 'AtRuleStatement',
+          name: '@import',
+          prelude: { type: 'Quoted', escaped: true, value: 'foo.css' }
         },
         { type: 'MixinDefinition', guard: { g: 'cmp', op: '=' } },
         {

@@ -30,6 +30,7 @@ import {
   any,
   decl,
   dimension,
+  importOptionWords,
   interpolation,
   mixinCall,
   operation,
@@ -89,6 +90,7 @@ import type {
   SimpleToken,
   SelectorTerm,
   SelectorList,
+  List,
   Statement,
   StyleImport,
   ValueNode,
@@ -98,7 +100,7 @@ import type {
 } from './nodes.js';
 
 // [atrule] block + statement at-rule node types
-import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
@@ -257,16 +259,13 @@ export interface SerializeOptions {
 }
 
 export interface ImportDocumentRequest {
-  node: ImportAtRule;
+  node: StyleImport;
 
   /** Evaluated, unquoted specifier supplied to the Context/plugin dispatcher. */
   specifier: string;
 
   /** Evaluated parenthesized option bytes, without the enclosing parentheses. */
   options: string | null;
-
-  /** Evaluated import postlude; `(inline)` uses it as its media wrapper. */
-  tail: string | null;
 }
 
 export interface ImportDocumentTree {
@@ -283,10 +282,16 @@ export interface ImportDocumentTree {
   withinDocument?: (emit: () => MaybePromise<void>) => MaybePromise<void>;
 }
 
-/** A Context-read `(inline)` import: raw source is deliberately never parsed. */
+/**
+ * A Context-read `(inline)` import: raw source is deliberately never parsed.
+ *
+ * There is no media wrapper. `@import (inline) "a.txt" (min-width: 100px)` is a
+ * PARSE ERROR — `(inline)` makes the import compile-time, and a postlude on a
+ * compile-time import is rejected by the grammar — so the spliced bytes are
+ * always emitted bare.
+ */
 export interface ImportDocumentInline {
   readonly inline: string;
-  readonly media: string | null;
 }
 
 export type ImportDocument = ImportDocumentTree | ImportDocumentInline;
@@ -297,27 +302,17 @@ export interface PlannedImportDocument {
 }
 
 export interface PreparedImports {
-  readonly documents: WeakMap<ImportAtRule, PlannedImportDocument>;
+  readonly documents: WeakMap<StyleImport, PlannedImportDocument>;
 }
 
 /**
- * CSS-terminal imports are facts of the typed import node, not resolver work.
- * Every other eligible target goes through Context's existing plugin dispatcher;
- * Context itself keeps external identifiers terminal unless a plugin claims them.
- *
- * `(optional)` is deliberately NOT a terminal fact: it selects what happens when
- * the load FAILS, so an optional import must still be attempted and — per Less
- * 4.x — resolve normally when the file exists. A CSS-terminal import is never
- * loaded at all, so `(optional)` on one is moot: `@import (css, optional) "nope"`
- * and `@import (optional) "nope.css"` both stay CSS imports.
+ * The driver-facing option string: the authored option WORDS, comma-joined.
+ * A structured option fact — SCSS `@use "x" with (…)` — is a typed configuration
+ * carried on the node, not bytes, and deliberately stays out of this string.
  */
-function canLoadImport(node: ImportAtRule, specifier: string, options: string | null): boolean {
-  const optionWords = options === null ? [] : options.toLowerCase().split(',').map(word => word.trim());
-  const explicitSourceImport = node.name.toLowerCase() === '@-import';
-  return !optionWords.includes('inline')
-    && !optionWords.includes('css')
-    && node.alias === null
-    && !(specifier.toLowerCase().endsWith('.css') && !optionWords.includes('less') && !explicitSourceImport);
+function importRequestOptions(options: List | null): string | null {
+  const words = importOptionWords(options);
+  return words.length === 0 ? null : words.join(', ');
 }
 
 function importHasOption(options: string | null, option: string): boolean {
@@ -363,20 +358,16 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
       }
     });
   };
-  return async ({ node, specifier, options, tail }) => {
-    const request = { node, specifier, options, tail };
+  return async ({ node, specifier, options }) => {
+    const request = { node, specifier, options };
     if (importHasOption(options, 'inline')) {
       try {
         const bytes = await context.readBinary(specifier);
-        return { inline: bytes.toString(), media: tail };
+        return { inline: bytes.toString() };
       } catch (error) {
         importError(request, error);
       }
     }
-    if (!canLoadImport(node, specifier, options)) {
-      return undefined;
-    }
-
     /*
      * Parse-mode selection remains Context/plugin-owned. The typed Less `(less)`
      * flag asks the existing dispatcher for its `less` plugin even when the path
@@ -5598,7 +5589,7 @@ interface Emit extends EvalCtx {
   importDocument?: SerializeOptions['importDocument'];
 
   /** Canonical documents already loaded by the extend planner, consumed once by emission. */
-  plannedImportDocuments: WeakMap<ImportAtRule, PlannedImportDocument> | null;
+  plannedImportDocuments: WeakMap<StyleImport, PlannedImportDocument> | null;
 
   /** Caller-owned prepared import plans remain reusable across renders. */
   preparedImportsOwnedByCaller: boolean;
@@ -5611,7 +5602,7 @@ interface Emit extends EvalCtx {
   plannedForExtendPlacements: WeakMap<For, readonly object[]> | null;
 
   /** Root CSS-terminal imports already written in the required document prelude. */
-  hoistedCssImports: Set<ImportAtRule> | null;
+  hoistedCssImports: Set<AtRuleStatement> | null;
 
   /** Block-comment trivia runs already replayed during this render. */
   emittedBlockTrivia: EmittedTrivia;
@@ -7364,26 +7355,23 @@ function planImportedExtends(
    */
   if (e.context?.options.processImports === false
     || !importDocument
-    || (!documentHasExtend(root) && !root.rules.some(child => child.type === 'ImportAtRule'))) {
+    || (!documentHasExtend(root) && !root.rules.some(child => child.type === 'StyleImport'))) {
     recordAstExtendProfile?.('astExtend.preflight.noFeatureBypasses');
     return { root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay: { subjects: [], instructions: [] } };
   }
   const seen = new Set<string>();
   const overlay: { subjects: PlanSubject[]; instructions: PlanInstruction[] } = { subjects: [], instructions: [] };
   const visit = async (statements: readonly Statement[], scope: Frame): Promise<void> => {
-    const deferred: ImportAtRule[] = [];
-    const visitImport = async (st: ImportAtRule): Promise<void> => {
+    const deferred: StyleImport[] = [];
+    const visitImport = async (st: StyleImport): Promise<void> => {
       recordAstExtendProfile?.('astExtend.preflight.importsVisited');
-      const options = st.options === null ? null : evalBytesSync(st.options, scope, e);
+      const options = importRequestOptions(st.options);
       const specifier = importSpecifier(st, scope, e);
-      if (!canLoadImport(st, specifier, options)) {
+      if (importHasOption(options, 'inline')) {
         return;
       }
       recordAstExtendProfile?.('astExtend.preflight.importsLoadable');
-      const request: ImportDocumentRequest = {
-        node: st, specifier, options,
-        tail: st.tail === null ? null : evalQueryPreludeSync(st.tail, scope, e)
-      };
+      const request: ImportDocumentRequest = { node: st, specifier, options };
       const prepared = e.plannedImportDocuments?.get(st);
       const loaded = prepared === undefined ? await importDocument(request) : prepared.loaded;
       if (prepared === undefined) {
@@ -7456,7 +7444,7 @@ function planImportedExtends(
     for (const st of statements) {
       if (st.type === 'VariableDeclaration') {
         activateVariableDeclaration(st, scope, e);
-      } else if (st.type === 'ImportAtRule') {
+      } else if (st.type === 'StyleImport') {
         try {
           await visitImport(st);
         } catch (error) {
@@ -7497,7 +7485,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
   const pluginHost = options?.pluginHost;
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
   const rootFns = globalScopedFns(pluginHost);
-  const documents = new WeakMap<ImportAtRule, PlannedImportDocument>();
+  const documents = new WeakMap<StyleImport, PlannedImportDocument>();
   const e: Emit = {
     chunks: [],
     off: 0,
@@ -7702,7 +7690,7 @@ function emitDocumentStatements(
    * statement dispatcher so rules/at-rules can be suppressed while declarations,
    * mixin definitions, and nested imports still establish lookup facts.
    */
-  const hasDynamicImportTarget = rules.some(child => child.type === 'ImportAtRule'
+  const hasDynamicImportTarget = rules.some(child => child.type === 'StyleImport'
     && child.target.type !== 'Quoted'
     && !(child.target.type === 'Url' && child.target.value.type === 'Quoted'));
   if (!e.collapse && e.referenceImportDepth === 0 && !hasDynamicImportTarget) {
@@ -7730,15 +7718,15 @@ function emitDocumentStatements(
       }
     };
     for (const child of rules) {
-      if (child.type === 'ImportAtRule' && e.hoistedCssImports?.has(child)) {
+      if (child.type === 'AtRuleStatement' && e.hoistedCssImports?.has(child)) {
         continue;
       }
-      if (child.type !== 'ImportAtRule') {
+      if (child.type !== 'StyleImport') {
         batch.push(child);
         continue;
       }
       flushBatch();
-      const emit = () => emitImportAtRule(child, frame, e, importDocument);
+      const emit = () => emitStyleImport(child, frame, e, importDocument);
       if (pending) {
         pending = pending.then(() => Promise.resolve(emit()));
       } else {
@@ -7758,7 +7746,7 @@ function emitDocumentStatements(
    * lexical body, then make exactly one final attempt after those imports have
    * published their facts. No path text is recovered or parsed again.
    */
-  const deferredImports: ImportAtRule[] = [];
+  const deferredImports: StyleImport[] = [];
   const delayedStatements: Statement[] = [];
   let documentTriviaCursor = 0;
   let documentTriviaSuppressedByDefinition = false;
@@ -7777,7 +7765,7 @@ function emitDocumentStatements(
     try {
       return emit(child);
     } catch (error) {
-      if (allowDefer && child.type === 'ImportAtRule' && error instanceof ImportPathNotReady) {
+      if (allowDefer && child.type === 'StyleImport' && error instanceof ImportPathNotReady) {
         deferredImports.push(child);
         return undefined;
       }
@@ -7807,7 +7795,7 @@ function emitDocumentStatements(
       case 'MixinDefinition':
         if (imported) {
           /*
-           * `emitImportAtRule` already published this definition in the import's
+           * `emitStyleImport` already published this definition in the import's
            * source-order callable stream. Keep its existing ordinary-call
            * publication, but do not record the same source statement twice.
            */
@@ -7904,7 +7892,7 @@ function emitDocumentStatements(
         }
         break;
       case 'AtRuleStatement':
-        if (e.referenceImportDepth === 0) {
+        if (e.referenceImportDepth === 0 && !e.hoistedCssImports?.has(child)) {
           emitBeforeDocumentStatement(child);
           emitAtRuleStatement(child, frame, e);
           markAfterDocumentStatement(child);
@@ -7916,21 +7904,13 @@ function emitDocumentStatements(
          * already registered its functions before this dispatch.
          */
         break;
-      case 'ImportAtRule':
-        if (e.hoistedCssImports?.has(child)) {
-          break;
-        }
+      case 'StyleImport':
         emitBeforeDocumentStatement(child);
         {
-          const emitted = emitImportAtRule(child, frame, e, importDocument);
+          const emitted = emitStyleImport(child, frame, e, importDocument);
           markAfterDocumentStatement(child);
           return emitted;
         }
-      case 'StyleImport':
-        emitBeforeDocumentStatement(child);
-        emitStyleImport(child, frame, e);
-        markAfterDocumentStatement(child);
-        break;
       case 'ModuleImport':
         emitBeforeDocumentStatement(child);
         emitModuleImport(child, frame, e);
@@ -7963,7 +7943,7 @@ function emitDocumentStatements(
      * behind the retry. Later imports (and live declaration activation) still
      * run now, so they can satisfy that target in the same lexical frame.
      */
-    if (deferredImports.length > 0 && child.type !== 'ImportAtRule' && child.type !== 'VariableDeclaration') {
+    if (deferredImports.length > 0 && child.type !== 'StyleImport' && child.type !== 'VariableDeclaration') {
       delayedStatements.push(child);
       continue;
     }
@@ -8832,7 +8812,15 @@ function walkBody(
         break;
       }
       case 'AtRuleStatement': {
-        if (staysNested(node.name)) {
+        /*
+         * A leaf only exists inside a SELECTOR context: the group it joins is
+         * flushed as `<selector> { … }`. In a root-level control-flow body
+         * (`@if true { @import "a.css"; }`) there is no selector, and flushing
+         * the group would invent an anonymous ` { … }` wrapper around the
+         * statement. Emit it at the current cursor instead — where a plain CSS
+         * `@import` at root belongs.
+         */
+        if (staysNested(node.name) && composed !== null && composed.length > 0) {
           addLeaf(group, partition, { node, frame }, forceLeading, e, bodyTrivia);
           break;
         }
@@ -8859,27 +8847,21 @@ function walkBody(
       }
       case 'Plugin':
         break;
-      case 'ImportAtRule': {
+      case 'StyleImport': {
         /*
          * A CSS import recorded inside a canonical Ruleset is a rule-body
          * statement, not a bubbling container. Keep it in the authored leaf
          * group so it emits inside that rule (and inside any mixin/control-flow
          * body expanded there). Root and at-rule-body imports retain their
          * existing direct emission paths below.
-         */
-        const options = node.options === null ? null : evalBytesSync(node.options, frame, e);
-        const loadsDocument = e.importDocument !== undefined
-          && canLoadImport(node, importSpecifier(node, frame, e), options);
-
-        /*
-         * An `(inline)` import is raw-byte IO, not a parsed document, but it is
+         *
+         * `(inline)` is raw-byte IO rather than a parsed document, but it is
          * still an asynchronous Context operation. It cannot be buffered as a
          * Leaf: leaf emission has no continuation slot, so the read would be
-         * abandoned and an otherwise empty Ruleset would render without its splice.
-         * Run both Context-backed import forms at this existing body cursor.
+         * abandoned and an otherwise empty Ruleset would render without its
+         * splice. Both Context-backed import forms run at this body cursor.
          */
-        const loadsInline = e.importDocument !== undefined && importHasOption(options, 'inline');
-        if (loadsDocument || loadsInline) {
+        if (e.importDocument !== undefined) {
           /*
            * A Context-loaded import publishes lookup facts into this exact rule
            * placement. Its continuation must complete before a later sibling
@@ -8889,14 +8871,14 @@ function walkBody(
           const flushed = flush();
           if (isThenable(flushed)) {
             return flushed.then(() => mapMaybe(
-              emitImportAtRule(node, frame, e, e.importDocument),
+              emitStyleImport(node, frame, e, e.importDocument),
               () => walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group,
                 flush, partition, e, imp, forceLeading, propertyScope
               )
             ));
           }
-          const imported = emitImportAtRule(node, frame, e, e.importDocument);
+          const imported = emitStyleImport(node, frame, e, e.importDocument);
           if (isThenable(imported)) {
             return imported.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group,
@@ -8909,7 +8891,7 @@ function walkBody(
           const flushed = flush();
           if (isThenable(flushed)) {
             return flushed.then(() => mapMaybe(
-              emitImportAtRule(node, frame, e, e.importDocument),
+              emitStyleImport(node, frame, e, e.importDocument),
               () => walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group,
                 flush, partition, e, imp, forceLeading, propertyScope
@@ -8922,35 +8904,13 @@ function walkBody(
            * asynchronous Context IO. Keep this body cursor alive so a deferred
            * callable's document scope survives the raw-byte read.
            */
-          const imported = emitImportAtRule(node, frame, e, e.importDocument);
+          const imported = emitStyleImport(node, frame, e, e.importDocument);
           if (isThenable(imported)) {
             return imported.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group,
               flush, partition, e, imp, forceLeading, propertyScope
             ));
           }
-        }
-        break;
-      }
-      case 'StyleImport': {
-        const importNode = node;
-        if (partition) {
-          queueLeadingGroup(group, partition);
-          flushPending(partition);
-          partition.encounteredContainer = true;
-          partition.trailing.push(() => emitStyleImport(importNode, frame, e));
-        } else {
-          const flushed = flush();
-          if (isThenable(flushed)) {
-            return flushed.then(() => {
-              emitStyleImport(node, frame, e);
-              return walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              );
-            });
-          }
-          emitStyleImport(node, frame, e);
         }
         break;
       }
@@ -10939,9 +10899,9 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     e.depth++;
     emitAtRuleStatement(node, frame, e);
     e.depth--;
-  } else if (node.type === 'ImportAtRule') {
+  } else if (node.type === 'StyleImport') {
     e.depth++;
-    settledEmission(emitImportAtRule(node, frame, e, e.importDocument), node, e);
+    settledEmission(emitStyleImport(node, frame, e, e.importDocument), node, e);
     e.depth--;
   } else if (node.type === 'OpaqueAtRuleBlock') {
     e.depth++;
@@ -11002,45 +10962,54 @@ function emitHoistedCharset(rules: Statement[], frame: Frame, e: Emit): void {
  * position through Context. Keep this narrow until typed Less import options and
  * media wrapping are represented rather than guessed from source text.
  */
-function rootCssImportKey(node: ImportAtRule): string | null {
-  if (node.options !== null || node.alias !== null) {
+function rootCssImportKey(node: AtRuleStatement): string | null {
+  if (node.name.toLowerCase() !== '@import' || node.prelude === null) {
     return null;
   }
-  if (node.name.toLowerCase() === '@-import') {
+
+  /*
+   * Only a dialect that TYPES its CSS-terminal import prelude participates. A
+   * grammar that flattens the whole prelude to opaque bytes (plain CSS, jess)
+   * keeps its authored statement order, and nothing here re-derives a target
+   * from those bytes.
+   */
+  const prelude = node.prelude;
+  const target = prelude.type === 'Sequence' ? prelude.parts[0] : prelude;
+  if (target === undefined || (target.type !== 'Quoted' && target.type !== 'Url')) {
     return null;
   }
-  const target = node.target;
-  const emittedTarget = target.type === 'Quoted'
-    ? target.src
-    : target.type === 'Url' && target.value.type === 'Quoted'
-      ? `url(${target.value.src})`
-      : null;
+  const tail = prelude.type === 'Sequence' ? prelude.parts.slice(1) : [];
+  if (tail.some(part => part.type !== 'Any')) {
+    return null;
+  }
   const specifier = target.type === 'Quoted'
     ? target.value
-    : target.type === 'Url' && target.value.type === 'Quoted'
+    : target.value.type === 'Quoted'
       ? target.value.value
-      : target.type === 'Url' && target.value.type === 'Any'
+      : target.value.type === 'Any'
         ? target.value.src
         : null;
-  if (emittedTarget === null || specifier === null) {
+  if (specifier === null) {
     return null;
   }
-  const cssTarget = /\.css(?:[?#].*)?$/iu.test(specifier)
-    || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(specifier);
 
   /*
    * A media/layer tail is NOT what makes an import CSS terminal — only the
    * target is. `@import "a.less" screen` loads `a.less` and wraps its rules in
-   * `@media screen`, which `emitImportAtRule` does from the typed tail; hoisting
-   * it here would emit the un-loaded import instead.
+   * `@media screen`, which `emitStyleImport` does from the typed tail; that form
+   * never reaches this statement node at all.
    */
-  if (!cssTarget) {
+  if (!/\.css(?:[?#].*)?$/iu.test(specifier) && !/^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(specifier)) {
     return null;
   }
-  if (node.tail !== null && node.tail.type !== 'Any') {
-    return null;
-  }
-  return `${node.name}\u0000${emittedTarget}\u0000${node.tail?.src ?? ''}`;
+
+  /* Every shape reaching here carries an authored `src`; read it structurally
+   * rather than asserting a narrower node type. */
+  const srcOf = (v: { readonly type: string } & Partial<Record<'src', string>>): string => v.src ?? '';
+  const emittedTarget = target.type === 'Quoted'
+    ? target.src
+    : `url(${target.value.type === 'Quoted' ? target.value.src : srcOf(target.value)})`;
+  return `${node.name}\u0000${emittedTarget}\u0000${tail.map(srcOf).join(' ')}`;
 }
 
 function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void {
@@ -11048,9 +11017,9 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
     return;
   }
   const seen = new Set<string>();
-  let hoisted: Set<ImportAtRule> | null = null;
+  let hoisted: Set<AtRuleStatement> | null = null;
   for (const child of rules) {
-    if (child.type !== 'ImportAtRule') {
+    if (child.type !== 'AtRuleStatement') {
       continue;
     }
     const key = rootCssImportKey(child);
@@ -11062,7 +11031,7 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
       continue;
     }
     seen.add(key);
-    emitCssImportAtRule(child, frame, e);
+    emitAtRuleStatementRaw(child, frame, e);
   }
   e.hoistedCssImports = hoisted;
 }
@@ -11097,8 +11066,13 @@ function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): v
     /*
      * A statement prelude resolves only `@{…}` interpolation (`@charset
      * "UTF-@{Eight}"`); a bare-`@var` / static prelude is a verbatim `Any`.
+     *
+     * Rendered through the query-prelude writer, not the plain value writer: a
+     * CSS-terminal `@import` keeps its target and media/layer tail TYPED, and a
+     * media feature `(min-width: @w)` is a `Block` around an `Operation` whose
+     * delimiters and `: ` are structure rather than bytes.
      */
-    const p = evalBytesSync(node.prelude, frame, e).replace(/^\s+/u, '');
+    const p = evalQueryPreludeSync(node.prelude, frame, e).replace(/^\s+/u, '');
     if (p.length > 0) {
       put(e, ' ');
       put(e, p);
@@ -11116,8 +11090,8 @@ function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): v
  * Core deliberately knows neither paths nor parser plugins; a declined request
  * remains a CSS import statement.
  */
-function emitImportAtRule(
-  node: ImportAtRule,
+function emitStyleImport(
+  node: StyleImport,
   frame: Frame,
   e: Emit,
   importDocument?: SerializeOptions['importDocument'],
@@ -11140,14 +11114,13 @@ function emitImportAtRule(
     const request = plannedImport?.request ?? {
       node,
       specifier: importSpecifier(node, frame, e),
-      options: node.options === null ? null : evalBytesSync(node.options, frame, e),
-      tail: node.tail === null ? null : evalQueryPreludeSync(node.tail, frame, e)
+      options: importRequestOptions(node.options)
     };
     const loadedRequest = plannedImport ? plannedImport.loaded : importDocument(request);
     return mapMaybe(loadedRequest, (loaded) => {
       if (loaded !== undefined) {
         if ('inline' in loaded) {
-          emitRawInline(loaded.inline, loaded.media, e);
+          emitRawInline(loaded.inline, e);
           return;
         }
         if (request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
@@ -11213,45 +11186,12 @@ function emitImportAtRule(
             : emitDocumentStatements(loaded.document!.rules, frame, e, importDocument, true);
 
           /*
-           * A stylesheet import with a typed postlude is still a stylesheet
-           * import—not a CSS terminal.  Its loaded document executes once at this
-           * lexical position inside ONE media wrapper carrying the complete typed
-           * tail.  Do not split/query-reparse the tail: the parser already owns it.
+           * A compile-time import has NO postlude to honour: the grammar rejects
+           * one outright, so the loaded document simply executes at this lexical
+           * position. Less 4.x instead wraps it in `@media <tail>`; that wrap is
+           * deliberately gone along with the syntax that reached it.
            */
-          const emit = (): MaybePromise<void> => {
-            if (request.tail === null) {
-              return emitDocument();
-            }
-            const indent = e.depth > 0 ? INDENT.repeat(e.depth) : '';
-            if (indent) {
-              put(e, indent);
-            }
-            put(e, '@media ');
-            put(e, request.tail);
-            put(e, ' {\n');
-            e.depth++;
-            const finish = (): void => {
-              e.depth--;
-              if (indent) {
-                put(e, indent);
-              }
-              put(e, '}\n');
-            };
-            try {
-              const emitted = emitDocument();
-              return isThenable(emitted)
-                ? emitted.then(() => {
-                    finish();
-                  }, (error) => {
-                    e.depth--;
-                    throw error;
-                  })
-                : (finish(), emitted);
-            } catch (error) {
-              e.depth--;
-              throw error;
-            }
-          };
+          const emit = (): MaybePromise<void> => emitDocument();
 
           /*
            * An imported document executes IN the importing frame, so a `@plugin`
@@ -11336,7 +11276,7 @@ class ImportPathNotReady extends Error {
 }
 
 /** Extract the resolver-facing specifier without reproducing parser recognition. */
-function importSpecifier(node: ImportAtRule, frame: Frame, e: Emit): string {
+function importSpecifier(node: StyleImport, frame: Frame, e: Emit): string {
   try {
     if (node.target.type === 'Quoted') {
       return node.target.value;
@@ -11364,15 +11304,14 @@ function importSpecifier(node: ImportAtRule, frame: Frame, e: Emit): string {
 }
 
 /**
- * Write the preserved CSS import syntax when no canonical document is loaded.
+ * Write the preserved import syntax when no canonical document is loaded.
  *
- * The parenthesized option clause is import machinery, not syntax: `(css)`,
- * `(optional)` and friends select load behavior and have no CSS meaning, so no
- * browser understands `@import (css) "a";`. `canLoadImport` and
- * `importThroughContext` are the only readers of `node.options`; it never
- * reaches output, matching Less 4.x.
+ * The option clause is import machinery, not syntax: `(reference)`, `(optional)`
+ * and friends select load behavior and have no CSS meaning, so no browser
+ * understands `@import (reference) "a";`. `importThroughContext` is the only
+ * reader of `node.options`; it never reaches output, matching Less 4.x.
  */
-function emitCssImportAtRule(node: ImportAtRule, frame: Frame, e: Emit): void {
+function emitCssImportAtRule(node: StyleImport, frame: Frame, e: Emit): void {
   const start = e.off;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
@@ -11383,29 +11322,9 @@ function emitCssImportAtRule(node: ImportAtRule, frame: Frame, e: Emit): void {
   if (node.alias !== null) {
     put(e, ' as ');
     put(e, evalBytesSync(node.alias, frame, e));
-  }
-  if (node.tail !== null) {
-    const tail = evalQueryPreludeSync(node.tail, frame, e);
-    if (tail.length > 0) {
-      put(e, ` ${tail}`);
-    }
-  }
-  put(e, ';\n');
-  if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off });
-  }
-}
-
-/** Write parser-owned Jess import facts. Loading/resolution stays out of core. */
-function emitStyleImport(node: StyleImport, frame: Frame, e: Emit): void {
-  const start = e.off;
-  if (e.depth > 0) {
-    put(e, INDENT.repeat(e.depth));
-  }
-  put(e, node.forward ? '@-export ' : node.mode === 'compose' ? '@-compose ' : '@-import ');
-  put(e, evalBytesSync(node.path, frame, e));
-  if (node.namespace !== null) {
-    put(e, ` as ${node.namespace}`);
+  } else if (node.namespace !== null) {
+    put(e, ' as ');
+    put(e, node.namespace);
   }
   put(e, ';\n');
   if (e.positions) {
@@ -11490,39 +11409,13 @@ function emitOpaqueAtRuleBlock(node: OpaqueAtRuleBlock, e: Emit): void {
  * from the next statement (mirrors Less's inline splice — an `Any` value
  * printed as-is with a trailing rule separator).
  *
- * [import:inline-media] With a media postlude, the splice is wrapped in an
- * `@media <media> { … }` block: Less wraps the inline raw bytes in a media
- * ruleset, so the raw first line is indented one level and the block closes with a
- * `\n}` — reproducing the media-feature colon spacing (`(min-width:…)` →
- * `(min-width: …)`) Less's media parser reprints.
+ * There is no media-wrapped variant. `(inline)` makes an import compile-time, and
+ * a postlude on a compile-time import is a parse error, so the bytes always
+ * splice bare.
  */
-function emitRawInline(text: string, media: string | null, e: Emit): void {
-  if (media != null) {
-    const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
-    put(e, idt);
-    put(e, '@media ');
-    put(e, normalizeMediaFeatures(media));
-    put(e, ' {\n');
-    put(e, INDENT.repeat(e.depth + 1));
-    put(e, text);
-    put(e, '\n');
-    put(e, idt);
-    put(e, '}\n');
-  } else {
-    put(e, text);
-    put(e, '\n');
-  }
-}
-
-/**
- * [import:inline-media] Reprint a media-query prelude's feature colons with
- * Less's `name: value` spacing (`(min-width:600px)` → `(min-width: 600px)`),
- * matching Less's media parser which re-emits each feature with a space after the
- * colon. Only the feature colon immediately inside a paren is touched; other text
- * (media types, `and`/`or`, values) is preserved verbatim.
- */
-function normalizeMediaFeatures(prelude: string): string {
-  return prelude.replace(/\(\s*([-\w]+)\s*:\s*/gu, '($1: ');
+function emitRawInline(text: string, e: Emit): void {
+  put(e, text);
+  put(e, '\n');
 }
 
 function canEmitRootCallValue(value: EvalValue): boolean {
@@ -12249,12 +12142,8 @@ function emitAtRuleBody(
         return nested(node, () => emitAtRuleStatement(node, frame, e));
       case 'Plugin':
         return undefined;
-      case 'ImportAtRule':
-        return nested(node, () => emitImportAtRule(node, frame, e, e.importDocument));
       case 'StyleImport':
-        return nested(node, () => {
-          emitStyleImport(node, frame, e);
-        });
+        return nested(node, () => emitStyleImport(node, frame, e, e.importDocument));
       case 'ModuleImport':
         return nested(node, () => {
           emitModuleImport(node, frame, e);
@@ -12525,12 +12414,12 @@ function emitBubbleBody(
             e.depth--;
           }
           break;
-        case 'ImportAtRule': {
+        case 'StyleImport': {
           const flushed = flushDirect();
           if (isThenable(flushed)) {
             return flushed.then(() => {
               e.depth++;
-              const imported = emitImportAtRule(
+              const imported = emitStyleImport(
                 node,
                 frame,
                 e,
@@ -12567,7 +12456,7 @@ function emitBubbleBody(
             });
           }
           e.depth++;
-          const imported = emitImportAtRule(
+          const imported = emitStyleImport(
             node,
             frame,
             e,
@@ -12612,21 +12501,6 @@ function emitBubbleBody(
               }
             );
           }
-          e.depth--;
-          break;
-        }
-        case 'StyleImport': {
-          const flushed = flushDirect();
-          if (isThenable(flushed)) {
-            return flushed.then(() => {
-              e.depth++;
-              emitStyleImport(node, frame, e);
-              e.depth--;
-              return run(index + 1);
-            });
-          }
-          e.depth++;
-          emitStyleImport(node, frame, e);
           e.depth--;
           break;
         }
@@ -13002,11 +12876,11 @@ function emitNestedBody(
           emitAtRuleStatement(node, frame, e);
           markAfterRootStatement(node);
           break;
-        case 'ImportAtRule':
+        case 'StyleImport':
           flushBuf();
           emitBeforeRootStatement(node);
           {
-            const imported = emitImportAtRule(
+            const imported = emitStyleImport(
               node,
               frame,
               e,
@@ -13020,12 +12894,6 @@ function emitNestedBody(
               });
             }
           }
-          markAfterRootStatement(node);
-          break;
-        case 'StyleImport':
-          flushBuf();
-          emitBeforeRootStatement(node);
-          emitStyleImport(node, frame, e);
           markAfterRootStatement(node);
           break;
         case 'ModuleImport':

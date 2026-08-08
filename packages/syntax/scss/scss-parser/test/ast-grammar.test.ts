@@ -266,20 +266,20 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [
-        { type: 'If', branches: [{ rules: [{ type: 'ImportAtRule', target: { value: 'if.css' } }] }] },
-        { type: 'MixinDefinition', rules: [{ type: 'ImportAtRule', target: { value: 'mixin.css' } }] },
-        { type: 'For', rules: [{ type: 'ImportAtRule', target: { value: 'each.css' } }] },
-        { type: 'For', rules: [{ type: 'ImportAtRule', target: { value: 'for.css' } }] },
-        { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'ImportAtRule', target: { value: 'media.css' } }] },
-        { type: 'AtRuleBlock', name: '@supports', rules: [{ type: 'ImportAtRule', target: { value: 'supports.css' } }] },
-        { type: 'AtRuleBlock', name: '@layer', rules: [{ type: 'ImportAtRule', target: { value: 'layer.css' } }] },
-        { type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'ImportAtRule', target: { value: 'scope.css' } }] },
+        { type: 'If', branches: [{ rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'if.css' } }] }] },
+        { type: 'MixinDefinition', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'mixin.css' } }] },
+        { type: 'For', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'each.css' } }] },
+        { type: 'For', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'for.css' } }] },
+        { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'media.css' } }] },
+        { type: 'AtRuleBlock', name: '@supports', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'supports.css' } }] },
+        { type: 'AtRuleBlock', name: '@layer', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'layer.css' } }] },
+        { type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'scope.css' } }] },
         { type: 'Ruleset', rules: [
-          { type: 'ImportAtRule', target: { type: 'Url', value: { value: 'rule.css' } } },
-          { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'ImportAtRule', target: { value: 'nested-media.css' } }] },
-          { type: 'AtRuleBlock', name: '@supports', rules: [{ type: 'ImportAtRule', target: { value: 'nested-supports.css' } }] },
-          { type: 'AtRuleBlock', name: '@layer', rules: [{ type: 'ImportAtRule', target: { value: 'nested-layer.css' } }] },
-          { type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'ImportAtRule', target: { value: 'nested-scope.css' } }] }
+          { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Url', value: { value: 'rule.css' } } },
+          { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'nested-media.css' } }] },
+          { type: 'AtRuleBlock', name: '@supports', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'nested-supports.css' } }] },
+          { type: 'AtRuleBlock', name: '@layer', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'nested-layer.css' } }] },
+          { type: 'AtRuleBlock', name: '@scope', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { value: 'nested-scope.css' } }] }
         ] },
         { type: 'Ruleset', rules: [{ type: 'MixinCall', name: 'imported' }] }
       ]
@@ -288,7 +288,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(serialize(stylesheet(result.value), { evaluator }).css).toContain('@import url("rule.css");');
   });
 
-  it('constructs a static SCSS import as canonical ImportAtRule', () => {
+  it('constructs a static SCSS CSS import as a canonical AtRuleStatement', () => {
     const source = '@import "theme.css";';
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
@@ -296,10 +296,10 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(bare(result.value)).toEqual({ type: 'Stylesheet', rules: [{ type: 'ImportAtRule', name: '@import', options: null, target: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false }, alias: null, tail: null }] });
+    expect(bare(result.value)).toEqual({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false } }] });
   });
 
-  it('constructs static SCSS url imports as typed ImportAtRule targets', () => {
+  it('constructs static SCSS url imports as typed AtRuleStatement preludes', () => {
     for (const source of ['@import url("theme.css");', '@import url(theme.css);']) {
       const cst = parseScssCst(source);
       expect(cst.errors, source).toHaveLength(0);
@@ -307,7 +307,7 @@ describe('SCSS canonical-AST grammar', () => {
       const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
-      expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'ImportAtRule', target: { type: 'Url' } }] });
+      expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Url' } }] });
     }
   });
 
@@ -321,10 +321,12 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
+
+      // An empty target spells no `.css`, so it takes the compile-time branch.
       rules: [{
-        type: 'ImportAtRule', name: '@import', options: null,
+        type: 'StyleImport', name: '@import', options: null,
         target: { type: 'Url', value: { type: 'Any', src: '' } },
-        alias: null, tail: null
+        alias: null, mode: 'import', namespace: null, forward: false
       }]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe('@import url();\n');
@@ -347,12 +349,15 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{
-        type: 'ImportAtRule',
-        tail: {
+        type: 'AtRuleStatement', name: '@import',
+        prelude: {
           type: 'Sequence', parts: [
-            { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
-            { type: 'Keyword', src: 'screen' }
+            { type: 'Quoted', value: 'theme.css' },
+            { type: 'Sequence', parts: [
+              { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
+              { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
+              { type: 'Keyword', src: 'screen' }
+            ] }
           ]
         }
       }]
@@ -363,7 +368,10 @@ describe('SCSS canonical-AST grammar', () => {
     expect(simple.unconsumedFrom).toBeNull();
     expect(simple.value).toMatchObject({
       type: 'Stylesheet',
-      rules: [{ type: 'ImportAtRule', tail: { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] } }]
+      rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence', parts: [
+        { type: 'Quoted', value: 'theme.css' },
+        { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] }
+      ] } }]
     });
 
     for (const unsupported of [
@@ -382,18 +390,21 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{
-        type: 'ImportAtRule',
-        tail: {
+        type: 'AtRuleStatement', name: '@import',
+        prelude: {
           type: 'Sequence', parts: [
-            { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
-            {
-              type: 'List', sep: ',', value: [
-                { type: 'Sequence', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
-                { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'color' } },
-                { type: 'Sequence', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] }
-              ]
-            }
+            { type: 'Quoted', value: 'theme.css' },
+            { type: 'Sequence', parts: [
+              { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
+              { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
+              {
+                type: 'List', sep: ',', value: [
+                  { type: 'Sequence', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
+                  { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'color' } },
+                  { type: 'Sequence', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] }
+                ]
+              }
+            ] }
           ]
         }
       }]
@@ -450,7 +461,7 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.unconsumedFrom, source).toBeNull();
       expect(result.value).toMatchObject({
         type: 'Stylesheet',
-        rules: [{ type: 'ImportAtRule', target: source.includes('url(')
+        rules: [{ type: 'AtRuleStatement', name: '@import', prelude: source.includes('url(')
           ? { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }, { lit: '.css"' }] } }
           : { type: 'Interpolation', parts: [{ lit: '"theme-' }, { ref: { type: 'Lookup', kind: 'var', name: 'mode', raw: '@mode' }, unquote: true }, { lit: '.css"' }] }
         }]
@@ -475,9 +486,9 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet', rules: [
         { type: 'ModuleImport', mode: 'use', path: { type: 'Quoted', value: '#sass/math' }, namespace: 'math', defaultImport: null, imports: [] },
         { type: 'ModuleImport', mode: 'use', path: { type: 'Quoted', value: './tokens.ts' }, namespace: 'tokens', defaultImport: null, imports: [] },
-        { type: 'StyleImport', mode: 'compose', path: { type: 'Quoted', value: './theme.scss' }, namespace: 'theme', forward: false },
-        { type: 'StyleImport', mode: 'compose', path: { type: 'Quoted', value: './global.scss' }, namespace: '*', forward: false },
-        { type: 'StyleImport', mode: 'compose', path: { type: 'Quoted', value: './public.scss' }, namespace: null, forward: true }
+        { type: 'StyleImport', name: '@-compose', mode: 'compose', target: { type: 'Quoted', value: './theme.scss' }, namespace: 'theme', forward: false },
+        { type: 'StyleImport', name: '@-compose', mode: 'compose', target: { type: 'Quoted', value: './global.scss' }, namespace: '*', forward: false },
+        { type: 'StyleImport', name: '@-export', mode: 'compose', target: { type: 'Quoted', value: './public.scss' }, namespace: null, forward: true }
       ]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
@@ -496,9 +507,13 @@ describe('SCSS canonical-AST grammar', () => {
    * clauses this grammar has no model for.
    */
   it('rejects unrepresentable SCSS @use and @forward forms without classifying or resolving them', () => {
+    /*
+     * `@use "./theme.scss" with (…)` LEFT this list: the configuration is a Sass
+     * map, so it is now captured into the shared `options` carrier rather than
+     * being unrepresentable. It is pinned as an accepted fact below.
+     */
     for (const source of [
       '@use "theme-#{$name}.scss";',
-      '@use "./theme.scss" with ($tone: red);',
       '@forward "./theme.scss" as theme-*;',
       '@forward "./theme.scss" show $tone;',
       '@forward "./theme.scss" with ($tone: red);'
@@ -512,6 +527,21 @@ describe('SCSS canonical-AST grammar', () => {
       }
       expect(accepted, source).toBe(false);
     }
+
+    const configured = run(scssGrammar.Stylesheet, '@use "./theme.scss" with ($tone: red);', { trivia: scssGrammar.whitespace });
+    expect(configured.ok).toBe(true);
+    expect(configured.unconsumedFrom).toBeNull();
+    expect(configured.value).toMatchObject({
+      type: 'Stylesheet', rules: [{
+        type: 'StyleImport', name: '@-compose', mode: 'compose',
+        target: { type: 'Quoted', value: './theme.scss' },
+        options: { type: 'List', value: [{ type: 'Collection', entries: [{
+          type: 'CollectionEntry',
+          key: { type: 'Lookup', kind: 'var', name: 'tone' },
+          value: { type: 'Keyword', src: 'red' }
+        }] }] }
+      }]
+    });
   });
 
   it('routes SCSS @at-root to its filter or ordinary block continuation', () => {
@@ -1075,7 +1105,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(() => parse('@supports (content: "//x") { .a { color: red; } }')).not.toThrow();
 
     // Disabling trivia on those arms must not cost them their literal spacing.
-    expect(parse('@use " sp ";')).toMatchObject({ rules: [{ path: { type: 'Quoted', value: ' sp ' } }] });
+    expect(parse('@use " sp ";')).toMatchObject({ rules: [{ target: { type: 'Quoted', value: ' sp ' } }] });
     expect(parse('.a[href=" sp "] { color: red; }')).toMatchObject({
       rules: [{ selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: '.a' }, { text: '[href=" sp "]' }] }] } }]
     });

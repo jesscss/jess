@@ -28,9 +28,9 @@ import {
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, Block, Important, ImportAtRule, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
 // Grammar — Less host-mode grammar.
@@ -104,7 +104,7 @@ type LessRules = {
   Stylesheet: Combinator<Stylesheet>;
   Document: Combinator<Stylesheet>;
   VarDeclaration: Combinator<VariableDeclaration>;
-  ImportStatement: Combinator<ImportAtRule>;
+  ImportStatement: Combinator<StyleImport | AtRuleStatement>;
   PluginDirective: Combinator<Plugin>;
   ValueBlockDeclaration: Combinator<VariableDeclaration>;
   ValueBlock: Combinator<ValueNode>;
@@ -582,18 +582,17 @@ function isAny(value: unknown): value is Any {
     && typeof value.src === 'string';
 }
 
-function isImportAtRule(value: unknown): value is ImportAtRule {
+function isStyleImport(value: unknown): value is StyleImport {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
-    && value.type === 'ImportAtRule'
+    && value.type === 'StyleImport'
     && 'name' in value
     && typeof value.name === 'string'
     && 'target' in value
     && (isQuoted(value.target) || isUrl(value.target) || isInterp(value.target))
     && 'options' in value
-    && 'alias' in value
-    && 'tail' in value;
+    && 'alias' in value;
 }
 
 function isVarDeclaration(value: unknown): value is VariableDeclaration {
@@ -1982,8 +1981,8 @@ function isStatement(value: unknown): value is Statement {
     return false;
   }
   switch (value.type) {
-    case 'ImportAtRule':
-      return isImportAtRule(value);
+    case 'StyleImport':
+      return isStyleImport(value);
     case 'VariableDeclaration':
       return isVarDeclaration(value);
     case 'Declaration':
@@ -2764,10 +2763,28 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => children.length === 1 ? children[0] : children
   );
+  /*
+   * There are TWO import nodes and this reducer picks between them. A plain CSS
+   * `@import` is an ordinary `AtRuleStatement`; a compile-time import — one with
+   * options, or with a loadable target — is a `StyleImport`. `importIsCompileTime`
+   * is the ONE definition of that split, shared by every dialect, and all of its
+   * inputs are authored syntax, so nothing about the shape defers to eval.
+   *
+   * The CSS-terminal prelude stays TYPED (`target`, then the tail) rather than
+   * being flattened to bytes: the root CSS-import hoist reads the target node
+   * back out of it, and a variable-bearing media feature still has to evaluate.
+   * The option clause is import machinery with no CSS meaning, so it is simply
+   * absent from that statement — exactly as Less 4.x emits it.
+   *
+   * A postlude on the COMPILE-TIME branch is rejected here rather than carried:
+   * a media/layer/supports query describes a linked CSS resource, and a loaded
+   * document is spliced into this one instead. Deliberately unlike Less 4.x,
+   * which accepts `@import "foo.less" screen` and wraps the result in `@media`.
+   */
   const ImportStatement = node(
-    'ImportAtRule',
+    'ImportStatement',
     sequence(importKeyword, optional(g.ImportOptions), g.ImportTarget, optional(field('tail', g.ImportTail)), literal(';')),
-    (children, fields, _span) => {
+    (children, fields, span) => {
       // Every accepted import fact is a grammar child or a field capture. In
       // particular, the opaque tail is reconstructed from terminal values only
       // after the recursive grammar has closed every delimiter.
@@ -2780,11 +2797,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const tailField = fields?.tail;
       // The variable-bearing query feature and a complete `@{…}` tail are
       // structural values. Mixed text and interpolation stays rejected until
-      // ImportAtRule has a typed segment model; do not flatten it back into
+      // the import tail has a typed segment model; do not flatten it back into
       // opaque source bytes.
       const tailValue = tailField === undefined ? undefined : requireField(fields, 'tail').value;
       const tail = tailValue === undefined ? null : isValueNode(tailValue) ? tailValue : any(staticText(tailValue));
-      return importAtRule(keyword.value, target, options, null, tail);
+      if (importIsCompileTime(keyword.value, target, options)) {
+        if (tail !== null) {
+          throw new LessImportPostludeError(span.start, span.end);
+        }
+        return styleImport(keyword.value, target, { options, mode: 'import' });
+      }
+      return atRuleStatement(keyword.value, tail === null ? target : spaced([target, tail]));
     }
   );
   // `@plugin` is a compile-time directive, not an unknown CSS at-rule. Its

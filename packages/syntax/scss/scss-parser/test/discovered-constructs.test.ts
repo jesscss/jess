@@ -340,7 +340,7 @@ describe('SCSS constructs discovered outside the parser suites', () => {
 
   it('preserves an escape in a module path verbatim, as in any other string', () => {
     expect(firstRule('@use "a\\62 c";')).toMatchObject({
-      path: { type: 'Quoted', value: 'a\\62 c', quote: '"' }
+      target: { type: 'Quoted', value: 'a\\62 c', quote: '"' }
     });
     expect(firstRule('$x: "a\\62 c";')).toMatchObject({
       value: { type: 'Quoted', value: 'a\\62 c', quote: '"' }
@@ -351,7 +351,7 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     ['a protocol-relative path is not a line comment', '@use "//host/lib";', '//host/lib'],
     ['a bare `#` is not an interpolation opener', '@use "a#b";', 'a#b']
   ])('keeps module-path lexing intact (%s)', (_label, source, value) => {
-    expect(firstRule(source)).toMatchObject({ path: { type: 'Quoted', value } });
+    expect(firstRule(source)).toMatchObject({ target: { type: 'Quoted', value } });
   });
 
   it.each([

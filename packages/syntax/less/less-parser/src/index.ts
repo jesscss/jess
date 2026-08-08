@@ -6,6 +6,7 @@ import { parseWith, safeParseWith } from './parse-with.js';
 export {
   LessBareVariableInterpolationError,
   LessDynamicCharsetError,
+  LessImportPostludeError,
   LessInlineJavaScriptError,
   LessParseError,
   LessUnparenthesizedMixinGuardError,

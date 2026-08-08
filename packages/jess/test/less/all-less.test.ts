@@ -205,9 +205,24 @@ const expectedFailureFixtures = new Map<string, string>([
     'tests-unit/import/import-reference.less',
     'reference import filtering leaves extra at-rules'
   ],
+
+  /*
+   * INTENDED DIVERGENCE, not a defect (§12.3b, owner ruling 2026-08-07). A
+   * media/layer/supports postlude on a COMPILE-TIME `@import` is now a parse
+   * error: a postlude describes a linked CSS resource, and a loaded document is
+   * spliced into this one instead. lessc 4.x accepts the source and wraps the
+   * loaded rules in `@media`, which is what these two `.css` expectations still
+   * encode. The fixtures live in the owner-maintained `@less/test-data` corpus
+   * (`~/git/oss/less.js`, branch `alpha`), so they need an OWNER update to the
+   * v5 expectation before either fixture can graduate off this list.
+   */
   [
     'tests-unit/import/import.less',
-    '@import option keywords no longer leak into output and a media tail now wraps the loaded document in @media; remaining gap is import hoisting — Less resolves every @import before evaluating, so `.mixin()` at line 12 sees a definition from the file imported at line 18, while jess evaluates in source order and reports resolve/name-not-found'
+    'lines 17/21/23/25 carry a media postlude on a compile-time @import (e.g. `@import (less, multiple) "import/import-test-d.css" screen and (max-width: 601px);`), which §12.3b now rejects at parse time; the .css expectation still encodes the 4.x @media wrap. Behind that sits the pre-existing import-hoisting gap — Less resolves every @import before evaluating, so `.mixin()` at line 12 sees a definition from the file imported at line 18, while jess evaluates in source order'
+  ],
+  [
+    'tests-unit/import/import-inline.less',
+    'line 2 is `@import (inline) url("import/import-test-d.css") (min-width:600px);` — `(inline)` makes the import compile-time, so §12.3b rejects its postlude at parse time; the .css expectation still encodes the 4.x behaviour of wrapping the spliced raw bytes in `@media (min-width: 600px)`'
   ],
   [
     'tests-unit/urls/urls.less',
@@ -351,7 +366,12 @@ const expectedFailureFixtures = new Map<string, string>([
 ]);
 
 const expectedFailureDiagnosticCodes = new Map<string, string>([
-  ['tests-unit/import/import.less', 'resolve/name-not-found']
+  /*
+   * The §12.3b postlude rule now fires at PARSE time, ahead of the import-hoisting
+   * resolve failure this fixture used to surface (`resolve/name-not-found`).
+   */
+  ['tests-unit/import/import.less', 'parse/syntax-error'],
+  ['tests-unit/import/import-inline.less', 'parse/syntax-error']
 ]);
 
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;

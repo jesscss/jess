@@ -172,7 +172,7 @@ describe('Less import CST facts', () => {
   it('keeps quoted interpolation segments, typed options, and a typed media postlude', () => {
     const result = parseLessCst('@import (less, multiple) "theme-@{name}.css" screen and (min-width: 600px);');
     expect(result.errors).toHaveLength(0);
-    const imp = findNode(result.tree, 'ImportAtRule');
+    const imp = findNode(result.tree, 'ImportStatement');
     expect(imp).toBeDefined();
     expect(leafValues(findNode(imp!, 'ImportOptions')!)).toEqual(['(', 'less', ',', 'multiple', ')']);
     expect(findNode(imp!, 'ImportTarget')).toBeDefined();
@@ -184,7 +184,7 @@ describe('Less import CST facts', () => {
   it('keeps a url target and the @-import keyword', () => {
     const result = parseLessCst('@-import (reference) url("theme.less") print;');
     expect(result.errors).toHaveLength(0);
-    const imp = findNode(result.tree, 'ImportAtRule');
+    const imp = findNode(result.tree, 'ImportStatement');
     expect(imp).toBeDefined();
     expect(leafValues(imp!)).toContain('@-import');
     expect(findNode(imp!, 'ImportOptions')).toBeDefined();
@@ -363,7 +363,7 @@ describe('Less direct-AST closure CST contract', () => {
     ['generic at-rule block', '@font-face { font-family: x; }', 'AtRuleBlock'],
     ['nested generic at-rule block', '.a { @layer utilities { color: red; } }', 'AtRuleBlock'],
     ['empty statement in generic at-rule block', '@foo { ; color: red; }', 'AtRuleBlock'],
-    ['typed import fact', '@import (less) "theme.less" screen;', 'ImportAtRule'],
+    ['typed import fact', '@import (less) "theme.less";', 'ImportStatement'],
     ['at-rule statement', '@charset "utf-8";', 'AtRuleStatement'],
     ['ruleset', '.a { color: red; }', 'Ruleset'],
     ['top-level mixin definition', '.m(@x) { color: @x; }', 'MixinDefinition'],

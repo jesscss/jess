@@ -1,1 +1,3 @@
-@-compose "./imports/rule.jess";
+.rule {
+  color: red;
+}

@@ -25,7 +25,7 @@ import type {
   ValueSlot,
   VariableDeclaration
 } from './nodes.js';
-import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 import type { GuardNode } from './guard.js';
 import type { CallArg, CallValue } from './mixin-dispatch.js';
 
@@ -67,7 +67,6 @@ export type AstEdge =
   | 'for.rules'
   | 'if.branch.guard'
   | 'if.branch.rules'
-  | 'style-import.path'
   | 'module-import.path'
   | 'atrule.prelude'
   | 'atrule.rules'
@@ -75,7 +74,6 @@ export type AstEdge =
   | 'import.options'
   | 'import.target'
   | 'import.alias'
-  | 'import.tail'
   | 'plugin.target'
   | 'plugin.options'
   | 'selector.branch'
@@ -423,19 +421,6 @@ function walkAtRuleStatement(node: AtRuleStatement, hooks: AstVisitHooks, depth:
   }
 }
 
-function walkImportAtRule(node: ImportAtRule, hooks: AstVisitHooks, depth: number): void {
-  if (node.options !== null) {
-    walkNode(node.options, hooks, 'import.options', node, 0, depth + 1);
-  }
-  walkNode(node.target, hooks, 'import.target', node, 0, depth + 1);
-  if (node.alias !== null) {
-    walkNode(node.alias, hooks, 'import.alias', node, 0, depth + 1);
-  }
-  if (node.tail !== null) {
-    walkNode(node.tail, hooks, 'import.tail', node, 0, depth + 1);
-  }
-}
-
 function walkPlugin(node: Plugin, hooks: AstVisitHooks, depth: number): void {
   walkNode(node.target, hooks, 'plugin.target', node, 0, depth + 1);
   if (node.options !== null) {
@@ -458,7 +443,13 @@ function walkReference(node: Reference, hooks: AstVisitHooks, depth: number): vo
 }
 
 function walkStyleImport(node: StyleImport, hooks: AstVisitHooks, depth: number): void {
-  walkNode(node.path, hooks, 'style-import.path', node, 0, depth + 1);
+  if (node.options !== null) {
+    walkNode(node.options, hooks, 'import.options', node, 0, depth + 1);
+  }
+  walkNode(node.target, hooks, 'import.target', node, 0, depth + 1);
+  if (node.alias !== null) {
+    walkNode(node.alias, hooks, 'import.alias', node, 0, depth + 1);
+  }
 }
 
 function walkModuleImport(node: ModuleImport, hooks: AstVisitHooks, depth: number): void {
@@ -523,9 +514,6 @@ function walkNode(
       break;
     case 'AtRuleStatement':
       walkAtRuleStatement(node, hooks, depth);
-      break;
-    case 'ImportAtRule':
-      walkImportAtRule(node, hooks, depth);
       break;
     case 'Plugin':
       walkPlugin(node, hooks, depth);

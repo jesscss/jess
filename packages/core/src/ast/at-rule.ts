@@ -30,7 +30,7 @@
  */
 
 import { NO_SPAN, type BodySpanSlots, type SpanSlots } from './provenance.js';
-import type { Interpolation, List, Quoted, Statement, Url, ValueNode } from './nodes.js';
+import type { Interpolation, Quoted, Statement, Url, ValueNode } from './nodes.js';
 
 /** A block-bearing at-rule: `@name prelude { …body }`. */
 export interface AtRuleBlock extends SpanSlots, BodySpanSlots {
@@ -68,24 +68,6 @@ export interface OpaqueAtRuleBlock extends SpanSlots {
   readonly rawBody: string;
 }
 
-/** A typed import statement. Context/plugin document loading owns resolution. */
-export interface ImportAtRule extends SpanSlots {
-  readonly type: 'ImportAtRule';
-  readonly name: string;
-
-  /** Grammar-owned comma list inside the parenthesized option clause. */
-  readonly options: List | null;
-
-  /** A quoted path, `url(…)`, or interpolated quoted template. */
-  readonly target: Quoted | Url | Interpolation;
-
-  /** Grammar-owned `as …` clause, if the dialect admits one. */
-  readonly alias: ValueNode | null;
-
-  /** Grammar-owned media/layer/supports tail, if present. */
-  readonly tail: ValueNode | null;
-}
-
 /**
  * A compile-time Plugin statement. Unlike a CSS at-rule statement it has no
  * CSS output: its grammar-owned target/options are handed to the Context
@@ -119,14 +101,6 @@ export const opaqueAtRuleBlock = (
   prelude: string | null,
   rawBody: string
 ): OpaqueAtRuleBlock => ({ type: 'OpaqueAtRuleBlock', name, prelude, rawBody, _s: NO_SPAN, _e: NO_SPAN });
-
-export const importAtRule = (
-  name: string,
-  target: Quoted | Url | Interpolation,
-  options: List | null = null,
-  alias: ValueNode | null = null,
-  tail: ValueNode | null = null
-): ImportAtRule => ({ type: 'ImportAtRule', name, options, target, alias, tail, _s: NO_SPAN, _e: NO_SPAN });
 
 export const plugin = (
   target: Quoted | Url | Interpolation,

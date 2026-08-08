@@ -2,7 +2,7 @@ import type { Stylesheet } from '@jesscss/core/ast';
 import { scssGrammar } from './grammar/ast.js';
 import { parseWith } from './parse-with.js';
 
-export { ScssParseError } from './parse-error.js';
+export { ScssImportPostludeError, ScssParseError } from './parse-error.js';
 
 /**
  * Parse SCSS directly into the canonical AST v2 document.
