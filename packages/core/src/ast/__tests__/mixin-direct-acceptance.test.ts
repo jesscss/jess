@@ -436,6 +436,18 @@ describe('Mixin canonical AST emission', () => {
       rule('.out', [call('.generic', [{ value: dimension(1) }, { value: keyword('true') }])])
     ]);
 
-    expect(() => render(document)).toThrow(/share no common ground/);
+    /*
+     * Asserted on the STRUCTURED error, not on `message`. The raise is wrapped
+     * into `eval/incomparable-operands` at the arithmetic site, so the summary
+     * is the code's and the operand prose lives in `reason` — checking the code
+     * plus the reason pins both the classification and the explanation, where a
+     * regex over `message` pinned neither.
+     */
+    expect(() => render(document)).toThrow(
+      expect.objectContaining({
+        code: 'eval/incomparable-operands',
+        reason: expect.stringContaining('share no common ground')
+      })
+    );
   });
 });
