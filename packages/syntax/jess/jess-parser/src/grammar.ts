@@ -100,7 +100,10 @@ type JessRules = {
   CalcParen: Combinator<ValueNode>;
   CalcProduct: Combinator<ValueNode>;
   CalcSum: Combinator<ValueNode>;
-  CalcFunction: Combinator<FunctionCall>;
+  MathDollarValue: Combinator<ValueNode>;
+  CalcSequence: Combinator<ValueSlot>;
+  calcFunctionArguments: Combinator<ValueSlot>;
+  MathFunction: Combinator<FunctionCall>;
   IdentifierOrFunction: Combinator<ValueNode>;
   CollectionEntry: Combinator<CollectionEntry>;
   Collection: Combinator<Collection>;
@@ -797,7 +800,7 @@ function referenceBaseSource(value: ValueNode): string {
 
 /** A member step is a `LookupStep` whose name is a literal — the old `DotLookup`. */
 function isMemberStep(step: JessReferenceTail['step'] | undefined): boolean {
-  return step !== undefined && step.type === 'LookupStep' && typeof step.name === 'string';
+  return step?.type === 'LookupStep' && typeof step.name === 'string';
 }
 
 function declarationMemberReferenceFromVariableBase(
@@ -1351,6 +1354,51 @@ function isCalcOperator(text: string): boolean {
  * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
  * defeat any attempt to recover the operator from the padded text.
  */
+function dollarValueFromChildren(children: readonly unknown[]): ValueNode {
+  const base = requireValueNode(children[0]);
+  if (children.length === 1) {
+    if (base.type !== 'Lookup' || base.kind !== 'var') {
+      throw new TypeError('Jess reference base must be a variable reference.');
+    }
+    return base;
+  }
+  const rest = children.slice(1);
+  if (base.type === 'Lookup' && base.kind === 'entry') {
+    const name = requireToken(rest[0]).value;
+    const tails = rest.slice(1).map(requireJessReferenceTail);
+    return reference(
+      base,
+      [
+        lookupStep('member', name),
+        ...tails.map(tail => tail.step)
+      ],
+      `${base.raw}.${name}${tails.map(tail => tail.src).join('')}`
+    );
+  }
+  if (base.type !== 'Lookup' || base.kind !== 'var') {
+    throw new TypeError('Jess reference base must be a variable reference.');
+  }
+  if (isJessReferenceTail(rest[0])) {
+    const tails = rest.map(requireJessReferenceTail);
+    const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
+    if (memberReference) {
+      return memberReference;
+    }
+    return reference(
+      base,
+      tails.map(tail => tail.step),
+      `${base.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(base.name)}${tails.map(tail => tail.src).join('')}`
+    );
+  }
+  if (rest.some(child => isToken(child) && child.value === '/')) {
+    return list(
+      [base, requireValueNode(rest.at(-1))],
+      '/'
+    );
+  }
+  throw new TypeError('Jess dollar value matched an unknown continuation.');
+}
+
 function foldCalcOperation(children: readonly unknown[]): ValueNode {
   const first = children.find(isValueNode);
   if (first === undefined) {
@@ -1364,10 +1412,19 @@ function foldCalcOperation(children: readonly unknown[]): ValueNode {
       if (operator === undefined) {
         throw new TypeError('Jess calc grammar lost an operator operand.');
       }
+
+      /*
+       * `inMathFunction` is TRUE for every pair this fold builds: the ladder is
+       * reachable only from a css-values-4 §10 math function, so an operation
+       * arriving here was AUTHORED inside one. The flag records that positional
+       * fact and nothing more — whether it then folds is decided downstream,
+       * together with `unitMode` and `mathMode`.
+       */
       result = operation(
         operator,
         result,
-        child
+        child,
+        true
       );
       operator = undefined;
       continue;
@@ -1431,6 +1488,35 @@ const rawWhitespace = regex(/[ \t\n\r\f]+/);
  * distance from its operand, so the fold reads the shape, not a fixed stride.
  */
 const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)+/);
+
+/*
+ * The css-values-4 §10 math functions, as glued function OPENERS.
+ *
+ * CANONICAL TABLE: `CSS_MATH_FUNCTIONS` in `@jesscss/core/ast`
+ * (`packages/core/src/ast/math-functions.ts`). Add or remove a name THERE
+ * first; `test/math-function-table.test.ts` fails if this literal drifts.
+ *
+ * Spelled as a LITERAL because a dispatch key must be macro-visible: parseman's
+ * plugin const-folds these at build time and cannot follow an imported binding
+ * (measured — every import spelling fails the build with `composeLeaf() must
+ * macro-fuse`).
+ */
+const CSS_MATH_FUNCTION_OPENERS = [
+  'calc(',
+  'min(', 'max(', 'clamp(',
+  'round(', 'mod(', 'rem(',
+  'sin(', 'cos(', 'tan(', 'asin(', 'acos(', 'atan(', 'atan2(',
+  'pow(', 'sqrt(', 'hypot(', 'log(', 'exp(',
+  'abs(', 'sign('
+];
+
+/*
+ * A `+`/`-` GLUED to the number after it. Following a run separator inside a
+ * math function this is never a run item — `calc(1px +2px)` is an ASYMMETRIC
+ * additive operator, which css-values-4 §10.1 rejects. A leading `-` that
+ * starts an identifier (`-webkit-foo`) is not this shape.
+ */
+const signedNumericStart = regex(/[-+](?=[.0-9])/);
 const calcProductPad = regex(/[ \t\n\r\f]*(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
 const calcSumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)*[ \t\n\r\f]+(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
 const calcProductOperator = sequence(
@@ -2297,6 +2383,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     { trivia: whitespace },
     g.ExpressionInterpolation
   );
+
   /*
    * The escape is an OPTIONAL PREFIX on the quoted body, not a second spelling
    * of it. `~` used to lead its own full copy of each arm, so the body was
@@ -3366,7 +3453,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     choice(
       g.Dimension,
       g.Color,
-      g.DollarValue,
+      g.MathDollarValue,
       g.InterpolatedValue,
       g.CalcParen,
       g.IdentifierOrFunction,
@@ -3414,18 +3501,92 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     )),
     foldCalcOperation
   );
-  const CalcFunction = node<FunctionCall>(
-    'CalcCall',
+
+  /*
+   * The SEQUENCE rung, and the reason routing every §10 name to the ladder is a
+   * widening rather than a narrowing. `CalcSum` has no space-separated-run
+   * derivation because `calc()` never needed one, but `min(1px 2px)`,
+   * `clamp(1px 2px, 3px)` and `min(red blue)` are shapes the grammar accepts
+   * today — the parser accepts SHAPES, not semantics, so narrowing them would
+   * be a regression.
+   *
+   * The separator is REQUIRED between run items, which is the adjacency
+   * question (ledger G24) and the one deliberate difference from an ordinary
+   * value run: at top level `1rem+1vw` is two adjacent component values, but
+   * inside a math function css-values-4 §10.1 requires real whitespace on both
+   * sides of `+`/`-`, so `calc(1rem+1vw)` must be REJECTED. It is rejected by
+   * the absence of an adjacent-items arm, not by any production re-spelling
+   * what a separator looks like.
+   */
+  const CalcSequence = node<ValueSlot>(
+    'CalcSequence',
+    noTrivia(sequence(
+      g.CalcSum,
+      many(sequence(
+        field(
+          'separator',
+          regex(/[ \t\n\r\f]+/)
+        ),
+        not(signedNumericStart),
+        g.CalcSum
+      ))
+    )),
+    (children, fields) => {
+      const values = children.filter(isValueSlotValue);
+      if (values.length === 1) {
+        return values[0]!;
+      }
+      const separators = fields?.separator === undefined
+        ? []
+        : requireFields(
+            fields,
+            'separator'
+          ).map(separator => typeof separator.value === 'string'
+            ? separator.value
+            : requireToken(separator.value).value);
+      return withValueLayout(
+        values,
+        separators
+      );
+    }
+  );
+  const mathArgumentComma = noTrivia(sequence(
+    optional(valueTrivia),
+    literal(','),
+    optional(valueTrivia)
+  ));
+
+  /*
+   * `<calc-sum>#`. `round()` additionally takes an optional leading
+   * `<rounding-strategy>` keyword (`round(up, 1.2px, 1px)`), which needs no arm
+   * of its own — a bare keyword is already a `CalcValue`, so the strategy
+   * arrives as the first argument. The grammar is therefore NOT uniformly
+   * `<calc-sum>#`, and enforcing which name takes what is the language
+   * service's job, not the parser's.
+   */
+  const calcFunctionArguments = oneOrMoreSep(
+    g.CalcSequence,
+    mathArgumentComma
+  );
+
+  /*
+   * The css-values-4 §10 math functions — `calc` and the other twenty — share
+   * ONE tail. `calc()` computes nothing; it is a spelling the parser detects so
+   * the operations inside it keep their authorship, and every other §10 name
+   * has exactly that relationship to the grammar.
+   */
+  const MathFunction = node<FunctionCall>(
+    'Call',
     noTrivia(sequence(
       routed(),
       optional(valueTrivia),
-      g.CalcSum,
+      g.calcFunctionArguments,
       optional(valueTrivia),
       literal(')')
     )),
     children => funcCall(
       functionOpenName(children[0]),
-      [requireValueNode(children.find(isValueNode))]
+      children.slice(1).filter(isValueSlotValue)
     )
   );
 
@@ -3439,9 +3600,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       'var(',
       g.VarCall
     ),
+
+    /*
+     * ONE multi-key arm, not twenty. parseman compiles `dispatch` to a linear
+     * if/else chain with each tail fully INLINED, so twenty arms would inline
+     * twenty copies of this tail — measured at roughly 1.4 MB of generated code
+     * across css+jess against roughly 70 KB for the multi-key form. The tail is
+     * a `g.`-rule reference for the same reason.
+     */
     caseInsensitiveWhen(
-      'calc(',
-      g.CalcFunction
+      CSS_MATH_FUNCTION_OPENERS,
+      g.MathFunction
     ),
     when(
       endsWith('('),
@@ -3610,6 +3779,26 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       );
     }
   );
+
+  /*
+   * The same tail WITHOUT the slash-list arm, for use inside a css-values-4 §10
+   * math function.
+   *
+   * In ordinary value position a `/` after a variable is an authored value
+   * boundary, not division — that is a deliberate `.jess` rule and `$( $w / 2 )`
+   * is the arithmetic spelling. Inside a math function the same bytes ARE
+   * division: `calc($val / 2)` must come back as `calc(8px / 2)`, one preserved
+   * operation, and the slash-list arm was swallowing the `/` before the math
+   * ladder could see it — which is why that row emitted `8px / 2` with the
+   * wrapper dropped.
+   */
+  const mathVariableDollarValueTail = sequence(
+    RoutedVariableReference,
+    optional(oneOrMore(choice(
+      g.ReferenceCallTail,
+      g.ReferenceTail
+    )))
+  );
   const variableDollarValueTail = sequence(
     RoutedVariableReference,
     optional(choice(
@@ -3650,50 +3839,32 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ),
       otherwise(variableDollarValueTail)
     )),
-    (children) => {
-      const base = requireValueNode(children[0]);
-      if (children.length === 1) {
-        if (base.type !== 'Lookup' || base.kind !== 'var') {
-          throw new TypeError('Jess reference base must be a variable reference.');
-        }
-        return base;
-      }
-      const rest = children.slice(1);
-      if (base.type === 'Lookup' && base.kind === 'entry') {
-        const name = requireToken(rest[0]).value;
-        const tails = rest.slice(1).map(requireJessReferenceTail);
-        return reference(
-          base,
-          [
-            lookupStep('member', name),
-            ...tails.map(tail => tail.step)
-          ],
-          `${base.raw}.${name}${tails.map(tail => tail.src).join('')}`
-        );
-      }
-      if (base.type !== 'Lookup' || base.kind !== 'var') {
-        throw new TypeError('Jess reference base must be a variable reference.');
-      }
-      if (isJessReferenceTail(rest[0])) {
-        const tails = rest.map(requireJessReferenceTail);
-        const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
-        if (memberReference) {
-          return memberReference;
-        }
-        return reference(
-          base,
-          tails.map(tail => tail.step),
-          `${base.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(base.name)}${tails.map(tail => tail.src).join('')}`
-        );
-      }
-      if (rest.some(child => isToken(child) && child.value === '/')) {
-        return list(
-          [base, requireValueNode(rest.at(-1))],
-          '/'
-        );
-      }
-      throw new TypeError('Jess dollar value matched an unknown continuation.');
-    }
+    dollarValueFromChildren
+  );
+
+  /*
+   * `DollarValue` for math positions: same reduction, slash-free tail. Sharing
+   * ONE reducer keeps the two spellings from drifting — the difference between
+   * them is exactly which continuations the tail admits.
+   */
+  const MathDollarValue = node<ValueNode>(
+    'DollarValue',
+    noTrivia(dispatch(
+      dollarValueHead,
+      when(
+        '$.',
+        sequence(
+          RoutedDeclarationReference,
+          dollarName,
+          many(choice(
+            g.ReferenceCallTail,
+            g.ReferenceTail
+          ))
+        )
+      ),
+      otherwise(mathVariableDollarValueTail)
+    )),
+    dollarValueFromChildren
   );
 
   /*
@@ -6151,7 +6322,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     CalcParen,
     CalcProduct,
     CalcSum,
-    CalcFunction,
+    MathDollarValue,
+    CalcSequence,
+    calcFunctionArguments,
+    MathFunction,
     IdentifierOrFunction,
     CollectionEntry,
     Collection,

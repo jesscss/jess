@@ -235,15 +235,37 @@ describe('@jesscss/css-parser/cst', () => {
     });
   });
 
+  /*
+   * `calc()` is not privileged in the CST any more. It is one of the twenty-one
+   * css-values-4 §10 math functions, all of which share ONE dispatch arm and
+   * ONE tail, so a math call is a `Call` exactly like a generic call — the two
+   * differ in what their ARGUMENTS parsed as, not in what the call is. The
+   * `CalcCall` label this used to assert named the routing, not a node.
+   */
   it('routes calc identifier and function atoms without leaking the dispatcher node', () => {
     const result = parseCssCst('.asset { width: calc(var(--x) + foo(1px)); }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(nodesByGrammarType(result.tree, 'CalcCall')).toHaveLength(1);
+    expect(nodesByGrammarType(result.tree, 'CalcCall')).toHaveLength(0);
     expect(nodesByGrammarType(result.tree, 'VarCall')).toHaveLength(1);
-    expect(nodesByGrammarType(result.tree, 'Call')).toHaveLength(1);
+    expect(nodesByGrammarType(result.tree, 'Call')).toHaveLength(2);
     expect(nodesByGrammarType(result.tree, 'CalcIdentOrFunction')).toHaveLength(0);
+  });
+
+  it('routes every css-values-4 §10 math function through the same tail', () => {
+    for (const source of [
+      '.a { width: min(1em - 2px); }',
+      '.a { width: clamp(1rem, 2vw, 3rem); }',
+      '.a { width: calc(sign(1em - 10px) * 1%); }',
+      '.a { width: round(up, 1.2px, 1px); }',
+      '.a { width: hypot(3px, 4px); }'
+    ]) {
+      const result = parseCssCst(source);
+      expect(result.errors, source).toHaveLength(0);
+      expect(result.unconsumedFrom, source).toBeNull();
+      expect(nodesByGrammarType(result.tree, 'Call').length, source).toBeGreaterThan(0);
+    }
   });
 
   it('does not recognize whitespace-separated identifiers as function calls', () => {

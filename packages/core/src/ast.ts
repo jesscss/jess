@@ -8,6 +8,7 @@ export * from './ast/node.js';
 export * from './ast/nodes.js';
 export * from './ast/traversal.js';
 export * from './ast/at-rule.js';
+export * from './ast/math-functions.js';
 export {
   bodySpanOf,
   createTriviaMapFromRanges,

@@ -225,6 +225,21 @@ export interface Operation extends SpanSlots {
   readonly operator: string;
   readonly left: ValueNode;
   readonly right: ValueNode;
+
+  /**
+   * Was this operation AUTHORED inside a css-values-4 §10 math function
+   * (`calc`, `min`, `clamp`, `round`, …)? A parse-time POSITIONAL fact, not a
+   * verdict: whether the operation then folds is decided by this fact TOGETHER
+   * with `unitMode` and `mathMode`. In particular a Less operation still
+   * answers to `mathMode` for whether math happens at all, and a cross-unit
+   * pair still answers to `unitMode` for whether it folds, preserves as
+   * `calc(…)`, or raises.
+   *
+   * Non-optional and factory-defaulted, so every `Operation` realizes ONE
+   * hidden class. `FunctionCall.modern` is the precedent; `Block.boundary` is
+   * not — it is optional and realizes three.
+   */
+  readonly inMathFunction: boolean;
 }
 
 /**
@@ -1375,8 +1390,8 @@ export const declarationReference = (raw: string = '$'): Lookup =>
 export const lookupStep = (kind: LookupKind, name: string | ValueNode | number, indexBase?: 0 | 1): LookupStep =>
   indexBase === undefined ? { type: 'LookupStep', kind, name } : { type: 'LookupStep', kind, name, indexBase };
 export const important = (value: ValueSlot): Important => ({ type: 'Important', value });
-export const operation = (operator: string, left: ValueNode, right: ValueNode): Operation =>
-  ({ type: 'Operation', operator, left, right, _s: NO_SPAN, _e: NO_SPAN });
+export const operation = (operator: string, left: ValueNode, right: ValueNode, inMathFunction = false): Operation =>
+  ({ type: 'Operation', operator, left, right, inMathFunction, _s: NO_SPAN, _e: NO_SPAN });
 export const funcCall = (name: string, args: ValueSlot[], modern = false): FunctionCall =>
   ({ type: 'FunctionCall', name, args, modern, _s: NO_SPAN, _e: NO_SPAN });
 export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>

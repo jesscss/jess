@@ -90,13 +90,32 @@ describe('min()/max() per dialect', () => {
 describe('min()/max() are ordinary CSS calls in .jess', () => {
   const compiler = new Compiler();
 
+  /*
+   * `min()` — no arguments at all — is excluded and asserted separately below.
+   * `min`/`max` are css-values-4 §10 math functions, so `.jess` recognises the
+   * NAME and parses the arguments as `<calc-sum>#`, which requires at least
+   * one. That recognition is what makes `min(1em - 2px)` preserve its authored
+   * operation instead of failing to parse; the empty form is the same rule seen
+   * from the other side, and CSS has no `min()` either. `calc()` has always
+   * been rejected here for exactly this reason.
+   *
+   * Recognising the name changes nothing else in this file: `.jess` still has
+   * no builtin `min`, so every well-formed call below still passes through
+   * verbatim.
+   */
   const ALL_EXPRESSIONS = [
     ...AGREED.map(([expr]) => expr),
     ...DIVERGENT.map(([expr]) => expr)
-  ];
+  ].filter(expr => expr !== 'min()');
 
   it.each(ALL_EXPRESSIONS)('%s passes through verbatim', async (expr) => {
     expect(await render(compiler, expr, '.jess'), `${expr} in .jess`).toBe(expr);
+  });
+
+  it('rejects a math function with no arguments, as CSS does', async () => {
+    await expect(
+      compiler.renderString('a { b: min(); }', { extension: '.jess', suppressWarnings: true })
+    ).rejects.toThrow();
   });
 });
 

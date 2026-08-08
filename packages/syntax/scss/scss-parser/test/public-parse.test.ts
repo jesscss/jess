@@ -468,7 +468,7 @@ describe('@jesscss/scss-parser public parse API', () => {
             { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false },
             {
               type: 'FunctionCall', name: 'supports', modern: false,
-              args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'display' }, right: { type: 'Keyword', src: 'grid' } } }]
+              args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'display' }, right: { type: 'Keyword', src: 'grid' }, inMathFunction: false } }]
             }
           ]
         }

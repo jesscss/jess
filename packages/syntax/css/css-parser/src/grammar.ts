@@ -88,8 +88,10 @@ type GrammarRuleName =
   | 'CalcIdentOrFunction'
   | 'CalcParen'
   | 'CalcProduct'
+  | 'CalcSequence'
   | 'CalcSum'
   | 'CalcValue'
+  | 'MathFunction'
   | 'Call'
   | 'Color'
   | 'ComplexSelector'
@@ -251,7 +253,8 @@ type GrammarRuleName =
   | 'stylesheetBodyItem'
   | 'routedStylesheetBody'
   | 'routedDeclarationListBody'
-  | 'valueFunctionArguments';
+  | 'valueFunctionArguments'
+  | 'calcFunctionArguments';
 
 /*
  * Rules that the shared recognition library defines keep its concrete
@@ -753,10 +756,19 @@ function foldOperation(children: readonly unknown[]): ValueNode {
       if (operator === undefined) {
         throw new Error('CSS AST math grammar lost an operator operand');
       }
+
+      /*
+       * `inMathFunction` is TRUE for every operand pair this fold builds: the
+       * ladder is only reachable from a css-values-4 §10 math function, so an
+       * operation reaching here was AUTHORED inside one. The flag records that
+       * positional fact; whether the operation then folds is decided
+       * downstream, together with `unitMode` and `mathMode`.
+       */
       result = operation(
         operator,
         result,
-        child
+        child,
+        true
       );
       operator = undefined;
       continue;
@@ -860,6 +872,40 @@ const calcSumOperator = sequence(
   calcSumPad
 );
 const genericIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+
+/*
+ * The css-values-4 §10 math functions, as glued function OPENERS — the token a
+ * value dispatch routes on.
+ *
+ * CANONICAL TABLE: `CSS_MATH_FUNCTIONS` in `@jesscss/core/ast`
+ * (`packages/core/src/ast/math-functions.ts`). Add or remove a name THERE
+ * first; `test/math-function-table.test.ts` fails if this literal drifts from
+ * it.
+ *
+ * It is spelled as a LITERAL here, and in each of the other three grammars,
+ * because it must be macro-visible: parseman's plugin const-folds dispatch keys
+ * at build time and cannot follow an imported binding. Importing the table —
+ * from core, from `@jesscss/parser-shared`, or through a relative source path —
+ * was measured and fails the build with `composeLeaf() must macro-fuse`. So the
+ * repo gets one AUTHORITY plus a gate rather than one occurrence.
+ */
+const CSS_MATH_FUNCTION_OPENERS = [
+  'calc(',
+  'min(', 'max(', 'clamp(',
+  'round(', 'mod(', 'rem(',
+  'sin(', 'cos(', 'tan(', 'asin(', 'acos(', 'atan(', 'atan2(',
+  'pow(', 'sqrt(', 'hypot(', 'log(', 'exp(',
+  'abs(', 'sign('
+];
+
+/*
+ * A `+`/`-` GLUED to the number that follows it. After a run separator inside a
+ * math function this shape is never a run item: `calc(1px +2px)` is an
+ * ASYMMETRIC additive operator, which css-values-4 §10.1 rejects because `+`
+ * and `-` need real whitespace on BOTH sides. A bare `-` that starts an
+ * identifier (`-webkit-foo`) is not this shape and stays a run item.
+ */
+const signedNumericStart = regex(/[-+](?=[.0-9])/);
 const genericFunctionIdentifier = regex(/(?!(?:calc|url|var)(?=\())-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 const genericFunctionOpen = noTrivia(sequence(
   genericFunctionIdentifier,
@@ -2126,11 +2172,26 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * Blast radius: `../../../jess/jess-parser/src/grammar.ts` PORTS this family
-   * (`CalcValue`/`CalcParen`/`CalcProduct`/`CalcSum`/`CalcFunction`) rather
+   * (`CalcValue`/`CalcParen`/`CalcProduct`/`CalcSum`/`CalcSequence`) rather
    * than referencing it — a mutually recursive, AST-reducing family cannot be
    * shared through `@jesscss/parser-shared`, whose artifacts are `g.`-free by
    * contract. A change to the shape or accept set here must be mirrored there.
    * Less and SCSS express the same ladder as `MathProduct`/`MathSum`.
+   */
+  /*
+   * `UnicodeRange` is here so this rung is a SUPERSET of the ordinary typed
+   * value atom rather than a narrower cousin of it. Before §6 the ladder was reachable only from `calc()`, so the gap did
+   * not show; now that every css-values-4 §10 function routes here, anything
+   * this choice lacks is a construct the base would start REJECTING. `min(U+0-7F)`
+   * is the measured case — `UnicodeRange` is in `Value`/`TypedValue` and was
+   * absent here.
+   *
+   * `PunctuationValue` is deliberately NOT admitted: it would let a bare `+`
+   * match as an operand and collapse the operator ladder above. `ParenValue`
+   * and `SquareValue` are not admitted either — measured: adding `ParenValue`
+   * here makes the TOP-LEVEL `a { b: (c ,d) }` stop parsing, so the cycle it
+   * creates through the value dispatch is not inert. `CalcParen` already covers
+   * the arithmetic-grouping shape, which is the one css-values-4 §10 defines.
    */
   const CalcValue = node(
     'CalcValue',
@@ -2138,6 +2199,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.Percentage,
       g.Dimension,
       g.Color,
+      g.UnicodeRange,
       g.CalcIdentOrFunction,
       g.CalcParen,
       g.Quoted,
@@ -2166,6 +2228,70 @@ const cssFactory = (g: GrammarSelf) => {
       ))
     )),
     foldOperation
+  );
+
+  /*
+   * The SEQUENCE layer, and the reason routing a math function's arguments to
+   * the ladder below is a widening rather than a narrowing.
+   *
+   * `CalcSum` has no space-separated-run derivation, because `calc()` never
+   * needed one. Every other css-values-4 §10 function does: `min(1px 2px)`,
+   * `clamp(1px 2px, 3px)` and `min(red blue)` are shapes the base accepts
+   * today through the ordinary value sequence, and the parser accepts SHAPES,
+   * not semantics — that `min(1px 2px)` is not valid CSS does not license
+   * rejecting it. Without this rung, routing the §10 names to the ladder was
+   * measured at 17 regressions in a 25-case battery.
+   *
+   * This is `ValueSequence`'s own shape with `CalcSum` in place of `Value`, so
+   * a run whose items carry no operator reduces to exactly what the ordinary
+   * sequence would have produced — with ONE deliberate difference: the
+   * separator is REQUIRED between run items.
+   *
+   * That difference is the adjacency question (ledger G24), and it is the whole
+   * reason this rung cannot be `ValueSequence` itself. `ValueSequence` admits
+   * ADJACENT items with no trivia at all, because at top level `1rem+1vw` is
+   * two component values. Inside a math function it is not: css-values-4 §10.1
+   * requires real whitespace on both sides of `+`/`-`, so `calc(1rem+1vw)` must
+   * be REJECTED, and it is rejected here by the absence of the bare arm rather
+   * than by any production re-spelling what a separator looks like.
+   */
+  const CalcSequence = node(
+    'CalcSequence',
+    noTrivia(sequence(
+      g.CalcSum,
+      many(sequence(
+        field(
+          'separator',
+          cssValueTrivia
+        ),
+        not(signedNumericStart),
+        g.CalcSum
+      ))
+    )),
+    (children, fields) => {
+      const values = valueSlotChildren(children);
+      if (values.length === 1) {
+        return values[0]!;
+      }
+      return withAuthoredSeparators(
+        values,
+        fields,
+        values.length - 1
+      );
+    }
+  );
+
+  /*
+   * `<calc-sum>#` — the comma-separated argument list every §10 function takes.
+   * `round()` additionally takes an optional leading `<rounding-strategy>`
+   * keyword (`round(up, 1.2px, 1px)`), which needs no arm of its own: a bare
+   * keyword is already a `CalcValue`, so the strategy arrives as the first
+   * argument. The grammar is therefore NOT uniformly `<calc-sum>#`, and the
+   * place that fact is enforced is the language service, not here.
+   */
+  const calcFunctionArguments = oneOrMoreSep(
+    g.CalcSequence,
+    authoredArgumentComma
   );
   const CalcCall = node(
     'CalcCall',
@@ -2373,19 +2499,43 @@ const cssFactory = (g: GrammarSelf) => {
       return url(body ?? any(''));
     }
   );
-  const CalcFunction = node(
-    'CalcCall',
+
+  /*
+   * The css-values-4 §10 math functions — `calc` and the other twenty — share
+   * ONE tail. `calc()` computes nothing; it is a spelling the parser detects so
+   * the operations inside it are not folded away, and every other §10 name has
+   * exactly that same relationship to the grammar. The names come from
+   * `CSS_MATH_FUNCTIONS` (`@jesscss/core/ast`), which is the single table all
+   * four grammars and core share.
+   *
+   * The tail is the same `Call` reduction `GenericFunction` uses, so the AST a
+   * math function produces differs from a generic call only in what its
+   * ARGUMENTS parsed as. `calc()` keeps arriving as one argument.
+   */
+  const MathFunction = node(
+    'Call',
     noTrivia(sequence(
       routed(),
       optional(cssValueTrivia),
-      g.CalcSum,
+      g.calcFunctionArguments,
       optional(cssValueTrivia),
       literal(')')
     )),
-    children => funcCall(
-      functionOpenName(children[0]),
-      [firstValue(children)]
-    )
+    (children, fields) => {
+      const name = functionOpenName(children[0]);
+      const args = children.slice(1).filter(isValueSlotValue);
+      return funcCall(
+        name,
+        withAuthoredSeparators(
+          args,
+          fields,
+          Math.max(
+            0,
+            args.length - 1
+          )
+        )
+      );
+    }
   );
   const VarFunction = node(
     'VarCall',
@@ -2432,9 +2582,22 @@ const cssFactory = (g: GrammarSelf) => {
       'url(',
       UrlFunction
     ),
+
+    /*
+     * ONE multi-key arm, not twenty. parseman compiles `dispatch` to a linear
+     * if/else chain with each tail fully INLINED, and this tail is emitted
+     * once per artifact per arm: twenty separate `cssCase` arms were measured
+     * at roughly 1.4 MB of generated code across css+jess against roughly
+     * 70 KB for the multi-key form. The tail is a `g.`-rule reference for the
+     * same reason.
+     *
+     * Both css dispatch tables carry this arm. Changing only one would leave
+     * the typed and non-typed ladders reaching different argument grammars for
+     * the same function name — which is the divergence §6 exists to close.
+     */
     cssCase(
-      'calc(',
-      CalcFunction
+      CSS_MATH_FUNCTION_OPENERS,
+      g.MathFunction
     ),
     cssCase(
       'var(',
@@ -2477,9 +2640,22 @@ const cssFactory = (g: GrammarSelf) => {
       'url(',
       UrlFunction
     ),
+
+    /*
+     * ONE multi-key arm, not twenty. parseman compiles `dispatch` to a linear
+     * if/else chain with each tail fully INLINED, and this tail is emitted
+     * once per artifact per arm: twenty separate `cssCase` arms were measured
+     * at roughly 1.4 MB of generated code across css+jess against roughly
+     * 70 KB for the multi-key form. The tail is a `g.`-rule reference for the
+     * same reason.
+     *
+     * Both css dispatch tables carry this arm. Changing only one would leave
+     * the typed and non-typed ladders reaching different argument grammars for
+     * the same function name — which is the divergence §6 exists to close.
+     */
     cssCase(
-      'calc(',
-      CalcFunction
+      CSS_MATH_FUNCTION_OPENERS,
+      g.MathFunction
     ),
     cssCase(
       'var(',
@@ -3990,6 +4166,9 @@ const cssFactory = (g: GrammarSelf) => {
     CalcValue,
     CalcProduct,
     CalcSum,
+    CalcSequence,
+    calcFunctionArguments,
+    MathFunction,
     Value,
     TypedValue,
     TypedValueSequence,

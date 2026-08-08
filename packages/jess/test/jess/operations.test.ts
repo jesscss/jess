@@ -77,7 +77,7 @@ describe('OPERATIONS §4 — arithmetic', () => {
     await expect(value('$(2px / 1px)')).resolves.toBe('2');
   });
 
-  it.fails('PENDING phase 6 — a math function preserves its authorship (rows h3, h4)', async () => {
+  it('a math function preserves its authorship (rows h3, h4)', async () => {
     /*
      * §4.6: an operation authored inside a CSS math function does not fold —
      * operands resolve so the variable substitutes, and the operation returns
@@ -89,12 +89,13 @@ describe('OPERATIONS §4 — arithmetic', () => {
     await expect(body('k: calc(2px * 3);')).resolves.toBe('.a { k: calc(2px * 3); }');
   });
 
-  it.fails('PENDING phase 6 — non-calc math functions parse and preserve (§3.6)', async () => {
+  it('non-calc math functions parse and preserve (§3.6)', async () => {
     /*
-     * Rejected outright today: the base grammar reaches its math ladder only
-     * through `calc()`, so `min(100% - 30px)` is a parse error in `css` and
-     * `jess` while `less` and `scss` accept it — the base rejecting what its
-     * supersets accept (§6).
+     * §6 closed this. The base grammar used to reach its math ladder only
+     * through `calc()`, so `min(100% - 30px)` was a parse error in `css` and
+     * `jess` while `less` and `scss` accepted it — the base rejecting what its
+     * supersets accept. All twenty-one css-values-4 §10 names now share one
+     * dispatch arm and one argument grammar.
      */
     await expect(value('min(100% - 30px)')).resolves.toBe('min(100% - 30px)');
     await expect(value('min(1em - 2px)')).resolves.toBe('min(1em - 2px)');

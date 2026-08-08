@@ -2535,8 +2535,18 @@ interface EvalCtx {
    */
   calcDepth?: number;
 
-  /** Parenthesized AST value nesting enables Less arithmetic in paren modes. */
-  parenDepth?: number;
+  /**
+   * Parenthesized AST value nesting enables Less arithmetic in paren modes.
+   *
+   * A BOOLEAN STACK, read via `.at(-1)`, not a counter. Entering a parenthesis
+   * pushes `true`; entering a CALL pushes `false`, because a call's arguments
+   * are not the caller's math context. A counter cannot express that: increment
+   * and decrement can say "one level deeper", but they cannot say "disabled
+   * here, then restore whatever the caller had, which may have been enabled".
+   * The counter this replaced also had no decrement and no reset at all, so the
+   * two defects were the same shape defect.
+   */
+  parenFrames?: readonly boolean[];
 
   /*
    * [condition-grammar] inside a `$( … )` EXPRESSION boundary (`Block.boundary`).
@@ -3051,7 +3061,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       /*
        * A typed function argument still needs the surrounding-parenthesis math
        * context.  `round((@r / 3))` and `unit((4px * 4em / 2cm))` consume the
-       * inner value through this path; dropping `parenDepth` made their
+       * inner value through this path; dropping the paren frame made their
        * operations look like top-level parens-division math and left the whole
        * registered function call verbatim after its typed signature rejected it.
        */
@@ -3059,7 +3069,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return mapMaybe(evalTypedSlot(node.value, frame, e), value => makeBlock(value, 'square', node.escaped));
       }
       return mapMaybe(
-        evalTypedSlot(node.value, frame, { ...e, parenDepth: (e.parenDepth ?? 0) + 1 }),
+        evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true) }),
         value => !isValueGroupArray(value) && value.type === 'Keyword' && calcInner(value.bytes) !== null
           ? makeKeyword(`(${calcInner(value.bytes)})`)
           : value
@@ -3430,7 +3440,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return evalValueSlot(node.value, frame, e);
       }
       const inner = evalValueSlot(node.value, frame, node.delimiter === 'paren'
-        ? { ...e, parenDepth: (e.parenDepth ?? 0) + 1, exprBoundary: e.exprBoundary || node.boundary }
+        ? { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: e.exprBoundary || node.boundary }
         : e);
 
       /*
@@ -3487,15 +3497,56 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           literal(`${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`));
       }
       const mathMode = e.modes.mathMode ?? 'parens-division';
-      const shouldOperate = (e.calcDepth ?? 0) > 0
-        || mathMode === 'always'
-        || (e.parenDepth ?? 0) > 0
-        || (mathMode === 'parens-division' && node.operator !== '/');
+
+      /*
+       * §4.6 — an operation AUTHORED inside a css-values-4 §10 math function
+       * preserves its authorship: `calc($val / 2)` resolves the variable and
+       * returns `calc(8px / 2)`, and `min(1em - 2px)` stays `min(1em - 2px)`
+       * rather than collapsing to a dimensionally false `-1em`. `$( … )` is the
+       * explicit opt-in to fold, which is why `calc($($val / 2))` still gives
+       * `4px`.
+       *
+       * The flag is a parse-time POSITIONAL fact and NOT the whole rule. It
+       * decides only that the fold is declined here; when it is absent,
+       * `mathMode` decides whether math happens at all, and if it does,
+       * `unitMode` decides whether a cross-unit pair folds, preserves as
+       * `calc(…)`, or raises (§4.7). Three inputs, not one.
+       *
+       * This is the polarity AST v1 had (`OperationOptions.inCalc`, a
+       * parse-time flag on the node, and an in-calc operation never operated).
+       * v2 had it inverted: `calcDepth > 0` FORCED the operation and left
+       * `value-operate` to decline.
+       *
+       * `calcDepth` survives BELOW the flag, and only there. The `.less` and
+       * `.scss` grammars do not set `inMathFunction` yet — routing their math
+       * names needs a per-dialect argument grammar, because in `.less` a `/`
+       * inside a call is a list boundary rather than division — so for those
+       * two dialects the ambient depth is still what marks a calc interior,
+       * exactly as before. It is dominated by the flag, so a `.css`/`.jess`
+       * operation never consults it.
+       */
+      const shouldOperate = !node.inMathFunction
+        && ((e.calcDepth ?? 0) > 0
+          || mathMode === 'always'
+          || (e.parenFrames?.at(-1) ?? false)
+          || (mathMode === 'parens-division' && node.operator !== '/'));
       if (!shouldOperate) {
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
-        return combineAll([l, r], values =>
-          literal(`${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`));
+        return combineAll([l, r], (values) => {
+          const bytes = `${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`;
+
+          /*
+           * An operation preserved because it was authored inside a math
+           * function is ONE expression, not bytes to be re-sniffed. Handing
+           * back a bare string sends it through `force`, which reads
+           * `8px / 2` as a slash LIST — and a List is not a calc argument, so
+           * `calc($val / 2)` came back as `8px / 2` with the wrapper dropped.
+           * A Keyword is the same carrier `value-operate` already uses for a
+           * preserved `calc(…)` sub-expression.
+           */
+          return node.inMathFunction ? makeKeyword(bytes) : literal(bytes);
+        });
       }
       const ev = e.ev;
 
@@ -5686,6 +5737,15 @@ interface Emit extends EvalCtx {
  * `@p: .mk-map()` binding read as an accessor base — {@link declMapFromMixinCall}).
  * Its chunk/patch state is discarded; it shares the eval seam (`ev`/`modes`) and
  * the `excluded` cycle-guard set with the live context. */
+/**
+ * Push one paren frame. `true` where a parenthesis opens a math context,
+ * `false` where a call argument list closes it.
+ */
+function pushParenFrame(e: EvalCtx, enabled: boolean): readonly boolean[] {
+  const frames = e.parenFrames;
+  return frames === undefined ? [enabled] : [...frames, enabled];
+}
+
 function scratchEmit(e: EvalCtx): Emit {
   return {
     ev: e.ev,

@@ -2427,7 +2427,7 @@ describe('SCSS canonical-AST grammar', () => {
       value: {
         type: 'AnonymousMixin',
         params: [{ name: 'n' }],
-        rules: [{ type: 'Declaration', name: 'result', value: { type: 'Operation', operator: '*', left: { type: 'Lookup', kind: 'var', name: 'n', raw: '@n', scope: 'live' }, right: { type: 'Dimension', number: 2, unit: '', src: '2' } }, merge: null, important: false }]
+        rules: [{ type: 'Declaration', name: 'result', value: { type: 'Operation', operator: '*', left: { type: 'Lookup', kind: 'var', name: 'n', raw: '@n', scope: 'live' }, right: { type: 'Dimension', number: 2, unit: '', src: '2' }, inMathFunction: false }, merge: null, important: false }]
       }
     });
   });
