@@ -130,3 +130,27 @@ which overlaps by design and shows the total reach of a fix.
 | `assets/foundation-prototype.scss` | fail | Missing closing brace. |
 | `assets/foundation-rtl.scss` | fail | Missing closing brace. |
 | `scss/foundation.scss` | fail | Missing closing brace. |
+
+
+## Owner rulings on each blocker (2026-08-08)
+
+Recorded against the ranked table above. These decide WHAT each construct lowers
+to; none of them is implemented yet.
+
+| # | blocker | ruling |
+| --- | --- | --- |
+| 1 | keyword arg `$name: v` in a call arg list | **Real gap.** Less v5, Sass+ and Jess all admit direct assignment, keyed on what `defineFunction` exposes on the returned function object. Not a Sass-only affordance. |
+| 2 | `@include` with a trailing content block | Likely needs LOWERING (owner: "we may need to lower this"). See #6 — the target already exists. |
+| 3 | `@error` / `@warn` / `@debug` | Become **no-ops** (owner, tentative). |
+| 4 | `==` / `!=` inside a call arg list | Become **Expressions**. Consistent with §4.5.2: a call argument is value position, so a comparison there needs the `$( … )` boundary. |
+| 5 | `@return` nested inside `@if`/`@else` | **Only top-level `@return` parsing is a BUG.** It lowers to `result:` — the same target §4.5.3b/SCSS-lowering already uses for a function's return value. |
+| 6 | `@content` | **Already resolved and PUBLICLY DOCUMENTED** as the built-in `$content()` mixin — see `packages/docs/docs-content/docs/jess/02-Language/05-mixins.mdx`, including the parameterised `$content($type)` form. This is an implementation gap, not a design question, and it is also the lowering target for #2. |
+| 7 | `@while` | Gets a **`$while`**, alongside `$if` / `$for`. |
+| 8 | chained unary `not not` | Sass `not not $x` lowers to `.jess` `not(not($x))`. Falls out of §4.5.4's rule that `not` always takes parens. |
+| 9 | nested selector list `type:pseudo, .class` | **A grammar defect, not a design question.** `div:hover, span` and `div:hover, [a]` parse; `div:hover, .b` does not, because the leading `div:` commits to the declaration path and `.`/`#` cannot follow in a value. Fix the rule. |
+| 10 | interpolation in a pseudo-class arg | Not yet ruled on. |
+| 11 | `@at-root` with a selector prelude | **Needs a decision.** Bare `@at-root { … }` already parses. |
+
+**Sequencing note:** #6 unblocks #2, and #5's `result:` target already exists, so
+three of the eleven are implementation against a settled design. #1 and #9 are
+defects. #10 and #11 are the only ones still needing a ruling.
