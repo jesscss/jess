@@ -498,11 +498,13 @@ Under `==` every string is falsy whatever it spells, because a string is not a
 boolean; under §4.4 every non-empty string is truthy whatever it spells, because
 the question is emptiness. Neither reads the bytes.
 
-lessc 4.6.3 is the one that breaks this: `when (~"true")` is truthy there while
-`when (~"1")` is not, so the CONTENTS decide. It reaches that by re-parsing the
-escaped string's bytes back through evaluation, delivering the keyword `true` to
-the guard (§3.1) — mechanism leaking into semantics. v5 does not reproduce it,
-and no lowering is owed for it.
+**lessc 4.6.3 breaks this, and that is a Less 4 BUG** (owner, 2026-08-07).
+`when (~"true")` is truthy there while `when (~"1")` is not, so the contents
+decide — it re-parses the escaped string's bytes back through evaluation and
+hands the guard the keyword `true` (§3.1). Same category as O-TRUTH-3's
+`1in = 2.54cm`: **a divergence from Less 4.x where Less 4.x was wrong in the
+first place needs no further justification.** v5 does not reproduce it and owes
+it no lowering.
 
 The row that DOES matter is the authored one: `when ("true")` must stay falsy,
 and only `==` keeps it so. `=` would ground `"true"` against `true` as strings

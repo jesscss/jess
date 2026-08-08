@@ -70,6 +70,7 @@ import type {
   Dimension,
   For,
   If,
+  IfValue,
   FunctionCall,
   Interpolation,
   Keyword,
@@ -8047,7 +8048,7 @@ function emitDocumentStatements(
  *      without every reader becoming awaitable;
  *   2. `$if` arm selection (`selectedIfBody`) — one of its callers is a
  *      synchronous at-rule body walk;
- *   3. `if(cond, A, B)` block resolution (`pickIfBranch`) — reached from the
+ *   3. value-position `$if` arm resolution (`pickIfBranch`) — reached from the
  *      synchronous `resolveValueBlock`.
  * These ARE reachable by ordinary code: any function call may resolve
  * asynchronously, so this is a real limitation, not merely a legacy-plugin one.

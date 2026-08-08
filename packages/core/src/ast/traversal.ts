@@ -94,6 +94,8 @@ export type AstEdge =
   | 'value.general.content'
   | 'value.lookup.name'
   | 'value.condition.guard'
+  | 'value.if.branch.guard'
+  | 'value.if.branch.value'
   | 'value.reference.base'
   | 'value.reference.step-key'
   | 'value.reference.call-arg'
@@ -579,9 +581,9 @@ function walkNode(
       for (let i = 0; i < node.branches.length; i++) {
         const branch = node.branches[i]!;
         if (branch.guard !== null) {
-          walkGuard(branch.guard, hooks, 'value.ifValue.guard', node, i, depth + 1);
+          walkGuard(branch.guard, hooks, 'value.if.branch.guard', node, i, depth + 1);
         }
-        walkValueSlot(branch.value, hooks, 'value.ifValue.value', node, i, depth + 1);
+        walkValueSlot(branch.value, hooks, 'value.if.branch.value', node, i, depth + 1);
       }
       break;
     case 'Reference':
