@@ -72,6 +72,7 @@ type ScssRules = {
   ValueLogicalAnd: Combinator<ValueNode>;
   ValueLogicalOr: Combinator<ValueNode>;
   ValueTerm: Combinator<ValueSlot>;
+  CallArgument: Combinator<ValueSlot>;
   ValuePair: Combinator<ScssValuePair>;
   ArgumentPair: Combinator<ScssValuePair>;
   Value: Combinator<ValueSlot>;
@@ -867,6 +868,11 @@ function referenceKeyRaw(node: ValueNode): string {
  *  accepted only one spelling into the accessor form would emit two different
  *  trees for one semantics. */
 const MAP_GET_SPELLINGS = new Set(['map-get', 'map.get']);
+
+/** The comparison spellings a call argument may carry (§4.5.2). Named here so
+ * the operator token is found by WHAT IT IS rather than by a child index the
+ * optional trivia arms would shift. */
+const COMPARISON_OPERATORS = new Set(['==', '!=', '>=', '<=', '>', '<']);
 
 /** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
  *  whose single LookupStep carries the key. A `$var` key selects the
@@ -1810,7 +1816,7 @@ const scssFactory = (g: ScssInputRules) => {
       routed(),
       optional(valueTrivia),
       optional(sequence(
-        g.ValueTerm,
+        g.CallArgument,
         many(g.ArgumentPair)
       )),
       optional(valueTrivia),
@@ -2125,6 +2131,71 @@ const scssFactory = (g: ScssInputRules) => {
           );
     }
   );
+
+  /*
+   * ONE definition of what a call argument is, referenced by both argument
+   * sites (`Call`'s head and `ArgumentPair`'s tail) so the two cannot drift.
+   *
+   * A call argument is VALUE position (§4.5.2), so a comparison written there
+   * needs the `$( … )` computation boundary — and that is exactly what this
+   * builds: `Expression` over a `Condition`, the same pair the unary `not` rung
+   * above already produces. Sass's own source has no `$( … )` to write, so the
+   * boundary is supplied by the LOWERING, which is what §4.5.2 means by a call
+   * argument needing the marker. No new AST kind: `Expression` (a computation
+   * boundary) and `Condition` (a guard tree in value position) both exist.
+   *
+   * LEFT-FACTORED on purpose. Spelling this `choice(comparison, ValueTerm)`
+   * would parse `ValueTerm`, fail to find an operator, backtrack, and parse
+   * `ValueTerm` AGAIN for every ordinary positional argument — doubling the
+   * cost of the overwhelmingly common case to serve the rare one. The operand
+   * is parsed once and the operator tail is `optional`, so a positional
+   * argument pays one failed operator match and nothing else.
+   */
+  const comparisonOperator = choice(
+    literal('=='),
+    literal('!='),
+    literal('>='),
+    literal('<='),
+    literal('>'),
+    literal('<')
+  );
+  const CallArgument = node<ValueSlot>(
+    'CallArgument',
+    noTrivia(sequence(
+      g.ValueTerm,
+      optional(sequence(
+        optional(valueTrivia),
+        comparisonOperator,
+        optional(valueTrivia),
+        g.ValueTerm
+      ))
+    )),
+    (children) => {
+      const left = requireValueSlot(children[0]);
+      if (children.length === 1) {
+        return left;
+      }
+      const operator = requireToken(children.find(child => isToken(child) && COMPARISON_OPERATORS.has(child.value))).value;
+      const right = requireValueSlot(children[children.length - 1]);
+
+      /*
+       * `==` / `!=` lower to the named primitive `sass-equal`, NOT to an
+       * operator (§5.1) — the SAME lowering `IfComparison` performs, because a
+       * comparison must not mean one thing in a guard and another in an
+       * argument. `!=` is that comparison under `not`.
+       */
+      const comparison = {
+        g: 'cmp' as const,
+        op: operator === '==' || operator === '!=' ? 'sass-equal' : operator,
+        left: requireValue(left),
+        right: requireValue(right)
+      };
+      return expression(condition(
+        operator === '!=' ? { g: 'not', inner: comparison } : comparison,
+        `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
+      ));
+    }
+  );
   const ValuePair = node<ScssValuePair>(
     'ValuePair',
     noTrivia(sequence(
@@ -2161,7 +2232,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(valueTrivia),
       literal(','),
       optional(valueTrivia),
-      g.ValueTerm
+      g.CallArgument
     )),
     (children) => {
       const value = children[children.length - 1];
@@ -5404,6 +5475,7 @@ const scssFactory = (g: ScssInputRules) => {
     ValueLogicalAnd,
     ValueLogicalOr,
     ValueTerm,
+    CallArgument,
     ValuePair,
     ArgumentPair,
     Value,

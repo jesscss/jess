@@ -1,16 +1,16 @@
 {
-  "generated": "2026-08-08T19:48:09.619Z",
+  "generated": "2026-08-08T20:33:22.079Z",
   "foundation": "6.9.0",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
   "parse": {
     "total": 136,
-    "pass": 57,
+    "pass": 61,
     "blockerCounts": [
       {
         "name": "keyword argument ($name: v) in a function-call argument list",
-        "primary": 35,
-        "files": 48
+        "primary": 34,
+        "files": 47
       },
       {
         "name": "@include with a trailing content block",
@@ -23,14 +23,14 @@
         "files": 16
       },
       {
-        "name": "comparison (== / !=) inside a function-call argument list",
-        "primary": 5,
-        "files": 16
-      },
-      {
         "name": "@return nested inside @if/@else",
         "primary": 3,
         "files": 7
+      },
+      {
+        "name": "comparison (== / !=) inside a function-call argument list",
+        "primary": 2,
+        "files": 12
       },
       {
         "name": "@content",
@@ -110,7 +110,7 @@
       {
         "file": "_vendor/sassy-lists/stylesheets/helpers/_true.scss",
         "outcome": "fail",
-        "at": "12:20",
+        "at": "12:73",
         "source": "@return if($value == null, false, $value and $value != null and $value != '' and $value != ());",
         "blockers": [
           "comparison (== / !=) inside a function-call argument list"
@@ -249,14 +249,7 @@
       },
       {
         "file": "scss/components/_breadcrumbs.scss",
-        "outcome": "fail",
-        "at": "84:44",
-        "source": "$separator: if($global-text-direction == 'ltr', $breadcrumbs-item-separator-item, $breadcrumbs-item-separator-item-rtl);",
-        "blockers": [
-          "comparison (== / !=) inside a function-call argument list"
-        ],
-        "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_button-group.scss",
@@ -313,14 +306,7 @@
       },
       {
         "file": "scss/components/_drilldown.scss",
-        "outcome": "fail",
-        "at": "108:56",
-        "source": "transform: translateX(if($global-text-direction == ltr, -100%, 100%));",
-        "blockers": [
-          "comparison (== / !=) inside a function-call argument list"
-        ],
-        "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_dropdown-menu.scss",
@@ -548,14 +534,7 @@
       },
       {
         "file": "scss/forms/_input-group.scss",
-        "outcome": "fail",
-        "at": "38:49",
-        "source": "border-radius: if($global-text-direction == rtl, 0 $input-radius $input-radius 0, $input-radius 0 0 $input-radius);",
-        "blockers": [
-          "comparison (== / !=) inside a function-call argument list"
-        ],
-        "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/forms/_label.scss",
@@ -979,15 +958,15 @@
       {
         "file": "scss/util/_flex.scss",
         "outcome": "fail",
-        "at": "3:31",
-        "source": "'left': if($text-direction == rtl, flex-end, flex-start),",
+        "at": "42:4",
+        "source": "@else {",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list",
           "comparison (== / !=) inside a function-call argument list",
           "@error / @warn / @debug"
         ],
         "primaryBlocker": "comparison (== / !=) inside a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "detail": "Missing closing brace."
       },
       {
         "file": "scss/util/_math.scss",
@@ -1123,15 +1102,7 @@
       },
       {
         "file": "scss/xy-grid/_grid.scss",
-        "outcome": "fail",
-        "at": "32:28",
-        "source": "$direction: if($direction == 'horizontal', row, column);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/xy-grid/_gutters.scss",

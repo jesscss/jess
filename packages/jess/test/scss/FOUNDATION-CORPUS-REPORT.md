@@ -8,13 +8,13 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-08-08T19:48:09.619Z`
+- Generated: `2026-08-08T20:33:22.079Z`
 - Foundation for Sites: `6.9.0`
 - Runner: `v24.11.1` on `darwin/arm64`
 
 ## Parse lane (all `foundation-sites/**/*.scss`)
 
-- files: **136**, parsed: **57**, failed: **79**
+- files: **136**, parsed: **61**, failed: **75**
 
 Blocking constructs. `first` counts files where this is the EARLIEST blocker —
 the one the parser actually gave up on, so that column sums to the failure
@@ -23,11 +23,11 @@ which overlaps by design and shows the total reach of a fix.
 
 | blocking construct | first | contains |
 |---|--:|--:|
-| keyword argument ($name: v) in a function-call argument list | 35 | 48 |
+| keyword argument ($name: v) in a function-call argument list | 34 | 47 |
 | @include with a trailing content block | 24 | 51 |
 | @error / @warn / @debug | 7 | 16 |
-| comparison (== / !=) inside a function-call argument list | 5 | 16 |
 | @return nested inside @if/@else | 3 | 7 |
+| comparison (== / !=) inside a function-call argument list | 2 | 12 |
 | @content | 2 | 5 |
 | @while | 1 | 2 |
 | chained unary `not not` | 1 | 1 |
@@ -42,19 +42,17 @@ which overlaps by design and shows the total reach of a fix.
 | `_vendor/sassy-lists/stylesheets/functions/_contain.scss` | — | `` | chained unary `not not` | chained unary `not not` |
 | `_vendor/sassy-lists/stylesheets/functions/_replace.scss` | 30:2 | `@while $running {` | @while | @while |
 | `_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss` | 21:4 | `@error 'Unmet dependencies! The following functions are required: #{$missing-dependencies}.';` | @error / @warn / @debug | @error / @warn / @debug |
-| `_vendor/sassy-lists/stylesheets/helpers/_true.scss` | 12:20 | `@return if($value == null, false, $value and $value != null and $value != '' and $value != ());` | comparison (== / !=) inside a function-call argument list | comparison (== / !=) inside a function-call argument list |
+| `_vendor/sassy-lists/stylesheets/helpers/_true.scss` | 12:73 | `@return if($value == null, false, $value and $value != null and $value != '' and $value != ());` | comparison (== / !=) inside a function-call argument list | comparison (== / !=) inside a function-call argument list |
 | `docs/assets/scss/_accordion-content.scss` | 34:46 | `color: color.adjust($dark-gray, $lightness: -10%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block |
 | `docs/assets/scss/_docs-footer.scss` | 3:0 | `.footer-nav {` | @include with a trailing content block | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block |
 | `docs/assets/scss/docs.scss` | 129:64 | `$global-nav-hover-color: color.adjust($global-nav-bg, $lightness: 10%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `docs/assets/scss/examples/_grid.scss` | 17:47 | `background: color.adjust(#eee, $lightness: -5%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `docs/assets/scss/examples/_motion-ui.scss` | 13:20 | `@include mui-series {` | @include with a trailing content block | @include with a trailing content block |
 | `scss/_global.scss` | 123:2 | `@error 'In $foundation-palette, you must have a color named "primary".';` | @error / @warn / @debug | comparison (== / !=) inside a function-call argument list; @error / @warn / @debug |
-| `scss/components/_breadcrumbs.scss` | 84:44 | `$separator: if($global-text-direction == 'ltr', $breadcrumbs-item-separator-item, $breadcrumbs-item-separator-item-rtl);` | comparison (== / !=) inside a function-call argument list | comparison (== / !=) inside a function-call argument list |
 | `scss/components/_button-group.scss` | 131:37 | `&:first-child:nth-last-child(#{$i}) {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block; comparison (== / !=) inside a function-call argument list; interpolation inside a pseudo-class argument list |
 | `scss/components/_button.scss` | 36:68 | `$button-background-hover: scale-color($button-background, $lightness: -15%) !default;` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block; comparison (== / !=) inside a function-call argument list |
 | `scss/components/_callout.scss` | 71:45 | `$background: scale-color($color, $lightness: $callout-background-fade);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `scss/components/_close-button.scss` | 68:4 | `@return $value;` | @return nested inside @if/@else | @return nested inside @if/@else |
-| `scss/components/_drilldown.scss` | 108:56 | `transform: translateX(if($global-text-direction == ltr, -100%, 100%));` | comparison (== / !=) inside a function-call argument list | comparison (== / !=) inside a function-call argument list |
 | `scss/components/_dropdown-menu.scss` | 84:4 | `> li.opens-left { // sass-lint:disable-line no-qualifying-elements` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block; @error / @warn / @debug |
 | `scss/components/_flex.scss` | 43:33 | `@include breakpoint($size) {` | @include with a trailing content block | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block |
 | `scss/components/_media-object.scss` | 35:4 | `&.stack-for-#{$-zf-zero-breakpoint} {` | @include with a trailing content block | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block |
@@ -68,7 +66,6 @@ which overlaps by design and shows the total reach of a fix.
 | `scss/components/_tabs.scss` | 99:43 | `color: scale-color($color, $lightness: -14%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `scss/components/_top-bar.scss` | 129:2 | `.top-bar {` | @include with a trailing content block | @include with a trailing content block |
 | `scss/components/_visibility.scss` | 14:34 | `@include breakpoint($size down) {` | @include with a trailing content block | @include with a trailing content block |
-| `scss/forms/_input-group.scss` | 38:49 | `border-radius: if($global-text-direction == rtl, 0 $input-radius $input-radius 0, $input-radius 0 0 $input-radius);` | comparison (== / !=) inside a function-call argument list | comparison (== / !=) inside a function-call argument list |
 | `scss/grid/_classes.scss` | 100:31 | `@include -zf-each-breakpoint {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block; interpolation inside a pseudo-class argument list |
 | `scss/grid/_column.scss` | 19:55 | `@return fraction-to-percentage($columns, $denominator: $grid-column-count);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `scss/grid/_flex-grid.scss` | 49:43 | `@include grid-context($columns, $base) {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block; @content; @at-root with a selector prelude |
@@ -99,7 +96,7 @@ which overlaps by design and shows the total reach of a fix.
 | `scss/util/_breakpoint.scss` | 42:2 | `@error 'The first key in the $breakpoints map must have a value of "0".';` | @error / @warn / @debug | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; @return nested inside @if/@else; @content |
 | `scss/util/_color.scss` | 29:52 | `$red   : round(color.channel($color, "red", $space: rgb));` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; @return nested inside @if/@else |
 | `scss/util/_direction.scss` | 20:4 | `@error 'direction-opposite: Invalid $dir parameter, expected a value from "#{$dirs}", found "#{$dir}".';` | @error / @warn / @debug | @error / @warn / @debug |
-| `scss/util/_flex.scss` | 3:31 | `'left': if($text-direction == rtl, flex-end, flex-start),` | comparison (== / !=) inside a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; @error / @warn / @debug |
+| `scss/util/_flex.scss` | 42:4 | `@else {` | comparison (== / !=) inside a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; @error / @warn / @debug |
 | `scss/util/_math.scss` | 20:4 | `@return gcd($b, $a % $b);` | @return nested inside @if/@else | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; @return nested inside @if/@else; @while |
 | `scss/util/_mixins.scss` | 151:52 | `$red   : round(color.channel($color, "red", $space: rgb));` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block; comparison (== / !=) inside a function-call argument list; @error / @warn / @debug; @content; interpolation inside a pseudo-class argument list |
 | `scss/util/_unit.scss` | 51:4 | `@return -zf-to-rem($values, $base);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @error / @warn / @debug; @return nested inside @if/@else |
@@ -109,7 +106,6 @@ which overlaps by design and shows the total reach of a fix.
 | `scss/xy-grid/_classes.scss` | 53:33 | `@include -zf-each-breakpoint() {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block; comparison (== / !=) inside a function-call argument list |
 | `scss/xy-grid/_collapse.scss` | 24:41 | `@include breakpoint($min-breakpoint) {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block |
 | `scss/xy-grid/_frame.scss` | 26:35 | `@include -zf-each-breakpoint() {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block; comparison (== / !=) inside a function-call argument list |
-| `scss/xy-grid/_grid.scss` | 32:28 | `$direction: if($direction == 'horizontal', row, column);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list |
 | `scss/xy-grid/_gutters.scss` | 28:50 | `@include -zf-breakpoint-value(auto, $gutters) {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block |
 | `scss/xy-grid/_position.scss` | 23:59 | `$breakpoint: -zf-current-breakpoint($breakpoint, $default: $-zf-zero-breakpoint);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; @include with a trailing content block; comparison (== / !=) inside a function-call argument list |
 | `test/sass/_breakpoint.scss` | 7:35 | `@include test-module('Breakpoint') {` | @include with a trailing content block | @include with a trailing content block |
@@ -131,18 +127,23 @@ which overlaps by design and shows the total reach of a fix.
 | `assets/foundation-rtl.scss` | fail | Missing closing brace. |
 | `scss/foundation.scss` | fail | Missing closing brace. |
 
-
 ## Owner rulings on each blocker (2026-08-08)
+
+> **Everything from this heading down is HAND-MAINTAINED and the generator does
+> not know it exists.** `JESS_SCSS_CORPUS_REPORT=1` rewrites the whole file, so a
+> regeneration DELETES this section — it already did once, on 2026-08-08, and it
+> was restored from git. Re-append it after every regeneration until the
+> generator learns to preserve a trailing hand-written block.
 
 Recorded against the ranked table above. These decide WHAT each construct lowers
 to; none of them is implemented yet.
 
 | # | blocker | ruling |
 | --- | --- | --- |
-| 1 | keyword arg `$name: v` in a call arg list | **Real gap.** Less v5, Sass+ and Jess all admit direct assignment, keyed on what `defineFunction` exposes on the returned function object. Not a Sass-only affordance. |
+| 1 | keyword arg `$name: v` in a call arg list | **Real gap — OPEN, and it is an AST change, not a grammar change.** Less v5, Sass+ and Jess all admit direct assignment, keyed on what `defineFunction` exposes on the returned function object (`params`, each with a `name`). Not a Sass-only affordance. **No new AST kind is owed**: `.less` `.m(@a: 1)` already lowers to `MixinCall.args = [{name:'a', value}]`, i.e. `CallArg` (`packages/core/src/ast/mixin-dispatch.ts:30`), and `$name: value` is the same `.jess` spelling in either call — §12.0's first test makes them the SAME node. What blocks it is that `FunctionCall.args` is `ValueSlot[]` (`nodes.ts:277`) and cannot carry a name. Converting it to `CallArg[]` is a hidden-class change to the hottest value node in the tree and touches ~65 read sites (43 `.args` in `serialize.ts`, 22 in `packages/fns/src`) plus 29 `funcCall(` construction sites across all four grammars. Sized, designed, not started. |
 | 2 | `@include` with a trailing content block | Likely needs LOWERING (owner: "we may need to lower this"). See #6 — the target already exists. |
 | 3 | `@error` / `@warn` / `@debug` | **They do not become NODES.** That is the operative point — not that they are no-ops. They are compile-time diagnostics with no `.jess` spelling, so by §12.0's law no AST kind is owed one. Plugin *visitor* support for specific cases is worth reasoning about separately; it does not require a node. |
-| 4 | `==` / `!=` inside a call arg list | Become **Expressions**. Consistent with §4.5.2: a call argument is value position, so a comparison there needs the `$( … )` boundary. |
+| 4 | `==` / `!=` inside a call arg list | **LANDED for `.scss`.** Becomes an `Expression` over a `Condition`, per §4.5.2: a call argument is value position, so a comparison there needs the `$( … )` boundary, and the lowering supplies it because Sass source has no `$( … )` to write. Neither kind is new. Implemented as the single `CallArgument` const in `scss-parser/src/grammar.ts`, referenced by both argument sites (`Call`'s head and `ArgumentPair`'s tail). `==` / `!=` lower to the `sass-equal` primitive, the same lowering `IfComparison` already performs, so a comparison cannot mean one thing in a guard and another in an argument. **`.jess` is NOT done** — `f($x == 1)` still fails there. |
 | 5 | `@return` nested inside `@if`/`@else` | **Only top-level `@return` parsing is a BUG.** It lowers to `result:` — the same target §4.5.3b/SCSS-lowering already uses for a function's return value. |
 | 6 | `@content` | **Already resolved and PUBLICLY DOCUMENTED** as the built-in `$content()` mixin — see `packages/docs/docs-content/docs/jess/02-Language/05-mixins.mdx`, including the parameterised `$content($type)` form. This is an implementation gap, not a design question, and it is also the lowering target for #2. |
 | 7 | `@while` | Gets a **`$while`**, alongside `$if` / `$for`. |

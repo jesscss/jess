@@ -313,7 +313,9 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/components/_accordion-menu.scss',
   'scss/components/_accordion.scss',
   'scss/components/_badge.scss',
+  'scss/components/_breadcrumbs.scss',
   'scss/components/_card.scss',
+  'scss/components/_drilldown.scss',
   'scss/components/_dropdown.scss',
   'scss/components/_flex-video.scss',
   'scss/components/_float.scss',
@@ -331,6 +333,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/forms/_fieldset.scss',
   'scss/forms/_forms.scss',
   'scss/forms/_help-text.scss',
+  'scss/forms/_input-group.scss',
   'scss/forms/_label.scss',
   'scss/forms/_meter.scss',
   'scss/forms/_progress.scss',
@@ -350,6 +353,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/util/_selector.scss',
   'scss/util/_typography.scss',
   'scss/util/_util.scss',
+  'scss/xy-grid/_grid.scss',
   'scss/xy-grid/_layout.scss',
   'scss/xy-grid/_xy-grid.scss'
 ];
