@@ -253,6 +253,38 @@ lessc --math=always styles.less styles.css
 lessc --math=parens-division styles.less styles.css
 ```
 
+## Evaluation differences (comparison, truthiness, arguments)
+
+The changes above are structural — features that moved or were removed. This section is the smaller, more important set: input that compiles in **both** Less 4 and Less 5 and **evaluates to something different**.
+
+The bar for changing an evaluation result is high. Less 5 follows Less 4 unless the Less 4 behaviour is **defensible by history rather than by principle** — meaning it does something documented or long-standing, but has no rule that explains *why*. Every row below states the rule Less 5 follows instead.
+
+| expression | Less 4 | Less 5 | why |
+| --- | --- | --- | --- |
+| `1in = 2.54cm` | `false` | **`true`** | Equal by definition. Less 4's `false` was a conversion-precision defect, not a language choice. |
+| `b > a` | `false` | **`true`** | Relational is now *trichotomous*. Less 4 answered `false` in **both** directions, so an author could not tell "not greater" from "never comparable". |
+| `1px > red` | `false` | **error** | No common ground. Ordering a length against a keyword is an author mistake, and Less 4 answered it meaninglessly. |
+| `a = "a"` | `false` | **`true`** | A value equals its own spelling. Less 4 separated text by quoting while coercing numbers — the reverse of Sass, and explicable as neither. |
+| `when (~"true")` | truthy | **falsy** | Less 4 re-parsed the escaped string's bytes back through evaluation, so `~"true"` arrived as the keyword `true`. **A quote is a quote** — its contents must not decide truthiness. |
+| `not(1 > 2)`, `and(…)`, `or(…)` | *parse error* | **`true`** | The logical operators are real operators in Less 5, not call-shaped syntax. |
+| `foo(bar=@v)` | `foo(bar=50)` | **`foo(bar=@v)`** | A `name=value` argument is verbatim bytes. The IE-filter form is dropped in Less 5, and resolving inside it had no purpose. |
+| `@import "x.less" screen;` | wraps in `@media` | **parse error** | A media postlude belongs to a **CSS** `@import`. On a compile-time import it is bogus, and the shape is now decided at parse time. |
+
+### Unaffected, and worth knowing
+
+An **explicit comparison** is never affected by the truthiness change:
+
+```less
+.m() when (@name = "")  { … }   // identical in Less 4 and 5
+.m() when (@name)       { … }   // truthiness — see the table
+```
+
+Numeric comparison, unit conversion between compatible units, and colour equality all behave as before. `@import` of a `.css` file, `url(…)` imports and `(inline)` are unchanged.
+
+### Not yet changed
+
+Math-function preservation (`min(100% - 30px)` returning the expression rather than folding to `70%`) is specified for Jess but **not yet wired into `.less`** — Less 5 still folds it, matching Less 4. If you rely on the fold, nothing has moved.
+
 ## Deprecated CLI / option paths
 
 - `--relative-urls` → `--rewrite-urls=all` (or `rewriteUrls`).
