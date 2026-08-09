@@ -591,6 +591,63 @@ export interface SimpleSelector extends SpanSlots {
 }
 
 /**
+ * A placeholder selector's canonical spelling — the CSS escape for a literal
+ * backslash, i.e. TWO backslash characters followed by the name.
+ *
+ * A placeholder needs no node kind and no flag: its spelling IS its identity,
+ * and that spelling was chosen so the selector is inert by construction.
+ * `\\name` is a well-formed identifier (css-syntax-3 §4.3.7) whose value is
+ * `\name`, and no element type is named `\name` (selectors-4 §5.1), so it can
+ * never match. Output suppression exists to match dart-sass, not to make it
+ * safe. A single `\` would escape the first letter instead — `\name` is just
+ * the type selector `name`, which matches real elements.
+ *
+ * Declared here so the grammar reducers, the extend-target policy and the
+ * serializer's branch filter all read ONE definition.
+ */
+export const PLACEHOLDER_SIGIL = '\\\\';
+
+/** True if a simple/pseudo token is a placeholder (`%name` in SCSS, `\\name` in `.jess`). */
+export function simpleSelectorIsPlaceholder(simple: SimpleToken): boolean {
+  return simple.type === 'SimpleSelector'
+    && simple.interp === null
+    && typeof simple.text === 'string'
+    && simple.text.startsWith(PLACEHOLDER_SIGIL)
+    && simple.text.length > PLACEHOLDER_SIGIL.length;
+}
+
+/**
+ * True if a COMPOSED selector-branch text contains a placeholder as one of its
+ * segments — `\\ph`, `\\ph .c`, `.o > \\ph`.
+ *
+ * Placeholder-ness is a property of the BRANCH, not of the rule: dart-sass emits
+ * `.a { … }` for `%ph, .a { … }`, keeping the sibling branch. That is why
+ * `Ruleset.reference` could not carry this — it is a whole-rule flag, and one
+ * additionally confined to an import boundary, whereas any extend anywhere may
+ * reach a placeholder.
+ *
+ * The sigil is matched only at a segment BOUNDARY so an authored escape inside
+ * an identifier (`.foo\\bar`) is not mistaken for one. Deliberately NOT matched
+ * after `(`: inside `:is(\\ph, .a)` the placeholder is one alternative of a
+ * compacted list, and dropping the whole branch there would take the visible
+ * `.a` with it — that case is handled by per-branch hiding BEFORE compaction.
+ * `indexOf` fast-rejects the overwhelmingly common backslash-free selector.
+ */
+export function branchTextIsPlaceholder(text: string): boolean {
+  for (let at = text.indexOf(PLACEHOLDER_SIGIL); at !== -1; at = text.indexOf(PLACEHOLDER_SIGIL, at + 2)) {
+    if (at === 0) {
+      return true;
+    }
+    const before = text.charCodeAt(at - 1);
+    // space, `>`, `+`, `~`, `,`
+    if (before === 32 || before === 62 || before === 43 || before === 126 || before === 44) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * A structured selector-function pseudo, e.g. `:is(.a, .b)`, `:not(.x)`. `text`
  * and `interp` are the FIRST TWO fields at the SAME offsets as `SimpleSelector`
  * so the degree-2 IC over `sim.text`/`sim.interp` in `compoundCanonical` reads a
@@ -1015,6 +1072,20 @@ export interface ExtendInstruction {
    * applies to the whole carrying rule's selector list. Absent ⇒ whole-rule subject.
    */
   subject?: SelectorList;
+
+  /**
+   * [scss:!optional] The author wrote `@extend %x !optional`, waiving the
+   * "target selector was not found" error. Recorded LOSSLESSLY at parse time;
+   * the engine does not act on it yet.
+   *
+   * The gap this names is the UNMARKED form, not this one: a miss is currently
+   * silent for both spellings (a group whose target never matches simply never
+   * fires — there is no post-fixpoint never-fired check and no target index to
+   * hang one on), so `!optional` already behaves correctly and plain `@extend`
+   * is too permissive against dart-sass, which errors. Storing the authored
+   * fact now means that diagnostic lands as an engine change alone.
+   */
+  optional?: boolean;
 }
 
 /**

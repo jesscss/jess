@@ -1,21 +1,21 @@
 {
-  "generated": "2026-08-08T23:21:17.156Z",
+  "generated": "2026-08-09T17:30:04.526Z",
   "foundation": "6.9.0",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
   "parse": {
     "total": 136,
-    "pass": 100,
+    "pass": 115,
     "blockerCounts": [
       {
-        "name": "keyword argument ($name: v) in a function-call argument list",
-        "primary": 21,
-        "files": 31
+        "name": "trailing comma in a parenthesized list",
+        "primary": 5,
+        "files": 8
       },
       {
-        "name": "trailing comma in a parenthesized list",
-        "primary": 4,
-        "files": 10
+        "name": "keyword argument ($name: v) in a function-call argument list",
+        "primary": 3,
+        "files": 16
       },
       {
         "name": "interpolation inside a pseudo-class argument list",
@@ -25,7 +25,7 @@
       {
         "name": "comparison (== / !=) inside a function-call argument list",
         "primary": 1,
-        "files": 9
+        "files": 5
       },
       {
         "name": "@at-root with a selector prelude",
@@ -40,9 +40,11 @@
     ],
     "unattributed": [
       "_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss",
+      "docs/assets/scss/docs.scss",
       "scss/components/_dropdown-menu.scss",
       "scss/components/_menu.scss",
       "scss/components/_reveal.scss",
+      "scss/typography/_base.scss",
       "scss/util/_breakpoint.scss",
       "scss/util/_math.scss"
     ],
@@ -104,14 +106,7 @@
       },
       {
         "file": "docs/assets/scss/_accordion-content.scss",
-        "outcome": "fail",
-        "at": "34:46",
-        "source": "color: color.adjust($dark-gray, $lightness: -10%);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "docs/assets/scss/_component-list.scss",
@@ -124,13 +119,13 @@
       {
         "file": "docs/assets/scss/_docs-footer.scss",
         "outcome": "fail",
-        "at": "26:44",
-        "source": "color: color.adjust($white, $lightness: -10%);",
+        "at": "39:0",
+        "source": ".footer-nav-left {",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list"
         ],
         "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "detail": "Unexpected SCSS input after a complete stylesheet."
       },
       {
         "file": "docs/assets/scss/content/_install.scss",
@@ -139,12 +134,11 @@
       {
         "file": "docs/assets/scss/docs.scss",
         "outcome": "fail",
-        "at": "129:64",
-        "source": "$global-nav-hover-color: color.adjust($global-nav-bg, $lightness: 10%);",
+        "at": "243:11",
+        "source": "li:not(:last-child) {",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list"
         ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
         "detail": "Missing closing parenthesis."
       },
       {
@@ -153,14 +147,7 @@
       },
       {
         "file": "docs/assets/scss/examples/_grid.scss",
-        "outcome": "fail",
-        "at": "17:47",
-        "source": "background: color.adjust(#eee, $lightness: -5%);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "docs/assets/scss/examples/_motion-ui.scss",
@@ -217,28 +204,11 @@
       },
       {
         "file": "scss/components/_button.scss",
-        "outcome": "fail",
-        "at": "36:68",
-        "source": "$button-background-hover: scale-color($button-background, $lightness: -15%) !default;",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list",
-          "trailing comma in a parenthesized list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_callout.scss",
-        "outcome": "fail",
-        "at": "71:45",
-        "source": "$background: scale-color($color, $lightness: $callout-background-fade);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "trailing comma in a parenthesized list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_card.scss",
@@ -342,14 +312,7 @@
       },
       {
         "file": "scss/components/_slider.scss",
-        "outcome": "fail",
-        "at": "70:71",
-        "source": "background-color: scale-color($slider-handle-background, $lightness: -15%);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_sticky.scss",
@@ -357,37 +320,15 @@
       },
       {
         "file": "scss/components/_switch.scss",
-        "outcome": "fail",
-        "at": "15:68",
-        "source": "$switch-background-focus: scale-color($switch-background, $lightness: -10%) !default;",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_table.scss",
-        "outcome": "fail",
-        "at": "35:60",
-        "source": "$table-row-hover: color.adjust($table-background, $lightness: -$table-hover-scale) !default;",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_tabs.scss",
-        "outcome": "fail",
-        "at": "99:43",
-        "source": "color: scale-color($color, $lightness: -14%);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/components/_thumbnail.scss",
@@ -476,14 +417,7 @@
       },
       {
         "file": "scss/grid/_column.scss",
-        "outcome": "fail",
-        "at": "19:55",
-        "source": "@return fraction-to-percentage($columns, $denominator: $grid-column-count);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/grid/_flex-grid.scss",
@@ -622,14 +556,14 @@
       {
         "file": "scss/settings/_settings.scss",
         "outcome": "fail",
-        "at": "177:58",
-        "source": "$anchor-color-hover: scale-color($anchor-color, $lightness: -14%);",
+        "at": "724:0",
+        "source": "$prototype-text-decoration: (",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list",
           "trailing comma in a parenthesized list"
         ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "primaryBlocker": "trailing comma in a parenthesized list",
+        "detail": "Unexpected SCSS input after a complete stylesheet."
       },
       {
         "file": "scss/typography/_alignment.scss",
@@ -638,14 +572,13 @@
       {
         "file": "scss/typography/_base.scss",
         "outcome": "fail",
-        "at": "128:58",
-        "source": "$anchor-color-hover: scale-color($anchor-color, $lightness: -14%) !default;",
+        "at": "434:4",
+        "source": "cite {",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list",
           "trailing comma in a parenthesized list"
         ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "detail": "Missing closing brace."
       },
       {
         "file": "scss/typography/_helpers.scss",
@@ -672,14 +605,7 @@
       },
       {
         "file": "scss/util/_color.scss",
-        "outcome": "fail",
-        "at": "29:52",
-        "source": "$red   : round(color.channel($color, \"red\", $space: rgb));",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/util/_direction.scss",
@@ -700,15 +626,15 @@
       {
         "file": "scss/util/_mixins.scss",
         "outcome": "fail",
-        "at": "151:52",
-        "source": "$red   : round(color.channel($color, \"red\", $space: rgb));",
+        "at": "158:2",
+        "source": "@media screen and (min-width: 0\\0) {",
         "blockers": [
           "keyword argument ($name: v) in a function-call argument list",
           "comparison (== / !=) inside a function-call argument list",
           "interpolation inside a pseudo-class argument list"
         ],
         "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "detail": "Missing closing brace."
       },
       {
         "file": "scss/util/_selector.scss",
@@ -720,14 +646,7 @@
       },
       {
         "file": "scss/util/_unit.scss",
-        "outcome": "fail",
-        "at": "65:34",
-        "source": "$value: rem-calc($value, $base: 16px);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/util/_util.scss",
@@ -751,15 +670,7 @@
       },
       {
         "file": "scss/xy-grid/_cell.scss",
-        "outcome": "fail",
-        "at": "21:95",
-        "source": "@else if ($size == 'shrink' or $size == 'full' or zf-is-fraction($size, $allow-no-denominator: true)) {",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/xy-grid/_classes.scss",
@@ -795,15 +706,7 @@
       },
       {
         "file": "scss/xy-grid/_position.scss",
-        "outcome": "fail",
-        "at": "23:59",
-        "source": "$breakpoint: -zf-current-breakpoint($breakpoint, $default: $-zf-zero-breakpoint);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list",
-          "comparison (== / !=) inside a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "scss/xy-grid/_xy-grid.scss",
@@ -815,14 +718,7 @@
       },
       {
         "file": "test/sass/_color.scss",
-        "outcome": "fail",
-        "at": "30:43",
-        "source": "$expect: scale-color($color, $lightness: -$scale);",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "test/sass/_components.scss",
@@ -830,14 +726,7 @@
       },
       {
         "file": "test/sass/_selector.scss",
-        "outcome": "fail",
-        "at": "16:48",
-        "source": "$test: #{text-inputs(text password, $modifier: ':focus')};",
-        "blockers": [
-          "keyword argument ($name: v) in a function-call argument list"
-        ],
-        "primaryBlocker": "keyword argument ($name: v) in a function-call argument list",
-        "detail": "Missing closing parenthesis."
+        "outcome": "pass"
       },
       {
         "file": "test/sass/_unit.scss",

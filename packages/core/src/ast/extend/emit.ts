@@ -51,6 +51,7 @@ import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 import { buildContribs, runFixpoint, solveComposed } from './solve.js';
 import type { ContribMap } from './solve.js';
 import type { Stylesheet, Ruleset, Statement } from '../nodes.js';
+import { branchTextIsPlaceholder } from '../nodes.js';
 
 export interface NestedRulePlan {
   /** Emit this rule (and its descendants) via the flat path at top level. */
@@ -460,6 +461,31 @@ export function computeExtends(
        */
       if (s.hidden) {
         for (const b of r) {
+          b.hidden = true;
+        }
+      }
+
+      /*
+       * [placeholder] A placeholder seed branch is hidden PER BRANCH, not per
+       * subject: `%ph, .a { … }` keeps `.a`. That granularity is why
+       * `Ruleset.reference` could not be reused — it is a whole-rule flag.
+       *
+       * This marks provenance so the per-branch mask carries a placeholder the
+       * same way it carries an `@import (reference)` rule. It is NOT sufficient
+       * on its own: an un-extended placeholder is never composed at all (it is
+       * not a candidate and has no mask), so the serializer keeps its own
+       * header-level filter for that case. Both read the same predicate.
+       *
+       * KNOWN GAP: `:is()` compaction does not consult this flag, so a
+       * segment-substituted placeholder still prints as `:is(\\ph, .a) .c`
+       * rather than `.a .c`. The selector MATCHES correctly (a placeholder is
+       * inert by construction), so this is a cosmetic divergence from
+       * dart-sass, tracked on FOUNDATION-CORPUS-REPORT.md blocker #12.
+       * Declining the merge when `a.hidden !== b.hidden` was tried and does NOT
+       * fix it — the branches reaching that merge do not carry this flag.
+       */
+      for (const b of r) {
+        if (branchTextIsPlaceholder(branchText(b))) {
           b.hidden = true;
         }
       }

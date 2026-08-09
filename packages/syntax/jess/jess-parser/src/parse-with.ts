@@ -11,6 +11,7 @@ import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
 import {
   createTriviaMapFromParseman,
+  simpleSelectorIsPlaceholder,
   withSourceSpan,
   withTriviaMap,
   type Apply,
@@ -51,7 +52,20 @@ function isStylesheet(value: unknown): value is Stylesheet {
 }
 
 const DEFAULT_APPLY_SELECTOR_KINDS: readonly ApplySelectorKind[] = ['class'];
-const DEFAULT_EXTEND_SELECTOR_KINDS: readonly ExtendSelectorKind[] = ['class'];
+
+/*
+ * A placeholder is admitted by DEFAULT alongside `class`. The policy exists to
+ * keep extend targets to shapes whose fold-in is predictable, and a placeholder
+ * is the most predictable target there is: it exists ONLY to be extended and
+ * matches no element. Denying it by default while allowing `.class` would make
+ * the one purpose-built extend target the one shape you had to opt into. It
+ * stays a named kind rather than an unconditional bypass so a project that
+ * narrows the policy can still narrow this too.
+ *
+ * `$apply` keeps its class-only default — it is utility-class composition, and
+ * a placeholder carries no utility classes to apply.
+ */
+const DEFAULT_EXTEND_SELECTOR_KINDS: readonly ExtendSelectorKind[] = ['class', 'placeholder'];
 
 function selectorPolicyError(message: string): JessParseError {
   return new JessParseError(0, [message]);
@@ -77,6 +91,7 @@ function isSimpleAllowed(simple: SimpleToken, allowed: ReadonlySet<ApplySelector
     return allowed.has('simple') || allowed.has('pseudo');
   }
   return (allowed.has('class') && isClassSelector(simple))
+    || (allowed.has('placeholder') && simpleSelectorIsPlaceholder(simple))
     || allowed.has('simple')
     || allowed.has('basic');
 }

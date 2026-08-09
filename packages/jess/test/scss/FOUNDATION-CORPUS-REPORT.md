@@ -8,13 +8,13 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-08-08T23:21:17.156Z`
+- Generated: `2026-08-09T17:30:04.526Z`
 - Foundation for Sites: `6.9.0`
 - Runner: `v24.11.1` on `darwin/arm64`
 
 ## Parse lane (all `foundation-sites/**/*.scss`)
 
-- files: **136**, parsed: **100**, failed: **36**
+- files: **136**, parsed: **115**, failed: **21**
 
 Blocking constructs. `gives up on` counts files whose `gave up at` POSITION lands
 on this blocker — the one the parser actually stopped at, so that column ranks
@@ -25,20 +25,22 @@ plausible name: it means this list is missing an entry.
 
 | blocking construct | gives up on | contains |
 |---|--:|--:|
-| keyword argument ($name: v) in a function-call argument list | 21 | 31 |
-| trailing comma in a parenthesized list | 4 | 10 |
+| trailing comma in a parenthesized list | 5 | 8 |
+| keyword argument ($name: v) in a function-call argument list | 3 | 16 |
 | interpolation inside a pseudo-class argument list | 3 | 5 |
-| comparison (== / !=) inside a function-call argument list | 1 | 9 |
+| comparison (== / !=) inside a function-call argument list | 1 | 5 |
 | @at-root with a selector prelude | 1 | 1 |
 | nested selector list `type:pseudo, .class` | 0 | 0 |
-| _unattributed — no listed blocker at the failure position_ | 6 | — |
+| _unattributed — no listed blocker at the failure position_ | 8 | — |
 
 Unattributed failures:
 
 - `_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss` — 24:40 `@return length($missing-dependencies) > 0;`
+- `docs/assets/scss/docs.scss` — 243:11 `li:not(:last-child) {`
 - `scss/components/_dropdown-menu.scss` — 84:4 `> li.opens-left { // sass-lint:disable-line no-qualifying-elements`
 - `scss/components/_menu.scss` — 100:2 `@else {`
 - `scss/components/_reveal.scss` — 108:2 `@extend %reveal-centered;`
+- `scss/typography/_base.scss` — 434:4 `cite {`
 - `scss/util/_breakpoint.scss` — 180:8 `@media print, screen and #{$str} {`
 - `scss/util/_math.scss` — the parser reported no position, so nothing can be attributed
 
@@ -48,39 +50,24 @@ Unattributed failures:
 |---|---|---|---|---|
 | `_vendor/sassy-lists/stylesheets/helpers/_missing-dependencies.scss` | 24:40 | `@return length($missing-dependencies) > 0;` | — | — |
 | `_vendor/sassy-lists/stylesheets/helpers/_true.scss` | 12:73 | `@return if($value == null, false, $value and $value != null and $value != '' and $value != ());` | comparison (== / !=) inside a function-call argument list | comparison (== / !=) inside a function-call argument list |
-| `docs/assets/scss/_accordion-content.scss` | 34:46 | `color: color.adjust($dark-gray, $lightness: -10%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
-| `docs/assets/scss/_docs-footer.scss` | 26:44 | `color: color.adjust($white, $lightness: -10%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
-| `docs/assets/scss/docs.scss` | 129:64 | `$global-nav-hover-color: color.adjust($global-nav-bg, $lightness: 10%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
-| `docs/assets/scss/examples/_grid.scss` | 17:47 | `background: color.adjust(#eee, $lightness: -5%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
+| `docs/assets/scss/_docs-footer.scss` | 39:0 | `.footer-nav-left {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
+| `docs/assets/scss/docs.scss` | 243:11 | `li:not(:last-child) {` | — | keyword argument ($name: v) in a function-call argument list |
 | `scss/components/_button-group.scss` | 131:37 | `&:first-child:nth-last-child(#{$i}) {` | interpolation inside a pseudo-class argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; interpolation inside a pseudo-class argument list |
-| `scss/components/_button.scss` | 36:68 | `$button-background-hover: scale-color($button-background, $lightness: -15%) !default;` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; trailing comma in a parenthesized list |
-| `scss/components/_callout.scss` | 71:45 | `$background: scale-color($color, $lightness: $callout-background-fade);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
 | `scss/components/_dropdown-menu.scss` | 84:4 | `> li.opens-left { // sass-lint:disable-line no-qualifying-elements` | — | keyword argument ($name: v) in a function-call argument list |
 | `scss/components/_menu.scss` | 100:2 | `@else {` | — | keyword argument ($name: v) in a function-call argument list |
 | `scss/components/_off-canvas.scss` | 207:4 | `@at-root .#{$maincontent-class} .off-canvas.position-#{$position} {` | @at-root with a selector prelude | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; trailing comma in a parenthesized list; @at-root with a selector prelude |
 | `scss/components/_reveal.scss` | 108:2 | `@extend %reveal-centered;` | — | keyword argument ($name: v) in a function-call argument list |
-| `scss/components/_slider.scss` | 70:71 | `background-color: scale-color($slider-handle-background, $lightness: -15%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
-| `scss/components/_switch.scss` | 15:68 | `$switch-background-focus: scale-color($switch-background, $lightness: -10%) !default;` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
-| `scss/components/_table.scss` | 35:60 | `$table-row-hover: color.adjust($table-background, $lightness: -$table-hover-scale) !default;` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list |
-| `scss/components/_tabs.scss` | 99:43 | `color: scale-color($color, $lightness: -14%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `scss/grid/_classes.scss` | 100:31 | `@include -zf-each-breakpoint {` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list; interpolation inside a pseudo-class argument list |
-| `scss/grid/_column.scss` | 19:55 | `@return fraction-to-percentage($columns, $denominator: $grid-column-count);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `scss/grid/_layout.scss` | 50:18 | `&:nth-of-type(#{$n}n+1) {` | interpolation inside a pseudo-class argument list | keyword argument ($name: v) in a function-call argument list; interpolation inside a pseudo-class argument list |
 | `scss/prototype/_relation.scss` | 9:16 | `&:nth-child(-n + #{$num}) {` | interpolation inside a pseudo-class argument list | interpolation inside a pseudo-class argument list |
 | `scss/prototype/_text-decoration.scss` | 15:0 | `$prototype-text-decoration: (` | trailing comma in a parenthesized list | trailing comma in a parenthesized list |
-| `scss/settings/_settings.scss` | 177:58 | `$anchor-color-hover: scale-color($anchor-color, $lightness: -14%);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
-| `scss/typography/_base.scss` | 128:58 | `$anchor-color-hover: scale-color($anchor-color, $lightness: -14%) !default;` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
+| `scss/settings/_settings.scss` | 724:0 | `$prototype-text-decoration: (` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
+| `scss/typography/_base.scss` | 434:4 | `cite {` | — | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
 | `scss/util/_breakpoint.scss` | 180:8 | `@media print, screen and #{$str} {` | — | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
-| `scss/util/_color.scss` | 29:52 | `$red   : round(color.channel($color, "red", $space: rgb));` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `scss/util/_math.scss` | — | `` | — | keyword argument ($name: v) in a function-call argument list |
-| `scss/util/_mixins.scss` | 151:52 | `$red   : round(color.channel($color, "red", $space: rgb));` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; interpolation inside a pseudo-class argument list |
-| `scss/util/_unit.scss` | 65:34 | `$value: rem-calc($value, $base: 16px);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
+| `scss/util/_mixins.scss` | 158:2 | `@media screen and (min-width: 0\0) {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list; interpolation inside a pseudo-class argument list |
 | `scss/util/_value.scss` | 123:36 | `@return if(type-of($map) != 'list', ($value,), $map);` | trailing comma in a parenthesized list | keyword argument ($name: v) in a function-call argument list; trailing comma in a parenthesized list |
-| `scss/xy-grid/_cell.scss` | 21:95 | `@else if ($size == 'shrink' or $size == 'full' or zf-is-fraction($size, $allow-no-denominator: true)) {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list |
 | `scss/xy-grid/_classes.scss` | 83:6 | `.grid-x > .#{$-zf-size}-shrink {` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list |
-| `scss/xy-grid/_position.scss` | 23:59 | `$breakpoint: -zf-current-breakpoint($breakpoint, $default: $-zf-zero-breakpoint);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list; comparison (== / !=) inside a function-call argument list |
-| `test/sass/_color.scss` | 30:43 | `$expect: scale-color($color, $lightness: -$scale);` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
-| `test/sass/_selector.scss` | 16:48 | `$test: #{text-inputs(text password, $modifier: ':focus')};` | keyword argument ($name: v) in a function-call argument list | keyword argument ($name: v) in a function-call argument list |
 | `test/sass/_value.scss` | 6:30 | `@include test-module('Value') {` | trailing comma in a parenthesized list | trailing comma in a parenthesized list |
 
 ## Eval lane (self-contained entry points)
@@ -125,7 +112,7 @@ to. Rows marked LANDED are implemented; the rest are still design-only.
 | 9 | nested selector list `type:pseudo, .class` | **A grammar defect, and the rule is fully specified — see below.** |
 | 10 | interpolation in a pseudo-class arg | Not yet ruled on. |
 | 11 | `@at-root` with a selector prelude | **Needs a decision.** Bare `@at-root { … }` already parses. |
-| 12 | `@extend %placeholder` — a placeholder-selector extend | **NEEDS AN OWNER RULING. Not on the original eleven-item list**; it was found by the position-based attribution, which left `scss/components/_reveal.scss` unattributed and thereby named the gap instead of hiding it. That file gives up at `108:2` on `@extend %reveal-centered;`. `%name` is a Sass selector that emits nothing on its own and exists only to be extended; `.less` has no spelling for it, and `.jess` has not been given one, so the question is what it LOWERS TO before it is a grammar question. Recorded, deliberately not implemented here. |
+| 12 | `@extend` inside a mixin / control-flow body (NOT `%placeholder`) | **PLACEHOLDERS LANDED; THE REAL BLOCKER IS ELSEWHERE AND HAS NOW BEEN MISLABELLED THREE TIMES.** Ruling: `.jess` spells a placeholder `\\name` (two literal backslashes) and SCSS `%name` LOWERS to it, so both dialects reduce to the SAME `SimpleSelector` — zero new AST kinds. Two backslashes because `\\` is the CSS escape for a literal `\` (css-syntax-3 4.3.7), making the selector a well-formed identifier no element type can match (selectors-4 5.1): a placeholder is inert BY CONSTRUCTION, and suppression exists only to match dart-sass output. Suppression is per-BRANCH, not per-rule — `%ph, .a {}` emits `.a` — which is why `Ruleset.reference` could NOT be reused for it (whole-rule flag, import-boundary-confined, and it has no producers at all). `.jess` needed NO grammar arm: `\\name` already parses as a plain `SimpleSelector` via the shared escape-aware terminal, and adding a `\\`-arm ahead of `Simple` would STEAL every genuine CSS escape (`\3A hover`, `\@media`) — do not add one. **What actually blocks `_reveal.scss:108` is neither `%` nor grammar placement.** Admitting `@extend` into `nestedBody`/`IfBody` is a two-line change and was tried: it parses, and then the extend is SILENTLY DROPPED, which is strictly worse than the loud parse error. An extend written in a mixin body must apply to the rule that `@include`s the mixin, but extend facts are planned STATICALLY over the authored tree, so an authored `@mixin m { & { @extend .b; } }` containing no placeholder at all is already dropped today — proving the defect is a pre-existing PLANNER limitation, not a grammar or placeholder gap. The mechanism that would carry it already exists: dynamic plan facts via `byPlacement` / `extendPlacement` (`serialize.ts` `extendProjection`), used today for LOOP placements; mixin expansion needs routing through the same path. Until then the arm stays out on purpose. Also landed here: `!optional` is parsed and recorded on `ExtendInstruction.optional`, and SCSS `@extend` is `partial: true` (Sass has no exact/all distinction). Still OPEN alongside the planner work: a missing target is silent for both spellings where dart-sass errors, and `:is()` compaction can still print a placeholder alternative (`:is(\\ph, .a) .c` instead of `.a .c`) — inert, so it matches correctly, but it is a cosmetic divergence. |
 
 **Sequencing note:** #2, #5 and #6 are LANDED, together — #6 IS the lowering
 target for #2, so neither closes alone. #1 and #9 are defects. #10, #11 and #12

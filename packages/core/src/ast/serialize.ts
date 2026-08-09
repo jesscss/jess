@@ -54,7 +54,8 @@ import {
   selectorBranchHasInterp,
   selectorTermCanonical,
   selectorTermHasInterp,
-  simpleSelector
+  simpleSelector,
+  branchTextIsPlaceholder
 } from './nodes.js';
 import type {
   Any,
@@ -8729,17 +8730,41 @@ function extendProjection(frame: Frame | null, e: Emit): ExtendResults | ExtendP
   return ext;
 }
 
+/**
+ * Drop every placeholder branch from a composed header; `null` when that leaves
+ * nothing, which is how a placeholder rule emits no output of its own.
+ *
+ * This runs on the FLAT composed header rather than on the authored selector
+ * list on purpose: after extend folds an extender in, the header is longer than
+ * the authored list, and the extender branch is exactly the one that must
+ * survive. Filtering by text keeps that alignment free.
+ */
+function withoutPlaceholders(header: string[]): string[] | null {
+  let hit = false;
+  for (let i = 0; i < header.length; i++) {
+    if (branchTextIsPlaceholder(header[i]!)) {
+      hit = true;
+      break;
+    }
+  }
+  if (!hit) {
+    return header;
+  }
+  const vis = header.filter(branch => !branchTextIsPlaceholder(branch));
+  return vis.length > 0 ? vis : null;
+}
+
 function visibleHeader(rule: Ruleset, header: string[], frame: Frame, e: Emit): string[] | null {
   const ext = extendProjection(frame, e);
   const mask = ext?.hiddenByRule.get(rule);
   if (mask?.length === header.length) {
     const vis = header.filter((_, i) => mask[i] !== true);
-    return vis.length > 0 ? vis : null;
+    return vis.length > 0 ? withoutPlaceholders(vis) : null;
   }
   if (rule.reference === true && ext?.flatByRule.has(rule) !== true) {
     return null;
   }
-  return header;
+  return withoutPlaceholders(header);
 }
 
 function flatten(
@@ -13932,7 +13957,20 @@ function emitNestedRuleAuthored(
     : placement === null
       ? ownStrings(rule.selector, frame, e)
       : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
-  return mapMaybe(ownMaybe, (own) => {
+  return mapMaybe(ownMaybe, (ownAll) => {
+    /*
+     * [placeholder] Nested output is the v5 DEFAULT and never reaches
+     * `visibleHeader`, so the branch filter is applied here too — otherwise a
+     * placeholder would emit nothing when a rule happened to flatten and emit
+     * invalid CSS when it did not. A rule left with no visible branch drops
+     * WITH its subtree: an un-extended `%ph { … .nested { … } }` contributes
+     * nothing at all, while an extended one reaches output through the
+     * extender's own header, which `plan.header` already carries.
+     */
+    const own = withoutPlaceholders(ownAll);
+    if (own === null) {
+      return;
+    }
     const authoredHeader = plan === undefined && placement === null && source === null
       ? authoredSelectorHeaderWithTrivia(rule.selector, own, e)
       : null;

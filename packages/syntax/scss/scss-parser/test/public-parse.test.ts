@@ -216,9 +216,10 @@ describe('@jesscss/scss-parser public parse API', () => {
   });
 
   it('parses static placeholder selectors through the public Stylesheet route', () => {
+    // `%notice` lowers to the canonical `\\notice` spelling shared with `.jess`.
     expect(parse('%notice { color: blue; }')).toMatchObject({
       type: 'Stylesheet',
-      rules: [{ type: 'Ruleset', selector: { selectors: [simpleComplex('%notice')] } }]
+      rules: [{ type: 'Ruleset', selector: { selectors: [simpleComplex('\\\\notice')] } }]
     });
   });
 

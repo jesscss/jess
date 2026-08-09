@@ -195,7 +195,7 @@ type ScssRules = {
   Selector: Combinator<SelectorList>;
   NestedSelectorTail: Combinator<SelectorBranch>;
   NestedSelector: Combinator<SelectorList>;
-  Extend: Combinator<ExtendInstruction>;
+  Extend: Combinator<Ruleset>;
   OpaqueAtPrelude: Combinator<string | null>;
   OpaqueBody: Combinator<string>;
   ScssGenericAtRuleName: Combinator<string>;
@@ -3423,7 +3423,20 @@ const scssFactory = (g: ScssInputRules) => {
     nestedAtStatement
   ));
 
-  /* The ruleset body adds one extra arm (`Extend`) before `Ruleset`. */
+  /*
+   * The ruleset body adds one extra arm (`Extend`) before `Ruleset`.
+   *
+   * `@extend` is DELIBERATELY not admitted in `nestedBody` (mixin/each/for) or
+   * `IfBody` yet, even though Foundation's `@mixin reveal-modal-width`
+   * (`scss/components/_reveal.scss:108`) needs it and currently fails to parse.
+   * Admitting the arm is a two-line change and was tried; the blocker is one
+   * layer down. An extend written in a mixin body must apply to the rule that
+   * `@include`s the mixin, and extend facts are planned statically — an
+   * authored `@mixin m { & { @extend .b; } }` (no placeholder involved) is
+   * already dropped today, so the arm alone would make the file PARSE and then
+   * silently discard the extend, which is strictly worse than the loud parse
+   * error. See FOUNDATION-CORPUS-REPORT.md blocker #12.
+   */
   const ruleBody = many(choice(
     nestedBodyPrefix,
     g.Extend,
@@ -5206,14 +5219,38 @@ const scssFactory = (g: ScssInputRules) => {
 
   /*
    * SCSS placeholder selectors are selector syntax, not declarations or a
-   * runtime-only marker. The canonical selector tree already represents their
-   * exact static spelling as a SimpleSelector; interpolated placeholder names need a
-   * typed interpolation model and are deliberately excluded.
+   * runtime-only marker, and they are an ordinary `SimpleSelector` -- a
+   * placeholder needs no node kind of its own because its SPELLING is what
+   * makes it one.
+   *
+   * The `%` sigil is LOWERED to the canonical `\\` spelling here, so `%name` and
+   * the `.jess` `\\name` reduce to the same node and extend across dialects.
+   * `.jess` cannot spell it `%name` (`%` is modulo there), and it needs no
+   * grammar arm of its own: `\\name` already parses as a plain `SimpleSelector`
+   * through the shared escape-aware identifier terminal
+   * (`@jesscss/parser-shared` `recognition.ts` `simpleSelector`), and its text
+   * is already `\\name`. Adding a dedicated `\\`-arm ahead of `Simple` would
+   * instead STEAL every genuine CSS escape (`\3A hover`, `\@media`), so the
+   * spelling is deliberately left to that terminal and recognized by predicate.
+   *
+   * Why two backslashes and not one: in CSS a `\` begins an escape, so the
+   * source `\\name` is the escape sequence for a literal `\` followed by `name`
+   * -- a well-formed identifier (css-syntax-3 section 4.3.7 "consume an escaped code
+   * point") whose value is `\name`. As a type selector that can only match an
+   * element named `\name`, and no such element type exists in HTML, SVG or MathML
+   * (selectors-4 section 5.1). A placeholder is therefore INERT BY CONSTRUCTION rather
+   * than by a suppression rule the engine has to remember -- suppression exists
+   * to match dart-sass's output, not to make the selector safe. A single `\`
+   * would instead escape the first letter (`\name` == the type selector `name`),
+   * which is a real element-matching selector and the opposite of inert.
+   *
+   * Interpolated placeholder names need a typed interpolation model and are
+   * deliberately excluded.
    */
   const Placeholder = node<SimpleSelector>(
     'SimpleSelector',
     regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/),
-    children => simpleSelector(requireToken(children[0]).value)
+    children => simpleSelector(`\\\\${requireToken(children[0]).value.slice(1)}`)
   );
 
   /*
@@ -5560,10 +5597,6 @@ const scssFactory = (g: ScssInputRules) => {
   const Selector = node<SelectorList>(
     'Selector',
     sequence(
-      not(sequence(
-        g.Placeholder,
-        literal(',')
-      )),
       g.Complex,
       many(g.SelectorTail)
     ),
@@ -5580,10 +5613,6 @@ const scssFactory = (g: ScssInputRules) => {
   const NestedSelector = node<SelectorList>(
     'NestedSelector',
     sequence(
-      not(sequence(
-        g.Placeholder,
-        literal(',')
-      )),
       g.RelativeComplex,
       many(g.NestedSelectorTail)
     ),
@@ -5592,19 +5621,38 @@ const scssFactory = (g: ScssInputRules) => {
 
   /*
    * SCSS `@extend` is a rule-body instruction, not a synthetic statement node.
-   * Its target stays a typed selector list and is hoisted onto the carrying Ruleset
-   * through the existing canonical extendInstructions field. `!optional` has
-   * missing-target diagnostic semantics that the canonical instruction does not
-   * yet model, so this slice rejects it rather than silently dropping it.
+   * Its target stays a typed selector list and is hoisted onto the carrying
+   * Ruleset through the existing canonical extendInstructions field.
+   *
+   * `!optional` is PARSED and recorded losslessly on the instruction. It selects
+   * missing-target diagnostics the engine does not model yet: today a miss is
+   * silently ignored for BOTH spellings, so `!optional` is already behaviourally
+   * correct and it is the UNMARKED form that is too permissive (dart-sass errors
+   * with "The target selector was not found"). Recording the authored flag now
+   * means that diagnostic lands as an engine change alone rather than needing a
+   * re-parse; dropping it would leave the two spellings indistinguishable in the
+   * tree.
    */
   const Extend = node<ExtendInstruction>(
     'Extend',
     sequence(
       regex(/@extend(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       g.Selector,
+      optional(regex(/!optional(?![-_a-zA-Z0-9\u0080-\uffff])/i)),
       optional(literal(';'))
     ),
-    children => ({ target: requireSelectorList(children[1]), partial: false })
+    children => ({
+      target: requireSelectorList(children[1]),
+      /*
+       * `partial: true` is Less's `all` semantics. Sass has no exact/all
+       * distinction: `@extend` ALWAYS substitutes the target wherever it
+       * appears, including as one segment of a complex selector, so
+       * `%ph .c { ... }` plus `.a { @extend %ph; }` must reach `.a .c`.
+       * Exact-only matching silently dropped every such extend.
+       */
+      partial: true,
+      optional: children.some(child => isToken(child) && child.value.toLowerCase() === '!optional')
+    })
   );
 
   /*

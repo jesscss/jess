@@ -178,6 +178,34 @@ The five foundation-sites sites are all `grid-row` / `flex-grid-row`, whose `@co
 
 **Zero affected files in either corpus** — both ratchets are unchanged by this behaviour. That is the measured scope of the risk on two libraries, not evidence that the pattern is rare in the wild.
 
+## Placeholder selectors (`%name`)
+
+Placeholder selectors work as they do in Sass: a placeholder rule emits nothing on its own and reaches output only through `@extend`.
+
+```scss
+%ph { color: red; }          // -> emits nothing
+%ph { color: red; }
+.a { @extend %ph; }          // -> .a { color: red; }
+%ph, .a { color: red; }      // -> .a { color: red; }  (only the %ph BRANCH is dropped)
+```
+
+In `.jess` the same construct is spelled `\\name`, because `%` is the modulo operator there. `%name` in `.scss` lowers to exactly that, so the two are the same selector and can extend across dialects. The spelling is deliberate: `\\` is the CSS escape for a literal backslash ([css-syntax-3 §4.3.7](https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point)), so `\\name` is a well-formed identifier that no element type can match ([selectors-4 §5.1](https://www.w3.org/TR/selectors-4/#type-selectors)) — a placeholder is inert even if it does reach output.
+
+Two differences from dart-sass remain:
+
+**A segment-substituted extend can still print the placeholder.** When a placeholder appears as one segment of a complex selector, Sass+ compacts the result with `:is()` and the placeholder stays in the group:
+
+```scss
+%ph .c { color: red; }
+.a { @extend %ph; }
+// dart-sass: .a .c { color: red; }
+// Sass+:     :is(\\ph, .a) .c { color: red; }
+```
+
+The two select the same elements — the `\\ph` alternative matches nothing — so this is a cosmetic difference, not a behavioural one.
+
+**A missing `@extend` target is not an error.** dart-sass raises `The target selector was not found.` unless you write `!optional`. Sass+ accepts `!optional` and records it, but currently ignores a missing target for both spellings, so `@extend %does-not-exist;` silently does nothing rather than failing the build.
+
 ## See also
 
 - [Sass+ Strictness](./stricter-than-sass) — invalid CSS that Sass+ rejects at parse time
