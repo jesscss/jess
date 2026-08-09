@@ -1,8 +1,9 @@
 # Production-level `compose()` across the four grammars — feasibility
 
-**Verdict: ABANDON for now.** Not because the design is wrong — it is right, and
-it is still the resolution this debt needs — but because the vehicle does not
-exist in parseman 0.46.0. `compose()` cannot compile a rule map containing a
+**Verdict: BLOCKED on parseman 0.46.0** — not scheduled, not deferred by choice.
+Ledger row **P22**, updated to match. Not because the design is wrong — it is
+right, and it is still the resolution this debt needs — but because the vehicle
+does not exist in the installed parseman. `compose()` cannot compile a rule map containing a
 `node()` whose build callback references anything outside its own parameters,
 and every production in all four grammars does. The blocker is upstream, it is
 precisely located, and it is small. Re-run
@@ -128,6 +129,10 @@ leave these.
 
 ## 3. What the upstream fix would be
 
+**Parseman is a separate lane's responsibility. Do not attempt this from a
+grammar brief.** Stated here so the requirement is unambiguous, not as work to
+pick up.
+
 Two changes to parseman, both in the IR path:
 
 1. **Carry the reducer's free bindings as an import manifest.** The plugin
@@ -202,12 +207,20 @@ Gated on the upstream fix, and assuming it lands as described:
 
 ---
 
-## 5. Ledger note
+## 5. Ledger
 
-This work was dispatched against ledger row **P22** in
-`docs/architecture/core/DESIGN-DECISIONS.md`. **That row does not exist** — the
-`P` series there runs P1-P21 with no P22. The closest existing row is **P5**
-("SCSS should compose on the CSS base, NOT on Less — via a dialect-neutral
-`preprocessorBase`. No dialect composes on another.", status DIRECTIONAL). The
-findings here are evidence for P5 and should be recorded against it, or a new
-row opened; they should not be filed under a row number that has no entry.
+Filed against **P22** in `docs/architecture/core/DESIGN-DECISIONS.md` (line 230),
+which is the row for exactly this subject: one call argument defined three times,
+once per superset, with production-level `compose()` named as the resolution.
+That row read "SCHEDULED, not blocked"; this run proves it is **BLOCKED on
+parseman 0.46.0**, and the row has been updated to say so.
+
+Not P5. P5 ("SCSS should compose on the CSS base, NOT on Less — via a
+dialect-neutral `preprocessorBase`") is a claim about which base a dialect
+composes ON, and it should not carry a parseman-capability finding.
+
+A note on method, since it cost a wrong claim in the first draft of this
+document: the `P` rows in that ledger are **not in numeric order** — the tail
+runs P18, P19, P21, P10, P20, P22 — so a scan for a sorted sequence stops at P21
+and concludes P22 is absent. Never infer a ledger row is missing from ordering.
+`grep -c "^| P22" docs/architecture/core/DESIGN-DECISIONS.md`.
