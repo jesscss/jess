@@ -61,18 +61,29 @@ const PER_FILE_TIMEOUT_MS = 30_000;
  * Blocking constructs, each validated in isolation by
  * `scss-construct-support.test.ts`. A file is attributed to every blocker it
  * contains — files usually hit several, so these counts overlap by design.
+ *
+ * An entry is REMOVED when the construct starts parsing, not left at zero.
+ * This is `foundation-corpus.test.ts`'s doctrine, adopted here verbatim, and it
+ * binds HARDER in this file than it does there. The match is a presence regex,
+ * so a construct that parses keeps attracting every file that merely CONTAINS
+ * it while failing for an unrelated reason. Foundation can absorb that, because
+ * it also ranks by the blocker sitting at each file's reported failure POSITION
+ * (`blockerAt`) and reads the truth off that column. This file has no such
+ * column — `contains` is the ONLY column — so a stale entry has nothing to
+ * correct it and silently OVERSTATES what is blocking.
+ *
+ * Closed and removed on 2026-08-08, each verified by feeding a reduced snippet
+ * to `@jesscss/scss-parser` directly rather than by inferring from corpus
+ * movement: `@while`, `@content`, `@include` with a trailing content block, and
+ * `@warn` / `@error` / `@debug`.
  */
 const BLOCKERS: Array<[string, RegExp]> = [
   ['bare-truthy @if condition', /@(?:if|else if)\s+(?:not\s+)?[(]?(?:\$[\w-]+\s*[{)]|[a-z-]+\()/],
   ['interpolation as a standalone selector compound', /(?:^|[\s,>+~])#\{/m],
   ['interpolation inside a var() name', /var\(\s*--[^)]*#\{/],
-  ['@include with a trailing content block', /@include[^;{]*\{\s*$/m],
-  ['@content', /@content/],
-  ['@warn / @error / @debug', /@(?:warn|error|debug)\b/],
   ['leading combinator (implicit &)', /^\s*[>+~]\s*\S/m],
   ['interpolated pseudo-element', /::?#\{/],
   ['multiline nested paren list', /\(\s*\n(?:[^()\n]*\n)*?\s*\(/],
-  ['@while', /@while/],
   ['line comment inside a paren list', /\(\s*\n\s*\/\//]
 ];
 
