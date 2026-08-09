@@ -133,6 +133,8 @@ jess 168 distinct rejected productions) and names the second, structural blocker
 *"This conclusion is settled … do not re-propose `compose()` across artifacts without new
 evidence."* That closure is why nothing escalated: the defects below each looked like an
 isolated bug rather than a symptom of a missing code link.
+CLOSURE-QUOTED: the sentence above is reproduced to identify the violation, not to assert
+it. It was repudiated in `GRAMMAR-REBUILD-SPEC.md` and is overruled by OR-1 rule 2.
 
 ### THE OWNER HAS OVERRULED THAT — four hard rules
 
