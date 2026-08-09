@@ -1403,6 +1403,40 @@ export const list = (
 
 export const simpleSelector = (text: string): SimpleSelector => ({ type: 'SimpleSelector', text, interp: null, _s: NO_SPAN, _e: NO_SPAN });
 
+/** An `<ident-token>` code point — the continue set, which is all that matters at a join. */
+const identCode = (code: number): boolean =>
+  code === 0x2d /* - */ || code === 0x5f /* _ */ || code === 0x5c /* \ */
+  || (code >= 0x30 && code <= 0x39)
+  || (code >= 0x41 && code <= 0x5a)
+  || (code >= 0x61 && code <= 0x7a)
+  || code > 0x7f;
+
+/**
+ * `[`, name, operator, value, flag, `]` joined into one attribute selector.
+ *
+ * The parts carry no authored whitespace, so two adjacent `<ident-token>`s
+ * would FUSE: `[data-x=y i]` emitting as `[data-x=yi]` is still valid CSS and
+ * still parses, so nothing rejects it — but selectors-4 §6.3 makes the unquoted
+ * value and the case-sensitivity flag two separate `<ident-token>`s, and the
+ * fused spelling matches a DISJOINT set of elements. One space is emitted at
+ * exactly the boundaries where omitting it would fuse and at no other, so a
+ * quoted value (`"y"i`) and every delimiter-adjacent boundary keep their bytes.
+ */
+export const attributeSelector = (parts: readonly string[]): SimpleSelector => {
+  let text = '';
+  for (const part of parts) {
+    if (
+      text.length !== 0 && part.length !== 0
+      && identCode(text.charCodeAt(text.length - 1))
+      && identCode(part.charCodeAt(0))
+    ) {
+      text += ' ';
+    }
+    text += part;
+  }
+  return simpleSelector(text);
+};
+
 /** An interpolated simple token, e.g. `.icon-@{type}`. */
 export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelector => ({ type: 'SimpleSelector', text: null, interp, _s: NO_SPAN, _e: NO_SPAN });
 

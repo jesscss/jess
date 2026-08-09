@@ -44,7 +44,7 @@ is only visible as missing bytes while nesting is still emitted as nesting.
 
 | channel | n | what |
 | --- | --- | --- |
-| `authored` | 17 | hand-written CSS already in the form `serialize` emits, one file per construct axis. The strongest form: an author's file round-trips byte for byte. |
+| `authored` | 19 | hand-written CSS already in the form `serialize` emits, one file per construct axis. The strongest form: an author's file round-trips byte for byte. |
 | `emitted` | 63 | every real stylesheet in the render-differential corpus (Bootstrap 5.3.8 ×4, in-tree CSS, calc fixtures) run through the parser once; its **output** becomes the corpus entry, and the same unmodified question is asked of that. |
 
 The `emitted` channel exists because real-world CSS is not written in jess's
@@ -81,7 +81,8 @@ edited a production would be a grammar change wearing a test's name.
 
 ## Open findings
 
-Four authored files do not round-trip today. They are recorded one per file in
+Four authored files do not round-trip today — three `open`, one `settled`. They
+are recorded one per file in
 `../byte-identity.divergences.json` with the construct and the reason, and the
 ratchet compares the failing set to that record **by name** — a file that starts
 diverging fails, and so does a file that stops, which forces the record to be
@@ -90,14 +91,18 @@ deleted rather than left to rot.
 That file is a **record, not an allowlist**. Nothing in it has been ruled
 correct:
 
-- `at-rule-charset-then-import.css` — `@import` after `@charset` is a parse
-  error, though it is the canonical stylesheet prologue.
-- `selector-attribute-case-flag.css` — `[a^="y" i]` emits as `[a^="y"i]`, which
-  is **invalid CSS**, not merely different bytes.
-- `empty-blocks.css` — empty rules and empty conditional at-rules emit as the
-  empty string.
-- `value-slash-separator.css` — `12px/1.5` emits as `12px / 1.5`; the one known
-  deliberate transform of the four.
+- `at-rule-namespace-url.css` — `@namespace url(…)` is a parse error, though a
+  `<url>` prelude is valid per css-namespaces-3 §2.
+- `selector-attribute-case-flag.css` — `[a^="y" i]` emits as `[a^="y"i]`. The
+  string and the flag stay two tokens, so this is a byte difference and not a
+  change of meaning. Its **unquoted** sibling was neither: `[a=y i]` emitted as
+  `[a=yi]`, one fused ident matching a disjoint set of elements. That is fixed,
+  and `selector-attribute-unquoted-flag.css` pins it.
+- `value-slash-separator.css` — `12px/1.5` emits as `12px / 1.5`; a collision
+  between two settled v5 rules rather than a suspected defect.
+
+`empty-blocks.css` is recorded separately as **settled**: empty-block elision is
+deliberate and cited, so the fixture stays to catch the day it silently stops.
 
 ## What it does not cover
 

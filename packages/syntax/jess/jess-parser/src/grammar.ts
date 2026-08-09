@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, keyword, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, keyword, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode, While } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -3024,7 +3024,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )),
       literal(']')
     ),
-    children => simpleSelector(children.map(child => isQuoted(child) ? child.src : requireToken(child).value).join(''))
+    children => attributeSelector(children.map(child => isQuoted(child) ? child.src : requireToken(child).value))
   );
 
   /*

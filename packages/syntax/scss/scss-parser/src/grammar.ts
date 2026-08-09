@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, CallArg, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, Null, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -5277,7 +5277,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => children.some(isInterpolation)
       ? interpolatedSimpleSelector(interpolationFromTemplateChildren(children))
-      : simpleSelector(joinSourceText(children))
+      : attributeSelector(children.map(sourceText))
   );
 
   /*

@@ -91,22 +91,20 @@ describe('Less constructs discovered outside the parser suites', () => {
 
   it.each([
     ['spaced modifier', 'a[href="x" i]{c:d}'],
-    ['spaced s modifier', 'a[href="x" s]{c:d}']
-  ])('accepts the attribute case-sensitivity modifier (%s)', (_label, source) => {
-    expect(() => parse(source)).not.toThrow();
-  });
-
-  it.each([
+    ['spaced s modifier', 'a[href="x" s]{c:d}'],
     ['tight modifier', 'a[href="x"i]{c:d}'],
-    ['fully spaced attribute', 'a[ href = "x" i ]{c:d}']
-  ])('PINNED DEFECT — rejects a spelling of the attribute modifier the other three accept (%s)', (_label, source) => {
+    ['fully spaced attribute', 'a[ href = "x" i ]{c:d}'],
+    ['spaced unquoted value', 'a[ href = x i ]{c:d}']
+  ])('accepts the attribute case-sensitivity modifier (%s)', (_label, source) => {
     /*
      * selectors-4 §6.3 puts optional whitespace on both sides of the
      * attribute matcher and before the modifier, and the modifier needs no
-     * separating whitespace at all. CSS, SCSS and Jess accept both of these;
-     * only Less rejects them, so this is a Less selector-grammar gap.
+     * separating whitespace at all. The last three were a PINNED DEFECT: Less
+     * alone rejected them, which broke "valid CSS is valid in every dialect".
+     * Whitespace inside `[` … `]` is now trivia in Less as it already was in
+     * the CSS base.
      */
-    expect(() => parse(source)).toThrow();
+    expect(() => parse(source)).not.toThrow();
   });
 
   it('PINNED DEFECT — keeps the authored space before the attribute modifier', () => {

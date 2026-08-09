@@ -486,7 +486,7 @@ describe('CSS canonical-AST grammar', () => {
               value: [
                 { value: [{ text: 'a' }, { text: '.card' }] },
                 '>',
-                { value: [{ text: '[data-kind=primaryi]' }, { text: ':hover' }] }
+                { value: [{ text: '[data-kind=primary i]' }, { text: ':hover' }] }
               ]
             }]
           },

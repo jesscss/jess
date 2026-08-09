@@ -25,6 +25,7 @@ import {
   any,
   atRuleBlock,
   atRuleStatement,
+  attributeSelector,
   color,
   selectorBranchCanonical,
   selectorBranchOf,
@@ -1259,7 +1260,7 @@ const cssFactory = (g: GrammarSelf) => {
       )),
       literal(']')
     ),
-    children => simpleSelector(children.map(sourceText).join(''))
+    children => attributeSelector(children.map(sourceText))
   );
 
   /*

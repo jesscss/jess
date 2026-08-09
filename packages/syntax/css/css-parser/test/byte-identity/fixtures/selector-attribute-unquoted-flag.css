@@ -7,3 +7,12 @@
 [data-x~=y i] {
   color: lime;
 }
+[lang=en I] {
+  color: green;
+}
+[data-x=y-1 i] {
+  color: teal;
+}
+[data-x=yi] {
+  color: gray;
+}

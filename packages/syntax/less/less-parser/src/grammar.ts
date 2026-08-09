@@ -5994,17 +5994,34 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       g.AttributeOperator,
       choice(staticIdentifier, g.LiteralQuoted),
-      optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
+      optional(g.AttributeModifier)
     ),
     children => ({
       operator: requireToken(children[0]).value,
       value: staticText(children[1]),
-      modifier: children.length === 2 ? null : requireToken(children[3]).value
+      modifier: children.length === 2 ? null : requireToken(children[2]).value
     })
   );
+  /*
+   * Inside `[` … `]` whitespace is trivia, exactly as it is in the CSS base.
+   * selectors-4 §6 puts optional whitespace on both sides of the matcher and
+   * before the modifier, so `[data-x = y i]` is valid CSS and every superset
+   * must accept it. The separation of the unquoted value from the modifier is
+   * carried by ident tokenization — `[a=yi]` is one greedy `staticIdentifier`,
+   * `[a=y i]` is two — not by a mandatory whitespace terminal, which is what
+   * rejected the spaced spellings. The `[` itself keeps the ambient compound
+   * trivia, so a comment before it still joins one compound and `a [b]` stays
+   * a descendant relation.
+   */
   const AttributeSelector = node(
     'AttributeSelector',
-    sequence(literal('['), g.AttributeName, optional(g.AttributeMatch), literal(']')),
+    sequence(
+      literal('['),
+      parser(
+        { trivia: staticSelectorTrivia },
+        sequence(g.AttributeName, optional(g.AttributeMatch), literal(']'))
+      )
+    ),
     (children) => {
       const match = children.find((child): child is AttributeMatchFact =>
         typeof child === 'object' && child !== null && 'operator' in child && 'value' in child && 'modifier' in child
