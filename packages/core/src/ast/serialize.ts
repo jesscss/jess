@@ -131,7 +131,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } f
 import { UnitArithmeticError, calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList, makeNull, NULL } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
-import { CONTENT_BINDING, DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
+import { DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
@@ -10186,17 +10186,7 @@ function expandReferenceCall(
   }
   const resolved = resolveReferenceResult(call, frame, e);
   if (!resolved) {
-    /*
-     * A miss is a hard eval error — EXCEPT for the one OPTIONAL resolve in
-     * statement position: `$content()`. A call's content block is optional by
-     * design (a mixin that emits `$content()` must work whether or not the caller
-     * assigned a block), so `bindArgs` binds `CONTENT_BINDING` only when one was,
-     * and an unbound `content` HERE means "no block" — which renders as nothing.
-     * An outer `@content` in scope still resolves normally; only the total miss
-     * is silent, so this is the settled optional-resolve case and not a name the
-     * resolver otherwise knows about.
-     */
-    if (call.base.type === 'Lookup' && call.base.kind === 'var' && call.base.name !== CONTENT_BINDING) {
+    if (call.base.type === 'Lookup' && call.base.kind === 'var') {
       unresolvedSymbol(call.base, `@${call.base.name}`, e);
     }
     return;

@@ -105,20 +105,35 @@ describe('the two halves compose end to end', () => {
   });
 
   /*
-   * OWNER RULING: a block-less `@include` makes `@content` a NO-OP. The content
-   * block is OPTIONAL by design — a mixin that emits `@content` conditionally, or
-   * that is called both with and without a block, is the common idiom, and
-   * erroring would break every one of them. This is not an exception written for
-   * one name: it is the settled "a resolve failure is an eval error UNLESS the
-   * resolve is optional" rule, and `$content()` is precisely the optional case.
-   * Matches dart-sass.
+   * OWNER MODEL: `content` is JUST A SCOPED VARIABLE, bound in the call frame
+   * when — and only when — the caller passed a block, the way `arguments` is
+   * bound in a JS function. `$content()` is then a REGULAR call on that regular
+   * variable; the evaluator knows nothing about the name.
+   *
+   * The direct consequence, recorded here as observed behaviour: a block-less
+   * `@include` leaves `content` UNBOUND, and a regular call on an unbound
+   * variable is a resolve failure like any other. dart-sass makes this a no-op;
+   * jess raises. OPEN — pending an owner ruling on whether the no-op should be
+   * restored, and if so by what mechanism. It must NOT be restored by teaching
+   * the resolver the name `content`: a sentinel consulted at the miss site is
+   * what this model replaced.
    */
-  it('renders nothing where @content sits when no block was assigned', async () => {
-    expect(await render('@mixin m { .in { @content; } }\n.a { @include m; }')).toBe('');
+  it('raises where @content sits when no block was assigned', async () => {
+    await expect(render('@mixin m { .in { @content; } }\n.a { @include m; }'))
+      .rejects.toBeTruthy();
   });
 
-  /* The no-op is the MISS, not the name: an ordinary `content` binding in scope
-   * is still read, and every other unbound statement-position call still throws. */
+  /*
+   * Ordinary scoping, not a special case: an `@include` with NO block that runs
+   * inside a mixin which DOES have one reads the enclosing frame's `content`.
+   * Under "just a scoped variable" the outer binding resolving is CORRECT.
+   */
+  it('resolves an enclosing frame\'s content binding', async () => {
+    expect(await render(
+      '@mixin inner { .in { @content; } }\n@mixin outer { @include inner; }\n.a { @include outer { color: red; } }'
+    )).toBe('.a .in {\n  color: red;\n}\n');
+  });
+
   it('still raises the unbound-reference error for any other name', async () => {
     await expect(render('@mixin m { .in { @include nope-not-bound; } }\n.a { @include m; }'))
       .rejects.toBeTruthy();

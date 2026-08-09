@@ -26,13 +26,6 @@ import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
-/**
- * The callee-visible name a mixin call's content block binds — the variable the
- * documented built-in `$content()` reads. Named once so the binder and the
- * resolver's optional-miss rule cannot drift apart.
- */
-export const CONTENT_BINDING = 'content';
-
 /** One resolved call argument: positional (no name) or named. */
 export interface CallArg {
   value: CallValue;
@@ -153,13 +146,16 @@ export function bindArgs(
 
   /*
    * An assigned content block (`$ > m(): @{ … }`, the lowering of Sass
-   * `@include m { … }`) is NOT an argument: it binds the callee-visible variable
-   * `content`, which the documented built-in `$content()` reads as an ordinary
-   * variable-bound anonymous mixin. It is seeded before the param walk so a param
+   * `@include m { … }`) is NOT an argument: it binds an ordinary scoped variable
+   * `content` in the call frame, the way `arguments` is bound in a JS function.
+   * `$content()` is then a regular call on that regular variable — the evaluator
+   * knows nothing about the name. It is seeded before the param walk so a param
    * literally named `$content` still wins, and so a param DEFAULT may read it.
+   * Bound ONLY when a block was passed: `bindArgs` runs for Less dispatch too,
+   * and seeding unconditionally would shadow a caller's own `content` variable.
    */
   if (call.content !== null) {
-    bound.set(CONTENT_BINDING, call.content);
+    bound.set('content', call.content);
   }
   const argumentSlots: ValueSlot[] = [];
   let pi = 0;
