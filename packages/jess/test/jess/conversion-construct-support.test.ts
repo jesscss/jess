@@ -103,17 +103,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'css', name: '@property', src: '@property --x { syntax: "<length>"; inherits: false; initial-value: 0px; }', supported: true, origin: 'css' },
   { group: 'css', name: '@media range syntax', src: '@media (400px <= width <= 700px) { .a { color: red; } }', supported: true, origin: 'css' },
   { group: 'css', name: 'calc() with an operator', src: '.a { width: calc(100% - 10px); }', supported: true, origin: 'css' },
-  {
-    group: 'css',
-    name: 'unicode-range',
-    src: '@font-face { unicode-range: U+0-7F; }',
-    supported: false,
-    origin: 'css',
-    scope: 'gap',
-    note:
-      'css/less/scss parsers all accept this; `.jess` alone rejects it, in every form tried '
-      + '(`U+26`, `U+0-7F`, `U+4??`). Blocks any @font-face-bearing stylesheet.'
-  },
+  { group: 'css', name: 'unicode-range', src: '@font-face { unicode-range: U+0-7F; }', supported: true, origin: 'css' },
 
   // ── control flow ───────────────────────────────────────────────────────────
   { group: 'control-flow', name: '$if', src: '$a: 1;\n$if ($a = 1) { .x {} }', supported: true, origin: 'less' },
@@ -313,7 +303,8 @@ const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
     '@property',
     'calc() with an operator',
     'calc() without an operator',
-    'clamp() / min() / max()'
+    'clamp() / min() / max()',
+    'unicode-range'
   ],
   less: [
     '$^var declaration',
@@ -372,8 +363,7 @@ const GAP_SCOPE_BASELINE: Record<'gap' | 'by-design' | 'undecided', readonly str
     'anonymous-mixin call',
     'guard calling a function',
     'literal-value pattern matching',
-    'rest/variadic parameters',
-    'unicode-range'
+    'rest/variadic parameters'
   ],
   'by-design': [],
   undecided: [

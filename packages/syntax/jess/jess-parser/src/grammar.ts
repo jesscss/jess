@@ -97,6 +97,7 @@ type JessRules = {
   KeywordValue: Combinator<Keyword | Null>;
   NullLiteral: Combinator<Null>;
   VarCall: Combinator<FunctionCall>;
+  UnicodeRange: Combinator<ValueNode>;
   CalcValue: Combinator<ValueNode>;
   CalcParen: Combinator<ValueNode>;
   CalcProduct: Combinator<ValueNode>;
@@ -258,6 +259,7 @@ type SharedSyntax = {
   SupportsAtKeyword: Combinator<string>;
   SingleQuotedText: Combinator<string>;
   DimensionUnit: Combinator<string>;
+  UnicodeRangeToken: Combinator<string>;
   UrlOpen: Combinator<string>;
   UrlInner: Combinator<string>;
   GenericAtRuleName: Combinator<string>;
@@ -2852,6 +2854,27 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.HexColor,
     children => color(requireToken(children[0]).value)
   );
+
+  /*
+   * A `<urange>` is one opaque CSS token, so it must be recognized before the
+   * identifier atom: `U+0-7F` split at the `+` leaves `+0`/`-7F` to be re-read
+   * as signed numbers, which serializes valid CSS back out as `U +0 -7F`.
+   * Jess had no `<urange>` rule at all, so `a { b: U+0-7F }` — plain CSS the
+   * other three dialects accept — did not parse.
+   *
+   * The CSS base is the precedent, not an argument from first principles:
+   * `../../../css/css-parser/src/grammar.ts:1739` defines it and admits it in
+   * BOTH ladders, the ordinary value atom (`:2699`, `:2765`) and the calc rung
+   * (`:2205`) — and the comment above that rung says why in as many words, that
+   * `CalcValue` must be a SUPERSET of the ordinary typed value atom rather than
+   * a narrower cousin of it, with `min(U+0-7F)` named as the measured case.
+   * Jess ports that family rather than referencing it, so it owes both arms.
+   */
+  const UnicodeRange = node<ValueNode>(
+    'UnicodeRange',
+    g.UnicodeRangeToken,
+    children => any(requireToken(children[0]).value)
+  );
   const UrlInterpolatedValue = node<Interpolation>(
     'UrlInterpolatedValue',
     noTrivia(sequence(
@@ -3528,6 +3551,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     choice(
       g.Dimension,
       g.Color,
+      g.UnicodeRange,
       g.MathDollarValue,
       g.InterpolatedValue,
       g.CalcParen,
@@ -4030,6 +4054,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.InterpolatedValue,
     g.SelectorCapture,
     g.CustomPropertyValue,
+    g.UnicodeRange,
     g.IdentifierOrFunction,
     g.Quoted,
     g.Color,
@@ -6445,6 +6470,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     KeywordValue,
     NullLiteral,
     VarCall,
+    UnicodeRange,
     CalcValue,
     CalcParen,
     CalcProduct,

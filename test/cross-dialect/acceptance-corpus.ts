@@ -3,6 +3,13 @@
  *
  * ## What this enumerates, and why it is at-rules
  *
+ * There are two families here. The first, and the one this file was built for,
+ * lives in the STATEMENT PRELUDE of an at-rule; the second is the VALUE
+ * position, added after an at-rule-only corpus proved blind to a live
+ * violation (see `VALUE_PROBES` at the bottom).
+ *
+ * ## The at-rule family
+ *
  * Both known violations of the cross-dialect superset ruling found so far live
  * in the STATEMENT PRELUDE of an at-rule:
  *
@@ -365,4 +372,149 @@ export const TARGETED_PROBES: readonly Probe[] = [
     shape: 'without-block',
     source: '@view-transition;'
   }
+];
+
+/*
+ * ---------------------------------------------------------------------------
+ * The VALUE-position channel.
+ *
+ * ## Why it exists
+ *
+ * The at-rule probes above found nothing in the value position, because they
+ * never look at one. `min(U+0-7F)` was measured as
+ * `css/less/scss accept, jess reject` — a live DIRECTION 1 violation over
+ * plain CSS — with this gate fully green. The cause was that the jess grammar
+ * had NO `<urange>` production at all, so `a { b: U+0-7F }` did not parse
+ * either; the math-function spelling was just where it was first noticed.
+ * An at-rule-only corpus cannot see any of that.
+ *
+ * ## What the axes are
+ *
+ * The declaration value is where the four grammars diverge most: each dialect
+ * adds its own operand forms (`@var`, `$var`, `${…}`) to a CSS production, and
+ * a dialect's copy of the CSS value ladder can silently DROP an arm. So the
+ * axes are the CSS value ATOM kinds (`<urange>`, `<string>`, `<hex-color>`,
+ * `<dimension>`, custom property, `var()`), each probed BARE and again as a
+ * math-function ARGUMENT — the two ladders a dialect can implement
+ * inconsistently, and the pair that separated jess's defect from its symptom.
+ *
+ * ## Why the §6.2 neighbours are in here
+ *
+ * `docs/design/RESOLVED-SEMANTICS-AND-NAMING.md` §6.2 refuted routing math
+ * arguments through a `<calc-sum>` ladder, and named the constructs that would
+ * regress if anyone tried again: space-separated runs (`min(1px 2px)`,
+ * `min(red blue)`, `clamp(1px 2px, 3px)`), the inert `%` (`min(10px%3)`), and
+ * `/` as a separator rather than division (`min(4px / 2)`, `min(a / b)`). None
+ * is valid CSS as written and that is irrelevant — the parser accepts SHAPES,
+ * not semantics, all four accept them today, and narrowing any of them is a
+ * regression. Pinning them here is what makes that refutation enforceable
+ * rather than a paragraph.
+ */
+
+/** The value-atom axis a probe exercises. Used only for reporting. */
+export type ValueAxis =
+  | 'urange'
+  | 'string'
+  | 'color'
+  | 'dimension'
+  | 'custom-property'
+  | 'var'
+  | 'space-run'
+  | 'operator';
+
+/** The ladder the atom sits in: a bare value, or a math-function argument. */
+export type ValuePosition = 'bare' | 'math-argument';
+
+export interface ValueProbe {
+  /** Stable id. The allowlist and the coverage assertions key on this. */
+  readonly id: string;
+  readonly axis: ValueAxis;
+  readonly position: ValuePosition;
+  readonly source: string;
+}
+
+/** The value-atom axes enumerated above, for the coverage assertion. */
+export const VALUE_AXES = [
+  'urange',
+  'string',
+  'color',
+  'dimension',
+  'custom-property',
+  'var',
+  'space-run',
+  'operator'
+] as const satisfies readonly ValueAxis[];
+
+export const VALUE_PROBES: readonly ValueProbe[] = [
+  // ----------------------------------------------------------------- urange
+  /*
+   * css-syntax-3 §4.3.15 / css-values-4 §3.4. The whole family is here because
+   * jess had no `<urange>` rule at all: bare, in its real home (`@font-face`),
+   * comma-separated, wildcarded, and inside both math ladders.
+   */
+  { id: 'urange bare', axis: 'urange', position: 'bare', source: 'a { b: U+0-7F }' },
+  {
+    id: 'urange in unicode-range',
+    axis: 'urange',
+    position: 'bare',
+    source: '@font-face { unicode-range: U+0-7F }'
+  },
+  { id: 'urange comma list', axis: 'urange', position: 'bare', source: 'a { b: U+26, U+27 }' },
+  { id: 'urange wildcard', axis: 'urange', position: 'bare', source: 'a { b: U+4?? }' },
+  { id: 'urange lowercase', axis: 'urange', position: 'bare', source: 'a { b: u+400-4ff }' },
+  {
+    id: 'urange in min() — the measured violation',
+    axis: 'urange',
+    position: 'math-argument',
+    source: 'a { b: min(U+0-7F) }'
+  },
+  { id: 'urange in calc()', axis: 'urange', position: 'math-argument', source: 'a { b: calc(U+0-7F) }' },
+  {
+    id: 'urange in clamp()',
+    axis: 'urange',
+    position: 'math-argument',
+    source: 'a { b: clamp(U+26, U+27, U+28) }'
+  },
+
+  // ------------------------------------------- the other CSS value atoms
+  /*
+   * The same atom kinds, bare and as a math argument. A dialect that drops an
+   * arm from its copy of one ladder and not the other shows up as a row where
+   * the two positions disagree.
+   */
+  { id: 'string bare', axis: 'string', position: 'bare', source: 'a { b: "x" }' },
+  { id: 'string in min()', axis: 'string', position: 'math-argument', source: 'a { b: min("x") }' },
+  { id: 'hex color bare', axis: 'color', position: 'bare', source: 'a { b: #fff }' },
+  { id: 'hex color in min()', axis: 'color', position: 'math-argument', source: 'a { b: min(#fff) }' },
+  { id: 'dimension bare', axis: 'dimension', position: 'bare', source: 'a { b: 1px }' },
+  { id: 'dimension in min()', axis: 'dimension', position: 'math-argument', source: 'a { b: min(1px, 2px) }' },
+  { id: 'percentage in min()', axis: 'dimension', position: 'math-argument', source: 'a { b: min(50%, 2px) }' },
+  { id: 'custom property bare', axis: 'custom-property', position: 'bare', source: 'a { b: --x }' },
+  {
+    id: 'custom property in min()',
+    axis: 'custom-property',
+    position: 'math-argument',
+    source: 'a { b: min(--x) }'
+  },
+  { id: 'var() bare', axis: 'var', position: 'bare', source: 'a { b: var(--x) }' },
+  { id: 'var() in min()', axis: 'var', position: 'math-argument', source: 'a { b: min(1px, var(--x)) }' },
+
+  // --------------------------------------- the §6.2 neighbours, pinned
+  /*
+   * Not valid CSS, deliberately. §6.2 measured 17 regressions in a 25-case
+   * battery from routing math arguments through `<calc-sum>`, and these are the
+   * named survivors of that refutation. All four dialects accept them today.
+   */
+  { id: 'space-run in min()', axis: 'space-run', position: 'math-argument', source: 'a { b: min(1px 2px) }' },
+  { id: 'keyword space-run in min()', axis: 'space-run', position: 'math-argument', source: 'a { b: min(red blue) }' },
+  {
+    id: 'space-run in clamp()',
+    axis: 'space-run',
+    position: 'math-argument',
+    source: 'a { b: clamp(1px 2px, 3px) }'
+  },
+  { id: 'inert % in min()', axis: 'operator', position: 'math-argument', source: 'a { b: min(10px%3) }' },
+  { id: 'slash in min()', axis: 'operator', position: 'math-argument', source: 'a { b: min(4px / 2) }' },
+  { id: 'keyword slash in min()', axis: 'operator', position: 'math-argument', source: 'a { b: min(a / b) }' },
+  { id: 'calc() addition', axis: 'operator', position: 'math-argument', source: 'a { b: calc(1px + 2px) }' }
 ];

@@ -34,7 +34,10 @@
  * ## Calibration — the gate is INVALID until it finds both known positives
  *
  * A gate that passes because its corpus cannot express the failure is the exact
- * failure mode here. Two known real violations, both checked:
+ * failure mode here. Three known real violations, all checked — and the third
+ * is the standing proof that the doctrine is not decorative: this gate shipped
+ * green over an at-rule-only corpus while `min(U+0-7F)` was a live direction-1
+ * violation, because no probe was a value. The corpus now has a VALUE channel.
  *
  *  - **`@charset "utf-8";` then `@import "a.css";`** — the canonical prologue of
  *    css-syntax-3 §3.2 / css-cascade-5 §3. `css` rejected it while all three
@@ -52,9 +55,17 @@
  *    brought back exactly the four `@namespace url()` rows and no others.
  *    Notably the defect was neither namespaces nor `url()` — it was a lone `/`
  *    inside ANY bracketed group in a statement prelude.
+ *  - **`min(U+0-7F)` and `a { b: U+0-7F }`** — a `<urange>` is one opaque CSS
+ *    token (css-syntax-3 §4.3.15). css, less and scss accepted; jess refused
+ *    BOTH, because the jess grammar carried no `<urange>` production at all.
+ *    The at-rule-only corpus could not express it, which is why the value
+ *    channel exists. Calibrated by deleting the two `g.UnicodeRange` arms the
+ *    fix added: the four urange probes drop to `[css, less, scss]` and
+ *    direction 1 fails on them, together with the two breadth stylesheets that
+ *    contain a real `unicode-range` declaration.
  *
- * Both known positives are therefore green today, and BOTH were confirmed by
- * reverting the fix and watching this gate go red. Neither is green because the
+ * All three known positives are therefore green today, and each was confirmed by
+ * reverting the fix and watching this gate go red. None is green because the
  * corpus cannot express it.
  *
  * ## Findings are RECORDED, not fixed, and not thresholded
@@ -74,7 +85,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { DIALECTS, type Dialect, parseVerdict } from '../dialects.js';
-import { AT_KEYWORDS, TARGETED_PROBES } from './acceptance-corpus.js';
+import { AT_KEYWORDS, TARGETED_PROBES, VALUE_AXES, VALUE_PROBES } from './acceptance-corpus.js';
 import { buildCorpus, readEntry } from '../../packages/syntax/css/css-parser/test/render-differential/corpus.mjs';
 
 const SUPERSETS = ['less', 'scss', 'jess'] as const satisfies readonly Dialect[];
@@ -219,12 +230,6 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
     reason: 'Whole-file breadth row; construct not isolated by this channel.'
   },
   {
-    name: 'breadth:fixture/calc-operand-kinds.css',
-    accepted: ['css', 'less', 'scss'],
-    validCss: 'n/a — whole file',
-    reason: 'Whole-file breadth row; construct not isolated by this channel.'
-  },
-  {
     name: 'breadth:repo/packages/fns/test/files/alias.css',
     accepted: ['css', 'less', 'jess'],
     validCss: 'n/a — whole file',
@@ -263,12 +268,6 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
   {
     name: 'breadth:repo/packages/syntax/css/css-parser/test/css/escape.css',
     accepted: ['css'],
-    validCss: 'n/a — whole file',
-    reason: 'Whole-file breadth row; construct not isolated by this channel.'
-  },
-  {
-    name: 'breadth:repo/packages/syntax/css/css-parser/test/css/font-face.css',
-    accepted: ['css', 'less', 'scss'],
     validCss: 'n/a — whole file',
     reason: 'Whole-file breadth row; construct not isolated by this channel.'
   },
@@ -358,7 +357,12 @@ const CRASH_ALLOWLIST: readonly Allowed[] = [
 function buildRows(): { rows: Row[]; bootstrapVersion: string; breadthNames: string[] } {
   const rows: Row[] = [];
 
-  for (const probe of TARGETED_PROBES) {
+  /*
+   * Both targeted families share the `targeted:` name prefix, so an allowlist
+   * entry reads the same whichever channel found it. The ids are asserted
+   * globally unique below, which is what keeps that safe.
+   */
+  for (const probe of [...TARGETED_PROBES, ...VALUE_PROBES]) {
     rows.push({
       name: `targeted:${probe.id}`,
       channel: 'targeted',
@@ -425,7 +429,7 @@ describe('cross-dialect acceptance matrix', () => {
     expect(TARGETED_PROBES.length).toBeGreaterThan(0);
     expect(breadthNames.length).toBeGreaterThan(0);
 
-    const probeIds = TARGETED_PROBES.map(p => p.id);
+    const probeIds = [...TARGETED_PROBES, ...VALUE_PROBES].map(p => p.id);
     expect(new Set(probeIds).size, 'duplicate targeted probe id').toBe(probeIds.length);
     expect(new Set(breadthNames).size, 'duplicate breadth corpus id').toBe(breadthNames.length);
 
@@ -434,14 +438,30 @@ describe('cross-dialect acceptance matrix', () => {
     const unprobed = AT_KEYWORDS.filter(k => !TARGETED_PROBES.some(p => p.atKeyword === k));
     expect(unprobed, `at-keywords with no probe: ${unprobed.join(', ')}`).toEqual([]);
 
+    /*
+     * Same check for the value channel. Its axes are the CSS value atom kinds,
+     * and each must be probed in BOTH ladders — a dialect can drop an arm from
+     * its bare value choice and not its calc rung, or the reverse, and jess's
+     * `<urange>` gap was invisible until both were asked.
+     */
+    const unprobedAxes = VALUE_AXES.filter(axis => !VALUE_PROBES.some(p => p.axis === axis));
+    expect(unprobedAxes, `value axes with no probe: ${unprobedAxes.join(', ')}`).toEqual([]);
+    for (const position of ['bare', 'math-argument'] as const) {
+      expect(
+        VALUE_PROBES.some(p => p.position === position),
+        `no value probe in the ${position} ladder`
+      ).toBe(true);
+    }
+
     console.log(
-      `[acceptance-matrix] ${TARGETED_PROBES.length} targeted probes over ${AT_KEYWORDS.length} at-keywords`
+      `[acceptance-matrix] ${TARGETED_PROBES.length} at-rule probes over ${AT_KEYWORDS.length} at-keywords`
+      + ` + ${VALUE_PROBES.length} value probes over ${VALUE_AXES.length} axes`
       + ` + ${breadthNames.length} breadth stylesheets (bootstrap ${bootstrapVersion})`
       + ` x ${DIALECTS.length} dialects = ${rows.length * DIALECTS.length} verdicts`
     );
   });
 
-  it('CALIBRATION — the two known positives are expressible and correctly scored', () => {
+  it('CALIBRATION — the three known positives are expressible and correctly scored', () => {
     /*
      * A gate that passes because its corpus cannot express the failure is the
      * exact failure mode this file exists to avoid. Both known positives must
@@ -482,6 +502,36 @@ describe('cross-dialect acceptance matrix', () => {
       const row = byName.get(name);
       expect(row, `known positive 2 is not in the corpus: ${name}`).toBeDefined();
       expect(row!.accepted, `the @namespace url() CSS-base gap reopened: ${name}`)
+        .toEqual(['css', 'less', 'scss', 'jess']);
+    }
+
+    /*
+     * Known positive 3, `<urange>` — css-syntax-3 §4.3.15 / css-values-4 §3.4.
+     * `min(U+0-7F)` scored `css/less/scss accept, jess reject` — a DIRECTION 1
+     * violation over plain CSS — while this gate was fully green, because the
+     * corpus was at-rules only and could not express a value at all. That is
+     * the failure mode the calibration doctrine exists to catch, so the
+     * construct is pinned here and not merely allowlisted.
+     *
+     * The defect was NOT the math-function argument list: jess had no
+     * `<urange>` production at all, so the BARE row failed identically. Both
+     * ladders are asserted for that reason — a fix applied to one only would
+     * leave the other red. Calibrated by deleting `g.UnicodeRange` from jess's
+     * `nonBlockValueAtom` and `CalcValue` choices: the bare and math rows
+     * returned to `[css, less, scss]` and direction 1 failed on them, plus two
+     * breadth files (`fixture/calc-operand-kinds.css`,
+     * `css-parser/test/css/font-face.css`) whose real `unicode-range`
+     * declarations this same fix closed.
+     */
+    for (const name of [
+      'targeted:urange bare',
+      'targeted:urange in unicode-range',
+      'targeted:urange in min() — the measured violation',
+      'targeted:urange in calc()'
+    ]) {
+      const row = byName.get(name);
+      expect(row, `known positive 3 is not in the corpus: ${name}`).toBeDefined();
+      expect(row!.accepted, `the <urange> superset violation reopened: ${name}`)
         .toEqual(['css', 'less', 'scss', 'jess']);
     }
   });

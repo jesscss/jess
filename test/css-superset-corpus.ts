@@ -270,11 +270,7 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: '@font-face with src and unicode-range',
     group: 'at-rule',
-    source: '@font-face { font-family: X; src: url(a.woff2) format("woff2"); unicode-range: U+0-7F; }',
-    brokenIn: ['jess'],
-    defect:
-      'Jess consumes nothing. The `unicode-range` descriptor is the cause — see '
-      + 'the `U+` value entries below; the same body without it parses in Jess.'
+    source: '@font-face { font-family: X; src: url(a.woff2) format("woff2"); unicode-range: U+0-7F; }'
   },
   {
     id: '@font-feature-values with descriptor sub-at-rules',
@@ -675,20 +671,12 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: 'unicode-range with a range',
     group: 'value',
-    source: 'a { x: U+0-7F }',
-    brokenIn: ['jess'],
-    defect:
-      'css-syntax-3 §4.3.14 consumes a unicode-range token. Jess consumes '
-      + 'nothing for ANY `U+` form — single (`U+26`), range (`U+0-7F`) or '
-      + 'wildcard (`U+4??`) — which is also why the `@font-face` entry above '
-      + 'fails in Jess.'
+    source: 'a { x: U+0-7F }'
   },
   {
     id: 'unicode-range with a wildcard',
     group: 'value',
-    source: 'a { x: U+4?? }',
-    brokenIn: ['jess'],
-    defect: 'Same defect as the unicode-range entry above.'
+    source: 'a { x: U+4?? }'
   },
   {
     id: 'empty custom property',
