@@ -3511,6 +3511,53 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-08-08 Less atomic function-statement dispatch. This is a
+  grammar correctness and parser-boundary pass, not a performance result.
+- Architecture surface: the private Less grammar now routes statement-position
+  function openers through its existing atomic `identOrFunction` selector.
+  `each(` is an exact case-insensitive dispatch outcome whose continuation still
+  lowers to the canonical `For` AST; ordinary function openers retain the
+  existing `FunctionCall`/`If` lowering. No public AST kind or package API is
+  added.
+- Separation/duplication: the standalone `Each` choice arm and its duplicate
+  `each` + `(` recognition are removed. The same authored `token(sequence(name,
+  optional('(')))` range now owns both value-position and statement-position
+  IDENT/FUNCTION_OPEN classification.
+- Cumulative node weight: unchanged. Existing `For`, `FunctionCall`, and `If`
+  nodes are returned; no wrapper node, token object, or side map is introduced.
+- New traversal: none. Dispatch selects one continuation after recognizing the
+  existing atomic function-opener range once.
+- New node/materialization: none beyond the pre-existing AST reductions. The
+  projection discards the dispatch tuple and returns the selected statement.
+- Render path: unchanged. `each()` continues through the existing `For`
+  evaluator/lowering, and ordinary function statements retain their existing
+  serialization and terminal-boundary behavior.
+- Helper/API surface: one private `terminalFunctionBoundary` recognition helper
+  preserves terminal bare-call acceptance after the dispatch cut. The former
+  internal `Each` rule is renamed `EachFunctionStatement`; neither is a public
+  package entry.
+- Metadata mutations: none. AST provenance, trivia, and CST capture remain owned
+  by the existing Parseman node/token boundaries.
+- Review-flagged diff tokens: [node construction] two existing defensive
+  `TypeError` checks validate impossible reducer inputs; no new AST constructor,
+  parser host, source reparse, map, set, or recursive walk is introduced.
+- Evidence: the exact-key RED plant (`each(` → `eachx(`) made both the AST
+  no-fallback assertion and the one-leaf CST assertion fail, then both returned
+  green after restoration. The full `@jesscss/less-parser` suite passed 15 files
+  / 721 tests.
+- Behavior evidence: `pnpm --filter @jesscss/less-parser test` passed 721/721,
+  including case-insensitive `each(`, named/hash callbacks, flat and namespaced
+  iterables, malformed exact-route no-fallback, ordinary generic calls, and
+  terminal calls.
+- Build evidence: `pnpm --filter @jesscss/less-parser build` passed after first
+  rebuilding `@jesscss/parser-shared`; all AST/CST/tracked artifacts compiled.
+- Boundary evidence: focused AST/public/CST tests passed 378/378. The CST test
+  proves `each(` is one routed leaf (never separate `each` and `(`), while the
+  AST tests prove the result remains the canonical `For` and ordinary function
+  statements retain their established nodes.
+- Verdict: accepted as a bounded grammar correction with no speed claim. Actual
+  Parseman route-once census and timing remain separate follow-up evidence.
+
 - Latest pass: 2026-07-30 callable-body comment replay and classified Less
   mixin-signature trivia. This is a correctness batch, not a performance pass.
 - Architecture surface: private Less grammar trivia scope, parser provenance,
@@ -3841,7 +3888,7 @@ involved.
 > elimination, compiler source-fact ownership) remain below the live one, in violation of this
 > section's own rule at the top: "REPLACE that block with your pass; do not append a new one
 > and leave the old one behind." `scripts/verify-aggressive-cutting-review.mjs:2568-2573`
-> takes `handoff.lastIndexOf('## Aggressive Cutting Self-Prosecution')` and then the FIRST
+> takes the last live self-prosecution heading and then the FIRST
 > `- Latest pass:` after it, so only the live block is gated — the trailing blocks are
 > ungated text. They are left in place because superseding them was not verified on this
 > pass; the next author to run the gate should move them to their commit messages.

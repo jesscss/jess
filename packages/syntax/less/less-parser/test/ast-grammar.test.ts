@@ -1038,6 +1038,44 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('routes each() as an exact branch of the atomic identifier/function dispatcher', () => {
+    expect('Each' in lessGrammar).toBe(false);
+
+    for (const source of [
+      'EaCh(1, { value: @value; });',
+      'ordinary();',
+      'ordinary()'
+    ]) {
+      const result = run(lessGrammar.FunctionStatement, source, {
+        trivia: lessGrammar.whitespace
+      });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+    }
+
+    const malformed = run(lessGrammar.FunctionStatement, 'each(1);', {
+      trivia: lessGrammar.whitespace
+    });
+    expect(malformed.ok).toBe(false);
+
+    /* If dispatch retried the generic FUNCTION_OPEN matcher after the exact
+     * each( continuation failed, this would be accepted as an ordinary call. */
+
+    const unterminatedMidBody = run(
+      lessGrammar.FunctionStatement,
+      'ordinary() color: red;',
+      { trivia: lessGrammar.whitespace }
+    );
+    expect(unterminatedMidBody.ok).toBe(false);
+
+    const terminalValueCall = run(lessGrammar.Document, 'boolean(true)', {
+      trivia: lessGrammar.whitespace
+    });
+    expect(terminalValueCall.ok).toBe(true);
+    expect(terminalValueCall.unconsumedFrom).toBeNull();
+    expect(stylesheet(terminalValueCall.value).rules).toEqual([]);
+  });
+
   it('requires the Less each() opener to be glued', () => {
     const result = run(
       lessGrammar.Document,

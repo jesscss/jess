@@ -398,6 +398,27 @@ describe('Less direct-AST closure CST contract', () => {
     expect(hasNode(result.tree, grammarType), source).toBe(true);
   });
 
+  it('keeps each( as one routed function-opener leaf', () => {
+    const result = parseLessCstResult('each(1, { color: red; });');
+    const loops = findNodes(result.tree, 'For');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(loops).toHaveLength(1);
+    expect(leafValues(loops[0]!)[0]).toBe('each(');
+    expect(leafValues(loops[0]!)).not.toContain('each');
+  });
+
+  it('keeps terminal generic calls on their single existing Call boundary', () => {
+    for (const source of ['ordinary()', '.x { ordinary() }']) {
+      const result = parseLessCstResult(source);
+
+      expect(result.errors, source).toHaveLength(0);
+      expect(result.unconsumedFrom, source).toBeNull();
+      expect(findNodes(result.tree, 'Call'), source).toHaveLength(1);
+    }
+  });
+
   it('keeps direct inline extends under the public ExtendPseudo owner', () => {
     const result = parseLessCstResult('.first, .inline:extend(.target all), .sibling { color: red; }');
 

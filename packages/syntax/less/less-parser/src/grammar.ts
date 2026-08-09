@@ -23,7 +23,7 @@ import {
   attempt, rules, classifiedTrivia, composeLeaf,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
   not, scanTo, balanced, parser, noTrivia, label, word, keywords, field, leaf, peek,
-  dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, when
+  dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
@@ -147,7 +147,7 @@ type LessRules = {
   CallArgumentFunction: Combinator<FunctionCall>;
   FormatFunction: Combinator<ValueNode>;
   CallArgumentValue: Combinator<MixinCallArgument['value']>;
-  FunctionStatement: Combinator<FunctionCall | If>;
+  FunctionStatement: Combinator<Statement | string>;
   Value: Combinator<ValueNode>;
   SelectorCapture: Combinator<SelectorCapture>;
   MathAtom: Combinator<ValueNode>;
@@ -196,7 +196,7 @@ type LessRules = {
   /** A complete Less statement body, shared by detached rulesets and `each()` callbacks. */
   BodyStatement: Combinator<Statement | string>;
   EachCallback: Combinator<LessEachCallback>;
-  Each: Combinator<For>;
+  EachFunctionStatement: Combinator<For>;
   SupportsValue: Combinator<ValueNode>;
   SupportsFeature: Combinator<ValueNode>;
   SupportsInParens: Combinator<ValueNode>;
@@ -3319,7 +3319,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   ));
   const CallArgumentFunction = node(
     'Call',
-    sequence(genericFunctionOpen, CallArgumentFunctionArguments, literal(')')),
+    sequence(routed(genericFunctionOpen), CallArgumentFunctionArguments, literal(')')),
     argumentFunctionFromChildren
   );
   // Deprecated Less percent-format syntax is a normal existing function fact.
@@ -3332,7 +3332,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // A bare call is a Less statement only with its terminator.  Keep this
   // distinct from Call, which is also a value piece and must not
   // consume a declaration/list boundary.
-  const FunctionStatement = node(
+  const terminalFunctionBoundary = noTrivia(peek(sequence(
+    optional(g.whitespace),
+    choice(literal('}'), not(regex(/[\s\S]/)))
+  )));
+  const GenericFunctionStatement = node(
     'Call',
     sequence(g.CallArgumentFunction, literal(';')),
     (children) => {
@@ -3342,6 +3346,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
       return lowerLogicalCallStatement(call);
     }
+  );
+  const TerminalGenericFunction = transform(
+    sequence(GenericFunction, terminalFunctionBoundary),
+    ([call]) => isStatement(call) ? call : ''
+  );
+  const FunctionStatement = transform(
+    dispatch(
+      identOrFunction,
+      caseOf('each(', g.EachFunctionStatement),
+      when(
+        matches(/^(?!(?:url|calc)\($).+\($/i),
+        choice(GenericFunctionStatement, TerminalGenericFunction)
+      )
+    ),
+    ([, statement]) => statement
   );
   // `calc(` owns its boundary gaps for the same reason `Paren` below does: the
   // math ladder runs under `noTrivia`, so an interior that admits authored
@@ -4506,7 +4525,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // arms per production. The root document and the detached-ruleset/`each`
   // `BodyStatement` deliberately keep their own ordered arm sets
   // because they legitimately differ (comment-first root ordering; the
-  // punctuation-map arm and Each/Ruleset reordering in body statements).
+  // punctuation-map arm and function/ruleset reordering in body statements).
   // `@`-led statement group. Every body context lists these eleven arms in this
   // exact contiguous order, so grouping them into one nested choice is
   // byte-identical to the flat listing (a bare `choice` passes its winning arm's
@@ -4620,7 +4639,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     },
     { collapse: true }
   );
-  const blockItem = choice(atStatement, mixinStatement, g.Each, g.FunctionStatement, nestedGuardedRuleset, declarationItem, literal(';'));
+  const blockItem = choice(atStatement, mixinStatement, g.FunctionStatement, nestedGuardedRuleset, declarationItem, literal(';'));
   const blockBody = many(blockItem);
   // The ruleset body adds one extra arm (`ExtendStatement`) after the
   // shared arms. Nesting the shared choice ahead of it preserves the original
@@ -4647,7 +4666,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // a detached-ruleset body is a nested context, so a child selector may lead
   // with a combinator (`> td { … }`). Only `Stylesheet` keeps the absolute
   // `guardedRuleset`, where a leading combinator stays an error.
-  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, nestedGuardedRuleset, g.Each, g.FunctionStatement, declarationItem, literal(';'));
+  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, nestedGuardedRuleset, g.FunctionStatement, declarationItem, literal(';'));
   const ValueBlock = node(
     'ValueBlock',
     sequence(literal('{'), many(g.BodyStatement), optional(g.Call), literal('}')),
@@ -4709,21 +4728,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       throw new TypeError('Less grammar produced an invalid each() callback binding.');
     }
   );
-  const Each = node(
+  const EachFunctionStatement = node(
     'For',
     // An inline detached ruleset is an ordinary `each()` iterable
     // (`each({ margin: m; padding: p; }, \u2026)`). It is listed here rather than in
     // ValueList because the call-only `{ \u2026 }` first set must stay out of
     // ordinary declaration values.
     sequence(
-      noTrivia(sequence(
-        word(
-          'each',
-          '-_a-zA-Z0-9\\u0080-\\uFFFF',
-          { caseInsensitive: true }
-        ),
-        literal('(')
-      )),
+      routed(),
       choice(
         g.NamespacedMixinCall,
         g.FlatMixinCall,
@@ -4739,11 +4751,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(literal(';'))
     ),
     (children) => {
-      const callback = children[4];
-      if (!isLessEachCallback(callback)) {
+      const callback = children.find(isLessEachCallback);
+      if (callback === undefined) {
         throw new TypeError('Less each() reduction produced an invalid callback.');
       }
-      const iterable = children[2];
+      const iterable = children.find(child => isMixinCall(child) || isValueSlotValue(child));
+      if (iterable === undefined) {
+        throw new TypeError('Less each() reduction produced an invalid iterable.');
+      }
       return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding);
     }
   );
@@ -6510,7 +6525,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const Stylesheet = node(
     'Stylesheet',
-    sequence(many(choice(atStatement, mixinStatement, g.Each, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
+    sequence(many(choice(atStatement, mixinStatement, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
     children => stylesheet(children.filter(isStatement)),
     { trailingTrivia: true }
   );
@@ -6606,7 +6621,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     EachName,
     BodyStatement,
     EachCallback,
-    Each,
+    EachFunctionStatement,
     SupportsValue,
     SupportsFeature,
     SupportsInParens,

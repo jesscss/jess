@@ -169,7 +169,7 @@ a blanket optimization exemption or a new active architecture queue.
     "sourceCheck": {
       "file": "packages/core/src/ast/value-guards.ts",
       "caller": "const negate = (",
-      "guard": "if (c === undefined)",
+      "guard": "if (c === undefined || c === NO_GROUND)",
       "call": "return c === -1 ? 1 : c === 1 ? -1 : 0;"
     },
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/equality-mode.test.ts"]}
