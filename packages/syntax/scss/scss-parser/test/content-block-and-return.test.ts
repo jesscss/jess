@@ -110,13 +110,32 @@ describe('the two halves compose end to end', () => {
    * bound in a JS function. `$content()` is then a REGULAR call on that regular
    * variable; the evaluator knows nothing about the name.
    *
-   * The direct consequence, recorded here as observed behaviour: a block-less
-   * `@include` leaves `content` UNBOUND, and a regular call on an unbound
-   * variable is a resolve failure like any other. dart-sass makes this a no-op;
-   * jess raises. OPEN — pending an owner ruling on whether the no-op should be
-   * restored, and if so by what mechanism. It must NOT be restored by teaching
-   * the resolver the name `content`: a sentinel consulted at the miss site is
-   * what this model replaced.
+   * OWNER RULING — SETTLED: the raise STAYS. A block-less `@include` leaves
+   * `content` unbound, and a regular call on an unbound variable is an ordinary
+   * resolve failure. This is not a decision about `@content`; it falls out of the
+   * model. dart-sass's no-op is a real convenience, but it is only purchasable by
+   * teaching the language that `content` is a special name — the exact thing the
+   * model removes. Restoring it would mean reintroducing a resolver special case,
+   * which is what deleting a sentinel constant and a miss-site hook bought.
+   * The divergence is public: see the "Content blocks: `content` is an ordinary
+   * variable" entry in
+   * `packages/docs/docs-content/docs/shared/04-guides/02-coming-from-sass/04-semantic-differences.mdx`.
+   *
+   * Migration for a library relying on the no-op: pass an EMPTY block,
+   * `@include m { }`. VERIFIED to render identically in jess and dart-sass
+   * 1.101.0 — empty output here, and `.a .in { color: blue; }` when the mixin
+   * body also carries a declaration of its own.
+   *
+   * Measured before ruling, over bootstrap 5.3.8 (92 `.scss`) and
+   * foundation-sites 6.9.0 (136 `.scss`) — 228 files. Bootstrap: 10 mixins
+   * containing `@content`, 287 block-less `@include` sites, 0 on a `@content`
+   * mixin. Foundation: 26 such mixins, 651 block-less sites, 5 on a `@content`
+   * mixin — all `grid-row`/`flex-grid-row`, whose `@content` sits behind
+   * `@if $columns != null`, and every one of those calls leaves `$columns` at its
+   * `null` default, so `@content` is never reached. (A sixth apparent hit,
+   * `-zf-each-breakpoint-in`, was a scan artifact: that call does pass a block.)
+   * ZERO affected files in either. That is the scope of risk on two libraries,
+   * NOT proof the pattern is rare in the wild.
    */
   it('raises where @content sits when no block was assigned', async () => {
     await expect(render('@mixin m { .in { @content; } }\n.a { @include m; }'))
@@ -127,11 +146,28 @@ describe('the two halves compose end to end', () => {
    * Ordinary scoping, not a special case: an `@include` with NO block that runs
    * inside a mixin which DOES have one reads the enclosing frame's `content`.
    * Under "just a scoped variable" the outer binding resolving is CORRECT.
+   *
+   * Load-bearing for the ruling above: dart-sass does not merely differ here, it
+   * REJECTS this program — `Mixin doesn't accept a content block.` at
+   * `@include outer { … }`, because `outer` does not itself mention `@content`.
+   * So this is not a silent divergence, and no Sass code can be relying on it.
    */
   it('resolves an enclosing frame\'s content binding', async () => {
     expect(await render(
       '@mixin inner { .in { @content; } }\n@mixin outer { @include inner; }\n.a { @include outer { color: red; } }'
     )).toBe('.a .in {\n  color: red;\n}\n');
+  });
+
+  /* The published migration path, pinned so the docs claim cannot go stale: an
+   * EMPTY block binds `content` to an empty anonymous mixin, so the call
+   * resolves and contributes nothing — byte-identical to dart-sass 1.101.0. */
+  it('renders nothing, without raising, for an empty assigned block', async () => {
+    expect(await render('@mixin m { .in { @content; } }\n.a { @include m { } }')).toBe('');
+  });
+
+  it('keeps the mixin\'s own declarations when the assigned block is empty', async () => {
+    expect(await render('@mixin m { .in { color: blue; @content; } }\n.a { @include m { } }'))
+      .toBe('.a .in {\n  color: blue;\n}\n');
   });
 
   it('still raises the unbound-reference error for any other name', async () => {
