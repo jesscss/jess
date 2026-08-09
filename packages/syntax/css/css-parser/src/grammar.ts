@@ -2352,9 +2352,16 @@ const cssFactory = (g: GrammarSelf) => {
    *
    * `find`, not `valueSlotChildren`: `<line-names>` is `<custom-ident>*`, so `[]`
    * is legal and its interior is empty. `valueSlotChildren` THROWS on an empty
-   * match rather than returning `[]`, so the `?? any('')` a caller writes after it
+   * match rather than returning `[]`, so the `?? []` a caller writes after it
    * is unreachable — which is exactly why the paren sibling still crashes on
    * `a{color:()}` instead of rejecting it. Do not copy that call here.
+   *
+   * The empty interior is the EMPTY SLOT `[]`, not `any('')`. A contentless `Any`
+   * is a content node minted where the source has no content: it erases the one
+   * fact `[]` carries — that it is EMPTY — and every downstream emptiness test
+   * (`.jess` truthiness, §4.4's fourth falsy row) then reads a non-empty group and
+   * answers TRUTHY. Storing the emptiness losslessly here is what lets those
+   * consumers derive it, instead of each sniffing an empty `src` for itself.
    */
   const SquareValue = node(
     'Block',
@@ -2366,7 +2373,7 @@ const cssFactory = (g: GrammarSelf) => {
       literal(']')
     ),
     children => block(
-      children.find(isValueSlotValue) ?? any(''),
+      children.find(isValueSlotValue) ?? [],
       'square'
     )
   );

@@ -497,6 +497,7 @@ must take the TRUE branch. That is where JavaScript is wrong for this domain
 | `""`, `''` | falsy | **falsy** — Sass+ shift, §4.4.6 | **falsy** |
 | `()` empty list/map — the `.scss` spelling | *parse error* | **falsy** — Sass+ shift, §4.4.6 | *parse error* — §12.6a |
 | `{}` empty collection — the `.jess` spelling | falsy | *parse error* | **falsy** |
+| `[]` empty bracketed list — spelled the same in both | *parse error* | **falsy** — §12.6c | **falsy** — §12.6c |
 | `0`, `1`, `-1`, `0.0` | falsy | truthy | **truthy** |
 | `0px`, `1px`, `0%`, `1em` | falsy | truthy | **truthy** |
 | `"a"`, `"0"`, `"false"`, `"true"` | falsy | truthy | **truthy** |
@@ -2223,6 +2224,111 @@ COLLECTION, and under this ruling its spelling is per dialect: `()` in `.scss`,
 `{}` in `.jess`, each a parse error in the other. §4.4 states it that way and its
 table has a row per spelling, so nothing here is outstanding — this was a DOC
 contradiction only, and both engines already behave correctly.
+
+### 12.6c `[ … ]` IS a list; printing one is constrained to `<line-names>`
+
+**Owner ruling, 2026-08-08:** *"you can use it for lists but we error on printing
+if not CSS valid (hopefully without too much logic machinery)."*
+
+`[ … ]` is admitted as a LIST value. It parses wherever a value parses — there is
+no parse-time position split, no property-vs-variable fork, no forked value
+production. The parser accepts SHAPES; validity belongs to evaluation and the
+language service (SEMANTIC-INVARIANTS §7). A bracketed list may be bound, passed
+to a function, iterated, indexed and measured, and none of that is constrained.
+
+The constraint is at **PRINT**. CSS admits `[ … ]` in a value position for
+exactly one thing — grid line names — and the grammar is
+
+```
+<line-names> = '[' <custom-ident>* ']'          css-grid-2 §7.1
+```
+
+zero or more custom identifiers: no commas, no numbers. So a bracketed value may
+be emitted only when its bytes are `<custom-ident>*`, and otherwise emitting it
+is an eval error (`eval/invalid-line-names`) at the point of printing.
+
+| authored | parses | prints |
+| --- | --- | --- |
+| `[a]` | yes | `[a]` |
+| `[a b]` | yes | `[a b]` |
+| `[]` | yes | `[]` — `*` is ZERO or more |
+| `[1, 2, 3]` | yes | **error** |
+| `[1 2]` | yes | **error** |
+| `[a, b]` | yes | **error** |
+
+The rule is stated over the CONSTRUCT — a bracketed value's bytes — not over a
+code path (SEMANTIC-INVARIANTS §1). It is ONE predicate, applied where a
+bracketed VALUE becomes output. No new node kind, no mode, no ambient config, no
+second traversal, no flag threaded through eval.
+
+**It must never reject what CSS accepts.** The predicate spells the CSS escape
+production (css-syntax-3 §4.3.7) rather than approximating it, because an escape
+can carry a code point that would otherwise end the identifier: `[a\ b]`,
+`[a\.b]` and `[\31 23]` are each ONE `<custom-ident>`, and a predicate that
+whitespace-splits raw bytes gets all three wrong. In the other direction it is a
+DELIBERATE under-approximation with a stated bound: `<custom-ident>` excludes the
+CSS-wide keywords and `<line-names>` also excludes `span` and `auto`, so
+`[span]`, `[auto]` and `[inherit]` are admitted here though CSS rejects them.
+Over-accepting only fails to catch an author error the browser catches;
+under-accepting would reject valid stylesheets. Both directions are pinned in
+`operations.test.ts`.
+
+**Not applied in AT-RULE PRELUDES, and that is deliberate.**
+`evalSupportsPrelude` and `evalQueryPrelude` spell their own brackets, and those
+positions preserve GRAMMAR-OWNED author bytes rather than emitting a value —
+which is why they are separate formatters at all. CSS ACCEPTS what they carry:
+`@supports ([1, 2])` is a well-formed general-enclosed condition that evaluates
+false, and a malformed media feature is a query that evaluates to `not all`, not
+a parse error. Enforcing the rule there would reject valid CSS.
+
+**Two residuals, OPEN.**
+
+1. A bracketed value the value domain BUILDS — `join([1], [2])` — reaches output
+   through `serializeValue` without crossing the print site, and still prints
+   `[1 2]`. The obvious-looking fix, enforcing inside `serializeValue`, was tried
+   and REVERTED on measurement: that function is the value domain's general byte
+   derivation rather than a print site, and function-argument materialization
+   runs through it, so the rule thrown from there rejected `length([1, 2])` —
+   which this very ruling permits.
+2. A bracketed value SPLICED from a variable into a prelude —
+   `$x: [1, 2]; @media (min-width: $x)` — prints, while the same `$x` in a
+   declaration errors. Unlike the prelude case above this IS a positional
+   inconsistency (SEMANTIC-INVARIANTS §2), because it is a value rather than the
+   author's own bytes; closing it needs the prelude formatters to tell the two
+   apart, which they currently do not.
+
+Neither is a second copy of the predicate waiting to be written — both need a
+print site the typed lane also crosses.
+
+`{ … }` remains the Collection, so the two are unambiguous: `{}` is the empty
+collection (§4.4's fourth falsy row), `[]` is the empty list, and neither
+spelling can be mistaken for the other.
+
+**`~[ … ]` is untouched.** The escaped form emits its inner value with the
+delimiters DROPPED, so it prints no brackets and there is nothing for this rule
+to constrain — which is also why the escape stays the way to let a comma belong
+to a value rather than split an argument list.
+
+**Consequence for `[]` and §4.4.** `[]` is FALSY. The falsy set's principle is
+EMPTINESS, and the empty bracketed list is empty. It measured truthy until
+`14760c4dd` because the grammars reduced an empty bracket group to a block
+wrapping a contentless `Any` — a content node minted where the source has no
+content, erasing the one fact `[]` carries. The grammars now store the empty
+interior as the empty slot; nothing downstream re-derives emptiness from bytes.
+
+Recorded in the ledger as **P24** (the print rule), **P25** (`[]` falsy) and
+**P26** (the `.less` gap and the two residuals, OPEN).
+
+**Dialect reach.** The print rule lives in the shared value emitter, so `.scss`
+takes it too: ledger **P4**, Sass+ rejects invalid CSS where Sass tolerates it.
+Measured on dart-sass 1.101.0, which prints `[1, 2, 3]`, `[1 2]` and `[a, b]`
+verbatim and answers `[]` TRUTHY — both divergences are recorded in
+`04-semantic-differences.mdx`. `.less` has no bracketed LIST in the first place —
+`[` in a Less value position is the lookup family, whose one value-position arm
+takes a single keyword — so `[a]` and `grid-template-columns: [full-start] 1fr
+[full-end]` parse and print, while `[a b]`, `[]` and `[1, 2, 3]` are parse
+errors. That is a narrower base than CSS admits and a pre-existing gap this
+ruling does not close; nothing here changes `.less`.
 
 ### 12.6b `mathMode` at EVAL is a v2 regression — the parse is CONTEXTUAL — NOT STARTED
 

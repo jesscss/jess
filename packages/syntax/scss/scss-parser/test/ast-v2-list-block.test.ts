@@ -56,7 +56,21 @@ describe('SCSS AST-v2 separator and delimiter facts', () => {
         ]
       }
     });
-    expect(serialize(root)).toEqual({ css: '.card {\n  tracks: [1, 2];\n}\n' });
+    /*
+     * The bracketedness is a PARSE fact and survives regardless; PRINTING it is
+     * what CSS constrains. `[ … ]` in a value is grid `<line-names>`
+     * (`'[' <custom-ident>* ']'`), so `[1, 2]` is data that has no CSS spelling
+     * and says so at the point of emission. dart-sass prints it; Sass+ rejects
+     * invalid CSS (ledger P4).
+     */
+    expect(() => serialize(root)).toThrow(/not printable CSS/u);
+  });
+
+  it('prints a square Block whose interior IS line names', () => {
+    const root = parse('.card { grid-template-columns: [full-start] 1fr [full-end]; }');
+    expect(serialize(root)).toEqual({
+      css: '.card {\n  grid-template-columns: [full-start] 1fr [full-end];\n}\n'
+    });
   });
 
   it('allows a paren Block to contain an authored space-value slot', () => {

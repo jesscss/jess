@@ -3987,6 +3987,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * It belongs in the continuation set, unlike `Collection`: `]` terminates it, so
    * a following atom has an unambiguous start. `$[ … ]` lookup is unaffected — that
    * form is claimed by `DollarValue`, whose `$` head this arm never sees.
+   *
+   * The empty interior is the EMPTY SLOT `[]`, exactly as the CSS base spells it —
+   * not `any('')`. A contentless `Any` erases the only fact `[]` carries, so
+   * `isTruthy` read a non-empty group and answered TRUTHY for the empty list
+   * (§4.4's fourth falsy row is EMPTINESS). The emptiness is stored here, losslessly,
+   * rather than re-derived downstream from an empty `src`.
    */
   const SquareValue = node<ValueNode>(
     'SquareValue',
@@ -3998,7 +4004,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       literal(']')
     )),
     children => block(
-      children.find(isValueSlotValue) ?? any(''),
+      children.find(isValueSlotValue) ?? [],
       'square'
     )
   );

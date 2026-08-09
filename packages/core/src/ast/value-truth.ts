@@ -68,14 +68,14 @@ function isEmptyGroup(value: ValueGroup): boolean {
  * falsy only when that list is EMPTY, `[false]` being a one-item list and
  * therefore truthy.
  *
- * KNOWN GAP, measured not inferred: `[]` comes back TRUTHY today. The four
- * grammars reduce an empty delimited block to a block wrapping a contentless
- * `Any` (`children.find(isValueSlotValue) ?? any('')`) rather than to an empty
- * group, so `isEmptyGroup` sees an `Any` and falls to its `default`. The defect
- * is UPSTREAM — a parser minting a content node where the source has no content
- * — and the fix belongs in the grammars, not in a byte test for an empty `src`
- * here. It is not a §4.4 row: §12.6 spells the empty list/map `{}` in `.jess`,
- * and that spelling IS falsy.
+ * `[]` is FALSY, and the fix that made it so was UPSTREAM. The grammars used to
+ * reduce an empty bracket group to a block wrapping a contentless `Any`
+ * (`children.find(isValueSlotValue) ?? any('')`) — a content node minted where
+ * the source has no content, which erased the emptiness before it ever reached
+ * here, so `isEmptyGroup` saw an `Any` and fell to its `default`. They now carry
+ * the empty interior as the EMPTY SLOT, and `isEmptyGroup` reads it as data.
+ * Nothing here sniffs an empty `src`: this file tests SHAPE, and a parser that
+ * stores emptiness losslessly is what lets it.
  */
 export function isTruthy(value: ValueGroup): boolean {
   if (isValueGroupArray(value)) {

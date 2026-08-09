@@ -13,7 +13,7 @@ The bar for landing on this page is deliberately high. "Sass does it differently
 ## Truthiness: empty is falsy
 
 **Sass:** everything is truthy except `false` and `null`.
-**Sass+:** falsy for exactly `false`, `null`, `""` (and `''`), and `()`.
+**Sass+:** falsy for exactly `false`, `null`, `""` (and `''`), and the empty list — `()` or `[]`.
 
 | value | Sass | Sass+ |
 | --- | --- | --- |
@@ -23,8 +23,9 @@ The bar for landing on this page is deliberately high. "Sass does it differently
 | `"a"`, `a`, `none` | truthy | truthy |
 | **`""`, `''`** | truthy | **falsy** |
 | **`()`** (empty list / map) | truthy | **falsy** |
+| **`[]`** (empty bracketed list) | truthy | **falsy** |
 
-Only two rows move, and both move in the same direction.
+Only three rows move, and all three move in the same direction.
 
 ### Why
 
@@ -34,7 +35,7 @@ The principle is **emptiness, not zero-ness**.
 
 Sass gets the `0` half right, but then calls `""` and `()` truthy as well, and has no principle that distinguishes them from `null`. An empty string and an empty list *are* absences in exactly the way `null` is. Sass's rule is documented, but it is a list of exceptions rather than an explanation — which is the bar described above.
 
-Sass+ applies one rule: **falsy if absent or empty**.
+Sass+ applies one rule: **falsy if absent or empty**. That is also why `[]` moves: a bracketed list is a list, so the empty one is empty. The rule is the principle, not a list of privileged spellings.
 
 ### What this changes in practice
 
@@ -84,6 +85,47 @@ The same audit was run against three more libraries — **bourbon**, **foundatio
 ```
 
 Both spellings are unaffected here, and both behave identically in Sass and Sass+. If you maintain a Sass library that *does* rely on `""` or `()` being truthy in a bare `@if`, this is the change that affects you, and the fix is to write the comparison explicitly — which is portable to both.
+
+## Bracketed lists: usable as data, printable only as grid line names
+
+**Sass:** a bracketed list prints verbatim wherever it appears, whatever is inside it.
+**Sass+:** a bracketed list is an ordinary value you can bind, pass, iterate and measure — but **printing** one is an error unless its bytes are valid CSS.
+
+| declaration | Sass | Sass+ |
+| --- | --- | --- |
+| `k: [a]` | `[a]` | `[a]` |
+| `k: [a b]` | `[a b]` | `[a b]` |
+| `k: []` | `[]` | `[]` |
+| **`k: [1, 2, 3]`** | `[1, 2, 3]` | **`eval/invalid-line-names`** |
+| **`k: [1 2]`** | `[1 2]` | **`eval/invalid-line-names`** |
+| **`k: [a, b]`** | `[a, b]` | **`eval/invalid-line-names`** |
+
+Grid is unaffected, which is the point:
+
+```scss
+.a { grid-template-columns: [full-start] 1fr [full-end]; }  // identical in both
+```
+
+### Why
+
+CSS admits `[ … ]` in a value position for exactly one thing — grid line names — and the grammar is `<line-names> = '[' <custom-ident>* ']'` ([css-grid-2 §7.1](https://www.w3.org/TR/css-grid-2/#line-names)). Zero or more custom identifiers: no commas, no numbers. So `[a b]` says something to a browser and `[1, 2, 3]` says nothing.
+
+Sass is right that a bracketed list is a useful *value*, and Sass+ keeps all of that. What it declines is emitting bytes no browser can read. This is the standing Sass+ rule — **where Sass tolerates invalid CSS, Sass+ rejects it** — applied to a value rather than to a selector or an at-rule.
+
+Because the rule is about **printing**, everything short of printing still works:
+
+```scss
+$tracks: [1, 2, 3];              // fine
+@each $t in $tracks { … }        // fine
+.a { k: length($tracks); }       // fine -> 3
+.a { k: $tracks; }               // error: it would print [1, 2, 3]
+```
+
+`*` is zero-or-more, which is why `[]` prints rather than erroring.
+
+### Measured before changing
+
+Measured on **dart-sass 1.101.0**: all six declarations in the table above compile and print verbatim, and `@if $x` with `$x: []` takes the true branch. Both divergences — the print rule and the `[]` truthiness row above — are recorded against that measurement, not assumed.
 
 ## Unexpressible units: same rule, different spelling
 

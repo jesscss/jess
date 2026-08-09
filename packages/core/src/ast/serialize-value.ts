@@ -61,6 +61,15 @@ function collectionEntryBytes(entry: CollectionEntry): string {
   return `${sigil}${emitValue(entry.key)}: ${emitValue(entry.value)}${important}`;
 }
 
+/*
+ * NOTE (§12.6c): the bracketed-value PRINT rule is deliberately NOT enforced in
+ * this function. `serializeValue` is not a print site — it is the value domain's
+ * general byte derivation, and function-argument materialization runs through it,
+ * so a rule thrown from here rejects `length([1, 2])`, which the ruling
+ * explicitly permits. The rule lives at the eval lane's Block case, which is the
+ * point where a value's bytes become OUTPUT.
+ */
+
 /** Serialize any structural value group to canonical bytes. */
 export function serializeValue(v: ValueGroup): string {
   if (isValueGroupArray(v)) {

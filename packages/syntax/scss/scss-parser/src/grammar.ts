@@ -1775,18 +1775,24 @@ const scssFactory = (g: ScssInputRules) => {
    * failure, past the dialect error type every caller catches. Found by
    * IDENTITY: the trivia slots either side are variable-width, so no fixed
    * index reaches the interior. The paren sibling reads it the same way.
+   *
+   * The interior is OPTIONAL, and an absent one is the EMPTY SLOT `[]` — the CSS
+   * base's spelling, which this arm diverged from by requiring `g.Value`. `[]` is
+   * valid CSS (`<line-names>` is `<custom-ident>*`) and a valid Sass empty
+   * bracketed list, so requiring content rejected input the base accepts, and it
+   * left `.scss` with no way to spell the empty list §4.4.6 makes FALSY.
    */
   const Square = node<ValueNode>(
     'Block',
     noTrivia(sequence(
       literal('['),
       optional(valueTrivia),
-      g.Value,
+      optional(g.Value),
       optional(valueTrivia),
       literal(']')
     )),
     children => block(
-      requireValueSlot(children.find(isValueSlotValue)),
+      children.find(isValueSlotValue) ?? [],
       'square'
     )
   );
