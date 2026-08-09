@@ -86,12 +86,12 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
-          type: 'FunctionCall', name: 'selector', args: [{
+          type: 'FunctionCall', name: 'selector', args: [{ value: {
             type: 'Interpolation', parts: [
               { lit: '.card-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true },
               { lit: ':has([data-x="' }, { ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state' }, unquote: true }, { lit: '"])' }
             ]
-          }]
+          } }]
         }
       }]
     });
@@ -368,8 +368,8 @@ describe('SCSS canonical-AST grammar', () => {
           type: 'Sequence', parts: [
             { type: 'Quoted', value: 'theme.css' },
             { type: 'Sequence', parts: [
-              { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-              { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
+              { type: 'FunctionCall', name: 'layer', args: [{ value: { type: 'Keyword', src: 'tokens' } }] },
+              { type: 'FunctionCall', name: 'supports', args: [{ value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } } }] },
               { type: 'Keyword', src: 'screen' }
             ] }
           ]
@@ -384,7 +384,7 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet',
       rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence', parts: [
         { type: 'Quoted', value: 'theme.css' },
-        { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] }
+        { type: 'FunctionCall', name: 'supports', args: [{ value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } } }] }
       ] } }]
     });
 
@@ -409,8 +409,8 @@ describe('SCSS canonical-AST grammar', () => {
           type: 'Sequence', parts: [
             { type: 'Quoted', value: 'theme.css' },
             { type: 'Sequence', parts: [
-              { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-              { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
+              { type: 'FunctionCall', name: 'layer', args: [{ value: { type: 'Keyword', src: 'tokens' } }] },
+              { type: 'FunctionCall', name: 'supports', args: [{ value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } } }] },
               {
                 type: 'List', sep: ',', value: [
                   { type: 'Sequence', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
@@ -582,7 +582,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(queryFunction.ok).toBe(true);
     expect(queryFunction.unconsumedFrom).toBeNull();
     expect(queryFunction.value).toMatchObject({
-      type: 'FunctionCall', name: 'selector', args: [{ type: 'Any', src: '[data-state=")"]' }]
+      type: 'FunctionCall', name: 'selector', args: [{ value: { type: 'Any', src: '[data-state=")"]' } }]
     });
 
     for (const [rule, source, expected] of [
@@ -640,12 +640,12 @@ describe('SCSS canonical-AST grammar', () => {
         {
           type: 'VariableDeclaration', name: 'gradient', value: {
             type: 'FunctionCall', name: 'linear-gradient', modern: false, args: [
-              { type: 'Color', src: '#000' },
-              { type: 'FunctionCall', name: 'rgb', modern: false, args: [
-                { type: 'Dimension', number: 1, unit: '', src: '1' },
-                { type: 'Dimension', number: 2, unit: '', src: '2' },
-                { type: 'Dimension', number: 3, unit: '', src: '3' }
-              ] }
+              { name: undefined, spread: false, value: { type: 'Color', src: '#000' } },
+              { name: undefined, spread: false, value: { type: 'FunctionCall', name: 'rgb', modern: false, args: [
+                { name: undefined, spread: false, value: { type: 'Dimension', number: 1, unit: '', src: '1' } },
+                { name: undefined, spread: false, value: { type: 'Dimension', number: 2, unit: '', src: '2' } },
+                { name: undefined, spread: false, value: { type: 'Dimension', number: 3, unit: '', src: '3' } }
+              ] } }
             ]
           },
           write: { mode: 'declare' }
@@ -706,9 +706,9 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet', rules: [
         { type: 'Ruleset', rules: [
           { type: 'Declaration', name: 'direct', value: { type: 'Keyword', src: '--theme' } },
-          { type: 'Declaration', name: 'via-var', value: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--theme' }, { type: 'Keyword', src: '--fallback' }] } },
-          { type: 'Declaration', name: 'via-env', value: { type: 'FunctionCall', name: 'env', args: [{ type: 'Keyword', src: '--safe-area' }] } },
-          { type: 'Declaration', name: 'via-calc', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', left: { src: '--size' } }] } }
+          { type: 'Declaration', name: 'via-var', value: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--theme' } }, { value: { type: 'Keyword', src: '--fallback' } }] } },
+          { type: 'Declaration', name: 'via-env', value: { type: 'FunctionCall', name: 'env', args: [{ value: { type: 'Keyword', src: '--safe-area' } }] } },
+          { type: 'Declaration', name: 'via-calc', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '+', left: { src: '--size' } } }] } }
         ] },
         { type: 'AtRuleBlock', name: '@media', prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--viewport' } } } },
         { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--mode' } } } }
@@ -783,7 +783,7 @@ describe('SCSS canonical-AST grammar', () => {
           { name: 'mixed', value: [{ type: 'Operation', operator: '+' }, { src: 'red' }] },
           { name: 'ratio', value: { type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }] } },
           { name: 'grouped-ratio', value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '/' } } },
-          { name: 'calc-ratio', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }] }] } },
+          { name: 'calc-ratio', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }] } }] } },
           { name: 'mod', value: { type: 'Operation', operator: '%' } }
         ] }
       ]
@@ -2393,7 +2393,7 @@ describe('SCSS canonical-AST grammar', () => {
      * callee path verbatim and leaves the namespace/member split to resolution.
      */
     expect(parse('a { b: color.mix(red, blue); }').rules[0]).toMatchObject({
-      rules: [{ value: { type: 'FunctionCall', name: 'color.mix', args: [{ type: 'Keyword' }, { type: 'Keyword' }] } }]
+      rules: [{ value: { type: 'FunctionCall', name: 'color.mix', args: [{ value: { type: 'Keyword' } }, { value: { type: 'Keyword' } }] } }]
     });
 
     // `map.get` is the module spelling of `map-get`; one semantics, one tree.
@@ -2472,7 +2472,7 @@ describe('SCSS canonical-AST grammar', () => {
         { type: 'Declaration', name: 'w', value: {
           type: 'FunctionCall',
           name: 'double',
-          args: [{ type: 'Dimension', number: 2, unit: '', src: '2' }]
+          args: [{ value: { type: 'Dimension', number: 2, unit: '', src: '2' } }]
         } },
         { type: 'Declaration', name: 'c', value: { type: 'FunctionCall', name: 'darken' } }
       ]

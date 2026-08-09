@@ -126,6 +126,14 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return fallbackCall(name, args);
   };
 
+  /* The callee's declared parameter names — the binding surface a keyword
+   * argument resolves against. Scoped fns shadow built-ins here exactly as they
+   * do in `call`, so a call binds against the definition it will actually reach. */
+  const paramNames = (name: string, scopedFn?: Fn): readonly (string | undefined)[] | undefined => {
+    const fn = scopedFn ?? registry.get(name);
+    return fn === undefined ? undefined : fn.params.map(p => p.name);
+  };
+
   /*
    * `unitMode` reaches comparison, not just arithmetic: `strictUnits` used to make
    * `1px + 3em` a hard error while `2px > 1em` stayed a silent `false`.
@@ -147,5 +155,5 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return typeCheckValues(name, values);
   };
 
-  return { materialize, operate, call, compare, compareMatch, typeCheck };
+  return { materialize, operate, call, paramNames, compare, compareMatch, typeCheck };
 }

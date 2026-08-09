@@ -27,8 +27,7 @@
 
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
-import type { CallArg } from './mixin-dispatch.js'; // [guards]
-import { NO_SPAN, withValueLayout, type BodySpanSlots, type SpanSlots, type TriviaSlot } from './provenance.js';
+import { NO_SPAN, valueLayoutOf, withValueLayout, type BodySpanSlots, type SpanSlots, type TriviaSlot } from './provenance.js';
 
 /* ------------------------------------------------------------------ values */
 
@@ -274,7 +273,11 @@ export interface Operation extends SpanSlots {
 export interface FunctionCall extends SpanSlots {
   readonly type: 'FunctionCall';
   readonly name: string;
-  readonly args: ValueSlot[];
+
+  /** {@link CallArg}, not a bare value, so a KEYWORD argument
+   *  (`color.adjust($c, $lightness: -10%)`) is the same node a keyword mixin
+   *  argument already is. */
+  readonly args: Array<CallArg<ValueSlot>>;
   readonly modern: boolean;
 }
 
@@ -532,6 +535,46 @@ export type ValueNode =
  * separator-bearing List items can retain a nested space group, e.g. the left
  * side of modern `rgb(15 23 42 / .22)`. */
 export type ValueSlot = ValueNode | readonly ValueSlot[];
+
+/** A call argument is normally a value, but Less also permits a deferred typed
+ *  mixin invocation passed to another mixin. */
+export type CallValue = ValueSlot | MixinCall;
+
+/**
+ * ONE call argument — the SAME node whether the callee is a mixin or a
+ * function. `.less` `.m(@a: 1)` and `.scss` `color.adjust($c, $lightness: -10%)`
+ * are the same construct in two spellings, so they are the same shape here and
+ * {@link FunctionCall} and {@link MixinCall} both carry `CallArg[]`.
+ *
+ * UNIFORM BY CONSTRUCTION. Every field is non-optional and every argument is
+ * built by {@link callArg}, so a call-argument array realizes exactly ONE hidden
+ * class. The conditional-spread spelling this replaced (`...(name ? {name} : {})`)
+ * realized three maps on the hottest value node in the tree; `FunctionCall.modern`
+ * and `MixinCall.content` are the precedent for present-and-empty over absent.
+ */
+export interface CallArg<V extends CallValue = CallValue> {
+  /**
+   * The argument's payload. ONE interface, parameterized only so a
+   * {@link FunctionCall} argument (always a value) types more precisely than a
+   * {@link MixinCall} argument (which may be a deferred typed mixin call). The
+   * RUNTIME shape is identical either way — this is not a second node.
+   */
+  readonly value: V;
+
+  /**
+   * The AUTHORED keyword, or `undefined` for a positional argument.
+   *
+   * A keyword is a dialect variable name, which is never empty, so `undefined`
+   * (positional) stays distinguishable from every name a caller can write. The
+   * slot is LOSSLESS: nothing derives a name for a positional argument, and
+   * nothing collapses an authored name into a position.
+   */
+  readonly name: string | undefined;
+
+  /** `[spread]` Less `@args...` — `value` is a list variable to SPLAT into
+   *  positional args at the call site before binding. */
+  readonly spread: boolean;
+}
 
 /* ---------------------------------------------------------------- selectors */
 
@@ -1456,8 +1499,50 @@ export const lookupStep = (kind: LookupKind, name: string | ValueNode | number, 
 export const important = (value: ValueSlot): Important => ({ type: 'Important', value });
 export const operation = (operator: string, left: ValueNode, right: ValueNode, inMathFunction = false): Operation =>
   ({ type: 'Operation', operator, left, right, inMathFunction, _s: NO_SPAN, _e: NO_SPAN });
-export const funcCall = (name: string, args: ValueSlot[], modern = false): FunctionCall =>
-  ({ type: 'FunctionCall', name, args, modern, _s: NO_SPAN, _e: NO_SPAN });
+
+/**
+ * The ONE construction site for a {@link CallArg}. Every field is written on
+ * every argument, in the same order, so the whole tree's call arguments share a
+ * single hidden class — a caller that "omits" a name passes `undefined`, it does
+ * not omit the property.
+ */
+export const callArg = <V extends CallValue>(value: V, name?: string, spread = false): CallArg<V> =>
+  ({ value, name, spread });
+
+/** Normalize a mixed authored-argument array to {@link CallArg}s. A bare value
+ *  slot (node OR nested array) is positional; an already-built `CallArg` passes
+ *  through. Shared by {@link funcCall} and {@link mixinCall} so the two call
+ *  families cannot drift into two shapes. */
+const isCallArg = <V extends CallValue>(a: V | CallArg<V>): a is CallArg<V> =>
+  !Array.isArray(a) && 'value' in a && !('type' in a);
+
+const toCallArgs = <V extends CallValue>(args: readonly (V | CallArg<V>)[]): Array<CallArg<V>> => {
+  const out = new Array<CallArg<V>>(args.length);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    out[i] = isCallArg(a) ? a : callArg(a);
+  }
+  return out;
+};
+
+export const funcCall = (
+  name: string,
+  args: readonly (ValueSlot | CallArg<ValueSlot>)[] = [],
+  modern = false
+): FunctionCall => {
+  const boxed = toCallArgs(args);
+
+  /* The authored-separator side table is keyed on the ARRAY OBJECT a grammar
+   * built. Boxing the arguments produces a new array, so a layout recorded
+   * BEFORE the call node existed has to travel with it — otherwise a grammar
+   * that spells `funcCall(name, withValueLayout(args, seps))` silently loses
+   * every authored comma, and the loss is invisible until the bytes differ. */
+  const layout = valueLayoutOf(args);
+  if (layout !== undefined) {
+    withValueLayout(boxed, layout);
+  }
+  return { type: 'FunctionCall', name, args: boxed, modern, _s: NO_SPAN, _e: NO_SPAN };
+};
 export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
   escaped ? { type: 'Block', value, delimiter, escaped: true, _s: NO_SPAN, _e: NO_SPAN } : { type: 'Block', value, delimiter, _s: NO_SPAN, _e: NO_SPAN };
 
@@ -1480,16 +1565,16 @@ export const mixinDef = (
   guard?: GuardNode // [guards]
 ): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard !== undefined ? { guard } : {}), _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
 
-/** [guards] Args may be bare value nodes (positional) or `{ value, name? }`.
+/** [guards] Args may be bare value nodes (positional) or {@link CallArg}s.
  *  `content` is the assigned block (`$ > m(): @{ … }`), not an argument. */
 export const mixinCall = (
   name: string,
-  args: readonly (ValueNode | CallArg)[] = [],
+  args: readonly (CallValue | CallArg)[] = [],
   content: AnonymousMixin | null = null
 ): MixinCall => ({
   type: 'MixinCall',
   name,
-  args: args.map(a => ('type' in a ? { value: a } : a)),
+  args: toCallArgs(args),
   path: [],
   important: false,
   content,

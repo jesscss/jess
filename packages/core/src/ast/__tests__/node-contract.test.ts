@@ -52,7 +52,12 @@ describe('AST node contract', () => {
       type: 'FunctionCall',
       name: 'selector',
       modern: false,
-      args: [{ type: 'Interpolation', parts: [{ lit: '.card' }] }]
+
+      /* A call argument is a `CallArg`, not a bare value slot — the same node a
+       * mixin-call argument is, so a KEYWORD argument has somewhere to live.
+       * `name`/`spread` are present-and-empty on every argument: that uniformity
+       * is the point, so the shape is asserted rather than elided. */
+      args: [{ value: { type: 'Interpolation', parts: [{ lit: '.card' }] }, name: undefined, spread: false }]
     });
     expect(bare(paren)).toEqual({
       type: 'Block',

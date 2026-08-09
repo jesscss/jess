@@ -28,8 +28,8 @@ import {
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
@@ -51,6 +51,11 @@ type MixinPathSegmentFact = { readonly combinator: ' ' | '>'; readonly selector:
 type LessEachCallback = { readonly binding: ForBinding; readonly rules: Statement[] };
 type MixinGuard = NonNullable<MixinDefinition['guard']>;
 type MixinCallArgument = MixinCall['args'][number];
+
+/** One authored FUNCTION-call argument. The same {@link CallArg} a mixin-call
+ *  argument is — `fade(@c, @amount: 50%)` and `.m(@amount: 50%)` are one
+ *  construct in two callee positions. */
+type LessCallArg = CallArg<ValueSlot>;
 type CallValue = ValueSlot | MixinCall;
 type MixinInteriorItem =
   | { readonly kind: 'binding'; readonly reference: VarRef; readonly default?: CallValue; readonly rest: boolean }
@@ -133,9 +138,10 @@ type LessRules = {
   EscapeValue: Combinator<Any>;
   PagePseudo: Combinator<Any>;
   DoubledQuoteArgument: Combinator<Any>;
-  FunctionArgument: Combinator<ValueSlot>;
+  FunctionArgument: Combinator<ValueSlot | LessCallArg>;
   FunctionScalarArgument: Combinator<ValueNode>;
   FunctionAssignmentArgument: Combinator<ValueNode>;
+  FunctionKeywordArgument: Combinator<LessCallArg>;
   ArgumentValueSequence: Combinator<ValueSlot>;
   FunctionCondition: Combinator<ValueNode>;
   FunctionConditionOr: Combinator<FunctionConditionFact>;
@@ -681,10 +687,17 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
 
 /** Source fallback for a grammar fact. This deliberately walks already
  * reduced facts; it never inspects or re-parses source bytes. */
+/** One authored call argument re-spelled, KEYWORD INCLUDED. A named argument
+ *  whose name were dropped here would re-emit as a positional one — the same
+ *  lossy re-derivation the node shape exists to prevent. */
+function callArgumentSource(argument: MixinCallArgument): string {
+  return `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`;
+}
+
 function mixinArgumentSource(value: CallValue): string {
   if (isMixinCall(value)) {
     const path = value.path.map((segment, index) => index === 0 ? segment.selector : `${segment.combinator}${segment.selector}`).join('');
-    const args = value.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ');
+    const args = value.args.map(callArgumentSource).join(', ');
     return `${path}${value.name}(${args})${value.important ? ' !important' : ''}`;
   }
   if (Array.isArray(value)) {
@@ -698,7 +711,7 @@ function mixinArgumentSource(value: CallValue): string {
       ? `@${typeof node.name === 'string' ? node.name : mixinArgumentSource(node.name)}`
       : node.raw;
     case 'Reference': return node.raw;
-    case 'FunctionCall': return `${node.name}(${node.args.map(mixinArgumentSource).join(', ')})`;
+    case 'FunctionCall': return `${node.name}(${node.args.map(callArgumentSource).join(', ')})`;
     case 'Block': return `${node.escaped ? '~' : ''}${node.delimiter === 'square' ? '[' : '('}${mixinArgumentSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     case 'Operation': return `${mixinArgumentSource(node.left)} ${node.operator} ${mixinArgumentSource(node.right)}`;
     case 'Sequence': return node.parts.map(mixinArgumentSource).join(' ');
@@ -1365,9 +1378,20 @@ function isValueSlotValue(value: unknown): value is ValueSlot {
   return Array.isArray(value) ? value.every(isValueSlotValue) : isValueNode(value);
 }
 
+/** A reduced {@link LessCallArg}: an argument that carried a `@name:` keyword,
+ *  as opposed to the bare value slot a positional argument reduces to. */
+function isLessCallArg(value: unknown): value is LessCallArg {
+  return typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    && 'value' in value
+    && 'name' in value
+    && isValueSlotValue(value.value);
+}
+
 function callWithLayout(
   name: string,
-  args: ValueSlot[],
+  args: Array<ValueSlot | LessCallArg>,
   separators: string[],
   hasTrailingSeparator: boolean,
   span: SourceSpan
@@ -1416,7 +1440,7 @@ function lessConditionGuard(arg: ValueSlot): MixinGuard {
  */
 function lowerLogicalCall(call: FunctionCall): ValueNode {
   const args = call.args;
-  const first = args[0];
+  const first = args[0]?.value;
   if (first === undefined) {
     return call;
   }
@@ -1427,7 +1451,7 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
    * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
   const fold = (kind: 'and' | 'or'): MixinGuard =>
     args.slice(1).reduce<MixinGuard>(
-      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg) }),
+      (left, arg) => ({ g: kind, left, right: lessConditionGuard(arg.value) }),
       lessConditionGuard(first)
     );
   switch (call.name.toLowerCase()) {
@@ -1444,8 +1468,8 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
         return call;
       }
       const guard = lessConditionGuard(first);
-      const taken: IfValueBranch = { guard, value: args[1]! };
-      const otherwise = args[2];
+      const taken: IfValueBranch = { guard, value: args[1]!.value };
+      const otherwise = args[2]?.value;
       return ifValue(otherwise === undefined ? [taken] : [taken, { guard: null, value: otherwise }]);
     }
     default:
@@ -1465,11 +1489,11 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
  */
 function lowerLogicalCallStatement(call: FunctionCall): FunctionCall | If {
   const args = call.args;
-  const first = args[0];
+  const first = args[0]?.value;
   if (call.name.toLowerCase() !== 'if' || first === undefined || args.length < 2 || args.length > 3) {
     return call;
   }
-  const arms = args.slice(1);
+  const arms = args.slice(1).map(arm => arm.value);
   if (!arms.every((arm): arm is AnonymousMixin => !Array.isArray(arm) && isValueNode(arm) && arm.type === 'AnonymousMixin')) {
     return call;
   }
@@ -1487,9 +1511,9 @@ function functionCallFromChildren(
   rawChildren: readonly unknown[]
 ): ValueNode {
   const name = functionNameFromOpener(children[0]);
-  const args: ValueSlot[] = [];
+  const args: Array<ValueSlot | LessCallArg> = [];
   for (const child of children.slice(1, -1)) {
-    if (isValueSlotValue(child)) {
+    if (isLessCallArg(child) || isValueSlotValue(child)) {
       args.push(child);
     }
   }
@@ -1510,7 +1534,9 @@ function argumentFunctionFromChildren(
   span: SourceSpan
 ): FunctionCall {
   const name = functionNameFromOpener(children[0]);
-  const args = children.slice(1, -1).filter(isValueSlotValue);
+  const args = children.slice(1, -1).filter(
+    (child): child is ValueSlot | LessCallArg => isLessCallArg(child) || isValueSlotValue(child)
+  );
   return callWithLayout(name, args, separatorsFromFields(fields), hasField(fields, 'trailingSeparator'), span);
 }
 
@@ -1905,8 +1931,10 @@ function isMixinPathTail(value: unknown): value is MixinPathSegmentFact {
 }
 
 function isMixinCallArgument(value: unknown): value is MixinCallArgument {
+  /* `name` is ALWAYS present — `undefined` is what positional means — so its
+   * absence is a reduced-shape defect, not a positional argument. */
   return typeof value === 'object' && value !== null && 'value' in value && (isValueSlotValue(value.value) || isMixinCall(value.value))
-    && (!('name' in value) || typeof value.name === 'string');
+    && 'name' in value && (value.name === undefined || typeof value.name === 'string');
 }
 
 function isForBinding(value: unknown): value is ForBinding {
@@ -1963,14 +1991,13 @@ function mixinCallArgumentFromInterior(item: MixinInteriorItem): MixinCallArgume
   }
   if (item.kind === 'binding') {
     if (item.rest) {
-      return { value: item.reference, spread: true };
+      return callArg(item.reference, undefined, true);
     }
-    if (item.default === undefined) {
-      return { value: item.reference };
-    }
-    return { name: item.reference.name, value: item.default };
+    return item.default === undefined
+      ? callArg(item.reference)
+      : callArg(item.default, item.reference.name);
   }
-  return { value: item.value };
+  return callArg(item.value);
 }
 
 function mixinCallArgsFromInterior(interior: MixinInteriorFact): MixinCallArgument[] {
@@ -1994,10 +2021,10 @@ function mixinCallArgsFromInterior(interior: MixinInteriorFact): MixinCallArgume
     if (args.length === 1) {
       return args[0]!;
     }
-    if (args.some(argument => argument.name !== undefined || argument.spread === true)) {
+    if (args.some(argument => argument.name !== undefined || argument.spread)) {
       throw new SyntaxError('Less comma-list mixin argument groups cannot use named or spread arguments.');
     }
-    return { value: list(args.map(argument => requireValueSlot(argument.value)), ',') };
+    return callArg(list(args.map(argument => requireValueSlot(argument.value)), ','));
   });
 }
 
@@ -2079,7 +2106,7 @@ function functionConditionSource(value: ValueSlot): string {
     case 'Lookup': return node.kind === 'var'
       ? `@${typeof node.name === 'string' ? node.name : functionConditionSource(node.name)}`
       : node.raw;
-    case 'FunctionCall': return `${node.name}(${node.args.map(functionConditionSource).join(', ')})`;
+    case 'FunctionCall': return `${node.name}(${node.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${functionConditionSource(argument.value)}`).join(', ')})`;
     case 'Operation': return `${functionConditionSource(node.left)} ${node.operator} ${functionConditionSource(node.right)}`;
     case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     /*
@@ -3244,16 +3271,42 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return any(`${staticText(requireField(fields, 'key').value)}=${mixinArgumentSource(value)}`);
     }
   );
+  // `@name: value` is a KEYWORD argument — the SAME construct `.m(@name: 1)`
+  // already spells on the mixin lane (§12.0: one `.less` source, one node), so
+  // it reduces to the same `CallArg` and the callee's own parameter names bind
+  // it. It sits beside `FunctionAssignmentArgument` because it is the same
+  // shape of problem — a key, an operator, a value — and it is gated the same
+  // way: the key regex carries the operator LOOKAHEAD, so a positional `@c`
+  // fails the key match outright instead of parsing a variable and backtracking
+  // out of it. `@name:` must open no other operator, keeping `::` out.
+  const keywordArgumentKey = regex(/@[-_a-zA-Z\u0080-\uffff][-\w\u0080-\uffff]*(?=[ \t\n\r\f]*:(?!:))/);
+  const keywordArgumentOperator = regex(/[ \t\n\r\f]*:[ \t\n\r\f]*/);
+  const FunctionKeywordArgument = node(
+    'FunctionKeywordArgument',
+    noTrivia(sequence(field('key', keywordArgumentKey), keywordArgumentOperator, g.ArgumentValueSequence)),
+    (children, fields) => {
+      const value = children.find(isValueSlotValue);
+      if (value === undefined) {
+        throw new TypeError('Less function keyword argument lost its value.');
+      }
+      return callArg(value, staticText(requireField(fields, 'key').value).slice(1));
+    }
+  );
   const FunctionArgument = node(
     'FunctionArgument',
     choice(
       sequence(functionConditionNotAhead, g.FunctionCondition),
+      g.FunctionKeywordArgument,
       g.FunctionScalarArgument,
       g.ArgumentValueSequence,
       g.FunctionAssignmentArgument,
       g.FunctionCondition
     ),
     (children) => {
+      const named = children.find(isLessCallArg);
+      if (named !== undefined) {
+        return named;
+      }
       const value = children.find(isValueSlotValue);
       if (value === undefined) {
         throw new TypeError('Less function argument lost its value.');
@@ -3968,10 +4021,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const PositionalMixinCallArgument = node(
     'PositionalMixinArgument',
     sequence(g.CallArgumentValue, optional(literal('...'))),
-    children => ({
-      value: requireMixinCallArgumentValue(children[0]),
-      ...(children.some(child => isTerminalText(child, '...')) ? { spread: true } : {})
-    })
+    /* ONE shape for both arms and both call families. The conditional spread
+     * this replaced realized a second hidden class for every `@args...`. */
+    children => callArg(
+      requireMixinCallArgumentValue(children[0]),
+      undefined,
+      children.some(child => isTerminalText(child, '...'))
+    )
   );
   const mixinCallArgument: Combinator<MixinCallArgument> = choice(
     node(
@@ -3979,7 +4035,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(literal('@'), lessVariableName, literal(':'), g.CallArgumentValue),
       (children, _fields, span) => {
         const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
-        return { name, value: requireMixinCallArgumentValue(children[3]) };
+        return callArg(requireMixinCallArgumentValue(children[3]), name);
       }
     ),
     PositionalMixinCallArgument
@@ -3993,7 +4049,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(PositionalMixinCallArgument, oneOrMore(sequence(literal(','), PositionalMixinCallArgument))),
     (children) => {
       const args = children.filter(isMixinCallArgument);
-      return { value: list(args.map(argument => requireValueSlot(argument.value)), ',') };
+      return callArg(list(args.map(argument => requireValueSlot(argument.value)), ','));
     }
   );
   const mixinSemicolonArgument = choice(g.MixinArgumentGroup, mixinCallArgument);
@@ -4131,7 +4187,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(literal('('), optional(g.MixinArguments), literal(')')),
       (children): ReferenceTailFact => {
         const args = mixinArgumentsFromChildren(children);
-        return { step: { type: 'Call', args }, src: `(${args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` };
+        return { step: { type: 'Call', args }, src: `(${args.map(callArgumentSource).join(', ')})` };
       }
     )
   );
@@ -4235,7 +4291,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(routed(), optional(g.MixinArguments), literal(')')),
     (children): ReferenceTailFact => {
       const args = mixinArgumentsFromChildren(children);
-      return { step: { type: 'Call', args }, src: `(${args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` };
+      return { step: { type: 'Call', args }, src: `(${args.map(callArgumentSource).join(', ')})` };
     }
   );
   const ReferenceTailFromDelimiter = dispatch(
@@ -4335,7 +4391,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
       const withPath = tails.length === 0 ? call : { ...call, path };
       const hasCall = children.some(child => isTerminalText(child, '('));
-      const raw = `${head}${tails.map(tail => `${tail.combinator}${tail.selector}`).join('')}${hasCall ? `(${withPath.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` : ''}`;
+      const raw = `${head}${tails.map(tail => `${tail.combinator}${tail.selector}`).join('')}${hasCall ? `(${withPath.args.map(callArgumentSource).join(', ')})` : ''}`;
       return { call: withPath, raw };
     }
   );
@@ -4428,7 +4484,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           if (call !== null && isDefaultGuardCall(call)) {
             guard = { g: 'default' };
           } else if (call !== null) {
-            guard = { g: 'call', name: call.name, args: call.args.map(requireValueNode) };
+            guard = { g: 'call', name: call.name, args: call.args.map(arg => requireValueNode(arg.value)) };
           } else {
             guard = lessGuardTruth(left);
           }
@@ -6562,6 +6618,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     FunctionArgument,
     FunctionScalarArgument,
     FunctionAssignmentArgument,
+    FunctionKeywordArgument,
     ArgumentValueSequence,
     FunctionCondition,
     FunctionConditionOr,

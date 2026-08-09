@@ -303,6 +303,11 @@ export interface FnRegistry {
   /** Whether a built-in implementation exists for `name`. */
   has(name: string): boolean;
 
+  /** The registered implementation for `name`, or `undefined`. Read for the
+   *  callee's DECLARED parameter names when a call carries keyword arguments —
+   *  binding by name needs the definition, not just the ability to dispatch. */
+  get(name: string): Fn | undefined;
+
   /**
    * Dispatch a call by name over the typed argument group. A VARIADIC fn receives the
    * whole group plus the minimal {@link FnCtx} (modes + the
@@ -329,6 +334,9 @@ export function createFnRegistry(): FnRegistry {
     },
     has(name) {
       return table.has(name.toLowerCase());
+    },
+    get(name) {
+      return table.get(name.toLowerCase());
     },
     dispatch(name, value, ctx) {
       const spec = table.get(name.toLowerCase());

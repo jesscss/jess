@@ -94,8 +94,8 @@ describe('CSS constructs discovered outside the parser suites', () => {
           type: 'FunctionCall',
           name: 'var',
           args: [
-            { type: 'Keyword', src: '--x' },
-            { type: 'Keyword', src: 'e' }
+            { value: { type: 'Keyword', src: '--x' } },
+            { value: { type: 'Keyword', src: 'e' } }
           ]
         }
       }]

@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, keyword, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, keyword, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode, While } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -580,7 +580,10 @@ function requireValueSlot(value: unknown): ValueSlot {
 }
 
 function isJessMixinCallArgument(value: unknown): value is JessMixinCallArgument {
-  return typeof value === 'object' && value !== null && 'value' in value && isValueSlotValue(value.value);
+  /* `name` is ALWAYS present — `undefined` is what positional means — so its
+   * absence is a reduced-shape defect, not a positional argument. */
+  return typeof value === 'object' && value !== null && 'value' in value && isValueSlotValue(value.value)
+    && 'name' in value && (value.name === undefined || typeof value.name === 'string');
 }
 
 function requireValueNode(value: unknown): ValueNode {
@@ -2015,7 +2018,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         throw new TypeError('Jess expression call argument lost its value.');
       }
       const name = children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':');
-      return name === undefined ? { value: fact.value } : { name: name.value, value: fact.value };
+      return callArg(fact.value, name?.value);
     }
   );
   const ExpressionReferenceCallTail = node<JessReferenceTail>(
@@ -3477,8 +3480,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * components retain the existing Jess value-term contract, including
    * variable-led expressions (documented function arguments); the new slash
    * separator does not make `/` available as bare Jess arithmetic. Dynamic
-   * `$[...]` lookup and named arguments remain outside this slice until
-   * they have typed reductions. `var()` is the one CSS-defined exception that
+   * `$[...]` lookup remains outside this slice until it has a typed reduction;
+   * a named argument now has one — `FunctionCall.args` is a `CallArg[]`, the
+   * same node a mixin-call argument is. `var()` is the one CSS-defined exception that
    * permits the comma without a following value, so it routes before the
    * generic continuation instead of relaxing every function call.
    */
@@ -5637,7 +5641,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         throw new TypeError('Jess grammar produced a mixin argument without a value.');
       }
       const name = children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':');
-      return name === undefined ? { value } : { name: name.value, value };
+      return callArg(value, name?.value);
     }
   );
   const MixinCall = node<MixinCall>(

@@ -300,7 +300,7 @@ describe('Less AST grammar facts', () => {
           prelude: {
             type: 'FunctionCall',
             name: 'regexp',
-            args: [{ type: 'Quoted', value: '(\\d{0,15})' }]
+            args: [{ value: { type: 'Quoted', value: '(\\d{0,15})' } }]
           },
           rules: [{ type: 'Ruleset' }]
         }
@@ -327,12 +327,12 @@ describe('Less AST grammar facts', () => {
             type: 'FunctionCall',
             name: 'calc',
             args: [
-              {
+              { value: {
                 type: 'Operation',
                 operator: '+',
                 left: { type: 'Dimension', number: 1, unit: 'px', src: '1px' },
                 right: { type: 'Dimension', number: 2, unit: 'px', src: '2px' }
-              }
+              } }
             ]
           },
           rules: [{ type: 'Ruleset' }]
@@ -410,7 +410,7 @@ describe('Less AST grammar facts', () => {
           prelude: {
             type: 'FunctionCall',
             name: 'url-prefix',
-            args: [{ type: 'Any', src: '""github.com""' }]
+            args: [{ value: { type: 'Any', src: '""github.com""' } }]
           }
         }
       ]
@@ -433,7 +433,7 @@ describe('Less AST grammar facts', () => {
           prelude: {
             type: 'FunctionCall',
             name: 'custom',
-            args: [{ type: 'Any', src: '""github.com""' }]
+            args: [{ value: { type: 'Any', src: '""github.com""' } }]
           }
         }
       ]
@@ -461,8 +461,8 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: 'linear-gradient',
                 args: [
-                  { type: 'Color', src: '#333' },
-                  { type: 'Color', src: '#111' }
+                  { value: { type: 'Color', src: '#333' } },
+                  { value: { type: 'Color', src: '#111' } }
                 ]
               }
             }
@@ -513,8 +513,8 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: 'max',
                 args: [
-                  { type: 'Dimension', number: 1, unit: 'px' },
-                  { type: 'Dimension', number: 2, unit: 'px' }
+                  { value: { type: 'Dimension', number: 1, unit: 'px' } },
+                  { value: { type: 'Dimension', number: 2, unit: 'px' } }
                 ]
               }
             }
@@ -1574,7 +1574,7 @@ describe('Less AST grammar facts', () => {
               value: {
                 type: 'FunctionCall',
                 name: 'calc',
-                args: [{ type: 'Operation', operator: '-' }]
+                args: [{ value: { type: 'Operation', operator: '-' } }]
               }
             }
           ]
@@ -1685,17 +1685,17 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: 'rgb',
                 args: [
-                  [
+                  { value: [
                     { type: 'Keyword', src: 'from' },
                     { type: 'Color', src: 'blue' },
                     {
                       type: 'FunctionCall',
                       name: 'calc',
-                      args: [{ type: 'Operation', operator: '+' }]
+                      args: [{ value: { type: 'Operation', operator: '+' } }]
                     },
                     { type: 'Keyword', src: 'g' },
                     { type: 'Keyword', src: 'b' }
-                  ]
+                  ] }
                 ]
               }
             },
@@ -1706,17 +1706,17 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: 'oklch',
                 args: [
-                  [
+                  { value: [
                     { type: 'Keyword', src: 'from' },
                     { type: 'Color', src: '#0000FF' },
                     {
                       type: 'FunctionCall',
                       name: 'calc',
-                      args: [{ type: 'Operation', operator: '/' }]
+                      args: [{ value: { type: 'Operation', operator: '/' } }]
                     },
                     { type: 'Keyword', src: 'c' },
                     { type: 'Keyword', src: 'h' }
-                  ]
+                  ] }
                 ]
               }
             }
@@ -2023,8 +2023,8 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: 'min',
                 args: [
-                  { type: 'Operation' },
-                  { type: 'Dimension', src: '2px' }
+                  { value: { type: 'Operation' } },
+                  { value: { type: 'Dimension', src: '2px' } }
                 ]
               }
             }
@@ -2108,7 +2108,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'FunctionCall',
           name: 'e',
-          args: [{ type: 'Quoted', value: 'x' }]
+          args: [{ value: { type: 'Quoted', value: 'x' } }]
         },
         {
           type: 'Ruleset',
@@ -2116,7 +2116,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'FunctionCall',
               name: 'e',
-              args: [{ type: 'Quoted', value: 'y' }]
+              args: [{ value: { type: 'Quoted', value: 'y' } }]
             }
           ]
         }
@@ -2148,8 +2148,8 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: '%',
                 args: [
-                  { type: 'Quoted', value: 'hello %s' },
-                  { type: 'Quoted', value: 'world' }
+                  { value: { type: 'Quoted', value: 'hello %s' } },
+                  { value: { type: 'Quoted', value: 'world' } }
                 ]
               }
             },
@@ -2196,8 +2196,8 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: '%',
                 args: [
-                  { type: 'Quoted', value: 'hello %s', escaped: true },
-                  { type: 'Quoted', value: 'world' }
+                  { value: { type: 'Quoted', value: 'hello %s', escaped: true } },
+                  { value: { type: 'Quoted', value: 'world' } }
                 ]
               }
             }
@@ -2932,10 +2932,10 @@ describe('Less AST grammar facts', () => {
           type: 'FunctionCall',
           name: 'fn',
           args: [
-            {
+            { value: {
               type: 'AnonymousMixin',
               rules: [{ type: 'Declaration', name: 'display' }]
-            }
+            } }
           ]
         }
       ]
@@ -2958,10 +2958,10 @@ describe('Less AST grammar facts', () => {
             type: 'FunctionCall',
             name: 'fn',
             args: [
-              {
+              { value: {
                 type: 'AnonymousMixin',
                 rules: [{ type: 'Declaration', name: 'color' }]
-              }
+              } }
             ]
           }
         }
@@ -2985,10 +2985,10 @@ describe('Less AST grammar facts', () => {
             type: 'FunctionCall',
             name: 'fn',
             args: [
-              {
+              { value: {
                 type: 'AnonymousMixin',
                 rules: [{ type: 'Declaration', name: 'color' }]
-              }
+              } }
             ]
           }
         }
@@ -3664,9 +3664,9 @@ describe('Less AST grammar facts', () => {
                     name: 'rgb',
                     modern: false,
                     args: [
-                      { type: 'Dimension', number: 255, unit: '', src: '255' },
-                      { type: 'Dimension', number: 0, unit: '', src: '0' },
-                      { type: 'Dimension', number: 128, unit: '', src: '128' }
+                      { name: undefined, spread: false, value: { type: 'Dimension', number: 255, unit: '', src: '255' } },
+                      { name: undefined, spread: false, value: { type: 'Dimension', number: 0, unit: '', src: '0' } },
+                      { name: undefined, spread: false, value: { type: 'Dimension', number: 128, unit: '', src: '128' } }
                     ]
                   },
                   [
@@ -3701,8 +3701,8 @@ describe('Less AST grammar facts', () => {
             type: 'FunctionCall',
             name: 'unit',
             args: [
-              { type: 'Dimension', src: '100' },
-              { type: 'Keyword', src: '%' }
+              { value: { type: 'Dimension', src: '100' } },
+              { value: { type: 'Keyword', src: '%' } }
             ]
           }
         }
@@ -3770,7 +3770,7 @@ describe('Less AST grammar facts', () => {
               type: 'Condition',
               guard: {
                 g: 'cmp',
-                left: { type: 'FunctionCall', name: 'foo', args: [{ type: 'Condition', guard: { g: 'cmp', op: '=' } }] }
+                left: { type: 'FunctionCall', name: 'foo', args: [{ value: { type: 'Condition', guard: { g: 'cmp', op: '=' } } }] }
               }
             }
           }
@@ -3783,7 +3783,7 @@ describe('Less AST grammar facts', () => {
         },
         {
           value: {
-            args: [[{ type: 'Color', src: 'red' }, { type: 'Color', src: 'blue' }]]
+            args: [{ value: [{ type: 'Color', src: 'red' }, { type: 'Color', src: 'blue' }] }]
           }
         }
       ]
@@ -3814,25 +3814,25 @@ describe('Less AST grammar facts', () => {
           value: {
             type: 'FunctionCall',
             name: 'alpha',
-            args: [{ type: 'Any', src: 'opacity=50' }]
+            args: [{ value: { type: 'Any', src: 'opacity=50' } }]
           }
         },
         {
           value: {
             args: [
-              { type: 'Any', src: 'bar=1' },
-              { type: 'Any', src: 'baz=2' }
+              { value: { type: 'Any', src: 'bar=1' } },
+              { value: { type: 'Any', src: 'baz=2' } }
             ]
           }
         },
         {
           value: {
-            args: [{ type: 'Any', src: 'bar=1' }]
+            args: [{ value: { type: 'Any', src: 'bar=1' } }]
           }
         },
         {
           value: {
-            args: [{ type: 'Any', src: 'bar=@v' }]
+            args: [{ value: { type: 'Any', src: 'bar=@v' } }]
           }
         }
       ]
@@ -3852,8 +3852,8 @@ describe('Less AST grammar facts', () => {
         /* `boolean(…)` lowers to the expression boundary; an ORDINARY call keeps
          * its `Condition` argument, which is exactly the split under test. */
         { value: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' } } } },
-        { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '=' } }] } },
-        { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '>=' } }] } }
+        { value: { args: [{ value: { type: 'Condition', guard: { g: 'cmp', op: '=' } } }] } },
+        { value: { args: [{ value: { type: 'Condition', guard: { g: 'cmp', op: '>=' } } }] } }
       ]
     });
   });
@@ -3868,8 +3868,8 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       rules: [
-        { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '=<' } }] } },
-        { value: { args: [{ type: 'Condition', guard: { g: 'cmp', op: '=>' } }] } }
+        { value: { args: [{ value: { type: 'Condition', guard: { g: 'cmp', op: '=<' } } }] } },
+        { value: { args: [{ value: { type: 'Condition', guard: { g: 'cmp', op: '=>' } } }] } }
       ]
     });
   });
@@ -3952,7 +3952,7 @@ describe('Less AST grammar facts', () => {
           value: {
             type: 'FunctionCall',
             name: 'round',
-            args: [{ type: 'Operation', operator: '/' }]
+            args: [{ value: { type: 'Operation', operator: '/' } }]
           }
         }
       ]
@@ -3973,9 +3973,9 @@ describe('Less AST grammar facts', () => {
             type: 'FunctionCall',
             name: 'mix',
             args: [
-              { type: 'Color', src: 'blue' },
-              { type: 'Color', src: '#FFF' },
-              { type: 'Dimension', src: '50%' }
+              { value: { type: 'Color', src: 'blue' } },
+              { value: { type: 'Color', src: '#FFF' } },
+              { value: { type: 'Dimension', src: '50%' } }
             ]
           }
         }
@@ -3999,11 +3999,11 @@ describe('Less AST grammar facts', () => {
             type: 'FunctionCall',
             name: 'repeat',
             args: [
-              { type: 'Dimension', src: '14' },
-              [
+              { value: { type: 'Dimension', src: '14' } },
+              { value: [
                 { type: 'Dimension', src: '10px' },
                 { type: 'Dimension', src: '60px' }
-              ]
+              ] }
             ]
           }
         }
@@ -4035,14 +4035,14 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: 'mix',
                 args: [
-                  { type: 'Color', src: 'blue' },
-                  {
+                  { value: { type: 'Color', src: 'blue' } },
+                  { value: {
                     type: 'Lookup', kind: 'var',
                     name: 'color',
                     raw: '@color',
                     scope: 'scoped'
-                  },
-                  { type: 'Dimension', src: '50%' }
+                  } },
+                  { value: { type: 'Dimension', src: '50%' } }
                 ]
               }
             }
@@ -4181,12 +4181,12 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: 'rgba',
                 args: [
-                  {
+                  { value: {
                     type: 'FunctionCall',
                     name: 'var',
-                    args: [{ type: 'Keyword', src: '--color-accent' }]
-                  },
-                  { type: 'Dimension', src: '0.2' }
+                    args: [{ value: { type: 'Keyword', src: '--color-accent' } }]
+                  } },
+                  { value: { type: 'Dimension', src: '0.2' } }
                 ]
               }
             }
@@ -5285,11 +5285,11 @@ describe('Less AST grammar facts', () => {
             type: 'FunctionCall',
             name: 'style',
             args: [
-              {
+              { value: {
                 type: 'Operation',
                 operator: ':',
                 right: { type: 'Sequence' }
-              }
+              } }
             ]
           }
         }
@@ -5520,12 +5520,12 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: 'style',
                 args: [
-                  {
+                  { value: {
                     type: 'Operation',
                     operator: ':',
                     left: { type: 'Keyword', src: '--responsive' },
                     right: { type: 'Keyword', src: 'true' }
-                  }
+                  } }
                 ]
               }
             }
@@ -5745,7 +5745,7 @@ describe('Less AST grammar facts', () => {
           prelude: {
             type: 'FunctionCall',
             name: 'selector',
-            args: [{
+            args: [{ value: {
               type: 'Interpolation',
               parts: [
                 { lit: '  .card-' },
@@ -5760,7 +5760,7 @@ describe('Less AST grammar facts', () => {
                 },
                 { lit: ' /* keep */ :is(.a, .b) ' }
               ]
-            }]
+            } }]
           }
         }
       ]
@@ -7460,7 +7460,7 @@ describe('Less AST grammar facts', () => {
               value: {
                 type: 'FunctionCall',
                 name: 'foo',
-                args: [{ type: 'Dimension', src: '1' }]
+                args: [{ value: { type: 'Dimension', src: '1' } }]
               }
             },
             {
@@ -7500,7 +7500,7 @@ describe('Less AST grammar facts', () => {
               value: {
                 type: 'FunctionCall',
                 name: 'CALC',
-                args: [{ type: 'Operation', operator: '-' }]
+                args: [{ value: { type: 'Operation', operator: '-' } }]
               }
             }
           ]
@@ -7550,8 +7550,8 @@ describe('Less AST grammar facts', () => {
             value: {
               type: 'FunctionCall',
               args: [
-                { type: 'Dimension', src: '1' },
-                { type: 'Dimension', src: '2' }
+                { value: { type: 'Dimension', src: '1' } },
+                { value: { type: 'Dimension', src: '2' } }
               ]
             }
           }
@@ -7573,8 +7573,8 @@ describe('Less AST grammar facts', () => {
           value: {
             type: 'FunctionCall',
             args: [
-              { type: 'Dimension', src: '1' },
-              { type: 'Dimension', src: '2' }
+              { value: { type: 'Dimension', src: '1' } },
+              { value: { type: 'Dimension', src: '2' } }
             ]
           }
         }

@@ -358,7 +358,7 @@ function walkMixinCall(node: MixinCall, hooks: AstVisitHooks, depth: number): vo
 
 function walkFunctionCall(node: FunctionCall, hooks: AstVisitHooks, depth: number): void {
   for (let i = 0; i < node.args.length; i++) {
-    walkValueSlot(node.args[i]!, hooks, 'value.function.arg', node, i, depth + 1);
+    walkValueSlot(node.args[i]!.value, hooks, 'value.function.arg', node, i, depth + 1);
   }
 }
 

@@ -28,6 +28,7 @@ import { renderCombinator } from './node.js';
 import type { Combinator, Node, NodeType } from './node.js';
 import {
   any,
+  callArg,
   decl,
   dimension,
   importOptionWords,
@@ -2211,7 +2212,7 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
       return callValueContainsVarRef(value.left, name, lookup)
         || callValueContainsVarRef(value.right, name, lookup);
     case 'FunctionCall':
-      return value.args.some(arg => callValueContainsVarRef(arg, name, lookup));
+      return value.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
     case 'Block':
       return callValueContainsVarRef(value.value, name, lookup);
     case 'Interpolation':
@@ -4686,7 +4687,7 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null): EvalValue |
   if (node.args.length !== 1) {
     return undefined;
   }
-  const arg = node.args[0]!;
+  const arg = node.args[0]!.value;
   if (node.name === 'isdefined') {
     /*
      * Defined iff the single argument resolves to a bound value. A non-`VariableReference`
@@ -4730,7 +4731,7 @@ function isIntegerString(s: string): boolean {
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
-  return mapMaybe(evalTypedSlot(node.args[0]!, frame, ce), (v) => {
+  return mapMaybe(evalTypedSlot(node.args[0]!.value, frame, ce), (v) => {
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`);
     }
@@ -4759,7 +4760,7 @@ function hasCssColorCallShape(node: FunctionCall): boolean {
   if (node.args.length !== 1) {
     return false;
   }
-  const slot = node.args[0]!;
+  const slot = node.args[0]!.value;
   return isValueSlotArray(slot) && slot.length >= 3;
 }
 
@@ -4784,7 +4785,7 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
    * variable references still resolve through the same live frame walk.
    */
   const preserve = e.ev === null ? e : { ...e, ev: null };
-  const items = node.args.map(a => evalValueSlot(a, frame, preserve));
+  const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
     const glue = node.modern ? ' ' : ', ';
@@ -5038,7 +5039,7 @@ function evalLambdaCall(
   if (lambda.params === undefined && lambdaResultValue(lambda.rules) === undefined) {
     return undefined;
   }
-  const invoked = invokeValueLambda(lambda, node.args.map(value => ({ value })), hit.frame, frame, e);
+  const invoked = invokeValueLambda(lambda, node.args, hit.frame, frame, e);
   return invoked === null ? undefined : evalValueSlot(invoked.value, invoked.frame, e);
 }
 
@@ -5087,7 +5088,7 @@ function evalCall(
     if (node.args.length === 0) {
       return literal(`${node.name}()`);
     }
-    const items = node.args.map(a => evalValueSlot(a, frame, e));
+    const items = node.args.map(a => evalValueSlot(a.value, frame, e));
     return combineAll(items, (vals) => {
       const authored = valueLayoutOf(node.args);
       const glue = sep === ' ' ? ' ' : ', ';
@@ -5134,7 +5135,7 @@ function evalCall(
    * from the host means "not mine", which falls back to ordinary dispatch.
    */
   if (selected && rawInvoker) {
-    const raw = node.args.map(arg => pluginRawArgument(arg, frame, e));
+    const raw = node.args.map(arg => pluginRawArgument(arg.value, frame, e));
     return combineAll(raw, (args) => {
       try {
         const result = rawInvoker(selected, args, pluginFnContext(node, frame, e));
@@ -5154,9 +5155,10 @@ function evalCall(
   }
 
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
-  const typed = node.args.map(a => evalTypedSlot(a, frame, e));
+  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e));
   return combineAll(typed, (vals) => {
-    const args: ValueGroup = sep === ',' ? makeList(vals, ',') : vals;
+    const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected);
+    const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
     try {
       const result = ev.call(node.name, args, e.modes, null, e.io, selected);
       return isThenable(result)
@@ -5166,6 +5168,79 @@ function evalCall(
       return invalidFunctionCall(node, error, e);
     }
   });
+}
+
+/**
+ * Place KEYWORD arguments at the positions their names DECLARE.
+ *
+ * A keyword argument (`fade(@c, @amount: 50%)`, `color.adjust($c, $lightness: -10%)`)
+ * states a BINDING, not a position, and the only place that mapping exists is the
+ * callee's own parameter list — so the order comes from the resolved function
+ * ({@link ValueEvaluator.paramNames}), never from the call site.
+ *
+ * Returns `vals` UNCHANGED when nothing was named, so an ordinary positional
+ * call pays one `name !== undefined` test per argument and allocates nothing.
+ *
+ * It also returns `vals` unchanged when the callee declares no parameter by that
+ * name (or is unknown): the call then reaches dispatch with exactly its authored
+ * argument vector and fails — or preserves — as an ordinary argument-shape
+ * mismatch. Guessing a position for a name the definition never declared is the
+ * silent wrong lowering this exists to prevent.
+ */
+function orderKeywordArgs<T>(
+  args: readonly CallArg<ValueSlot>[],
+  vals: T[],
+  ev: ValueEvaluator,
+  name: string,
+  scopedFn: Fn | undefined
+): T[] {
+  let hasName = false;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i]!.name !== undefined) {
+      hasName = true;
+      break;
+    }
+  }
+  if (!hasName) {
+    return vals;
+  }
+
+  const params = ev.paramNames(name, scopedFn);
+  if (params === undefined) {
+    return vals;
+  }
+
+  const slots = new Array<T | undefined>(params.length);
+  const positional: T[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const argName = args[i]!.name;
+    if (argName === undefined) {
+      positional.push(vals[i]!);
+      continue;
+    }
+    const at = params.indexOf(argName);
+    if (at === -1) {
+      return vals;
+    }
+    slots[at] = vals[i]!;
+  }
+
+  /* Positional arguments keep their authored order and fill the slots the
+   * keywords did not claim — Less and Sass both allow the two forms to mix. */
+  const out: T[] = [];
+  let next = 0;
+  for (let at = 0; at < slots.length; at++) {
+    const bound = slots[at];
+    if (bound !== undefined) {
+      out.push(bound);
+    } else if (next < positional.length) {
+      out.push(positional[next++]!);
+    }
+  }
+  for (; next < positional.length; next++) {
+    out.push(positional[next]!);
+  }
+  return out;
 }
 
 /**
@@ -10862,7 +10937,7 @@ function pushSpread(args: CallArg[], rawBytes: string): void {
     return;
   }
   for (const piece of splitListBytes(bytes)) {
-    args.push({ value: any(piece) });
+    args.push(callArg(any(piece)));
   }
 }
 
@@ -12155,11 +12230,11 @@ type SupportsPreludePart = { bytes: string; protected: boolean };
  * structured call can have: every structured argument path yields a typed value
  * node, so the template is the discriminator, not a flag.
  */
-function generalEnclosedPayload(args: readonly ValueSlot[]): Interpolation | null {
+function generalEnclosedPayload(args: readonly CallArg<ValueSlot>[]): Interpolation | null {
   if (args.length !== 1) {
     return null;
   }
-  const only = args[0]!;
+  const only = args[0]!.value;
   return !isValueSlotArray(only) && only.type === 'Interpolation' ? only : null;
 }
 

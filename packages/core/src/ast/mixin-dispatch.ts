@@ -21,24 +21,15 @@
  */
 
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { MixinCall, MixinDefinition, ValueSlot } from './nodes.js';
+import type { CallArg, CallValue, MixinCall, MixinDefinition, ValueSlot } from './nodes.js';
 import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
-/** One resolved call argument: positional (no name) or named. */
-export interface CallArg {
-  value: CallValue;
-  name?: string;
-
-  /** [spread] `@args...` — `value` is a list variable to SPLAT into positional
-   *  args at the call site before binding (Less variadic-forwarding). */
-  spread?: boolean;
-}
-
-/** A mixin-call argument is normally a value, but Less also permits a deferred
- * typed mixin invocation passed to another mixin. */
-export type CallValue = ValueSlot | MixinCall;
+/** The call-argument shape now lives with the nodes that carry it — a
+ *  {@link CallArg} is the same node for a mixin call and a function call, so it
+ *  cannot be owned by the mixin module. Re-exported here for existing importers. */
+export type { CallArg, CallValue } from './nodes.js';
 
 /** A selected definition plus the variable bindings its body reads. */
 export interface Selection {

@@ -62,7 +62,7 @@ describe('Less calc()', () => {
   for (const [source, arg] of SHAPES) {
     it(`structures \`${source}\` as arithmetic`, () => {
       expect(parse(`a { width: ${source}; }`)).toMatchObject({
-        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [arg] } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [{ value: arg }] } }] }]
       });
     });
   }
@@ -89,7 +89,7 @@ describe('Less calc()', () => {
    */
   it('normalizes an unspaced additive operator to valid CSS', () => {
     expect(parse('a { width: calc(1rem+1vw); }')).toMatchObject({
-      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+' }] } }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '+' } }] } }] }]
     });
     expect(serialize(parse('a { width: calc(1rem+1vw); }')).css).toBe('a {\n  width: calc(1rem + 1vw);\n}\n');
   });

@@ -30,7 +30,9 @@ const dim = (src: string) => ({ type: 'Dimension', src });
 const paren = (inner: unknown) => ({ type: 'Block', delimiter: 'paren', value: inner });
 const op = (operator: string, left: unknown, right: unknown) => ({ type: 'Operation', operator, left, right });
 const ratio = (n: string, d: string) => op('/', dim(n), dim(d));
-const call = (name: string, args: unknown[]) => ({ type: 'FunctionCall', name, args });
+
+/* A `FunctionCall` argument is a `CallArg`, so the payload sits under `value`. */
+const call = (name: string, args: unknown[]) => ({ type: 'FunctionCall', name, args: args.map(value => ({ value })) });
 const staticUrl = (src: string) => ({ type: 'Url', value: { type: 'Any', src } });
 const list = (...value: unknown[]) => ({ type: 'List', sep: ',', value });
 

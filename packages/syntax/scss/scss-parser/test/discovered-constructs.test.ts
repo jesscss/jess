@@ -83,7 +83,7 @@ describe('SCSS constructs discovered outside the parser suites', () => {
         value: {
           type: 'FunctionCall',
           name: 'var',
-          args: [{ type: 'Keyword', src: '--x' }, { type: 'Keyword', src: 'e' }]
+          args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'Keyword', src: 'e' } }]
         }
       }]
     });
@@ -206,15 +206,29 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     expect(() => parse('ns.$v: value;')).toThrow();
   });
 
-  it.each([
-    ['named argument', 'a { b: f($x: 1) }'],
-    ['spread argument', 'a { b: f($x...) }']
-  ])('PINNED DEFECT — rejects a Sass call argument form (%s)', (_label, source) => {
+  it('admits a keyword argument in a function call', () => {
     /*
-     * Named and rest arguments are core Sass call syntax and involve no
-     * namespace, so they are not gated behind the module system above.
+     * `$name:` in a call is core Sass syntax and involves no namespace, so it
+     * was never gated behind the module system above — it was simply missing.
+     * It is the SAME construct `@include m($x: 1)` already spelled, so it is
+     * the same node: one `CallArg` carrying the authored keyword, which the
+     * callee's own parameter names bind.
      */
-    expect(() => parse(source)).toThrow();
+    const ast = parse('a { b: f($x: 1) }');
+    const rule = ast.rules[0];
+    const value = rule?.type === 'Ruleset' && rule.rules[0]?.type === 'Declaration'
+      ? rule.rules[0].value
+      : null;
+
+    expect(value).toMatchObject({
+      type: 'FunctionCall',
+      name: 'f',
+      args: [{ name: 'x', spread: false, value: { type: 'Dimension' } }]
+    });
+  });
+
+  it('PINNED DEFECT — rejects a Sass call argument form (spread argument)', () => {
+    expect(() => parse('a { b: f($x...) }')).toThrow();
   });
 
   it('admits a bare variable as an @if condition', () => {

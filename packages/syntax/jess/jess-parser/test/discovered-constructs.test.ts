@@ -88,7 +88,7 @@ describe('Jess constructs discovered outside the parser suites', () => {
         value: {
           type: 'FunctionCall',
           name: 'var',
-          args: [{ type: 'Keyword', src: '--x' }, { type: 'Keyword', src: 'e' }]
+          args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'Keyword', src: 'e' } }]
         }
       }]
     });

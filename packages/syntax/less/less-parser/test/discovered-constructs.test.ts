@@ -72,7 +72,7 @@ describe('Less constructs discovered outside the parser suites', () => {
         value: {
           type: 'FunctionCall',
           name: 'var',
-          args: [{ type: 'Keyword', src: '--x' }, { type: 'Keyword', src: 'e' }]
+          args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'Keyword', src: 'e' } }]
         }
       }]
     });
@@ -213,5 +213,34 @@ describe('Less constructs discovered outside the parser suites', () => {
      * against these fixtures for dialect leakage.
      */
     expect(() => parse(source)).toThrow();
+  });
+
+  it('admits a keyword argument in a function call', () => {
+    /*
+     * `@name:` in a call is the SAME construct `.m(@name: 1)` already spelled
+     * on the mixin lane, so it is the same node — one `CallArg` carrying the
+     * authored keyword — and the callee's own parameter names bind it. It was
+     * a hard parse error before `FunctionCall.args` had a slot to hold it.
+     */
+    const ast = parse('a { b: fade(@c, @amount: 50%) }');
+    const rule = ast.rules[0];
+    const value = rule?.type === 'Ruleset' && rule.rules[0]?.type === 'Declaration'
+      ? rule.rules[0].value
+      : null;
+
+    expect(value).toMatchObject({
+      type: 'FunctionCall',
+      name: 'fade',
+      args: [
+        { name: undefined, spread: false, value: { type: 'Lookup', name: 'c' } },
+        { name: 'amount', spread: false, value: { type: 'Dimension' } }
+      ]
+    });
+  });
+
+  it('does not read a colon as a keyword argument when no variable precedes it', () => {
+    /* The key regex carries the operator lookahead, so only `@name:` opens the
+     * keyword arm — `f(name: 1)` is no more accepted than it was before. */
+    expect(() => parse('a { b: f(name: 1) }')).toThrow();
   });
 });

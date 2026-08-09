@@ -559,6 +559,18 @@ export interface ValueEvaluator {
     scopedFn?: Fn,
   ): MaybePromise<ValueGroup>;
 
+  /**
+   * The callee's DECLARED parameter names, in positional order, or `undefined`
+   * when `name` resolves to no known function.
+   *
+   * A KEYWORD argument (`color.adjust($c, $lightness: -10%)`,
+   * `fade(@c, @amount: 50%)`) binds against these — the same names the function
+   * was DEFINED with, which is the only place the mapping exists. An entry is
+   * `undefined` for a parameter its definition left unnamed, so a keyword can
+   * never bind to a position that declared no name.
+   */
+  paramNames(name: string, scopedFn?: Fn): readonly (string | undefined)[] | undefined;
+
   /** Comparison leaf in VALUE position (`if(@a > 0, …)`) on typed operands -> boolean. */
   compare(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;
 

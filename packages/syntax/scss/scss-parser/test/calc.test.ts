@@ -56,7 +56,7 @@ describe('SCSS calc()', () => {
   for (const [source, arg] of SHAPES) {
     it(`structures \`${source}\` as arithmetic`, () => {
       expect(parse(`a { width: ${source}; }`)).toMatchObject({
-        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [arg] } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [{ value: arg }] } }] }]
       });
     });
   }
@@ -73,7 +73,7 @@ describe('SCSS calc()', () => {
    */
   it('structures `calc(100%/3)` as a slash list, diverging from CSS', () => {
     expect(parse('a { width: calc(100%/3); }')).toMatchObject({
-      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [[{ type: 'Dimension', number: 100, unit: '%' }, { type: 'Dimension', number: 3 }]] } }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [{ value: [{ type: 'Dimension', number: 100, unit: '%' }, { type: 'Dimension', number: 3 }] }] } }] }]
     });
   });
 
@@ -99,7 +99,7 @@ describe('SCSS calc()', () => {
    */
   it('normalizes an unspaced additive operator to valid CSS', () => {
     expect(parse('a { width: calc(1rem+1vw); }')).toMatchObject({
-      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+' }] } }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '+' } }] } }] }]
     });
     expect(serialize(parse('a { width: calc(1rem+1vw); }')).css).toBe('a {\n  width: calc(1rem + 1vw);\n}\n');
   });

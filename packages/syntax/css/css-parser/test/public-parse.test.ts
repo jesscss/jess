@@ -136,7 +136,7 @@ describe('public CSS parse()', () => {
       rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
           type: 'FunctionCall', name: 'selector',
-          args: [{ type: 'Interpolation', parts: [{ lit: '.grid /* keep */ :is(.a, .b)' }] }]
+          args: [{ value: { type: 'Interpolation', parts: [{ lit: '.grid /* keep */ :is(.a, .b)' }] } }]
         }
       }]
     });
@@ -314,8 +314,8 @@ describe('public CSS parse()', () => {
       rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration', name: 'color', value: {
           type: 'FunctionCall', name: 'var', args: [
-            { type: 'Keyword', src: '--theme' },
-            { type: 'Any', src: '' }
+            { value: { type: 'Keyword', src: '--theme' } },
+            { value: { type: 'Any', src: '' } }
           ]
         }
       }] }]
@@ -326,8 +326,8 @@ describe('public CSS parse()', () => {
       rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration', name: 'color', value: {
           type: 'FunctionCall', name: 'var', args: [
-            { type: 'Keyword', src: '--theme' },
-            { type: 'List', value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }], sep: ',' }
+            { value: { type: 'Keyword', src: '--theme' } },
+            { value: { type: 'List', value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }], sep: ',' } }
           ]
         }
       }] }]

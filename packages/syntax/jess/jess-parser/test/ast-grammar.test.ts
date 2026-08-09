@@ -1753,9 +1753,9 @@ describe('Jess AST grammar facts', () => {
         rules: [{ type: 'Declaration', name: 'syntax', value: { type: 'Quoted', escaped: false } }, { type: 'Declaration', name: 'inherits' }, {
           type: 'Declaration', name: 'initial-value', value: {
             type: 'FunctionCall', name: 'color-mix', args: [
-              [{ type: 'Keyword', src: 'in' }, { type: 'Keyword', src: 'srgb' }],
-              { type: 'FunctionCall', name: 'rgb', args: [[{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '2' }, { type: 'Dimension', src: '3' }]] },
-              { type: 'Keyword', src: 'blue' }
+              { value: [{ type: 'Keyword', src: 'in' }, { type: 'Keyword', src: 'srgb' }] },
+              { value: { type: 'FunctionCall', name: 'rgb', args: [{ value: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '2' }, { type: 'Dimension', src: '3' }] }] } },
+              { value: { type: 'Keyword', src: 'blue' } }
             ]
           }
         }]
@@ -1792,8 +1792,8 @@ describe('Jess AST grammar facts', () => {
     const source = '@property --a { initial-value: var(--theme); } @property --b { initial-value: env(safe-area-inset-top); } @property --c { initial-value: url(a.png); }';
 
     expect(parse(source).rules).toMatchObject([
-      { name: '@property', rules: [{ name: 'initial-value', value: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--theme' }] } }] },
-      { name: '@property', rules: [{ name: 'initial-value', value: { type: 'FunctionCall', name: 'env', args: [{ type: 'Keyword', src: 'safe-area-inset-top' }] } }] },
+      { name: '@property', rules: [{ name: 'initial-value', value: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--theme' } }] } }] },
+      { name: '@property', rules: [{ name: 'initial-value', value: { type: 'FunctionCall', name: 'env', args: [{ value: { type: 'Keyword', src: 'safe-area-inset-top' } }] } }] },
       { name: '@property', rules: [{ name: 'initial-value', value: { type: 'Url', value: { type: 'Any', src: 'a.png' } } }] }
     ]);
     expect(serialize(parse(source))).toEqual({
@@ -1812,12 +1812,12 @@ describe('Jess AST grammar facts', () => {
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
-          type: 'FunctionCall', name: 'selector', args: [{
+          type: 'FunctionCall', name: 'selector', args: [{ value: {
             type: 'Interpolation', parts: [
               { lit: '.card-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true },
               { lit: ':has([data-x="' }, { ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state' }, unquote: true }, { lit: '"])' }
             ]
-          }]
+          } }]
         }
       }]
     });
@@ -2042,17 +2042,17 @@ describe('Jess AST grammar facts', () => {
             type: 'FunctionCall',
             name: 'rgb',
             args: [
-              { type: 'Dimension', number: 0, unit: '', src: '0' },
-              { type: 'Dimension', number: 10, unit: '%', src: '10%' },
-              {
+              { name: undefined, spread: false, value: { type: 'Dimension', number: 0, unit: '', src: '0' } },
+              { name: undefined, spread: false, value: { type: 'Dimension', number: 10, unit: '%', src: '10%' } },
+              { name: undefined, spread: false, value: {
                 type: 'FunctionCall',
                 name: 'mix',
                 args: [
-                  { type: 'Keyword', src: 'blue' },
-                  { type: 'Lookup', kind: 'var', name: 'percent', raw: '@percent', scope: 'live' }
+                  { name: undefined, spread: false, value: { type: 'Keyword', src: 'blue' } },
+                  { name: undefined, spread: false, value: { type: 'Lookup', kind: 'var', name: 'percent', raw: '@percent', scope: 'live' } }
                 ],
                 modern: false
-              }
+              } }
             ],
             modern: false
           },
@@ -2067,7 +2067,7 @@ describe('Jess AST grammar facts', () => {
           rules: [
             { type: 'Declaration', name: 'color', value: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone', scope: 'live' }, merge: null, important: false },
             { type: 'Declaration', name: 'margin', value: { type: 'Dimension', number: 1, unit: 'rem', src: '1rem' }, merge: null, important: false },
-            { type: 'Declaration', name: 'filter', value: { type: 'FunctionCall', name: 'blur', args: [{ type: 'Dimension', number: 2, unit: 'px', src: '2px' }], modern: false }, merge: null, important: false }
+            { type: 'Declaration', name: 'filter', value: { type: 'FunctionCall', name: 'blur', args: [{ name: undefined, spread: false, value: { type: 'Dimension', number: 2, unit: 'px', src: '2px' } }], modern: false }, merge: null, important: false }
           ]
         }
       ]
@@ -2108,12 +2108,12 @@ describe('Jess AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration', name: 'box-shadow', value: {
-          type: 'FunctionCall', name: 'rgb', args: [{
+          type: 'FunctionCall', name: 'rgb', args: [{ value: {
             type: 'List', sep: '/', value: [
               [{ type: 'Dimension', src: '15' }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }],
               { type: 'Dimension', src: '0.22' }
             ]
-          }]
+          } }]
         }
       }] }]
     });
@@ -2123,9 +2123,9 @@ describe('Jess AST grammar facts', () => {
     expect(variableCall.rules[1]).toMatchObject({
       type: 'Ruleset', rules: [{
         type: 'Declaration', value: {
-          type: 'FunctionCall', args: [{
+          type: 'FunctionCall', args: [{ value: {
             type: 'List', sep: '/', value: [[{ type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }], { type: 'Dimension', src: '0.22' }]
-          }]
+          } }]
         }
       }]
     });
@@ -2573,7 +2573,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-${tone}" = foo' } }, unquote: true }] } },
-        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'content', value: { type: 'Interpolation' } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ type: 'Interpolation' }, { type: 'Interpolation' }, { type: 'Keyword', src: 'blue' }] } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'content', value: { type: 'Interpolation' } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ value: { type: 'Interpolation' } }, { value: { type: 'Interpolation' } }, { value: { type: 'Keyword', src: 'blue' } }] } }] }
       ]
     });
   });

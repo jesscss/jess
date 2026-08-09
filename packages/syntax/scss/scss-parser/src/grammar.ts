@@ -23,15 +23,23 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, Null, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, CallArg, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, Null, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type SourceSpan = { readonly start: number; readonly end: number };
 type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
-type ScssCallArg = { readonly value: ValueSlot; readonly name?: string; readonly spread?: boolean };
+
+/** One authored call argument. The AST's own {@link CallArg}, not a local
+ *  look-alike: a `$name:` argument is the SAME node whether the callee is a
+ *  mixin (`@include m($x: 1)`) or a function (`color.adjust($c, $lightness: -10%)`),
+ *  and every one is built by `callArg` so the array stays monomorphic. */
+type ScssCallArg = CallArg<ValueSlot>;
+
+/** An argument-list separator carrying the argument it precedes. */
+type ScssArgumentPair = { readonly separator: string; readonly value: ScssCallArg };
 type ScssComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
 type ScssSegmentCombinator = ' ' | '>' | '+' | '~' | '|' | '||';
 
@@ -72,9 +80,9 @@ type ScssRules = {
   ValueLogicalAnd: Combinator<ValueNode>;
   ValueLogicalOr: Combinator<ValueNode>;
   ValueTerm: Combinator<ValueSlot>;
-  CallArgument: Combinator<ValueSlot>;
+  CallArgument: Combinator<ScssCallArg>;
   ValuePair: Combinator<ScssValuePair>;
-  ArgumentPair: Combinator<ScssValuePair>;
+  ArgumentPair: Combinator<ScssArgumentPair>;
   Value: Combinator<ValueSlot>;
   Important: Combinator<true>;
   InterpolatedProperty: Combinator<Interpolation>;
@@ -924,10 +932,10 @@ function lowerMapGet(base: ValueNode, key: ValueNode): Reference {
  * Anything but the three-argument form is left an ordinary call — plain CSS
  * `if()` is not this construct.
  */
-function lowerSassIf(args: readonly ValueSlot[]): IfValue | undefined {
-  const cond = args[0];
-  const taken = args[1];
-  const otherwise = args[2];
+function lowerSassIf(args: readonly ScssCallArg[]): IfValue | undefined {
+  const cond = args[0]?.value;
+  const taken = args[1]?.value;
+  const otherwise = args[2]?.value;
   if (args.length !== 3 || cond === undefined || taken === undefined || otherwise === undefined) {
     return undefined;
   }
@@ -939,32 +947,32 @@ function lowerSassIf(args: readonly ValueSlot[]): IfValue | undefined {
 
 function reduceScssCall(name: string, children: readonly unknown[], minArgumentIndex: number): FunctionCall | Reference | IfValue {
   const lastIndex = children.length - 1;
-  const firstIndex = children.findIndex((child, index) => index > minArgumentIndex && index < lastIndex && isValueSlotValue(child));
+  const firstIndex = children.findIndex((child, index) => index > minArgumentIndex && index < lastIndex && isScssCallArg(child));
   if (firstIndex === -1) {
     return funcCall(
       name,
       []
     );
   }
-  const first = requireValueSlot(children[firstIndex]);
-  const args: ValueSlot[] = [first];
+  const first = requireScssCallArg(children[firstIndex]);
+  const args: ScssCallArg[] = [first];
   const separators: string[] = [];
   for (let index = firstIndex + 1; index < lastIndex; index += 1) {
     const child = children[index];
-    if (!isScssValuePair(child)) {
+    if (!isScssArgumentPair(child)) {
       continue;
     }
     separators.push(String(child.separator));
-    args.push(requireValueSlot(child.value));
+    args.push(child.value);
   }
   const call = funcCall(
     name,
     args
   );
-  if (MAP_GET_SPELLINGS.has(call.name) && args.length === 2 && isValue(args[0]) && isValue(args[1])) {
+  if (MAP_GET_SPELLINGS.has(call.name) && args.length === 2 && isValue(args[0]!.value) && isValue(args[1]!.value)) {
     return lowerMapGet(
-      args[0],
-      args[1]
+      args[0]!.value,
+      args[1]!.value
     );
   }
   if (call.name.toLowerCase() === 'if') {
@@ -1046,7 +1054,7 @@ function scssConditionSource(value: ValueSlot): string {
      * general rule reaches any depth.
      */
     case 'Expression': return scssConditionSource(node.value);
-    case 'FunctionCall': return `${node.name}(${node.args.map(scssConditionSource).join(', ')})`;
+    case 'FunctionCall': return `${node.name}(${node.args.map(argument => `${argument.name === undefined ? '' : `$${argument.name}: `}${scssConditionSource(argument.value)}`).join(', ')})`;
     case 'Operation': return `${scssConditionSource(node.left)} ${node.operator} ${scssConditionSource(node.right)}`;
     case 'Block': return node.boundary
       ? scssConditionSource(node.value)
@@ -1110,6 +1118,32 @@ function requireGuardNode(value: unknown): GuardNode {
 
 function optionalValue(value: unknown): ValueNode | null {
   return value === null || value === undefined ? null : requireValue(value);
+}
+
+/** A reduced {@link ScssCallArg} — the payload every argument production yields. */
+function isScssCallArg(value: unknown): value is ScssCallArg {
+  return typeof value === 'object'
+    && value !== null
+    && 'value' in value
+    && 'name' in value
+    && isValueSlotValue(value.value);
+}
+
+function requireScssCallArg(value: unknown): ScssCallArg {
+  if (!isScssCallArg(value)) {
+    throw new TypeError('SCSS grammar produced an invalid call argument.');
+  }
+  return value;
+}
+
+/** An {@link ScssArgumentPair} — a separator plus the argument it precedes. */
+function isScssArgumentPair(value: unknown): value is ScssArgumentPair {
+  return typeof value === 'object'
+    && value !== null
+    && 'separator' in value
+    && typeof value.separator === 'string'
+    && 'value' in value
+    && isScssCallArg(value.value);
 }
 
 function isScssValuePair(value: unknown): value is ScssValuePair {
@@ -2209,13 +2243,16 @@ const scssFactory = (g: ScssInputRules) => {
     literal('>'),
     literal('<')
   );
-  const CallArgument = node<ValueSlot>(
+  const CallArgument = node<ScssCallArg>(
     'CallArgument',
     noTrivia(sequence(
       g.ValueTerm,
       optional(sequence(
         optional(valueTrivia),
-        comparisonOperator,
+        choice(
+          comparisonOperator,
+          literal(':')
+        ),
         optional(valueTrivia),
         g.ValueTerm
       ))
@@ -2223,7 +2260,25 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const left = requireValueSlot(children[0]);
       if (children.length === 1) {
-        return left;
+        return callArg(left);
+      }
+
+      /*
+       * `$name: value` is a KEYWORD argument (§4.5.2) — the same construct
+       * `@include m($x: 1)` already spells, so it is the same {@link CallArg}
+       * and the function's own parameter names bind it. It shares the operand
+       * with the comparison arm rather than opening a second left-factored
+       * lane: the operator tail is parsed ONCE and its spelling decides which
+       * reading applies, so a positional argument pays nothing.
+       *
+       * Only a `$`-sigil variable can be a keyword. A bare identifier before a
+       * colon is not a Sass named argument, and it is a parse error here today.
+       */
+      if (children.some(child => isToken(child) && child.value === ':')) {
+        if (Array.isArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
+          throw new TypeError('A named argument must be spelled `$name: value`.');
+        }
+        return callArg(requireValueSlot(children[children.length - 1]), left.name);
       }
       const operator = requireToken(children.find(child => isToken(child) && COMPARISON_OPERATORS.has(child.value))).value;
       const right = requireValueSlot(children[children.length - 1]);
@@ -2240,10 +2295,10 @@ const scssFactory = (g: ScssInputRules) => {
         left: requireValue(left),
         right: requireValue(right)
       };
-      return expression(condition(
+      return callArg(expression(condition(
         operator === '!=' ? { g: 'not', inner: comparison } : comparison,
         `${scssConditionSource(left)} ${operator} ${scssConditionSource(right)}`
-      ));
+      )));
     }
   );
   const ValuePair = node<ScssValuePair>(
@@ -2276,7 +2331,7 @@ const scssFactory = (g: ScssInputRules) => {
    * The separator keeps the authored bytes in authored order, so an argument
    * list that carried no leading pad records exactly what it recorded before.
    */
-  const ArgumentPair = node<ScssValuePair>(
+  const ArgumentPair = node<ScssArgumentPair>(
     'ArgumentPair',
     noTrivia(sequence(
       optional(valueTrivia),
@@ -2290,7 +2345,7 @@ const scssFactory = (g: ScssInputRules) => {
       if (!separator.includes(',')) {
         throw new TypeError('ArgumentPair lost its comma.');
       }
-      return { separator, value: requireValueSlot(value) };
+      return { separator, value: requireScssCallArg(value) };
     }
   );
   const Value = node<ValueSlot>(
@@ -3163,12 +3218,17 @@ const scssFactory = (g: ScssInputRules) => {
         throw new TypeError('MixinCallArgument requires a value.');
       }
       const nameToken = children.find((child): child is Token => typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string' && child.value !== '$' && child.value !== ':' && child.value !== '...');
-      if (nameToken !== undefined && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === ':')) {
-        return { name: nameToken.value, value };
-      }
-      return children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === '...')
-        ? { value, spread: true }
-        : { value };
+      const named = nameToken !== undefined
+        && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === ':');
+
+      /* ONE shape for all three arms. The conditional-return spelling this
+       * replaced ({name,value} / {value,spread} / {value}) realized three hidden
+       * classes on the mixin-call argument array. */
+      return callArg(
+        value,
+        named ? nameToken.value : undefined,
+        children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === '...')
+      );
     }
   );
 

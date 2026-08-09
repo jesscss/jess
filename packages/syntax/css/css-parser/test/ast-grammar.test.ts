@@ -646,10 +646,12 @@ describe('CSS canonical-AST grammar', () => {
             type: 'FunctionCall',
             name: 'calc',
             args: [{
-              type: 'Operation',
-              operator: '+',
-              left: { type: 'Dimension', number: 100, unit: 'px' },
-              right: { type: 'Dimension', number: 5, unit: 'px' }
+              value: {
+                type: 'Operation',
+                operator: '+',
+                left: { type: 'Dimension', number: 100, unit: 'px' },
+                right: { type: 'Dimension', number: 5, unit: 'px' }
+              }
             }]
           }
         },
@@ -814,7 +816,7 @@ describe('CSS canonical-AST grammar', () => {
       rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
           type: 'FunctionCall', name: 'selector',
-          args: [{ type: 'Interpolation', parts: [{ lit: '  .grid /* keep */ [data-kind=")"] :is(.a, .b) ' }] }]
+          args: [{ value: { type: 'Interpolation', parts: [{ lit: '  .grid /* keep */ [data-kind=")"] :is(.a, .b) ' }] } }]
         }
       }]
     });
@@ -1009,9 +1011,9 @@ describe('CSS canonical-AST grammar', () => {
         type: 'Sequence',
         parts: [
           { type: 'Keyword', src: 'sidebar' },
-          { type: 'FunctionCall', name: 'style', args: [{ type: 'Any', src: '--theme: dark' }] },
+          { type: 'FunctionCall', name: 'style', args: [{ value: { type: 'Any', src: '--theme: dark' } }] },
           { type: 'Keyword', src: 'and' },
-          { type: 'FunctionCall', name: 'scroll-state', args: [{ type: 'Any', src: 'stuck: block-start' }] }
+          { type: 'FunctionCall', name: 'scroll-state', args: [{ value: { type: 'Any', src: 'stuck: block-start' } }] }
         ]
       },
       rules: [{ type: 'Ruleset' }]
@@ -1624,7 +1626,7 @@ describe('CSS canonical-AST grammar', () => {
       rules: [
         { type: 'Declaration', name: 'content', value: { type: 'Quoted', src: '"hello\\\"world"', value: 'hello\\\"world', quote: '"', escaped: false } },
         { type: 'Declaration', name: 'background', value: { type: 'Url', value: { type: 'Quoted', value: 'icons\\\"logo.svg' } } },
-        { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', name: 'rgb', args: [{ type: 'Dimension', number: 255 }, { type: 'Dimension', number: 0 }, { type: 'Dimension', number: 128 }] } }
+        { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', name: 'rgb', args: [{ value: { type: 'Dimension', number: 255 } }, { value: { type: 'Dimension', number: 0 } }, { value: { type: 'Dimension', number: 128 } }] } }
       ]
     });
     expect(serialize(document)).toEqual({
@@ -1806,20 +1808,22 @@ describe('CSS canonical-AST grammar', () => {
           type: 'FunctionCall',
           name: 'calc',
           args: [{
-            type: 'Operation',
-            operator: '+',
-            left: { type: 'Dimension', number: 1, unit: 'px' },
-            right: {
+            value: {
               type: 'Operation',
-              operator: '*',
-              left: { type: 'Dimension', number: 2, unit: 'px' },
+              operator: '+',
+              left: { type: 'Dimension', number: 1, unit: 'px' },
               right: {
-                type: 'Block', delimiter: 'paren',
-                value: {
-                  type: 'Operation',
-                  operator: '-',
-                  left: { type: 'Dimension', number: 3, unit: '' },
-                  right: { type: 'Dimension', number: 4, unit: '' }
+                type: 'Operation',
+                operator: '*',
+                left: { type: 'Dimension', number: 2, unit: 'px' },
+                right: {
+                  type: 'Block', delimiter: 'paren',
+                  value: {
+                    type: 'Operation',
+                    operator: '-',
+                    left: { type: 'Dimension', number: 3, unit: '' },
+                    right: { type: 'Dimension', number: 4, unit: '' }
+                  }
                 }
               }
             }
@@ -1832,10 +1836,12 @@ describe('CSS canonical-AST grammar', () => {
           type: 'FunctionCall',
           name: 'calc',
           args: [{
-            type: 'Operation',
-            operator: '%',
-            left: { type: 'Dimension', number: 5, unit: 'px' },
-            right: { type: 'Dimension', number: 2, unit: '' }
+            value: {
+              type: 'Operation',
+              operator: '%',
+              left: { type: 'Dimension', number: 5, unit: 'px' },
+              right: { type: 'Dimension', number: 2, unit: '' }
+            }
           }]
         }
       }]
@@ -1856,13 +1862,13 @@ describe('CSS canonical-AST grammar', () => {
       type: 'Ruleset',
       rules: [
         { type: 'Declaration', name: 'a', value: [{ type: 'Url' }, { type: 'Any', src: '/' }, { type: 'Keyword', src: 'cover' }] },
-        { type: 'Declaration', name: 'b', value: [{ type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }] }, { type: 'Keyword', src: 'solid' }] },
-        { type: 'Declaration', name: 'c', value: [{ type: 'FunctionCall', name: 'rgb', args: [{ type: 'Dimension', number: 1 }, { type: 'Dimension', number: 2 }, { type: 'Dimension', number: 3 }] }, { type: 'Any', src: '/' }, { type: 'Dimension', number: 0.5 }] },
-        { type: 'Declaration', name: 'd', value: [{ type: 'FunctionCall', name: 'foo', args: [{ type: 'Keyword', src: 'bar' }] }, { type: 'Keyword', src: 'baz' }] },
-        { type: 'Declaration', name: 'e', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', right: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }] } }] } },
-        { type: 'Declaration', name: 'f', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, [{ type: 'Dimension', number: 1, unit: 'px' }, { type: 'Any', src: '+' }, { type: 'Dimension', number: 2, unit: 'px' }]] }, right: { type: 'Dimension', number: 2, unit: 'px' } }] } },
-        { type: 'Declaration', name: 'g', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }]] }, right: { type: 'Dimension', number: 2, unit: 'px' } }] } },
-        { type: 'Declaration', name: 'h', value: [{ type: 'Dimension', number: 0, unit: '' }, { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '*', left: { type: 'Dimension', number: -1, unit: '' }, right: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }] } }] }] }
+        { type: 'Declaration', name: 'b', value: [{ type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }] }, { type: 'Keyword', src: 'solid' }] },
+        { type: 'Declaration', name: 'c', value: [{ type: 'FunctionCall', name: 'rgb', args: [{ value: { type: 'Dimension', number: 1 } }, { value: { type: 'Dimension', number: 2 } }, { value: { type: 'Dimension', number: 3 } }] }, { type: 'Any', src: '/' }, { type: 'Dimension', number: 0.5 }] },
+        { type: 'Declaration', name: 'd', value: [{ type: 'FunctionCall', name: 'foo', args: [{ value: { type: 'Keyword', src: 'bar' } }] }, { type: 'Keyword', src: 'baz' }] },
+        { type: 'Declaration', name: 'e', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '+', right: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }] } } }] } },
+        { type: 'Declaration', name: 'f', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '+', left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: [{ type: 'Dimension', number: 1, unit: 'px' }, { type: 'Any', src: '+' }, { type: 'Dimension', number: 2, unit: 'px' }] }] }, right: { type: 'Dimension', number: 2, unit: 'px' } } }] } },
+        { type: 'Declaration', name: 'g', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '+', left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] }] }, right: { type: 'Dimension', number: 2, unit: 'px' } } }] } },
+        { type: 'Declaration', name: 'h', value: [{ type: 'Dimension', number: 0, unit: '' }, { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '*', left: { type: 'Dimension', number: -1, unit: '' }, right: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }] } } }] }] }
       ]
     });
 
@@ -1880,83 +1886,83 @@ describe('CSS canonical-AST grammar', () => {
       type: 'Ruleset',
       rules: [{
         type: 'Declaration', name: 'h', value: {
-          type: 'FunctionCall', name: 'calc', args: [{
+          type: 'FunctionCall', name: 'calc', args: [{ value: {
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, [{ type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'foo' } }, { type: 'Any', src: '[foo]' }]] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: [{ type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'foo' } }, { type: 'Any', src: '[foo]' }] }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
-          }]
+          } }]
         }
       }, {
         type: 'Declaration', name: 'i', value: {
-          type: 'FunctionCall', name: 'calc', args: [{
+          type: 'FunctionCall', name: 'calc', args: [{ value: {
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'foo' }, { type: 'Keyword', src: 'bar' }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'foo' }, { type: 'Keyword', src: 'bar' }] } }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
-          }]
+          } }]
         }
       }, {
         type: 'Declaration', name: 'j', value: {
-          type: 'FunctionCall', name: 'calc', args: [{
+          type: 'FunctionCall', name: 'calc', args: [{ value: {
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'FunctionCall', name: 'foo', args: [{ type: 'Any', src: '[bar]' }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'FunctionCall', name: 'foo', args: [{ value: { type: 'Any', src: '[bar]' } }] } }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
-          }]
+          } }]
         }
       }, {
         type: 'Declaration', name: 'k', value: {
-          type: 'FunctionCall', name: 'calc', args: [{
+          type: 'FunctionCall', name: 'calc', args: [{ value: {
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'Any', src: '{foo}' }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'Any', src: '{foo}' } }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
-          }]
+          } }]
         }
       }, {
         type: 'Declaration', name: 'l', value: {
-          type: 'FunctionCall', name: 'calc', args: [{
+          type: 'FunctionCall', name: 'calc', args: [{ value: {
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--y' }, { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }] }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--y' } }, { value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }] } }] } }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
-          }]
+          } }]
         }
       }, {
         type: 'Declaration', name: 'm', value: {
-          type: 'FunctionCall', name: 'calc', args: [{
+          type: 'FunctionCall', name: 'calc', args: [{ value: {
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'Any', src: '' }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'Any', src: '' } }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
-          }]
+          } }]
         }
       }, {
         type: 'Declaration', name: 'n', value: {
-          type: 'FunctionCall', name: 'calc', args: [{
+          type: 'FunctionCall', name: 'calc', args: [{ value: {
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'foo' }, { type: 'Any', src: '' }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'foo' }, { type: 'Any', src: '' }] } }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
-          }]
+          } }]
         }
       }, {
         type: 'Declaration', name: 'o', value: {
-          type: 'FunctionCall', name: 'calc', args: [{
+          type: 'FunctionCall', name: 'calc', args: [{ value: {
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'FunctionCall', name: 'foo', args: [{ type: 'Keyword', src: 'a' }, { type: 'Any', src: '' }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'FunctionCall', name: 'foo', args: [{ value: { type: 'Keyword', src: 'a' } }, { value: { type: 'Any', src: '' } }] } }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
-          }]
+          } }]
         }
       }, {
         type: 'Declaration', name: 'p', value: {
-          type: 'FunctionCall', name: 'calc', args: [{
+          type: 'FunctionCall', name: 'calc', args: [{ value: {
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'FunctionCall', name: 'foo', args: [{ type: 'Any', src: '' }, { type: 'Keyword', src: 'a' }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'FunctionCall', name: 'foo', args: [{ value: { type: 'Any', src: '' } }, { value: { type: 'Keyword', src: 'a' } }] } }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
-          }]
+          } }]
         }
       }, {
         type: 'Declaration', name: 'q', value: {
-          type: 'FunctionCall', name: 'calc', args: [{
+          type: 'FunctionCall', name: 'calc', args: [{ value: {
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Any', src: '' }, { type: 'Keyword', src: 'b' }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Any', src: '' }, { type: 'Keyword', src: 'b' }] } }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
-          }]
+          } }]
         }
       }]
     });
@@ -2189,7 +2195,9 @@ describe('CSS canonical-AST grammar', () => {
     expect(valueLayoutOf(comma)).toEqual([',\n  ']);
     expect(call).toMatchObject({ type: 'FunctionCall', name: 'foo' });
     if (typeof call === 'object' && call !== null && !Array.isArray(call) && call.type === 'FunctionCall') {
-      const firstArg = call.args[0];
+      /* An argument is a `CallArg`; the authored layout belongs to its value
+       * slot, which is the array the grammar recorded it against. */
+      const firstArg = call.args[0]?.value;
       if (typeof firstArg !== 'object' || firstArg === null) {
         throw new Error('expected a structured function argument');
       }

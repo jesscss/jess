@@ -184,7 +184,7 @@ function valueUsesDefault(v: ValueSlot): boolean {
   }
   switch (v.type) {
     case 'FunctionCall':
-      return v.name.toLowerCase() === 'default' || v.args.some(valueUsesDefault);
+      return v.name.toLowerCase() === 'default' || v.args.some(a => valueUsesDefault(a.value));
     case 'Block':
       return valueUsesDefault(v.value);
     case 'Operation':

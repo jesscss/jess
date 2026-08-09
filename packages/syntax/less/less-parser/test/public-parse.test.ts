@@ -154,8 +154,8 @@ describe('public Less parse()', () => {
                 type: 'FunctionCall',
                 name: 'lighten',
                 args: [
-                  { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone', scope: 'scoped' },
-                  { type: 'Dimension', src: '10%' }
+                  { value: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone', scope: 'scoped' } },
+                  { value: { type: 'Dimension', src: '10%' } }
                 ]
               }
             },
@@ -165,7 +165,7 @@ describe('public Less parse()', () => {
               value: {
                 type: 'FunctionCall',
                 name: 'iscolor',
-                args: [{ type: 'Color', src: 'blue' }]
+                args: [{ value: { type: 'Color', src: 'blue' } }]
               }
             },
             {
@@ -239,16 +239,16 @@ describe('public Less parse()', () => {
       type: 'FunctionCall',
       name: 'fn',
       args: [
-        { type: 'Color', src: 'red' },
-        { type: 'Dimension', src: '10px' }
+        { value: { type: 'Color', src: 'red' } },
+        { value: { type: 'Dimension', src: '10px' } }
       ]
     });
     expect(statement).toMatchObject({
       type: 'FunctionCall',
       name: 'emit',
       args: [
-        { type: 'Color', src: 'red' },
-        { type: 'Dimension', src: '10px' }
+        { value: { type: 'Color', src: 'red' } },
+        { value: { type: 'Dimension', src: '10px' } }
       ]
     });
 
@@ -278,16 +278,16 @@ describe('public Less parse()', () => {
       throw new Error('expected mixed-delimiter function declarations');
     }
     expect(first.value.args).toMatchObject([
-      { type: 'Color', src: 'red' },
-      { type: 'Dimension', src: '10px' },
-      { type: 'Color', src: 'blue' }
+      { value: { type: 'Color', src: 'red' } },
+      { value: { type: 'Dimension', src: '10px' } },
+      { value: { type: 'Color', src: 'blue' } }
     ]);
     expect(second.value.args).toMatchObject([
-      { type: 'Color', src: 'red' },
-      { type: 'Dimension', src: '10px' },
-      { type: 'Color', src: 'blue' }
+      { value: { type: 'Color', src: 'red' } },
+      { value: { type: 'Dimension', src: '10px' } },
+      { value: { type: 'Color', src: 'blue' } }
     ]);
-    expect(final.value.args).toMatchObject([{ type: 'Color', src: 'red' }]);
+    expect(final.value.args).toMatchObject([{ value: { type: 'Color', src: 'red' } }]);
     expect(valueLayoutOf(first.value.args)).toEqual([', ', '; ']);
     expect(valueLayoutOf(second.value.args)).toEqual(['; ', ', ']);
 
@@ -319,9 +319,9 @@ describe('public Less parse()', () => {
       throw new Error('expected a nested FunctionCall');
     }
     expect(nestedFunction.args).toMatchObject([
-      { type: 'Color', src: 'red' },
-      { type: 'Dimension', src: '10px' },
-      { type: 'Color', src: 'blue' }
+      { value: { type: 'Color', src: 'red' } },
+      { value: { type: 'Dimension', src: '10px' } },
+      { value: { type: 'Color', src: 'blue' } }
     ]);
     expect(valueLayoutOf(nestedFunction.args)).toEqual([', ', '; ']);
     expect(() => parse('.card { value: fn(red;;blue); }')).toThrow(SyntaxError);
@@ -606,7 +606,7 @@ describe('public Less parse()', () => {
           prelude: {
             type: 'FunctionCall',
             name: 'selector',
-            args: [{
+            args: [{ value: {
               type: 'Interpolation',
               parts: [
                 { lit: '.' },
@@ -621,7 +621,7 @@ describe('public Less parse()', () => {
                 },
                 { lit: ' /* keep */ :is(.a, .b)' }
               ]
-            }]
+            } }]
           }
         }
       ]
@@ -662,7 +662,7 @@ describe('public Less parse()', () => {
         {
           type: 'FunctionCall',
           name: 'fn',
-          args: [{ type: 'AnonymousMixin' }]
+          args: [{ value: { type: 'AnonymousMixin' } }]
         }
       ]
     });
@@ -785,8 +785,8 @@ describe('public Less parse()', () => {
                 type: 'FunctionCall',
                 name: 'linear-gradient',
                 args: [
-                  { type: 'Color', src: '#333' },
-                  { type: 'Color', src: '#111' }
+                  { value: { type: 'Color', src: '#333' } },
+                  { value: { type: 'Color', src: '#111' } }
                 ]
               }
             }
@@ -833,8 +833,8 @@ describe('public Less parse()', () => {
                 type: 'FunctionCall',
                 name: 'rgb',
                 args: [
-                  { type: 'Dimension', src: '1' },
-                  { type: 'Dimension', src: '2' }
+                  { value: { type: 'Dimension', src: '1' } },
+                  { value: { type: 'Dimension', src: '2' } }
                 ]
               }
             },
@@ -844,9 +844,9 @@ describe('public Less parse()', () => {
                 type: 'FunctionCall',
                 name: 'mix',
                 args: [
-                  { type: 'Color', src: 'blue' },
-                  { type: 'Color', src: '#FFF' },
-                  { type: 'Dimension', src: '50%' }
+                  { value: { type: 'Color', src: 'blue' } },
+                  { value: { type: 'Color', src: '#FFF' } },
+                  { value: { type: 'Dimension', src: '50%' } }
                 ]
               }
             }
@@ -2968,7 +2968,7 @@ describe('public Less parse()', () => {
         {
           type: 'FunctionCall',
           name: 'e',
-          args: [{ type: 'Quoted', value: 'x' }]
+          args: [{ value: { type: 'Quoted', value: 'x' } }]
         },
         {
           type: 'Ruleset',
@@ -2976,7 +2976,7 @@ describe('public Less parse()', () => {
             {
               type: 'FunctionCall',
               name: 'e',
-              args: [{ type: 'Quoted', value: 'y' }]
+              args: [{ value: { type: 'Quoted', value: 'y' } }]
             }
           ]
         }
@@ -3096,7 +3096,7 @@ describe('public Less parse()', () => {
               value: {
                 type: 'FunctionCall',
                 name: 'error',
-                args: [{ type: 'Quoted' }]
+                args: [{ value: { type: 'Quoted' } }]
               }
             }
           ]
@@ -3113,7 +3113,7 @@ describe('public Less parse()', () => {
               value: {
                 type: 'FunctionCall',
                 name: 'error',
-                args: [{ type: 'Interpolation' }]
+                args: [{ value: { type: 'Interpolation' } }]
               }
             }
           ]
@@ -3130,7 +3130,7 @@ describe('public Less parse()', () => {
               value: {
                 type: 'FunctionCall',
                 name: 'fn',
-                args: [{ type: 'Quoted' }]
+                args: [{ value: { type: 'Quoted' } }]
               }
             }
           ]

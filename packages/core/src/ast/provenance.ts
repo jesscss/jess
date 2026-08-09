@@ -464,7 +464,17 @@ function hasTopLevelSlash(value: object): boolean {
   if (parts === null) {
     return false;
   }
-  for (const part of parts) {
+  for (const raw of parts) {
+    /*
+     * A call's argument array is a third carrier spelling: its items are
+     * `CallArg`s (`{ value, name, spread }`), so the operand to test is the
+     * argument's PAYLOAD. Reading `src` off the wrapper would answer "no slash"
+     * for every function call and silently drop its authored boundary.
+     */
+    let part: unknown = raw;
+    if (typeof part === 'object' && part !== null && 'value' in part && !('type' in part)) {
+      part = part.value;
+    }
     if (
       typeof part === 'object'
       && part !== null

@@ -61,7 +61,7 @@ describe('CSS calc()', () => {
   for (const [source, arg] of SHAPES) {
     it(`structures \`${source}\` as arithmetic`, () => {
       expect(parse(`a { width: ${source}; }`)).toMatchObject({
-        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [arg] } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'calc', args: [{ value: arg }] } }] }]
       });
     });
   }

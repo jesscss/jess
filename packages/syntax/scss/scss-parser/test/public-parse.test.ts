@@ -43,12 +43,12 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(root).toMatchObject({
       type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@supports', prelude: {
-          type: 'FunctionCall', name: 'selector', args: [{
+          type: 'FunctionCall', name: 'selector', args: [{ value: {
             type: 'Interpolation', parts: [
               { lit: '.card-' }, { ref: { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone' }, unquote: true },
               { lit: ':has([data-x="' }, { ref: { type: 'Lookup', kind: 'var', name: 'state', raw: '@state' }, unquote: true }, { lit: '"])' }
             ]
-          }]
+          } }]
         }
       }]
     });
@@ -144,9 +144,9 @@ describe('@jesscss/scss-parser public parse API', () => {
       rules: [
         { type: 'Ruleset', rules: [
           { name: 'direct', value: { type: 'Keyword', src: '--theme' } },
-          { name: 'via-var', value: { type: 'FunctionCall', name: 'var', args: [{ src: '--theme' }, { src: '--fallback' }] } },
-          { name: 'via-env', value: { type: 'FunctionCall', name: 'env', args: [{ src: '--safe-area' }] } },
-          { name: 'via-calc', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', left: { src: '--size' } }] } }
+          { name: 'via-var', value: { type: 'FunctionCall', name: 'var', args: [{ value: { src: '--theme' } }, { value: { src: '--fallback' } }] } },
+          { name: 'via-env', value: { type: 'FunctionCall', name: 'env', args: [{ value: { src: '--safe-area' } }] } },
+          { name: 'via-calc', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', left: { src: '--size' } } }] } }
         ] },
         { type: 'AtRuleBlock', name: '@media', prelude: { type: 'Block', delimiter: 'paren', value: { right: { src: '--viewport' } } } },
         { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren', value: { right: { src: '--mode' } } } }
@@ -407,7 +407,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     });
     expect(layer).toMatchObject({
       rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence', parts: [
-        { value: 'theme.css' }, { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'theme' }] }
+        { value: 'theme.css' }, { type: 'FunctionCall', name: 'layer', args: [{ value: { type: 'Keyword', src: 'theme' } }] }
       ] } }]
     });
     expect(bare(layeredMedia)).toEqual({
@@ -421,7 +421,7 @@ describe('@jesscss/scss-parser public parse API', () => {
             {
               type: 'Sequence',
               parts: [
-                { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'foo' }], modern: false },
+                { type: 'FunctionCall', name: 'layer', args: [{ name: undefined, spread: false, value: { type: 'Keyword', src: 'foo' } }], modern: false },
                 { type: 'Keyword', src: 'screen' }
               ]
             }
@@ -468,7 +468,7 @@ describe('@jesscss/scss-parser public parse API', () => {
             { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false },
             {
               type: 'FunctionCall', name: 'supports', modern: false,
-              args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'display' }, right: { type: 'Keyword', src: 'grid' }, inMathFunction: false } }]
+              args: [{ name: undefined, spread: false, value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'display' }, right: { type: 'Keyword', src: 'grid' }, inMathFunction: false } } }]
             }
           ]
         }
@@ -482,8 +482,8 @@ describe('@jesscss/scss-parser public parse API', () => {
           type: 'Sequence', parts: [
             { type: 'Quoted', value: 'theme.css' },
             { type: 'Sequence', parts: [
-              { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-              { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } }] },
+              { type: 'FunctionCall', name: 'layer', args: [{ value: { type: 'Keyword', src: 'tokens' } }] },
+              { type: 'FunctionCall', name: 'supports', args: [{ value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':' } } }] },
               { type: 'Keyword', src: 'screen' }
             ] }
           ]

@@ -65,7 +65,7 @@ describe('blocker 6 — @content', () => {
     expect(tree.rules[0].rules[0]).toEqual({
       type: 'Reference',
       base: { type: 'Lookup', scope: 'live', kind: 'var', name: 'content', raw: '@content' },
-      steps: [{ type: 'Call', args: [{ value: { type: 'Lookup', scope: 'live', kind: 'var', name: 'type', raw: '@type' } }] }],
+      steps: [{ type: 'Call', args: [{ spread: false, value: { type: 'Lookup', scope: 'live', kind: 'var', name: 'type', raw: '@type' } }] }],
       raw: '$content($type)'
     });
   });
@@ -80,7 +80,7 @@ describe('blocker 2 — @include with a trailing content block', () => {
     const tree = shape(parse('.a { @include m(1px) { color: red; } }')) as { rules: [{ rules: [Record<string, unknown>] }] };
     const call = tree.rules[0].rules[0];
     expect(call.type).toBe('MixinCall');
-    expect(call.args).toEqual([{ value: { type: 'Dimension', number: 1, unit: 'px', src: '1px' } }]);
+    expect(call.args).toEqual([{ value: { type: 'Dimension', number: 1, unit: 'px', src: '1px' }, spread: false }]);
     expect(call.content).toEqual({
       type: 'AnonymousMixin',
       rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' }, merge: null, important: false }]
