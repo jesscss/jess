@@ -3033,8 +3033,8 @@ const cssFactory = (g: GrammarSelf) => {
   const AtRulePreludeGroup = node(
     'AtRulePreludeGroup',
     noTrivia(choice(
-      token(balanced('(', ')')),
-      token(balanced('[', ']'))
+      token(balancedParens),
+      token(balancedBrackets)
     )),
     children => authoredText(children)
   );
