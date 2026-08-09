@@ -1009,11 +1009,24 @@ is simply wrong, which is worse than a diagnostic.
 `unitMode` is the ladder, and **every rung warns except the one that throws**
 (owner, 2026-08-01):
 
-| mode | `1 / 2px` | |
-| --- | --- | --- |
-| `loose` | `0.5px` | Less 4.x's answer, **+ warning** |
-| **`preserve`** (default) | `calc(1 / 2px)` | **+ warning** |
-| `strict` | throws | |
+| mode | `1 / 2px` | | measured at `d9531097f` |
+| --- | --- | --- | --- |
+| `loose` | `0.5px` | Less 4.x's answer, **+ warning** | `0.5px`, **no warning** |
+| **`preserve`** (default) | `calc(1 / 2px)` | **+ warning** | `calc(1 / 2px)`, **no warning** |
+| `strict` | throws | | **`0.5px` — does not throw** |
+
+**Two rungs of this ladder are NOT implemented.** The VALUES for `loose` and
+`preserve` are right and are asserted by `operations.test.ts`; the two things
+this table adds on top of them are not:
+
+- **No rung warns.** `packages/core/src/ast/value-operate.ts` has no warning
+  emission at all, so "no mode is silent" is currently false at every rung.
+- **`strict` does not throw for an inexpressible result.** `dimensionOperate`
+  (`value-operate.ts:265`) reads `unitMode === 'strict'` only on the `+`/`-`
+  conversion path (`:286`); the `*`/`/` path composes the unit multiset and never
+  consults the mode, and only `preserve` attaches a preserved spelling (`:312`).
+  So `strict` falls through to the raw magnitude. `1px + 1em` under `strict`
+  DOES raise, which is the `5c516dbb1` work and is unaffected.
 
 **No mode is silent.** Silent preservation is the worst option: the author gets
 output that looks fine and never learns the expression was meaningless. Ledger
@@ -1069,7 +1082,39 @@ and every fixture it moves needs the **O4** graduation — create
 `legacy/<name>.css` holding the pre-change output with the **O5** header first,
 then update the top-level `.css`.
 
-## 6. Recognition — the grammar defect that blocks the rest
+## 6. Recognition — the grammar defect that blocks the rest — LANDED for `css` and `jess`
+
+**Status re-measured 2026-08-09 at `d9531097f`.** The diagnosis below stands and
+the design it settles is what shipped, but the "today" statements in this section
+are HISTORICAL. What exists now:
+
+- `CSS_MATH_FUNCTIONS` / `CSS_MATH_FUNCTION_OPENERS` — the single shared table
+  §6.1 says does not exist — is `packages/core/src/ast/math-functions.ts:28`,
+  with a conformance test at `ast/__tests__/math-function-table.test.ts`.
+- `css` and `jess` each have ONE `MathFunction` production reached from ONE
+  multi-key dispatch arm (`css grammar.ts:2518`, `:2602`, `:2660`;
+  `jess grammar.ts:3653`, `:3687`), spelled the way §6.3 requires.
+- `inMathFunction` is a non-optional parse-time field on `Operation`
+  (`nodes.ts`), set by the `css` and `jess` grammars and read by
+  `ast/serialize.ts` / `ast/value-eval.ts`.
+- Probed at `d9531097f`: `calc(min(1em - 2px))` and `min(100% - 30px)` are
+  accepted by all four parsers, and §6.2's regression battery holds —
+  `min(1px 2px)`, `min(red blue)`, `clamp(1px 2px, 3px)` all still parse in all
+  four.
+
+**Two things this section names are still true and still outstanding:**
+
+- `less` and `scss` have **no** `MathFunction` production and set **no**
+  `inMathFunction` (`grep -c MathFunction` is `0` in both grammars). Their math
+  ladders are their own, and they wrap the argument: probed,
+  `calc(min(1em - 2px))` emits `calc(min(calc(1em - 2px)))` in both, against
+  `calc(min(1em - 2px))` from `jess`.
+- `min(U+0-7F)` is **accepted by `css`, `less` and `scss` and REJECTED by
+  `jess`** — the `UnicodeRange` loss §6.2 predicted, landed in `jess` only. This
+  is a live one-way-superset violation, and `test/cross-dialect/acceptance-matrix.test.ts`
+  is blind to it because no unicode-range row is in its corpus.
+
+The original diagnosis follows.
 
 None of §4's math-function rows are reachable in `.jess` today, because the
 argument never parses as math.
@@ -1103,6 +1148,13 @@ places — four grammar dispatch tables, `tree/call.ts:265`,
 `ast/serialize.ts:4647`, `ast/value-operate.ts:306`, and
 `genericFunctionIdentifier` (`css grammar.ts:864`), a regex lookahead that is a
 hand-rolled copy of the dispatch table.
+
+**Superseded 2026-08-09 at `d9531097f`.** The list now exists —
+`CSS_MATH_FUNCTIONS` (`packages/core/src/ast/math-functions.ts:28`), twenty-one
+values-4 §10 names, with `CSS_MATH_FUNCTION_OPENERS` derived from it and an
+`isMathFunctionName` predicate. Outside the dead `tree/` engine, the surviving
+independent `'calc'` spellings are `ast/serialize.ts:5084` (the sole-argument
+unwrap) and `css grammar.ts:1190`; `ast/value-operate.ts` no longer spells it.
 
 ### 6.2 The proposal, and what adversarial review killed
 
@@ -1189,11 +1241,30 @@ collapse the way less's already do, there is nothing left to name. The change is
 
 The node-set work that replaces it — including this ladder — is **[Part II](#part-ii--naming)**.
 
-## 7. What jess does today — the gap list
+## 7. What jess did on 2026-08-01 — the gap list — HISTORICAL
 
-Measured 2026-08-01 at `62c9a4ef1`.
+Measured 2026-08-01 at `62c9a4ef1`. **Re-measured 2026-08-09 at `d9531097f`:
+every gap named in §7.1 and §7.2 is closed, and §7.3's defect list is closed
+except where noted inline.** The section is kept for the diagnosis — each gap's
+ONE cause is what the fix was written against — but do not read it as current
+state. The executable form is `packages/jess/test/jess/operations.test.ts`,
+36 rows, all green, no `it.fails`.
 
-### 7.1 Comparison — 22 of 22 rows fail, for ONE cause
+What closed, verified by probe at `d9531097f`:
+
+| §7 claim | today |
+| --- | --- |
+| `$(1 = 2)` emits `1 = 2` | `false` |
+| `==` does not parse at all | parses; all three jess operator regexes carry `==` (`grammar.ts:1639`, `:1647`, `:2290`) |
+| relational is not trichotomous | `$(b > a)` → `true` |
+| `1px > red` is a silent `false` | raises `Incomparable operands` |
+| no `.jess` comparison assertion in the suite | `operations.test.ts` is the §4 table, executable |
+| `min(100% - 30px)` is a parse error | preserves (§6 landed for `css` and `jess`) |
+| `guard.ts`'s `'truth'` is a byte test | typed predicate in `ast/value-truth.ts` |
+| `and`/`or` do not short-circuit | they do — `@if false and (2px > 1em)` takes `@else` |
+| `equalityMode` / both `fns/` bypasses | already marked LANDED below |
+
+### 7.1 Comparison — 22 of 22 rows fail, for ONE cause — CLOSED
 
 `$(1 = 2)` emits `1 = 2`, not `false`. The jess grammar builds a `Condition`
 carrying both a real `GuardNode` and a verbatim `src`
@@ -1219,7 +1290,9 @@ keeping the mis-parse recovery while letting real comparisons evaluate.
 **No `.jess` comparison assertion exists anywhere in the suite**, which is why a
 22/22 failure went unnoticed.
 
-### 7.2 Math — 6 of 9
+### 7.2 Math — 6 of 9 — CLOSED
+
+Re-measured 2026-08-09 at `d9531097f`: all nine rows now emit the `want` column.
 
 | row | got | want |
 |---|---|---|
@@ -1472,20 +1545,24 @@ Sass**, where `false and (1px + 1em)` must not raise.
 ## 10. The plan
 
 Ordered so that each phase is separately reviewable, separately measurable, and
-separately revertable. **Phases 1–3 are unblocked today. Phase 4 needs
-§4.4, which is now settled — no ruling is outstanding.**
+separately revertable.
+
+**Status re-measured 2026-08-09 at `d9531097f`: phases 0, 1, 2, 3, 4 and 5 are
+LANDED. Phase 6 is landed for `css` and `jess` and NOT STARTED for `less` and
+`scss` — see §6's status block.** Each phase heading below carries its own
+marker; the prose inside each is the original plan, kept for the reasoning.
 
 Every phase that can move emitted CSS carries the O4/O5 fixture graduation and a
 `Perf-AB` trailer, per the grammar review standard.
 
-### Phase 0 — the net (unblocked, do first)
+### Phase 0 — the net — **LANDED** (`packages/jess/test/jess/operations.test.ts`, 36 rows, no `it.fails`)
 
 There is **no `.jess` comparison assertion anywhere in the suite** (§7.1), which
 is why 22/22 went unnoticed. Land the §4 table as an executable test *before*
 touching semantics, with every row marked pending where it fails. That converts
 this document into a ratchet and makes every later phase measurable.
 
-### Phase 1 — make `.jess` comparison evaluate (unblocked)
+### Phase 1 — make `.jess` comparison evaluate — **LANDED**
 
 One cause, one site: the `Condition` value lane (`serialize.ts:3323`). Evaluate
 when `e.ev` is present; keep `literal(node.src)` as the `!e.ev` fallback; give
@@ -1496,7 +1573,7 @@ Closes most of §7.1's 22 rows on its own. Cannot move `.less`/`.scss` output,
 because in those dialects a `Condition` only reaches the value lane in the
 mis-parse case the comment describes. **That makes it the safest first cut.**
 
-### Phase 2 — add `==` to `.jess` (unblocked)
+### Phase 2 — add `==` to `.jess` — **LANDED**
 
 Three operator regexes (`grammar.ts:1456`, `:1464`, `:2012`) gain `==`; the guard
 node carries the new comparison kind; `compare()` gains the arm. Additive — `==`
@@ -1509,7 +1586,7 @@ redundant (§4.4.3).
 **Phases 4 and 5 both depend on this**, since every lowering is written in terms
 of `==`.
 
-### Phase 3 — relational becomes trichotomous (unblocked, §4.2)
+### Phase 3 — relational becomes trichotomous (§4.2) — **LANDED**
 
 `toString()` comparison for non-numeric relational. Moves `.less` output:
 `b > a` false → true, and any guard that depended on the silent false. Fixture
@@ -1530,7 +1607,7 @@ needed. `packages/jess/test/less/equality-mode.test.ts`, which asserted a
 three-column truth table with one column per mode, became
 `less-equality.test.ts` with the one column that is left.
 
-### Phase 5 — truthiness (UNBLOCKED, §4.4)
+### Phase 5 — truthiness (§4.4) — **LANDED**
 
 Settled by §4.4: falsy iff `false`, `null`, `""`, and the empty collection (`{}`
 in `.jess`, `()` in `.scss`). The grammar hold on
@@ -1549,7 +1626,7 @@ Unblocks 29 of 92 Bootstrap files and 42 of 109 failures across bourbon /
 foundation-sites / include-media, which is the largest single corpus movement
 available.
 
-### Phase 6 — recognition (§6), independent of 0–5
+### Phase 6 — recognition (§6), independent of 0–5 — **PARTIAL: `css` + `jess` only**
 
 D1 rename + dead-twin collapse (AST-identical, **CST-moving** — build the css
 differential here, there is none today). D2 the math-function table as one
@@ -1567,7 +1644,19 @@ a dead-arm negative control first.
 - Any new stylesheet-callable function (§1).
 - The §11 defects, which are real but independent and should not ride along.
 
-## 10a. Editor / lint diagnostics
+## 10a. Editor / lint diagnostics — NOT STARTED
+
+**Verified 2026-08-09 at `d9531097f`.** The DESIGN landed —
+`docs/architecture/lint-roadmap.md` carries the seven candidate diagnostics with
+their spec sections and the `max(compiler, lint)` severity ruling. The
+IMPLEMENTATION has not started: the only operation-adjacent rule that exists is
+the pre-existing `jess/no-impossible-guard` (`packages/lint/src/rules.ts:76`,
+`diagnostics-core/src/rule-aliases.ts:69`), which predates this section and
+covers static guard facts, not any §4 rule. None of the seven has a lint code.
+
+Its sequencing constraint is now satisfied — §10's phases 0–5 have landed, so
+the core predicates this section says it must read (`ast/value-truth.ts`,
+`ast/value-guards.ts`) exist.
 
 The rules here currently fail only at EVAL time. They should also be IDE and lint
 diagnostics across all four grammars — owner note, 2026-08-01. Tracked in
@@ -1581,6 +1670,9 @@ reimplementing them.
 
 ## 11. Defects found while measuring, outside this document's scope
 
+**Re-verified 2026-08-09 at `d9531097f`: all seven are still OPEN.** Status is
+recorded inline; nothing here has been fixed by the §10 phases.
+
 - **jess `.scss` diverges from dart-sass across the whole slash family** —
   `min(4px / 2)` → `2` (want `2px`), `calc(4px / 2)` → `4px / 2` (want `2px`),
   `calc(1px + min(4px / 2))` → `calc(1px + 2)` (want `3px`). Not a dropped unit:
@@ -1593,7 +1685,8 @@ reimplementing them.
   must preserve BOTH the list output and the positional exclusion of `/` from
   `MathTopProduct`.
 - **`.jess` rejects `calc(1.0px+2em)`** while `.less`/`.scss` accept — valid CSS
-  rejected by one dialect.
+  rejected by one dialect. Re-probed at `d9531097f`: **`css` rejects it too**, so
+  this is a CSS-BASE defect that `jess` inherits, not a jess-only one.
 - **`calc(1px /* c */ + 2em)` loses the comment** in all three dialects. F1
   governs whitespace and says nothing about comments.
 - **`foldOperation`** (`css grammar.ts:743`, `:749`) scans the same array twice.
@@ -1601,8 +1694,11 @@ reimplementing them.
   an empty match instead of returning `[]`, making the `?? any('')` fallback its
   callers spell unreachable.
 - **Latent:** Less's guard vocabulary includes `=>` and `=~`, stored
-  un-normalized (`less grammar.ts:4213`), and `value-guards.ts:189-197` has no
-  case for either — both silently evaluate to `false`.
+  un-normalized (`less grammar.ts:2083`, `:2531`), and `value-guards.ts`'s
+  operator switch (`:404-430`) has no case for either — both silently evaluate to
+  `false`. Re-probed at `d9531097f`: still true, and `.m() when (1 => 1)` /
+  `when (1 =~ 1)` both emit nothing. `=<` HAS since gained a case
+  (`value-guards.ts:430`, `:465`); `=>` and `=~` did not.
 
 ---
 
@@ -1655,7 +1751,15 @@ Five independent rulings, one rule behind all of them.
    exactly what surfaced `()` in §4.4 (no `.jess` spelling; a parse error in
    value position) and `null` (no literal until §4.3 lands).
 
-### 12.1 Precedence rungs are not nodes
+### 12.1 Precedence rungs are not nodes — NOT STARTED
+
+**Re-measured 2026-08-09 at `d9531097f`: the table below is unchanged.** css
+still declares `CalcValue` / `CalcProduct` / `CalcSum` / `CalcParen` as public
+`node('…')` labels (`css grammar.ts:2199`, `:2213`, `:2224`, `:1872`), and jess
+still declares all four of its rungs (`ExpressionAtom` `:2047`,
+`ExpressionProduct` `:2147`, `ExpressionSum` `:2158`, `ExpressionCompare`
+`:2169`). No `collapse` was applied in either, and the css differential this
+section says does not exist still does not exist.
 
 `Atom`, `Product` and `Sum` are not language concepts — they are how precedence
 is written in a PEG. Less already treats them as such; css and jess leak all of
@@ -1680,36 +1784,55 @@ moving output.
 
 ### 12.2 The authoritative node list, and why `node('…')` is not it
 
-There are two populations, and only one of them is nodes. Measured 2026-08-04 at
-`089c02adf`:
+There are two populations, and only one of them is nodes. Re-measured 2026-08-09
+at `d9531097f`, after §12.3's deletions landed (the 2026-08-04 reading at
+`089c02adf` was 49 / 448 / 32 / 416):
 
 | population | how to enumerate | count |
 | --- | --- | --- |
-| **AST kinds — the nodes** | `grep -oE "readonly type: '[A-Za-z]+'" packages/core/src/ast/nodes.ts \| sort -u` | **49** |
-| CST production labels | first arg of every `node('…')` across the four grammars | **448** (css 122, less 219, scss 150, jess 164) |
+| **AST kinds — the nodes** | `grep -oE "readonly type: '[A-Za-z]+'" packages/core/src/ast/nodes.ts \| sort -u` | **45** |
+| CST production labels | first arg of every `node('…')` across the four grammars, deduplicated | **450** (css 121, less 213, scss 156, jess 171, before dedup) |
 
-The 49 are a closed discriminated union: the compiler exhaustiveness-checks
+The 45 are a closed discriminated union: the compiler exhaustiveness-checks
 every switch over it, so it cannot drift silently. **That list is the answer to
 "what nodes are."**
 
-The 448 name a *parse rule*. Exactly **32** of them coincide with an AST kind
+The 450 name a *parse rule*. Exactly **33** of them coincide with an AST kind
 (`Call`, `Color`, `Declaration`, `Quoted`, `Ruleset`, `Stylesheet`, …); the
-other **416** never did and never will. `CalcSum`, `MathAtom`, `ExpressionQuoted`
-and `TopSumMaybeDivision` are all in the 416. Nothing in the type system, the
-naming, or the review standard separates the 32 that denote a node from the 416
+other **417** never did and never will. `CalcSum`, `MathAtom`, `ExpressionQuoted`
+and `TopSumMaybeDivision` are all in the 417. Nothing in the type system, the
+naming, or the review standard separates the 33 that denote a node from the 417
 that are scaffolding — which is how a precedence rung and a real node came to
 look identical at a glance. **A grammar's `node('…')` label is not evidence
 that a node by that name exists.**
 
-`Operation` (`nodes.ts:217`) and `Condition` (`:267`) are AST kinds with no CST
-label in any grammar; jess's `Expression` (`grammar.ts:2115`) is a CST label
-with no AST kind. Both directions of the mismatch are already live.
+Twelve AST kinds have no CST label in any grammar — `AnonymousMixin`, `Any`,
+`Condition`, `FunctionCall`, `IfValue`, `List`, `Lookup`, `LookupStep`,
+`Operation`, `Range`, `RelativeSelector`, `Sequence`. The opposite direction
+this section used to cite — jess's `Expression` being a CST label with no AST
+kind — **is closed**: §12.6 landed and `Expression` is now a real kind
+(`nodes.ts:309`).
 
-### 12.2a The 49 kinds and what each represents
+### 12.2a The kinds and what each represents — HISTORICAL, 2026-08-04
 
-The list as it stands at `ee1aa5af8`, before §12.3's deletions. Regenerate with
-the grep in §12.2 — this table is a reading aid, not the source of truth, and if
-the two disagree the union wins.
+**This table is a 2026-08-04 snapshot at `ee1aa5af8`, taken BEFORE §12.3's
+deletions, and it no longer matches the union.** It is kept because each row
+still explains what its kind was for. Regenerate with the grep in §12.2 — that
+table is a reading aid, not the source of truth, and if the two disagree the
+union wins.
+
+Measured 2026-08-09 at `d9531097f`, the drift is:
+
+- **Ten rows below describe kinds that no longer exist** — `SpacedValue`,
+  `Assignment`, `GeneralEnclosed`, `RawInline` (§12.3 rows 1, 2, 3, 5) and the
+  six reference slices `VariableReference`, `VarIndirect`, `PropertyReference`,
+  `DeclarationReference`, `DotLookup`, `BracketLookup` (§12.3 row 4 / §12.3a).
+- **Six kinds have no row** — `Expression` (§12.6), `Lookup` and `LookupStep`
+  (the §12.3a descriptor's container and step), plus `IfValue`, `Null` and
+  `While`.
+
+49 − 10 + 6 = **45**, which is what the grep reports. §12.3a's "the final kind
+count is OPEN" is unchanged by this: 45 is the count TODAY, not the target.
 
 **Value leaves.** A leaf carries its type honestly in the discriminant; the
 parser's classification *is* the node.
@@ -1792,7 +1915,7 @@ descriptor replaces the eight slices below)*
 | `ModuleImport` | a compile-time JavaScript / TypeScript module dependency |
 | `Stylesheet` | the document: an ordered list of top-level statements |
 
-### 12.3 Deletions and merges
+### 12.3 Deletions and merges — **LANDED** (all five rows; verified 2026-08-09 at `d9531097f` — none of the ten deleted kinds appears in the `nodes.ts` union)
 
 Owner rulings, 2026-08-04. Each removes a kind that duplicated one already
 present. Where I argued against, the objection is recorded as withdrawn so it is
@@ -1809,7 +1932,7 @@ not re-raised.
 Rows 1–3 and 5 are local. Row 4 is a family redesign and must be done as one
 piece; splitting it is how the duplication got there.
 
-### 12.3b `@import` is TWO nodes, and `ImportAtRule` is neither
+### 12.3b `@import` is TWO nodes, and `ImportAtRule` is neither — **LANDED** (`ImportAtRule` is not a kind; `StyleImport` carries the option surface, `nodes.ts:1267`)
 
 **Owner ruling, 2026-08-07, amending row 5.** There is `StyleImport`, which
 carries options and the rest, and there is `AtRule`. Nothing else. A plain CSS
@@ -1863,7 +1986,7 @@ loader owns `importDocument`), which is what makes the unification cheap.
   (`reference`, `optional`, `css`, `multiple`). Folding an option into `mode` is
   the same fusion that produced `GeneralEnclosed.form`.
 
-### 12.3a The reference family — one descriptor, not eight slices
+### 12.3a The reference family — one descriptor, not eight slices — **LANDED** (the eight slices are gone; `Reference` + `Lookup` + `LookupStep` remain, `nodes.ts:447`)
 
 Measured 2026-08-04 at `ee1aa5af8`. Field sets as they stand:
 
@@ -1945,11 +2068,22 @@ remove.
   "what is being looked up" had nowhere to live and looked like a semantic
   problem instead of an absent slot (§12.3a).
 
-### 12.4 Grammar labels that misspell a node
+### 12.4 Grammar labels that misspell a node — **PARTIAL** (scss done, less 11/14, css 0/11)
 
 Extracted by reading the constructor each reducer actually calls, so every row is
 evidence-backed rather than name-matched. Only 1:1 cases are listed — one
 production building exactly one kind, under a different name.
+
+**Re-measured 2026-08-09 at `d9531097f`, by grepping each label in its grammar:**
+
+| grammar | rows renamed | rows remaining |
+| --- | --- | --- |
+| scss | **all 7** (`Map`, `MapEntry`, `Paren`, `Square`, `Simple`, `Placeholder`, `SassInterpolation`) | none — **DONE** |
+| less | 11 of 14 | `MixinReferenceBase` (`:4376`), `SelectorBranch` (`:6172`, `:6337`, `:6349`, `:6355`, `:6387`), `ExtendTarget` (`:6296`) |
+| css | 0 of 11 | all — `BasicSelector`, `NestingSelector`, `keyframeSelector`, `Percentage`, `CalcParen`, `ParenValue`, `SquareValue`, `ValueList`, `TypedValueList`, `VarFallback`, `RelativeComplexSelector` |
+
+§12.5's "deletions before renames" held: §12.3 landed first, and the labels it
+was expected to kill are gone.
 
 | grammar | label | builds | should be |
 | --- | --- | --- | --- |
@@ -1991,7 +2125,7 @@ Interface names drifted too — `ReferenceCall` is the interface for kind `'Call
 (`nodes.ts:430`). A rename pass fixes both sides or it only relocates the
 confusion.
 
-### 12.6 RESOLVED — restore `Expression`; `$( … )` on `Block` is a v2 REGRESSION
+### 12.6 **LANDED** — restore `Expression`; `$( … )` on `Block` is a v2 REGRESSION
 
 The `Expression` reducer builds
 `interpolation([{ ref: boundaryBlock(…) }])`, i.e. the CSS `Block` node carrying
@@ -2038,7 +2172,12 @@ Four things the substitution costs, all of which the restore fixes:
 AST kind, listed there as one of the live label/kind mismatches. The mismatch is
 the regression, not a naming quirk.
 
-### 12.6a `.jess` bare parens are CSS, preserved as written
+### 12.6a `.jess` bare parens are CSS, preserved as written — NOT IMPLEMENTED
+
+**Probed 2026-08-09 at `d9531097f`.** The ruling stands; the code does not
+implement it yet. `.a { k: [1 2]; }` works (`[1 2]`), but `.a { k: (1 + 2); }`
+and `.a { k: (1 2); }` are both `parse/syntax-error — Unexpected Jess syntax`.
+That is step 3 of §12.6b's forced order, and it is blocked behind step 1.
 
 **Owner ruling, 2026-08-07.** In `.jess`, `( … )` and `[ … ]` are ORDINARY CSS
 VALUES. They are parsed as CSS — valid or not — and preserved exactly as
@@ -2085,7 +2224,22 @@ COLLECTION, and under this ruling its spelling is per dialect: `()` in `.scss`,
 table has a row per spelling, so nothing here is outstanding — this was a DOC
 contradiction only, and both engines already behave correctly.
 
-### 12.6b `mathMode` at EVAL is a v2 regression — the parse is CONTEXTUAL
+### 12.6b `mathMode` at EVAL is a v2 regression — the parse is CONTEXTUAL — NOT STARTED
+
+**Re-measured 2026-08-09 at `d9531097f`. Step 1 has not begun**, and the
+section's own evidence still reads true verbatim: `mathMode` appears 17 times
+under `packages/core/src/ast/`, of which **6 are eval-time reads in
+`serialize.ts`** (`:2801`, `:2804`, `:2925`, `:3684`, `:3715`, `:3717`), and the
+only two hits across the four grammars (`css grammar.ts:767`,
+`jess grammar.ts:1471`) are **prose in comments**. The parser still never
+receives it.
+
+The other half of the ruling DID land: `parenDepth` is gone from `ast/` and is
+now `parenFrames?: readonly boolean[]` (`ast/serialize.ts:2625`), the boolean
+stack §8 called for.
+
+*(A lane is actively working this section; the above is the state at
+`d9531097f`.)*
 
 **Owner ruling, 2026-08-07.** The Chevrotain parser parsed contextually: math
 settings and paren POSITION decided, at parse time, whether a paren group was a
@@ -2154,13 +2308,15 @@ product of three inputs — `inMathFunction`, `unitMode`, `mathMode`. If
 `mathMode` joins `inMathFunction` at parse time, the only remaining eval-time
 input is `unitMode`.
 
-### 12.7 `ExpressionQuoted` should be `Quoted`
+### 12.7 `ExpressionQuoted` should be `Quoted` — NOT STARTED
 
 The repo's own convention is
 already many productions → one node name: `'Quoted'` is emitted from **three**
 distinct productions in less (`grammar.ts:2545`, `:2568`, `:2580`), **two** in
 scss (`:1292`, `:1361`), and **two** in jess (`:2197`, `:2263`) — each with
-different arms. `ExpressionQuoted` (jess `:2496`) breaks that convention alone.
+different arms. `ExpressionQuoted` (jess `:2761` at `d9531097f`) breaks that
+convention alone. **Still outstanding** — five live references at that commit
+(`jess-parser/src/grammar.ts:66`, `:2091`, `:2761`, `:2762`, `:6358`).
 
 A previous draft of this section defended the split on the grounds that
 `Quoted` admits a leading `~` and the expression-position arms do not. **That
