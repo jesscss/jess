@@ -186,6 +186,14 @@ type GrammarRuleName =
   | 'OpaqueAtRulePreludeCapture'
   | 'OpaqueAtRuleBlock'
   | 'OpaqueBody'
+  | 'OpaqueBodyPart'
+  | 'OpaqueBodyText'
+  | 'OpaqueBodyComment'
+  | 'OpaqueBodyQuoted'
+  | 'OpaqueBodyStray'
+  | 'OpaqueGroup'
+  | 'OpaqueComment'
+  | 'OpaqueString'
   | 'PageBlock'
   | 'Percentage'
   | 'Property'
@@ -279,6 +287,21 @@ function tokenText(child: unknown): string {
     return child.value;
   }
   throw new Error('CSS AST grammar lost a required token');
+}
+
+/*
+ * Re-join the parts of a structured opaque at-rule body into the exact bytes
+ * the flat capture used to hand over. The parts nest (a `{ … }` group is an
+ * array), so this recurses; nothing is trimmed, re-spaced, or re-ordered,
+ * which is what makes `rawBody` — and therefore the serialized output — the
+ * same string it was before the body gained an interior.
+ */
+function opaqueBodyText(children: readonly unknown[]): string {
+  let text = '';
+  for (const child of children) {
+    text += Array.isArray(child) ? opaqueBodyText(child) : tokenText(child);
+  }
+  return text;
 }
 
 function functionOpenName(child: unknown): string {
@@ -3139,10 +3162,51 @@ const cssFactory = (g: GrammarSelf) => {
       return text === '' ? null : text;
     }
   );
+
+  /*
+   * An unknown at-rule's block is a simple block of component values
+   * (css-syntax-3 §5.4.2 "consume an at-rule" → §5.4.8 "consume a simple
+   * block"). That is the block's SYNTACTIC structure and the spec states it;
+   * what the spec leaves to the defining at-rule is the SEMANTIC reading —
+   * *"This specification places no limits on what an at-rule's block may
+   * contain. Individual at-rules must define whether they accept a block, and
+   * if so, how to parse it."* No spec defines one for an unknown at-rule, so
+   * this recognises the braces and no meaning: a nested `{ … }` is a group,
+   * never a rule, and `a: b` inside it is text, never a declaration.
+   *
+   * The AST reduction is byte-for-byte what the flat capture produced, so this
+   * adds a CST interior and moves nothing downstream.
+   */
+  const OpaqueGroup = node(
+    'OpaqueGroup',
+    noTrivia(sequence(
+      literal('{'),
+      many(g.OpaqueBodyPart),
+      literal('}')
+    )),
+    children => opaqueBodyText(children)
+  );
+  const OpaqueComment = node(
+    'OpaqueComment',
+    g.OpaqueBodyComment,
+    children => tokenText(children[0])
+  );
+  const OpaqueString = node(
+    'OpaqueString',
+    g.OpaqueBodyQuoted,
+    children => opaqueBodyText(children)
+  );
+  const OpaqueBodyPart: Combinator<unknown> = choice(
+    g.OpaqueBodyText,
+    g.OpaqueComment,
+    g.OpaqueString,
+    g.OpaqueGroup,
+    g.OpaqueBodyStray
+  );
   const OpaqueBody = node(
     'OpaqueBody',
-    g.OpaqueAtRuleBodyCapture,
-    children => children.length === 0 ? '' : tokenText(children[0])
+    noTrivia(many(g.OpaqueBodyPart)),
+    children => opaqueBodyText(children)
   );
   const OpaqueAtRuleBlock = node(
     'OpaqueAtRuleBlock',
@@ -4241,6 +4305,10 @@ const cssFactory = (g: GrammarSelf) => {
     AtRulePrelude,
     StatementPrelude,
     OpaqueAtPrelude,
+    OpaqueGroup,
+    OpaqueComment,
+    OpaqueString,
+    OpaqueBodyPart,
     OpaqueBody,
     OpaqueAtRuleBlock,
     LayerBlock,
