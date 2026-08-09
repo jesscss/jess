@@ -26,6 +26,7 @@
     "build": "pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "bench:stylelint": "pnpm build && node test/stylelint-comparison-bench.mjs",
+    "bench:stylelint:crossover": "pnpm build && node --expose-gc --experimental-strip-types test/stylelint-crossover-bench.ts",
     "test": "vitest --watch=false",
     "lint": "eslint '**/*.{js,ts}'"
   },
