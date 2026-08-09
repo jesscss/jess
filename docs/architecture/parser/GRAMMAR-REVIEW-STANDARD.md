@@ -18,6 +18,140 @@ asked for repeatedly and has not stuck, because _make it good_ is not checkable
 and a passing test ends the job. This document replaces that instruction with
 sixteen questions and a rule about how many things you ask them of.
 
+---
+
+## The four hard rules
+
+**Owner, verbatim. These are the law the rest of this document serves. No agent
+is allowed to violate them.**
+
+> The hard rules that no agent is allowed to violate:
+>
+> 1. CSS grammar defines all regular CSS
+> 2. Each downstream grammar MUST extend CSS grammar (import and compose)
+> 3. Each downstream grammar may ONLY define specific overrides. (It may not
+>    define ANY shape that exists in css-grammar already and could have been
+>    used.)
+> 4. Each downstream grammar MAY NOT create a new rule just because it's
+>    changing PARSING for that rule. e.g. a Quoted in CSS is still a Quoted in
+>    every other language, even though it adds interpolation.
+
+They rank above every item in §2 and every constraint in §3. If a checklist item
+appears to permit something a hard rule forbids, the hard rule wins and the
+checklist item is the defect.
+
+**Rule 4 restated, because it is the one that gets rationalized away.** A
+`Quoted` in CSS is still a `Quoted` in every other dialect. Adding interpolation
+changes how it PARSES; it does not make it a different rule. Splitting `Quoted`
+into `LiteralQuoted` plus an interpolating form is forbidden — the superset
+**overrides** `Quoted`, it does not fork it.
+
+**The burden of proof sits on the superset, always.** A construct that genuinely
+does not exist in CSS — a mixin call, a Sass control directive — is a NEW rule
+and is fine. A construct that exists in CSS and is being parsed differently is an
+OVERRIDE and must keep the CSS name. When in doubt, it is an override. The
+superset must prove CSS has no rule for the construct; CSS is never asked to
+prove it does.
+
+No exception to these four has been granted. If you believe one is structurally
+necessary, record it as an OPEN QUESTION for the owner in
+`docs/architecture/core/DESIGN-DECISIONS.md` — do not grant yourself a carve-out
+and do not write one into this file.
+
+### Current reality: the rules are violated wholesale
+
+Recorded so nobody has to rediscover it. Every claim below is re-checkable at
+`fb272dfc1`.
+
+**Rule 2 is not met at all — no superset imports another grammar's
+productions.** The `* CSS base: ../../../css/css-parser/src/grammar.ts` line at
+the top of each superset is a COMMENT inside the opening docblock, not an
+import: `less-parser/src/grammar.ts:4`, `scss-parser/src/grammar.ts:4`,
+`jess-parser/src/grammar.ts:4`. Grepping the three superset grammars for a
+reference to `cssGrammar`, `lessGrammar`, `cssRules`, or any `*-parser/grammar`
+import returns nothing but their own local `rules<XRules>` types and
+`composeLeaf` lines.
+
+**What IS shared is token recognition only, and that is the distinction the word
+`compose` in the code has been hiding.** Each grammar ends in a `composeLeaf`
+over recognition tables plus its own `rules(...)` map — css/scss/jess over
+`[cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, …]`
+(`css-parser/src/grammar.ts:4288`, `scss-parser/src/grammar.ts:6005`,
+`jess-parser/src/grammar.ts:6560`) and less over `[cssSyntax, lessSyntax,
+cssPseudoSyntax, …]` (`less-parser/src/grammar.ts:6805`). `cssSyntax`
+(`packages/parser-shared/src/recognition.ts:515`) is a table of TERMINALS —
+`Identifier`, `AttributeOperator`, `DoubleQuotedText`, `SingleQuotedText`,
+`UrlOpen`, `SimpleSelectorToken`. **Terminals compose; productions do not.**
+Sharing a token table is not extending a grammar, and a `composeLeaf` line is
+not evidence of rule 2 being met.
+
+**It used to compose productions, and that is checkable.** Before `59f695d4a`
+(2026-07-27, `refactor(parser): fold dialect grammars to host mode`),
+`scss-parser/src/grammar.ts` read `export const scssGrammar = compose([
+lessGrammar, cssAstSyntax, rules(…)])` at `:47`, with `import { lessGrammar }
+from '@jesscss/less-parser/grammar'` at `:9` and a docblock at `:14` saying
+"SCSS = Less + the SCSS delta. `compose` fuses the imported compiled…". Note
+what it composed on: **Less, not CSS** — which rules 1 and 2 now forbid. If
+production-level composition returns it must be `compose([cssRules, …])`.
+
+**Rule 4 has measured violations today, and they are FAILS, not stylistic
+drift.** Seven names in the supersets for rules CSS already spells, each
+verified in the file at `fb272dfc1`:
+
+| superset name       | where                                                        | CSS already has                          |
+| ------------------- | ------------------------------------------------------------ | ---------------------------------------- |
+| `LiteralQuoted`     | less `:2767`, scss `:1598`, jess `:2540`                     | `Quoted` (`css-parser` `:1775`)          |
+| `Compound`          | scss `:5537`, jess `:6188`                                   | `CompoundSelector` (`:1598`)             |
+| `Complex`           | less `:6201`, scss `:5574`, jess `:6216`                     | `ComplexSelector` (`:1635`)              |
+| `ComplexTail`       | less `:6229`, scss `:5561`, jess `:6203`                     | `ComplexSelector` (`:1635`)              |
+| `Selector`          | less `:6239`, scss `:5603`, jess `:6245`                     | `SelectorList` (`:1676`)                 |
+| `SelectorTail`      | less `:6234`, scss `:5585`, jess `:6227`                     | `SelectorList` (`:1676`)                 |
+| `KeyframeSelector`  | less `:5299`, scss `:5102`, jess `:5114`                     | `keyframeSelector` (`:3990`)             |
+
+`LiteralQuoted` is the archetype and the reason rule 4 is written: all three
+supersets split it out **because** they also carry an interpolating quoted form
+(`Quoted` typed `node<Quoted | Interpolation>` at scss `:1529` and jess `:2474`).
+That is precisely the move rule 4 forbids. It is a hard fail. The same reasoning
+condemns the other six: each is a superset inventing a name for a rule CSS
+already has. (Less carries no bare `Compound`; its compounds are the
+context-qualified `PseudoArgumentCompound` `:5784`, `ClassIdCompound` `:6164`,
+`InlineExtendSubjectCompound` `:6250` — a separate item-1 question, not part of
+this row.)
+
+**Rules 1 and 3 have measured violations too.** The evidence base as of
+2026-08-09:
+
+- **`@charset` was absent from the CSS grammar entirely** while all three
+  supersets had it — CSS failing to define regular CSS, a rule 1 violation with
+  the fork pointing the wrong way. Closed at `7d32a7fca`; the prologue arm now
+  lives at `css-parser/src/grammar.ts:3078-3090`.
+- **`<urange>` was absent from jess** while CSS had it (`css-parser` `:1735`), so
+  `a { b: U+0-7F }` — plain CSS — did not parse. Closed at `fb272dfc1`
+  (`jess-parser` `:2859`).
+- **SCSS forked the ident-start declaration-vs-nested-rule decision into a WRONG
+  NODE** rather than overriding the CSS decision. Converged at `b518ac388`
+  (`fix(scss,jess): converge ident-start declaration-vs-nested-rule on the CSS
+  decision`).
+- **The at-rule prelude re-spelled `balanced()` inline** and lost the shared
+  `customSlash` skip that `balancedParens` (`css-parser` `:1078-1087`) already
+  carries — a rule 3 violation, a re-definition of a shape CSS had. Closed at
+  `d5c8f72bb`.
+- **Namespaced selectors behave three different ways**, and this one is still
+  open: less is correct (`AttributeNamespace` / `NamespaceTypeSelector`,
+  `less-parser` `:5937-5953`, one `SimpleSelector` carrying `svg|circle`); css
+  MIS-PARSES `svg|circle` into two compounds because `|` is in `combinator`
+  (`css-parser` `:998`), which propagates into specificity, extend, and `:is()`
+  flattening; scss REJECTS it (`scssCombinator`, `scss-parser` `:5555-5560`,
+  omitting `|` while the AST type at `:49` already declares it). Recorded with
+  the fix shape in
+  [`OVER-NARROW-GRAMMAR-SURVEY.md`](./OVER-NARROW-GRAMMAR-SURVEY.md) §§26-27,
+  104, 157, 205-220.
+
+The ledger row for the structural blocker is
+`docs/architecture/core/DESIGN-DECISIONS.md` **P22**.
+
+---
+
 ## 0. Design pressure — grammar must earn its existence
 
 The default review posture is adversarial toward new or duplicated grammar.
