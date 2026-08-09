@@ -472,8 +472,14 @@ direction is the inbound one.
 **Owner ruling, 2026-08-01.** A condition is falsy for exactly four values:
 
 ```
-false    null    ""  (and '')    ()  (empty list / map)
+false    null    ""  (and '')    the EMPTY COLLECTION
 ```
+
+The fourth member is a VALUE, not a spelling, and the spelling is per dialect:
+`.scss` writes it `()`, `.jess` writes it `{}` (§12.6a — a `.jess` paren is a
+literal CSS paren and never a list, so `()` there is a parse error in value
+position). Measured: `.scss` `()` falsy / `.jess` `{}` falsy, and each is a parse
+error in the other dialect.
 
 Everything else is truthy, INCLUDING `0`, `0px`, `0%`, `"0"`, `red`,
 `transparent`, and `rgba(0,0,0,0)`.
@@ -489,13 +495,15 @@ must take the TRUE branch. That is where JavaScript is wrong for this domain
 | `true` | truthy | truthy | **truthy** |
 | `false`, `null` | falsy | falsy | **falsy** |
 | `""`, `''` | falsy | **falsy** — Sass+ shift, §4.4.6 | **falsy** |
-| `()` empty list/map | *parse error* | **falsy** — Sass+ shift, §4.4.6 | **falsy** |
+| `()` empty list/map — the `.scss` spelling | *parse error* | **falsy** — Sass+ shift, §4.4.6 | *parse error* — §12.6a |
+| `{}` empty collection — the `.jess` spelling | falsy | *parse error* | **falsy** |
 | `0`, `1`, `-1`, `0.0` | falsy | truthy | **truthy** |
 | `0px`, `1px`, `0%`, `1em` | falsy | truthy | **truthy** |
 | `"a"`, `"0"`, `"false"`, `"true"` | falsy | truthy | **truthy** |
 | `a`, `none`, `inherit` | falsy | truthy | **truthy** |
 | `red`, `#000`, `transparent`, `rgba(0,0,0,0)` | falsy | truthy | **truthy** |
-| `(1 2)`, `(1, 2)`, `(a: b)` | *parse error* | truthy | **truthy** |
+| `(1 2)`, `(1, 2)`, `(a: b)` | *parse error* | truthy | *parse error* — §12.6a |
+| `{a: b}` non-empty collection | falsy | *parse error* | **truthy** |
 | `nope()` | falsy | truthy | **truthy** |
 
 `.less` / `.scss` columns measured on lessc 4.6.3 and dart-sass 1.101.0.
@@ -1295,7 +1303,8 @@ Sass**, where `false and (1px + 1em)` must not raise.
 ## 8. Questions — all semantic rulings CLOSED
 
 - **O-TRUTH-1 — RESOLVED (owner, 2026-08-01).** See §4.4. `.jess` truthiness is
-  falsy iff **absent or empty** — `false`, `null`, `""`, `()` — and both dialects
+  falsy iff **absent or empty** — `false`, `null`, `""`, and the empty collection
+  (`{}` in `.jess`, `()` in `.scss`) — and both dialects
   lower to plain `.jess` source. Nothing is blocking.
 
 ### Semantics — all resolved
@@ -1523,7 +1532,8 @@ three-column truth table with one column per mode, became
 
 ### Phase 5 — truthiness (UNBLOCKED, §4.4)
 
-Settled by §4.4: falsy iff `false`, `null`, `""`, `()`. The grammar hold on
+Settled by §4.4: falsy iff `false`, `null`, `""`, and the empty collection (`{}`
+in `.jess`, `()` in `.scss`). The grammar hold on
 bare-truthy `@if` lifts together with the semantics, never before — widening the
 grammar alone would not fail, it would silently take the wrong branch.
 
@@ -2069,11 +2079,11 @@ exactly when they survive into the CSS output:
 .less  (1 + 2)                ->  $(1 + 2)          same rule
 ```
 
-**Consequence to re-examine (§4.4).** The falsy set lists `()` — an empty list /
-map. Under this ruling `()` in `.jess` is a literal empty paren, not an empty
-list, and it is measured as a parse error in value position today. The empty
-COLLECTION spelling `{}` is falsy and carries that row's intent. §4.4's `()` row
-needs revisiting against this.
+**Consequence, now carried by §4.4.** The falsy set's fourth member is the empty
+COLLECTION, and under this ruling its spelling is per dialect: `()` in `.scss`,
+`{}` in `.jess`, each a parse error in the other. §4.4 states it that way and its
+table has a row per spelling, so nothing here is outstanding — this was a DOC
+contradiction only, and both engines already behave correctly.
 
 ### 12.6b `mathMode` at EVAL is a v2 regression — the parse is CONTEXTUAL
 

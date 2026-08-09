@@ -221,6 +221,55 @@ describe('OPERATIONS §4.2 — relational is trichotomous', () => {
   });
 });
 
+describe('OPERATIONS §4.3 — `null` elides, and `$( … )` is TRANSPARENT to that', () => {
+  /*
+   * The §4.3 table, measured on dart-sass 1.101.0, plus the row it did not state
+   * because it is jess-only: a `null` reaching the same position THROUGH the
+   * `$( … )` computation boundary must behave identically to a bare `null`. The
+   * boundary owns no output delimiters (§12.6), so it owns no value either — it
+   * cannot turn an ABSENT value into empty bytes.
+   *
+   * This was a real defect: the jess grammar wraps `Expression` in a single-ref
+   * `Interpolation`, which folded its ref straight to bytes and lost the
+   * elision fact. The declaration emitted `k: ;` and the list forms left the
+   * dropped member's separator behind (`1px  2px`, `1px, , 2px`). Every
+   * assertion below is written as the bare-`null` form AND the `$( … )` form so
+   * a regression on either side goes red.
+   */
+
+  it('a whole-value `null` DROPS the declaration, through the boundary too', async () => {
+    await expect(body('k: null; c: red')).resolves.toBe('.a { c: red; }');
+    await expect(body('k: $(null); c: red')).resolves.toBe('.a { c: red; }');
+  });
+
+  it('an `and`/`or` folding to `null` drops it too — the boundary, not the operator', async () => {
+    /*
+     * `$(null and 2)` short-circuits to the `null` OPERAND (§4.5.5), so it is
+     * the same row as above. It is asserted separately because it is what
+     * proves the defect was the boundary and not `and`.
+     */
+    await expect(body('k: $(null and 2); c: red')).resolves.toBe('.a { c: red; }');
+  });
+
+  it('an elided member takes its separator with it, through the boundary too', async () => {
+    await expect(body('k: 1px null 2px')).resolves.toBe('.a { k: 1px 2px; }');
+    await expect(body('k: 1px $(null) 2px')).resolves.toBe('.a { k: 1px 2px; }');
+    await expect(body('k: 1px $(null and 2) 2px')).resolves.toBe('.a { k: 1px 2px; }');
+
+    await expect(body('k: 1px, null, 2px')).resolves.toBe('.a { k: 1px, 2px; }');
+    await expect(body('k: 1px, $(null), 2px')).resolves.toBe('.a { k: 1px, 2px; }');
+  });
+
+  it('an interpolation TEMPLATE keeps its literal bytes — `"v${x}"` is `"v"`, not a drop', async () => {
+    /*
+     * The §4.3 row that bounds the fix: a template with authored literal pieces
+     * around the splice is real bytes, so it emits — only a template that is
+     * ENTIRELY elided refs is absent.
+     */
+    await expect(sheet('$x: null; .a { k: "v${x}"; c: red }', '.jess')).resolves.toBe('.a { k: "v"; c: red; }');
+  });
+});
+
 describe('OPERATIONS §4.4 — truthiness is EMPTINESS, not zero-ness', () => {
   /*
    * The falsy set is exactly four values — `false`, `null`, `""` (and `''`) and

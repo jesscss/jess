@@ -3834,18 +3834,48 @@ function evalCollection(node: Collection, frame: Frame | null, e: EvalCtx): Mayb
   });
 }
 
-/** Resolve an interpolation template to bytes (literals + spliced refs). */
+/**
+ * Resolve an interpolation template to bytes (literals + spliced refs).
+ *
+ * [null] The refs are folded TYPED and emitted here, rather than each being
+ * folded straight to bytes: a template with no literal pieces whose every ref
+ * elides is itself ABSENT, not empty bytes (§4.3, ledger M5). `.jess` reaches
+ * this with `$( … )` — the grammar wraps the `Expression` computation boundary
+ * in a single-ref `Interpolation`, so folding that ref to bytes here collapsed
+ * `null` to `''` and the declaration emitted `k: ;` instead of dropping. This is
+ * the same shape as the `List` and slot-array joins above, which already hand
+ * back `NULL` when every member elided; the boundary is now transparent to
+ * null-ness instead of a downstream re-check reconstructing it.
+ *
+ * A template WITH literal pieces is authored bytes around a splice (`"v${x}"`),
+ * so it stays a literal: §4.3 measures `b: "v#{$x}"` as `b: "v"`, not a drop.
+ */
 function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
-  const pieces: Array<MaybePromise<string>> = [];
+  const pieces: Array<MaybePromise<EvalValue>> = [];
   for (const part of node.parts) {
-    if ('lit' in part) {
-      pieces.push(part.lit);
-    } else {
-      const bytes = evalBytesInterp(part.ref, frame, e);
-      pieces.push(part.unquote ? mapMaybe(bytes, stripOuterQuotes) : bytes);
-    }
+    pieces.push('lit' in part ? part.lit : evalValue(part.ref, frame, e));
   }
-  return combineAll(pieces, strs => literal(resolveEmergentInterp(strs.join(''), frame, e)));
+  return combineAll(pieces, (values) => {
+    let bytes = '';
+    let elided = true;
+    for (let index = 0; index < values.length; index += 1) {
+      const part = node.parts[index]!;
+      const value = values[index]!;
+      if ('lit' in part) {
+        elided = false;
+        bytes += part.lit;
+        continue;
+      }
+      if (isLiteral(value) || !isElided(value)) {
+        elided = false;
+      }
+      const emitted = emitValue(value);
+      bytes += part.unquote ? stripOuterQuotes(emitted) : emitted;
+    }
+    return elided && values.length > 0
+      ? NULL
+      : literal(resolveEmergentInterp(bytes, frame, e));
+  });
 }
 
 /** A Less identifier byte (`@{name}` name class: `-_A-Za-z0-9` + non-ASCII). */
