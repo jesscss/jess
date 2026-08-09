@@ -1,0 +1,21 @@
+{
+  "note": "OPEN css-parser round-trip findings, one named file per construct. This is a RECORD, not an allowlist: every entry is a byte the parse->serialize round trip does not reproduce, and none of them has been ruled correct. Removing an entry requires the parser to actually reproduce the byte. Adding one requires a fixture that isolates the construct and a reason.",
+  "authored": {
+    "at-rule-charset-then-import.css": {
+      "construct": "@import immediately following @charset",
+      "detail": "CssParseError 'Unexpected CSS input after a complete stylesheet.' @charset alone parses; @charset followed by @media, @layer, a comment or a style rule parses; @charset followed by @import does not. css-syntax-3 s3.2 and css-cascade-5 s3 both make @charset then @import the canonical stylesheet prologue, so this rejects valid CSS. @namespace-then-@import and rule-then-@import are also rejected and those two ARE spec-correct."
+    },
+    "empty-blocks.css": {
+      "construct": "a qualified rule or conditional at-rule with an empty block",
+      "detail": "The whole file emits as the empty string. '.empty {}' and '@media screen {}' are dropped rather than reproduced. Pruning empty output is plausibly deliberate for the compiler, but it has never been written down as a CSS-base decision, and it makes the parse->serialize surface lossy for input that is valid CSS."
+    },
+    "selector-attribute-case-flag.css": {
+      "construct": "attribute selector case-sensitivity flag",
+      "detail": "'[data-x^=\"y\" i]' emits as '[data-x^=\"y\"i]' and '[data-x=\"y\" s]' as '[data-x=\"y\"s]'. The space before the flag is required by selectors-4 s6.3 for the flag to be a separate token, so this emits INVALID CSS, not merely different bytes. This is the highest-severity finding here."
+    },
+    "value-slash-separator.css": {
+      "construct": "authored slash separator in a value",
+      "detail": "'12px/1.5', '1/2' and '16/9' emit as '12px / 1.5', '1 / 2', '16 / 9'. This is the v5 spaced-separator emit policy applied to a value the author never operated on, so unlike the three above it is a known deliberate transform rather than a suspected defect. It is recorded here because it is nonetheless a byte the round trip does not reproduce, and because the v5 rule that unoperated values are preserved verbatim and the rule that separators are spaced disagree on exactly this input."
+    }
+  }
+}

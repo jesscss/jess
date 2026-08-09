@@ -1,0 +1,16 @@
+.card {
+  color: red;
+  @media (min-width: 600px) {
+    color: blue;
+  }
+  @supports (display: grid) {
+    display: grid;
+  }
+}
+@media screen {
+  .a {
+    .b {
+      color: red;
+    }
+  }
+}

@@ -1,0 +1,12 @@
+:root {
+  --plain: red;
+  --list: 1px 2px 3px;
+  --with-fn: calc(1px + 2px);
+  --empty: ;
+  --braces: { color: red; };
+  --quoted: "a; b";
+}
+a {
+  color: var(--plain);
+  margin: var(--missing, 0 auto);
+}

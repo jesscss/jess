@@ -75,6 +75,7 @@
     "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "test": "cross-env TEST=true vitest --watch=false",
+    "oracle:byte-identity": "cross-env TEST=true vitest --watch=false test/byte-identity.test.ts",
     "oracle:postcss": "node test/postcss-oracle.mjs",
     "oracle:postcss:single": "node test/postcss-oracle.mjs --file packages/jess/benchmark/benchmark.css",
     "bench:postcss": "node test/postcss-oracle.mjs --file packages/jess/benchmark/benchmark.css --bench",

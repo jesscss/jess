@@ -786,10 +786,23 @@ requires that the parser was rebuilt from the measured commit and that the
 macro/compose gates prove the shipping tree did not fall back to the
 interpreter.
 
-The byte-identity oracle currently exists as `pnpm run
-oracle:less:byte-identity`, backed by the Less parser corpus under
-`packages/syntax/less/less-parser/test/`. There is no equivalent script for the
-other three dialects.
+The Less byte-identity oracle is `pnpm run oracle:less:byte-identity`, backed by
+the Less parser corpus under `packages/syntax/less/less-parser/test/`. CSS has
+its own since `test/byte-identity/` landed: `pnpm --filter @jesscss/css-parser
+oracle:byte-identity`, which runs in the package suite as well. `.scss` and
+`.jess` still have no equivalent.
+
+The two are different instruments and neither substitutes for the other. The
+Less oracle is a **relative** differential — it digests parse output against a
+committed baseline, so it detects movement and is green again after a
+rebaseline. The CSS oracle is **absolute**: the input IS the expected output, so
+there is nothing to rebaseline and no state in which a wrong answer passes. It
+asks `serialize(parse(src), { collapseNesting: false }).css === src` over a
+named authored corpus, plus the same question of every real stylesheet's own
+emitted output (the fixed-point channel), and it asserts four negative controls
+on every run — including one that drops a nested rule, which is the ident-start
+defect's signature. Its four open findings are recorded by file and construct in
+`test/byte-identity.divergences.json`; that file is a record, not an allowlist.
 
 A `css-parser` change is **not** covered by the Less oracle. Less composes
 `cssSyntax` from `@jesscss/parser-shared/recognition`, not from
@@ -799,11 +812,12 @@ change to CSS's value grammar therefore leaves every Less aggregate byte-
 identical while proving nothing. An unchanged oracle on a `css-parser` change
 is a null result, not a pass — say so rather than quoting it as evidence.
 
-Until a `css-parser` byte-identity script exists, an ad-hoc `digestInto`
-differential is the substitute, and it needs a **negative control**: mutate the
-production under review in a way that must change output, and show the digest
-moves. A corpus that never exercises the production returns "identical" for a
-correct change and a broken one alike. Report the control alongside the result.
+For `.scss` and `.jess`, where no byte-identity script exists yet, an ad-hoc
+`digestInto` differential is the substitute, and it needs a **negative control**:
+mutate the production under review in a way that must change output, and show
+the digest moves. A corpus that never exercises the production returns
+"identical" for a correct change and a broken one alike. Report the control
+alongside the result.
 
 ### The drift gate — the CSS implementation
 
