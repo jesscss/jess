@@ -37,6 +37,20 @@ function currentBranch() {
  * that fails for reasons unrelated to what it measures is the fastest route to
  * habitual `--no-verify`.
  */
+/*
+ * The guardrails gate runs on EVERY push, including the docs-only fast path,
+ * because the thing it catches IS a docs change: an agent redefining or closing
+ * an owner requirement in `docs/`, `.cursor/rules/`, or `CLAUDE.md`. It reads
+ * markdown and hashes one file — no build, no test, single spawn.
+ */
+const guardrails = resolve(dirname(fileURLToPath(import.meta.url)), 'check-guardrails.mjs');
+if (existsSync(guardrails)) {
+  const g = spawnSync(process.execPath, [guardrails], { stdio: 'inherit' });
+  if (g.status !== 0) {
+    process.exit(g.status ?? 1);
+  }
+}
+
 const perfGate = resolve(dirname(fileURLToPath(import.meta.url)), 'perf-gate/index.mjs');
 if (existsSync(perfGate)) {
   const perf = spawnSync(process.execPath, [perfGate], { stdio: 'inherit' });

@@ -58,6 +58,45 @@ necessary, record it as an OPEN QUESTION for the owner in
 `docs/architecture/core/DESIGN-DECISIONS.md` — do not grant yourself a carve-out
 and do not write one into this file.
 
+### An agent may not redefine, narrow, or close an owner requirement
+
+**When a requirement conflicts with a tool constraint, a technical limit, or an
+implementation difficulty, the agent STOPS AND ESCALATES.** It may record the
+constraint, the evidence, the options and a recommendation. It may NOT record
+the decision.
+
+Specifically forbidden (`CLOSURE-QUOTED:` — the phrasings below are quoted as
+prohibitions, not used):
+
+- rewriting a requirement into something achievable;
+- narrowing its scope so the constraint no longer binds;
+- writing "this is settled" / "do not re-propose" / "do not revisit" / "do not
+  reopen" about anything the owner asked for. (`CLOSURE-QUOTED:`)
+
+**Writing "settled" about an owner requirement is itself the violation**,
+because it removes every later agent's permission to reopen it. Only the owner
+closes an owner requirement.
+
+**Corollary.** A commit that removes a shared mechanism must say so in its body.
+The fold that dropped `compose()` had a one-line message.
+
+This is not advice. The standing owner requirements are recorded verbatim in
+[`../../OWNER-REQUIREMENTS.md`](../../OWNER-REQUIREMENTS.md) with stable IDs, and
+`pnpm check:guardrails` fails the build on (a) any edit to that file and (b) any
+closure directive in `docs/`, `.cursor/rules/`, `CLAUDE.md` or `AGENTS.md` that
+does not carry an attribution marker — `OWNER-RULED: <date>`, `AGENT-EVIDENCE:`
+(an agent closing its OWN measured proposal), `OWNER-LEDGER:` (the authority is a
+DESIGN-DECISIONS row), or `CLOSURE-QUOTED:` (the block quotes a closure to state
+this rule or repudiate it). An
+`AGENT-EVIDENCE:` marker may not be used in a block that names an `OR-*`
+requirement.
+
+The live instance this rule was written for is `GRAMMAR-REBUILD-SPEC.md` §0.5
+and §12.0: the parseman `direct-builder-static` constraint is real, the
+conclusion drawn from it — that hard rule 2 does not apply — was not the agent's
+to draw, and both sites are now marked OVERRULED and UNRESOLVED pending an owner
+ruling.
+
 ### Current reality: the rules are violated wholesale
 
 Recorded so nobody has to rediscover it. Every claim below is re-checkable at

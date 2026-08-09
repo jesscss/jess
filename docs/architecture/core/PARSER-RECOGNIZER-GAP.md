@@ -202,6 +202,8 @@ CSS A/B was valid. Same-path no-op controls were parse+render
 (`24/45` wins), which are noise-floor controls only. The worker also passed
 build, diff-check, and aggressive review. Do not retry this reorder without a
 real discriminator that proves full-input consumption and Less error parity.
+`AGENT-EVIDENCE:` — an agent closing its own reorder proposal on the noise-floor
+controls above; no owner requirement is closed here.
 
 Do not infer from this investigation that every value should become a string,
 that Parseman should understand CSS comments, or that the existing Jess AST

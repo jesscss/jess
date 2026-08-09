@@ -63,6 +63,14 @@ function run(command, args, { capture = false } = {}) {
   return combined;
 }
 
+/*
+ * 0. Guardrails first, because it is instant and because a violation here is a
+ * process failure, not a code failure: an agent that redefined an owner
+ * requirement should be stopped before anything is built.
+ */
+heading('Guardrails: owner requirements + closure attribution');
+run('node', ['scripts/check-guardrails.mjs']);
+
 // 1. Clean all package libs.
 heading('Clean: removing package lib outputs');
 const removedLibDirs = removePackageLibDirs(ROOT);

@@ -61,6 +61,7 @@
     "verify:pr": "node scripts/verify-pr.mjs",
     "verify:compose-integrity": "node scripts/verify-compose-integrity.mjs",
     "check:macro": "node scripts/check-macro-buildable.mjs",
+    "check:guardrails": "node scripts/check-guardrails.mjs",
     "test:fallback-detector": "node --test scripts/__tests__/parseman-fallback-detector.test.mjs",
     "oracle:prebuild": "pnpm --filter @jesscss/awaitable-pipe build && pnpm --filter @jesscss/core build",
     "oracle:css:render-differential": "pnpm run oracle:prebuild && pnpm --filter @jesscss/css-parser build && node packages/syntax/css/css-parser/test/render-differential.mjs",

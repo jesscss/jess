@@ -389,7 +389,8 @@ choice attempt and every repetition item allocates a 5-field mark object** that 
 with scalar locals. That is the per-item allocation a lane hunted on json and could not
 replicate — json has almost no nodes.
 
-**Two directions are parked with evidence, do not re-derive them:**
+**Two directions are parked with evidence, do not re-derive them:** `AGENT-EVIDENCE:` —
+agent-measured, closing an agent's own proposal; no owner requirement is closed here.
 - **Trivia** — the swap was *built correctly to G5* and buys **nothing**: `fastTriviaScanner`
   cannot lower `classifiedTrivia` because its arms are `label()`-wrapped. css 0 of 4, less
   0 of 8, scss 0 of 2, jess 0 of 2 lower. json's trivia is a plain regex, which is the only
@@ -1298,7 +1299,8 @@ to report the exact SHA, resolved Parseman path/version, focused test names, and
 whether it changed source. The three current assignments are:
 
 1. profile the corrected PostCSS Less eval+emit workload's macro-parser share;
-   do not reopen sparse trivia unless a new profile attributes material CPU to it;
+   do not reopen sparse trivia unless a new profile attributes material CPU to it
+   (`AGENT-EVIDENCE:` — evidence-gated and conditional, not a design closure);
 2. isolate the remaining `tests-unit/extend/extend.less` `ext4` selector-expansion
    mismatch with a minimal fixture and a named baseline; do not update expected
    CSS or label it caused by trivia without proof;

@@ -60,8 +60,12 @@ The owner's requirements, verbatim, are the acceptance definition:
 Four consequences, none of them optional:
 
 1. **Order is `css` → `less` → `scss` → `jess`.** CSS is the base.
-2. **The dialects link back to CSS** rather than restating it — see §12 for what
-   "agent-readable link" means concretely.
+2. **The dialects link back to CSS** rather than restating it. §12.0 used to
+   define "agent-readable link" as a documentation comment; that definition is
+   **OVERRULED** (an agent narrowed an owner requirement to fit a tool
+   constraint) and the link the owner asked for is a code import — hard rule 2.
+   The conflict with parseman's `direct-builder-static` allow-set is real,
+   documented in §0.5, and **UNRESOLVED pending an owner ruling**.
 3. **No copy-paste.** The old grammars are a reference for the _accept set_
    only (§3, §4).
 4. **No bespoke per-dialect naming scheme.** See §2.1 and
@@ -248,8 +252,9 @@ when(...), otherwise(...))`: consume one broad token, route by the returned
 | The `tree/` cutover inventory                                      | [`../architecture/core/TREE-CUTOVER-SURFACE.md`](../architecture/core/TREE-CUTOVER-SURFACE.md) (§0.7)                  |
 | Removal of the dead `@jesscss/plugin-css`                          | `ls packages` — no such directory                                                                                      |
 
-The **language-service suite is green** (§8.4) and composition is settled as
-**terminal leaves** (§0.5).
+The **language-service suite is green** (§8.4). Composition is **currently**
+terminal leaves; that is the state of the code and an UNRESOLVED conflict with
+owner requirement OR-1 rule 2, not a settled design — see §0.5.
 
 ### 0.3 The plan, in order, with what gates what
 
@@ -411,8 +416,26 @@ with explicit Jess `$(...)` output, for example a Less math expression
 `@foo + 1` projects as `$(^foo + 1)` when `mathMode` lowered it as math; it must
 not widen normal Jess values to accept `$foo + 1`.
 
-**Cross-artifact `compose()` is not available, so the rebuild proceeds as
-terminal leaves.** The constraint a builder must satisfy to be statically
+**UNRESOLVED — escalated to the owner. Do not treat what follows as a design
+decision.** Cross-artifact `compose()` is blocked by a real parseman constraint,
+documented in full below. That constraint **conflicts with owner requirement
+OR-1 rule 2** (`docs/OWNER-REQUIREMENTS.md`): *"Each downstream grammar MUST
+extend CSS grammar (import and compose)"*. The repo currently proceeds as
+terminal leaves. **That is the state of the code, not a ruling** — an agent
+resolved this conflict in favour of the constraint and recorded the resolution
+as settled; that closure was not the agent's to make and is **OVERRULED**. Only
+the owner may decide whether the requirement bends, the constraint is removed
+upstream, or the rebuild takes a third shape.
+
+**The "new evidence" the old closure demanded exists.** parseman is checked out
+locally at `~/git/oss/parseman`; the allow-set below is its source, editable
+upstream, and this repo's owner owns that lane. "The tool cannot do it" is
+therefore a statement about a version, not about the world.
+`../architecture/parser/PRODUCTION-COMPOSE-FEASIBILITY.md` states the corrected
+form: **BLOCKED on the installed parseman, not wrong, not deferred by choice**,
+with the upstream fix located. Read that before restating this constraint.
+
+The constraint a builder must satisfy to be statically
 resolvable is `direct-builder-static.ts` — **which is in parseman, not in this
 repo**: source at `src/plugin/direct-builder-static.ts` in the parseman
 checkout, shipped to jess only as bundled output at the resolved Parseman
@@ -429,10 +452,19 @@ package's `dist/plugin/index.js` (locate its package root from `node -p
 
 jess's grammar builders overwhelmingly violate this by calling **imported AST
 constructors and grammar-local helpers**, neither of which is in the allow-set —
-which is why cross-artifact `compose()` is unavailable and the rebuild proceeds
-as terminal leaves. **This conclusion is settled** and is independently
-supported by §5.4 and §13.3; do not re-propose `compose()` across artifacts
-without new evidence.
+which is why cross-artifact `compose()` is unavailable at the current parseman
+version and the rebuild currently proceeds as terminal leaves.
+
+That is the evidence. `CLOSURE-QUOTED:` — the sentence below is quoted in order
+to repudiate it. The sentence that used to follow it — *"**This conclusion
+is settled** and is independently supported by §5.4 and §13.3; do not re-propose
+`compose()` across artifacts without new evidence"* — is **removed as an
+illegitimate self-authored closure of an owner requirement** (OR-1 rule 2). §5.4
+and §13.3 corroborate the parseman constraint; neither is an owner ruling, and
+no number of agent-authored sections adds up to one. The question is **OPEN**.
+Anyone with a way to satisfy OR-1 rule 2 — upstream parseman change, a builder
+shape inside the allow-set, a different composition mechanism — should propose
+it.
 
 > **OWNER OVERRULE — 2026-08-09, jess `4d4954156`. The closure above no longer
 > stands as a reason not to pursue `compose()`.** The reasoning in this section is
@@ -869,7 +901,9 @@ later grammar change must preserve. Future parseman publishing remains owner-onl
 > | `test-data-unit/cst` | 24.74              | 18.51           | **−25.2%** | 3.6%         |
 
 The active conclusion is simple: the version floor is paid; do not reopen the
-eight-file alternative.
+eight-file alternative. `AGENT-EVIDENCE:` — an agent closing its own proposal on
+the measured table above (−1.4% / −25.2% against 2.4% / 3.6% noise). It closes a
+parseman-version question only; no owner requirement is closed by it.
 
 Two facts that make the floor more payable than it looks, both now inside
 0.37.0: it carries a Less **improvement** — a derived `expected` set naming each
@@ -2026,11 +2060,26 @@ now labelled "RETIRED" at `eslint.config.mjs:514-527`.
 
 ## 12. Discoverability — a deliverable, not a nicety
 
-The owner's requirement is that the dialects "have an **agent-readable link**" to
-the CSS base. That phrase is otherwise vague, so it is pinned down here, and this
-definition is the acceptance criterion.
+The owner's requirement is OR-3 (`docs/OWNER-REQUIREMENTS.md`), verbatim: *"it
+should start with CSS, and then the others should have an agent-readable link to
+those"*.
 
-### 12.0 What "agent-readable link" means, concretely
+> **§12.0 is OVERRULED as a definition of that requirement.** It reads the
+> owner's "agent-readable link" as satisfied by a documentation comment, and the
+> `* CSS base: …` line at line 4 of each superset grammar is the deliverable
+> that replaced composition. Read against OR-1 rule 2 — *"Each downstream
+> grammar MUST extend CSS grammar (import and compose)"* — the link the owner
+> asked for is a **code import**, and a comment is not one.
+>
+> The four requirements below are kept because they are good documentation
+> hygiene and requirement 2 is the composition expression itself. They are
+> **necessary, not sufficient**, and they are **not the acceptance criterion**.
+> An agent may not narrow an owner requirement to what the current tooling
+> permits; see `../architecture/parser/GRAMMAR-REVIEW-STANDARD.md`, "An agent
+> may not redefine, narrow, or close an owner requirement". The acceptance
+> criterion for OR-3 is the owner's to state.
+
+### 12.0 What "agent-readable link" means, concretely — OVERRULED, see above
 
 **A link is agent-readable when an agent that opens _only_ the dialect grammar
 file can reach the CSS base without searching, and can tell what it inherits from

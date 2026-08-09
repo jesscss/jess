@@ -54,7 +54,7 @@ Two files were reprieved on evidence:
 | File | Role |
 | --- | --- |
 | [`HANDOFF.md`](./HANDOFF.md) | The entry point. Work in flight, priority checklist, open defects, Router. |
-| [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md) | The canonical OPEN/SETTLED owner decision ledger. Cite a row; do not re-litigate it. |
+| [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md) | The canonical OPEN/SETTLED owner decision ledger. Cite a row; do not re-litigate it. `OWNER-LEDGER:` |
 | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) | Patch-shape review standard. |
 | [`AST-QUALITY-AUDIT.md`](./AST-QUALITY-AUDIT.md) | Audit criteria for `packages/core/src/ast` as a parser-independent leaf. |
 | [`PERF_IDEAS.md`](./PERF_IDEAS.md) | The measured workload and comparator numbers behind the current CPU lane. |

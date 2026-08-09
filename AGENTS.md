@@ -11,6 +11,27 @@ required to read them.
 
 ---
 
+## Read this first — owner requirements are not yours to close
+
+**An agent may not redefine, narrow, or close an owner requirement.** When a
+requirement conflicts with a tool constraint, a technical limit, or an
+implementation difficulty, **STOP AND ESCALATE**. Record the constraint, the
+evidence, the options and a recommendation. Do NOT record the decision.
+(`CLOSURE-QUOTED:`) Writing "settled" / "do not re-propose" / "do not revisit"
+about an owner requirement is itself the violation — it removes every later agent's permission
+to reopen it. Only the owner closes an owner requirement. Corollary: a commit
+that removes a shared mechanism must say so in its body.
+
+- `docs/OWNER-REQUIREMENTS.md` — every standing owner requirement, verbatim,
+  with a stable `OR-*` ID. **Owner-owned. Do not edit it.**
+- `pnpm check:guardrails` enforces both halves: the file is hash-frozen, and any
+  closure directive in `docs/`, `.cursor/rules/`, `CLAUDE.md` or `AGENTS.md`
+  must carry an attribution marker. It runs on every push and in `verify:pr`.
+- Full statement and the live overruled instances:
+  `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`; ledger row **E8**.
+
+---
+
 ## Start Here — the parseman table lowering, and what "done" means
 
 **If you are working on parseman's table lowering (`src/table/`), or on anything

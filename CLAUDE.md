@@ -48,6 +48,12 @@ Start with `AGENTS.md`.
 
 Do not keep branch-stage snapshots, pass counts, or transient failure notes here.
 
+**An agent may not redefine, narrow, or close an owner requirement** — escalate
+instead. The requirements are verbatim in `docs/OWNER-REQUIREMENTS.md` (owner-owned;
+do not edit), the rule is stated in
+`docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` and
+`.cursor/rules/00-global.mdc`, and `pnpm check:guardrails` enforces both halves.
+
 For hot-path perf work (core tree/eval/render, grammar/parser, extend/selector):
 
 - the canonical checklist is `docs/perf/V8-ARCHITECTURE.md` (numbered invariants,

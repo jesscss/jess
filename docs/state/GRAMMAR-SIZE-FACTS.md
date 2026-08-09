@@ -1392,7 +1392,9 @@ by any type blocker. — less lane
 
 ---
 
-## 4. RETRACTED — do not re-derive
+## 4. RETRACTED — do not re-derive `AGENT-EVIDENCE:`
+Agent-authored retractions of agent-authored claims, each with the measurement
+that falsified it. No owner requirement is closed here.
 
 | claim | why it was wrong |
 | --- | --- |

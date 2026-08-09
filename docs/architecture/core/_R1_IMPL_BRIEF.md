@@ -18,7 +18,9 @@ is GREEN at baseline (163 passed).
   (`extendByIndexOwn` and friends) — read them as a SPEC, write tree2-native code, do NOT import them.
 - clone/inherit/withComponents op-counts must stay structurally ZERO (tree2 never clones nodes).
 
-## THE REFERENCE (decided — do not re-litigate; flag divergences for owner)
+## THE REFERENCE (decided — do not re-litigate; flag divergences for owner) `OWNER-LEDGER:`
+The authority is DESIGN-DECISIONS.md §2 (X1-X10) plus the
+"FINALIZATION — OWNER-SETTLED REFERENCE" block later in this file, not this heading.
 Every prior tree2 rung gates byte-identity against `renderRealOracle` /
 `renderRealOracleNested` (`tree2-frontend/oracle.ts`) — the Jess v5 legacy engine rendered on the
 SAME `.less` tree2 bridges. USE THAT as the R1 byte-identity reference too (flatten = renderRealOracle,
