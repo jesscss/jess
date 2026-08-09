@@ -1,5 +1,11 @@
 # The unknown at-rule body: opaque, but structurally tracked
 
+> The `Opaque*` family this describes is on the chopping block — the owner ruled
+> it a parallel mini-grammar for constructs that already have productions. See
+> [`OPAQUE-FAMILY-REMOVAL.md`](./OPAQUE-FAMILY-REMOVAL.md). The spec reading
+> below (does the body have an interior?) is separate from the question that
+> ruling turns on (may that interior be a private copy of CSS?).
+
 Base: `99197fff017383668fc1f9aeda1f9e689de3614d`.
 Proof of concept: `packages/syntax/css/css-parser/src/grammar.ts`,
 `packages/parser-shared/src/opaque-at-rule.ts`,
