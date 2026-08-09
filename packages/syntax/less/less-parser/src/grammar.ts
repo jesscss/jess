@@ -30,6 +30,7 @@ import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { any, atRuleBlock, atRuleStatement, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
@@ -906,6 +907,60 @@ function sourceFromState(state: unknown): string | undefined {
     && typeof state.source === 'string'
     ? state.source
     : undefined;
+}
+
+/**
+ * Does Less's configured `math:` policy compute THIS operator with no enclosing
+ * math context (§12.6b)?
+ *
+ * - `always` — every operator computes bare.
+ * - `parens-division` (Less's default) — everything but `/`, which stays a CSS
+ *   separator until a paren or `calc(…)` says otherwise.
+ * - `parens` / `strict` — nothing computes bare.
+ *
+ * The answer is written onto `Operation.mathOutsideParens` and the evaluator
+ * reads the node. It is deliberately NOT handed to eval as a mode: a dialect
+ * difference is carried by what the lowered node says.
+ */
+/**
+ * Restate one operand of a PRESERVED slash group as arithmetic that does not
+ * happen on its own.
+ *
+ * When the math policy keeps an authored top-level `/` as a slash rather than a
+ * division, the whole group is authored bytes — so a neighbouring `+` inside it
+ * must not fold either, or `4 / 2 + 5em` prints `4 / 7em`. That suppression
+ * used to live at eval, where `serialize.ts` re-entered the slot with
+ * `mathMode` forced to `'strict'`; it belongs here, because the shape that
+ * causes it is one the GRAMMAR recognised (§12.6b).
+ *
+ * Only the operation spine is restated. A parenthesized operand is a `Block`,
+ * not an `Operation`, and keeps its own math context — which is exactly why
+ * `(4px / 2) + 1px` still folds inside the parens.
+ */
+function withoutBareMath(node: ValueNode): ValueNode {
+  if (node.type !== 'Operation' || !node.mathOutsideParens) {
+    return node;
+  }
+  const restated = operation(
+    node.operator,
+    withoutBareMath(node.left),
+    withoutBareMath(node.right),
+    node.inMathFunction,
+    false
+  );
+  const span = sourceSpanOf(node);
+  return span === undefined ? restated : withSourceSpan(restated, span);
+}
+
+function lessMathOutsideParens(state: unknown, operator: string): boolean {
+  const { mathMode } = requireLessParseState(state);
+  if (mathMode === 'always') {
+    return true;
+  }
+  if (mathMode === 'parens-division') {
+    return operator !== '/';
+  }
+  return false;
 }
 
 const lessTriviaKindLabels = ['whitespace', 'lineComment', 'blockComment'] as const;
@@ -2246,8 +2301,17 @@ function requireValueBlockBody(children: readonly unknown[]): Statement[] {
 
 /** Fold a grammar-produced flat binary chain left-to-right.  Precedence is
  * represented by which production supplies each operand; no source text is
- * recovered or re-parsed here. */
-function foldOperation(children: readonly unknown[], _fields: FieldMap | undefined, _span: Span, rawChildren: readonly unknown[]): ValueNode {
+ * recovered or re-parsed here.  Each folded pair records whether Less's
+ * configured `math:` policy computes it with no enclosing math context, so the
+ * evaluator never reads that policy from ambient config (§12.6b). */
+function foldOperation(
+  children: readonly unknown[],
+  _fields: FieldMap | undefined,
+  _span: Span,
+  rawChildren: readonly unknown[],
+  _triviaLog: readonly number[],
+  state: unknown
+): ValueNode {
   const first = children.find(isValueNode);
   if (first === undefined) {
     throw new TypeError('Less arithmetic grammar produced no operand.');
@@ -2269,7 +2333,8 @@ function foldOperation(children: readonly unknown[], _fields: FieldMap | undefin
     }
     const rightRaw = rawChildren[index + 1];
     const rightSpan = isSpannedToken(rightRaw) ? rightRaw.span : sourceSpanOf(right);
-    const folded = operation(requireTerminalText(operatorToken).trim(), result, right);
+    const operator = requireTerminalText(operatorToken).trim();
+    const folded = operation(operator, result, right, false, lessMathOutsideParens(state, operator));
     result = start === undefined || rightSpan === undefined
       ? folded
       : withSourceSpan(folded, { start, end: rightSpan.end });
@@ -2909,7 +2974,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ImportQueryTail = node(
     'ImportQueryTail',
     sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.VariableReference, literal(')')),
-    children => block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3])))
+    (children, _fields, _span, _rawChildren, _triviaLog, state) =>
+      block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]), false,
+        lessMathOutsideParens(state, ':')))
   );
   const quotedOrUrlTarget = choice(g.EscapedQuoted, g.Quoted, UrlTarget);
   const ImportTarget = node(
@@ -3503,8 +3570,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryColonFeature = node(
     'QueryColonFeature',
     sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.MathSum, literal(')')),
-    (children, _fields, span) => withSourceSpan(
-      block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => withSourceSpan(
+      block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]), false,
+        lessMathOutsideParens(state, ':'))),
       span
     )
   );
@@ -3545,9 +3613,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(noTrivia(regex(/-(?=[(@])/))),
       g.Value
     ),
-    children => children.length === 1
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => children.length === 1
       ? requireValueNode(children[0])
-      : operation('*', dimension(-1, '', '-1'), requireValueNode(children[1])),
+      : operation(
+          '*',
+          dimension(-1, '', '-1'),
+          requireValueNode(children[1]),
+          false,
+          lessMathOutsideParens(state, '*')
+        ),
     { collapse: true }
   );
   const MathAtom = node(
@@ -3591,7 +3665,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const PreservedDivision = node(
     'PreservedDivision',
     noTrivia(sequence(g.TopSum, oneOrMore(sequence(field('separator', preservedSlashBoundary), g.TopSum)))),
-    (children, fields, _span): ValueNode => {
+    (children, fields, _span, _rawChildren, _triviaLog, state): ValueNode => {
+      /*
+       * The group is preserved bytes exactly when the policy does NOT divide a
+       * bare `/`. Under `math: always` it is not preserved at all, so operands
+       * keep the arithmetic they were built with.
+       */
+      const preserved = !lessMathOutsideParens(state, '/');
       const slashBoundaries = fields?.separator === undefined
         ? []
         : requireFields(fields, 'separator').map((separator) => {
@@ -3603,7 +3683,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const values = children.filter(isValueNode);
       const parts: ValueNode[] = [];
       for (let index = 0; index < values.length; index += 1) {
-        parts.push(values[index]!);
+        parts.push(preserved ? withoutBareMath(values[index]!) : values[index]!);
         if (index < slashBoundaries.length) {
           parts.push(keyword('/'));
         }
@@ -3631,7 +3711,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const topSumMaybeDivision = node(
     'TopSumMaybeDivision',
     noTrivia(sequence(g.TopSum, many(sequence(field('separator', preservedSlashBoundary), g.TopSum)))),
-    (children, fields) => {
+    (children, fields, _span, _rawChildren, _triviaLog, state) => {
       if (fields?.separator === undefined) {
         return requireValueNode(children[0]);
       }
@@ -3641,10 +3721,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         }
         return separator.value;
       });
+
+      /*
+       * The group is preserved bytes exactly when the policy does NOT divide a
+       * bare `/`; under `math: always` it is not preserved and its operands keep
+       * the arithmetic they were built with. See {@link withoutBareMath}.
+       */
+      const preserved = !lessMathOutsideParens(state, '/');
       const values = children.filter(isValueNode);
       const parts: ValueNode[] = [];
       for (let index = 0; index < values.length; index += 1) {
-        parts.push(values[index]!);
+        parts.push(preserved ? withoutBareMath(values[index]!) : values[index]!);
         if (index < slashBoundaries.length) {
           parts.push(keyword('/'));
         }
@@ -4894,12 +4981,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(sequence(literal(':'), g.SupportsValue)),
       literal(')')
     ),
-    (children) => {
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const property = keyword(requireToken(children[1]).value);
       const value = children.find(isValueNode);
       return value === undefined
         ? block(property)
-        : block(operation(':', property, value));
+        : block(operation(':', property, value, false, lessMathOutsideParens(state, ':')));
     }
   );
   const SupportsInParens = node(
@@ -4997,18 +5084,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('('), g.Identifier, g.QueryComparisonOperator, g.QueryFeatureValue,
       optional(sequence(g.QueryComparisonOperator, g.QueryFeatureValue)), literal(')')
     ),
-    (children) => {
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const values = children.filter(isValueNode);
       const operators = queryComparisonOperators(children);
       if (values.length < 1 || operators.length < 1) {
         throw new TypeError('Less query comparison lost a value or operator.');
       }
-      let comparison = operation(operators[0]!, keyword(requireToken(children[1]).value), values[0]!);
+      let comparison = operation(operators[0]!, keyword(requireToken(children[1]).value), values[0]!, false,
+        lessMathOutsideParens(state, operators[0]!));
       if (operators.length === 2) {
         if (values[1] === undefined) {
           throw new TypeError('Less chained query comparison lost its final value.');
         }
-        comparison = operation(operators[1]!, comparison, values[1]);
+        comparison = operation(operators[1]!, comparison, values[1], false,
+          lessMathOutsideParens(state, operators[1]!));
       }
       return block(comparison);
     }
@@ -5019,18 +5108,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('('), g.QueryFeatureValue, g.QueryComparisonOperator, g.Identifier,
       optional(sequence(g.QueryComparisonOperator, g.QueryFeatureValue)), literal(')')
     ),
-    (children) => {
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const values = children.filter(isValueNode);
       const operators = queryComparisonOperators(children);
       if (values.length < 1 || operators.length < 1) {
         throw new TypeError('Less query range lost a value or operator.');
       }
-      let comparison = operation(operators[0]!, values[0]!, keyword(requireToken(children[3]).value));
+      let comparison = operation(operators[0]!, values[0]!, keyword(requireToken(children[3]).value), false,
+        lessMathOutsideParens(state, operators[0]!));
       if (operators.length === 2) {
         if (values[1] === undefined) {
           throw new TypeError('Less chained query range lost its final value.');
         }
-        comparison = operation(operators[1]!, comparison, values[1]);
+        comparison = operation(operators[1]!, comparison, values[1], false,
+          lessMathOutsideParens(state, operators[1]!));
       }
       return block(comparison);
     }
@@ -5171,12 +5262,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ContainerStyleQuery = node(
     'ContainerStyleQuery',
     sequence(styleFunctionOpener, g.CustomPropertyToken, literal(':'), g.QueryValue, literal(')')),
-    children => funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))])
+    (children, _fields, _span, _rawChildren, _triviaLog, state) =>
+      funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
+        requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
   );
   const ContainerScrollStateQuery = node(
     'ContainerScrollStateQuery',
     sequence(scrollStateFunctionOpener, g.Identifier, literal(':'), g.QueryValue, literal(')')),
-    children => funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))])
+    (children, _fields, _span, _rawChildren, _triviaLog, state) =>
+      funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
+        requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
   );
   const ContainerName = node(
     'ContainerName',

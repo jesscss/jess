@@ -8,7 +8,8 @@
  */
 import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
-import type { ISafeParseResult } from '@jesscss/core';
+import type { ISafeParseResult, MathMode } from '@jesscss/core';
+import type { LessParseState } from './parse-state.js';
 /*
  * `parserDiagnostic` comes from the narrow `./diagnostics` entry, not the root:
  * the root entry pulls the evaluator, functions, and legacy tree runtime onto
@@ -28,6 +29,25 @@ import { commentTriviaLabels } from './trivia-labels.js';
 
 /** The rule map both compiled Less AST variants expose. */
 export type LessAstGrammar = typeof lessGrammar;
+
+/**
+ * What the caller must tell the Less grammar before it can lower correctly.
+ *
+ * `mathMode` is here — and not on the evaluator — because Less's `math:` policy
+ * decides, per operation, whether arithmetic happens with no enclosing math
+ * context. That is a decision the GRAMMAR makes and writes onto the node
+ * (`Operation.mathOutsideParens`); eval reads the node and never re-derives it
+ * from ambient config (§12.6b). AST v1 had this polarity and v2 lost it.
+ */
+export interface LessParseOptions {
+  readonly mathMode?: MathMode;
+}
+
+/**
+ * Less's own default, stated here rather than defaulted at each read site so
+ * there is exactly one place the fallback lives.
+ */
+const DEFAULT_LESS_MATH_MODE: MathMode = 'parens-division';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return (
@@ -74,7 +94,11 @@ function lineOptions(input: string, span: Span): {
   };
 }
 
-export function parseWith(grammar: LessAstGrammar, input: string): Stylesheet {
+export function parseWith(
+  grammar: LessAstGrammar,
+  input: string,
+  options: LessParseOptions = {}
+): Stylesheet {
   const entry = grammar.Stylesheet;
   const trivia = grammar.whitespace;
   if (entry === undefined || trivia === undefined) {
@@ -82,9 +106,13 @@ export function parseWith(grammar: LessAstGrammar, input: string): Stylesheet {
       'Less AST grammar is missing its public document entry.'
     );
   }
+  const state: LessParseState = {
+    source: input,
+    mathMode: options.mathMode ?? DEFAULT_LESS_MATH_MODE
+  };
   const result = run(entry, input, {
     trivia,
-    state: { source: input },
+    state,
     rootTrivia: { select: commentTriviaLabels }
   });
   if (!result.ok) {
@@ -139,10 +167,11 @@ export function parseWith(grammar: LessAstGrammar, input: string): Stylesheet {
 export function safeParseWith(
   grammar: LessAstGrammar,
   filePath: string,
-  input: string
+  input: string,
+  options: LessParseOptions = {}
 ): ISafeParseResult {
   try {
-    return { document: parseWith(grammar, input), errors: [], warnings: [] };
+    return { document: parseWith(grammar, input, options), errors: [], warnings: [] };
   } catch (error) {
     return {
       errors: [

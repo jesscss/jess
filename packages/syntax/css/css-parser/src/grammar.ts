@@ -37,6 +37,7 @@ import {
   interpolation,
   keyword,
   list,
+  cssBaseMathOutsideParens,
   operation,
   opaqueAtRuleBlock,
   block,
@@ -563,7 +564,9 @@ function chainedQueryComparison(left: ValueNode, children: readonly unknown[]): 
   let result = operation(
     operators[0]!,
     left,
-    values[0]!
+    values[0]!,
+    false,
+    cssBaseMathOutsideParens(operators[0]!)
   );
   for (let index = 1; index < operators.length; index++) {
     const right = values[index];
@@ -573,7 +576,9 @@ function chainedQueryComparison(left: ValueNode, children: readonly unknown[]): 
     result = operation(
       operators[index]!,
       result,
-      right
+      right,
+      false,
+      cssBaseMathOutsideParens(operators[index]!)
     );
   }
   return result;
@@ -770,7 +775,8 @@ function foldOperation(children: readonly unknown[]): ValueNode {
         operator,
         result,
         child,
-        true
+        true,
+        cssBaseMathOutsideParens(operator)
       );
       operator = undefined;
       continue;
@@ -3202,7 +3208,9 @@ const cssFactory = (g: GrammarSelf) => {
       return operation(
         '/',
         numerator,
-        denominator
+        denominator,
+        false,
+        cssBaseMathOutsideParens('/')
       );
     }
   );
@@ -3227,7 +3235,9 @@ const cssFactory = (g: GrammarSelf) => {
     children => block(operation(
       ':',
       keyword(tokenText(children[1]!)),
-      firstValue(children)
+      firstValue(children),
+      false,
+      cssBaseMathOutsideParens(':')
     ))
   );
   const QueryComparisonFeature = node(
@@ -3281,7 +3291,9 @@ const cssFactory = (g: GrammarSelf) => {
       let result = operation(
         operators[0]!,
         values[0]!,
-        property
+        property,
+        false,
+        cssBaseMathOutsideParens(operators[0]!)
       );
       if (operators.length > 1) {
         const right = values[1];
@@ -3291,7 +3303,9 @@ const cssFactory = (g: GrammarSelf) => {
         result = operation(
           operators[1]!,
           result,
-          right
+          right,
+          false,
+          cssBaseMathOutsideParens(operators[1]!)
         );
       }
       return block(result);

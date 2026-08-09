@@ -250,16 +250,37 @@ export interface Operation extends SpanSlots {
    * Was this operation AUTHORED inside a css-values-4 §10 math function
    * (`calc`, `min`, `clamp`, `round`, …)? A parse-time POSITIONAL fact, not a
    * verdict: whether the operation then folds is decided by this fact TOGETHER
-   * with `unitMode` and `mathMode`. In particular a Less operation still
-   * answers to `mathMode` for whether math happens at all, and a cross-unit
-   * pair still answers to `unitMode` for whether it folds, preserves as
-   * `calc(…)`, or raises.
+   * with {@link mathOutsideParens} and `unitMode`. A cross-unit pair still
+   * answers to `unitMode` for whether it folds, preserves as `calc(…)`, or
+   * raises.
    *
    * Non-optional and factory-defaulted, so every `Operation` realizes ONE
    * hidden class. `FunctionCall.modern` is the precedent; `Block.boundary` is
    * not — it is optional and realizes three.
    */
   readonly inMathFunction: boolean;
+
+  /**
+   * Does this operation compute WITHOUT an enclosing math context — no
+   * parentheses, no `calc(…)`, no `$( … )`? A parse-time fact decided by the
+   * dialect whose grammar built the node (§12.6b), the other half of the pair
+   * v1 carried as `OperationOptions`.
+   *
+   * The CSS base answer, and the factory default, is `operator !== '/'`: every
+   * operator but `/` is arithmetic wherever it appears, while `/` is also a CSS
+   * SEPARATOR (`font: 12px/1.5`, `rgb(0 0 0 / 50%)`) and so needs a math
+   * context to be read as division. Less spells that same answer
+   * `math: parens-division`; `math: always` makes `/` compute bare too, and
+   * `math: parens`/`strict` makes nothing compute bare.
+   *
+   * It is the DECISION, not the mode: the evaluator reads what the node says
+   * and never consults ambient config, which is the rule that removed
+   * `equalityMode` (§5.1) and now removes the eval-time `mathMode` read.
+   *
+   * Non-optional and factory-defaulted, for the same one-hidden-class reason as
+   * {@link inMathFunction}.
+   */
+  readonly mathOutsideParens: boolean;
 }
 
 /**
@@ -1602,8 +1623,40 @@ export const declarationReference = (raw: string = '$'): Lookup =>
 export const lookupStep = (kind: LookupKind, name: string | ValueNode | number, indexBase?: 0 | 1): LookupStep =>
   indexBase === undefined ? { type: 'LookupStep', kind, name } : { type: 'LookupStep', kind, name, indexBase };
 export const important = (value: ValueSlot): Important => ({ type: 'Important', value });
-export const operation = (operator: string, left: ValueNode, right: ValueNode, inMathFunction = false): Operation =>
-  ({ type: 'Operation', operator, left, right, inMathFunction, _s: NO_SPAN, _e: NO_SPAN });
+
+/**
+ * The CSS base answer to {@link Operation.mathOutsideParens}: every operator but
+ * `/` is arithmetic wherever it appears, while `/` is also a CSS SEPARATOR
+ * (`font: 12px/1.5`, `rgb(0 0 0 / 50%)`) and so needs a math context to be read
+ * as division.
+ *
+ * This is the answer for `.css`, `.jess` and `.scss` — none of which has a
+ * user-settable math policy — and it is measured, not assumed: dart-sass
+ * 1.101.0 emits `(4px / 2)` as `2px` and `4px / 2` as `4px/2`.
+ *
+ * Only `.less` differs, because only Less has a `math:` option; its grammar
+ * resolves that option per operation and does NOT call this (§12.6b, ledger P1).
+ */
+export const cssBaseMathOutsideParens = (operator: string): boolean => operator !== '/';
+
+/**
+ * The ONE construction site for an {@link Operation}.
+ *
+ * `mathOutsideParens` has NO default, deliberately. Any default would equal the
+ * correct answer under the default math mode, so an omitted argument would be
+ * invisible in testing and wrong under every other mode — the def-field
+ * default-collapse trap. Every caller states its answer: `.css`/`.jess`/`.scss`
+ * through {@link cssBaseMathOutsideParens}, `.less` through its own
+ * mode-resolving helper.
+ */
+export const operation = (
+  operator: string,
+  left: ValueNode,
+  right: ValueNode,
+  inMathFunction: boolean,
+  mathOutsideParens: boolean
+): Operation =>
+  ({ type: 'Operation', operator, left, right, inMathFunction, mathOutsideParens, _s: NO_SPAN, _e: NO_SPAN });
 
 /**
  * The ONE construction site for a {@link CallArg}. Every field is written on

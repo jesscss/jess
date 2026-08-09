@@ -2792,18 +2792,17 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
   }
 
   /*
-   * In Less's parens-division mode, a slash at this same authored boundary
-   * keeps the whole scalar expression authored.  Evaluate parenthesized
-   * children through their own `parenDepth`, but do not eagerly reduce a
-   * neighboring `+`/`-` operation before the preserved slash is emitted.
+   * A slash at this authored boundary keeps the whole scalar expression
+   * authored — a neighbouring `+`/`-` must not eagerly reduce before the
+   * preserved slash is emitted, or `4 / 2 + 5em` prints `4 / 7em`.
+   *
+   * That used to be done HERE, by re-entering the slot with `mathMode` forced
+   * to `'strict'`. It is now a parse fact: the Less grammar recognised the
+   * preserved slash group (`PreservedDivision`) and restated its operands as
+   * arithmetic that does not happen on its own (§12.6b). The operands say so
+   * themselves, so this walk needs no context of its own.
    */
-  const preserveBareSlash = (e.calcDepth ?? 0) === 0
-    && e.modes.mathMode === 'parens-division'
-    && hasTopLevelBareSlash(slot);
-  const valueContext = preserveBareSlash
-    ? { ...e, modes: { ...e.modes, mathMode: 'strict' as const } }
-    : e;
-  const values = slot.map(value => evalValueSlot(value, frame, valueContext));
+  const values = slot.map(value => evalValueSlot(value, frame, e));
   return combineAll(values, (resolved) => {
     const separators = valueLayoutOf(slot);
 
@@ -2906,7 +2905,25 @@ function reduceBareSlashTier(
     const right = values[i + 1]!;
     if (tier.has(operator)) {
       const left = nextValues.pop()!;
-      nextValues.push(operation(operator, left, right));
+
+      /*
+       * `mathOutsideParens: true` on every rung, `/` included. This tree is
+       * only ever built because the math policy is `always` (see
+       * `promoteBareSlashValue`, the sole caller), and `always` is exactly the
+       * answer "every operator computes with no enclosing math context". The
+       * factory's CSS-base default would say `false` for `/` and strand the
+       * division this promotion exists to perform.
+       *
+       * [TODO §12.6b step 1, remainder] Building an Operation HERE, at eval,
+       * from a slot the grammar left as a flat slash list, is the same defect
+       * §12.6b names: the Less grammar hardcodes `parens-division`
+       * (`TopProduct`/`TopSum` exclude `/`, and `PreservedDivision` exists) and
+       * so never builds this node even when the policy is `always`. Now that
+       * the grammar receives `mathMode`, the fix is to gate those productions
+       * on it and delete this promotion together with the last two
+       * `e.modes.mathMode` reads.
+       */
+      nextValues.push(operation(operator, left, right, false, true));
     } else {
       nextOperators.push(operator);
       nextValues.push(right);
@@ -3396,9 +3413,16 @@ function slashGroupToOperation(node: Sequence): Operation | null {
   if (!flush() || !sawSlash || operands.length < 2) {
     return null;
   }
-  let op = operation('/', operands[0]!, operands[1]!);
+
+  /*
+   * `mathOutsideParens: false` — this division computes because the enclosing
+   * `calc(…)` is a math context (`calcDepth`), never on its own. Saying `true`
+   * here would make the reinterpreted group compute outside calc too, which is
+   * the opposite of why it was preserved.
+   */
+  let op = operation('/', operands[0]!, operands[1]!, false, false);
   for (let i = 2; i < operands.length; i++) {
-    op = operation('/', op, operands[i]!);
+    op = operation('/', op, operands[i]!, false, false);
   }
   return op;
 }
@@ -3757,8 +3781,6 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return combineAll([l, r], values =>
           literal(`${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`));
       }
-      const mathMode = e.modes.mathMode ?? 'parens-division';
-
       /*
        * §4.6 — an operation AUTHORED inside a css-values-4 §10 math function
        * preserves its authorship: `calc($val / 2)` resolves the variable and
@@ -3769,14 +3791,17 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        *
        * The flag is a parse-time POSITIONAL fact and NOT the whole rule. It
        * decides only that the fold is declined here; when it is absent,
-       * `mathMode` decides whether math happens at all, and if it does,
-       * `unitMode` decides whether a cross-unit pair folds, preserves as
-       * `calc(…)`, or raises (§4.7). Three inputs, not one.
+       * `node.mathOutsideParens` — the dialect's math policy, also decided at
+       * parse (§12.6b) — says whether math happens with no enclosing context,
+       * and if it does, `unitMode` decides whether a cross-unit pair folds,
+       * preserves as `calc(…)`, or raises (§4.7).
        *
-       * This is the polarity AST v1 had (`OperationOptions.inCalc`, a
-       * parse-time flag on the node, and an in-calc operation never operated).
-       * v2 had it inverted: `calcDepth > 0` FORCED the operation and left
-       * `value-operate` to decline.
+       * BOTH inputs are now node facts, which is the polarity AST v1 had
+       * (`OperationOptions`, a parse-time record the evaluator branched on and
+       * never re-derived). The ambient `e.modes.mathMode` read this line used
+       * to make was the v2 regression: a dialect difference must be carried by
+       * what the LOWERED NODE says, never by a mode the evaluator reads from
+       * config — the rule that removed `equalityMode` (§5.1).
        *
        * `calcDepth` survives BELOW the flag, and only there. The `.less` and
        * `.scss` grammars do not set `inMathFunction` yet — routing their math
@@ -3788,9 +3813,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        */
       const shouldOperate = !node.inMathFunction
         && ((e.calcDepth ?? 0) > 0
-          || mathMode === 'always'
-          || (e.parenFrames?.at(-1) ?? false)
-          || (mathMode === 'parens-division' && node.operator !== '/'));
+          || node.mathOutsideParens
+          || (e.parenFrames?.at(-1) ?? false));
       if (!shouldOperate) {
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
+import { cssBaseMathOutsideParens,
   collection,
   collectionEntry,
   decl,
@@ -25,7 +25,7 @@ describe('canonical authored AST traversal', () => {
     const seen: string[] = [];
 
     walkAuthoredValue(funcCall('calc', [
-      operation('+', dimension(0, 'px', '0px'), dimension(1, 'em', '1em')),
+      operation('+', dimension(0, 'px', '0px'), dimension(1, 'em', '1em'), false, cssBaseMathOutsideParens('+')),
       list([
         spaced([dimension(0, 'rem', '0rem'), keyword('auto')]),
         [dimension(0, 'vh', '0vh')]

@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, CallArg, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, Null, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -666,7 +666,9 @@ function foldOperation(children: readonly unknown[]): ValueNode {
       result = operation(
         operator,
         result,
-        child
+        child,
+        false,
+        cssBaseMathOutsideParens(operator)
       );
       operator = undefined;
       continue;
@@ -1076,7 +1078,8 @@ function foldLogicalOperation(children: readonly unknown[]): ValueNode {
   const operators = children.filter(isToken).map(token => token.value.trim().toLowerCase()).filter(text => text === 'and' || text === 'or');
   let result = requireValue(values[0]);
   for (let index = 1; index < values.length; index += 1) {
-    result = operation(operators[index - 1]!, result, values[index]!);
+    result = operation(operators[index - 1]!, result, values[index]!, false,
+      cssBaseMathOutsideParens(operators[index - 1]!));
   }
   return result;
 }
@@ -2065,7 +2068,9 @@ const scssFactory = (g: ScssInputRules) => {
               '',
               '-1'
             ),
-            value
+            value,
+            false,
+            cssBaseMathOutsideParens('*')
           )
         : value;
     }
@@ -2892,7 +2897,9 @@ const scssFactory = (g: ScssInputRules) => {
     children => block(operation(
       ':',
       keyword(requireToken(children[0]).value),
-      requireValue(children[2])
+      requireValue(children[2]),
+      false,
+      cssBaseMathOutsideParens(':')
     ))
   );
   const ImportSupports = node<FunctionCall>(
@@ -4047,7 +4054,9 @@ const scssFactory = (g: ScssInputRules) => {
         : operation(
             '/',
             numerator,
-            denominator
+            denominator,
+            false,
+            cssBaseMathOutsideParens('/')
           );
     }
   );
@@ -4108,14 +4117,18 @@ const scssFactory = (g: ScssInputRules) => {
         let comparison = operation(
           requireToken(children[2]).value,
           requireValue(values[0]),
-          property
+          property,
+          false,
+          cssBaseMathOutsideParens(requireToken(children[2]).value)
         );
         const upper = values[1];
         if (upper !== undefined) {
           comparison = operation(
             requireToken(children[children.length - 3]).value,
             comparison,
-            upper
+            upper,
+            false,
+            cssBaseMathOutsideParens(requireToken(children[children.length - 3]).value)
           );
         }
         return block(comparison);
@@ -4128,7 +4141,9 @@ const scssFactory = (g: ScssInputRules) => {
       return block(operation(
         requireToken(children[2]).value,
         property,
-        value
+        value,
+        false,
+        cssBaseMathOutsideParens(requireToken(children[2]).value)
       ));
     }
   );
@@ -4344,7 +4359,9 @@ const scssFactory = (g: ScssInputRules) => {
         : block(operation(
             ':',
             property,
-            value
+            value,
+            false,
+            cssBaseMathOutsideParens(':')
           ));
     }
   );

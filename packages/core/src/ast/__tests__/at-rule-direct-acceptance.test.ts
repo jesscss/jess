@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { atRuleBlock, atRuleStatement } from '../at-rule.js';
 import { buildEvaluator } from '../evaluator.js';
-import {
+import { cssBaseMathOutsideParens,
   block, decl, dimension, funcCall, interpolation, keyword, operation, reference, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -29,7 +29,7 @@ describe('At-rule canonical AST emission', () => {
 
   it('preserves media feature parens when a prelude reference resolves to a block value', () => {
     const document = stylesheet([
-      variableDeclaration('feature', block(operation(':', keyword('min-width'), dimension(480, 'px'))), { mode: 'declare' }),
+      variableDeclaration('feature', block(operation(':', keyword('min-width'), dimension(480, 'px'), false, cssBaseMathOutsideParens(':'))), { mode: 'declare' }),
       atRuleBlock('@media', spaced([
         keyword('not'),
         keyword('all'),

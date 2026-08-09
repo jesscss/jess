@@ -57,6 +57,12 @@ export class ScssPlugin extends AbstractPlugin {
     context.registerValueEvaluator(sassValueEvaluator);
   }
 
+  /**
+   * No `mathMode` here, deliberately. dart-sass 1.101.0 has no user-settable
+   * math policy — the full option surface carries none, and `slash-div` is a
+   * DEPRECATION in its registry, not a mode — so SCSS has one fixed behaviour
+   * and the grammar states it directly (`cssBaseMathOutsideParens`).
+   */
   safeParse(filePath: string, source: string): ISafeParseResult {
     try {
       return { document: parse(source), errors: [], warnings: [] };

@@ -11,7 +11,9 @@
 import type { ISafeParseResult } from '@jesscss/core';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { lessPositionsGrammar } from './grammar/ast/positions.js';
-import { parseWith, safeParseWith } from './parse-with.js';
+import { parseWith, safeParseWith, type LessParseOptions } from './parse-with.js';
+
+export type { LessParseOptions } from './parse-with.js';
 
 export {
   LessBareVariableInterpolationError,
@@ -25,11 +27,15 @@ export {
 } from './parse-error.js';
 
 /** Parse Less into the canonical AST v2 document with line/column facts. */
-export function parse(input: string): Stylesheet {
-  return parseWith(lessPositionsGrammar, input);
+export function parse(input: string, options: LessParseOptions = {}): Stylesheet {
+  return parseWith(lessPositionsGrammar, input, options);
 }
 
 /** `safeParse` over the line-aware table: diagnostics carry parser line facts. */
-export function safeParse(filePath: string, input: string): ISafeParseResult {
-  return safeParseWith(lessPositionsGrammar, filePath, input);
+export function safeParse(
+  filePath: string,
+  input: string,
+  options: LessParseOptions = {}
+): ISafeParseResult {
+  return safeParseWith(lessPositionsGrammar, filePath, input, options);
 }

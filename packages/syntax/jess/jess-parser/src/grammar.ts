@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, keyword, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, keyword, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode, While } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -757,7 +757,9 @@ function foldExpression(children: readonly unknown[]): ExpressionFact {
       value: operation(
         operator.value,
         fact.value,
-        right.value
+        right.value,
+        false,
+        cssBaseMathOutsideParens(operator.value)
       ),
       src: `${fact.src}${operator.src}${right.src}`
     };
@@ -801,7 +803,7 @@ function foldLogicalExpression(kind: 'and' | 'or', children: readonly unknown[])
   for (let index = 1; index < facts.length; index += 1) {
     const right = facts[index]!;
     fact = {
-      value: operation(kind, fact.value, right.value),
+      value: operation(kind, fact.value, right.value, false, cssBaseMathOutsideParens(kind)),
       src: `${fact.src} ${kind} ${right.src}`
     };
   }
@@ -1049,7 +1051,9 @@ function reduceColonFeature(children: readonly unknown[], lostMessage: string): 
     : block(operation(
         ':',
         keyword(propertyName),
-        value
+        value,
+        false,
+        cssBaseMathOutsideParens(':')
       ));
 }
 
@@ -1476,7 +1480,8 @@ function foldCalcOperation(children: readonly unknown[]): ValueNode {
         operator,
         result,
         child,
-        true
+        true,
+        cssBaseMathOutsideParens(operator)
       );
       operator = undefined;
       continue;
@@ -4289,7 +4294,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         : operation(
             '/',
             numerator,
-            denominator
+            denominator,
+            false,
+            cssBaseMathOutsideParens('/')
           );
     }
   );
@@ -4368,12 +4375,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         ? operation(
             operators[0]!,
             propertyFact.property,
-            values[0]!
+            values[0]!,
+            false,
+            cssBaseMathOutsideParens(operators[0]!)
           )
         : operation(
             operators[0]!,
             values[0]!,
-            propertyFact.property
+            propertyFact.property,
+            false,
+            cssBaseMathOutsideParens(operators[0]!)
           );
       if (operators.length === 2) {
         const trailing = values.at(-1);
@@ -4383,7 +4394,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         result = operation(
           operators[1]!,
           result,
-          trailing
+          trailing,
+          false,
+          cssBaseMathOutsideParens(operators[1]!)
         );
       }
       return block(result);

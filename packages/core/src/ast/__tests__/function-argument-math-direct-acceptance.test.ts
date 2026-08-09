@@ -1,21 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
-import { block, decl, dimension, funcCall, operation, quoted, rule, stylesheet } from '../nodes.js';
+import { cssBaseMathOutsideParens, block, decl, dimension, funcCall, operation, quoted, rule, stylesheet } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 
 describe('direct canonical function-argument math', () => {
-  it('evaluates division in Less function arguments when mathMode is always', () => {
+  /*
+   * `math: always` is a PARSE-time input (§12.6b): the Less grammar resolves it
+   * per operation and writes the answer to `Operation.mathOutsideParens`, so a
+   * hand-built document states the fact on the node rather than handing the
+   * evaluator a mode. The expected bytes are unchanged — what changed is where
+   * the decision is recorded.
+   */
+  it('evaluates division in Less function arguments when the node says math happens outside parens', () => {
+    const alwaysDivides = (left: ReturnType<typeof dimension>, right: ReturnType<typeof dimension>) =>
+      operation('/', left, right, false, true);
     const document = stylesheet([
       rule('.math', [
-        decl('rounded', funcCall('round', [operation('/', dimension(32), dimension(3))])),
-        decl('percentage', funcCall('percentage', [operation('/', dimension(10, 'px'), dimension(50))]))
+        decl('rounded', funcCall('round', [alwaysDivides(dimension(32), dimension(3))])),
+        decl('percentage', funcCall('percentage', [alwaysDivides(dimension(10, 'px'), dimension(50))]))
       ])
     ]);
 
-    expect(serialize(document, { evaluator, modes: { unitMode: 'preserve', mathMode: 'always' } }).css).toBe('.math {\n'
+    expect(serialize(document, { evaluator, modes: { unitMode: 'preserve' } }).css).toBe('.math {\n'
       + '  rounded: 11;\n'
       + '  percentage: 20%;\n'
       + '}\n');
@@ -25,10 +34,10 @@ describe('direct canonical function-argument math', () => {
     const document = stylesheet([
       rule('.math', [
         decl('rounded', funcCall('round', [
-          block(operation('/', dimension(32), dimension(3)))
+          block(operation('/', dimension(32), dimension(3), false, cssBaseMathOutsideParens('/')))
         ])),
         decl('unitless', funcCall('unit', [
-          block(operation('/', operation('*', dimension(4, 'px'), dimension(4, 'em')), dimension(2, 'cm')))
+          block(operation('/', operation('*', dimension(4, 'px'), dimension(4, 'em'), false, cssBaseMathOutsideParens('*')), dimension(2, 'cm'), false, cssBaseMathOutsideParens('/')))
         ]))
       ])
     ]);
@@ -50,11 +59,11 @@ describe('direct canonical function-argument math', () => {
    * answer to both.
    */
   it('a parenthesized preserved sub-expression composes exactly as the unparenthesized one does', () => {
-    const percentSquared = () => operation('*', dimension(100, '%'), dimension(100, '%'));
+    const percentSquared = () => operation('*', dimension(100, '%'), dimension(100, '%'), false, cssBaseMathOutsideParens('*'));
     const document = stylesheet([
       rule('.math', [
-        decl('parenthesized', operation('*', block(percentSquared()), dimension(2))),
-        decl('bare', operation('*', percentSquared(), dimension(2)))
+        decl('parenthesized', operation('*', block(percentSquared()), dimension(2), false, cssBaseMathOutsideParens('*'))),
+        decl('bare', operation('*', percentSquared(), dimension(2), false, cssBaseMathOutsideParens('*')))
       ])
     ]);
 
@@ -67,7 +76,10 @@ describe('direct canonical function-argument math', () => {
   it('unquotes an escaped Less string before typed calc arithmetic', () => {
     const document = stylesheet([
       rule('.math', [
-        decl('width', funcCall('calc', [operation('-', quoted('~\'100%\'', '100%', '\'', true), dimension(3))]))
+        decl('width', funcCall('calc', [
+          operation('-', quoted('~\'100%\'', '100%', '\'', true), dimension(3), false,
+            cssBaseMathOutsideParens('-'))
+        ]))
       ])
     ]);
 

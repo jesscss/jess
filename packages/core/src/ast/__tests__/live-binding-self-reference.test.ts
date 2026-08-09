@@ -21,7 +21,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
-import {
+import { cssBaseMathOutsideParens,
   decl, dimension, ifNode, keyword, operation, rule, stylesheet,
   variableDeclaration, variableReference
 } from '../nodes.js';
@@ -42,7 +42,7 @@ describe('a live binding reading its own PRIOR value', () => {
   it('resolves to the previous binding at the same level', () => {
     expect(css([
       declare('i', dimension(3)),
-      declare('i', operation('-', live('i'), dimension(1))),
+      declare('i', operation('-', live('i'), dimension(1), false, cssBaseMathOutsideParens('-'))),
       readInto('.a', 'i')
     ])).toBe('.a {\n  x: 2;\n}\n');
   });
@@ -52,7 +52,7 @@ describe('a live binding reading its own PRIOR value', () => {
       declare('i', dimension(3)),
       ifNode([{
         guard: null,
-        rules: [declare('i', operation('-', live('i'), dimension(1)))]
+        rules: [declare('i', operation('-', live('i'), dimension(1), false, cssBaseMathOutsideParens('-')))]
       }]),
       readInto('.a', 'i')
     ])).toBe('.a {\n  x: 2;\n}\n');
@@ -65,7 +65,7 @@ describe('a live binding reading its own PRIOR value', () => {
         guard: null,
         rules: [ifNode([{
           guard: null,
-          rules: [declare('i', operation('-', live('i'), dimension(1)))]
+          rules: [declare('i', operation('-', live('i'), dimension(1), false, cssBaseMathOutsideParens('-')))]
         }])]
       }]),
       readInto('.a', 'i')
@@ -108,7 +108,7 @@ describe('a live binding that is genuinely self-referential', () => {
 
   it('is an error when the self-reference is arithmetic and nothing prior binds it', () => {
     expect(() => css([
-      declare('i', operation('-', live('i'), dimension(1))),
+      declare('i', operation('-', live('i'), dimension(1), false, cssBaseMathOutsideParens('-'))),
       readInto('.a', 'i')
     ])).toThrowError(expect.objectContaining(recursive));
   });
@@ -118,7 +118,7 @@ describe('a live binding that is genuinely self-referential', () => {
       ifNode([{
         guard: null,
         rules: [
-          declare('i', operation('-', live('i'), dimension(1))),
+          declare('i', operation('-', live('i'), dimension(1), false, cssBaseMathOutsideParens('-'))),
           readInto('.a', 'i')
         ]
       }])

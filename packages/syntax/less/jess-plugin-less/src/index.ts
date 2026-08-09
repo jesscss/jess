@@ -6,6 +6,7 @@ import {
   ERR,
   type ISafeParseResult,
   type PluginInterface,
+  type SafeParseOptions,
   buildEvaluator
 } from '@jesscss/core';
 import { type PluginHost } from '@jesscss/core';
@@ -515,8 +516,20 @@ export class LessPlugin extends AbstractPlugin {
     return jsDelivrPackageSpecifier(specifier) !== null;
   }
 
-  safeParse(filePath: string, source: string): ISafeParseResult {
-    return safeParseLess(filePath, source);
+  /**
+   * `mathMode` reaches the GRAMMAR, not the evaluator (§12.6b): Less's `math:`
+   * policy decides at parse whether each operation computes with no enclosing
+   * math context, and the answer is written onto the node.
+   *
+   * The precedence here reproduces exactly what {@link setContext} applies
+   * later — explicit compile option first, this plugin's resolved default
+   * second — without depending on `documentContext`, which is only populated
+   * AFTER the parse returns.
+   */
+  safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
+    return safeParseLess(filePath, source, {
+      mathMode: parseOptions?.compilerOptions?.mathMode ?? this.mathMode
+    });
   }
 }
 
