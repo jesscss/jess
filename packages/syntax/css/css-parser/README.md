@@ -1,5 +1,12 @@
 # @jesscss/css-parser
 
+`parse()` produces selectors, at-rule preludes, and declaration values as
+structured nodes in the same pass, rather than retaining them as strings for
+consumers to re-parse. The reasoning, the PostCSS contrast, and the
+counter-considerations are in
+[`docs/architecture/parser/PARSE-ONCE-DEEPLY.md`](../../../../docs/architecture/parser/PARSE-ONCE-DEEPLY.md);
+it is not restated here.
+
 The CSS package exposes Parseman CSS grammar, canonical AST v2 parsing, and
 explicit CST parsing:
 

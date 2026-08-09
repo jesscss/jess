@@ -325,6 +325,12 @@ Use this split as the migration rule:
 | CI warning budgets for Jess diagnostics | `jess lint --max-warnings 0` |
 | Comparing a small stable rule subset | `STYLELINT_COMPARISON_LINT_CONFIG` |
 
+The parser-side half of this comparison — why Jess parses values and selectors
+once and deeply, where PostCSS's deferred parse relocates that cost, and the
+counter-considerations — is stated once in
+[`docs/architecture/parser/PARSE-ONCE-DEEPLY.md`](../../docs/architecture/parser/PARSE-ONCE-DEEPLY.md)
+and is deliberately not restated here.
+
 Jess provides `STYLELINT_COMPARISON_LINT_CONFIG` only for apples-to-apples
 checks against rules that have a close native diagnostic. It intentionally
 excludes syntax diagnostics, Jess-only support diagnostics, and stable rules
