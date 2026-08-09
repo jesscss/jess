@@ -1010,24 +1010,43 @@ is simply wrong, which is worse than a diagnostic.
 `unitMode` is the ladder, and **every rung warns except the one that throws**
 (owner, 2026-08-01):
 
-| mode | `1 / 2px` | | measured at `d9531097f` |
+| mode | `1 / 2px` | | LANDED |
 | --- | --- | --- | --- |
-| `loose` | `0.5px` | Less 4.x's answer, **+ warning** | `0.5px`, **no warning** |
-| **`preserve`** (default) | `calc(1 / 2px)` | **+ warning** | `calc(1 / 2px)`, **no warning** |
-| `strict` | throws | | **`0.5px` — does not throw** |
+| `loose` | `0.5px` | Less 4.x's answer, **+ warning** | `0.5px` + `eval/unexpressible-unit` |
+| **`preserve`** (default) | `calc(1 / 2px)` | **+ warning** | `calc(1 / 2px)` + `eval/unexpressible-unit` |
+| `strict` | throws | | throws `eval/invalid-unit-arithmetic` |
 
-**Two rungs of this ladder are NOT implemented.** The VALUES for `loose` and
-`preserve` are right and are asserted by `operations.test.ts`; the two things
-this table adds on top of them are not:
+**LANDED in full.** `c906c2f9e` built the machinery and this section then read as
+done — but every rung still measured wrong, because the machinery had no
+reachable site for the spelling §4.7's own table is written in. The rung values
+are asserted by `operations.test.ts`, and so, now, are the throw and the warning.
 
-- **No rung warns.** `packages/core/src/ast/value-operate.ts` has no warning
-  emission at all, so "no mode is silent" is currently false at every rung.
-- **`strict` does not throw for an inexpressible result.** `dimensionOperate`
-  (`value-operate.ts:265`) reads `unitMode === 'strict'` only on the `+`/`-`
-  conversion path (`:286`); the `*`/`/` path composes the unit multiset and never
-  consults the mode, and only `preserve` attaches a preserved spelling (`:312`).
-  So `strict` falls through to the raw magnitude. `1px + 1em` under `strict`
-  DOES raise, which is the `5c516dbb1` work and is unaffected.
+The root cause was NOT where an earlier revision of this section placed it. It is
+worth recording precisely, because the wrong diagnosis is the plausible one:
+
+- `dimensionOperate` (`value-operate.ts:265`) does read `unitMode` only on the
+  `+`/`-` path, and the `*`//` path only composes the multiset — **and that is
+  correct**. §4.7 is a question about a FINAL value, so `strict`'s throw and the
+  other rungs' warning both belong at the CONSUMING BOUNDARY, not at each
+  operation. Arithmetic must keep computing through an unexpressible
+  intermediate so a later op can cancel it (`1px * 1px / 1px` → `1px`). Moving the
+  ladder into `dimensionOperate` would break that chain and would warn about
+  intermediates the author got right.
+- The real defect was that the boundary was **unreachable from `$( … )`**.
+  `evalBytes` applies it only to a TYPED value (`if (!isLiteral(value))`), but the
+  `.jess` grammar wraps the `Expression` computation boundary in a single-ref
+  `Interpolation`, and `evalInterp` (`serialize.ts:3874`) emitted each ref to
+  bytes *inside* the splice — so the boundary received an opaque string and
+  skipped it. `.scss`/`.less` `k: 1px * 2px`, which is not spliced, threw and
+  warned correctly the whole time; the identical `.jess` `k: $(1px * 2px)`
+  silently emitted `2px` in every mode. That is one value printing different
+  bytes by POSITION (SEMANTIC-INVARIANTS 2) and a rule enforced over a code path
+  rather than a construct (invariant 1). Fixed by applying the same boundary at
+  the splice — the ledger's **F7(b)**.
+
+`1px + 1em` under `strict` DOES raise, which is the `5c516dbb1` work and is
+unaffected. It is an INCOMPATIBLE-units conversion, not an unexpressible result,
+so it is not on this ladder and does not warn.
 
 **No mode is silent.** Silent preservation is the worst option: the author gets
 output that looks fine and never learns the expression was meaningless. Ledger

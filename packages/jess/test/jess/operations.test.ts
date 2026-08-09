@@ -37,6 +37,35 @@ const body = async (src: string) => {
   return out.replace(/\s+/g, ' ').trim();
 };
 
+/**
+ * The §4.7 ladder is a COMPILE-level option, so it is set on the Compiler and not
+ * per render. These two helpers differ only in what they observe — the bytes, and
+ * the warnings the render reports to its CALLER — because §4.7 makes a claim about
+ * BOTH ("every rung warns except the one that throws") and a row that checked only
+ * the bytes is exactly how the silent rungs stayed silent.
+ */
+type UnitMode = 'loose' | 'preserve' | 'strict';
+
+const valueIn = async (expr: string, unitMode: UnitMode) => {
+  const out = await new Compiler({ compile: { unitMode }, quiet: true })
+    .renderString(`.a { k: ${expr}; }`, { filePath: 'entry.jess', extension: '.jess' });
+  return out.replace(/\s+/g, ' ').trim().replace(/^\.a \{ k: /, '').replace(/; \}$/, '');
+};
+
+/**
+ * The warning CODES that reach a caller. `renderToResult` is the existing channel
+ * for eval-time diagnostics on a source string (`safeRender` is the same channel
+ * for a file); nothing new is introduced here.
+ */
+const warningsIn = async (expr: string, unitMode: UnitMode) => {
+  const { warnings } = await new Compiler({ compile: { unitMode }, quiet: true })
+    .renderToResult(
+      { source: `.a { k: ${expr}; }`, filePath: 'entry.jess', extension: '.jess' },
+      { quiet: true }
+    );
+  return warnings.map(w => w.code);
+};
+
 /** Render a whole stylesheet in the named dialect. */
 const sheet = async (src: string, extension: '.jess' | '.scss' | '.less') => {
   const out = await new Compiler().renderString(src, { filePath: `entry${extension}`, extension });
@@ -113,6 +142,107 @@ describe('OPERATIONS §4 — arithmetic', () => {
      */
     await expect(value('min(100% - 30px)')).resolves.toBe('min(100% - 30px)');
     await expect(value('min(1em - 2px)')).resolves.toBe('min(1em - 2px)');
+  });
+});
+
+describe('OPERATIONS §4.7 — the `unitMode` ladder, and NO rung is silent', () => {
+  /*
+   * The rows above assert the DEFAULT rung only, and that is precisely how this
+   * section stayed broken while reading as done: `preserve` was right, so the
+   * table looked green, while `strict` silently answered `0.5px` and not one rung
+   * warned. A settled behaviour with no row can regress without going red — these
+   * rows exist to make the other two rungs, and the warning, unregressable.
+   *
+   * "Nonsensical" is §4.7's own definition and nothing wider: a result whose unit
+   * CSS CANNOT EXPRESS — a unit PRODUCT (`1px * 2px`) or a bare RECIPROCAL
+   * (`1 / 2px`). A result that is expressible is not a §4.7 case in ANY mode, which
+   * is what the last row below pins.
+   */
+
+  const unexpressible = ['$(1 / 2px)', '$(1px * 2px)', '$(1px * 10%)'];
+
+  it('`strict` THROWS on an unexpressible unit — on `*` and `/`, not just `+`/`-`', async () => {
+    /*
+     * The defect this file exists to catch. `dimensionOperate` consulted
+     * `unitMode` only on the `+`/`-` conversion path, and the `*`//` composition
+     * reached the consuming boundary through the `$( … )` splice, which folded it
+     * to bytes before the boundary could see a typed dimension — so `strict` fell
+     * through to the raw magnitude.
+     */
+    for (const expr of unexpressible) {
+      await expect(valueIn(expr, 'strict'), `${expr} must throw under strict`).rejects.toThrow();
+    }
+  });
+
+  it('`strict` raises the STRUCTURED unit error, not a bare TypeError', async () => {
+    /*
+     * The code and a source location are the contract, not merely "it threw" —
+     * a bare `TypeError` out of the public API would satisfy the row above.
+     */
+    await expect(valueIn('$(1 / 2px)', 'strict')).rejects.toMatchObject({
+      code: 'eval/invalid-unit-arithmetic'
+    });
+  });
+
+  it('`loose` gives Less 4.x\'s answer — the rung that folds', async () => {
+    /*
+     * Dimensionally false on purpose: `loose` is the opt-in to Less 4.x's
+     * behaviour, which is why it is the rung that most needs the warning.
+     */
+    await expect(valueIn('$(1 / 2px)', 'loose')).resolves.toBe('0.5px');
+    await expect(valueIn('$(1px * 2px)', 'loose')).resolves.toBe('2px');
+  });
+
+  it('`preserve` (default) says the expression back, and does NOT raise', async () => {
+    await expect(valueIn('$(1 / 2px)', 'preserve')).resolves.toBe('calc(1 / 2px)');
+    await expect(valueIn('$(1px * 2px)', 'preserve')).resolves.toBe('calc(1px * 2px)');
+  });
+
+  it('NO MODE IS SILENT — both non-throwing rungs warn, and it REACHES the caller', async () => {
+    /*
+     * The half of §4.7 that had zero assertions anywhere in the suite. Silent
+     * preservation is the worst outcome: the author gets output that looks fine
+     * and never learns the expression was meaningless (ledger G25 — "auto-fixed
+     * AND warned — both, not either").
+     *
+     * `strict` is excluded because it throws instead, which is the one rung §4.7
+     * says says nothing extra.
+     */
+    for (const mode of ['loose', 'preserve'] as const) {
+      for (const expr of unexpressible) {
+        await expect(warningsIn(expr, mode), `${expr} must warn under ${mode}`)
+          .resolves.toContain('eval/unexpressible-unit');
+      }
+    }
+  });
+
+  it('an EXPRESSIBLE result is silent in every rung — the warning is not a blanket', async () => {
+    /*
+     * The bound on the row above. Units that cancel (`2px / 1px` → `2`) or a plain
+     * scaling (`1px * 2`) are honestly expressible, so they neither throw nor warn
+     * anywhere on the ladder. Without this row the warning could be emitted for
+     * every operation and the previous row would still pass.
+     */
+    for (const mode of ['loose', 'preserve', 'strict'] as const) {
+      await expect(valueIn('$(2px / 1px)', mode)).resolves.toBe('2');
+      await expect(valueIn('$(1px * 2)', mode)).resolves.toBe('2px');
+      await expect(warningsIn('$(2px / 1px)', mode)).resolves.toEqual([]);
+      await expect(warningsIn('$(1px * 2)', mode)).resolves.toEqual([]);
+    }
+  });
+
+  it('an unexpressible INTERMEDIATE that cancels back is not a §4.7 case', async () => {
+    /*
+     * §4.7 is a question about a FINAL value, asked at the consuming boundary. The
+     * ladder keeps computing through an unexpressible step so a later operation can
+     * cancel it, and `1px * 1px / 1px` is an honest `1px` — warning about the
+     * `1px * 1px` inside it would be a false positive about an expression the
+     * author got right, and throwing on it would break the chain outright.
+     */
+    for (const mode of ['loose', 'preserve', 'strict'] as const) {
+      await expect(valueIn('$(1px * 1px / 1px)', mode)).resolves.toBe('1px');
+      await expect(warningsIn('$(1px * 1px / 1px)', mode)).resolves.toEqual([]);
+    }
   });
 });
 
@@ -218,6 +348,48 @@ describe('OPERATIONS §4.2 — relational is trichotomous', () => {
 
   it('with no common ground, relational ERRORS — unlike equality', async () => {
     await expect(value('$(1px > red)')).rejects.toThrow();
+  });
+
+  /*
+   * §4.2a — A GROUNDLESS RELATIONAL IS ONE RULE WITH TWO ANSWERS, and both halves
+   * need a row. In VALUE position it is an assertion, so it RAISES; in GUARD
+   * position a comparison is a MATCH TEST, so it is a NON-MATCH and nothing is
+   * emitted. Only the value half was asserted (directly above), and the guard half
+   * appeared only incidentally, as the CONTROL inside the §4.5.5 short-circuit
+   * rows — where it is load-bearing for a different claim and would not go red for
+   * the right reason if §4.2a itself regressed.
+   */
+
+  it('§4.2a — in VALUE position a groundless relational raises the STRUCTURED error', async () => {
+    await expect(value('$(1px > red)')).rejects.toMatchObject({
+      code: 'eval/incomparable-operands'
+    });
+    await expect(sheet('@if (1px > red) { .a { k: OK } }', '.scss')).rejects.toMatchObject({
+      code: 'eval/incomparable-operands'
+    });
+  });
+
+  it('§4.2a — in `.less` GUARD position the same comparison is a NON-MATCH, not an error', async () => {
+    /*
+     * Paired with a guard that DOES match, so the row cannot pass against an engine
+     * where no guard ever matches — which is what "emits nothing" would otherwise
+     * be indistinguishable from.
+     */
+    await expect(sheet('.m() when (1px > red) { k: OK } .a { .m(); }', '.less')).resolves.toBe('');
+    await expect(sheet('.m() when (2px > 1px) { k: OK } .a { .m(); }', '.less')).resolves.toBe('.a { k: OK; }');
+  });
+});
+
+describe('OPERATIONS §4.5.2 — a comparison is an ordinary value, including as a call argument', () => {
+  it('a comparison folds to its boolean in ARGUMENT position', async () => {
+    /*
+     * The row that proves the comparison is a value and not a construct the
+     * grammar only admits in a condition slot. `if()` is a CSS math-family
+     * function, so it PRESERVES its authorship (§4.6) — the observable is that the
+     * argument came back as the folded `true`/`false`, not that `if()` resolved.
+     */
+    await expect(value('if($(1 < 2), red, blue)')).resolves.toBe('if(true, red, blue)');
+    await expect(value('if($(2 < 1), red, blue)')).resolves.toBe('if(false, red, blue)');
   });
 });
 

@@ -3938,6 +3938,27 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
       if (isLiteral(value) || !isElided(value)) {
         elided = false;
       }
+
+      /*
+       * §4.7 — THE SAME BOUNDARY THE DECLARATION-VALUE PATH APPLIES (`evalBytes`).
+       * Emitting a typed value to bytes IS consuming it, so this splice is a final
+       * typed-value boundary in exactly the sense `validateFinalUnits` is written
+       * over, and the `unitMode` ladder must answer here too: `strict` throws,
+       * `loose`/`preserve` warn.
+       *
+       * Without this the ladder was reachable only through a code path, not over a
+       * construct (SEMANTIC-INVARIANTS 1), and one value printed different bytes in
+       * different positions (invariant 2): `.scss` `k: 1px * 2px` threw under
+       * `strict` and warned otherwise, while the `.jess` spelling of the very same
+       * operation — `k: $(1px * 2px)`, which the grammar wraps in a single-ref
+       * `Interpolation` — folded to bytes here and reached the boundary as an opaque
+       * string, so it silently emitted `2px` in every mode. That is the ledger's
+       * F7(b) hole, and §4.7's table is written in the `$( … )` spelling, so the
+       * rung that throws had no reachable site at all.
+       */
+      if (!isLiteral(value)) {
+        validateValueGroupUnits(value, e.modes, part.ref, e);
+      }
       const emitted = emitValue(value);
       bytes += part.unquote ? stripOuterQuotes(emitted) : emitted;
     }
@@ -5433,12 +5454,17 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
  * precision, so `@x: pi()` printed `3.14159265` in a value and `3.141592653589793`
  * spliced — a less.js eval-time implementation accident, not a CSS rule.)
  *
- * Still distinct from {@link evalBytes} in two ways that are NOT precision and were
- * NOT decided here: it takes a `ValueNode` through `evalValue` rather than a
- * `ValueSlot` through `evalValueSlot` (so authored slot layout is not preserved), and
- * it never calls `validateValueGroupUnits` (so a unit error fatal in a declaration
- * value is silently accepted inside an interpolation). Both are tracked as ledger row
- * F7 (OPEN) in docs/architecture/core/DESIGN-DECISIONS.md.
+ * Still distinct from {@link evalBytes} in ONE way that is NOT precision and was NOT
+ * decided here: it takes a `ValueNode` through `evalValue` rather than a `ValueSlot`
+ * through `evalValueSlot`, so authored slot layout is not preserved. That is ledger
+ * row F7(a), still OPEN, in docs/architecture/core/DESIGN-DECISIONS.md.
+ *
+ * F7(b) — the unit boundary — is CLOSED, but not here: {@link evalInterp} applies
+ * `validateValueGroupUnits` at the splice, where a ref's typed value is emitted to
+ * bytes. That is the position the hole lived in, since the `.jess` `$( … )`
+ * computation boundary is a single-ref `Interpolation`. A ref that is NOT an
+ * interpolation reaches this function as an already-folded value, so it carries no
+ * unit multiset to validate.
  */
 function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   return mapMaybe(evalValue(node, frame, e), emitValue);
