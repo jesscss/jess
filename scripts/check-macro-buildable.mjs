@@ -2,12 +2,12 @@
 /**
  * Build guard: every functional grammar MUST stay fully macro-buildable.
  *
- * The parseman macro plugin compiles each `rules()`/`compose()` grammar to inline
- * JS at build time. If a rule can't be compiled it silently falls back to the
- * INTERPRETER. That is a real regression — correct but slow, it means a construct
- * stopped lowering, and the artifact gets SMALLER, so a bytes-first review banks
- * it as a win. This script scans the built artifacts and FAILS if any interpreter
- * fallback appears.
+ * The parseman macro plugin compiles each `rules()`/`compose()` grammar to its
+ * production artifact at build time (currently a table plus one shared driver).
+ * If a rule can't be compiled it silently falls back to the INTERPRETER. That is
+ * a real regression — correct but slow, it means a construct stopped lowering,
+ * and the artifact gets SMALLER, so a bytes-first review banks it as a win. This
+ * script scans the built artifacts and FAILS if any interpreter fallback appears.
  *
  * WHAT A FALLBACK ACTUALLY LOOKS LIKE — and what it does NOT look like. This gate
  * scanned for `_rp[N].parse(`, which CANNOT OCCUR in a macro artifact and never
@@ -285,7 +285,7 @@ for (const pkg of PARSERS) {
 }
 
 if (failed) {
-  console.error('\nMacro-buildability guard FAILED. A grammar rule stopped compiling to inline JS, '
+  console.error('\nMacro-buildability guard FAILED. A grammar rule stopped compiling to the production artifact, '
     + 'or a macro-authored value reached the artifact un-lowered.');
   process.exit(1);
 }

@@ -133,18 +133,24 @@ test('a namespace import is a finding — it reaches the whole vocabulary', () =
   assert.equal(findings[0].kind, 'combinator');
 });
 
-test('the table lowering trips loudly instead of silently passing', () => {
+test('the production table driver is accepted without allowing table macro vocabulary', () => {
   /*
-   * parseman 0.46.0 cannot emit this: `src/table/` is an unwired prototype and
-   * `package.json` has no `./table` export, so `parseman/table` does not even
-   * resolve for a consumer. When it does land, a healthy artifact will import
-   * `tableRules` from it — and the import-shape reasoning above has to be
-   * re-derived against the emitted table before this gate can clear it. Failing
-   * loudly at that moment is the point; silently passing would leave the hazard
-   * uncovered under the new lowering.
+   * A generated table is inert data and `tableRules` is its sole executable
+   * runtime seam. Keep the allowance specifier-specific: a namespace/default
+   * import or any other name from `parseman/table` can expose grammar/runtime
+   * surface this detector has not proved safe.
    */
-  const findings = artifactFallbacks(`import { tableRules } from "${TABLE_DRIVER_SPECIFIER}";\nexport const g = tableRules({ c: [] });`);
-  assert.equal(findings.length, 1);
-  assert.equal(findings[0].kind, 'table-lowering');
-  assert.match(findings[0].detail, /table lowering has landed/);
+  const healthyTable = `import { tableRules as drive } from "${TABLE_DRIVER_SPECIFIER}";\nexport const g = drive({ c: [] });`;
+  assert.deepEqual(artifactFallbacks(healthyTable), []);
+
+  for (const source of [
+    `import { rules } from "${TABLE_DRIVER_SPECIFIER}";\nexport const g = rules({});`,
+    `import * as table from "${TABLE_DRIVER_SPECIFIER}";\nexport const g = table.tableRules({ c: [] });`,
+    `import tableRules from "${TABLE_DRIVER_SPECIFIER}";\nexport const g = tableRules({ c: [] });`,
+    'import { tableRules } from "parseman";\nexport const g = tableRules({ c: [] });'
+  ]) {
+    const findings = artifactFallbacks(source);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].kind, 'combinator');
+  }
 });

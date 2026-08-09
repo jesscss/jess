@@ -34,10 +34,10 @@
  * detector, and on today's codegen lowering it is correct — a fully compiled
  * module has its parseman import REMOVED entirely (`imp.fullyResolved`), a
  * fallback keeps it. But it reads the presence of the module specifier as the
- * fault, and that is about to invert itself: parseman's G5 work lowers a
- * grammar to a DATA TABLE read by one shared driver, and a HEALTHY table
- * artifact therefore imports `tableRules` from `parseman/table`. Read as
- * guidance, the old detector then points backwards.
+ * fault, and production table lowering has inverted that assumption: a grammar
+ * becomes a DATA TABLE read by one shared driver, so a HEALTHY table artifact
+ * imports `tableRules` from `parseman/table`. Read as guidance, the old detector
+ * points backwards.
  *
  * The old detector is also already narrower than the hazard: it globs
  * `lib/grammar/`, and it had to, because widening it to all of `lib/` reds every
@@ -111,31 +111,27 @@ export function scanBuildLog(text) {
  * rule, which is the property that matters: a name added here can only be wrong
  * if that name is grammar vocabulary.
  *
- *   tableRules — the G5 table driver. See TABLE_DRIVER_SPECIFIER: a healthy
- *                table-lowered artifact imports this and nothing else, but that
- *                lowering is not wired into parseman's macro yet, so reaching it
- *                is itself a reportable event.
+ * The table driver is deliberately NOT in this general set. It is accepted only
+ * from its exact `parseman/table` entry point below, so adding a root/subpath
+ * import cannot accidentally inherit the allowance.
  */
 export const RUNTIME_DRIVERS = new Set([
   'run',
   'cstBuildHost',
   'parseDoc',
   'buildLineIndex',
-  'offsetToLineCol',
-  'tableRules'
+  'offsetToLineCol'
 ]);
 
 /**
  * The module specifier a table-lowered artifact imports its driver from.
  *
- * parseman 0.46.0/0.47.0 do not wire this: `src/table/` is a tested prototype,
- * `package.json` `exports` has no `./table` entry, and nothing in the macro,
- * `compile()` or `compose()` reaches it. So this cannot appear in an artifact
- * today, and if it does, the lowering landed and the artifact half of this
- * detector has to be re-derived against the emitted shape before it can be
- * trusted. That is a loud failure on purpose — see `artifactFallbacks`.
+ * Parseman's production macro lowering emits one imported driver plus inert
+ * table data. This entry point is intentionally narrower than the root runtime
+ * surface: only `tableRules` is a valid generated import from it.
  */
 export const TABLE_DRIVER_SPECIFIER = 'parseman/table';
+const TABLE_RUNTIME_DRIVERS = new Set(['tableRules']);
 
 const espree = (() => {
   /*
@@ -157,11 +153,6 @@ function isParsemanSpecifier(specifier) {
  * Each finding is `{ kind, line, detail }`, where `kind` is:
  *   'combinator'    — a parseman macro binding survived into the artifact. This
  *                     IS the fallback: the declaration was left as source.
- *   'table-lowering'— a `parseman/table` driver import appeared, meaning the G5
- *                     lowering landed. Not a fallback, but this detector's
- *                     artifact half has not been verified against that shape,
- *                     so it must not report a clean bill of health.
- *
  * A parse failure is itself a finding rather than a skip: a module this gate
  * cannot read is a module it cannot clear.
  */
@@ -181,17 +172,6 @@ export function artifactFallbacks(code) {
     const specifier = statement.source.value;
     const line = statement.loc.start.line;
 
-    if (specifier === TABLE_DRIVER_SPECIFIER) {
-      findings.push({
-        kind: 'table-lowering',
-        line,
-        detail: `imports from '${specifier}' — parseman's table lowering has landed; `
-          + 'RUNTIME_DRIVERS and this scan must be re-derived against the emitted table shape '
-          + 'before this gate can clear a table artifact'
-      });
-      continue;
-    }
-
     for (const imported of statement.specifiers) {
       /*
        * `import * as pm` and `import pm` defeat name-level reasoning: any
@@ -207,7 +187,10 @@ export function artifactFallbacks(code) {
         continue;
       }
       const name = imported.imported.name ?? imported.imported.value;
-      if (RUNTIME_DRIVERS.has(name)) {
+      const allowed = specifier === TABLE_DRIVER_SPECIFIER
+        ? TABLE_RUNTIME_DRIVERS.has(name)
+        : RUNTIME_DRIVERS.has(name);
+      if (allowed) {
         continue;
       }
       findings.push({
