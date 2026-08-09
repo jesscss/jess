@@ -3116,15 +3116,21 @@ function withUnitErrors<T>(node: object, e: EvalCtx, run: () => MaybePromise<T>)
   }
 }
 
-function validateValueGroupUnits(value: ValueGroup, modes: EvalModes, owner: object, e: EvalCtx): void {
+function validateValueGroupUnits(
+  value: ValueGroup,
+  modes: EvalModes,
+  owner: object,
+  e: EvalCtx,
+  demandExpressible: boolean
+): void {
   if (isValueGroupArray(value)) {
     for (const item of value) {
-      validateValueGroupUnits(item, modes, owner, e);
+      validateValueGroupUnits(item, modes, owner, e, demandExpressible);
     }
     return;
   }
   try {
-    validateFinalUnits(value, modes);
+    validateFinalUnits(value, modes, demandExpressible);
   } catch (error) {
     throwUnitArithmetic(error, unitOwners.get(value) ?? owner, e);
   }
@@ -3134,8 +3140,11 @@ function validateValueGroupUnits(value: ValueGroup, modes: EvalModes, owner: obj
    * `strict` throws on. `inCalc` is exempt: an operation the author WROTE inside
    * a math function is preserved because they asked for it (§4.6), not because
    * we declined to fabricate a unit, so there is nothing to report.
+   *
+   * A `demandExpressible` boundary has already thrown or passed, and it offers no
+   * lenient rung to warn ABOUT — so it never reaches here.
    */
-  if (modes.unitMode !== 'strict' && !modes.inCalc && hasInvalidFinalUnits(value)) {
+  if (!demandExpressible && modes.unitMode !== 'strict' && !modes.inCalc && hasInvalidFinalUnits(value)) {
     warnUnexpressibleUnit(value, owner, e);
   }
 }
@@ -3946,6 +3955,10 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
        * over, and the `unitMode` ladder must answer here too: `strict` throws,
        * `loose`/`preserve` warn.
        *
+       * UNLESS THE REF IS AN `Expression` — the `$( … )` computation boundary,
+       * which DEMANDS an expressible result and consults no mode. See the note on
+       * `demandExpressible` below.
+       *
        * Without this the ladder was reachable only through a code path, not over a
        * construct (SEMANTIC-INVARIANTS 1), and one value printed different bytes in
        * different positions (invariant 2): `.scss` `k: 1px * 2px` threw under
@@ -3956,8 +3969,26 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
        * F7(b) hole, and §4.7's table is written in the `$( … )` spelling, so the
        * rung that throws had no reachable site at all.
        */
+      /*
+       * `unitMode` IS A LESS-COMPAT LEVER, AND `.jess` IS NOT ON THE LADDER.
+       *
+       * The scoping is carried by WHAT THE NODE SAYS, not by a dialect check: an
+       * `Expression` ref IS the `$( … )` computation boundary (`nodes.ts` {@link
+       * Expression}), which means "compute this and give me the value". When the
+       * result has no CSS spelling there is no value to give, so the three rungs
+       * have nothing to choose between — `loose`'s fabricated unit and
+       * `preserve`'s `calc(…)` are both answers to a question the author did not
+       * ask. It errors, and no mode is consulted.
+       *
+       * That statement mentions no dialect, yet it scopes `unitMode` out of
+       * `.jess` EXACTLY, because `$( … )` is `.jess`'s ONLY arithmetic spelling
+       * (ledger P13(d)) — the grammar makes bare `1px * 2px` a PARSE ERROR there,
+       * so no `.jess` arithmetic can reach a boundary that would consult a mode.
+       * `.less`/`.scss` are untouched: their grammars build `Expression` only
+       * around a `condition(…)`, whose result is a Bool and never carries a unit.
+       */
       if (!isLiteral(value)) {
-        validateValueGroupUnits(value, e.modes, part.ref, e);
+        validateValueGroupUnits(value, e.modes, part.ref, e, part.ref.type === 'Expression');
       }
       const emitted = emitValue(value);
       bytes += part.unquote ? stripOuterQuotes(emitted) : emitted;
@@ -5438,7 +5469,7 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
   const elideSink = e.elideSink;
   return mapMaybe(evalValueSlot(node, frame, e), (value) => {
     if (!isLiteral(value)) {
-      validateValueGroupUnits(value, e.modes, Array.isArray(node) ? (node[0] ?? {}) : node, e);
+      validateValueGroupUnits(value, e.modes, Array.isArray(node) ? (node[0] ?? {}) : node, e, false);
       if (elideSink !== undefined && isElided(value)) {
         elideSink.elided = true;
       }
@@ -12232,7 +12263,7 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
       });
     }
     if (!isLiteral(value)) {
-      validateValueGroupUnits(value, e.modes, node, e);
+      validateValueGroupUnits(value, e.modes, node, e, false);
     }
     emitBytes(emitValue(value));
   };

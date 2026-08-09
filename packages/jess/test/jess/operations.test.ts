@@ -38,17 +38,17 @@ const body = async (src: string) => {
 };
 
 /**
- * The §4.7 ladder is a COMPILE-level option, so it is set on the Compiler and not
- * per render. These two helpers differ only in what they observe — the bytes, and
- * the warnings the render reports to its CALLER — because §4.7 makes a claim about
+ * `unitMode` is a COMPILE-level option, so it is set on the Compiler and not per
+ * render. These two helpers differ only in what they observe — the bytes, and the
+ * warnings the render reports to its CALLER — because §4.7 makes a claim about
  * BOTH ("every rung warns except the one that throws") and a row that checked only
  * the bytes is exactly how the silent rungs stayed silent.
  */
 type UnitMode = 'loose' | 'preserve' | 'strict';
 
-const valueIn = async (expr: string, unitMode: UnitMode) => {
+const valueIn = async (expr: string, unitMode: UnitMode, extension: '.jess' | '.less' = '.jess') => {
   const out = await new Compiler({ compile: { unitMode }, quiet: true })
-    .renderString(`.a { k: ${expr}; }`, { filePath: 'entry.jess', extension: '.jess' });
+    .renderString(`.a { k: ${expr}; }`, { filePath: `entry${extension}`, extension });
   return out.replace(/\s+/g, ' ').trim().replace(/^\.a \{ k: /, '').replace(/; \}$/, '');
 };
 
@@ -57,14 +57,17 @@ const valueIn = async (expr: string, unitMode: UnitMode) => {
  * for eval-time diagnostics on a source string (`safeRender` is the same channel
  * for a file); nothing new is introduced here.
  */
-const warningsIn = async (expr: string, unitMode: UnitMode) => {
+const warningsIn = async (expr: string, unitMode: UnitMode, extension: '.jess' | '.less' = '.jess') => {
   const { warnings } = await new Compiler({ compile: { unitMode }, quiet: true })
     .renderToResult(
-      { source: `.a { k: ${expr}; }`, filePath: 'entry.jess', extension: '.jess' },
+      { source: `.a { k: ${expr}; }`, filePath: `entry${extension}`, extension },
       { quiet: true }
     );
   return warnings.map(w => w.code);
 };
+
+/** Every `unitMode` value, for the rows that assert a mode changes NOTHING. */
+const UNIT_MODES = ['loose', 'preserve', 'strict'] as const;
 
 /** Render a whole stylesheet in the named dialect. */
 const sheet = async (src: string, extension: '.jess' | '.scss' | '.less') => {
@@ -94,26 +97,27 @@ describe('OPERATIONS §4 — arithmetic', () => {
     await expect(value('$(1px / 2)')).resolves.toBe('0.5px');
   });
 
-  it('a reciprocal unit is not expressible, so `1 / 2px` preserves (row h)', async () => {
+  it('a reciprocal unit is not expressible, so `1 / 2px` ERRORS (row h)', async () => {
     /*
-     * There is no `px⁻¹` in CSS. Less 4.x answers `0.5px`, which is
-     * dimensionally false. Under the DEFAULT `preserve` mode the honest outcome
-     * is the preserved expression plus a warning; `loose` gives Less's answer
-     * plus a warning; `strict` throws. No rung is silent (§4.7).
+     * There is no `px⁻¹` in CSS. Less 4.x answers `0.5px`, which is dimensionally
+     * false; dart-sass answers `calc(0.5 / 1px)`, which does not claim the unit
+     * exists but merely preserves the expression. `.jess` does neither — §4.7's
+     * opening ruling is that it errors, with no mode to choose from.
      */
-    await expect(value('$(1 / 2px)')).resolves.toBe('calc(1 / 2px)');
+    await expect(value('$(1 / 2px)')).rejects.toThrow();
   });
 
-  it('a unit product preserves rather than fabricating (rows f, f2, f3)', async () => {
+  it('a unit product ERRORS rather than fabricating or preserving (rows f, f2, f3)', async () => {
     /*
-     * `1px * 2px` is an area, and CSS has no area unit; `1px * 10%` does not
-     * commensurate at all. Less 4.x answers `2px` / `10px` — dimensionally
-     * false. We preserve and warn (§4.7), and preserve AUTHORED order, so
-     * `10% * 1px` does not come back reordered the way dart-sass reorders it.
+     * `1px * 2px` is an area and CSS has no area unit; `1px * 10%` does not
+     * commensurate at all. Less 4.x answers `2px` / `10px` — dimensionally false.
+     * Preserving it as `calc(1px * 2px)` is no better in `.jess`: per
+     * css-values-4 §10.9 a math function's FINAL type must match its context, and
+     * length² matches nothing, so that spelling is invalid CSS a browser drops.
      */
-    await expect(value('$(1px * 2px)')).resolves.toBe('calc(1px * 2px)');
-    await expect(value('$(1px * 10%)')).resolves.toBe('calc(1px * 10%)');
-    await expect(value('$(10% * 1px)')).resolves.toBe('calc(10% * 1px)');
+    await expect(value('$(1px * 2px)')).rejects.toThrow();
+    await expect(value('$(1px * 10%)')).rejects.toThrow();
+    await expect(value('$(10% * 1px)')).rejects.toThrow();
   });
 
   it('like units cancel to a unitless number (row g2)', async () => {
@@ -145,57 +149,128 @@ describe('OPERATIONS §4 — arithmetic', () => {
   });
 });
 
-describe('OPERATIONS §4.7 — the `unitMode` ladder, and NO rung is silent', () => {
+describe('OPERATIONS §4.7 — `.jess` has ONE behaviour; `unitMode` is Less-compat', () => {
   /*
-   * The rows above assert the DEFAULT rung only, and that is precisely how this
-   * section stayed broken while reading as done: `preserve` was right, so the
-   * table looked green, while `strict` silently answered `0.5px` and not one rung
-   * warned. A settled behaviour with no row can regress without going red — these
-   * rows exist to make the other two rungs, and the warning, unregressable.
+   * OWNER RULING: "Jess doesn't have unit modes." `unitMode` is a LESS-COMPAT
+   * lever, and §4.7's own opening says so for `.jess` — "jess defaults to units
+   * being stricter than Less 4.x… Since jess is not preserving here, the honest
+   * outcome is an error." An earlier revision of §4.7 showed `.jess` under all
+   * three rungs, contradicting its own opening; that contradiction is why the
+   * leak survived, and these rows are what stop it coming back.
    *
-   * "Nonsensical" is §4.7's own definition and nothing wider: a result whose unit
-   * CSS CANNOT EXPRESS — a unit PRODUCT (`1px * 2px`) or a bare RECIPROCAL
-   * (`1 / 2px`). A result that is expressible is not a §4.7 case in ANY mode, which
-   * is what the last row below pins.
+   * "Unexpressible" is §4.7's definition and nothing wider: a result whose unit
+   * CSS cannot express — a unit PRODUCT (`1px * 2px`) or a bare RECIPROCAL
+   * (`1 / 2px`). An EXPRESSIBLE result is not a §4.7 case at all.
    */
 
   const unexpressible = ['$(1 / 2px)', '$(1px * 2px)', '$(1px * 10%)'];
-
-  it('`strict` THROWS on an unexpressible unit — on `*` and `/`, not just `+`/`-`', async () => {
+  const expressible: Array<[string, string]> = [
+    ['$(2px / 1px)', '2'],
+    ['$(1px * 2)', '2px'],
     /*
-     * The defect this file exists to catch. `dimensionOperate` consulted
-     * `unitMode` only on the `+`/`-` conversion path, and the `*`//` composition
-     * reached the consuming boundary through the `$( … )` splice, which folded it
-     * to bytes before the boundary could see a typed dimension — so `strict` fell
-     * through to the raw magnitude.
+     * The cancel chain. §4.7 is a question about a FINAL value, so arithmetic must
+     * keep computing THROUGH an unexpressible intermediate — `1px * 1px` has no CSS
+     * unit, but `/ 1px` brings it back to an honest `1px`. Erroring on the
+     * intermediate would break an expression the author got right.
      */
+    ['$(1px * 1px / 1px)', '1px']
+  ];
+
+  it('an unexpressible unit is an ERROR — on `*` and `/`, not just `+`/`-`', async () => {
     for (const expr of unexpressible) {
-      await expect(valueIn(expr, 'strict'), `${expr} must throw under strict`).rejects.toThrow();
+      await expect(valueIn(expr, 'preserve'), `${expr} must be an error`).rejects.toThrow();
     }
   });
 
-  it('`strict` raises the STRUCTURED unit error, not a bare TypeError', async () => {
+  it('it raises the STRUCTURED unit error, not a bare TypeError', async () => {
     /*
-     * The code and a source location are the contract, not merely "it threw" —
-     * a bare `TypeError` out of the public API would satisfy the row above.
+     * The code and a source location are the contract, not merely "it threw" — a
+     * bare `TypeError` out of the public API would satisfy the row above.
      */
-    await expect(valueIn('$(1 / 2px)', 'strict')).rejects.toMatchObject({
+    await expect(valueIn('$(1 / 2px)', 'preserve')).rejects.toMatchObject({
       code: 'eval/invalid-unit-arithmetic'
     });
   });
 
+  it('`unitMode` DOES NOT CHANGE `.jess` OUTPUT — the row that pins the scoping', async () => {
+    /*
+     * THE POINT OF THIS BLOCK. Set the Less-compat lever to each of its three
+     * values and `.jess` answers identically every time: no `loose` fold to
+     * `0.5px`, no `preserve` spelling as `calc(1 / 2px)`, no rung to pick.
+     *
+     * The scoping is carried by WHAT THE NODE SAYS, not a dialect check in eval:
+     * `$( … )` lowers to an `Expression`, the computation boundary, which DEMANDS
+     * an expressible result. That statement names no dialect, yet it scopes
+     * `unitMode` out of `.jess` exactly — because `$( … )` is `.jess`'s ONLY
+     * arithmetic spelling (ledger P13(d)); the row below proves the grammar itself
+     * enforces that.
+     */
+    for (const mode of UNIT_MODES) {
+      for (const expr of unexpressible) {
+        await expect(valueIn(expr, mode), `${expr} must error under ${mode}`).rejects.toThrow();
+      }
+      for (const [expr, expected] of expressible) {
+        await expect(valueIn(expr, mode), `${expr} under ${mode}`).resolves.toBe(expected);
+        await expect(warningsIn(expr, mode), `${expr} must not warn under ${mode}`).resolves.toEqual([]);
+      }
+    }
+  });
+
+  it('`.jess` has no arithmetic spelling OUTSIDE `$( … )` — ledger P13(d), enforced by the GRAMMAR', async () => {
+    /*
+     * What makes the node-carried scoping EXACT rather than approximate. If bare
+     * `1px * 2px` computed in value position it would reach a boundary with no
+     * `Expression` above it, and the ladder would govern `.jess` after all. It
+     * does not compute — it does not even parse.
+     */
+    await expect(valueIn('1px * 2px', 'preserve')).rejects.toMatchObject({ code: 'parse/syntax-error' });
+    await expect(valueIn('1 + 2', 'preserve')).rejects.toMatchObject({ code: 'parse/syntax-error' });
+  });
+
+  it('an EXPRESSIBLE result computes and is silent — the error is not a blanket', async () => {
+    /*
+     * The bound on the rows above: without it, erroring on EVERY operation would
+     * still pass them.
+     */
+    for (const [expr, expected] of expressible) {
+      await expect(valueIn(expr, 'preserve')).resolves.toBe(expected);
+      await expect(warningsIn(expr, 'preserve')).resolves.toEqual([]);
+    }
+  });
+});
+
+describe('OPERATIONS §4.7 — the `unitMode` ladder, in `.less`, where it is licensed', () => {
+  /*
+   * The ladder is REAL — for the dialect whose compatibility it exists to serve.
+   * These rows moved here from the `.jess` block above when the owner scoped
+   * `unitMode` to Less-compat; they are not new claims, and dropping them would
+   * have left the ladder itself untested.
+   *
+   * `.scss` is deliberately absent: whether Sass takes this ladder is under a
+   * separate owner ruling, and a row here either way would entrench an answer
+   * that has not been given.
+   */
+
   it('`loose` gives Less 4.x\'s answer — the rung that folds', async () => {
     /*
-     * Dimensionally false on purpose: `loose` is the opt-in to Less 4.x's
-     * behaviour, which is why it is the rung that most needs the warning.
+     * The `/` rows are parenthesised because `.less` runs under `mathMode:
+     * 'parens-division'`, where a bare `/` is a CSS value separator and never
+     * divides. That is a §4.6/`mathMode` fact, not a §4.7 one — without the
+     * parens these rows would assert `unitMode` behaviour against an expression
+     * that never reaches arithmetic at all.
      */
-    await expect(valueIn('$(1 / 2px)', 'loose')).resolves.toBe('0.5px');
-    await expect(valueIn('$(1px * 2px)', 'loose')).resolves.toBe('2px');
+    await expect(valueIn('(1 / 2px)', 'loose', '.less')).resolves.toBe('0.5px');
+    await expect(valueIn('1px * 2px', 'loose', '.less')).resolves.toBe('2px');
   });
 
   it('`preserve` (default) says the expression back, and does NOT raise', async () => {
-    await expect(valueIn('$(1 / 2px)', 'preserve')).resolves.toBe('calc(1 / 2px)');
-    await expect(valueIn('$(1px * 2px)', 'preserve')).resolves.toBe('calc(1px * 2px)');
+    await expect(valueIn('1px * 2px', 'preserve', '.less')).resolves.toBe('calc(1px * 2px)');
+  });
+
+  it('`strict` THROWS the structured unit error', async () => {
+    await expect(valueIn('1px * 2px', 'strict', '.less')).rejects.toMatchObject({
+      code: 'eval/invalid-unit-arithmetic'
+    });
   });
 
   it('NO MODE IS SILENT — both non-throwing rungs warn, and it REACHES the caller', async () => {
@@ -203,45 +278,19 @@ describe('OPERATIONS §4.7 — the `unitMode` ladder, and NO rung is silent', ()
      * The half of §4.7 that had zero assertions anywhere in the suite. Silent
      * preservation is the worst outcome: the author gets output that looks fine
      * and never learns the expression was meaningless (ledger G25 — "auto-fixed
-     * AND warned — both, not either").
-     *
-     * `strict` is excluded because it throws instead, which is the one rung §4.7
-     * says says nothing extra.
+     * AND warned — both, not either"). `strict` is excluded because it throws
+     * instead, which is the one rung that says nothing extra.
      */
     for (const mode of ['loose', 'preserve'] as const) {
-      for (const expr of unexpressible) {
-        await expect(warningsIn(expr, mode), `${expr} must warn under ${mode}`)
-          .resolves.toContain('eval/unexpressible-unit');
-      }
+      await expect(warningsIn('1px * 2px', mode, '.less'), `must warn under ${mode}`)
+        .resolves.toContain('eval/unexpressible-unit');
     }
   });
 
   it('an EXPRESSIBLE result is silent in every rung — the warning is not a blanket', async () => {
-    /*
-     * The bound on the row above. Units that cancel (`2px / 1px` → `2`) or a plain
-     * scaling (`1px * 2`) are honestly expressible, so they neither throw nor warn
-     * anywhere on the ladder. Without this row the warning could be emitted for
-     * every operation and the previous row would still pass.
-     */
-    for (const mode of ['loose', 'preserve', 'strict'] as const) {
-      await expect(valueIn('$(2px / 1px)', mode)).resolves.toBe('2');
-      await expect(valueIn('$(1px * 2)', mode)).resolves.toBe('2px');
-      await expect(warningsIn('$(2px / 1px)', mode)).resolves.toEqual([]);
-      await expect(warningsIn('$(1px * 2)', mode)).resolves.toEqual([]);
-    }
-  });
-
-  it('an unexpressible INTERMEDIATE that cancels back is not a §4.7 case', async () => {
-    /*
-     * §4.7 is a question about a FINAL value, asked at the consuming boundary. The
-     * ladder keeps computing through an unexpressible step so a later operation can
-     * cancel it, and `1px * 1px / 1px` is an honest `1px` — warning about the
-     * `1px * 1px` inside it would be a false positive about an expression the
-     * author got right, and throwing on it would break the chain outright.
-     */
-    for (const mode of ['loose', 'preserve', 'strict'] as const) {
-      await expect(valueIn('$(1px * 1px / 1px)', mode)).resolves.toBe('1px');
-      await expect(warningsIn('$(1px * 1px / 1px)', mode)).resolves.toEqual([]);
+    for (const mode of UNIT_MODES) {
+      await expect(valueIn('(2px / 1px)', mode, '.less')).resolves.toBe('2');
+      await expect(warningsIn('(2px / 1px)', mode, '.less')).resolves.toEqual([]);
     }
   });
 });

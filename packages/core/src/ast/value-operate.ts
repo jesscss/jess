@@ -223,15 +223,22 @@ function displayUnit(u: UnitSet): string {
  * Validate unit singularity at a final typed-value boundary. Arithmetic keeps
  * compound numerator/denominator facts through the whole operation chain so a
  * later operation can cancel them; only final materialization/emission applies
- * Less strict-units' singularity rule.
+ * the singularity rule.
+ *
+ * `demandExpressible` raises the rule ABOVE `unitMode`, for a value produced at
+ * a boundary that is itself a demand for an expressible result. `unitMode` is a
+ * LESS-COMPAT lever (`.less` decides between Less 4.x's dimensionally false fold,
+ * a preserved `calc(…)`, and an error); a construct that means "compute this and
+ * give me the value" has no such choice to offer, because there is no value to
+ * give when the result has no CSS spelling. See {@link Expression}.
  */
-export function validateFinalUnits(value: ValueGroup, modes: EvalModes): void {
-  if (modes.unitMode !== 'strict') {
+export function validateFinalUnits(value: ValueGroup, modes: EvalModes, demandExpressible = false): void {
+  if (!demandExpressible && modes.unitMode !== 'strict') {
     return;
   }
   if (isValueGroupArray(value)) {
     for (const item of value) {
-      validateFinalUnits(item, modes);
+      validateFinalUnits(item, modes, demandExpressible);
     }
     return;
   }
@@ -245,12 +252,12 @@ export function validateFinalUnits(value: ValueGroup, modes: EvalModes): void {
   }
   if (value.type === 'List') {
     for (const item of value.value) {
-      validateFinalUnits(item, modes);
+      validateFinalUnits(item, modes, demandExpressible);
     }
     return;
   }
   if (value.type === 'Block') {
-    validateFinalUnits(value.value, modes);
+    validateFinalUnits(value.value, modes, demandExpressible);
   }
 }
 

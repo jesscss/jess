@@ -996,25 +996,75 @@ answers `0.5px`, which is dimensionally false; dart-sass answers
 `calc(0.5 / 1px)`, which does not claim the unit exists but merely preserves the
 expression. Since jess is not preserving here, the honest outcome is an error.
 
-| expression | lessc 4.6.3 | dart-sass | **jess** |
+| expression | lessc 4.6.3 | dart-sass | **`.jess`** |
 | --- | --- | --- | --- |
 | `2px / 1px` | `2px` | `2` | **`2`** — units cancel |
-| `1 / 2px` | `0.5px` | `calc(0.5 / 1px)` | **mode-dependent, and never silent** — see below |
-| `1px * 2px` | `2px` | `calc(2px * 1px)` | preserve + warn (§4 rows `f`–`f3`) |
+| `1 / 2px` | `0.5px` | `calc(0.5 / 1px)` | **error** — no mode, see below |
+| `1px * 2px` | `2px` | `calc(2px * 1px)` | **error** |
 
 The rule is chosen on the two axes that matter: **consistency with the coercion
 model** — a value must be expressible in the value domain, and a reciprocal unit
 is not — and **least surprise**, since `0.5px` is a plausible-looking answer that
 is simply wrong, which is worse than a diagnostic.
 
-`unitMode` is the ladder, and **every rung warns except the one that throws**
-(owner, 2026-08-01):
+**A second, independent argument — `calc(1px * 2px)` is not valid CSS.**
+css-values-4 §10.9 (*Type Checking*; §10.9.1 Calculation Contexts, §10.9.2 Type
+Checking — NOT §10.1) gives a math function a *type* that maps base types to
+integer powers, and multiplication ADDS those powers, so `1px * 2px` has type
+`length²` and `1 / 2px` has `length⁻¹`. Such a type is legal as an
+**intermediate**, which is exactly why `calc(1px * 1px / 1px)` is a valid length.
+But the FINAL type of the math function must match the type its context expects,
+and no CSS property accepts `length²` or `length⁻¹` — so `k: calc(1px * 2px)` is
+invalid and a browser drops the declaration. `preserve` in `.jess` would
+therefore not be a lenient answer; it would be output that silently does nothing.
 
-| mode | `1 / 2px` | | LANDED |
+That spec distinction — intermediates may carry any powers, the FINAL type must
+match — is the same rule this section already enforces, and is why the cancel
+chain must keep computing rather than erroring at the first unexpressible step.
+
+*(Verification note: the two load-bearing facts — powers add under multiplication,
+and the final type must match the context — were confirmed against the spec; the
+verbatim normative sentences were not retrieved, as both fetches truncated before
+§10.9. Re-confirm before quoting the spec directly.)*
+
+#### `unitMode` is a LESS-COMPAT lever, and `.jess` is not on the ladder
+
+**Owner ruling: "Jess doesn't have unit modes… i mean .jess language."** An
+earlier revision of this section printed the ladder below as though it governed
+`.jess`, which contradicted this section's own opening ruling three paragraphs
+up — and that contradiction is why the leak survived review. `.jess` has ONE
+behaviour: **an unexpressible final unit is an error.** `unitMode` does not
+change `.jess` output at any of its three values (pinned by
+`packages/jess/test/jess/operations.test.ts` §4.7).
+
+The scoping is carried by **what the lowered node says**, not by a dialect check
+in the evaluator. `$( … )` lowers to an `Expression` — the computation boundary
+(`packages/core/src/ast/nodes.ts` `expression()`) — and a boundary that means
+"compute this and give me the value" DEMANDS an expressible result: when the
+result has no CSS spelling there is no value to give, so the rungs have nothing
+to choose between. `loose`'s fabricated unit and `preserve`'s `calc(…)` are both
+answers to a question the author did not ask.
+
+That statement names no dialect, yet it scopes `unitMode` out of `.jess`
+*exactly*, because `$( … )` is `.jess`'s **only** arithmetic spelling (ledger
+**P13(d)**) — the grammar makes bare `1px * 2px` a PARSE ERROR in `.jess` value
+position, so no `.jess` arithmetic can reach a boundary that would consult a
+mode. `.less`/`.scss` are untouched: their grammars build `Expression` only
+around a `condition(…)`, whose result is a Bool and never carries a unit.
+
+The ladder below therefore describes **`.less`** (`.scss`'s participation is
+under a separate owner ruling and is deliberately not asserted either way), and
+**every rung warns except the one that throws** (owner, 2026-08-01):
+
+| mode | `.less` `(1 / 2px)` | | LANDED |
 | --- | --- | --- | --- |
 | `loose` | `0.5px` | Less 4.x's answer, **+ warning** | `0.5px` + `eval/unexpressible-unit` |
 | **`preserve`** (default) | `calc(1 / 2px)` | **+ warning** | `calc(1 / 2px)` + `eval/unexpressible-unit` |
 | `strict` | throws | | throws `eval/invalid-unit-arithmetic` |
+
+*(The `.less` rows are parenthesised because `.less` runs under `mathMode:
+'parens-division'`, where a bare `/` is a value separator and never divides —
+a §4.6 fact, not a §4.7 one.)*
 
 **LANDED in full.** `c906c2f9e` built the machinery and this section then read as
 done — but every rung still measured wrong, because the machinery had no
