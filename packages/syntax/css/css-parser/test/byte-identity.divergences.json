@@ -1,21 +1,21 @@
 {
-  "note": "OPEN css-parser round-trip findings, one named file per construct. This is a RECORD, not an allowlist: every entry is a byte the parse->serialize round trip does not reproduce, and none of them has been ruled correct. Removing an entry requires the parser to actually reproduce the byte. Adding one requires a fixture that isolates the construct and a reason.",
-  "authored": {
-    "at-rule-charset-then-import.css": {
-      "construct": "@import immediately following @charset",
-      "detail": "CssParseError 'Unexpected CSS input after a complete stylesheet.' @charset alone parses; @charset followed by @media, @layer, a comment or a style rule parses; @charset followed by @import does not. css-syntax-3 s3.2 and css-cascade-5 s3 both make @charset then @import the canonical stylesheet prologue, so this rejects valid CSS. @namespace-then-@import and rule-then-@import are also rejected and those two ARE spec-correct."
-    },
-    "empty-blocks.css": {
-      "construct": "a qualified rule or conditional at-rule with an empty block",
-      "detail": "The whole file emits as the empty string. '.empty {}' and '@media screen {}' are dropped rather than reproduced. Pruning empty output is plausibly deliberate for the compiler, but it has never been written down as a CSS-base decision, and it makes the parse->serialize surface lossy for input that is valid CSS."
-    },
+  "note": "Bytes the css-parser round trip does not reproduce, one named file per construct. Two kinds, kept apart on purpose. 'open' entries are findings NOT ruled on: none has been accepted, and removing one requires the parser to actually reproduce the byte. 'settled' entries are deliberate compiler behaviour with a citation: the round trip is lossy there BY DESIGN, and the fixture stays in the corpus so that the day the behaviour silently changes, the named-set assertion fails. Adding to either section requires a fixture that isolates the construct and a reason; moving an entry from 'open' to 'settled' requires an owner ruling, not a judgement call by whoever is holding the pen.",
+  "open": {
     "selector-attribute-case-flag.css": {
       "construct": "attribute selector case-sensitivity flag",
-      "detail": "'[data-x^=\"y\" i]' emits as '[data-x^=\"y\"i]' and '[data-x=\"y\" s]' as '[data-x=\"y\"s]'. The space before the flag is required by selectors-4 s6.3 for the flag to be a separate token, so this emits INVALID CSS, not merely different bytes. This is the highest-severity finding here."
+      "detail": "'[data-x^=\"y\" i]' emits as '[data-x^=\"y\"i]' and '[data-x=\"y\" s]' as '[data-x=\"y\"s]'. This entry originally read that the tight spelling is INVALID CSS. That is wrong and the correction matters: Chromium parses '[data-x=\"y\"i]', CSS.supports() accepts it, and it MATCHES case-insensitively, so the space before the flag is optional and no invalid CSS is being emitted. ('[data-x=\"y\"s]' is rejected there, but so is '[data-x=\"y\" s]' — that engine does not implement the 's' flag at all, which is a support gap, not a whitespace rule.) What remains is real but lower severity: css/scss/jess strip ALL authored whitespace inside an attribute selector, so 'a[ href = \"x\" i ]' also canonicalises to '[href=\"x\"i]'. Less alone preserves it. The divergence is deliberately pinned on BOTH sides — css-parser/test/discovered-constructs.test.ts:117-126 pins the tight spelling, less-parser/test/discovered-constructs.test.ts:112-124 pins the spaced one as a 'PINNED DEFECT' — precisely so that unifying them fails loudly. Unifying them is an owner call: byte-identity wants the authored bytes preserved (the Less spelling), the existing css canonicalisation wants them stripped."
     },
     "value-slash-separator.css": {
       "construct": "authored slash separator in a value",
-      "detail": "'12px/1.5', '1/2' and '16/9' emit as '12px / 1.5', '1 / 2', '16 / 9'. This is the v5 spaced-separator emit policy applied to a value the author never operated on, so unlike the three above it is a known deliberate transform rather than a suspected defect. It is recorded here because it is nonetheless a byte the round trip does not reproduce, and because the v5 rule that unoperated values are preserved verbatim and the rule that separators are spaced disagree on exactly this input."
+      "detail": "'12px/1.5', '1/2' and '16/9' emit as '12px / 1.5', '1 / 2', '16 / 9'. Two SETTLED rules collide on exactly this input: 'v5 preserves unoperated values verbatim' says keep '12px/1.5', 'v5 operators and separators are spaced' says emit '12px / 1.5'. The known carve-out that ':nth-*(2n+1)' is NOT spaced shows the spacing rule already admits exceptions. This is a deliberate transform, not a suspected defect, but which of the two rules governs an unoperated authored slash has not been ruled on, and the answer changes emitted CSS for real stylesheets (the 'font' and 'grid-area' shorthands above are ordinary CSS, not computed values). Needs an owner ruling."
+    }
+  },
+  "settled": {
+    "empty-blocks.css": {
+      "construct": "a qualified rule or conditional at-rule with an empty block",
+      "detail": "The whole file emits as the empty string: '.empty {}' and '@media screen {}' are dropped, recursively, so a parent whose only content is a dropping child also drops. This is INTENTIONAL and long-standing, not an accident of a missing branch.",
+      "citation": "docs/architecture/core/TREE2-DESIGN-SPEC.md:77-80 and :94 name it 'empty-block elision' and :160-161 list it as sourced invariant #4. It is implemented as five deliberate mark-and-rewind sites in packages/core/src/ast/serialize.ts (8839, 8860, 12580, 13912, 14338), each with a doc comment stating the contract, and was introduced by c7d8fe791 and 219585f67 whose messages announce it. It is pinned by packages/jess/test/less/async-eval-lane.test.ts:122-131 (an at-rule is kept alive across an await purely to decide emptiness), packages/core/src/ast/__tests__/import-at-rule.test.ts:602, packages/syntax/scss/scss-parser/test/public-parse.test.ts:269-273, and by zero-byte expected-output fixtures in the Less corpus (tests-unit/at-rules-empty-block). The one deliberate exception is a body containing a BLOCK comment, which keeps the block renderable; a line comment does not.",
+      "consequence": "Byte-identity and empty-block elision cannot both hold for this input. Elision wins; the fixture stays so that if elision ever silently stops, this file becomes identical and the named-set assertion fails."
     }
   }
 }

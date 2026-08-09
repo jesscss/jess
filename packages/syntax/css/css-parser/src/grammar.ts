@@ -93,6 +93,7 @@ type GrammarRuleName =
   | 'CalcValue'
   | 'MathFunction'
   | 'Call'
+  | 'CharsetStatement'
   | 'Color'
   | 'ComplexSelector'
   | 'CompoundSelector'
@@ -1179,6 +1180,7 @@ const cssFactory = (g: GrammarSelf) => {
    * remain an identifier plus a parenthesized value, not a function token.
    */
   const importAtKeyword = identWord('@import');
+  const charsetAtKeyword = identWord('@charset');
   const urlOpen = noTrivia(sequence(
     identWord('url'),
     literal('(')
@@ -3063,6 +3065,29 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => semanticTextWithTriviaGaps(children, triviaLog)
   );
+
+  /*
+   * `@charset` is the first thing a stylesheet may contain (css-syntax-3 §3.2),
+   * and css-cascade-5 §3 then admits `@import` before any other rule. Without a
+   * prologue arm of its own `@charset` is only reachable as an ordinary body
+   * at-rule, and matching one there ends the prologue `many` — which is what
+   * made the canonical `@charset` + `@import` pair unparseable while `@charset`
+   * followed by a rule, a comment, `@media` or `@layer` all parsed. The
+   * statement stays a plain `AtRuleStatement` fact so nothing downstream has a
+   * new node shape to learn.
+   */
+  const CharsetStatement = node(
+    'CharsetStatement',
+    sequence(
+      charsetAtKeyword,
+      g.StatementPrelude,
+      literal(';')
+    ),
+    children => atRuleStatement(
+      tokenText(children[0]),
+      optionalValue(children[1])
+    )
+  );
   const LayerStatement = node(
     'LayerStatement',
     sequence(
@@ -4107,6 +4132,7 @@ const cssFactory = (g: GrammarSelf) => {
   const Stylesheet = node(
     'Stylesheet',
     sequence(
+      optional(g.CharsetStatement),
       many(choice(g.ImportStatement, g.LayerStatement)),
       many(g.stylesheetBodyItem)
     ),
@@ -4188,6 +4214,7 @@ const cssFactory = (g: GrammarSelf) => {
     AtRulePreludeQuoted,
     AtRulePreludeText,
     AtRulePreludeSegments,
+    CharsetStatement,
     LayerStatement,
     AtRulePrelude,
     StatementPrelude,

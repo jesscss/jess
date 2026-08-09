@@ -54,7 +54,8 @@ import divergencesJson from './byte-identity.divergences.json' with { type: 'jso
  */
 const divergences = divergencesJson satisfies {
   note: string;
-  authored: Record<string, { construct: string; detail: string }>;
+  open: Record<string, { construct: string; detail: string }>;
+  settled: Record<string, { construct: string; detail: string; citation: string; consequence: string }>;
 };
 
 /**
@@ -67,8 +68,21 @@ const roundTrip: RoundTripSurface = async source =>
 
 const authored = loadAuthoredCorpus();
 
-/** The ids the oracle is currently expected NOT to reproduce, named one by one. */
-const KNOWN_DIVERGENT: readonly string[] = Object.keys(divergences.authored).map(name => `authored/${name}`).sort();
+/**
+ * The ids the oracle is currently expected NOT to reproduce, named one by one.
+ *
+ * Both sections count as failing bytes — the assertion below is about what the
+ * round trip DOES, and a settled transform loses the byte exactly as an open
+ * defect does. They are separate keys so the record says which is which: an
+ * `open` entry is an unruled finding, a `settled` entry is deliberate behaviour
+ * carrying a citation. Keeping settled entries in the set is what makes the
+ * "a file that STOPS diverging also fails" property cover them too, so silently
+ * dropping empty-block elision cannot go unnoticed.
+ */
+const KNOWN_DIVERGENT: readonly string[] = [
+  ...Object.keys(divergences.open),
+  ...Object.keys(divergences.settled)
+].map(name => `authored/${name}`).sort();
 
 describe('CSS byte-identity oracle', () => {
   describe('negative controls', () => {
@@ -119,8 +133,9 @@ describe('CSS byte-identity oracle', () => {
     /*
      * A NAMED set, not a count. A file that starts diverging fails here; so does
      * a file that stops, which forces the record to be deleted rather than left
-     * to rot. The entries in `byte-identity.divergences.json` are open parser
-     * findings, not accepted behaviour.
+     * to rot. `byte-identity.divergences.json` splits the set: `open` entries are
+     * parser findings nobody has ruled on, `settled` entries are deliberate
+     * behaviour with a citation. Neither is an allowlist for new divergence.
      */
     expect(report.failing).toEqual(KNOWN_DIVERGENT);
   });
