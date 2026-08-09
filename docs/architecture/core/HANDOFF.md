@@ -62,6 +62,233 @@
     target is ONE shared lookup descriptor; adding a `lookup` or `keyKind` field to a
     reference node without it makes the duplication worse, not better.
 
+## SESSION HANDOFF — 2026-08-09, jess `4d4954156`
+
+**Recorded near a usage limit.** Read this section before the 2026-08-01 one below it.
+Everything here is verified against `4d4954156` unless explicitly marked unverified.
+
+### THE HEADLINE — the four grammars do not compose, the reason is documented, and the consequence was never escalated
+
+This is the finding that reframes the grammar work. It is not new information; it is
+information that was recorded in one place and never propagated to the place that
+governs grammar review.
+
+**1. The supersets became hand-maintained COPIES at a single commit.**
+`59f695d4a` (2026-07-27, `refactor(parser): fold dialect grammars to host mode`) has a
+**one-line message and no commit body**. It removed, from `scss-parser/src/grammar.ts`:
+
+- `import { lessGrammar } from '@jesscss/less-parser/grammar';`
+- `export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules(…)])`
+
+and replaced them with `composeLeaf` plus a standalone grammar factory. Verify with
+`git show 59f695d4a -- packages/syntax/scss/scss-parser/src/grammar.ts`. From that commit
+onward the three supersets are copies of the CSS grammar maintained by hand, with no code
+link of any kind.
+
+**2. The "CSS base" line is a COMMENT, not an import.** Each superset carries
+`* CSS base: ../../../css/css-parser/src/grammar.ts` at grammar.ts:4 — inside a docblock:
+
+```
+packages/syntax/jess/jess-parser/src/grammar.ts:4
+packages/syntax/scss/scss-parser/src/grammar.ts:4
+packages/syntax/less/less-parser/src/grammar.ts:4
+```
+
+`grep "from '@jesscss/.*-parser/grammar'" packages/syntax/*/*-parser/src/grammar.ts`
+returns **nothing**. No grammar imports another grammar.
+
+**3. What IS shared is TOKEN RECOGNITION ONLY.** All four grammars terminate in a
+`composeLeaf([...])` whose first element is `cssSyntax`
+(`packages/parser-shared/src/recognition.ts:515`) — a table of **terminals**:
+`Identifier`, `AttributeOperator`, `DoubleQuotedText`, `UrlOpen`, `HexColor`,
+`UnicodeRangeToken`, the at-keywords. Exact tails:
+
+| grammar | `composeLeaf` elements | site |
+| --- | --- | --- |
+| css | `cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(…)` | `css-parser/src/grammar.ts:4288` |
+| less | `cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>(…)` | `less-parser/src/grammar.ts:6805` |
+| scss | `cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(…)` | `scss-parser/src/grammar.ts:6005` |
+| jess | `cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(…)` | `jess-parser/src/grammar.ts:6560` |
+
+*(Note: less's second element is `lessSyntax`, not `opaqueAtRuleRecognition` — the
+"all four are identical" shorthand is wrong in that one slot.)*
+
+**Terminals compose; productions do not.** Every defect listed below is at the
+production layer, which is exactly the layer with no sharing.
+
+**4. WHY it does not compose is already written down.**
+`docs/design/GRAMMAR-REBUILD-SPEC.md:414-436`: parseman's
+`src/plugin/direct-builder-static.ts` requires a composed piece's builder to be an
+expression-bodied arrow, with plain-identifier parameters only, reading only its own
+parameters plus 13 globals. jess's builders call **imported AST constructors** (`decl`,
+`dimension`, `funcCall`) and **grammar-local helpers** — neither is in the allow-set.
+Host mode is structurally incompatible with `compose()`. See also ledger row **P22** in
+`DESIGN-DECISIONS.md`, which measures the blast radius (css 113 / less 208 / scss 153 /
+jess 168 distinct rejected productions) and names the second, structural blocker
+(`unsupported BlockStatement`).
+
+**5. The spec then resolved the conflict by REDEFINING the requirement.** §12.0 "What
+'agent-readable link' means, concretely" (`GRAMMAR-REBUILD-SPEC.md:2009`) makes the link a
+**documentation** link rather than a code link, and §414-436 closed the question:
+*"This conclusion is settled … do not re-propose `compose()` across artifacts without new
+evidence."* That closure is why nothing escalated: the defects below each looked like an
+isolated bug rather than a symptom of a missing code link.
+
+### THE OWNER HAS OVERRULED THAT — four hard rules
+
+Owner's ruling this session, verbatim in substance:
+
+1. **The CSS grammar defines all regular CSS.**
+2. **Each downstream grammar MUST extend the CSS grammar** — import and compose it.
+3. **Each may ONLY define specific overrides.** It may not define ANY shape that exists in
+   css-grammar already and could have been used.
+4. **It MAY NOT create a new rule merely because it is changing PARSING for that rule.**
+   A `Quoted` in CSS is still a `Quoted` in every other language even though the superset
+   adds interpolation to it.
+
+Owner's stated preference for execution: **start over for each grammar — extend CSS, then
+copy in the delta one rule at a time.**
+
+**The escape hatch is the spec's own "without new evidence."** Parseman is checked out
+locally at `/Users/matthew/git/oss/parseman` (verified present, with
+`src/plugin/direct-builder-static.ts`), so it **can be patched and measured** rather than
+treated as a fixed constraint. A lane is testing whether `direct-builder-static` can accept
+imported constructors. That is the new evidence the spec's closure asks for.
+
+> **Do not write the four rules into this document.** Another lane is landing them in
+> [`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md) and into
+> **P22** in [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md). As of `4d4954156` that landing
+> has **not** happened — `GRAMMAR-REVIEW-STANDARD.md` contains no such rules yet. Those two
+> documents are canonical for the rules; this section is the pointer and the rationale.
+
+### MEASURED VIOLATIONS OF THE FOUR RULES — each with its evidence
+
+**Rule 4, HARD FAIL — seven superset rule-name aliases for rules CSS already has.**
+Rule names, not node-type strings (the node-type string `'ComplexSelector'` does still
+occur in the supersets; the *rule* is spelled differently):
+
+| superset rule | css rule | superset sites |
+| --- | --- | --- |
+| `Complex` | `ComplexSelector` (`css:99`) | less:281, scss:192, jess:155 |
+| `ComplexTail` | (css has none — tail is folded into `ComplexSelector`) | less:280, scss:191, jess:154 |
+| `Compound` | `CompoundSelector` (`css:100`) | less:279, scss:190, jess:147 |
+| `Selector` | `SelectorList` (`css:200`) | less:284, scss:195, jess:157 |
+| `SelectorTail` | (css has none) | less:283, scss:194, jess:156 |
+| `KeyframeSelector` | `keyframeSelector` (`css:244`) | less:235, scss:176, jess:217 |
+| **`LiteralQuoted`** | **`Quoted`** (`css:197`) | less:290, scss:60, jess:88 |
+
+`LiteralQuoted` is the **archetype**. The supersets keep `Quoted` as the interpolating
+form and split the plain CSS form out under a new name — which is precisely the move rule 4
+forbids outright. Every superset carries BOTH `Quoted` and `LiteralQuoted`
+(less:289/290, scss:59/60, jess:87/88).
+
+**Divergences that were real defects, all found and fixed this session:**
+
+- **`@charset` absent from css entirely** while all three supersets had it. Fixed
+  `7d32a7fca` (`fix(css-parser): @charset then @import is the canonical prologue, not a
+  parse error`). This is the INVERTED fork: the base was the one missing the rule.
+- **`<urange>` absent from jess entirely** while css had it. Fixed `fb272dfc1`. jess had
+  **no `<urange>` production at all**, so `a { b: U+0-7F }` and every `@font-face`
+  carrying `unicode-range` were unparseable. *(Precision: the brief's phrasing "the corpus
+  had already recorded 'Jess consumes nothing for ANY `U+` form'" does not match the file
+  byte-for-byte. What the repo actually already held — per `fb272dfc1`'s own body — is
+  **three entries in `test/css-superset-corpus.ts` carrying `brokenIn: ['jess']` with the
+  cause stated correctly**. The substance of the claim, that the repo already knew, holds;
+  the quoted string does not.)*
+- **scss forked the ident-start declaration decision and produced a WRONG NODE.**
+  `div:hover, span { … }` parsed as a `Declaration` named `div` that **swallowed the
+  nested rule**. Fixed `b518ac388` (`fix(scss,jess): converge ident-start
+  declaration-vs-nested-rule on the CSS decision`).
+- **The at-rule prelude re-spelled `balanced()` inline** and lost the shared `customSlash`
+  skip, so a lone `/` truncated every bracketed prelude group. Fixed `d5c8f72bb`.
+- **Namespaced selectors behave three ways — STILL OPEN.** less is correct; **css
+  MIS-PARSES** `svg|circle` into two segments because
+  `const combinator = keywords(['||', '>', '+', '~', '|']);`
+  (`packages/syntax/css/css-parser/src/grammar.ts:998`) treats `|` as a combinator; scss
+  rejects it. Tracked as open item #41.
+
+### SESSION STATE — `origin/dev` moved `a22594121` → `4d4954156`
+
+**41 commits** (`git rev-list --count a22594121..4d4954156` = 41 — the "roughly twenty"
+figure in the session brief is low). The material landings:
+
+- **§4.7 unit ladder** — `c906c2f9e` (`an unexpressible unit changes the SPELLING, not the
+  arithmetic`), strict rung and warnings; `99197fff0` fixed that the ladder had **no
+  reachable site** from `$( … )`; `4d4954156` scoped `unitMode` out of `.jess` as
+  Less-compat.
+- **Keyword arguments in a function call** — `14760c4dd`. Foundation parse ratchet
+  **100 → 115** named entry points. All three superset call-argument productions now reduce
+  to ONE node, `CallArg`, at ONE construction site.
+- **`@return` / `@content` / `@include` blocks** — `539684f3d`. Foundation parse
+  **61 → 93 of 136**. Plus `085401677` (a block-less `@include` makes `$content()` a no-op,
+  not an error), `f3b4c3fa1` / `7ace72df7` (`content` is an ordinary scoped variable, not a
+  known name).
+- **`$while`, `not not`, diagnostics** — `4001391b2` (`@while` becomes `$while`; the
+  diagnostics become nothing at all).
+- **Placeholder selectors** — `3bcbb7cd8` (emit only through extend).
+- **Guard §4.2a** — `c2a760197` (`fix(core)!: a groundless relational is a NON-MATCH in
+  guard position`).
+- **Control-block reassignment** — `bdb314ae8`. `BindingCell` was **single-slot**; a
+  self-read now resolves to N-1.
+- **Bracketed lists + `[]` falsy** — `d1c69971c` (`[ … ]` is a list; printing one is grid
+  line names or an error).
+- **Attribute ident fusion** — `c541b51be` (an attribute selector must not fuse two ident
+  tokens) — all four dialects now agree.
+- **The css byte-identity oracle** — `8c5852238`, absolute and with **asserted controls**.
+  This was P22's stated prerequisite and is now LANDED, so it no longer gates the
+  compose conversion; parseman does.
+- **The cross-dialect acceptance matrix** — `d9531097f`, one corpus over four parsers
+  (`test/cross-dialect/acceptance-matrix.test.ts`).
+- **The over-narrow grammar survey** — `c466b8fa3`, 154 probes
+  (`docs/architecture/parser/OVER-NARROW-GRAMMAR-SURVEY.md`,
+  `test/cross-dialect/over-narrow-corpus.ts`).
+
+### METHODOLOGICAL FINDINGS — worth as much as the fixes
+
+These are the reason the headline finding went unescalated for two weeks. Treat them as
+standing warnings about the instruments, not as history.
+
+1. **Two instruments scored everything wrong until a CONTROL caught them**, and a third
+   found its real defect only because a control the brief had specified went RED. An
+   instrument without an asserted negative control is not evidence. `8c5852238` is the
+   pattern to copy: *"absolute and with asserted controls."*
+2. **Both existing gates are structurally BLIND to wrong-node defects.** The acceptance
+   matrix compares **accept/reject**; the byte-identity oracle compares **emitted bytes**.
+   A wrong-but-round-trippable tree — exactly the scss `div:hover, span` defect fixed in
+   `b518ac388`, where a `Declaration` swallowed a nested rule — passes **both**. Neither
+   gate would have caught it. Probing the NODE is a third, missing channel.
+3. **The largest known hole: the over-narrow survey asked "what node results" on only
+   7 of 154 rows.** `OVER-NARROW-GRAMMAR-SURVEY.md:388-390` states it directly — extending
+   prong A′ to a node-shape differential over the whole 154-probe corpus is the open work,
+   *"and today only seven of 154 rows have been asked the second one."*
+4. **Baselines were wrong twice, from silent causes.** (a) A stale `lib/` — vitest reads
+   `lib/`, not `src/`, so an unbuilt worktree silently reports a *past* version of the
+   repo. (b) A **dirty `~/git/oss/less.js`** oracle reached through a `link:` dependency; a
+   clean-worktree A/B is blind to it. **Run `git -C ~/git/oss/less.js status --porcelain`
+   and report its output as evidence alongside any corpus number.** *(Not run here: this
+   agent is worktree-isolated and its tooling refuses a `git -C` outside the worktree.
+   Unverified in this session — the requirement stands for whoever measures next.)*
+
+### HIGHEST-SEVERITY OPEN ITEMS — recorded by name so they survive
+
+The full list lives in the session task list, not in this repo. These five are recorded
+here only so they are not lost with the conversation. **Numbers are task-list ids and are
+not verifiable from the repo**; the described defects are.
+
+- **#41 — css `|` mis-parse.** `svg|circle` splits into two segments;
+  `css-parser/src/grammar.ts:998` puts `|` in the combinator keyword set. Verified above.
+- **#50 — jess grammar duplicate keys make the FIRST productions UNREACHABLE.** Suspected
+  cause of the `@media` / `@container` rejections. *(Duplicate-key claim not independently
+  re-verified in this session.)*
+- **#51 — the language service RE-PARSES selector BYTES**, a §6 keystone violation
+  (the parser owns structure; core and tooling never re-derive it from bytes).
+  *(Not independently re-verified in this session.)*
+- **#36 — `@extend` does not propagate out of mixin bodies.** This is the real blocker
+  behind #12. *(Not independently re-verified in this session.)*
+- **#43 — `pseudoArgumentContent` has its own inline `balanced()` twin**, the same class of
+  defect `d5c8f72bb` fixed for at-rule preludes, in a second place.
+  *(Not independently re-verified in this session.)*
+
 ## SESSION HANDOFF — 2026-08-01, jess `d7ebe562e` / parseman `release/0.47.0` `cdf33f3`
 
 **All agents were stopped mid-flight at a spend limit.** Nothing below is in progress;

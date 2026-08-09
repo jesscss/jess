@@ -434,6 +434,30 @@ as terminal leaves. **This conclusion is settled** and is independently
 supported by §5.4 and §13.3; do not re-propose `compose()` across artifacts
 without new evidence.
 
+> **OWNER OVERRULE — 2026-08-09, jess `4d4954156`. The closure above no longer
+> stands as a reason not to pursue `compose()`.** The reasoning in this section is
+> correct and is deliberately kept: `direct-builder-static.ts` does reject jess's
+> builders, and that is still why the repo composes leaves today. What changed is
+> the disposition. The owner has ruled that each downstream grammar **MUST** extend
+> the CSS grammar by importing and composing it, may define **only** specific
+> overrides, and may **not** introduce a new rule name for a shape CSS already has
+> (a `Quoted` stays a `Quoted` even when the superset adds interpolation to it).
+> Under that ruling, a documentation-only "agent-readable link" (§12.0) does not
+> satisfy the requirement.
+>
+> **The new evidence this section asks for is now reachable.** Parseman is checked
+> out locally at `~/git/oss/parseman` with
+> `src/plugin/direct-builder-static.ts` present, so the constraint can be
+> **patched and measured** rather than treated as fixed — a lane is testing whether
+> `direct-builder-static` can accept imported AST constructors. Until that lane
+> reports, treat the constraint as real but **provisional**, not settled.
+>
+> The four rules and their enforcement are canonical in
+> `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` and in ledger row **P22** of
+> `docs/architecture/core/DESIGN-DECISIONS.md`. Session context, the measured
+> rule-4 violations, and the instrument findings are in
+> `docs/architecture/core/HANDOFF.md` under **SESSION HANDOFF — 2026-08-09**.
+
 > **The specific figure "576 of 592 builders violate it" does not reproduce from
 > this repository.** No checked-in script produces it, and the population does
 > not match: `node(` across the eight grammar files is **323**
