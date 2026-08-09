@@ -117,6 +117,67 @@ Measured on **dart-sass 1.101.0** against Sass+ at `c906c2f9e`, the commit that 
 
 One thing Sass+ adds that Sass does not: an unexpressible result also **warns** (`eval/unexpressible-unit`), and the `unitMode` option chooses between preserving it (default), folding it to a dimensionally false answer, or rejecting it. Sass has no equivalent lever and does not warn.
 
+## Content blocks: `content` is an ordinary variable
+
+**Sass:** `@content` inside a mixin that was invoked *without* a block emits nothing.
+**Sass+:** it raises `resolve/name-not-found` — `Symbol "@content" is undefined in this scope.`
+
+```scss
+@mixin m { .in { @content; } }
+
+.a { @include m; }                 // Sass: emits nothing.  Sass+: raises.
+.b { @include m { color: red } }   // identical in both -> .b .in { color: red; }
+```
+
+### Why
+
+The principle is that **the language has no special names**.
+
+Passing a block to a mixin call does not reach a content-block feature. It **binds an ordinary variable named `content` in the call frame**, exactly the way `arguments` is bound in a JavaScript function. `@content` — spelled `$content()` in Jess — is then an ordinary call on that ordinary variable.
+
+Given that, the divergence is not a decision about `@content` at all; it falls out. No block passed means `content` is simply unbound, and calling an unbound variable is a resolve failure, the same as any other unbound name. Nothing in the evaluator knows the name.
+
+Sass's no-op is a genuine convenience rather than an accident — a mixin that emits `@content` unconditionally works whether or not a caller passes a block, and that is a real property to want. But it only exists because the language knows the name `content` is special and treats a miss on it differently. Sass+ does not know that, and buying the convenience means teaching it, which is the trade this entry declines.
+
+The implementation is the evidence: reaching this state **deleted** a sentinel constant and the resolver's miss-site special case for the name `content`, for a net −14 lines in core.
+
+### Ordinary scoping, which is the same principle
+
+Because `content` is a variable, an enclosing frame's binding is visible to an inner frame — no special case required:
+
+```scss
+@mixin inner { .in { @content; } }
+@mixin outer { @include inner; }        // no block passed here
+.a { @include outer { color: red } }    // -> .a .in { color: red; }
+```
+
+Sass does not merely differ here, it **rejects the program**: dart-sass raises `Mixin doesn't accept a content block.` at `@include outer { … }`, because `outer` does not itself mention `@content`. So this is portable in neither direction, and code written against Sass will not be relying on it.
+
+### What this changes in practice
+
+Only a **block-less `@include` of a mixin that actually reaches `@content`**. A mixin whose `@content` sits behind a condition that is false at the call site is unaffected, because the call is never evaluated.
+
+If you maintain a Sass library that relies on the no-op, the fix is to **pass an empty block**:
+
+```scss
+.a { @include m { } }   // -> emits nothing, and is portable to both
+```
+
+Verified: this renders identically in dart-sass 1.101.0 and Sass+ — empty output for the example above, and `.a .in { color: blue; }` for a mixin whose body also has a declaration of its own.
+
+### Measured before changing
+
+Measured on **dart-sass 1.101.0** against Sass+ at `f3b4c3fa1`, the commit that landed this model, across the Bootstrap 5.3.8 (92 `.scss`) and foundation-sites 6.9.0 (136 `.scss`) corpora — **228 files**:
+
+| corpus | mixins containing `@content` | block-less `@include` sites | of those, on a `@content` mixin | reaching `@content` |
+| --- | --- | --- | --- | --- |
+| bootstrap 5.3.8 | 10 | 287 | 0 | **0** |
+| foundation-sites 6.9.0 | 26 | 651 | 5 | **0** |
+
+The five foundation-sites sites are all `grid-row` / `flex-grid-row`, whose `@content` is guarded by `@if $columns != null`; every one of those calls leaves `$columns` at its `null` default, so `@content` is never reached.
+
+**Zero affected files in either corpus** — both ratchets are unchanged by this behaviour. That is the measured scope of the risk on two libraries, not evidence that the pattern is rare in the wild.
+
 ## See also
 
 - [Sass+ Strictness](./stricter-than-sass) — invalid CSS that Sass+ rejects at parse time
