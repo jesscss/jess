@@ -43,6 +43,7 @@ const FIXTURE_DIR = join(here, 'fixtures');
 export const AUTHORED_FILES: readonly string[] = [
   'at-rule-charset-then-import.css',
   'at-rules-conditional.css',
+  'at-rule-namespace-url.css',
   'at-rules-import-namespace.css',
   'at-rules-keyframes-fontface.css',
   'at-rules-statement.css',
@@ -55,6 +56,7 @@ export const AUTHORED_FILES: readonly string[] = [
   'nesting-ident-start-ambiguity.css',
   'nesting-qualified-rule.css',
   'selector-attribute-case-flag.css',
+  'selector-attribute-unquoted-flag.css',
   'selectors-full.css',
   'value-slash-separator.css',
   'values-full.css'

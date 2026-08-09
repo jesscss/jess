@@ -1,0 +1,9 @@
+[data-x=y i] {
+  color: red;
+}
+[lang=en s] {
+  color: blue;
+}
+[data-x~=y i] {
+  color: lime;
+}
