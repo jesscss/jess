@@ -23,12 +23,8 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, NULL_NODE, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, CallArg, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, Null, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-
-type Token = { readonly value: string };
-type SourceSpan = { readonly start: number; readonly end: number };
-type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, CallArg, Collection, CollectionEntry, Color, Comment, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
 
@@ -223,53 +219,6 @@ function requireToken(value: unknown): Token {
   return { value: value.value };
 }
 
-function isToken(value: unknown): value is Token {
-  return typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string';
-}
-
-function isSpannedToken(value: unknown): value is SpannedToken {
-  return typeof value === 'object'
-    && value !== null
-    && 'value' in value
-    && 'span' in value
-    && typeof value.span === 'object'
-    && value.span !== null
-    && 'start' in value.span
-    && 'end' in value.span
-    && typeof value.span.start === 'number'
-    && typeof value.span.end === 'number';
-}
-
-/*
- * The interior of a `{ ... }` body, taken from the brace tokens' own spans.
- *
- * This is the same helper css and less carry, and it exists for the renderer,
- * not for diagnostics: trivia captured INSIDE a ruleset is replayed against the
- * owner's BODY span, so a block-bearing node with no body span silently drops
- * every comment authored inside it. Ported verbatim rather than re-derived —
- * the four dialects must agree on where a body starts and ends.
- */
-function bodySpanFromRaw(rawChildren: readonly unknown[]): SourceSpan | undefined {
-  let start: number | undefined;
-  let end: number | undefined;
-  for (const child of rawChildren) {
-    if (!isSpannedToken(child)) {
-      continue;
-    }
-    if (child.value === '{' && start === undefined) {
-      start = child.span.end;
-    } else if (child.value === '}') {
-      end = child.span.start;
-    }
-  }
-  return start === undefined || end === undefined || end < start ? undefined : { start, end };
-}
-
-function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[]): T {
-  const span = bodySpanFromRaw(rawChildren);
-  return span === undefined ? node : withBodySpan(node, span);
-}
-
 function sourceText(value: unknown): string {
   if (Array.isArray(value)) {
     return value.map(sourceText).join('');
@@ -352,18 +301,6 @@ function isCompoundSelector(value: unknown): value is CompoundSelector {
 
 function isSelectorTerm(value: unknown): value is SelectorTerm {
   return isSimpleToken(value) || isCompoundSelector(value);
-}
-
-function isComplexSelector(value: unknown): value is ComplexSelector {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'ComplexSelector'
-    && 'value' in value && Array.isArray(value.value);
-}
-
-function isRelativeSelector(value: unknown): value is Extract<SelectorBranch, { readonly type: 'RelativeSelector' }> {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'RelativeSelector'
-    && 'value' in value && Array.isArray(value.value);
 }
 
 function isSelectorBranch(value: unknown): value is SelectorBranch {
@@ -464,18 +401,6 @@ function isParamArray(value: unknown): value is Param[] {
 
 function isAnonymousMixin(value: unknown): value is AnonymousMixin {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AnonymousMixin';
-}
-
-function isForBinding(value: unknown): value is ForBinding {
-  if (typeof value !== 'object' || value === null || !('kind' in value)) {
-    return false;
-  }
-  if (value.kind === 'single') {
-    return 'name' in value && typeof value.name === 'string';
-  }
-  return (value.kind === 'comma' || value.kind === 'bracket' || value.kind === 'tuple')
-    && 'names' in value && Array.isArray(value.names)
-    && value.names.every(name => name === undefined || typeof name === 'string');
 }
 
 function requireForBinding(value: unknown): ForBinding {
@@ -826,9 +751,6 @@ function isComment(value: unknown): value is Comment {
 function isStyleImport(value: unknown): value is StyleImport {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'StyleImport';
 }
-function isModuleImport(value: unknown): value is ModuleImport {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ModuleImport';
-}
 
 function isExtendInstruction(value: unknown): value is ExtendInstruction {
   return typeof value === 'object' && value !== null
@@ -850,28 +772,6 @@ function requireKeyword(value: unknown): Keyword {
     throw new TypeError('SCSS grammar produced a non-keyword child.');
   }
   return node;
-}
-
-/**
- * A value-position identifier, with `null` recognised as the LITERAL it is in
- * `.scss` (§4.3) rather than as an identifier that happens to spell one.
- *
- * The GRAMMAR decides this, not core: `.scss` `null` is the absent VALUE — a
- * declaration holding it is dropped, a list drops it, `1 + null` is `1`, and
- * `@if null` takes the false branch — while `b: null` in `.css`/`.less` is an
- * ordinary identifier that must pass through verbatim. Core sees a `Null` node
- * and never asks which dialect produced it.
- *
- * `.scss`'s `null` is AUTHOR-WRITTEN, so it mints the EXPLICIT literal: the
- * shared `NULL_NODE` leaf, which materializes to `makeNull(true)`.
- *
- * Only the value-position identifier terminal calls this. The identifier
- * positions that must keep reading `null` as a NAME — a media/container name,
- * an `@import layer(…)` name, a `@counter-style` / `@keyframes` name, a static
- * `@supports` operand — reference `g.Keyword` directly and are untouched.
- */
-function keywordOrNull(src: string): Keyword | Null {
-  return src === 'null' ? NULL_NODE : keyword(src);
 }
 
 /** The best-effort authored spelling of a value node for a Reference `raw`. */

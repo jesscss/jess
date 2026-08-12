@@ -23,5 +23,18 @@ export {
   withValueLayout
 } from './ast/provenance.js';
 export type { AstSourceSpan, AstTriviaRange, ParserRootTriviaGap, ParserRootTriviaIndex, ParserTriviaEntriesView, ValueLayout } from './ast/provenance.js';
+export {
+  bodySpanFromRaw,
+  isComplexSelector,
+  isForBinding,
+  isModuleImport,
+  isRelativeSelector,
+  isSpannedToken,
+  isToken,
+  keywordOrNull,
+  semanticGapText,
+  withBlockBody
+} from './ast/grammar-helpers.js';
+export type { SourceSpan, SpannedToken, Token } from './ast/grammar-helpers.js';
 export type { GuardNode } from './ast/guard.js';
 export type { CallArg } from './ast/mixin-dispatch.js';

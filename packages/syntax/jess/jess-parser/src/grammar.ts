@@ -29,12 +29,8 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, keyword, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, ComplexSelector, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode, While } from '@jesscss/core/ast';
-
-type Token = { readonly value: string };
-type SourceSpan = { readonly start: number; readonly end: number };
-type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode, While } from '@jesscss/core/ast';
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
@@ -281,73 +277,12 @@ function requireToken(value: unknown): Token {
   return { value: token.value };
 }
 
-/**
- * A value-position identifier, with `null` recognised as the LITERAL it is in
- * `.jess` (§4.3) rather than as an identifier that happens to spell one.
- *
- * The GRAMMAR decides this, not core: `null` emits nothing and drops the
- * separator after it here, while `b: null` in `.css`/`.less` is an ordinary
- * identifier that must pass through verbatim. Core sees a `Null` node and never
- * asks which dialect produced it — sniffing `src` at materialize time (the route
- * `true`/`false` take, where every dialect agrees) could not tell the two apart.
- */
-function keywordOrNull(src: string): Keyword | Null {
-  return src === 'null' ? NULL_NODE : keyword(src);
-}
-
 function requireFields(fields: FieldMap | undefined, name: string): readonly FieldCapture[] {
   const field = fields?.[name];
   if (field === undefined) {
     throw new TypeError(`Jess grammar lost required ${name} field.`);
   }
   return Array.isArray(field) ? field : [field];
-}
-
-function isToken(value: unknown): value is Token {
-  return typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string';
-}
-
-function isSpannedToken(value: unknown): value is SpannedToken {
-  return typeof value === 'object'
-    && value !== null
-    && 'value' in value
-    && 'span' in value
-    && typeof value.span === 'object'
-    && value.span !== null
-    && 'start' in value.span
-    && 'end' in value.span
-    && typeof value.span.start === 'number'
-    && typeof value.span.end === 'number';
-}
-
-/*
- * The interior of a `{ ... }` body, taken from the brace tokens' own spans.
- *
- * This is the same helper css and less carry, and it exists for the renderer,
- * not for diagnostics: trivia captured INSIDE a ruleset is replayed against the
- * owner's BODY span, so a block-bearing node with no body span silently drops
- * every comment authored inside it. Ported verbatim rather than re-derived —
- * the four dialects must agree on where a body starts and ends.
- */
-function bodySpanFromRaw(rawChildren: readonly unknown[]): SourceSpan | undefined {
-  let start: number | undefined;
-  let end: number | undefined;
-  for (const child of rawChildren) {
-    if (!isSpannedToken(child)) {
-      continue;
-    }
-    if (child.value === '{' && start === undefined) {
-      start = child.span.end;
-    } else if (child.value === '}') {
-      end = child.span.start;
-    }
-  }
-  return start === undefined || end === undefined || end < start ? undefined : { start, end };
-}
-
-function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[]): T {
-  const span = bodySpanFromRaw(rawChildren);
-  return span === undefined ? node : withBodySpan(node, span);
 }
 
 function jessCombinator(value: Token): JessComplexTail['combinator'] {
@@ -392,18 +327,6 @@ function isSimpleSelector(value: unknown): value is SimpleSelector {
     && 'type' in value && value.type === 'SimpleSelector'
     && 'text' in value && (typeof value.text === 'string' || value.text === null)
     && 'interp' in value && (isInterpolation(value.interp) || value.interp === null);
-}
-
-function isComplexSelector(value: unknown): value is ComplexSelector {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'ComplexSelector'
-    && 'value' in value && Array.isArray(value.value);
-}
-
-function isRelativeSelector(value: unknown): value is Extract<SelectorBranch, { readonly type: 'RelativeSelector' }> {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'RelativeSelector'
-    && 'value' in value && Array.isArray(value.value);
 }
 
 function isSelectorBranch(value: unknown): value is SelectorBranch {
@@ -1142,18 +1065,6 @@ function requireIfBranchTuple(value: IfBranch[]): [IfBranch, ...IfBranch[]] {
   return [first, ...value.slice(1)];
 }
 
-function isForBinding(value: unknown): value is ForBinding {
-  if (typeof value !== 'object' || value === null || !('kind' in value)) {
-    return false;
-  }
-  if (value.kind === 'single') {
-    return 'name' in value && typeof value.name === 'string';
-  }
-  return (value.kind === 'comma' || value.kind === 'bracket' || value.kind === 'tuple')
-    && 'names' in value && Array.isArray(value.names)
-    && value.names.every(name => name === undefined || typeof name === 'string');
-}
-
 function requireForBinding(value: unknown): ForBinding {
   if (!isForBinding(value)) {
     throw new TypeError('Jess grammar produced an invalid for binding.');
@@ -1179,10 +1090,6 @@ function isStyleImport(value: unknown): value is StyleImport {
 
 function isApply(value: unknown): value is Apply {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Apply';
-}
-
-function isModuleImport(value: unknown): value is ModuleImport {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ModuleImport';
 }
 
 function isReferenceCall(value: unknown): value is Reference {

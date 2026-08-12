@@ -49,7 +49,8 @@ import {
   spaced,
   url,
   quoted,
-  withBodySpan,
+  semanticGapText,
+  withBlockBody,
   withSourceSpan,
   withValueLayout
 } from '@jesscss/core/ast';
@@ -74,9 +75,6 @@ import type {
   ValueSlot,
   Url
 } from '@jesscss/core/ast';
-
-type SourceSpan = { readonly start: number; readonly end: number };
-type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
 
 type GrammarRuleName =
   | 'AtRulePrelude'
@@ -342,23 +340,6 @@ function sourceText(child: unknown): string {
   return tokenText(child);
 }
 
-function semanticGapText(text: string): string {
-  let out = '';
-  let inGap = false;
-  for (const char of text) {
-    if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === '\f') {
-      if (!inGap) {
-        out += ' ';
-        inGap = true;
-      }
-    } else {
-      out += char;
-      inGap = false;
-    }
-  }
-  return out;
-}
-
 /*
  * A per-node trivia entry is `[start, end, insertIndex]`, plus a trailing
  * kind index once the scope's arms are labeled. Every CSS trivia scope is
@@ -386,40 +367,6 @@ function semanticTextWithTriviaGaps(children: readonly unknown[], triviaLog: rea
   }
 
   return semanticGapText(text);
-}
-
-function isSpannedToken(value: unknown): value is SpannedToken {
-  return typeof value === 'object'
-    && value !== null
-    && 'value' in value
-    && 'span' in value
-    && typeof value.span === 'object'
-    && value.span !== null
-    && 'start' in value.span
-    && 'end' in value.span
-    && typeof value.span.start === 'number'
-    && typeof value.span.end === 'number';
-}
-
-function bodySpanFromRaw(rawChildren: readonly unknown[]): SourceSpan | undefined {
-  let start: number | undefined;
-  let end: number | undefined;
-  for (const child of rawChildren) {
-    if (!isSpannedToken(child)) {
-      continue;
-    }
-    if (child.value === '{' && start === undefined) {
-      start = child.span.end;
-    } else if (child.value === '}') {
-      end = child.span.start;
-    }
-  }
-  return start === undefined || end === undefined || end < start ? undefined : { start, end };
-}
-
-function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[]): T {
-  const span = bodySpanFromRaw(rawChildren);
-  return span === undefined ? node : withBodySpan(node, span);
 }
 
 function isNodeType<T extends string>(value: unknown, type: T): value is { readonly type: T } {

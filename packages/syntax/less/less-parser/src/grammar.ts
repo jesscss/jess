@@ -28,8 +28,8 @@ import {
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, atRuleBlock, atRuleStatement, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
@@ -37,7 +37,6 @@ import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImport
 // Grammar — Less host-mode grammar.
 // ---------------------------------------------------------------------------
 
-type Token = { readonly value: string };
 /** A `Lookup` whose target is named literally — the `@name` / `$prop` shapes. */
 type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
@@ -311,10 +310,6 @@ type LessRules = {
   FunctionArguments: Combinator<unknown>;
 };
 
-function isToken(value: unknown): value is Token {
-  return typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string';
-}
-
 /** Macro-fused shared recognition plus this file's recursively defined outputs. */
 type LessInputRules = LessRules & typeof lessSyntax;
 
@@ -516,23 +511,6 @@ function staticText(value: unknown): string {
     return value.map(staticText).join('');
   }
   throw new TypeError('Less grammar produced a non-static import fragment.');
-}
-
-function semanticGapText(text: string): string {
-  let out = '';
-  let inGap = false;
-  for (const char of text) {
-    if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === '\f') {
-      if (!inGap) {
-        out += ' ';
-        inGap = true;
-      }
-    } else {
-      out += char;
-      inGap = false;
-    }
-  }
-  return out;
 }
 
 function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
@@ -1750,38 +1728,6 @@ function mixinDefinitionNameFromSelectorBranch(branch: SelectorBranch): string {
   return prefix[0]!.selector;
 }
 
-type SourceSpan = { readonly start: number; readonly end: number };
-type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
-
-function isSpannedToken(value: unknown): value is SpannedToken {
-  return typeof value === 'object'
-    && value !== null
-    && 'value' in value
-    && 'span' in value
-    && typeof value.span === 'object'
-    && value.span !== null
-    && 'start' in value.span
-    && 'end' in value.span
-    && typeof value.span.start === 'number'
-    && typeof value.span.end === 'number';
-}
-
-function bodySpanFromRaw(rawChildren: readonly unknown[]): SourceSpan | undefined {
-  let start: number | undefined;
-  let end: number | undefined;
-  for (const child of rawChildren) {
-    if (!isSpannedToken(child)) {
-      continue;
-    }
-    if (child.value === '{' && start === undefined) {
-      start = child.span.end;
-    } else if (child.value === '}') {
-      end = child.span.start;
-    }
-  }
-  return start === undefined || end === undefined || end < start ? undefined : { start, end };
-}
-
 function requiredTokenStart(rawChildren: readonly unknown[], value: string): number {
   const token = rawChildren.find((child): child is SpannedToken =>
     isSpannedToken(child) && child.value === value
@@ -1790,11 +1736,6 @@ function requiredTokenStart(rawChildren: readonly unknown[], value: string): num
     throw new TypeError(`Less grammar lost required ${JSON.stringify(value)} token provenance.`);
   }
   return token.span.start;
-}
-
-function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[]): T {
-  const span = bodySpanFromRaw(rawChildren);
-  return span === undefined ? node : withBodySpan(node, span);
 }
 
 function hasRulesetTerminator(rawChildren: readonly unknown[]): boolean {
@@ -1989,18 +1930,6 @@ function isMixinCallArgument(value: unknown): value is MixinCallArgument {
    * absence is a reduced-shape defect, not a positional argument. */
   return typeof value === 'object' && value !== null && 'value' in value && (isValueSlotValue(value.value) || isMixinCall(value.value))
     && 'name' in value && (value.name === undefined || typeof value.name === 'string');
-}
-
-function isForBinding(value: unknown): value is ForBinding {
-  if (typeof value !== 'object' || value === null || !('kind' in value)) {
-    return false;
-  }
-  if (value.kind === 'single') {
-    return 'name' in value && typeof value.name === 'string';
-  }
-  return (value.kind === 'comma' || value.kind === 'bracket' || value.kind === 'tuple')
-    && 'names' in value && Array.isArray(value.names)
-    && value.names.every(name => name === undefined || typeof name === 'string');
 }
 
 function isLessEachCallback(value: unknown): value is LessEachCallback {
