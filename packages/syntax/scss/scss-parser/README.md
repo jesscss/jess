@@ -148,7 +148,7 @@ Parsing `$c: red;\n.foo { color: $c; }` yields (abridged):
     { "_tag": "node", "type": "VarDeclaration", "grammarType": "VarDeclaration", "span": { "start": 0, "end": 8 },
       "children": [
         { "_tag": "leaf", "value": "$c" }, { "_tag": "leaf", "value": ":" },
-        { "_tag": "node", "type": "NamedColor", "grammarType": "NamedColor",
+        { "_tag": "node", "type": "Keyword", "grammarType": "Keyword",
           "children": [ { "_tag": "leaf", "value": "red" } ] },
         { "_tag": "leaf", "value": ";" }
       ] },
@@ -170,9 +170,9 @@ Parsing `$c: red;\n.foo { color: $c; }` yields (abridged):
 }
 ```
 
-Note the SCSS-specific nodes: `$c: …` becomes a `VarDeclaration`, `$c` in value position becomes a `Reference`, selectors parse through `InterpolatedSelector` (so `#{…}` interpolation is captured in place), and the color keyword `red` parses as `NamedColor`.
+Note the SCSS-specific nodes: `$c: …` becomes a `VarDeclaration`, `$c` in value position becomes a `Reference`, selectors parse through `InterpolatedSelector` (so `#{…}` interpolation is captured in place), and the color keyword `red` parses as a plain `Keyword` — the same node every dialect uses (NamedColor→Keyword convergence).
 
-Pass `{ collapse: true }` to unwrap single-child wrapper types (`Reference`, `NamedColor`, `InterpolatedSelector`) into their child.
+Pass `{ collapse: true }` to unwrap single-child wrapper types (`Reference`, `InterpolatedSelector`) into their child.
 
 ## Extending with your own builders
 

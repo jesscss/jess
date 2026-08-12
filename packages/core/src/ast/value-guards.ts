@@ -512,10 +512,16 @@ export function typeCheck(name: string, args: readonly Value[]): boolean {
     return false;
   }
   switch (name.toLowerCase()) {
-    case 'iscolor': return a.type === 'Color';
+    /*
+     * NamedColor→Keyword convergence: a keyword that spells a CSS colour IS a
+     * colour at a point of use (guard predicate), so `iscolor(red)` is true and
+     * `iskeyword(red)` is false — matching pre-convergence Less, where `red` was
+     * a `Color` node. `asColor` already folds the named-colour table.
+     */
+    case 'iscolor': return asColor(a) !== undefined;
     case 'isnumber': return a.type === 'Dimension';
     case 'isstring': return a.type === 'Quoted';
-    case 'iskeyword': return a.type === 'Keyword';
+    case 'iskeyword': return a.type === 'Keyword' && asColor(a) === undefined;
     case 'ispixel': return a.type === 'Dimension' && a.unit === 'px';
     case 'ispercentage': return a.type === 'Dimension' && a.unit === '%';
     case 'isem': return a.type === 'Dimension' && a.unit === 'em';

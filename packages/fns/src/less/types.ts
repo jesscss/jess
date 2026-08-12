@@ -1,5 +1,16 @@
-import { makeBool, defineFunction, isValueGroupArray } from '@jesscss/core';
+import { makeBool, defineFunction, isValueGroupArray, namedColor } from '@jesscss/core';
 import type { Fn, ValueGroup, Value } from '@jesscss/core';
+
+/**
+ * A materialized value counts as a color for a type predicate when it is a
+ * `Color` OR a `Keyword` that names a CSS color. NamedColor→Keyword convergence
+ * keeps `red` a keyword at parse; its colour-ness is consulted here, at the
+ * point of use, so `iscolor(red)` stays true and `iskeyword(red)` stays false.
+ */
+function isColorLike(value: ValueGroup): boolean {
+  return !isValueGroupArray(value)
+    && (value.type === 'Color' || (value.type === 'Keyword' && namedColor(value.text) !== undefined));
+}
 
 /*
  * `isurl()` deliberately has no AST-v2 value-domain export. `Url` is syntax,
@@ -8,10 +19,10 @@ import type { Fn, ValueGroup, Value } from '@jesscss/core';
  * output bytes, which this function layer must not do.
  */
 
-/** Less `iscolor()` — true for an already-materialized colour value. */
+/** Less `iscolor()` — true for a colour value or a named-color keyword. */
 const iscolor: Fn = defineFunction('iscolor', {
   params: [{ type: 'any' }],
-  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Color')
+  body: value => makeBool(isColorLike(value))
 });
 
 /** Less `isnumber()` — true for an already-materialized dimension. */
@@ -26,10 +37,11 @@ const isstring: Fn = defineFunction('isstring', {
   body: value => makeBool(!isValueGroupArray(value) && value.type === 'Quoted')
 });
 
-/** Less `iskeyword()` — true for a materialized bare keyword. */
+/** Less `iskeyword()` — true for a bare keyword that is NOT a named color
+ * (a named-color keyword answers `iscolor`, matching pre-convergence Less). */
 const iskeyword: Fn = defineFunction('iskeyword', {
   params: [{ type: 'any' }],
-  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Keyword')
+  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Keyword' && namedColor(value.text) === undefined)
 });
 
 /** Less `isunit()` — true for a dimension with a case-insensitive matching unit. */

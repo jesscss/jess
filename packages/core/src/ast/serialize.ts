@@ -130,6 +130,7 @@ import {
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
+import { namedColor } from './color-names.js';
 import { UnitArithmeticError, calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList, makeNull, NULL } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
@@ -2876,9 +2877,20 @@ function hasTopLevelBareSlash(slot: readonly ValueSlot[]): boolean {
  * accepts only numeric/color leaves: variable references, calls, blocks, lists,
  * and authored space groups must retain their existing value semantics instead
  * of being guessed at by a broad declaration-value walk.
+ *
+ * A named-color `Keyword` (`red`) is a colour operand here too (NamedColor→Keyword
+ * convergence): it is the same math operand a hex `Color` is, so `red / 2` folds
+ * under `math: always` exactly like `#ff0000 / 2` (lessc 4.x). The fold itself is
+ * performed downstream by `operate()` when the promoted `Operation` is evaluated —
+ * this gate only lets the leaf through; `foo` (not a colour) is rejected here and
+ * the slot stays an authored slash list.
  */
 function appendBareSlashTokens(node: ValueNode, tokens: BareSlashToken[]): boolean {
-  if (node.type === 'Dimension' || node.type === 'Color') {
+  if (
+    node.type === 'Dimension'
+    || node.type === 'Color'
+    || (node.type === 'Keyword' && namedColor(node.src) !== undefined)
+  ) {
     tokens.push({ kind: 'operand', node });
     return true;
   }

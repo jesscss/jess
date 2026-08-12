@@ -174,7 +174,6 @@ function expectedValueSummary(
     && hasExpected(expectedSet, 'not(regex)')
     && (
       hasExpected(expectedSet, 'LessSyntaxKeyword')
-      || hasExpected(expectedSet, 'LessSyntaxNamedColor')
       || hasExpected(expectedSet, 'HexColor')
     );
   if (!looksLikeValueProduction) {

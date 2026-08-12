@@ -131,7 +131,6 @@ type LessRules = {
   InterpolatedValue: Combinator<Interpolation>;
   InterpolatedProperty: Combinator<Interpolation>;
   Keyword: Combinator<ValueNode>;
-  NamedColor: Combinator<ValueNode>;
   Color: Combinator<ValueNode>;
   Percentage: Combinator<string>;
   Dimension: Combinator<ValueNode>;
@@ -3131,11 +3130,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.ValueIdentifier,
     children => keyword(requireToken(children[0]).value)
   );
-  const NamedColor = node(
-    'Color',
-    g.NamedColorToken,
-    children => color(requireToken(children[0]).value)
-  );
   const Color = node(
     'Color',
     g.HexColor,
@@ -3590,7 +3584,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.CustomPropertyValue,
       g.Dimension,
       g.Color,
-      g.NamedColor,
       g.FormatFunction,
       IdentifierOrFunction,
       g.SelectorCapture,
@@ -4539,7 +4532,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.EscapedQuoted,
       g.Dimension,
       g.Color,
-      g.NamedColor,
       g.Call,
       g.Keyword
     ),
@@ -5050,7 +5042,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     otherwise(QueryKeyword)
   );
-  const queryLeaf = choice(g.VariableReferenceChain, g.Dimension, g.Color, g.NamedColor, g.LiteralQuoted, QueryIdentOrFunction);
+  const queryLeaf = choice(g.VariableReferenceChain, g.Dimension, g.Color, g.LiteralQuoted, QueryIdentOrFunction);
   // Media/container query syntax shares CSS's grammar-owned comparison terminal
   // and canonical `Block(paren, Operation)` shape. Less only supplies the additional
   // variable-bearing value leaves; it does not capture a query prelude as raw
@@ -5489,7 +5481,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.EscapedQuoted,
       g.LiteralQuoted,
       g.Color,
-      g.NamedColor,
       g.Dimension,
       g.PagePseudo,
       g.Paren,
@@ -6719,7 +6710,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     InterpolatedValue,
     InterpolatedProperty,
     Keyword,
-    NamedColor,
     Color,
     Percentage,
     Dimension,

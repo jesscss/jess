@@ -139,7 +139,7 @@ Parsing `@c: red;\n.foo { color: @c; }` yields (abridged):
     { "_tag": "node", "type": "VarDeclaration", "grammarType": "VarDeclaration", "span": { "start": 0, "end": 8 },
       "children": [
         { "_tag": "leaf", "value": "@c" }, { "_tag": "leaf", "value": ":" },
-        { "_tag": "node", "type": "NamedColor", "grammarType": "NamedColor",
+        { "_tag": "node", "type": "Keyword", "grammarType": "Keyword",
           "children": [ { "_tag": "leaf", "value": "red" } ] },
         { "_tag": "leaf", "value": ";" }
       ] },
@@ -159,9 +159,9 @@ Parsing `@c: red;\n.foo { color: @c; }` yields (abridged):
 }
 ```
 
-Note the Less-specific nodes: a top-level `@c: …` becomes a `VarDeclaration`, a `@c` value becomes a `Reference`, and the color keyword `red` parses as `NamedColor` (the CSS-only grammar has no such rule — see `@jesscss/css-parser`).
+Note the Less-specific nodes: a top-level `@c: …` becomes a `VarDeclaration`, and a `@c` value becomes a `Reference`. The color keyword `red` parses as a plain `Keyword` — the same node every dialect uses (NamedColor→Keyword convergence); its colour-ness is resolved only when it is operated on.
 
-Pass `{ collapse: true }` to unwrap single-child wrapper types (`Reference`, `NamedColor`, `InterpolatedSelector`) into their child.
+Pass `{ collapse: true }` to unwrap single-child wrapper types (`Reference`, `InterpolatedSelector`) into their child.
 
 ### Name-independent condition arguments
 

@@ -10,6 +10,7 @@
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { isValueGroup, isValueGroupArray, type ValueGroup } from './value-eval.js';
 import { groupItems } from './value-list.js';
+import { coerceNamedColorKeyword } from './literal-tag.js';
 import type {
   DefinedFunction,
   Fn,
@@ -147,11 +148,22 @@ function validateValue(name: string, index: number, type: NormalizedParamType, v
   if (!isValueGroup(value)) {
     throw new TypeError(`${name}: direct calls require structural value arguments`);
   }
-  if (!isValueForType(value, type)) {
+
+  /*
+   * NamedColor→Keyword convergence: a named-color keyword (`red`) satisfies a
+   * `Color`-typed parameter by materializing to its `Color` at the bind point —
+   * the point of USE — without the un-operated literal ever being reclassified.
+   * `lighten(red, 10%)` binds `#ff0000`; a keyword that is not a named color
+   * still fails the `Color` slot as before.
+   */
+  const bound = type !== 'any' && !isValueGroupArray(value) && value.type === 'Keyword' && type.includes('Color')
+    ? coerceNamedColorKeyword(value)
+    : value;
+  if (!isValueForType(bound, type)) {
     const expected = type === 'any' ? 'any' : type.join('|');
-    throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${isValueGroupArray(value) ? 'sequence' : value.type}`);
+    throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${isValueGroupArray(bound) ? 'sequence' : bound.type}`);
   }
-  return value;
+  return bound;
 }
 
 function checkedLazy(

@@ -131,8 +131,8 @@ describe('Less AST grammar facts', () => {
         type: 'VariableDeclaration',
         name: 'space',
         value: [
-          { type: 'Color', src: 'red' },
-          { type: 'Color', src: 'blue' }
+          { type: 'Keyword', src: 'red' },
+          { type: 'Keyword', src: 'blue' }
         ]
       },
       {
@@ -162,7 +162,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'silver' }
+              value: { type: 'Keyword', src: 'silver' }
             }
           ]
         }
@@ -1396,7 +1396,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'red' },
+              value: { type: 'Keyword', src: 'red' },
               merge: null,
               important: false
             }
@@ -1697,7 +1697,7 @@ describe('Less AST grammar facts', () => {
                 args: [
                   { value: [
                     { type: 'Keyword', src: 'from' },
-                    { type: 'Color', src: 'blue' },
+                    { type: 'Keyword', src: 'blue' },
                     {
                       type: 'FunctionCall',
                       name: 'calc',
@@ -2643,7 +2643,7 @@ describe('Less AST grammar facts', () => {
               {
                 type: 'VariableDeclaration',
                 name: 'accent',
-                value: { type: 'Color', src: 'blue' }
+                value: { type: 'Keyword', src: 'blue' }
               },
               {
                 type: 'Declaration',
@@ -2870,7 +2870,7 @@ describe('Less AST grammar facts', () => {
           type: 'Reference',
           base: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme', scope: 'scoped' },
           steps: [
-            { type: 'Call', args: [{ value: { type: 'Color', src: 'red' } }] }
+            { type: 'Call', args: [{ value: { type: 'Keyword', src: 'red' } }] }
           ]
         }
       ]
@@ -3491,7 +3491,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'VariableDeclaration',
           name: 'base',
-          value: { type: 'Color', src: 'red' },
+          value: { type: 'Keyword', src: 'red' },
           write: { mode: 'declare' }
         },
         {
@@ -3524,7 +3524,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'background',
-              value: { type: 'Color', src: 'red' },
+              value: { type: 'Keyword', src: 'red' },
               merge: null,
               important: false
             }
@@ -3793,7 +3793,7 @@ describe('Less AST grammar facts', () => {
         },
         {
           value: {
-            args: [{ value: [{ type: 'Color', src: 'red' }, { type: 'Color', src: 'blue' }] }]
+            args: [{ value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] }]
           }
         }
       ]
@@ -3983,7 +3983,7 @@ describe('Less AST grammar facts', () => {
             type: 'FunctionCall',
             name: 'mix',
             args: [
-              { value: { type: 'Color', src: 'blue' } },
+              { value: { type: 'Keyword', src: 'blue' } },
               { value: { type: 'Color', src: '#FFF' } },
               { value: { type: 'Dimension', src: '50%' } }
             ]
@@ -4045,7 +4045,7 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: 'mix',
                 args: [
-                  { value: { type: 'Color', src: 'blue' } },
+                  { value: { type: 'Keyword', src: 'blue' } },
                   { value: {
                     type: 'Lookup', kind: 'var',
                     name: 'color',
@@ -4331,7 +4331,7 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'color',
               merge: null,
-              value: { type: 'Color', src: 'grey' }
+              value: { type: 'Keyword', src: 'grey' }
             },
             {
               type: 'Declaration',
@@ -4345,7 +4345,7 @@ describe('Less AST grammar facts', () => {
               merge: null,
               value: [
                 { type: 'Keyword', src: 'solid' },
-                { type: 'Color', src: 'black' }
+                { type: 'Keyword', src: 'black' }
               ]
             }
           ]
@@ -4388,7 +4388,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'VariableDeclaration',
           name: 'accent',
-          value: { type: 'Important', value: { type: 'Color', src: 'navy' } },
+          value: { type: 'Important', value: { type: 'Keyword', src: 'navy' } },
           write: { mode: 'declare' }
         },
         {
@@ -4415,7 +4415,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'box-shadow',
-              value: { type: 'Color', src: 'white' },
+              value: { type: 'Keyword', src: 'white' },
               merge: ',',
               important: false
             },
@@ -4503,7 +4503,7 @@ describe('Less AST grammar facts', () => {
                 {
                   type: 'Declaration',
                   name: 'color',
-                  value: { type: 'Color', src: 'red' }
+                  value: { type: 'Keyword', src: 'red' }
                 }
               ]
             }
@@ -4520,7 +4520,7 @@ describe('Less AST grammar facts', () => {
                 {
                   type: 'Declaration',
                   name: 'color',
-                  value: { type: 'Color', src: 'blue' }
+                  value: { type: 'Keyword', src: 'blue' }
                 }
               ]
             }
@@ -4779,7 +4779,7 @@ describe('Less AST grammar facts', () => {
                 {
                   type: 'Declaration',
                   name: 'color',
-                  value: { type: 'Color', src: 'red' }
+                  value: { type: 'Keyword', src: 'red' }
                 }
               ]
             }
@@ -4796,7 +4796,7 @@ describe('Less AST grammar facts', () => {
                 {
                   type: 'Declaration',
                   name: 'color',
-                  value: { type: 'Color', src: 'blue' }
+                  value: { type: 'Keyword', src: 'blue' }
                 }
               ]
             }
@@ -4978,7 +4978,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'red' },
+              value: { type: 'Keyword', src: 'red' },
               merge: null,
               important: false
             }
@@ -5836,7 +5836,7 @@ describe('Less AST grammar facts', () => {
           name: '.space',
           params: [
             { name: 'amount' },
-            { name: 'color', default: { type: 'Color', src: 'blue' } }
+            { name: 'color', default: { type: 'Keyword', src: 'blue' } }
           ],
           rules: [
             {
@@ -5868,7 +5868,7 @@ describe('Less AST grammar facts', () => {
                     src: '2px'
                   }
                 },
-                { value: { type: 'Color', src: 'red' } }
+                { value: { type: 'Keyword', src: 'red' } }
               ]
             }
           ]
@@ -5993,7 +5993,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'MixinCall',
               name: '.wrap',
-              args: [{ value: { type: 'Color', src: 'red' } }]
+              args: [{ value: { type: 'Keyword', src: 'red' } }]
             }
           ]
         }
@@ -6186,7 +6186,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'MixinCall',
               name: '.tone',
-              args: [{ value: { type: 'Color', src: 'red' } }]
+              args: [{ value: { type: 'Keyword', src: 'red' } }]
             }
           ]
         }
@@ -6309,7 +6309,7 @@ describe('Less AST grammar facts', () => {
           type: 'MixinDefinition',
           name: '.badge',
           params: [
-            { pattern: { type: 'Color', src: 'red' } },
+            { pattern: { type: 'Keyword', src: 'red' } },
             { name: 'gap' },
             { name: 'rest', rest: true }
           ]
@@ -6323,7 +6323,7 @@ describe('Less AST grammar facts', () => {
               path: [],
               important: false,
               args: [
-                { value: { type: 'Color', src: 'red' } },
+                { value: { type: 'Keyword', src: 'red' } },
                 {
                   value: {
                     type: 'Dimension',
@@ -6414,7 +6414,7 @@ describe('Less AST grammar facts', () => {
                 { combinator: ' ', selector: '.library' },
                 { combinator: '>', selector: '.colors' }
               ],
-              args: [{ value: { type: 'Color', src: 'red' } }]
+              args: [{ value: { type: 'Keyword', src: 'red' } }]
             }
           ]
         }
@@ -7069,7 +7069,7 @@ describe('Less AST grammar facts', () => {
                 { combinator: '>', selector: '.colors' }
               ],
               args: [
-                { name: 'shade', value: { type: 'Color', src: 'red' } },
+                { name: 'shade', value: { type: 'Keyword', src: 'red' } },
                 {
                   name: 'gap',
                   value: {
@@ -7314,7 +7314,7 @@ describe('Less AST grammar facts', () => {
               right: {
                 g: 'call',
                 name: 'iscolor',
-                args: [{ type: 'Color', src: 'red' }]
+                args: [{ type: 'Keyword', src: 'red' }]
               }
             },
             right: { g: 'default' }
@@ -7836,7 +7836,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'red' }
+              value: { type: 'Keyword', src: 'red' }
             }
           ]
         }
@@ -8236,7 +8236,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'red' },
+              value: { type: 'Keyword', src: 'red' },
               merge: null,
               important: false
             }
@@ -8312,7 +8312,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'Declaration',
           name: 'color',
-          value: { type: 'Color', src: 'red' },
+          value: { type: 'Keyword', src: 'red' },
           merge: null,
           important: false
         }
@@ -8358,7 +8358,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'Declaration',
           name: 'color',
-          value: { type: 'Color', src: 'red' },
+          value: { type: 'Keyword', src: 'red' },
           merge: null,
           important: false
         }
@@ -8397,7 +8397,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'Declaration',
           name: 'color',
-          value: { type: 'Color', src: 'red' },
+          value: { type: 'Keyword', src: 'red' },
           merge: null,
           important: false
         }

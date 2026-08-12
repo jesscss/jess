@@ -15,7 +15,6 @@ function expectedMessage(expected: readonly string[]): string {
     hasValueCore
     && (
       expectedIncludes(expectedSet, 'ValueIdentifier')
-      || expectedIncludes(expectedSet, 'NamedColorToken')
       || expectedIncludes(expectedSet, 'HexColor')
     );
   if (looksLikeValueProduction) {

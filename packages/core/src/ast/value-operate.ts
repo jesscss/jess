@@ -14,6 +14,7 @@ import Big from 'big.js';
 import { UnitArithmeticError, isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
+import { coerceNamedColorKeyword } from './literal-tag.js';
 import { convertValue } from './value-units.js';
 
 /* --------------------------------------------------------- arithmetic */
@@ -458,6 +459,19 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
   if (right.type === 'Null') {
     return left;
   }
+
+  /*
+   * NamedColor→Keyword convergence: an arithmetic operand that is a named-color
+   * keyword (`red`) is a color HERE, at the point of use. This restores less's
+   * `red + #111` → `#ff1111`, `red * 2` → `#ff0000`, `(red / 2)` → `#800000`, and
+   * bare `red / 2` under `math: always` → `#800000` (the bare-slash promotion in
+   * serialize.ts admits the named-color leaf, then this fold runs) — matching hex
+   * colors and lessc 4.x. A non-color keyword still hits the preserve guard below.
+   * Coercion runs before the calc/keyword guards so the color operand reaches
+   * `colorOperate` instead of being preserved as bytes. See DESIGN-DECISIONS V13.
+   */
+  left = coerceNamedColorKeyword(left);
+  right = coerceNamedColorKeyword(right);
 
   const leftInner = left.type === 'Keyword' ? calcInner(left.bytes) : null;
   const rightInner = right.type === 'Keyword' ? calcInner(right.bytes) : null;

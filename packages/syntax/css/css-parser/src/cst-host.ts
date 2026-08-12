@@ -98,11 +98,12 @@ const TYPE_NAMES: Record<string, CssCstType> = {
  * name at all — it survives only as a legacy `core/src/tree/` type — so no CST
  * node ever presents it.
  *
- * `Color` is the Less named-colour production (labelled `NamedColor` until the
- * §12.4 rename); css, scss and jess reach the same label only through arms that
- * carry a reducer, so collapse mode is a no-op for them. It is also a no-op
- * under parseman 0.44, whose fused grammar only offers the hook on a node that
- * carries no reducer.
+ * `Color` reaches every dialect only through an arm that carries a reducer (the
+ * hex-color leaf), so collapse mode is a no-op for it. The Less `NamedColor`
+ * production that once shared the `Color` label is gone (NamedColor→Keyword
+ * convergence, DESIGN-DECISIONS V13): a named color is now a `Keyword`, so the
+ * entry is inert everywhere. It is also a no-op under parseman 0.44, whose fused
+ * grammar only offers the hook on a node that carries no reducer.
  */
 const COLLAPSIBLE_GRAMMAR_TYPES = new Set(['Color']);
 

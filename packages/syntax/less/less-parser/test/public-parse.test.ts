@@ -132,7 +132,7 @@ describe('public Less parse()', () => {
     });
   });
 
-  it('constructs boundary-complete CSS named colors as Color values', () => {
+  it('parses CSS named colors as Keyword values, materialized to Color only when operated on', () => {
     const document = parse(
       '@tone: ReD; .card { color: lighten(@tone, 10%); enabled: iscolor(blue); plain: redder; current: currentColor; }'
     );
@@ -142,7 +142,7 @@ describe('public Less parse()', () => {
         {
           type: 'VariableDeclaration',
           name: 'tone',
-          value: { type: 'Color', src: 'ReD' }
+          value: { type: 'Keyword', src: 'ReD' }
         },
         {
           type: 'Ruleset',
@@ -165,7 +165,7 @@ describe('public Less parse()', () => {
               value: {
                 type: 'FunctionCall',
                 name: 'iscolor',
-                args: [{ value: { type: 'Color', src: 'blue' } }]
+                args: [{ value: { type: 'Keyword', src: 'blue' } }]
               }
             },
             {
@@ -239,7 +239,7 @@ describe('public Less parse()', () => {
       type: 'FunctionCall',
       name: 'fn',
       args: [
-        { value: { type: 'Color', src: 'red' } },
+        { value: { type: 'Keyword', src: 'red' } },
         { value: { type: 'Dimension', src: '10px' } }
       ]
     });
@@ -247,7 +247,7 @@ describe('public Less parse()', () => {
       type: 'FunctionCall',
       name: 'emit',
       args: [
-        { value: { type: 'Color', src: 'red' } },
+        { value: { type: 'Keyword', src: 'red' } },
         { value: { type: 'Dimension', src: '10px' } }
       ]
     });
@@ -278,16 +278,16 @@ describe('public Less parse()', () => {
       throw new Error('expected mixed-delimiter function declarations');
     }
     expect(first.value.args).toMatchObject([
-      { value: { type: 'Color', src: 'red' } },
+      { value: { type: 'Keyword', src: 'red' } },
       { value: { type: 'Dimension', src: '10px' } },
-      { value: { type: 'Color', src: 'blue' } }
+      { value: { type: 'Keyword', src: 'blue' } }
     ]);
     expect(second.value.args).toMatchObject([
-      { value: { type: 'Color', src: 'red' } },
+      { value: { type: 'Keyword', src: 'red' } },
       { value: { type: 'Dimension', src: '10px' } },
-      { value: { type: 'Color', src: 'blue' } }
+      { value: { type: 'Keyword', src: 'blue' } }
     ]);
-    expect(final.value.args).toMatchObject([{ value: { type: 'Color', src: 'red' } }]);
+    expect(final.value.args).toMatchObject([{ value: { type: 'Keyword', src: 'red' } }]);
     expect(valueLayoutOf(first.value.args)).toEqual([', ', '; ']);
     expect(valueLayoutOf(second.value.args)).toEqual(['; ', ', ']);
 
@@ -319,9 +319,9 @@ describe('public Less parse()', () => {
       throw new Error('expected a nested FunctionCall');
     }
     expect(nestedFunction.args).toMatchObject([
-      { value: { type: 'Color', src: 'red' } },
+      { value: { type: 'Keyword', src: 'red' } },
       { value: { type: 'Dimension', src: '10px' } },
-      { value: { type: 'Color', src: 'blue' } }
+      { value: { type: 'Keyword', src: 'blue' } }
     ]);
     expect(valueLayoutOf(nestedFunction.args)).toEqual([', ', '; ']);
     expect(() => parse('.card { value: fn(red;;blue); }')).toThrow(SyntaxError);
@@ -400,7 +400,7 @@ describe('public Less parse()', () => {
         {
           type: 'VariableDeclaration',
           name: 'tone',
-          value: { type: 'Color', src: 'red' }
+          value: { type: 'Keyword', src: 'red' }
         },
         {
           type: 'Ruleset',
@@ -731,7 +731,7 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'red' }
+              value: { type: 'Keyword', src: 'red' }
             }
           ]
         }
@@ -844,7 +844,7 @@ describe('public Less parse()', () => {
                 type: 'FunctionCall',
                 name: 'mix',
                 args: [
-                  { value: { type: 'Color', src: 'blue' } },
+                  { value: { type: 'Keyword', src: 'blue' } },
                   { value: { type: 'Color', src: '#FFF' } },
                   { value: { type: 'Dimension', src: '50%' } }
                 ]
@@ -871,7 +871,7 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'grey' }
+              value: { type: 'Keyword', src: 'grey' }
             }
           ]
         }
@@ -892,7 +892,7 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'red' }
+              value: { type: 'Keyword', src: 'red' }
             }
           ]
         }
@@ -977,7 +977,7 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'red' }
+              value: { type: 'Keyword', src: 'red' }
             }
           ]
         }
@@ -1075,7 +1075,7 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: '\\63 olor',
-              value: { type: 'Color', src: 'red' }
+              value: { type: 'Keyword', src: 'red' }
             },
             {
               type: 'Declaration',
@@ -1327,7 +1327,7 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'red' }
+              value: { type: 'Keyword', src: 'red' }
             }
           ]
         }
@@ -1705,7 +1705,7 @@ describe('public Less parse()', () => {
         {
           type: 'VariableDeclaration',
           name: 'tone',
-          value: { type: 'Color', src: 'red' },
+          value: { type: 'Keyword', src: 'red' },
           write: { mode: 'declare' }
         },
         {
@@ -1897,7 +1897,7 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'color',
-              value: { type: 'Color', src: 'red' }
+              value: { type: 'Keyword', src: 'red' }
             },
             {
               type: 'Declaration',
@@ -3201,10 +3201,10 @@ describe('keyword boundaries run to full ident-continue', () => {
 
   it('still binds the real keywords', () => {
     expect(parse('a { color: red; }')).toMatchObject({
-      rules: [{ rules: [{ value: { type: 'Color', src: 'red' } }] }]
+      rules: [{ rules: [{ value: { type: 'Keyword', src: 'red' } }] }]
     });
     expect(parse('a { color: tan; }')).toMatchObject({
-      rules: [{ rules: [{ value: { type: 'Color', src: 'tan' } }] }]
+      rules: [{ rules: [{ value: { type: 'Keyword', src: 'tan' } }] }]
     });
     expect(parse('@supports (color: red) { a { color: red; } }')).toMatchObject({
       rules: [{ type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren' } }]

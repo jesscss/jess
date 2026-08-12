@@ -95,6 +95,22 @@ export function colorFromSrc(src: string): Value {
 }
 
 /**
+ * Coerce a named-color `Keyword` VALUE to its `Color` at a POINT OF USE
+ * (arithmetic operand, a `Color`-typed function parameter, a color type
+ * predicate). Convergence keeps `red` a `Keyword` node so an un-operated
+ * `color: red` still emits its verbatim bytes; a keyword that names a CSS color
+ * only becomes a `Color` where its colour-ness is actually consulted. A keyword
+ * that is not a named color, and any non-keyword value, passes through
+ * untouched.
+ */
+export function coerceNamedColorKeyword(value: Value): Value {
+  if (value.type === 'Keyword' && namedColor(value.text) !== undefined) {
+    return colorFromSrc(value.text);
+  }
+  return value;
+}
+
+/**
  * A parsed `Dimension` leaf → value `Dimension`, reading the pre-split
  * `number`/`unit` (never re-splitting `src`). Un-operated dimensions preserve their
  * SOURCE spelling verbatim (`1.0px`→`1.0px`, `2PX`→`2PX`).
