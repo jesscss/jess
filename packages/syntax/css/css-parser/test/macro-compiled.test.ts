@@ -42,6 +42,7 @@ test('canonical AST grammar macro-fuses the recognition artifact with no runtime
   const server = await createServer({
     root: fileURLToPath(new URL('..', import.meta.url)),
     configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
+    optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true }
   });
   try {
@@ -71,6 +72,7 @@ test('coverage-enabled macro CSS reports structural grammar coverage across publ
     root: fileURLToPath(new URL('../../../../..', import.meta.url)),
     configFile: false,
     plugins: [(await import('parseman/plugin')).default.vite({ grammarCoverage: true })],
+    optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true }
   });
   try {
@@ -108,6 +110,8 @@ test('coverage-enabled macro CSS reports structural grammar coverage across publ
     expect(importResult.ok && importResult.unconsumedFrom === null).toBe(true);
     const importCoverage = collector.snapshot();
     expect(importCoverage.hits.filter(id => !coverage.hits.includes(id))).toEqual([
+      'choice:Stylesheet/node:0/sequence:1/many:0/choice:0/lazy:0/node:0/sequence:1/arm:1',
+      'choice:Stylesheet/node:0/sequence:1/many:0/choice:0/lazy:0/node:0/sequence:1/choice:1/lazy:0/node:0/sequence:1/optional:0/arm:1',
       'rule:ImportUrl',
       'rule:ImportUrlUnquoted'
     ]);

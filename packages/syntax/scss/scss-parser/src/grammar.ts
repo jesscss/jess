@@ -1329,12 +1329,12 @@ const topProductOperator = sequence(
 );
 const sumOperator = choice(
   noTrivia(sequence(
-    sumPad,
+    productPad,
     regex(/\+/),
     productPad
   )),
   noTrivia(sequence(
-    sumPad,
+    productPad,
     regex(/-/),
     sumPad
   )),
@@ -1532,16 +1532,16 @@ const scssFactory = (g: ScssInputRules) => {
   const Quoted = node<Quoted | Interpolation>(
     'Quoted',
     choice(
-      sequence(
+      noTrivia(sequence(
         literal('"'),
         doubleQuotedText,
         literal('"')
-      ),
-      sequence(
+      )),
+      noTrivia(sequence(
         literal('\''),
         singleQuotedText,
         literal('\'')
-      ),
+      )),
       sequence(
         literal('"'),
         many(choice(
@@ -1882,12 +1882,14 @@ const scssFactory = (g: ScssInputRules) => {
     'Url',
     sequence(
       routed(),
-      optional(choice(
-        g.Quoted,
-        g.InterpolatedUrlValue,
-        plainUrlChunk
-      )),
-      literal(')')
+      noTrivia(sequence(
+        optional(choice(
+          g.Quoted,
+          g.InterpolatedUrlValue,
+          plainUrlChunk
+        )),
+        literal(')')
+      ))
     ),
     (children) => {
       if (children.length === 2) {

@@ -7,6 +7,17 @@ function expectedMessage(expected: readonly string[]): string {
     return 'Unexpected Less syntax.';
   }
   const expectedSet = new Set(expected);
+  if (expectedIncludes(expectedSet, '")"')) {
+    return 'Missing closing parenthesis.';
+  }
+  if (expectedSet.size === 1) {
+    if (expectedIncludes(expectedSet, '"]"')) {
+      return 'Missing closing bracket.';
+    }
+    if (expectedIncludes(expectedSet, '"}"')) {
+      return 'Missing closing brace.';
+    }
+  }
   const hasValueCore =
     expectedIncludes(expectedSet, 'NumberToken')
     && expectedIncludes(expectedSet, 'DimensionUnit')
@@ -19,17 +30,6 @@ function expectedMessage(expected: readonly string[]): string {
     );
   if (looksLikeValueProduction) {
     return 'Unexpected Less syntax. Expected a Less value.';
-  }
-  if (expectedSet.size === 1) {
-    if (expectedIncludes(expectedSet, '")"')) {
-      return 'Missing closing parenthesis.';
-    }
-    if (expectedIncludes(expectedSet, '"]"')) {
-      return 'Missing closing bracket.';
-    }
-    if (expectedIncludes(expectedSet, '"}"')) {
-      return 'Missing closing brace.';
-    }
   }
   if (expectedIncludes(expectedSet, '";"')) {
     return 'Missing semicolon.';

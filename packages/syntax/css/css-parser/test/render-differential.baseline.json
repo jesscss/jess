@@ -15,7 +15,7 @@
     "emitError": 0
   },
   "emittedBytes": 606465,
-  "aggregate": "34e352ae82546db886ddfb1feab58f5aaaf5b73624191e5d74828f2608d2fa9e",
+  "aggregate": "eddaa4098219c218e123e83891133a99f126db2d74bf2f9e27cb89488f839442",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -99,7 +99,7 @@
       "bucket": "fixture",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "e8937db8ffd3b127"
+      "fingerprint": "447f8b887045e9ad"
     },
     "fixture/calc-sequence.css": {
       "bucket": "fixture",
@@ -303,7 +303,7 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "58d7b8549339d0f6"
+      "fingerprint": "5631f8620df11c83"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/atrule-numeric-name.css": {
       "bucket": "repo",
@@ -315,19 +315,19 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "ad18f58d5a0b4d71"
+      "fingerprint": "8e5e7914729cf658"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/calc-lone-operator.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "ad18f58d5a0b4d71"
+      "fingerprint": "8e5e7914729cf658"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/charset.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "020b9c8d02d10a6b"
+      "fingerprint": "a5ccc0e6560da5df"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/comment-eof-unclosed.css": {
       "bucket": "repo",
@@ -405,25 +405,25 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "ca0583819c1237aa"
+      "fingerprint": "3188c33ee3cb4180"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-block-no-selector.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "ca0583819c1237aa"
+      "fingerprint": "3188c33ee3cb4180"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-dimension-selector.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "ca0583819c1237aa"
+      "fingerprint": "3188c33ee3cb4180"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-number-selector.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "ca0583819c1237aa"
+      "fingerprint": "3188c33ee3cb4180"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/media-decl.css": {
       "bucket": "repo",
@@ -471,13 +471,13 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "b607113b45ff0de2"
+      "fingerprint": "50347a32b8221076"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/selector-anb-noninteger.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "b607113b45ff0de2"
+      "fingerprint": "50347a32b8221076"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/selector-attribute-numeric-name.css": {
       "bucket": "repo",
@@ -609,7 +609,7 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "e8937db8ffd3b127"
+      "fingerprint": "447f8b887045e9ad"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/value-unterminated-string.css": {
       "bucket": "repo",

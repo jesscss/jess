@@ -1,11 +1,12 @@
 # Parseman combinator cheat sheet
 
-**Cut against `parseman@0.46.0`** — the version this repo pins (`^0.46.0`, root
-`package.json`, `parser-shared`, and all four `*-parser` packages, since
-`ff685793a`) and the version actually resolved in
-`node_modules/.pnpm/parseman@0.46.0`. Claims first measured against the previous
-`0.45.0` floor are marked as such inline and were re-run against 0.46 when the
-floor moved; the probes below all pass at 0.46.
+**Cut against `parseman@0.46.0`**. The repo now pins `parseman@0.47.1`
+through `^0.47.1` ranges in root `package.json`, `parser-shared`, and all four
+`*-parser` packages, resolving to
+`node_modules/.pnpm/parseman@0.47.1`. Claims first measured against the previous
+`0.45.0` floor are marked as such inline and were re-run against 0.46 when that
+floor moved; re-run the probes before treating version-specific counts below as
+0.47.1 facts.
 
 Every spread/arity contract below was established from that package's
 `dist/index.cjs` — by enumerating the nine call sites that push into the CST

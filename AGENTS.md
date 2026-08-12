@@ -84,7 +84,7 @@ Full state and the ordered next steps: `docs/architecture/core/HANDOFF.md`, the
 shipping compile path). **The physical eight-to-four fold has landed:** each
 dialect now ships AST and CST from one host-mode grammar source. The active work
 is polishing the surviving grammars so they are small, readable, spec-shaped,
-well documented, and idiomatic Parseman (the floor is `^0.45.0` as of `75002c4a3`;
+well documented, and idiomatic Parseman (the floor is `^0.47.1` as of 2026-08-12;
 re-check `package.json` rather than trusting a version written here).
 
 **The spec is [`docs/design/GRAMMAR-REBUILD-SPEC.md`](docs/design/GRAMMAR-REBUILD-SPEC.md).
@@ -97,8 +97,8 @@ Two things to know before you plan anything:
 
 - **The parseman hostMode floor is paid.** The mechanism that lets one grammar
   file serve both the AST and the CST is parseman's `hostMode`, and the repo
-  resolves registry `parseman@0.45.0` through `^0.45.0` ranges (`f292fdd8f`;
-  `pnpm-lock.yaml:18442` is the sole parseman entry). Publishing
+  resolves registry `parseman@0.47.1` through `^0.47.1` ranges
+  (`pnpm-lock.yaml` has a sole parseman entry). Publishing
   future parseman releases is still owner-only. Spec §0.2 says exactly what to
   check and how.
 - **Order is `css` → `less` → `scss` → `jess`.** CSS is the base; the dialects

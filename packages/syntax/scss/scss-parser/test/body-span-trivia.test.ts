@@ -108,19 +108,19 @@ describe('SCSS block body spans', () => {
    * So deleting the `g.Comment` arms while this is empty does not degrade SCSS
    * comment output — it ends it. Body spans (landed) and declaration spans
    * (landed) make the REPLAY path correct; this is the CAPTURE path, and it is
-   * a separate problem that declaration spans did not fix. The root span stops
-   * one byte short of the document (`{0,30}` of 31), so trailing trivia is
-   * never offered to the index at all.
+   * a separate problem that declaration spans did not fix. Parseman 0.47.1
+   * gives this route a full-document root span, so the pin here is now only the
+   * empty document-trivia capture.
    *
    * Owned by the root-span convention, which the four dialects split 2-2:
-   * css and Less cover the whole document, scss stops short of the final
-   * newline, jess stops at the last statement.
+   * css, Less, and scss cover the whole document; jess stops at the last
+   * statement.
    */
   it('PINNED DEFECT — captures no document trivia at all', () => {
     const source = '/* lead */\n.a { color: red; }\n/* trail */\n';
     const root = parse(source);
     expect(triviaMapOf(root)?.commentRuns() ?? []).toEqual([]);
-    expect(sourceSpanOf(root)).toEqual({ start: 0, end: source.length - 1 });
+    expect(sourceSpanOf(root)).toEqual({ start: 0, end: source.length });
   });
 
   /*

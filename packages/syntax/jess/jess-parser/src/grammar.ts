@@ -967,6 +967,15 @@ function tokenSource(children: readonly unknown[]): string {
   return children.map(requireToken).map(token => token.value).join('');
 }
 
+function sourceFromState(state: unknown): string | undefined {
+  return typeof state === 'object'
+    && state !== null
+    && 'source' in state
+    && typeof state.source === 'string'
+    ? state.source
+    : undefined;
+}
+
 function interpolationValue(child: unknown): Interpolation {
   if (isInterpolation(child)) {
     return child;
@@ -2912,11 +2921,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'Url',
     sequence(
       g.UrlOpen,
-      optional(choice(
-        g.LiteralQuoted,
-        g.PlainUrlInner
-      )),
-      literal(')')
+      noTrivia(sequence(
+        optional(choice(
+          g.LiteralQuoted,
+          g.PlainUrlInner
+        )),
+        literal(')')
+      ))
     ),
     urlFromChildren
   );
@@ -3068,23 +3079,24 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    */
   const NthChildArgument = node<SelectorList | string>(
     'NthChildArgument',
-    choice(
-      sequence(
+    sequence(
+      not(noTrivia(sequence(
         g.NthExpression,
-        optional(sequence(
-          rawWhitespace,
-          g.NthOfKeyword,
-          rawWhitespace,
-          parser(
-            { trivia: whitespace },
-            g.PseudoSelectorList
-          )
-        )),
-        g.PseudoSelectorCloseAhead
-      ),
+        g.NthOfKeyword
+      ))),
       parser(
         { trivia: whitespace },
-        g.PseudoSelectorList
+        choice(
+          sequence(
+            g.NthExpression,
+            optional(sequence(
+              g.NthOfKeyword,
+              g.PseudoSelectorList
+            )),
+            g.PseudoSelectorCloseAhead
+          ),
+          g.PseudoSelectorList
+        )
       )
     ),
     (children) => {
@@ -3116,16 +3128,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.NthExpression,
         g.PseudoSelectorCloseAhead
       ),
-      sequence(
-        not(parser(
-          { trivia: whitespace },
-          sequence(
-            g.NthExpression,
-            g.NthOfKeyword
-          )
-        )),
-        parser(
-          { trivia: whitespace },
+      parser(
+        { trivia: whitespace },
+        sequence(
+          not(parser(
+            { trivia: whitespace },
+            sequence(
+              g.NthExpression,
+              g.NthOfKeyword
+            )
+          )),
           g.PseudoSelectorList
         )
       )
@@ -3198,10 +3210,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         ),
         when(
           endsWith('('),
-          sequence(
+          noTrivia(sequence(
             routed(),
             g.GenericPseudoArgument
-          )
+          ))
         ),
         otherwise(routed())
       )
@@ -3359,13 +3371,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const GenericPseudoItem = node<string>(
     'GenericPseudoItem',
-    choice(
+    noTrivia(choice(
       g.GenericPseudoText,
       g.GenericPseudoComment,
       g.GenericPseudoEscape,
       g.LiteralQuoted,
       g.GenericPseudoGroup
-    ),
+    )),
     (children) => {
       const child = children[0];
       return isQuoted(child) ? child.src : requireString(child);
@@ -3382,11 +3394,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const GenericPseudoArgument = node<string>(
     'GenericPseudoArgument',
-    sequence(
+    noTrivia(sequence(
       many(g.GenericPseudoItem),
       literal(')')
-    ),
-    children => children.filter((child): child is string => typeof child === 'string').join('')
+    )),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
+      const source = sourceFromState(state);
+      if (source !== undefined && span.end > span.start) {
+        return source.slice(span.start, span.end - 1);
+      }
+      return children.filter((child): child is string => typeof child === 'string').join('');
+    }
   );
   const SelectorCapture = node<SelectorCapture>(
     'SelectorCapture',
@@ -3535,12 +3553,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'Url',
     sequence(
       routed(),
-      optional(choice(
-        g.Quoted,
-        g.UrlInterpolatedValue,
-        g.UnquotedUrlText
-      )),
-      literal(')')
+      noTrivia(sequence(
+        optional(choice(
+          g.Quoted,
+          g.UrlInterpolatedValue,
+          g.UnquotedUrlText
+        )),
+        literal(')')
+      ))
     ),
     urlFromChildren
   );

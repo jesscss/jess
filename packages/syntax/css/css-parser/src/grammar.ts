@@ -1107,17 +1107,17 @@ const customSlash = regex(/\/(?!\*)/);
 const balancedParens = balanced(
   '(',
   ')',
-  { skip: [customSlash] }
+  { skip: [blockComment, customDoubleQuoted, customSingleQuoted, customSlash] }
 );
 const balancedBrackets = balanced(
   '[',
   ']',
-  { skip: [customSlash] }
+  { skip: [blockComment, customDoubleQuoted, customSingleQuoted, customSlash] }
 );
 const balancedBraces = balanced(
   '{',
   '}',
-  { skip: [customSlash] }
+  { skip: [blockComment, customDoubleQuoted, customSingleQuoted, customSlash] }
 );
 
 /*

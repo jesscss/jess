@@ -8,6 +8,7 @@ test('canonical Jess AST grammar macro-fuses recognition with no runtime import'
   const server = await createServer({
     root: fileURLToPath(new URL('..', import.meta.url)),
     configFile: fileURLToPath(new URL('../../../../../vitest.config.ts', import.meta.url)),
+    optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true }
   });
   try {
