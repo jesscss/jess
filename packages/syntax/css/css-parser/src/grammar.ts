@@ -177,6 +177,7 @@ type GrammarRuleName =
   | 'NestedConditionalBlock'
   | 'NestedLayerBlock'
   | 'NestedStartingStyleBlock'
+  | 'NamespaceTypeSelector'
   | 'NestingSelector'
   | 'OfTypePseudoArgument'
   | 'OpaqueAtRuleBodyCapture'
@@ -604,6 +605,13 @@ function selectorArgumentText(value: unknown): string {
 
 type ComplexSegment = { combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: SelectorTerm };
 
+/*
+ * A namespaced type selector (`svg|circle`) is ONE SimpleSelector with a glued
+ * namespace prefix (`NamespaceTypeSelector` below), not two compounds joined by
+ * a `|` combinator, so parsing no longer produces a `|` combinator token. The
+ * core `Combinator` union still admits `|` (a `SelectorBranch` built through the
+ * public AST API may carry it), so this reader keeps handling it.
+ */
 function selectorCombinator(child: unknown): NonNullable<ComplexSegment['combinator']> {
   const token = tokenText(child);
   if (token === '>' || token === '+' || token === '~' || token === '|' || token === '||') {
@@ -971,7 +979,15 @@ const keyframeEndpoint = keywords(
   ['from', 'to'],
   { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
 );
-const combinator = keywords(['||', '>', '+', '~', '|']);
+
+/*
+ * `|` is NOT a combinator: `svg|circle` is one namespaced type selector
+ * (`NamespaceTypeSelector` below), not two compounds separated by `|`. Only the
+ * child/sibling/column combinators separate compounds; the column combinator
+ * `||` (selectors-4 §16.1) stays, and its leading `|` is disambiguated from a
+ * namespace prefix by the `keywords` longest-match preferring `||`.
+ */
+const combinator = keywords(['||', '>', '+', '~']);
 
 /*
  * A relative selector (a `:has()` argument) may open with a combinator. Only the
@@ -1008,6 +1024,16 @@ const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
  * at every compound-selector boundary (`{`, `,`, whitespace).
  */
 const simpleSelectorToken = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
+
+/*
+ * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
+ * around `|` \u2014 CSS Namespaces \u00A72, selectors-4 \u00A75.1). It prefixes a type/universal
+ * selector (`svg|circle`, `*|a`, `|a`) and an attribute name (`[svg|attr]`), so
+ * one recognizer serves both. `(?!=)` keeps the attribute operator `|=`
+ * (selectors-4 \u00A76.3) on its own route \u2014 `[a|=b]` is `a` matched by `|=`, not the
+ * `a|` namespace of a `b` attribute.
+ */
+const attributeNamespace = regex(/(?:-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)?\|(?!=)/);
 
 /*
  * Grammar-local copies of the leading hex-color and number recognizers (identical
@@ -1221,10 +1247,29 @@ const cssFactory = (g: GrammarSelf) => {
     simpleSelectorToken,
     children => simpleSelector(tokenText(children[0]))
   );
+
+  /*
+   * `ns|E` / `*|E` / `|E` is ONE type selector with a namespace prefix
+   * (selectors-4 §5.1), not two compounds joined by a `|` combinator. It leads
+   * the compound choice because its prefix shares a first char with a plain type
+   * selector; `noTrivia` keeps the prefix glued so `svg | circle` is not a
+   * namespaced selector. The reduced value is a plain `SimpleSelector` carrying
+   * the whole `svg|circle` text, matching the other dialects (one representation
+   * per construct).
+   */
+  const NamespaceTypeSelector = node(
+    'NamespaceTypeSelector',
+    noTrivia(sequence(
+      attributeNamespace,
+      choice(g.Identifier, literal('*'))
+    )),
+    children => simpleSelector(children.map(tokenText).join(''))
+  );
   const AttributeSelector = node(
     'AttributeSelector',
     sequence(
       literal('['),
+      optional(attributeNamespace),
       g.Identifier,
       optional(sequence(
         g.AttributeOperator,
@@ -1585,6 +1630,7 @@ const cssFactory = (g: GrammarSelf) => {
           { trivia: interstitialTrivia },
           g.PseudoSelector
         ),
+        g.NamespaceTypeSelector,
         g.BasicSelector
       ))
     )),
@@ -1603,6 +1649,7 @@ const cssFactory = (g: GrammarSelf) => {
           { trivia: interstitialTrivia },
           g.PseudoSelector
         ),
+        g.NamespaceTypeSelector,
         g.BasicSelector
       ))
     )),
@@ -1615,9 +1662,11 @@ const cssFactory = (g: GrammarSelf) => {
 
       /*
        * The separator between compound selectors may be an explicit combinator
-       * (`>`, `+`, `~`, `|`, `||`) or just ambient trivia, which CSS treats as
-       * the descendant combinator. Do not collapse this to oneOrMoreSep(): a
-       * nullable separator would be the wrong Parseman shape.
+       * (`>`, `+`, `~`, `||`) or just ambient trivia, which CSS treats as the
+       * descendant combinator. `|` is not here: it is a namespace prefix bound
+       * into a single type selector, not a compound separator. Do not collapse
+       * this to oneOrMoreSep(): a nullable separator would be the wrong Parseman
+       * shape.
        */
       many(sequence(
         optional(combinator),
@@ -4181,6 +4230,7 @@ const cssFactory = (g: GrammarSelf) => {
     CompoundSelector,
     TopLevelCompoundSelector,
     BasicSelector,
+    NamespaceTypeSelector,
     AttributeSelector,
     PseudoSelector,
     PseudoArgument,

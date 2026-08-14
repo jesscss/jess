@@ -155,6 +155,43 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
+  it('constructs a namespaced type selector as ONE SimpleSelector, not two compounds split on `|`', () => {
+    /*
+     * The defect this pins (task #41): `svg|circle` used to parse as two
+     * compound selectors joined by a `|` combinator, which serialized to the
+     * SAME bytes — so only the NODE SHAPE catches a regression. `ns|E`/`*|E`/`|E`
+     * are ONE type selector with a namespace prefix (css-namespaces-3 §5). The
+     * column combinator `||` is unrelated and stays a combinator.
+     */
+    expect(parseAst('svg|circle { color: red; }').rules[0]).toMatchObject({
+      type: 'Ruleset',
+      selector: { selectors: [{ type: 'SimpleSelector', text: 'svg|circle' }] }
+    });
+    expect(parseAst('*|a { color: red; }').rules[0]).toMatchObject({
+      type: 'Ruleset', selector: { selectors: [{ type: 'SimpleSelector', text: '*|a' }] }
+    });
+    expect(parseAst('|a { color: red; }').rules[0]).toMatchObject({
+      type: 'Ruleset', selector: { selectors: [{ type: 'SimpleSelector', text: '|a' }] }
+    });
+    expect(parseAst('a[svg|href="x"] { color: red; }').rules[0]).toMatchObject({
+      type: 'Ruleset', selector: { selectors: [{
+        type: 'CompoundSelector',
+        value: [{ type: 'SimpleSelector', text: 'a' }, { type: 'SimpleSelector', text: '[svg|href="x"]' }]
+      }] }
+    });
+
+    // The column combinator is preserved: `a||b` is two compounds, not one selector.
+    expect(parseAst('a||b { color: red; }').rules[0]).toMatchObject({
+      type: 'Ruleset', selector: { selectors: [{
+        type: 'ComplexSelector',
+        value: [{ type: 'SimpleSelector', text: 'a' }, '||', { type: 'SimpleSelector', text: 'b' }]
+      }] }
+    });
+    expect(serialize(parseAst('svg|circle { color: red; }'))).toEqual({
+      css: 'svg|circle {\n  color: red;\n}\n'
+    });
+  });
+
   it('requires pseudo function names to be glued to the opening paren', () => {
     for (const source of [
       '.card:not( .disabled ) { color: red; }',

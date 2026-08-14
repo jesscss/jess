@@ -178,6 +178,7 @@ type ScssRules = {
   Simple: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
+  NamespaceTypeSelector: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
@@ -1257,6 +1258,16 @@ const scssNotKeyword = regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const scssAndKeyword = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const scssOrKeyword = regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+
+/*
+ * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
+ * around `|` \u2014 CSS Namespaces \u00a72, selectors-4 \u00a75.1). It prefixes a type/universal
+ * selector (`svg|circle`, `*|a`, `|a`) and an attribute name (`[svg|attr]`), so
+ * one recognizer serves both \u2014 the same shape the CSS base and the other dialects
+ * use (one representation per construct). `(?!=)` keeps the attribute operator
+ * `|=` (selectors-4 \u00a76.3) on its own route so `[a|=b]` is `a` matched by `|=`.
+ */
+const attributeNamespace = regex(/(?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)?\|(?!=)/);
 
 /*
  * Keep the static SCSS slice aligned with the shared CSS keyframe-selector
@@ -5179,16 +5190,36 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
+   * `ns|E` / `*|E` / `|E` is ONE type selector with a namespace prefix
+   * (selectors-4 §5.1), not two compounds joined by a `|` combinator — SCSS's
+   * combinator set already excludes `|`, so before this arm the whole selector
+   * was rejected. It leads the compound choice because its prefix shares a first
+   * char with a plain type selector; `noTrivia` keeps the prefix glued. The
+   * reduced value is a plain `SimpleSelector` carrying the whole `svg|circle`
+   * text, matching the CSS base and the other dialects (one representation per
+   * construct).
+   */
+  const NamespaceTypeSelector = node<SimpleSelector>(
+    'NamespaceTypeSelector',
+    noTrivia(sequence(
+      attributeNamespace,
+      choice(g.Identifier, literal('*'))
+    )),
+    children => simpleSelector(children.map(sourceText).join(''))
+  );
+
+  /*
    * CSS owns the attribute frame. SCSS overrides only its universal `Quoted`
    * slot, so `[data="#{$state}"]` becomes the existing interpolation-backed
    * SimpleSelector rather than inventing an attribute-specific string rule.
-   * Namespaced attributes remain outside this slice because their namespace
-   * segments still need a dedicated canonical representation.
+   * A namespaced attribute name (`[svg|attr]`, `[*|attr]`, `[|attr]`) takes the
+   * same glued `attributeNamespace` prefix the CSS base uses.
    */
   const AttributeSelector = node<SimpleSelector>(
     'AttributeSelector',
     sequence(
       literal('['),
+      optional(attributeNamespace),
       g.Identifier,
       optional(sequence(
         g.AttributeOperator,
@@ -5465,6 +5496,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.PseudoSelector,
         g.Placeholder,
         g.InterpolatedSimple,
+        g.NamespaceTypeSelector,
         g.Simple
       )),
       not(pseudoColon)
@@ -5897,6 +5929,7 @@ const scssFactory = (g: ScssInputRules) => {
     Simple,
     InterpolatedSimple,
     Placeholder,
+    NamespaceTypeSelector,
     AttributeSelector,
     PseudoArgument,
     PseudoArgumentGroup,

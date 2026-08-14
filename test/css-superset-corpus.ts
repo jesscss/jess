@@ -381,43 +381,27 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: 'namespaced type selector',
     group: 'selector',
-    source: 'svg|circle { color: red }',
-    brokenIn: ['scss', 'jess'],
-    defect:
-      'css-namespaces-3 §5 type selector. CSS and Less accept it; SCSS and Jess '
-      + 'consume nothing.'
+    source: 'svg|circle { color: red }'
   },
   {
     id: 'any-namespace type selector',
     group: 'selector',
-    source: '*|a { color: red }',
-    brokenIn: ['scss', 'jess'],
-    defect: 'Same defect as the namespaced type selector above.'
+    source: '*|a { color: red }'
   },
   {
     id: 'no-namespace type selector',
     group: 'selector',
-    source: '|a { color: red }',
-    brokenIn: ['css', 'scss', 'jess'],
-    defect:
-      'css-namespaces-3 §5 `|E` (no namespace). Only Less accepts it, so the '
-      + 'BASE dialect is stricter than a superset.'
+    source: '|a { color: red }'
   },
   {
     id: 'namespaced attribute selector',
     group: 'selector',
-    source: 'a[svg|href="x"] { color: red }',
-    brokenIn: ['css', 'scss', 'jess'],
-    defect:
-      'selectors-4 §6.1 / css-namespaces-3 §6. Only Less accepts it. The base '
-      + 'CSS grammar rejecting what a superset accepts inverts the one-way ruling.'
+    source: 'a[svg|href="x"] { color: red }'
   },
   {
     id: 'any-namespace attribute selector',
     group: 'selector',
-    source: 'a[*|href] { color: red }',
-    brokenIn: ['css', 'scss', 'jess'],
-    defect: 'Same defect as the namespaced attribute selector above.'
+    source: 'a[*|href] { color: red }'
   },
   {
     id: 'attribute presence selector',

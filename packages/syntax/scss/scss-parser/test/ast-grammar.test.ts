@@ -1665,13 +1665,24 @@ describe('SCSS canonical-AST grammar', () => {
     );
   });
 
-  it('rejects namespaced attribute selectors until their namespace fact has a canonical AST field', () => {
+  it('accepts a namespaced attribute selector as one canonical SimpleSelector (glued namespace prefix)', () => {
     const source = '.card[svg|href] { color: blue; }';
     const cst = parseScssCst(source);
-    expect(cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
 
     const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
-    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
+        { type: 'SimpleSelector', text: '.card' },
+        { type: 'SimpleSelector', text: '[svg|href]' }
+      ] }] } }]
+    });
+    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
+      '.card[svg|href] {\n  color: blue;\n}\n'
+    );
   });
 
   it('constructs static selector-valued pseudo arguments as structured PseudoSelector args (core owns the join)', () => {

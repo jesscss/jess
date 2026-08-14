@@ -131,6 +131,7 @@ type JessRules = {
   Parent: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
+  NamespaceTypeSelector: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoSelector: Combinator<SimpleToken>;
   PseudoSelectorArgument: Combinator<SelectorList>;
@@ -1682,6 +1683,16 @@ const customPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F
 const selectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 
 /*
+ * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
+ * around `|` \u2014 CSS Namespaces \u00a72, selectors-4 \u00a75.1). It prefixes a type/universal
+ * selector (`svg|circle`, `*|a`, `|a`) and an attribute name (`[svg|attr]`), so
+ * one recognizer serves both \u2014 the same shape the CSS base and the other dialects
+ * use (one representation per construct). `(?!=)` keeps the attribute operator
+ * `|=` (selectors-4 \u00a76.3) on its own route so `[a|=b]` is `a` matched by `|=`.
+ */
+const attributeNamespace = regex(/(?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)?\|(?!=)/);
+
+/*
  * The parent selector. `&` alone is a selector reference; `&` fused with an
  * identifier is the parent-NAME concatenation extension (`&__el`, `&--mod`,
  * `&-suffix`). `SimpleSelector.text` retaining `&` is already the canonical AST:
@@ -2952,13 +2963,35 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * `ns|E` / `*|E` / `|E` is ONE type selector with a namespace prefix
+   * (selectors-4 §5.1), not two compounds joined by a `|` combinator — Jess's
+   * combinator set already excludes `|`, so before this arm the whole selector
+   * was rejected. It leads the compound choice because its prefix shares a first
+   * char with a plain type selector; `noTrivia` keeps the prefix glued. The
+   * reduced value is a plain `SimpleSelector` carrying the whole `svg|circle`
+   * text, matching the CSS base and the other dialects (one representation per
+   * construct).
+   */
+  const NamespaceTypeSelector = node<SimpleSelector>(
+    'NamespaceTypeSelector',
+    noTrivia(sequence(
+      attributeNamespace,
+      choice(g.Identifier, literal('*'))
+    )),
+    children => simpleSelector(children.map(child => requireToken(child).value).join(''))
+  );
+
+  /*
    * CSS owns the attribute frame. Its quoted value is static selector syntax,
    * so the Jess-specific string override is the restricted LiteralQuoted slot.
+   * A namespaced attribute name (`[svg|attr]`, `[*|attr]`, `[|attr]`) takes the
+   * same glued `attributeNamespace` prefix the CSS base uses.
    */
   const AttributeSelector = node<SimpleSelector>(
     'AttributeSelector',
     sequence(
       literal('['),
+      optional(attributeNamespace),
       g.Identifier,
       optional(sequence(
         g.AttributeOperator,
@@ -3158,6 +3191,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ),
       g.PseudoSelector,
       g.Parent,
+      g.NamespaceTypeSelector,
       g.Simple
     ))),
     reduceCompound
@@ -6136,6 +6170,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       g.InterpolatedParentSuffix,
       g.InterpolatedSimple,
       g.Parent,
+      g.NamespaceTypeSelector,
       g.Simple
     ))),
     reduceCompound
@@ -6449,6 +6484,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     Parent,
     InterpolatedSimple,
     InterpolatedParentSuffix,
+    NamespaceTypeSelector,
     AttributeSelector,
     PseudoSelector,
     PseudoSelectorArgument,
