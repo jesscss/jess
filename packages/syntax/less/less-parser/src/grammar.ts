@@ -6289,18 +6289,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ...children.slice(1).filter(isComplexTailFact)
     ]), span)
   );
-  const ExtendTargetComplexTail = node(
-    'ExtendTargetComplexTail',
-    sequence(optional(staticCombinator), g.Compound),
-    combinatorTailReducer
-  );
   const ExtendTargetComplex = node(
     'ComplexSelector',
     sequence(
       // An extend target can carry a typed selector interpolation, unlike its
       // inline subject. Keep `.@{name}` in the AST rather than rescanning it.
       g.Compound,
-      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), ExtendTargetComplexTail))
+      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), g.ComplexTail))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf([
       { term: children.find(isSelectorTerm)! },
