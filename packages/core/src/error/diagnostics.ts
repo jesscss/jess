@@ -236,6 +236,46 @@ function expectedSemicolonSummary(
   };
 }
 
+/**
+ * Parseman surfaces the class/id selector matcher as a regex literal whose
+ * source begins with the `[.#]` character class. Recognizing it by that prefix
+ * lets the classifier name a selector frame without ever printing the regex.
+ */
+function isClassOrIdSelectorToken(token: string): boolean {
+  return token.startsWith('/[.#]');
+}
+
+/**
+ * The deepest frame at a rule/selector position: the parser could continue with
+ * a block (`{`), a combinator (`>`), another class/id selector, or a mixin call
+ * (`(`), and the token here starts none of them. Under the 0.46.0 OP_CHOICE
+ * union bug this set was widened into the value-atom signature and mislabeled
+ * "Invalid value."; 0.48.1's honest narrowing exposes the true frame, so it gets
+ * its own clean summary rather than falling through to a regex-leaking fallback.
+ */
+function expectedSelectorContextSummary(
+  dialect: string,
+  expected: readonly string[] | undefined
+): ParserExpectedSummary | undefined {
+  if (expected === undefined || expected.length === 0) {
+    return undefined;
+  }
+  const expectedSet = new Set(expected);
+  const canOpenBlock = hasExpected(expectedSet, '"{"');
+  const canCallMixin = hasExpected(expectedSet, '"("');
+  const canContinueSelector =
+    hasExpected(expectedSet, '/>/') || expected.some(isClassOrIdSelectorToken);
+  if (!(canOpenBlock && canCallMixin && canContinueSelector)) {
+    return undefined;
+  }
+  return {
+    code: 'parse/syntax-error',
+    message: 'Expected a selector, mixin call, or block.',
+    reason: `${dialect} expected a selector, mixin call, or block to continue here, but this token starts none of them.`,
+    fix: 'Continue the selector, call a mixin, or open a block with \'{\'.'
+  };
+}
+
 function expectedSyntaxSummary(
   dialect: string,
   expected: readonly string[] | undefined
@@ -244,7 +284,20 @@ function expectedSyntaxSummary(
     expectedValueSummary(dialect, expected)
     ?? expectedClosingDelimiterSummary(dialect, expected)
     ?? expectedSemicolonSummary(dialect, expected)
+    ?? expectedSelectorContextSummary(dialect, expected)
   );
+}
+
+/**
+ * Which expected tokens are safe to print verbatim in the generic fallback
+ * reason. Only quoted character/string literals (e.g. `";"`, `"{"`) name a
+ * concrete character the author can act on; regex literals and lexer
+ * token-class names are parser internals and must never reach the user. This is
+ * defense in depth: every specific frame gets a summary above, but a frame no
+ * summary recognizes still cannot dump a regex source string.
+ */
+function surfaceableExpectedTokens(expected: readonly string[]): string[] {
+  return expected.filter(token => /^".*"$/.test(token));
 }
 
 function matchingCloser(opener: string): string | undefined {
@@ -447,9 +500,12 @@ export function parserDiagnostic({
       sourceSummary?.reason
       ?? failure?.reason
       ?? expectedSummary?.reason
-      ?? (expected && expected.length > 0
-        ? `The parser expected ${expected.join(', ')}.`
-        : 'The parser could not continue at this source location.'),
+      ?? ((): string => {
+        const surfaceable = expected ? surfaceableExpectedTokens(expected) : [];
+        return surfaceable.length > 0
+          ? `The parser expected ${surfaceable.join(', ')}.`
+          : 'The parser could not continue at this source location.';
+      })(),
     fix:
       sourceSummary?.fix
       ?? failure?.fix

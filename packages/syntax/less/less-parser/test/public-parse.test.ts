@@ -342,14 +342,33 @@ describe('public Less parse()', () => {
     if (!(thrown instanceof LessParseError)) {
       throw new Error('expected a LessParseError');
     }
+
+    /*
+     * The failure lands on the `:` in `@alias:`. Under parseman 0.48.1's honest
+     * narrowing the deepest frame is a rule/selector position — a block,
+     * combinator, class/id selector, or mixin call could continue — not a value
+     * position; it only reported "Expected a Less value" while the 0.46.0
+     * OP_CHOICE union bug widened the expected set into the value-atom
+     * signature. The direct-parse message summary has no selector-context
+     * branch, so it falls to the bare-generic form. That is clean (the point of
+     * this test); a nicer selector summary lives on the core-classifier path and
+     * is a consistency follow-up, not a regression.
+     */
     expect(thrown.message).toBe(
-      'Unexpected Less syntax. Expected a Less value.'
+      'Unexpected Less syntax. Expected valid Less syntax here.'
     );
     expect(thrown.message).not.toContain('NumberToken');
     expect(thrown.message).not.toContain('not(regex)');
     expect(thrown.message).not.toContain('/(?!');
-    expect(thrown.expected).toContain('NumberToken');
-    expect(thrown.expected).toContain('not(regex)');
+    expect(thrown.message).not.toContain('[.#]');
+    expect(thrown.message).not.toContain('u0080');
+
+    /*
+     * The raw recognition facts stay available on `.expected`, just never in the
+     * user-facing message. The narrowed frame carries the selector-context set.
+     */
+    expect(thrown.expected).toContain('"{"');
+    expect(thrown.expected).toContain('"("');
   });
 
   it('summarizes direct structural parse errors without hiding raw expected facts', () => {

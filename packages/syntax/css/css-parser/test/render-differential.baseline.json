@@ -15,7 +15,7 @@
     "emitError": 0
   },
   "emittedBytes": 606465,
-  "aggregate": "eddaa4098219c218e123e83891133a99f126db2d74bf2f9e27cb89488f839442",
+  "aggregate": "3a920ded0a68a82ed4a54721f7b045b9e3d0c5fb4e958b7e1c915d603f54372d",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -99,7 +99,7 @@
       "bucket": "fixture",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "447f8b887045e9ad"
+      "fingerprint": "f58afdb74d3725a8"
     },
     "fixture/calc-sequence.css": {
       "bucket": "fixture",
@@ -129,7 +129,7 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/fns/test/files/alias.css": {
       "bucket": "repo",
@@ -189,7 +189,7 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/jess/test/files/simple.css": {
       "bucket": "repo",
@@ -303,7 +303,7 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "5631f8620df11c83"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/atrule-numeric-name.css": {
       "bucket": "repo",
@@ -315,19 +315,19 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "8e5e7914729cf658"
+      "fingerprint": "150c970b96b84dd9"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/calc-lone-operator.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "8e5e7914729cf658"
+      "fingerprint": "150c970b96b84dd9"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/charset.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "a5ccc0e6560da5df"
+      "fingerprint": "9c267b0d3b0793c8"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/comment-eof-unclosed.css": {
       "bucket": "repo",
@@ -339,31 +339,31 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/declaration-missing-colon.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/declaration-numeric-name.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/declaration-star-property.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/declaration-starts-colon.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/import-empty.css": {
       "bucket": "repo",
@@ -375,25 +375,25 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/important-doubled.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/important-lone.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/important-misplaced.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/invalid-selector.css": {
       "bucket": "repo",
@@ -405,25 +405,25 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "3188c33ee3cb4180"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-block-no-selector.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "3188c33ee3cb4180"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-dimension-selector.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "3188c33ee3cb4180"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/keyframes-number-selector.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "3188c33ee3cb4180"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/media-decl.css": {
       "bucket": "repo",
@@ -465,19 +465,19 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/selector-anb-dangling-sign.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "50347a32b8221076"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/selector-anb-noninteger.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "50347a32b8221076"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/selector-attribute-numeric-name.css": {
       "bucket": "repo",
@@ -573,49 +573,49 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/url-token-bare-quote.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/url-token-open-paren.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/value-stray-close-bracket.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/value-stray-close-paren.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/value-unclosed-bracket.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/value-unclosed-function.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "447f8b887045e9ad"
+      "fingerprint": "f58afdb74d3725a8"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/value-unterminated-string.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "4386df26e9223296"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/escape.css": {
       "bucket": "repo",
