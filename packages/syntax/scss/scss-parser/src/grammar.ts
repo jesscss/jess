@@ -5949,7 +5949,6 @@ const scssFactory = (g: ScssInputRules) => {
     rw: whitespace,
     whitespace,
     nestedBody,
-    QueryValue,
     AtRootContinuation
   };
 };

@@ -241,6 +241,16 @@ export default tseslint.config([
       'eol-last': 0,
       'prefer-const': 0,
       curly: ['error', 'all'],
+
+      /*
+       * A duplicate object key silently drops the earlier entry: the last
+       * writer wins and the shadowed value never runs. `eslint:recommended`
+       * carries this rule, but this config extends it with no args
+       * (`compat.extends()`), so it never reached `.ts`. #50 found three such
+       * silent shadows in a 6k-line grammar; pin the whole class here.
+       */
+      'no-dupe-keys': 'error',
+
       '@typescript-eslint/no-confusing-void-expression': 'off',
       'no-void': 0,
       '@typescript-eslint/consistent-type-assertions': 0,
