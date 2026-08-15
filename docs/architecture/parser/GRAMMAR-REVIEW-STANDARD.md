@@ -574,6 +574,21 @@ that shape intentionally and fail with the richer diagnostic.
     mechanically (§4). **A change that moves the tree is a failed change, not a
     judgement call.**
 
+    **The byte-identity oracle is a CLEANUP proof, not the reuse criterion.** It
+    verifies that a conversion you already decided to make — collapsing a copy,
+    renaming, reshaping — did not move the emitted tree. It is NOT the test for
+    whether a superset should inherit a CSS rule or override it. That test is
+    **behavior-equivalence**: does CSS's rule accept the same language and emit the
+    same node for the superset? If yes, the superset inherits via `compose()` —
+    even when its current hand-written copy is spelled in a different convention.
+    A superset defines ONLY the rules it genuinely parses differently (real
+    overrides) plus its genuine additions, and inherits everything else. Do not
+    read "the copies are byte-identical" as the reason to inherit, and do not read
+    "the copy is written differently" as a reason not to. (Overriding a parent
+    rule does not require re-defining the child rules it references — parseman's
+    open-recursive override inherits those children from the base unless they too
+    genuinely differ; see item 1 and §3.)
+
 16. **Does its name claim a divergence it does not have?** Item 1 asks whether
     the rule is duplicated. This asks whether the rule's _name_ is what let the
     duplicate survive. A dialect prefix (`css…`, `less…`, `scss…`, `jess…`) is a
