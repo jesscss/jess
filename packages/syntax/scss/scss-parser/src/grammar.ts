@@ -203,7 +203,6 @@ type ScssRules = {
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
   nestedBody: Combinator<unknown>;
-  QueryValue: Combinator<unknown>;
   AtRootContinuation: Combinator<unknown>;
 };
 

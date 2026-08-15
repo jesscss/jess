@@ -222,11 +222,8 @@ type JessRules = {
   AtRuleStatement: Combinator<AtRuleStatement>;
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
-  QueryValue: Combinator<unknown>;
-  QueryTerm: Combinator<unknown>;
   typedAtRuleHeader: Combinator<unknown>;
   identifierOrFunction: Combinator<string>;
-  QueryFeatureName: Combinator<unknown>;
 };
 
 type SharedSyntax = {
