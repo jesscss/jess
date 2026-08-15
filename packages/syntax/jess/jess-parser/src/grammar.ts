@@ -6525,11 +6525,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     While,
     rw: whitespace,
     whitespace,
-    QueryValue,
-    QueryTerm,
     typedAtRuleHeader,
-    identifierOrFunction,
-    QueryFeatureName
+    identifierOrFunction
   };
 };
 
