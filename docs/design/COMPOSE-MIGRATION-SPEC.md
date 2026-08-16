@@ -17,32 +17,38 @@ don't automatically need to be extended."*
 
 ---
 
-## 1. The success criterion — settle it once
+## 1. The success criterion — SETTLED (owner P28, converge)
 
-The migration is **behavior-preserving**. A superset that composes on the CSS
-base must parse to the **same AST/CST** as its current standalone grammar.
+The migration **converges** all four dialects onto CSS's canonical CST. The
+criterion is NOT "composed == the dialect's pre-migration CST" — that would forbid
+the convergence, which is the whole point. Owner, P28 (2026-08-15): *"All of them
+should be pulled towards CSS... the CST names for the same rules / shapes should
+NOT diverge."*
 
-- **The criterion is AST/CST IDENTITY of parse results** — same node types, same
-  fields, and for CST the same spans + trivia — measured per corpus file against
-  the pre-migration parse.
-- **NOT compiled-grammar / fused-table byte-identity.** The parseman table WILL
-  differ after compose (different fusion). It is a parseman implementation detail
-  Jess never observes. Owner, 2026-08-15: *"What matters is AST/CST identity, not
-  compiled grammar identity, that's an implementation detail that is none of
-  Jess's concern."* Do not measure or chase it.
-- **NOT superset-source == css-source.** "How many superset rules are textually
-  byte-identical to css" is the wrong question. Reuse is behavior-equivalence.
+When a superset composes on the CSS base and inherits a rule, it **adopts CSS's
+node names, leaf granularity, and tree shape**. A gratuitously-different spelling
+of the same shape (scss `Compound` vs css `CompoundSelector`; one `SimpleSelector`
+vs typed leaves; a `ComplexTail` wrapper vs inline combinators) is **converged**,
+not preserved. A genuinely-required difference (a construct the dialect really must
+parse differently — the Sass value/math tower, `#{…}` injection, dialect additions)
+stays an override.
 
 **Gates (definition of done for any slice):**
-1. AST/CST structural diff == 0 vs the pre-slice parse, across the parser suites
-   and the relevant oracle corpus.
-2. Emitted-CSS oracle green (whole-pipeline correctness).
-3. `check:macro` — 0 interpreter fallbacks (the composed grammar macro-fuses to a
-   static table). This is a build/perf property, reported **separately** from #1;
-   never conflate "fuses" with "same output."
+1. **Same accepted language** — the composed dialect parses the same inputs and
+   rejects the same, verified on the parser suites + corpus.
+2. **Emitted-CSS oracle GREEN** — convergence changes the tree *shape*, not the
+   rendered CSS; the oracle is the guard that the semantic output is preserved.
+3. **eval / render / extend updated to the canonical shapes** — they consume these
+   nodes; converging the CST means adapting the consumers to CSS's node vocabulary
+   (this is the ripple, and it is in-scope, not a regression).
+4. `check:macro` — 0 interpreter fallbacks (the composed grammar macro-fuses).
+   Build/perf property, reported separately.
 
-Deliberate node changes (e.g. the tracked `NamedColor → Keyword` convergence,
-task #57) are separate semantic decisions, not compose regressions.
+**Not the criterion:** compiled-grammar / fused-table byte-identity (a parseman
+internal Jess never observes — owner: *"none of Jess's concern"*), and
+superset-source == css-source (textual byte-count is the wrong question). Deliberate
+node changes like `NamedColor → Keyword` (task #57) are the *same* convergence
+principle, not regressions.
 
 ---
 
@@ -282,25 +288,20 @@ So widening the atom **cannot** reproduce scss's current CST — earlier §4.1 w
 wrong that the selector tower is a free leaf-factor inherit. It inherits at the AST
 level only.
 
-**THE OPEN DECISION (owner). Most of that CST divergence is gratuitous — scss chose
-different names/granularity/shape than css.** So compose forces a choice, and it is
-the same choice the whole migration turns on:
-- **(A) Converge** — dialects inherit css's canonical selector CST (`CompoundSelector`,
-  typed leaves, inline combinators). This IS the "one representation" goal, and it
-  leans. But it **changes scss's emitted selector CST**, which ripples into eval/
-  render (they consume these node shapes) and must be re-validated against the
-  emitted-CSS oracle. It is a deliberate output change, not a transparent inherit.
-- **(B) Preserve** — dialects keep their current CST. Then the selector tower is a
-  genuine override (scss redefines it to reproduce its shapes), and the leanness win
-  for selectors is lost.
+**THE DECISION — SETTLED: CONVERGE (owner P28, 2026-08-15).** Most of that CST
+divergence is gratuitous — scss chose different names/granularity/shape than css —
+and the owner ruled *"All of them should be pulled towards CSS... the CST names for
+the same rules / shapes should NOT diverge."* So dialects **inherit css's canonical
+selector CST** (`CompoundSelector`, typed leaves, inline combinators); scss's
+`Compound`/`SimpleSelector`/`ComplexTail` shapes are converged away. This changes the
+dialect's emitted CST, which ripples into eval/render/extend — that ripple is
+**in-scope**, gated by the §1 criterion (same language + oracle green + consumers
+updated). Where a difference is genuinely required, it stays an override; a mere
+different spelling of the same shape is converged. See `DESIGN-DECISIONS.md` P28.
 
-§1's "AST/CST identity vs the pre-migration parse" is therefore the wrong criterion
-under (A): the point of (A) is to *change* scss's gratuitously-different CST to the
-canonical one. **This decision is UNSETTLED and is the owner's** — it determines
-whether Stage C is "override the towers" or "converge the towers + update eval/render."
-Banked regardless of the decision (all behavior-neutral, committed): the css helper
-hoist, `cssBaseRules`, the `simpleSelectorAtom` factoring + `TopLevelCompoundSelector`
-twin, and the parser-shared externalization.
+Banked (all behavior-neutral, committed): the css helper hoist, `cssBaseRules`, the
+`simpleSelectorAtom` factoring + `TopLevelCompoundSelector` twin, and the parser-shared
+externalization.
 
 Cross-refs: `COMPOSE-SIMPLIFICATION-PROOF-REDO.md` (the evidence), parseman
 `release/0.49.0-compose-lifts` (the shipped lifts), `GRAMMAR-REVIEW-STANDARD.md`
