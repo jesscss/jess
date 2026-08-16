@@ -9,3 +9,9 @@
  * exactly one of them.
  */
 export { cssGrammar } from '../grammar.js';
+
+/*
+ * Compose base: the whole-css hole-free rules map, re-exported so a dialect
+ * delta can `compose([cssBaseRules, rules(delta)])` onto it cross-package.
+ */
+export { cssBaseRules } from '../grammar.js';

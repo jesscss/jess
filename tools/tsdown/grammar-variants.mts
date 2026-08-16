@@ -86,6 +86,7 @@ export function parserEntryBuild(options: {
   shared?: readonly string[];
   srcDir?: string;
   plugins?: PluginList;
+  external?: readonly (string | RegExp)[];
 }) {
   const srcDir = options.srcDir ?? './src';
   const sharedEntries = Object.fromEntries(
@@ -101,7 +102,7 @@ export function parserEntryBuild(options: {
      * up front, instead.
      */
     clean: false,
-    external: [GRAMMAR_SPECIFIER],
+    external: [GRAMMAR_SPECIFIER, ...options.external ?? []],
     plugins: options.plugins ?? [],
     outputOptions(outputOptions: Record<string, unknown>, format: string) {
       const next = {
@@ -119,15 +120,19 @@ export function grammarVariantBuilds(options: {
   dir?: string;
   shared?: readonly string[];
   plugins?: PluginList;
+  external?: readonly (string | RegExp)[];
 }) {
   const dir = options.dir ?? './src/grammar';
   const shared = options.shared ?? [];
+  const extraExternal = options.external ?? [];
   return GRAMMAR_VARIANTS.map(variant => {
     return {
       ...BASE,
       entry: { [`grammar/${variant}`]: `${dir}/${variant}.ts` },
       clean: false,
-      ...shared.length > 0 ? { external: [sharedSpecifier(shared)] } : {},
+      ...shared.length > 0 || extraExternal.length > 0
+        ? { external: [...shared.length > 0 ? [sharedSpecifier(shared)] : [], ...extraExternal] }
+        : {},
       plugins: options.plugins ?? [],
       outputOptions(outputOptions: Record<string, unknown>, format: string) {
         const next = {
