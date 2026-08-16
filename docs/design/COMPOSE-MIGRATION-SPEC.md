@@ -288,6 +288,34 @@ So widening the atom **cannot** reproduce scss's current CST — earlier §4.1 w
 wrong that the selector tower is a free leaf-factor inherit. It inherits at the AST
 level only.
 
+**Scoping correction (2026-08-15, read-only, supersedes the leaf-granularity claim
+above).** The "coarser leaf granularity (scss `SimpleSelector` vs css `ClassSelector`/
+`IdSelector`/`TypeSelector`)" bullet is WRONG at the AST level: there are NO typed-leaf
+AST node types anywhere — css's leaf reducer builds the SAME generic `simpleSelector`
+as scss (`css .../grammar.ts:1245` `BasicSelector` → `simpleSelector`). `ClassSelector`/
+`IdSelector`/`TypeSelector` exist only at the **public-CST** layer, computed from leaf
+text by the shared `cst-host` (`css cst-host` maps grammar type `BasicSelector` →
+`.`/`#`/digit/else → typed name). So:
+- **The selector AST is already fully converged across all four dialects** — every
+  reducer builds the same `@jesscss/core/ast` `CompoundSelector`/`ComplexSelector`/
+  `SelectorList`/`SimpleSelector`. No live consumer (eval, `ast/serialize`,
+  `ast/extend/**` — which flattens compounds to text and never sees `ComplexTail`
+  or typed leaves) reads the divergent grammar rule names.
+- **The divergence is confined to the grammar RULE names** (scss `Compound`/`Complex`/
+  `Selector`/`SimpleSelector` vs css `CompoundSelector`/`ComplexSelector`/`SelectorList`/
+  `BasicSelector`), the transient `ComplexTail` reducer (never persisted), and the
+  genuine leaf widenings + `not(pseudoColon)` guard (which STAY as real overrides).
+- The `tree/**` ~30-file count is **legacy eval (chopping block)**, not live. The one
+  live reader of the divergent public-CST names is the editor language-service, which
+  already tolerates both spellings (a rename just leaves dead entries to prune).
+
+**So §1 gate-3's "eval/render/extend updated to canonical shapes" is ALREADY SATISFIED
+for selectors** — the ripple was paid when the reducers were pointed at the shared
+`core/ast` constructors. Selector convergence is a **grammar-local rename/inherit**
+(adopt css's rule names, inline `ComplexTail`; supersets then inherit css's typed
+public-CST leaves for free), producing byte-identical AST. Cheap and low-risk, not a
+consumer migration.
+
 **THE DECISION — SETTLED: CONVERGE (owner P28, 2026-08-15).** Most of that CST
 divergence is gratuitous — scss chose different names/granularity/shape than css —
 and the owner ruled *"All of them should be pulled towards CSS... the CST names for
