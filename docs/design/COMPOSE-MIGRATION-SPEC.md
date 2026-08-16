@@ -83,29 +83,39 @@ that parses **AST-identical to standalone `cssGrammar`**
 (`COMPOSE-SIMPLIFICATION-PROOF-REDO.md` finding 1). This refutes the earlier
 "a hole-free base cannot fuse" claim.
 
-### 3.2 BLOCKER — `compose([importedBase, delta])` does not re-emit the base's imports
+### 3.2 RESOLVED — `compose([importedBase, delta])` now re-emits a cross-referenced base's imports
 
-The **dialect pattern** — a downstream module composing an *already-built* base
-plus a delta — does **not** fuse under 0.49.0. The macro emits the base's reducer
-bodies but does not re-emit the module imports those bodies reference:
+**Fixed in parseman `release/0.49.0-compose-lifts` commit `e1dbc98`.** The dialect
+pattern — a downstream module composing an *already-built* base plus a delta — now
+macro-fuses.
 
-- **same-package** (delta module does not itself import the base's helpers):
-  `N identifier(s) are read but bound by nothing … would throw ReferenceError`
-  → fail-closed refusal.
-- **cross-package** (`scss-parser` importing `cssBaseRules` from
-  `@jesscss/css-parser/grammar`): the macro cannot lower it (`ref() used before
-  .define()`), leaves a runtime `compose()`, which throws (`… references module
-  import(s) … a runtime compose() cannot supply`).
+The residual gap was **narrower** than first documented (the initial spec, written
+against a pre-fix tarball, said the re-emit "does not fire at all" — it in fact
+fired for many patterns). Real root cause: `collectBuilderImports` walked the merged
+rule graph with `Object.values` (own enumerable properties), but a rule that
+*another rule references* (`g.X`) is materialized as a `lazy` proxy whose definition
+sits behind `_def.thunk()` — never an own property. So the imports of every
+**cross-referenced inherited rule** were silently dropped. A rule referenced by
+nobody was fine; the moment a third rule referenced it, its imports vanished — which
+is exactly the real dialect case (css `VarCall`, referenced by its selector/value
+parents, dropped `funcCall`/`isValueSlotValue`), producing the two observed symptoms
+(same-package "identifiers bound by nothing", cross-package runtime-`compose()`
+throw). The fix follows a rule reference to its **winning** definition via the
+entry's thunk, stopping at named `lazy` references (already covered as their own
+entries), with the fail-closed boundary untouched.
 
-Repro: `docs/design/compose-proof-probes/scss-cross-package-compose-probe.ts`.
-Root cause: the lift harvests import provenance for builders **in the module
-being compiled**; it does not propagate a composed base's own import manifest
-(`buildImports`, present in the lifted `dist`) into the module that composes onto
-it. **Fix (parseman lane, folds into the unpublished 0.49.0):** when the downstream
-compose macro incorporates an imported composed base, read that base's
-`buildImports` manifest and re-emit those imports into the fused downstream
-module. Acceptance: the cross-package probe fuses (0 runtime `compose(`,
-0 fallbacks) and parses AST-identical.
+Regression test: `parseman test/unit/compose-direct-builder-ir.test.ts` — a base
+compiled to its own module, a separate downstream module composing a delta that
+overrides one leaf and inherits an import-bearing block-body rule; asserts fuse
+(0 fallbacks, no runtime `compose(`), the inherited rule's import re-emitted, the
+overridden rule's import NOT re-emitted, and an AST-correct parse. Fails pre-fix,
+passes after. Full parseman suite green (4087 tests), both release gates green.
+
+**Note:** for a css base to *have* importable provenance to re-emit, css's reducer
+helpers must live in an importable module (the helper hoist, §4.1 / Stage B) — the
+fix re-emits imports that exist; it does not invent provenance for a module-private
+helper. Remaining end-to-end validation (Stage C): compose a real superset selector
+tower on the factored css base and confirm AST/CST identity — see §5.
 
 ---
 
@@ -186,6 +196,59 @@ do not take parallel edits.
 - **Do not** publish 0.49.0 or advance Stage C until the §3.2 blocker fix proves
   the real dialect pattern fuses AST-identical — the capability is not real until
   the cross-module compose is demonstrated end-to-end.
+
+## 7. Stage-B worklist + the payoff axis (enumerated 2026-08-15, all four grammars)
+
+**The key refinement:** a leaf-factor pays off **only where the tower above the
+atom is pure inheritable structure.** Where the dialect overrides that tower
+anyway (different reducer / different emitted node), naming the atom saves only
+the re-listing of the base arms — the tower is still a genuine override.
+
+**High payoff — factor these:**
+- **`simpleSelectorAtom`** — DONE (pilot, css `9f2ad4f89`; CompoundSelector 1619).
+  **Still needed:** its twin `TopLevelCompoundSelector` (1639) inlines the same
+  atom and must also reference `g.simpleSelectorAtom`, or the top-level selector
+  won't inherit the widened atom. All three supersets widen it (scss +2, jess +3,
+  less +9 interpolation arms); the tower above (Complex/SelectorList) is pure
+  structure → inherited. This is the clean §4.1 case.
+- **`calcValueAtom`** — css `CalcValue` (2224, choice 2226); jess widens it
+  byte-cleanly (+`MathDollarValue`, +`InterpolatedValue`, same reducer). scss/less
+  have no `CalcValue` (calc routes through their math tower) so they don't conflict.
+
+**Partial payoff — factor, but the tower above is overridden regardless:**
+- **`valueAtom`** — css `Value` (2707, choice 2720); all three widen it, but
+  `ValueSequence`/`ValueList`/the math tower above are §4.2 genuine overrides in
+  every dialect. jess already extracted its own `nonBlockValueAtom` (the template).
+  Factoring lets a dialect inherit the `Value` node's projector and stop re-listing
+  css's base arms; it does NOT let it inherit the value tower.
+
+**Borderline — naming a terminal, single-dialect, parent overridden anyway (defer
+unless Stage C needs it):** `propertyNameAtom`, `customPropertyNameAtom`,
+`selectorCombinator` (css `combinator` 990, less-only +`|`).
+
+**Already-named leaves (NO extraction; Stage-C override targets):** the body-item
+choices `declarationListItem`/`stylesheetBodyItem`/`descriptorBodyItem`/… (3749–3757),
+`OpaqueBodyPart`, `varFallbackComponent`, `IdentBlockOrKeyword`. css already returns
+these in the rules object, so a superset overrides by name and inherits the framing.
+
+**Genuine overrides — NOT factoring candidates (§4.2), stay in each dialect's delta:**
+the value/math tower (Sass/Less arithmetic → `operation()` nodes, slash-list
+semantics); `Declaration` (terminator/unterminated/`+` merge/custom-prop divergence);
+the query feature/term/supports machinery; and — notably — the **at-rule prelude**:
+css `AtRulePreludeSegments` (3087) scans it as raw `Any` text while every superset
+replaces it with a structured value/query model. **Flag:** the raw-`Any` prelude
+scan may be a css *under-structuring* (ties to the `Opaque*` chopping-block, tasks
+#55/#56); if css structured its prelude, supersets could inherit more. Open question,
+not resolved here.
+
+**Net:** compose's clean, proven inheritance win is the **selector subsystem** +
+the already-named **body/stylesheet framing** + the shared **terminals**. The
+value/declaration/query subsystems are genuine per-dialect overrides — real, not
+factoring artifacts. So a superset becomes "css base + genuine value/declaration/
+query deltas + additions," not a tiny file — but the drift-prone selector and
+framing duplication is eliminated and single-sourced. **Stage C proves the actual
+per-dialect deletion; do not over-factor speculatively — factor an atom when a
+dialect's compose demonstrably needs to inherit the tower above it.**
 
 Cross-refs: `COMPOSE-SIMPLIFICATION-PROOF-REDO.md` (the evidence), parseman
 `release/0.49.0-compose-lifts` (the shipped lifts), `GRAMMAR-REVIEW-STANDARD.md`
