@@ -417,6 +417,15 @@ with explicit Jess `$(...)` output, for example a Less math expression
 `@foo + 1` projects as `$(^foo + 1)` when `mathMode` lowered it as math; it must
 not widen normal Jess values to accept `$foo + 1`.
 
+> **SUPERSEDED 2026-08-15 by `COMPOSE-MIGRATION-SPEC.md`.** The parseman
+> constraint described below is real but has since been **lifted** (parseman
+> `release/0.49.0-compose-lifts`: imported/free bindings, block bodies, non-arrow
+> reducers now compose and macro-fuse; the whole hole-free CSS base fuses
+> AST-identical). One tractable residual blocker remains — a composed base's
+> imports are not re-emitted into a module that composes onto it — tracked with
+> its fix and the staged plan in `COMPOSE-MIGRATION-SPEC.md`. Read that first; the
+> "OPEN / blocked" language in the rest of this section is history.
+
 **UNRESOLVED — escalated to the owner. Do not treat what follows as a design
 decision.** Cross-artifact `compose()` is blocked by a real parseman constraint,
 documented in full below. That constraint **conflicts with owner requirement
