@@ -250,6 +250,58 @@ framing duplication is eliminated and single-sourced. **Stage C proves the actua
 per-dialect deletion; do not over-factor speculatively — factor an atom when a
 dialect's compose demonstrably needs to inherit the tower above it.**
 
+## 8. Stage C pilot result (2026-08-15) — mechanism PROVEN; one OPEN owner decision
+
+Branch `stage-c-scss-selector-pilot` (`9ff4ff39d`), scss selector delta composed on
+`cssBaseRules` with the fixed parseman 0.49.0.
+
+**STEP 1 — the compose mechanism WORKS, but needed a second fix beyond parseman.**
+Cross-package `compose([cssBaseRules, delta])` now fuses (0 fallbacks, 0 runtime
+`compose(`, 133 kB inlined table) and parses `.a%ph > .b` with the widened
+`%placeholder` leaf routed through the **inherited** `CompoundSelector`/
+`ComplexSelector`. BUT parseman 0.49.0 alone did **not** unblock it: `@jesscss/
+parser-shared` was a devDependency, so tsdown **bundled** the recognition grammars
+as local consts, and `resolveModulePieces` can only follow the base's piece spread
+through a resolvable **import** — so ~69 bundled recognition rules were silently
+dropped (140/209 winners). **Fix (jess-side, behavior-neutral):** externalize
+`@jesscss/parser-shared` in the css grammar build + declare it a peerDependency.
+This is a Stage-B packaging requirement, not another parseman gap. Committed.
+
+**STEP 2 — AST inherits, CST does NOT: the selector tower is a genuine CST-level
+override, correcting §4.1.** Composing css's selector tower and comparing to
+standalone scss on a selector corpus: **AST identical**, **CST divergent**. scss's
+tower emits a structurally different concrete tree:
+- different node names (`Selector`/`Complex`/`Compound` vs css `SelectorList`/
+  `ComplexSelector`/`CompoundSelector`),
+- coarser leaf granularity (scss one `SimpleSelector` vs css `ClassSelector`/
+  `IdSelector`/`TypeSelector`),
+- different shape (scss wraps combinators in a `ComplexTail` node; css inlines),
+- a `not(pseudoColon)` guard scss carries and css does not.
+
+So widening the atom **cannot** reproduce scss's current CST — earlier §4.1 was
+wrong that the selector tower is a free leaf-factor inherit. It inherits at the AST
+level only.
+
+**THE OPEN DECISION (owner). Most of that CST divergence is gratuitous — scss chose
+different names/granularity/shape than css.** So compose forces a choice, and it is
+the same choice the whole migration turns on:
+- **(A) Converge** — dialects inherit css's canonical selector CST (`CompoundSelector`,
+  typed leaves, inline combinators). This IS the "one representation" goal, and it
+  leans. But it **changes scss's emitted selector CST**, which ripples into eval/
+  render (they consume these node shapes) and must be re-validated against the
+  emitted-CSS oracle. It is a deliberate output change, not a transparent inherit.
+- **(B) Preserve** — dialects keep their current CST. Then the selector tower is a
+  genuine override (scss redefines it to reproduce its shapes), and the leanness win
+  for selectors is lost.
+
+§1's "AST/CST identity vs the pre-migration parse" is therefore the wrong criterion
+under (A): the point of (A) is to *change* scss's gratuitously-different CST to the
+canonical one. **This decision is UNSETTLED and is the owner's** — it determines
+whether Stage C is "override the towers" or "converge the towers + update eval/render."
+Banked regardless of the decision (all behavior-neutral, committed): the css helper
+hoist, `cssBaseRules`, the `simpleSelectorAtom` factoring + `TopLevelCompoundSelector`
+twin, and the parser-shared externalization.
+
 Cross-refs: `COMPOSE-SIMPLIFICATION-PROOF-REDO.md` (the evidence), parseman
 `release/0.49.0-compose-lifts` (the shipped lifts), `GRAMMAR-REVIEW-STANDARD.md`
 (per-const review), `docs/state/GRAMMAR-DEDUP-LOG.md` (the live worklog).
