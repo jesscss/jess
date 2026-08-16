@@ -255,6 +255,7 @@ type GrammarRuleName =
   | 'descriptorBodyBlock'
   | 'declarationListItem'
   | 'declarationListDeclaration'
+  | 'simpleSelectorAtom'
   | 'RoutedAtRuleStatement'
   | 'pseudoArgumentContent'
   | 'CustomPropertyValue'
@@ -1616,23 +1617,24 @@ const cssFactory = (g: GrammarSelf) => {
     literal('&'),
     () => simpleSelector('&')
   );
+  const simpleSelectorAtom = choice(
+    g.NestingSelector,
+    parser(
+      { trivia: interstitialTrivia },
+      g.AttributeSelector
+    ),
+    parser(
+      { trivia: interstitialTrivia },
+      g.PseudoSelector
+    ),
+    g.NamespaceTypeSelector,
+    g.BasicSelector
+  );
   const CompoundSelector = node(
     'CompoundSelector',
     noTrivia(parser(
       { trivia: compoundTrivia },
-      oneOrMore(choice(
-        g.NestingSelector,
-        parser(
-          { trivia: interstitialTrivia },
-          g.AttributeSelector
-        ),
-        parser(
-          { trivia: interstitialTrivia },
-          g.PseudoSelector
-        ),
-        g.NamespaceTypeSelector,
-        g.BasicSelector
-      ))
+      oneOrMore(g.simpleSelectorAtom)
     )),
     children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
@@ -4229,6 +4231,7 @@ const cssFactory = (g: GrammarSelf) => {
     TopLevelComplexSelector,
     CompoundSelector,
     TopLevelCompoundSelector,
+    simpleSelectorAtom,
     BasicSelector,
     NamespaceTypeSelector,
     AttributeSelector,
