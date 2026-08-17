@@ -104,7 +104,7 @@ const SELECTOR_TYPES = new Set([
   'SelectorBranch',
   'NestedSelector',
   'ComplexSelector',
-  'RelativeComplex',
+  'RelativeComplexSelector',
   'CompoundSelector',
   'InterpolatedSelector',
   'BasicSelector',

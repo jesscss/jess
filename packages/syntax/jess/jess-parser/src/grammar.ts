@@ -143,13 +143,11 @@ type JessRules = {
   GenericPseudoArgument: Combinator<string>;
   CompoundSelector: Combinator<SelectorTerm>;
   PseudoSelectorCompound: Combinator<SelectorTerm>;
-  PseudoSelectorComplexTail: Combinator<JessComplexTail>;
   PseudoSelectorComplex: Combinator<SelectorBranch>;
   PseudoSelectorTail: Combinator<SelectorBranch>;
   PseudoSelectorList: Combinator<SelectorList>;
   SelectorCapture: Combinator<SelectorCapture>;
   ComplexSelector: Combinator<SelectorBranch>;
-  SelectorTail: Combinator<SelectorBranch>;
   SelectorList: Combinator<SelectorList>;
   Ruleset: Combinator<Ruleset>;
   ForName: Combinator<string>;
@@ -335,12 +333,6 @@ function isSelectorList(value: unknown): value is SelectorList {
     && 'type' in value && value.type === 'SelectorList'
     && 'selectors' in value && Array.isArray(value.selectors)
     && value.selectors.every(isSelectorBranch);
-}
-
-function isJessComplexTail(value: unknown): value is JessComplexTail {
-  return typeof value === 'object' && value !== null
-    && 'combinator' in value && (value.combinator === ' ' || value.combinator === '>' || value.combinator === '+' || value.combinator === '~' || value.combinator === '||')
-    && 'term' in value && isSelectorTerm(value.term);
 }
 
 function isJessReferenceTail(value: unknown): value is JessReferenceTail {
@@ -2865,7 +2857,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * bare `&` of `&(-1)` and strand its payload.
    */
   const Parent = node<SimpleSelector>(
-    'Parent',
+    'SimpleSelector',
     choice(
       sequence(
         literal('&('),
@@ -3198,29 +3190,30 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     literal('+'),
     literal('~')
   );
-  const PseudoSelectorComplexTail = node<JessComplexTail>(
-    'PseudoSelectorComplexTail',
-    sequence(
-      optional(selectorCombinator),
-      g.PseudoSelectorCompound
-    ),
-    (children) => {
-      const token = children.find(isToken);
-      const term = children.find(isSelectorTerm)!;
-      const combinator = token === undefined ? ' ' : jessCombinator(token);
-      return { combinator, term };
-    }
-  );
   const PseudoSelectorComplex = node<SelectorBranch>(
     'PseudoSelectorComplex',
     sequence(
       g.PseudoSelectorCompound,
-      many(g.PseudoSelectorComplexTail)
+      many(sequence(
+        optional(selectorCombinator),
+        g.PseudoSelectorCompound
+      ))
     ),
-    children => selectorBranchOf([
-      { term: children.find(isSelectorTerm)! },
-      ...children.filter(isJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
-    ])
+    (children) => {
+      const segments: Array<{ combinator?: JessComplexTail['combinator']; term: SelectorTerm }> = [];
+      let combinator: JessComplexTail['combinator'] = ' ';
+      for (const child of children) {
+        if (isSelectorTerm(child)) {
+          segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
+          combinator = ' ';
+          continue;
+        }
+        if (isToken(child)) {
+          combinator = jessCombinator(child);
+        }
+      }
+      return selectorBranchOf([segments[0]!, ...segments.slice(1)]);
+    }
   );
   const PseudoSelectorTail = node<SelectorBranch>(
     'PseudoSelectorTail',
@@ -5082,7 +5075,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * those positions; never turn either into a source-text prelude.
    */
   const KeyframeSelector = node<SimpleSelector>(
-    'KeyframeSelector',
+    'SimpleSelector',
     choice(
       keyframeEndpoint,
       g.Percentage
@@ -6204,14 +6197,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return selectorBranchOf([segments[0]!, ...segments.slice(1)]);
     }
   );
-  const SelectorTail = node<SelectorBranch>(
-    'SelectorTail',
-    sequence(
-      literal(','),
-      g.ComplexSelector
-    ),
-    reduceSelectorTail
-  );
 
   /*
    * A ruleset's selector list carries the STATEMENT's start offset: the
@@ -6224,9 +6209,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    */
   const SelectorList = node<SelectorList>(
     'SelectorList',
-    sequence(
+    oneOrMoreSep(
       g.ComplexSelector,
-      many(g.SelectorTail)
+      literal(',')
     ),
     (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)
   );
@@ -6501,13 +6486,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     GenericPseudoArgument,
     CompoundSelector,
     PseudoSelectorCompound,
-    PseudoSelectorComplexTail,
     PseudoSelectorComplex,
     PseudoSelectorTail,
     PseudoSelectorList,
     SelectorCapture,
     ComplexSelector,
-    SelectorTail,
     SelectorList,
     Ruleset,
     ForName,
