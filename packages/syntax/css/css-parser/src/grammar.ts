@@ -1714,6 +1714,29 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
   );
+
+  /*
+   * A NESTED ruleset's selector list is relative-capable: CSS Nesting lets a
+   * nested selector open with a combinator (`.parent { > .child { … } }`),
+   * where `>` relates to the implicit parent (`.parent > .child`). This reuses
+   * `RelativeComplexSelector` — the same producer the `:has()`-style pseudos
+   * use. Each item keeps its ORDINARY shape (`SimpleSelector`/`CompoundSelector`/
+   * `ComplexSelector`, whatever it reduces to); the nesting context ADDS
+   * `RelativeSelector` as one more admissible item, produced only when the item
+   * opens with a leading combinator. Items MIX freely (`> .a, .b`). The node NAME
+   * is the canonical `SelectorList`; only the rules-map KEY differs. The
+   * TOP-LEVEL list (`TopLevelSelectorList`) admits no leading combinator, so a
+   * stylesheet-root `> .a` — which has no parent to relate to — is still
+   * rejected. Carries the ruleset statement's start offset like `SelectorList`.
+   */
+  const NestedSelectorList = node(
+    'SelectorList',
+    oneOrMoreSep(
+      RelativeComplexSelector,
+      literal(',')
+    ),
+    (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
+  );
   const Property = node(
     'Property',
     g.Identifier,
@@ -4093,7 +4116,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       parser(
         { trivia: interstitialTrivia },
-        g.SelectorList
+        NestedSelectorList
       ),
 
       parser(
