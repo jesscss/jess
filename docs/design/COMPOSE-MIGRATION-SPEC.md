@@ -361,8 +361,11 @@ inlined) — `094eb17a6`/`12d0754a6`/`2af6d7386`; LS fix `b3eda4dce`.
   naming choice. Fix is ADDITIVE: the nested ruleset in all four accepts a leading
   combinator producing a **`RelativeSelector`** (context-dependent — a `RelativeSelector`
   only in a nesting context; the same production at the top is a `ComplexSelector`, so
-  root `> .a` stays rejected). The list node is `SelectorList` with items each
-  `RelativeSelector | ComplexSelector`. css already has the producer `RelativeComplexSelector`
+  root `> .a` stays rejected). The list node is `SelectorList`; nesting ADDS
+  `RelativeSelector` to the admissible item shapes (alongside the ordinary
+  `BasicSelector`/`CompoundSelector`/`ComplexSelector`), it does not restrict items to
+  relative/complex — `> .a, .b` mixes a `RelativeSelector` with a plain `BasicSelector`.
+  css already has the producer `RelativeComplexSelector`
   (grammar.ts:1496), wired today only to `:has()` — reuse it for the nested ruleset.
   Touches eval/render (must emit `.parent > .child`) — semantics change, oracle-gated.
 - **Pseudo-argument tower merge** (less `PseudoArgument*`, jess `PseudoSelector*`): a
