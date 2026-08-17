@@ -127,7 +127,7 @@ type JessRules = {
   Apply: Combinator<Apply>;
   Extend: Combinator<ExtendInstruction[]>;
   MixinDefinition: Combinator<MixinDefinition>;
-  Simple: Combinator<SimpleSelector>;
+  BasicSelector: Combinator<SimpleSelector>;
   Parent: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
@@ -141,17 +141,16 @@ type JessRules = {
   GenericPseudoItem: Combinator<string>;
   GenericPseudoGroup: Combinator<string>;
   GenericPseudoArgument: Combinator<string>;
-  Compound: Combinator<SelectorTerm>;
+  CompoundSelector: Combinator<SelectorTerm>;
   PseudoSelectorCompound: Combinator<SelectorTerm>;
   PseudoSelectorComplexTail: Combinator<JessComplexTail>;
   PseudoSelectorComplex: Combinator<SelectorBranch>;
   PseudoSelectorTail: Combinator<SelectorBranch>;
   PseudoSelectorList: Combinator<SelectorList>;
   SelectorCapture: Combinator<SelectorCapture>;
-  ComplexTail: Combinator<JessComplexTail>;
-  Complex: Combinator<SelectorBranch>;
+  ComplexSelector: Combinator<SelectorBranch>;
   SelectorTail: Combinator<SelectorBranch>;
-  Selector: Combinator<SelectorList>;
+  SelectorList: Combinator<SelectorList>;
   Ruleset: Combinator<Ruleset>;
   ForName: Combinator<string>;
   ForBinding: Combinator<ForBinding>;
@@ -2853,8 +2852,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * never need to parse a value. Keeping that dependency one-way avoids a
    * recording-phase forward-reference cycle.
    */
-  const Simple = node<SimpleSelector>(
-    'Simple',
+  const BasicSelector = node<SimpleSelector>(
+    'BasicSelector',
     g.SimpleSelectorToken,
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -2884,7 +2883,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   /*
    * Cheap `${…}` lookahead so an ordinary `.card` simple selector does not
    * consume its `[.#]`+text run, fail the required interpolation, and backtrack a
-   * re-parse through Simple. The predicate mirrors this arm's own
+   * re-parse through BasicSelector. The predicate mirrors this arm's own
    * leading shape (optional class/id sigil + selector-text run) and requires an
    * interpolation opener immediately after it, so the opener is bound to THIS
    * simple selector and a sibling selector's interpolation never falsely admits
@@ -3189,7 +3188,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       g.PseudoSelector,
       g.Parent,
       g.NamespaceTypeSelector,
-      g.Simple
+      g.BasicSelector
     ))),
     reduceCompound
   );
@@ -6156,8 +6155,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     )
   );
 
-  const Compound = node<SelectorTerm>(
-    'Compound',
+  const CompoundSelector = node<SelectorTerm>(
+    'CompoundSelector',
     noTrivia(oneOrMore(choice(
       parser(
         { trivia: whitespace },
@@ -6168,39 +6167,48 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       g.InterpolatedSimple,
       g.Parent,
       g.NamespaceTypeSelector,
-      g.Simple
+      g.BasicSelector
     ))),
     reduceCompound
   );
-  const ComplexTail = node<JessComplexTail>(
-    'ComplexTail',
+
+  /*
+   * The separator between compound selectors may be an explicit combinator
+   * (`>`, `+`, `~`, `||`) or just ambient trivia, which is treated as the
+   * descendant combinator. Combinators are folded inline exactly as the CSS
+   * base does — there is no `ComplexTail` wrapper node, so the concrete tree
+   * converges to CSS's `ComplexSelector` shape.
+   */
+  const ComplexSelector = node<SelectorBranch>(
+    'ComplexSelector',
     sequence(
-      optional(selectorCombinator),
-      g.Compound
+      g.CompoundSelector,
+      many(sequence(
+        optional(selectorCombinator),
+        g.CompoundSelector
+      ))
     ),
     (children) => {
-      const token = children.find(isToken);
-      const term = children.find(isSelectorTerm)!;
-      const combinator = token === undefined ? ' ' : jessCombinator(token);
-      return { combinator, term };
+      const segments: Array<{ combinator?: JessComplexTail['combinator']; term: SelectorTerm }> = [];
+      let combinator: JessComplexTail['combinator'] = ' ';
+      for (const child of children) {
+        if (isSelectorTerm(child)) {
+          segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
+          combinator = ' ';
+          continue;
+        }
+        if (isToken(child)) {
+          combinator = jessCombinator(child);
+        }
+      }
+      return selectorBranchOf([segments[0]!, ...segments.slice(1)]);
     }
-  );
-  const Complex = node<SelectorBranch>(
-    'Complex',
-    sequence(
-      g.Compound,
-      many(g.ComplexTail)
-    ),
-    children => selectorBranchOf([
-      { term: children.find(isSelectorTerm)! },
-      ...children.filter(isJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
-    ])
   );
   const SelectorTail = node<SelectorBranch>(
     'SelectorTail',
     sequence(
       literal(','),
-      g.Complex
+      g.ComplexSelector
     ),
     reduceSelectorTail
   );
@@ -6214,10 +6222,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * argument is never a `Ruleset`'s selector, so a span there would move the
    * tree for nothing. Less draws the same line.
    */
-  const Selector = node<SelectorList>(
-    'Selector',
+  const SelectorList = node<SelectorList>(
+    'SelectorList',
     sequence(
-      g.Complex,
+      g.ComplexSelector,
       many(g.SelectorTail)
     ),
     (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)
@@ -6253,7 +6261,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const Ruleset = node<Ruleset>(
     'Ruleset',
     sequence(
-      g.Selector,
+      g.SelectorList,
       literal('{'),
       many(choice(
         literal(';'),
@@ -6477,7 +6485,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     Apply,
     Extend,
     MixinDefinition,
-    Simple,
+    BasicSelector,
     Parent,
     InterpolatedSimple,
     InterpolatedParentSuffix,
@@ -6491,17 +6499,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     GenericPseudoItem,
     GenericPseudoGroup,
     GenericPseudoArgument,
-    Compound,
+    CompoundSelector,
     PseudoSelectorCompound,
     PseudoSelectorComplexTail,
     PseudoSelectorComplex,
     PseudoSelectorTail,
     PseudoSelectorList,
     SelectorCapture,
-    ComplexTail,
-    Complex,
+    ComplexSelector,
     SelectorTail,
-    Selector,
+    SelectorList,
     Ruleset,
     ForName,
     ForBinding,

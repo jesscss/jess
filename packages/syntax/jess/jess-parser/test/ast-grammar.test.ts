@@ -1020,12 +1020,12 @@ describe('Jess AST grammar facts', () => {
       '.tail:nth-child(-n+2), [lang|=en]'
     ]) {
       const captured = run(jessGrammar.PseudoSelectorList, source, { trivia: jessGrammar.whitespace });
-      const ordinary = run(jessGrammar.Selector, source, { trivia: jessGrammar.whitespace });
+      const ordinary = run(jessGrammar.SelectorList, source, { trivia: jessGrammar.whitespace });
       expect(captured.ok && captured.unconsumedFrom === null, source).toBe(true);
       expect(ordinary.ok && ordinary.unconsumedFrom === null, source).toBe(true);
 
       /*
-       * STRUCTURE, not provenance. The ordinary `Selector` carries a source
+       * STRUCTURE, not provenance. The ordinary `SelectorList` carries a source
        * span — a ruleset reads its statement start off it — while a pseudo
        * argument never does, exactly as Less draws the line. The claim here is
        * that the two productions recognise the same selector, so compare the
