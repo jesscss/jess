@@ -257,7 +257,6 @@ type LessRules = {
   PseudoArgumentText: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
   PseudoArgumentCompound: Combinator<SelectorTerm>;
-  PseudoArgumentComplexTail: Combinator<ComplexTailFact>;
   PseudoArgumentComplex: Combinator<SelectorBranch>;
   PseudoArgumentSelectorTail: Combinator<SelectorBranch>;
   PseudoArgumentSelector: Combinator<SelectorList>;
@@ -278,7 +277,6 @@ type LessRules = {
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
   RelativeComplex: Combinator<SelectorBranch>;
-  SelectorTail: Combinator<SelectorBranch>;
   SelectorList: Combinator<SelectorList>;
   ExtendTarget: Combinator<ExtendTargetFact>;
   ExtendStatement: Combinator<BodyExtendFact>;
@@ -5337,7 +5335,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // the deciding delimiter is `:` versus `(` / `;`, so a cosmetic dispatch on
   // the identifier would commit too early.
   const KeyframeSelector = node(
-    'KeyframeSelector',
+    'SimpleSelector',
     choice(keyframeEndpoint, g.Percentage),
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -5836,25 +5834,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // The ordinary outer selector folds its combinator tail inline (there is no
   // `ComplexTail` node), and its no-trivia compound boundary is intentionally
   // unchanged.
-  const PseudoArgumentComplexTail = node(
-    'PseudoArgumentComplexTail',
-    sequence(optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)),
-    combinatorTailReducer
-  );
   const PseudoArgumentComplex = node(
     'PseudoArgumentComplex',
     sequence(
       optional(relativeSelectorCombinator),
       g.PseudoArgumentCompound,
-      many(sequence(not(whenGuardAhead), g.PseudoArgumentComplexTail))
+      many(sequence(not(whenGuardAhead), optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)))
     ),
     (children) => {
-      const head = children.find(isSelectorTerm)!;
-      const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
-      const branch = selectorBranchOf([
-        { term: head },
-        ...children.filter(isComplexTailFact)
-      ]);
+      const first = children[0];
+      const leading = (isTerminalText(first, '>') || isTerminalText(first, '+') || isTerminalText(first, '~')) ? first : undefined;
+      const branch = selectorBranchOf(complexSegmentsFrom(children));
       return leading === undefined ? branch : relativeSelector(requireCombinator(leading), branchSegments(branch));
     }
   );
@@ -6244,7 +6234,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     (children, _fields, span) => withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span)
   );
   const RelativeComplex = node(
-    'RelativeComplex',
+    'RelativeComplexSelector',
     sequence(
       optional(relativeSelectorCombinator),
       g.ComplexSelector
@@ -6255,19 +6245,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return withSourceSpan(leading === undefined ? branch : relativeSelector(requireCombinator(leading), branchSegments(branch)), span);
     }
   );
-  const SelectorTail = node(
-    'SelectorTail',
-    sequence(literal(','), g.ComplexSelector),
-    children => children.find(isSelectorBranch)!
-  );
   const SelectorList = node(
     'SelectorList',
-    parser({ trivia: outerSelectorTrivia }, sequence(g.ComplexSelector, many(g.SelectorTail))),
+    parser({ trivia: outerSelectorTrivia }, oneOrMoreSep(g.ComplexSelector, literal(','))),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
   const RelativeSelector = node(
     'SelectorList',
-    parser({ trivia: outerSelectorTrivia }, sequence(g.RelativeComplex, many(g.SelectorTail))),
+    parser({ trivia: outerSelectorTrivia }, sequence(g.RelativeComplex, many(sequence(literal(','), g.ComplexSelector)))),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
   const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
@@ -6762,7 +6747,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     PseudoArgumentText,
     PseudoArgumentGroup,
     PseudoArgumentCompound,
-    PseudoArgumentComplexTail,
     PseudoArgumentComplex,
     PseudoArgumentSelectorTail,
     PseudoArgumentSelector,
@@ -6782,7 +6766,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     InterpolatedParentSuffix,
     CompoundSelector,
     ComplexSelector,
-    SelectorTail,
     SelectorList,
     ExtendTarget,
     ExtendStatement,

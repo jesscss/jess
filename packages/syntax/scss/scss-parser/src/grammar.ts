@@ -186,9 +186,7 @@ type ScssRules = {
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
   RelativeComplex: Combinator<SelectorBranch>;
-  SelectorTail: Combinator<SelectorBranch>;
   SelectorList: Combinator<SelectorList>;
-  NestedSelectorTail: Combinator<SelectorBranch>;
   NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<Ruleset>;
   OpaqueAtPrelude: Combinator<string | null>;
@@ -5021,7 +5019,7 @@ const scssFactory = (g: ScssInputRules) => {
    * text capture.
    */
   const KeyframeSelector = node<SimpleSelector>(
-    'KeyframeSelector',
+    'SimpleSelector',
     choice(
       keyframeEndpoint,
       g.Percentage
@@ -5282,7 +5280,7 @@ const scssFactory = (g: ScssInputRules) => {
     literal('~')
   );
   const RelativeComplex = node<SelectorBranch>(
-    'RelativeComplex',
+    'RelativeComplexSelector',
     parser(
       { trivia: whitespace },
       sequence(
@@ -5471,7 +5469,7 @@ const scssFactory = (g: ScssInputRules) => {
     children => children.find(isSimpleToken)!
   );
   const NestingSelector = node<SimpleSelector>(
-    'NestingSelector',
+    'SimpleSelector',
     literal('&'),
     () => simpleSelector('&')
   );
@@ -5532,14 +5530,6 @@ const scssFactory = (g: ScssInputRules) => {
       return selectorBranchOf([segments[0]!, ...segments.slice(1)]);
     }
   );
-  const SelectorTail = node<SelectorBranch>(
-    'SelectorTail',
-    sequence(
-      literal(','),
-      g.ComplexSelector
-    ),
-    children => children.find(isSelectorBranch)!
-  );
 
   /*
    * A ruleset's selector list carries the STATEMENT's start offset: the
@@ -5552,25 +5542,17 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const SelectorList = node<SelectorList>(
     'SelectorList',
-    sequence(
+    oneOrMoreSep(
       g.ComplexSelector,
-      many(g.SelectorTail)
+      literal(',')
     ),
     (children, _fields, span) => withSourceSpan(selist(...children.filter(isSelectorBranch)), span)
   );
-  const NestedSelectorTail = node<SelectorBranch>(
-    'NestedSelectorTail',
-    sequence(
-      literal(','),
-      g.RelativeComplex
-    ),
-    children => children.find(isSelectorBranch)!
-  );
   const NestedSelector = node<SelectorList>(
     'NestedSelector',
-    sequence(
+    oneOrMoreSep(
       g.RelativeComplex,
-      many(g.NestedSelectorTail)
+      literal(',')
     ),
     (children, _fields, span) => withSourceSpan(selist(...children.filter(isSelectorBranch)), span)
   );
@@ -5937,9 +5919,7 @@ const scssFactory = (g: ScssInputRules) => {
     CompoundSelector,
     ComplexSelector,
     RelativeComplex,
-    SelectorTail,
     SelectorList,
-    NestedSelectorTail,
     NestedSelector,
     Extend,
     Ruleset,
