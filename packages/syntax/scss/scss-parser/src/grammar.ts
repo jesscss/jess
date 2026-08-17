@@ -36,7 +36,6 @@ type ScssCallArg = CallArg<ValueSlot>;
 
 /** An argument-list separator carrying the argument it precedes. */
 type ScssArgumentPair = { readonly separator: string; readonly value: ScssCallArg };
-type ScssComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
 type ScssSegmentCombinator = ' ' | '>' | '+' | '~' | '|' | '||';
 
 const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.json'] as const;
@@ -175,7 +174,7 @@ type ScssRules = {
   NestedConditionalBlock: Combinator<AtRuleBlock>;
   NestedStartingStyleBlock: Combinator<AtRuleBlock>;
   NestedLayerBlock: Combinator<AtRuleBlock>;
-  Simple: Combinator<SimpleSelector>;
+  BasicSelector: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
   NamespaceTypeSelector: Combinator<SimpleSelector>;
@@ -184,12 +183,11 @@ type ScssRules = {
   PseudoArgumentGroup: Combinator<string>;
   PseudoSelector: Combinator<SimpleToken>;
   NestingSelector: Combinator<SimpleSelector>;
-  Compound: Combinator<SelectorTerm>;
-  ComplexTail: Combinator<ScssComplexTail>;
-  Complex: Combinator<SelectorBranch>;
+  CompoundSelector: Combinator<SelectorTerm>;
+  ComplexSelector: Combinator<SelectorBranch>;
   RelativeComplex: Combinator<SelectorBranch>;
   SelectorTail: Combinator<SelectorBranch>;
-  Selector: Combinator<SelectorList>;
+  SelectorList: Combinator<SelectorList>;
   NestedSelectorTail: Combinator<SelectorBranch>;
   NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<Ruleset>;
@@ -335,13 +333,7 @@ function isSimpleToken(value: unknown): value is SimpleToken {
     || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'PseudoSelector');
 }
 
-function isScssComplexTail(value: unknown): value is ScssComplexTail {
-  return typeof value === 'object' && value !== null
-    && 'combinator' in value && (value.combinator === ' ' || value.combinator === '>' || value.combinator === '+' || value.combinator === '~' || value.combinator === '||')
-    && 'term' in value && isSelectorTerm(value.term);
-}
-
-function scssCombinatorText(value: unknown): ScssComplexTail['combinator'] {
+function scssCombinatorText(value: unknown): ' ' | '>' | '+' | '~' | '||' {
   if (isToken(value) && (value.value === '>' || value.value === '+' || value.value === '~' || value.value === '||')) {
     return value.value;
   }
@@ -3766,7 +3758,7 @@ const scssFactory = (g: ScssInputRules) => {
   const IfBodyRule = node<Ruleset>(
     'IfBodyRule',
     sequence(
-      g.Selector,
+      g.SelectorList,
       g.IfBody
     ),
     children => rule(
@@ -5109,8 +5101,8 @@ const scssFactory = (g: ScssInputRules) => {
    * attribute selectors and pseudo arguments remain explicit
    * follow-up families rather than being flattened into a string fallback.
    */
-  const Simple = node<SimpleSelector>(
-    'SimpleSelector',
+  const BasicSelector = node<SimpleSelector>(
+    'BasicSelector',
     g.SimpleSelectorToken,
     children => simpleSelector(requireToken(children[0]).value)
   );
@@ -5295,7 +5287,7 @@ const scssFactory = (g: ScssInputRules) => {
       { trivia: whitespace },
       sequence(
         optional(scssRelativeSelectorCombinator),
-        g.Complex
+        g.ComplexSelector
       )
     ),
     (children) => {
@@ -5312,7 +5304,7 @@ const scssFactory = (g: ScssInputRules) => {
    * The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
    * selector-ONLY argument: a (relative) selector list with no general-any text
    * fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
-   * non-relative shape reduces identically to `g.Selector`; the retained
+   * non-relative shape reduces identically to `g.SelectorList`; the retained
    * `SelectorList` becomes structured `PseudoSelector.args`, never joined at parse.
    */
   /*
@@ -5483,8 +5475,8 @@ const scssFactory = (g: ScssInputRules) => {
     literal('&'),
     () => simpleSelector('&')
   );
-  const Compound = node<SelectorTerm>(
-    'Compound',
+  const CompoundSelector = node<SelectorTerm>(
+    'CompoundSelector',
     noTrivia(sequence(
       oneOrMore(choice(
         g.NestingSelector,
@@ -5496,7 +5488,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.Placeholder,
         g.InterpolatedSimple,
         g.NamespaceTypeSelector,
-        g.Simple
+        g.BasicSelector
       )),
       not(pseudoColon)
     )),
@@ -5508,35 +5500,43 @@ const scssFactory = (g: ScssInputRules) => {
     literal('+'),
     literal('~')
   );
-  const ComplexTail = node<ScssComplexTail>(
-    'ComplexTail',
+
+  /*
+   * The separator between compound selectors may be an explicit combinator
+   * (`>`, `+`, `~`, `||`) or just ambient trivia, which SCSS treats as the
+   * descendant combinator. Combinators are folded inline exactly as the CSS
+   * base does — there is no `ComplexTail` wrapper node, so the concrete tree
+   * converges to CSS's `ComplexSelector` shape. `|` is not a combinator here:
+   * it is a namespace prefix bound into a single type selector.
+   */
+  const ComplexSelector = node<SelectorBranch>(
+    'ComplexSelector',
     sequence(
-      optional(scssCombinator),
-      g.Compound
+      g.CompoundSelector,
+      many(sequence(
+        optional(scssCombinator),
+        g.CompoundSelector
+      ))
     ),
     (children) => {
-      const token = children.find(isToken);
-      const term = children.find(isSelectorTerm)!;
-      const combinator = token === undefined ? ' ' : scssCombinatorText(token);
-      return { combinator, term };
+      const segments: Array<{ combinator?: ScssSegmentCombinator; term: SelectorTerm }> = [];
+      let combinator: ScssSegmentCombinator = ' ';
+      for (const child of children) {
+        if (isSelectorTerm(child)) {
+          segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
+          combinator = ' ';
+          continue;
+        }
+        combinator = scssCombinatorText(child);
+      }
+      return selectorBranchOf([segments[0]!, ...segments.slice(1)]);
     }
-  );
-  const Complex = node<SelectorBranch>(
-    'Complex',
-    sequence(
-      g.Compound,
-      many(g.ComplexTail)
-    ),
-    children => selectorBranchOf([
-      { term: children.find(isSelectorTerm)! },
-      ...children.filter(isScssComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
-    ])
   );
   const SelectorTail = node<SelectorBranch>(
     'SelectorTail',
     sequence(
       literal(','),
-      g.Complex
+      g.ComplexSelector
     ),
     children => children.find(isSelectorBranch)!
   );
@@ -5550,10 +5550,10 @@ const scssFactory = (g: ScssInputRules) => {
    * pseudo-argument list here is left alone for the same reason — it is never a
    * `Ruleset`'s selector, so a span there would move the tree for nothing.
    */
-  const Selector = node<SelectorList>(
-    'Selector',
+  const SelectorList = node<SelectorList>(
+    'SelectorList',
     sequence(
-      g.Complex,
+      g.ComplexSelector,
       many(g.SelectorTail)
     ),
     (children, _fields, span) => withSourceSpan(selist(...children.filter(isSelectorBranch)), span)
@@ -5593,7 +5593,7 @@ const scssFactory = (g: ScssInputRules) => {
     'Extend',
     sequence(
       regex(/@extend(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.Selector,
+      g.SelectorList,
       optional(regex(/!optional(?![-_a-zA-Z0-9\u0080-\uffff])/i)),
       optional(literal(';'))
     ),
@@ -5706,7 +5706,7 @@ const scssFactory = (g: ScssInputRules) => {
   const Ruleset = node<Ruleset>(
     'Ruleset',
     sequence(
-      g.Selector,
+      g.SelectorList,
       literal('{'),
       ruleBody,
       literal('}')
@@ -5925,7 +5925,7 @@ const scssFactory = (g: ScssInputRules) => {
     ScssGenericAtRuleName,
     OpaqueAtRuleBlock,
     OpaqueAtRuleStatement,
-    Simple,
+    BasicSelector,
     InterpolatedSimple,
     Placeholder,
     NamespaceTypeSelector,
@@ -5934,12 +5934,11 @@ const scssFactory = (g: ScssInputRules) => {
     PseudoArgumentGroup,
     PseudoSelector,
     NestingSelector,
-    Compound,
-    ComplexTail,
-    Complex,
+    CompoundSelector,
+    ComplexSelector,
     RelativeComplex,
     SelectorTail,
-    Selector,
+    SelectorList,
     NestedSelectorTail,
     NestedSelector,
     Extend,
