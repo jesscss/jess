@@ -62,6 +62,52 @@
     target is ONE shared lookup descriptor; adding a `lookup` or `keyKind` field to a
     reference node without it makes the duplication worse, not better.
 
+## SESSION HANDOFF — 2026-08-17, jess dev `6d7fbe82d` (CURRENT — read first)
+
+**CURRENT FOCUS (owner, 2026-08-17): strengthen the Less compilation story so we can
+keep publishing alphas.** The v5 alpha IS jess (a thin wrapper over jess's `Compiler`),
+so "publishing alphas" = jess compiling Less correctly against the owner-maintained
+`.css` fixtures. Start by MEASURING the Less baseline as a named per-case set
+(`packages/jess/test/less/**`; build `lib/` first — a stale `parser-shared`/`core` masks
+real failures), then triage each red case (parse error vs wrong emitted CSS vs genuine
+feature gap) before fixing. `packages/jess` baseline drifts — never quote an inherited
+count. Standing Less-adjacent backlog rows: tasks #25 (Sass+ `math.div`/`@-use` leak),
+#36 (`@extend` out of mixin bodies), #44 (less `@1foo` internal Error not SyntaxError),
+#45/#46 (dialect accept/reject gaps), #59 (`//` inside `url()`).
+
+**Landed this session (all on `origin/dev`), and the compose state:**
+- **parseman 0.49.0 is PUBLISHED and jess `dev` is bumped to it** (`5df3ad779`). ⇒ **The
+  "four grammars do not compose" headline in the 2026-08-09 section below is SUPERSEDED.**
+  0.49.0 ships the analyzer lifts + the cross-module `buildImports` re-emit + two
+  review-surfaced correctness fixes; `cssBaseRules` (a **208-rule hole-free fused css
+  base**, `@jesscss/css-parser/grammar`) macro-fuses on dev. The bump is behavior-neutral
+  (check:macro 0 fallbacks, parser suites 512/730/622/510, LS 4 / DC 3 baseline).
+- **P28 — all four dialects' selector-tower CST converged to css's canonical names**
+  (`CompoundSelector`/`ComplexSelector`/`SelectorList`/`BasicSelector`, `ComplexTail`
+  inlined), byte-identical AST throughout. `DESIGN-DECISIONS.md` **P28**. Lesson:
+  grammar rule/node renames ripple into the UNGATED `language-service` +
+  `diagnostics-core` (they key off grammarType STRINGS) — run both suites vs baseline
+  (`memory:grammar-renames-ripple-into-ungated-language-service`).
+- **P29 — nested relative selectors accepted in all four dialects** (`.parent { > .child }`
+  = `.parent > .child`, CSS Nesting), producing a context-scoped `RelativeSelector` (root
+  `> .a` still rejected); additive (css byte-identity 6/6). `DESIGN-DECISIONS.md` **P29**.
+- **Compose Phase 1 (css groundwork)** (`6d7fbe82d`): css reducer helpers hoisted to the
+  importable `packages/core/src/ast/css-grammar-helpers.ts`, `@jesscss/parser-shared`
+  externalized in the css build, `cssBaseRules` exported and proven to fuse on published
+  0.49.0.
+
+**Compose DEDUP — PARKED, foundation proven, NOT abandoned.** Deprioritized behind the
+Less focus, resumable at any time. State: `cssBaseRules` fuses on dev; the next step is a
+**per-dialect reducer-helper hoist** (scss still has ~85 module-local helpers with no
+import provenance — `compose()` refuses them where `composeLeaf` did not; it needs an
+`scss-grammar-helpers.ts` mirroring css's) BEFORE the compose-switch. Immediate
+selector-tower deletion is only ~3–5 consts — `CompoundSelector` stays a genuine override
+until css factors `simpleSelectorAtom` (piloted on branch `css-factor-selector-atom`, not
+on dev). Full plan, worklist, and per-dialect classification are in
+`docs/design/COMPOSE-MIGRATION-SPEC.md` — the place to resume.
+
+---
+
 ## SESSION HANDOFF — 2026-08-09, jess `4d4954156`
 
 **Recorded near a usage limit.** Read this section before the 2026-08-01 one below it.

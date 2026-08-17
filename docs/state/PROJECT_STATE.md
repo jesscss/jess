@@ -13,6 +13,19 @@ For repo-wide rules, read `AGENTS.md`. For the active architecture roadmap, use:
 
 (`PERFORMANCE-HANDOFF.md` was listed here until 2026-07-24 and does not exist.)
 
+## Current focus (2026-08-17, dev `6d7fbe82d`)
+
+**Strengthen the Less compilation story so we can keep publishing alphas.** Measure the
+`packages/jess/test/less/**` baseline as a NAMED per-case set (build `lib/` first — stale
+`parser-shared`/`core` masks real failures), triage each red case (parse error vs wrong
+emitted CSS vs genuine feature gap), then fix. Baseline drifts — capture your own, cite a
+SHA. The CURRENT session handoff at the top of `HANDOFF.md` has the full landed-work
+summary; in short: **parseman 0.49.0 is published and jess is bumped**; **P28**
+(all four dialects' selector-tower CST converged to css's canonical names, byte-identical
+AST) and **P29** (nested relative selectors / CSS Nesting `> .child`, additive) landed;
+the compose **DEDUP is PARKED** with `cssBaseRules` proven to fuse on dev — the resume
+point is `docs/design/COMPOSE-MIGRATION-SPEC.md`.
+
 ## Package Build Shape
 
 If package B depends on package A, build A before testing B against local
