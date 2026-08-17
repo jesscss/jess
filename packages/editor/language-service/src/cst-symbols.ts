@@ -38,7 +38,7 @@ const MIXIN_STATEMENT_TYPE = 'MixinStatement';
  * strips the differing keyword so both resolve to the same bare `matchName`.
  */
 const MIXIN_DEF_TYPES = new Set(['MixinDefinition', 'FunctionRule']);
-const MIXIN_SELECTOR_TYPES = new Set(['SelectorBranch', 'Compound']);
+const MIXIN_SELECTOR_TYPES = new Set(['SelectorBranch', 'CompoundSelector']);
 
 /** A variable/mixin symbol resolved from a cursor position. */
 export type CstSymbol = {

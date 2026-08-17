@@ -100,15 +100,12 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
  * the symbol they yield — matching the AST-based `getDocumentSymbols` exactly.
  */
 const SELECTOR_TYPES = new Set([
-  'Selector',
   'SelectorList',
   'SelectorBranch',
   'NestedSelector',
   'ComplexSelector',
   'RelativeComplex',
-  'Complex',
   'CompoundSelector',
-  'Compound',
   'InterpolatedSelector',
   'BasicSelector',
   'ClassSelector',
@@ -116,7 +113,7 @@ const SELECTOR_TYPES = new Set([
   'TypeSelector',
   'UniversalSelector'
 ]);
-const LESS_SELECTOR_TYPES = new Set(['SelectorBranch', 'Compound']);
+const LESS_SELECTOR_TYPES = new Set(['SelectorBranch', 'CompoundSelector']);
 const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBlock', 'QueryAtRuleBlock']);
 
 export function cstIsSelector(node: CssCstNode): boolean {

@@ -310,7 +310,7 @@ const IMPORTANT_TYPES = new Set(['Important', 'ImportantValue']);
 const IMPORT_RULE_TYPES = new Set(['ImportStatement']);
 const MODULE_LOAD_TYPES = new Set(['UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport']);
 const STATIC_IMPORT_TARGET_TYPES = new Set(['Quoted', 'ImportTarget', 'Url']);
-const EXTEND_TARGET_TYPES = new Set(['ComplexSelector', 'Selector', 'PseudoSelectorComplex']);
+const EXTEND_TARGET_TYPES = new Set(['ComplexSelector', 'PseudoSelectorComplex']);
 const EXTERNAL_SOURCE_TYPES = new Set(['ImportStatement', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'ValueBlock']);
@@ -341,8 +341,8 @@ const TYPE_SELECTOR_TYPES = new Set(['BasicSelector', 'TypeSelector']);
 const ATTRIBUTE_SELECTOR_TYPES = new Set(['AttributeSelector']);
 const SELECTOR_LIST_TYPES = new Set(['SelectorList', 'TopLevelSelectorList']);
 const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector']);
-const RULE_SELECTOR_TYPES = new Set(['SelectorList', 'TopLevelSelectorList', 'SelectorListWithExtends', 'Selector']);
-const RULE_SELECTOR_BRANCH_TYPES = new Set([...SELECTOR_BRANCH_TYPES, 'SelectorBranch', 'Complex']);
+const RULE_SELECTOR_TYPES = new Set(['SelectorList', 'TopLevelSelectorList', 'SelectorListWithExtends']);
+const RULE_SELECTOR_BRANCH_TYPES = new Set([...SELECTOR_BRANCH_TYPES, 'SelectorBranch']);
 const LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS = new Set(['before', 'after', 'first-line', 'first-letter']);
 const IGNORED_TYPE_SELECTOR_PSEUDO_CLASSES = new Set([
   'active-view-transition-type',
@@ -4418,7 +4418,7 @@ function forEachExtendTarget(
     return;
   }
   if (language === 'scss') {
-    const target = firstChildNodeOf(node, 'Selector');
+    const target = firstChildNodeOf(node, 'SelectorList');
     if (target !== undefined) {
       fn(target, true);
     }

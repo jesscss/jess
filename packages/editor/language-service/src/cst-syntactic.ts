@@ -53,7 +53,7 @@ const SEMANTIC_TOKEN_TYPE_INDEX = new Map<SemanticTokenType, number>(SEMANTIC_TO
 const NUMBER_TYPES = new Set(['Num', 'Dimension', 'Color']);
 const VARIABLE_REFERENCE_TYPES = new Set(['Reference', 'VariableReference']);
 const VARIABLE_DECLARATION_TYPES = new Set(['VariableDeclaration']);
-const STATIC_SIMPLE_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector', 'Simple', 'SimpleSelector']);
+const STATIC_SIMPLE_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector', 'SimpleSelector']);
 
 /*
  * Genuine at-rule grammarTypes whose leading `@keyword` is a `namespace` token.
@@ -77,7 +77,7 @@ const NAMESPACE_KEYWORD_TYPES = new Set([
  * `@keyword` is a `namespace` token and the name that follows is a `function`.
  */
 const SCSS_CALLABLE_TYPES = new Set(['MixinDefinition', 'MixinCall', 'FunctionRule']);
-const LESS_SELECTOR_TYPES = new Set(['SelectorBranch', 'Compound']);
+const LESS_SELECTOR_TYPES = new Set(['SelectorBranch', 'CompoundSelector']);
 const LESS_MIXIN_STATEMENT_TYPE = 'MixinStatement';
 
 function isCstNode(c: CssCstChild): c is CssCstNode {
