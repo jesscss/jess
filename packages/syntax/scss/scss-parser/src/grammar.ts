@@ -5548,8 +5548,19 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span) => withSourceSpan(selist(...children.filter(isSelectorBranch)), span)
   );
+
+  /*
+   * The NESTED ruleset's selector list carries the ORDINARY selector item shapes
+   * (`BasicSelector`/`CompoundSelector`/`ComplexSelector`, whatever each item
+   * reduces to) and, because this is a nesting context, ADDS `RelativeSelector`
+   * as one more admissible item — produced only when an item opens with a
+   * leading combinator (`> .a`). Items MIX freely (`> .a, .b`). Its node NAME is
+   * the canonical `SelectorList` — the same as the top-level list — so all four
+   * dialects converge on one nested-selector-list node name (P29 / COMPOSE §9);
+   * only the rules-map KEY (`NestedSelector`) stays distinct.
+   */
   const NestedSelector = node<SelectorList>(
-    'NestedSelector',
+    'SelectorList',
     oneOrMoreSep(
       g.RelativeComplex,
       literal(',')
@@ -5581,6 +5592,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => ({
       target: requireSelectorList(children[1]),
+
       /*
        * `partial: true` is Less's `all` semantics. Sass has no exact/all
        * distinction: `@extend` ALWAYS substitutes the target wherever it

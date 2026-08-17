@@ -102,7 +102,6 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
 const SELECTOR_TYPES = new Set([
   'SelectorList',
   'SelectorBranch',
-  'NestedSelector',
   'ComplexSelector',
   'RelativeComplexSelector',
   'CompoundSelector',

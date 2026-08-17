@@ -29,12 +29,13 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode, While } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, propertyReference, pseudoSelector, quoted, range, reference, relativeSelector, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Combinator as AstCombinator, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode, While } from '@jesscss/core/ast';
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
 type JessComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
+type JessSelectorSegment = { combinator?: AstCombinator; term: SelectorTerm };
 type JessQueryFeatureName = { readonly property: Keyword };
 type JessAtRuleHeader = { readonly name: string; readonly prelude: ValueNode | null };
 type JessMixinCallArgument = MixinCall['args'][number];
@@ -149,7 +150,9 @@ type JessRules = {
   SelectorCapture: Combinator<SelectorCapture>;
   ComplexSelector: Combinator<SelectorBranch>;
   SelectorList: Combinator<SelectorList>;
+  NestedSelectorList: Combinator<SelectorList>;
   Ruleset: Combinator<Ruleset>;
+  NestedRuleset: Combinator<Ruleset>;
   ForName: Combinator<string>;
   ForBinding: Combinator<ForBinding>;
   ForRangeBound: Combinator<ValueNode>;
@@ -285,6 +288,43 @@ function jessCombinator(value: Token): JessComplexTail['combinator'] {
     return value.value;
   }
   return ' ';
+}
+
+/*
+ * A NESTING leading combinator (`.parent { > .child }`) is one of `>`/`+`/`~`,
+ * mirroring css's `relativeSelectorCombinator`. The column combinator `||` is a
+ * compound separator, not a relative one, so it is excluded here.
+ */
+function jessRelativeCombinator(child: unknown): '>' | '+' | '~' {
+  if (isToken(child) && (child.value === '>' || child.value === '+')) {
+    return child.value;
+  }
+  return '~';
+}
+
+/*
+ * Decompose an already-built `SelectorBranch` back into `{combinator, term}`
+ * segments so a leading relative combinator can be prepended. Mirrors css's
+ * `branchSegments`: a bare term is one segment; a `RelativeSelector` skips its
+ * own leading combinator at index 0.
+ */
+function branchSegments(branch: SelectorBranch): [JessSelectorSegment, ...JessSelectorSegment[]] {
+  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
+    return [{ term: branch }];
+  }
+  const segments: JessSelectorSegment[] = [];
+  let combinator: AstCombinator = ' ';
+  const start = branch.type === 'RelativeSelector' ? 1 : 0;
+  for (let index = start; index < branch.value.length; index++) {
+    const part = branch.value[index]!;
+    if (typeof part === 'string') {
+      combinator = part;
+    } else {
+      segments.push(segments.length === 0 ? { term: part } : { combinator, term: part });
+      combinator = ' ';
+    }
+  }
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 function isExpressionFact(value: unknown): value is ExpressionFact {
@@ -1204,6 +1244,7 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
 function reduceGuardTruth(children: readonly unknown[]): GuardNode {
   return { g: 'truth', value: requireExpressionFact(children[0]).value };
 }
+
 /*
  * The two comparison POSITIONS (§4.2a). `$if` asserts — a groundless relational
  * pair raises, because the author asked which value is greater and there is no
@@ -4953,7 +4994,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.For,
     g.If,
     g.While,
-    g.Ruleset,
+    g.NestedRuleset,
     g.SupportsAtRuleBlock,
     g.Keyframes,
     g.OpaqueAtRuleBlock,
@@ -4979,7 +5020,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.While,
     g.ReferenceCall,
     g.Apply,
-    g.Ruleset,
+    g.NestedRuleset,
     g.SupportsAtRuleBlock,
     g.Keyframes,
     g.OpaqueAtRuleBlock,
@@ -6215,6 +6256,54 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)
   );
+
+  /*
+   * A NESTING leading combinator: CSS Nesting lets a nested selector open with a
+   * combinator (`.parent { > .child { … } }`), where `>` relates to the implicit
+   * parent (`.parent > .child`). This reuses `g.ComplexSelector` behind an
+   * optional leading `>`/`+`/`~`, yielding a `RelativeSelector` when the
+   * combinator is present and a bare `ComplexSelector` otherwise. Mirrors css's
+   * `RelativeComplexSelector` (css `grammar.ts`) and scss's `RelativeComplex`.
+   */
+  const relativeSelectorCombinator = choice(
+    literal('>'),
+    literal('+'),
+    literal('~')
+  );
+  const RelativeComplexSelector = node<SelectorBranch>(
+    'RelativeComplexSelector',
+    sequence(
+      optional(relativeSelectorCombinator),
+      g.ComplexSelector
+    ),
+    (children) => {
+      const branch = children.find(isSelectorBranch)!;
+      if (children.length === 1) {
+        return branch;
+      }
+      const lead = jessRelativeCombinator(children[0]);
+      return relativeSelector(lead, branchSegments(branch));
+    }
+  );
+
+  /*
+   * The NESTED ruleset's selector list carries the ORDINARY selector item shapes
+   * (`SimpleSelector`/`CompoundSelector`/`ComplexSelector`, whatever each item
+   * reduces to) and, because this is a nesting context, ADDS `RelativeSelector`
+   * as one more admissible item — produced only when an item opens with a
+   * leading combinator. Items MIX freely (`> .a, .b`). The node NAME is the
+   * canonical `SelectorList` (only the rules-map KEY differs); the TOP-LEVEL
+   * `SelectorList` admits no leading combinator, so a stylesheet-root `> .a` —
+   * with no parent to relate to — is still rejected.
+   */
+  const NestedSelectorList = node<SelectorList>(
+    'SelectorList',
+    oneOrMoreSep(
+      RelativeComplexSelector,
+      literal(',')
+    ),
+    (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)
+  );
   const Apply = node<Apply>(
     'Apply',
     sequence(
@@ -6243,31 +6332,67 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     children => children.filter(isSelectorBranch)
       .map(target => ({ target: selist(target), partial: !children.some(child => isToken(child) && child.value === '!exact') }))
   );
+
+  /*
+   * A ruleset body nests via `g.NestedRuleset` (relative-capable) regardless of
+   * whether the CARRYING ruleset is top-level or nested — once inside a block, a
+   * child rule always has a parent to relate to. Shared by both `Ruleset` and
+   * `NestedRuleset` so the two differ ONLY in their selector-list rule.
+   */
+  const rulesetBodyItem = choice(
+    literal(';'),
+    g.MixinCall,
+    g.ValueBlockDeclaration,
+    g.VariableDeclaration,
+    g.Declaration,
+    g.MixinDefinition,
+    g.For,
+    g.If,
+    g.While,
+    g.ReferenceCall,
+    g.Apply,
+    g.Extend,
+    g.NestedRuleset,
+    g.SupportsAtRuleBlock,
+    g.OpaqueAtRuleBlock,
+    g.ScopeBlock,
+    g.AtRuleBlock,
+    g.AtRuleStatement
+  );
   const Ruleset = node<Ruleset>(
     'Ruleset',
     sequence(
       g.SelectorList,
       literal('{'),
-      many(choice(
-        literal(';'),
-        g.MixinCall,
-        g.ValueBlockDeclaration,
-        g.VariableDeclaration,
-        g.Declaration,
-        g.MixinDefinition,
-        g.For,
-        g.If,
-        g.While,
-        g.ReferenceCall,
-        g.Apply,
-        g.Extend,
-        g.Ruleset,
-        g.SupportsAtRuleBlock,
-        g.OpaqueAtRuleBlock,
-        g.ScopeBlock,
-        g.AtRuleBlock,
-        g.AtRuleStatement
-      )),
+      many(rulesetBodyItem),
+      literal('}')
+    ),
+    (children, _fields, _span, rawChildren) => {
+      requireExactToken(
+        children[1],
+        '{'
+      );
+      requireExactToken(
+        children.at(-1),
+        '}'
+      );
+      const extensions = children.filter(isExtendInstructionArray).flat();
+      return withBlockBody(rule(
+        requireSelectorList(children[0]),
+        collectBlockStatements(
+          children,
+          2
+        ),
+        extensions.length ? extensions : undefined
+      ), rawChildren);
+    }
+  );
+  const NestedRuleset = node<Ruleset>(
+    'NestedRuleset',
+    sequence(
+      g.NestedSelectorList,
+      literal('{'),
+      many(rulesetBodyItem),
       literal('}')
     ),
     (children, _fields, _span, rawChildren) => {
@@ -6492,7 +6617,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     SelectorCapture,
     ComplexSelector,
     SelectorList,
+    NestedSelectorList,
     Ruleset,
+    NestedRuleset,
     ForName,
     ForBinding,
     ForRangeBound,
