@@ -275,12 +275,11 @@ type LessRules = {
   AdjacentInterpolatedSelector: Combinator<SimpleSelector>;
   BareInterpolatedSelectorWithSuffix: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
-  Compound: Combinator<SelectorTerm>;
-  ComplexTail: Combinator<ComplexTailFact>;
-  Complex: Combinator<SelectorBranch>;
+  CompoundSelector: Combinator<SelectorTerm>;
+  ComplexSelector: Combinator<SelectorBranch>;
   RelativeComplex: Combinator<SelectorBranch>;
   SelectorTail: Combinator<SelectorBranch>;
-  Selector: Combinator<SelectorList>;
+  SelectorList: Combinator<SelectorList>;
   ExtendTarget: Combinator<ExtendTargetFact>;
   ExtendStatement: Combinator<BodyExtendFact>;
   RulesetWithExtends: Combinator<Ruleset>;
@@ -1222,6 +1221,31 @@ function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
   const token = children.find(child => !isSelectorTerm(child));
   const term = children.find(isSelectorTerm)!;
   return { combinator: token === undefined ? ' ' : requireCombinator(token), term };
+}
+
+/**
+ * Fold an inlined `CompoundSelector (combinator? CompoundSelector)*` child run
+ * into the `{ term }, { combinator, term }, …` segment list `selectorBranchOf`
+ * consumes. The combinator token is folded inline exactly as the CSS base does
+ * — there is no `ComplexTail` wrapper node — so the concrete tree converges to
+ * CSS's `ComplexSelector` shape. Recognition-only children (the `not(…)` guard
+ * lookaheads) contribute no term and reduce to the descendant default, so they
+ * never disturb the fold.
+ */
+function complexSegmentsFrom(
+  children: readonly unknown[]
+): [{ combinator?: SelectorCombinator; term: SelectorTerm }, ...Array<{ combinator?: SelectorCombinator; term: SelectorTerm }>] {
+  const segments: Array<{ combinator?: SelectorCombinator; term: SelectorTerm }> = [];
+  let combinator: SelectorCombinator = ' ';
+  for (const child of children) {
+    if (isSelectorTerm(child)) {
+      segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
+      combinator = ' ';
+    } else {
+      combinator = requireCombinator(child);
+    }
+  }
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 /** Space-separated query clause reduction: keyword/value children join into a
@@ -5809,8 +5833,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // This selector family is private to functional pseudo arguments.  Its tail
   // admits Less selector trivia immediately before the next compound, so
   // `.a /* note */ > /* note */ .b` remains one structured complex selector.
-  // The ordinary outer selector continues to use ComplexTail, whose
-  // no-trivia compound boundary is intentionally unchanged.
+  // The ordinary outer selector folds its combinator tail inline (there is no
+  // `ComplexTail` node), and its no-trivia compound boundary is intentionally
+  // unchanged.
   const PseudoArgumentComplexTail = node(
     'PseudoArgumentComplexTail',
     sequence(optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)),
@@ -6177,7 +6202,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * retain the ordinary selector productions and their exact AST structure.
    */
   const ClassIdCompound = node(
-    'Compound',
+    'CompoundSelector',
     parser({ trivia: compoundSelectorTrivia }, sequence(mixinName, many(compoundSimple))),
     children => selectorTermFromTokens(children.map((child) => {
       return isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
@@ -6187,18 +6212,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'SelectorBranch',
     sequence(
       ClassIdCompound,
-      many(sequence(not(whenGuardAhead), g.ComplexTail))
+      many(sequence(not(whenGuardAhead), optional(staticCombinator), g.CompoundSelector))
     ),
     (children, _fields, span) => ({
-      selector: withSourceSpan(selectorBranchOf([
-        { term: children.find(isSelectorTerm)! },
-        ...children.filter(isComplexTailFact)
-      ]), span),
+      selector: withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span),
       extensions: []
     })
   );
-  const Compound: Combinator<SelectorTerm> = node(
-    'Compound',
+  const CompoundSelector: Combinator<SelectorTerm> = node(
+    'CompoundSelector',
     // Production's CompoundSelector is a run of adjacent simple selectors.
     // Keep that same structural distinction here: `.a#id` is one CompoundSelector with
     // two SimpleSelector children, not a recovered selector string. Static pseudos use
@@ -6213,27 +6235,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return selectorTermFromTokens(simples);
     }
   );
-  const Complex = node(
+  const ComplexSelector = node(
     'ComplexSelector',
     sequence(
-      g.Compound,
-      many(sequence(not(whenGuardAhead), g.ComplexTail))
+      g.CompoundSelector,
+      many(sequence(not(whenGuardAhead), optional(staticCombinator), g.CompoundSelector))
     ),
-    (children, _fields, span) => {
-      const head = children.find(isSelectorTerm)!;
-      const tails = children.filter(isComplexTailFact);
-      const branch = selectorBranchOf([
-        { term: head },
-        ...tails
-      ]);
-      return withSourceSpan(branch, span);
-    }
+    (children, _fields, span) => withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span)
   );
   const RelativeComplex = node(
     'RelativeComplex',
     sequence(
       optional(relativeSelectorCombinator),
-      g.Complex
+      g.ComplexSelector
     ),
     (children, _fields, span) => {
       const branch = children.find(isSelectorBranch)!;
@@ -6241,19 +6255,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return withSourceSpan(leading === undefined ? branch : relativeSelector(requireCombinator(leading), branchSegments(branch)), span);
     }
   );
-  const ComplexTail = node(
-    'ComplexTail',
-    sequence(optional(staticCombinator), g.Compound),
-    combinatorTailReducer
-  );
   const SelectorTail = node(
     'SelectorTail',
-    sequence(literal(','), g.Complex),
+    sequence(literal(','), g.ComplexSelector),
     children => children.find(isSelectorBranch)!
   );
-  const Selector = node(
+  const SelectorList = node(
     'SelectorList',
-    parser({ trivia: outerSelectorTrivia }, sequence(g.Complex, many(g.SelectorTail))),
+    parser({ trivia: outerSelectorTrivia }, sequence(g.ComplexSelector, many(g.SelectorTail))),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
   const RelativeSelector = node(
@@ -6294,13 +6303,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       // An extend target can carry a typed selector interpolation, unlike its
       // inline subject. Keep `.@{name}` in the AST rather than rescanning it.
-      g.Compound,
-      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), g.ComplexTail))
+      g.CompoundSelector,
+      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), optional(staticCombinator), g.CompoundSelector))
     ),
-    (children, _fields, span) => withSourceSpan(selectorBranchOf([
-      { term: children.find(isSelectorTerm)! },
-      ...children.slice(1).filter(isComplexTailFact)
-    ]), span)
+    (children, _fields, span) => withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span)
   );
   const ExtendTarget = node(
     'ExtendTarget',
@@ -6357,7 +6363,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const DynamicSelectorBranch = node(
     'SelectorBranch',
-    g.Complex,
+    g.ComplexSelector,
     children => ({ selector: children.find(isSelectorBranch)!, extensions: [] })
   );
   const selectorBranch = choice(SelectorBranch, DynamicSelectorBranch);
@@ -6774,11 +6780,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     AdjacentInterpolatedSelector,
     BareInterpolatedSelectorWithSuffix,
     InterpolatedParentSuffix,
-    Compound,
-    ComplexTail,
-    Complex,
+    CompoundSelector,
+    ComplexSelector,
     SelectorTail,
-    Selector,
+    SelectorList,
     ExtendTarget,
     ExtendStatement,
     RulesetWithExtends,

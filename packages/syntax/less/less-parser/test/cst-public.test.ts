@@ -428,7 +428,7 @@ describe('Less direct-AST closure CST contract', () => {
     expect(findNodes(result.tree, 'ExtendPseudo').map(leafValues)).toEqual([
       [':', 'extend', '(', '.target', 'all', ')']
     ]);
-    expect(findNodes(result.tree, 'Compound').map(leafValues)).toContainEqual(['.first']);
+    expect(findNodes(result.tree, 'CompoundSelector').map(leafValues)).toContainEqual(['.first']);
     expect(findNodes(result.tree, 'InlineExtendSubjectCompound').map(leafValues)).toEqual([
       ['.inline'],
       ['.sibling']
