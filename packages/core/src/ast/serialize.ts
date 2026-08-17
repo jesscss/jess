@@ -1745,12 +1745,38 @@ function selectorBranchAtoms(c: SelectorBranch): string[] {
  * token's `@{…}` template into bytes, so the resolved LEAF is tokenized — but the
  * branch/term/token structure still comes from the parser, so no joined selector
  * is ever rebuilt and re-split.
+ *
+ * [mixin-interp-fuse] A compound term's adjacent plain tokens are ONE element
+ * leaf whose boundary interpolation moves: `.generated-@{name}` parses as a
+ * literal token `.generated-` FUSED with an interp token `@{name}`, and the
+ * resolved element is the single atom `.generated-first` — not `.generated-`
+ * followed by `first`. So the plain (non-pseudo) tokens of a term are joined
+ * into one string and atomized ONCE; `pushLeafAtoms`' own split still re-derives
+ * the internal atom boundaries of a genuine multi-class compound (`.a.b`). A
+ * structured pseudo is its own atom boundary: it flushes the pending leaf, then
+ * contributes its name + argument atoms.
  */
 function resolvedBranchAtoms(c: SelectorBranch, frame: Frame | null, e: EvalCtx): string[] {
   const out: string[] = [];
   for (const term of selectorBranchTerms(c)) {
+    let pending = '';
     for (const sim of termTokens(term)) {
-      pushResolvedTokenAtoms(sim, frame, e, out);
+      if (sim.type === 'PseudoSelector') {
+        if (pending !== '') {
+          pushLeafAtoms(pending, out);
+          pending = '';
+        }
+        pushResolvedTokenAtoms(sim, frame, e, out);
+        continue;
+      }
+      if (sim.interp !== null) {
+        pending += resolveSimpleTextSync(sim, frame, e);
+      } else if (sim.text !== null) {
+        pending += sim.text;
+      }
+    }
+    if (pending !== '') {
+      pushLeafAtoms(pending, out);
     }
   }
   return out;
