@@ -17,7 +17,7 @@ const invalidCalls = [
 ] as const;
 
 describe('Less built-in argument errors through the public AST route', () => {
-  it('keeps all static CSS color calls byte-faithful without dispatching an installed Less function', async () => {
+  it('keeps all static CSS color calls deferred (comma spacing normalized) without dispatching an installed Less function', async () => {
     let calls = 0;
     const compiler = new Compiler({
       output: { collapseNesting: true },
@@ -38,10 +38,15 @@ describe('Less built-in argument errors through the public AST route', () => {
     });
     const source = '.entry { a: rgb(1,2, 3); b: rgba(1, 2,3, .5); c: hsl(198deg,28%, 50%); d: hsla(198deg, 28%,50%, .5); }';
 
+    /*
+     * The call stays deferred (never dispatched — `calls` below is 0), but comma
+     * spacing is minimal-correctness normalized to one space after each comma
+     * (owner rule 2026-08-17): the authored tight/mixed spacing is NOT preserved.
+     */
     await expect(compiler.renderString(source, { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toContain('a: rgb(1,2, 3)');
+      .resolves.toContain('a: rgb(1, 2, 3)');
     await expect(compiler.renderString(source, { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toContain('d: hsla(198deg, 28%,50%, .5)');
+      .resolves.toContain('d: hsla(198deg, 28%, 50%, .5)');
     expect(calls).toBe(0);
   });
 

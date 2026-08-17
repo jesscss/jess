@@ -20,10 +20,6 @@
     {
       "test": "test/less/bootstrap-clean-repro.test.ts > bootstrap clean render renders and collects rejections",
       "reason": "Bootstrap 4.6 render is missing the `--breakpoint-*` custom properties the test asserts on."
-    },
-    {
-      "test": "test/less/ruleset-merge-regression.test.ts > Less ruleset mixin merge regressions evaluates chained ruleset mixins with property merge values",
-      "reason": "chained ruleset mixins drop the `+` property-merge spacing in the merged box-shadow value."
     }
   ],
   "knownFlakyElsewhere": [

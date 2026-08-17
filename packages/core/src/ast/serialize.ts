@@ -4962,9 +4962,9 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
   }
 
   /*
-   * A deferred call must retain literal spellings (`.5`, comma padding, hue
-   * units) exactly. Disable typed literal canonicalization for this byte lane;
-   * variable references still resolve through the same live frame walk.
+   * A deferred call must retain literal spellings (`.5`, hue units) exactly.
+   * Disable typed literal canonicalization for this byte lane; variable
+   * references still resolve through the same live frame walk.
    */
   const preserve = e.ev === null ? e : { ...e, ev: null };
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
@@ -4976,10 +4976,12 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
       const separator = authored?.[index - 1];
 
       /*
-       * A deferred value-function is explicitly byte-faithful: replay every
-       * parser-retained boundary, including ordinary spaces (`,` vs `, `).
+       * Comma spacing is minimal-correctness normalized to one space after the
+       * comma (owner rule 2026-08-17), matching the general call/list byte lane
+       * above — it is NOT authorship. The ONLY authored boundaries replayed
+       * verbatim are a newline + its indentation offset and a block comment.
        */
-      inner += separator ?? glue;
+      inner += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
       inner += emitValue(vals[index]!);
     }
     return literal(`${node.name}(${inner})`);
