@@ -258,10 +258,6 @@ const expectedFailureFixtures = new Map<string, string>([
    * still mismatch Less. Graduated from skip → expected-failure so they run.
    */
   [
-    'tests-unit/selectors/selectors.less',
-    'renders but throws mid-eval (currentArg.eval is not a function)'
-  ],
-  [
     'tests-unit/detached-rulesets/detached-rulesets.less',
     'detached-ruleset argument closure now matches Less; nested @media query merging still differs'
   ],
