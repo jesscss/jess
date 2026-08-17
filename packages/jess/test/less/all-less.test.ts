@@ -189,7 +189,7 @@ const expectedFailureFixtures = new Map<string, string>([
    */
   [
     'tests-config/3rd-party/bootstrap4.less',
-    'a leading-combinator nested rule inside a detached ruleset (`.m({ > td { … } })`) fails to parse; bootstrap-less-port mixins/_table-row.less hits it'
+    'the P29 nested relative-selector work fixed the original parse defect (`.m({ > td { … } })` now parses); it now fails later — the bootstrap-less-port `@plugin` function `breakpoint-min` throws (PluginFunctionError), yielding empty output'
   ],
 
   /*
