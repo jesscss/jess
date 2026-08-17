@@ -355,10 +355,16 @@ inlined) — `094eb17a6`/`12d0754a6`/`2af6d7386`; LS fix `b3eda4dce`.
 | 7 | pseudo-arg `*ComplexTail` | less/jess | inline the wrapper | pass-through |
 
 **Entangled residuals (need per-case care, still bump-independent):**
-- **NestedSelector→SelectorList** (scss): AST-identical (`selist`) but the nested list
-  accepts leading combinators css's top-level does not — tied to **P20 OPEN** (root
-  `> .a`), and a bare `SelectorList` name would collide with the top-level rule. Owner
-  call on whether css owns a canonical relative-nested-list name.
+- **Nested relative selectors → `RelativeSelector` (SETTLED, `DESIGN-DECISIONS.md`
+  P29).** Not a pure rename and NOT bump-gated: `.parent { > .child }` is valid CSS
+  Nesting. Measured: scss ACCEPTS it, css + jess REJECT it — a css/jess gap, not a
+  naming choice. Fix is ADDITIVE: the nested ruleset in all four accepts a leading
+  combinator producing a **`RelativeSelector`** (context-dependent — a `RelativeSelector`
+  only in a nesting context; the same production at the top is a `ComplexSelector`, so
+  root `> .a` stays rejected). The list node is `SelectorList` with items each
+  `RelativeSelector | ComplexSelector`. css already has the producer `RelativeComplexSelector`
+  (grammar.ts:1496), wired today only to `:has()` — reuse it for the nested ruleset.
+  Touches eval/render (must emit `.parent > .child`) — semantics change, oracle-gated.
 - **Pseudo-argument tower merge** (less `PseudoArgument*`, jess `PseudoSelector*`): a
   full duplicate selector tower building the identical AST — a structural merge, not a
   rename; DC-3 ripple (`EXTEND_TARGET_TYPES`/`NTH_ARGUMENT_TYPES`). Leaf-sets differ.
