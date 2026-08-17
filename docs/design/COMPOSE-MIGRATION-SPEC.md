@@ -331,6 +331,50 @@ Banked (all behavior-neutral, committed): the css helper hoist, `cssBaseRules`, 
 `simpleSelectorAtom` factoring + `TopLevelCompoundSelector` twin, and the parser-shared
 externalization.
 
+## 9. Bump-independent CST convergence worklist (enumerated 2026-08-15)
+
+Every case where a superset emits a gratuitously-different CST node NAME/shape for an
+AST that is ALREADY identical to css's = a grammar-local rename, byte-identical AST,
+**no parseman publish needed** (the copy-DELETION dedup is the only bump-gated part).
+Convergence direction is TO css's name. Each rename ripples into `language-service` +
+`diagnostics-core` (grammarType-string consumers, ungated by pre-push) — converge those
+in the same change; see [[grammar-renames-ripple-into-ungated-language-service]].
+
+**DONE:** main selector tower (scss/jess/less `Compound`/`Complex`/`Selector`→
+`CompoundSelector`/`ComplexSelector`/`SelectorList`, leaf→`BasicSelector`, `ComplexTail`
+inlined) — `094eb17a6`/`12d0754a6`/`2af6d7386`; LS fix `b3eda4dce`.
+
+**Clean batch (AST-identical, ≤1 consumer edit) — IN FLIGHT `converge-selector-cst-batch2`:**
+| # | target | dialects | current→canonical | AST (shared ctor) |
+|---|---|---|---|---|
+| 1 | keyframe leaf | less/scss/jess | `KeyframeSelector`→`SimpleSelector` | `simpleSelector` |
+| 2 | comma-tail | less/scss/jess | `SelectorTail`→inline `oneOrMoreSep` | `selist` (parent) |
+| 3 | `&` node name | scss/jess | `NestingSelector`/`Parent`→`SimpleSelector` | `simpleSelector` |
+| 4 | nested comma-tail | scss | `NestedSelectorTail`→inline | pass-through |
+| 5 | relative complex | scss/less | `RelativeComplex`→`RelativeComplexSelector` | `relativeSelector` |
+| 7 | pseudo-arg `*ComplexTail` | less/jess | inline the wrapper | pass-through |
+
+**Entangled residuals (need per-case care, still bump-independent):**
+- **NestedSelector→SelectorList** (scss): AST-identical (`selist`) but the nested list
+  accepts leading combinators css's top-level does not — tied to **P20 OPEN** (root
+  `> .a`), and a bare `SelectorList` name would collide with the top-level rule. Owner
+  call on whether css owns a canonical relative-nested-list name.
+- **Pseudo-argument tower merge** (less `PseudoArgument*`, jess `PseudoSelector*`): a
+  full duplicate selector tower building the identical AST — a structural merge, not a
+  rename; DC-3 ripple (`EXTEND_TARGET_TYPES`/`NTH_ARGUMENT_TYPES`). Leaf-sets differ.
+- **less simple-selector leaf**: no `BasicSelector` node (bare regex + `mixinName`,
+  shared with mixin-call + extend heads). Converging the CST/public-leaf name keeps the
+  AST identical but can't be split cleanly from the mixin/extend paths; converging it is
+  what would let LS delete the less-only `LESS_SELECTOR_TYPES` special-case.
+- **nth-argument names** (less/scss/jess `Nth*`): same AST *vocabulary* but per-rule
+  guards/interpolation differ — verify reducers byte-identical before treating as renames.
+
+**GENUINE OVERRIDES — NOT convergence targets (different AST / language):** value+math
+towers (`operation()`), interpolation leaves, declarations (terminator/merge/custom-prop),
+at-rule preludes (css raw-`Any` scan vs structured — §7 flag), query/supports machinery,
+and all dialect additions (variables, mixins, control rules, maps, modules, the extend
+subsystem whose `SelectorBranch` builds a `{selector,extensions}` pair, not the AST node).
+
 Cross-refs: `COMPOSE-SIMPLIFICATION-PROOF-REDO.md` (the evidence), parseman
 `release/0.49.0-compose-lifts` (the shipped lifts), `GRAMMAR-REVIEW-STANDARD.md`
 (per-const review), `docs/state/GRAMMAR-DEDUP-LOG.md` (the live worklog).
