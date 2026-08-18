@@ -7,6 +7,7 @@ import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 const readNumericFunctionArg = (value: any): number => {
   if (typeof value?.value === 'number') {
@@ -67,6 +68,15 @@ const baseCompiler = new Compiler({
        * ast/ GLOBAL fns (root-frame registry), no `@jesscss/plugin-less-compat`.
        */
       lessPlugin({ plugins: [lessHarnessFunctionsPlugin] }),
+
+      /*
+       * The Less.js compatibility layer that supplies the legacy `@plugin` script
+       * ABI (`registerPlugin`/`setOptions`/`functions`/`tree` globals). It is NOT
+       * part of the default compiler stack (see @jesscss/compiler-preset), so a
+       * downstream install never auto-loads it — the test harness opts in
+       * explicitly so upstream legacy-`@plugin` fixtures (plugin/plugin.less) run.
+       */
+      lessCompatPlugin(),
 
       /*
        * Pins the third-party packages that fixtures `@import` by bare specifier
@@ -296,7 +306,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/plugin/plugin.less',
-    'the @media-merging gap this used to name is fixed (bubbled at-rules now nest by enclosing at-rule-body depth); it now fails earlier — `@plugin "../../plugin/plugin-set-options"` / `plugin-global` cannot be loaded (the legacy set-options/global plugin-registration API is unsupported), so most output is dropped'
+    'the @jesscss/plugin-less-compat layer is now loaded in the harness (it is opt-in, never in the default compiler stack, so a downstream install does not auto-load it). The remaining gap is the legacy `@plugin (option) "…"` script ABI: `registerPlugin({ install, use, setOptions })` plus the pluginManager install/use/setOptions lifecycle are not implemented in the compat bridge, so `plugin-set-options` fails to load and most output is dropped'
   ],
   [
     'tests-unit/parse-interpolation/parse-interpolation.less',
