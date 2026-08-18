@@ -296,7 +296,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/plugin/plugin.less',
-    '@jesscss/plugin-js now auto-wires and the @plugin scripts execute; remaining gap is nested @media query merging'
+    'the @media-merging gap this used to name is fixed (bubbled at-rules now nest by enclosing at-rule-body depth); it now fails earlier — `@plugin "../../plugin/plugin-set-options"` / `plugin-global` cannot be loaded (the legacy set-options/global plugin-registration API is unsupported), so most output is dropped'
   ],
   [
     'tests-unit/parse-interpolation/parse-interpolation.less',
