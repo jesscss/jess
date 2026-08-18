@@ -306,7 +306,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/plugin/plugin.less',
-    'the @jesscss/plugin-less-compat layer is now loaded in the harness (it is opt-in, never in the default compiler stack, so a downstream install does not auto-load it). The remaining gap is the legacy `@plugin (option) "…"` script ABI: `registerPlugin({ install, use, setOptions })` plus the pluginManager install/use/setOptions lifecycle are not implemented in the compat bridge, so `plugin-set-options` fails to load and most output is dropped'
+    'INTENDED DIVERGENCE (owner ruling 2026-08-18). Lines 124-135 use `@plugin (option) "…"` with the `registerPlugin({ install, use, setOptions })` lifecycle — a documented Less 4.x plugin-API form, but `@plugin` itself is DEPRECATED in v5 (script integration moves to @use / @-use; see deprecation.ts). The bare, common ABI works: with the harness-loaded @jesscss/plugin-less-compat, `functions.addMultiple`/`tree` @plugin scripts (plugin-global, plugin-transitive) load fine. The `registerPlugin`/`setOptions`/`(option)` plugin-manager lifecycle is deliberately NOT built out in the compat bridge — it is a rarely-used corner of a deprecated feature, so any script-integration effort belongs in the @use path instead. Owner-maintained @less/test-data fixture'
   ],
   [
     'tests-unit/parse-interpolation/parse-interpolation.less',
