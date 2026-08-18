@@ -258,10 +258,6 @@ const expectedFailureFixtures = new Map<string, string>([
    * still mismatch Less. Graduated from skip → expected-failure so they run.
    */
   [
-    'tests-unit/detached-rulesets/detached-rulesets.less',
-    'detached-ruleset argument closure now matches Less; nested @media query merging still differs'
-  ],
-  [
     'tests-unit/mixins/mixins.less',
     'same-named nested ruleset resolves the outer .recursion() mixin; remaining mismatch is fixture-local collapseNesting=false rendering nested CSS against the maintained flattened expectation'
   ],

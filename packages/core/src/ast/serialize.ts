@@ -6257,6 +6257,16 @@ interface Emit extends EvalCtx {
   /** A `(reference)` import contributes facts but suppresses its direct output. */
   referenceImportDepth: number;
 
+  /**
+   * How many stay-open at-rule bodies (`@media`/`@supports`/…) enclose the
+   * current cursor. A mixin-spliced bubbleable at-rule with no selector context
+   * nests one level deeper WHEN it lands inside such a body — matching a
+   * directly-authored nested at-rule — instead of projecting flush at the body's
+   * own level (which would drop the wrapper's indent). Zero at the document root,
+   * where a spliced at-rule stays flush-left.
+   */
+  atRuleBodyDepth: number;
+
   /** The render-owned Context import capability, retained for nested placement. */
   importDocument?: SerializeOptions['importDocument'];
 
@@ -6322,6 +6332,7 @@ function scratchEmit(e: EvalCtx): Emit {
     loadedImports: null,
     multipleImportDepth: 0,
     referenceImportDepth: 0,
+    atRuleBodyDepth: 0,
     plannedImportDocuments: null,
     preparedImportsOwnedByCaller: false,
     plannedForExtendPlacements: null,
@@ -8190,6 +8201,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     loadedImports: null,
     multipleImportDepth: 0,
     referenceImportDepth: 0,
+    atRuleBodyDepth: 0,
     importDocument,
     plannedImportDocuments: documents,
     preparedImportsOwnedByCaller: false,
@@ -8266,6 +8278,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     loadedImports: null,
     multipleImportDepth: 0,
     referenceImportDepth: 0,
+    atRuleBodyDepth: 0,
     importDocument,
     plannedImportDocuments: options?.preparedImports?.documents ?? (importDocument ? new WeakMap() : null),
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined,
@@ -9587,23 +9600,53 @@ function walkBody(
         const atNode = node;
         const atFrame = frame;
         const atComposed = composed;
+
+        /*
+         * [atrule-nest] A bubbleable at-rule projects to the level of its nearest
+         * enclosing stay-open at-rule body: the selectors it bubbles THROUGH are
+         * re-emitted inside it, so they add no output nesting, but each enclosing
+         * `@media`/`@supports`/… body does. Its header indent is therefore the
+         * enclosing at-rule-body count (`atRuleBodyDepth`) — 0 at the document root
+         * (flush), 1 directly inside one `@media`, and so on — rather than the
+         * ambient `e.depth`, which also counts the bubbled-through selector blocks.
+         */
+        const targetDepth = e.atRuleBodyDepth;
+        const emitAt = (): MaybePromise<void> => {
+          if (targetDepth === e.depth) {
+            return emitAtRuleBlock(atNode, atFrame, e, atComposed);
+          }
+          const savedDepth = e.depth;
+          e.depth = targetDepth;
+          const restore = (): void => {
+            e.depth = savedDepth;
+          };
+          const r = emitAtRuleBlock(atNode, atFrame, e, atComposed);
+          if (isThenable(r)) {
+            return r.then(restore, (err) => {
+              restore();
+              throw err;
+            });
+          }
+          restore();
+          return r;
+        };
         if (partition) {
           queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.trailing.push(() => emitAtRuleBlock(atNode, atFrame, e, atComposed));
+          partition.trailing.push(emitAt);
         } else {
           const flushed = flush();
           if (isThenable(flushed)) {
             return flushed.then(() => mapMaybe(
-              emitAtRuleBlock(node, frame, e, composed),
+              emitAt(),
               () => walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group, flush,
                 partition, e, imp, forceLeading, propertyScope
               )
             ));
           }
-          const emitted = emitAtRuleBlock(node, frame, e, composed);
+          const emitted = emitAt();
           if (isThenable(emitted)) {
             return emitted.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group, flush,
@@ -12887,6 +12930,11 @@ function emitAtRuleBlockResolved(
     }
   };
   return mapMaybe(emitted, () => {
+    /*
+     * [atrule-nest] this body is a stay-open at-rule context; a bubbleable
+     * at-rule that lands inside it nests one level deeper (see walkBody).
+     */
+    e.atRuleBodyDepth++;
     const rendered = isBubbleable(node.name)
 
       /*
@@ -12896,7 +12944,10 @@ function emitAtRuleBlockResolved(
        */
       ? emitBubbleBody(node.rules, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e)
       : emitAtRuleBody(node.rules, bodyFrame, e, node);
-    return mapMaybe(rendered, finish);
+    return mapMaybe(rendered, () => {
+      e.atRuleBodyDepth--;
+      return finish();
+    });
   });
 }
 
