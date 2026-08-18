@@ -271,7 +271,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/variables/variables.less',
-    'renders but variable output differs from Less'
+    'NOT a jess bug: `(@onePixel / @onePixel)` = `1px / 1px` — jess emits `1` (units cancel), which is the v5 ruling (RESOLVED-SEMANTICS-AND-NAMING §"2px / 1px → 2 — units cancel"). The golden encodes stale lessc-4.x `1px` (keeps left unit). Graduates once the owner v5 golden is updated to `1`'
   ],
   [
     'tests-unit/plugin-module/plugin-module.less',
