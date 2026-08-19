@@ -243,10 +243,6 @@ const expectedFailureFixtures = new Map<string, string>([
     'rootpath/relativeUrls ARE implemented and applied to url() (incl. variable-sourced `url(@var)`). Two remaining diffs, neither a rootpath gap: (1) rootpath is not yet prepended to bare `@import` statement paths (jess emits `@import "css/background.css"`, golden `@import "folder (1)/css/…"`); (2) jess preserves the authored newline+indent in the multi-line `src: local(…),\\n url(…)` value (v5 minimal-correctness rule) which the 4.x golden collapses to one line — owner golden update'
   ],
   [
-    'tests-config/url-args/urls.less',
-    'urlArgs IS implemented and applied (incl. variable-sourced `url(@var)`; data: URIs skipped), and svg-gradient() now evaluates named-color stops. The ONLY remaining diff is not a urlArgs gap: jess preserves the authored newline+indent in the multi-line `src: local(…),\\n url(…)` value (v5 minimal-correctness rule) which the 4.x golden collapses to one line — owner golden update'
-  ],
-  [
     'tests-config/sourcemaps-basepath/sourcemaps-basepath.less',
     'source-map annotation and artifact output need a dedicated harness'
   ],
