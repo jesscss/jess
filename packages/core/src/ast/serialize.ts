@@ -3628,7 +3628,25 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           const target = e.context?.transformUrl(node.value.src, false) ?? node.value.src;
           return literal(`url(${target})`);
         }
-        return literal(`url(${emitValue(value)})`);
+
+        /*
+         * Dynamic URL content — `url(@var)` / any non-literal — resolves at eval
+         * time to fully-emitted bytes, so the authored node is neither Quoted nor
+         * Any. Apply the same URL transform (rootpath/rewriteUrls/urlArgs) an
+         * authored `url("…")` gets: a wrapping quote is syntax, so transform the
+         * inner target and keep the quote around it; otherwise transform the whole.
+         */
+        const raw = emitValue(value);
+        const quote = raw.length >= 2 && (raw[0] === '"' || raw[0] === '\'') && raw[raw.length - 1] === raw[0]
+          ? raw[0]
+          : '';
+        if (quote) {
+          const inner = raw.slice(1, -1);
+          const target = e.context?.transformUrl(inner, true) ?? inner;
+          return literal(`url(${quote}${target}${quote})`);
+        }
+        const target = e.context?.transformUrl(raw, false) ?? raw;
+        return literal(`url(${target})`);
       });
     case 'Lookup': {
       /*
