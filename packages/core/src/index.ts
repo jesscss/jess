@@ -122,6 +122,7 @@ export {
   unitFactor,
   parseHex,
   sniffLiteral,
+  coerceNamedColorKeyword,
   namedColor,
   createFnRegistry,
   defineFunction

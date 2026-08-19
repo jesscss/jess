@@ -82,7 +82,7 @@ export { compareOrder } from './ast/value-guards.js';
 export { groupOf, unify, unitFactor } from './ast/value-units.js';
 
 // --- literal materialize / sniff ---
-export { parseHex, sniffLiteral } from './ast/literal-tag.js';
+export { parseHex, sniffLiteral, coerceNamedColorKeyword } from './ast/literal-tag.js';
 
 // --- color name table ---
 export { namedColor } from './ast/color-names.js';
