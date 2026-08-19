@@ -240,11 +240,11 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-config/static-urls/urls.less',
-    'relativeUrls=false/rootpath static URL behavior is not implemented'
+    'rootpath/relativeUrls ARE implemented and applied to url() (incl. variable-sourced `url(@var)`). Two remaining diffs, neither a rootpath gap: (1) rootpath is not yet prepended to bare `@import` statement paths (jess emits `@import "css/background.css"`, golden `@import "folder (1)/css/…"`); (2) jess preserves the authored newline+indent in the multi-line `src: local(…),\\n url(…)` value (v5 minimal-correctness rule) which the 4.x golden collapses to one line — owner golden update'
   ],
   [
     'tests-config/url-args/urls.less',
-    'urlArgs URL query appending is not implemented'
+    'urlArgs IS implemented and applied (incl. variable-sourced `url(@var)`; data: URIs skipped). Two remaining diffs, neither a urlArgs gap: (1) jess preserves the authored newline+indent in the multi-line `src: local(…),\\n url(…)` value (v5 minimal-correctness rule) which the 4.x golden collapses; (2) `svg-gradient()` is not implemented, so it stays an un-evaluated call instead of the data-URI SVG the golden encodes'
   ],
   [
     'tests-config/sourcemaps-basepath/sourcemaps-basepath.less',
