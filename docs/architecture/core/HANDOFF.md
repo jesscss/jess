@@ -3789,7 +3789,106 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-22 Less A7 `(reference)` import visibility through
+- Latest pass: 2026-08-22 Less direct quoted CSS-import path transformation.
+  This is an output-resource compatibility correction, not a performance result.
+- Architecture surface: the existing `Context.transformUrl` plugin dispatch and
+  canonical AST-v2 `AtRuleStatement` serializer only. The Less plugin now
+  distinguishes a parser-classified direct quoted import from an ordinary
+  `url(...)` target, so both receive the established root-path rewrite while
+  URL-only query arguments stay on the URL lane. Resolution, loading, parsing,
+  and the parse-time CSS-terminal split remain unchanged.
+- Separation/duplication: `UrlTransformRequest.kind` is the single typed owner of
+  the URL-versus-direct-import policy at the retained plugin boundary. The
+  serializer recognizes only the parser-owned `AtRuleStatement` name and typed
+  `Quoted` first prelude part; it does not inspect the target string for an
+  extension, interpolation, query, or other semantic structure. The Less plugin
+  reuses its one existing path transformation implementation rather than adding
+  an import-specific resolver or rewrite pass.
+- Cumulative node weight: unchanged. No AST/CST node, prelude part, quoted value,
+  imported document, or source string is copied or mutated. A transformed target
+  is still the string returned by the existing plugin hook.
+- New traversal: only when a direct quoted import target actually changes, one
+  monotonic loop writes the already-typed `Sequence` tail after the transformed
+  first part. It starts at index one, evaluates every tail part once, and never
+  restarts, scans source bytes, reparses a prelude, or walks a document. Unchanged
+  imports retain whole-statement authored-trivia replay.
+- New node/materialization: none. Every Context-owned URL/import transformation
+  already allocates one `UrlTransformRequest`; its fixed Context-produced shape
+  now includes one string discriminator. The public field remains optional so an
+  older direct plugin caller keeps URL behavior. No additional request, array,
+  map, set, node, wrapper, or side table is allocated. The changed direct-import
+  lane receives only the plugin-returned string it needs to emit.
+- Render path: ordinary URLs keep their existing one Context/plugin dispatch and
+  receive `urlArgs` as before. Ordinary non-import at-rules perform exact
+  name/length checks and allocate nothing; a seven-byte case-insensitive
+  candidate uses fixed ASCII code comparisons without a predicate string. A
+  direct quoted import performs one Context/plugin dispatch. If unchanged,
+  authored bytes remain the output source; if changed, the serializer writes the
+  original quote form, the transformed target, and the typed tail without
+  evaluating the target twice.
+- Helper/API surface: one optional backwards-compatible public request field and
+  two private serializer helpers. Context always supplies `kind`; older direct
+  plugin callers that omit it retain URL behavior.
+  No package entrypoint, resolver hook, parser API, node type, or output option is
+  added.
+- Metadata mutations: none. Context continues to derive `fromFilePath` and
+  `entryFilePath` from its retained document/source provenance; no parent, source,
+  trivia, frozen, root, or placement metadata changes.
+- Review-flagged diff tokens: [loop/traversal] the transformed direct-import tail
+  loop is one forward pass over typed `Sequence.parts` beginning at one; [object
+  shape] the existing request allocation gains a fixed `kind` field on every
+  Context-created request, while the public field remains optional for older
+  callers; [predicate] fixed ASCII code comparisons classify only
+  seven-character import-name candidates without allocating a folded string,
+  while existing Less URL policy retains its data-URL and query/fragment string
+  operations; [behavior] root-path rewriting now reaches
+  direct quoted CSS-terminal imports and URL-only `urlArgs` does not.
+- Evidence: fresh focused core import coverage passes 54/54; fresh Less-plugin
+  coverage passes 13/13; the owner-maintained `static-urls` fixture lane passes
+  2/2 and renders both direct quoted targets with `folder (1)/` while its
+  remaining expected diff is accurately classified as import-hoist and authored
+  newline behavior. Full core passes 212 files / 3358 tests / 9 skipped / 2 todo;
+  full Less-plugin coverage passes 13/13; all-less passes 111/111; and the AST-v2
+  production ratchet passes 4/4. `build:release`, `check:macro`, and
+  `verify:compose-integrity` pass with zero interpreter fallbacks. The
+  aggressive-cutting, materialization-frontier, render-buffer-frontier,
+  package-export, guardrail, diff-check, performance-invariant, and
+  semantics-invariant reviews all pass. N8 remains explicitly OPEN; no fixture
+  CSS was changed.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "SETTLED N7 owns the parser-classified direct quoted CSS-terminal import as an AtRuleStatement and retains the Context/plugin boundary. OPEN N8 records—but does not close—the emitted-path candidate implemented here: rootpath/rewriteUrls reach that direct target, urlArgs remains URL-only, and the typed tail/authored quote remain serializer-owned structure.",
+    "dangerTokensJustification": "The changed lane reuses one existing plugin dispatch and request allocation, then writes a changed target plus one forward scan over typed tail parts. It adds no source scan, extension classifier, resolver, parser replay, AST copy, side table, restart-at-zero loop, or timing claim; unchanged imports preserve authored whole-statement replay.",
+    "behaviorEvidence": "Focused core import coverage passes 54/54 and pins exact transformed target/tail bytes plus import/url discriminator order. The owner-maintained static-urls lane passes 2/2 and renders both direct quoted CSS targets with the configured root path without adding URL query arguments.",
+    "buildEvidence": "The dependency-order build:release passes. Full core passes 212 files / 3358 tests / 9 skipped / 2 todo; full plugin-less passes 13/13; all-less passes 111/111; the AST-v2 ratchet passes 4/4; check:macro and verify:compose-integrity report zero interpreter fallbacks; aggressive-cutting, materialization-frontier, render-buffer-frontier, package-export, guardrail, and diff-check gates pass.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 45.1, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": ["Context-plugin-source-parser-dispatch", "emit-walk-context-output-option", "Ruleset-interpolated-selector-boundary", "selector-match-string-and-node-combinators", "extend-index-tagged-graft-atoms", "Sequence-subclass-preserving-evaluation", "callable-output-root-property-guard", "serializer-at-rule-and-selector-surface"],
+    "why": "Context already owns source/entry provenance and the active plugin's URL transform. A fixed typed discriminator lets that existing dispatch apply import-path policy without introducing a second public transform hook or moving resolution into serialization.",
+    "dangerTokensJustification": "Context still allocates one request and invokes one plugin hook per transformed URL/import target. The request has one fixed additional field; older direct callers default to URL behavior. No extra Context lookup, resolver call, document walk, error-control result, conditional node property, or plugin side object is added.",
+    "behaviorEvidence": "The core test proves one direct quoted import and one url(...) target reach the same plugin in typed order while emitting distinct exact policy bytes. The Less-plugin test proves rootpath applies to both kinds and urlArgs only to the URL kind.",
+    "buildEvidence": "The dependency-order build:release and full core/plugin tests pass. verify:package-exports confirms the optional request-field addition remains consumable by workspace packages; all-less, the AST-v2 ratchet, macro, compose-integrity, aggressive-cutting, materialization, render-buffer, guardrail, and diff-check gates pass.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 45.1, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+  }
+]
+```
+- Verdict: accepted for landing as the explicitly OPEN N8 alpha candidate. The
+  full named gates and both invariant-by-invariant reviews pass; this does not
+  settle N8 and makes no speed or neutrality claim.
+
+- Prior landed pass: 2026-08-22 Less A7 `(reference)` import visibility through
   extend, including hidden selector ancestry and at-rule containment. This is a
   compatibility correction, not a performance result.
 - Architecture surface: canonical AST-v2 import preflight, extend IR/fixpoint,

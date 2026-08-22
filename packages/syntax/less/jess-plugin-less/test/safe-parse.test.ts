@@ -210,6 +210,25 @@ describe("@jesscss/plugin-less", () => {
     resolver.dispose();
   });
 
+  it('keeps direct import rewriting distinct from URL query arguments', () => {
+    const plugin = lessPlugin({ rootpath: 'folder (1)/', urlArgs: 'v=1' });
+
+    expect(plugin.transformUrl?.({
+      value: 'css/background.css',
+      quoted: true,
+      kind: 'import'
+    })).toBe('folder (1)/css/background.css');
+    expect(plugin.transformUrl?.({
+      value: 'css/background.css',
+      quoted: true,
+      kind: 'url'
+    })).toBe('folder (1)/css/background.css?v=1');
+    expect(plugin.transformUrl?.({
+      value: 'css/background.css',
+      quoted: true
+    })).toBe('folder (1)/css/background.css?v=1');
+  });
+
   it('prepares only Less root source with Less variable override options', () => {
     expect(prepareLessRootSource('.a { color: @tone; }', {
       language: 'less',

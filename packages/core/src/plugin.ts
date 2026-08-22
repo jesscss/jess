@@ -67,6 +67,15 @@ export interface UrlTransformRequest {
   /** Whether the target was authored as a quoted URL token. */
   quoted: boolean;
 
+  /**
+   * The typed syntax that owns the path. Direct quoted imports use import-path
+   * rewriting, while `url(...)` keeps URL-only policy such as query arguments.
+   * Context always supplies this fact so plugin implementations do not need to
+   * reconstruct it from target bytes. Omission by an older direct caller keeps
+   * ordinary URL behavior.
+   */
+  kind?: 'url' | 'import';
+
   /** The document that authored this URL. */
   fromFilePath?: string;
 
@@ -134,9 +143,10 @@ export interface PluginInterface {
   safeParse?(filePath: string, source: string, options?: SafeParseOptions): ISafeParseResult;
 
   /**
-   * Optionally transform a rendered URL target owned by this plugin's active
-   * document. This is intentionally not import resolution: Context already
-   * owns source identity and imports have been parsed before rendering.
+   * Optionally transform a rendered URL or direct quoted import target owned by
+   * this plugin's active document. This is intentionally not import resolution:
+   * Context already owns source identity and imports have been parsed before
+   * rendering.
    */
   transformUrl?(request: UrlTransformRequest): string | undefined;
 

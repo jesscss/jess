@@ -240,7 +240,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-config/static-urls/urls.less',
-    'rootpath/relativeUrls ARE implemented and applied to url() (incl. variable-sourced `url(@var)`). Two remaining diffs, neither a rootpath gap: (1) rootpath is not yet prepended to bare `@import` statement paths (jess emits `@import "css/background.css"`, golden `@import "folder (1)/css/…"`); (2) jess preserves the authored newline+indent in the multi-line `src: local(…),\\n url(…)` value (v5 minimal-correctness rule) which the 4.x golden collapses to one line — owner golden update'
+    'rootpath/relativeUrls now apply to url() (including variable-sourced values) and direct quoted CSS @import targets. Remaining diffs: imported CSS-terminal statements retain their lexical splice position instead of hoisting to the document prelude, and jess preserves the authored newline+indent in the multi-line `src: local(…),\\n url(…)` value under the v5 minimal-correctness rule while the 4.x golden collapses it'
   ],
   [
     'tests-config/sourcemaps-basepath/sourcemaps-basepath.less',

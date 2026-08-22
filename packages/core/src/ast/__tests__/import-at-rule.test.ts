@@ -6,7 +6,7 @@ import { any, color, comment, importIsCompileTime, styleImport, spaced, complexS
 import { createTriviaMapFromRanges, withBodySpan, withSourceSpan, withTriviaMap } from '../provenance.js';
 import { prepareStaticImports, serialize } from '../serialize.js';
 import { Context } from '../../context.js';
-import { AbstractPlugin } from '../../plugin.js';
+import { AbstractPlugin, type UrlTransformRequest } from '../../plugin.js';
 
 /*
  * The parse-time split, spelled exactly as every grammar spells it: a plain CSS
@@ -646,6 +646,45 @@ describe('StyleImport', () => {
     expect(serialize(document)).toEqual({
       css: '@import "theme.css" screen;\n.before {\n  color: red;\n}\n.after {\n  color: blue;\n}\n'
     });
+  });
+
+  it('routes direct quoted CSS imports through import-path transformation without URL-only policy', async () => {
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"theme.css"', 'theme.css', '"', false),
+        null,
+        null,
+        any('screen')
+      ),
+      authoredImport('@import', url(quoted('"theme.css"', 'theme.css', '"', false)))
+    ]);
+    const kinds: Array<UrlTransformRequest['kind']> = [];
+
+    class ImportTransformPlugin extends AbstractPlugin {
+      name = 'import-transform';
+      supportedExtensions = ['.test'];
+
+      override safeParse() {
+        return { document, errors: [], warnings: [] };
+      }
+
+      override transformUrl(request: UrlTransformRequest) {
+        kinds.push(request.kind);
+        return request.kind === 'import'
+          ? `root/${request.value}`
+          : `${request.value}?url-only`;
+      }
+    }
+
+    const context = new Context({}, [new ImportTransformPlugin()]);
+    const parsed = await context.parseString('', { filePath: '/virtual/entry.test' });
+    const result = await context.withDocument(parsed.node, () => serialize(parsed.node, { context }));
+
+    expect(result).toEqual({
+      css: '@import "root/theme.css" screen;\n@import url("theme.css?url-only");\n'
+    });
+    expect(kinds).toEqual(['import', 'url']);
   });
 
   it('keeps directive syntax structured without making resolution part of the AST', () => {

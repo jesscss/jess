@@ -332,7 +332,7 @@ export class LessPlugin extends AbstractPlugin {
     this.collapseNesting = opts.collapseNesting ?? lessPluginDefaults.collapseNesting;
   }
 
-  transformUrl({ value, quoted, fromFilePath, entryFilePath }: UrlTransformRequest): string {
+  transformUrl({ value, quoted, kind, fromFilePath, entryFilePath }: UrlTransformRequest): string {
     let transformed: string;
     if (isUrlRelative(value)) {
       const rewriteUrls = this.opts.rewriteUrls;
@@ -361,7 +361,7 @@ export class LessPlugin extends AbstractPlugin {
     } else {
       transformed = normalizeUrlPath(value);
     }
-    if (this.opts.urlArgs && !value.trimStart().toLowerCase().startsWith('data:')) {
+    if (this.opts.urlArgs && kind !== 'import' && !value.trimStart().toLowerCase().startsWith('data:')) {
       const args = `${transformed.includes('?') ? '&' : '?'}${this.opts.urlArgs}`;
       const fragment = transformed.indexOf('#');
       transformed = fragment < 0

@@ -100,7 +100,8 @@ import type {
   ValueNode,
   ValueSlot,
   VariableDeclaration,
-  Lookup
+  Lookup,
+  Url
 } from './nodes.js';
 
 // [atrule] block + statement at-rule node types
@@ -12381,7 +12382,7 @@ function isCharset(node: AtRuleStatement): boolean {
 function emitHoistedCharset(rules: Statement[], frame: Frame, e: Emit): void {
   for (const c of rules) {
     if (c.type === 'AtRuleStatement' && isCharset(c as AtRuleStatement)) {
-      emitAtRuleStatementRaw(c as AtRuleStatement, frame, e);
+      emitAtRuleStatementRaw(c as AtRuleStatement, frame, e, null);
       return;
     }
   }
@@ -12394,22 +12395,14 @@ function emitHoistedCharset(rules: Statement[], frame: Frame, e: Emit): void {
  * position through Context. Keep this narrow until typed Less import options and
  * media wrapping are represented rather than guessed from source text.
  */
-function rootCssImportKey(node: AtRuleStatement): string | null {
-  if (node.name.toLowerCase() !== '@import' || node.prelude === null) {
-    return null;
-  }
-
+function rootCssImportKey(node: AtRuleStatement, target: Quoted | Url): string | null {
   /*
    * Only a dialect that TYPES its CSS-terminal import prelude participates. A
    * grammar that flattens the whole prelude to opaque bytes (plain CSS, jess)
    * keeps its authored statement order, and nothing here re-derives a target
    * from those bytes.
-   */
-  const prelude = node.prelude;
-  const target = prelude.type === 'Sequence' ? prelude.parts[0] : prelude;
-  if (target === undefined || (target.type !== 'Quoted' && target.type !== 'Url')) {
-    return null;
-  }
+  */
+  const prelude = node.prelude!;
   const tail = prelude.type === 'Sequence' ? prelude.parts.slice(1) : [];
   if (tail.some(part => part.type !== 'Any')) {
     return null;
@@ -12454,7 +12447,11 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
     if (child.type !== 'AtRuleStatement') {
       continue;
     }
-    const key = rootCssImportKey(child);
+    const target = cssImportTarget(child);
+    if (target === null) {
+      continue;
+    }
+    const key = rootCssImportKey(child, target);
     if (key === null) {
       continue;
     }
@@ -12463,7 +12460,7 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
       continue;
     }
     seen.add(key);
-    emitAtRuleStatementRaw(child, frame, e);
+    emitAtRuleStatementRaw(child, frame, e, target.type === 'Quoted' ? target : null);
   }
   e.hoistedCssImports = hoisted;
 }
@@ -12476,15 +12473,73 @@ function emitAtRuleStatement(node: AtRuleStatement, frame: Frame, e: Emit): void
   if (isCharset(node)) {
     return;
   }
-  emitAtRuleStatementRaw(node, frame, e);
+  const target = e.context === undefined ? null : cssImportTarget(node);
+  emitAtRuleStatementRaw(node, frame, e, target?.type === 'Quoted' ? target : null);
 }
 
-function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): void {
+/**
+ * A direct quoted CSS import is parser-classified syntax, not an opaque prelude.
+ * Return that typed target without inspecting its bytes. `url(...)` imports
+ * deliberately stay on the ordinary URL path because their query-argument
+ * policy differs from direct import-path rewriting.
+ */
+function cssImportTarget(node: AtRuleStatement): Quoted | Url | null {
+  if ((node.name !== '@import'
+    && (node.name.length !== 7
+      || node.name.charCodeAt(0) !== 64
+      || (node.name.charCodeAt(1) | 32) !== 105
+      || (node.name.charCodeAt(2) | 32) !== 109
+      || (node.name.charCodeAt(3) | 32) !== 112
+      || (node.name.charCodeAt(4) | 32) !== 111
+      || (node.name.charCodeAt(5) | 32) !== 114
+      || (node.name.charCodeAt(6) | 32) !== 116))
+    || node.prelude === null) {
+    return null;
+  }
+  const target = node.prelude.type === 'Sequence' ? node.prelude.parts[0] : node.prelude;
+  return target?.type === 'Quoted' || target?.type === 'Url' ? target : null;
+}
+
+/** Write one transformed direct import target plus its already-typed tail. */
+function emitTransformedQuotedImportPrelude(
+  prelude: ValueNode,
+  target: Quoted,
+  transformed: string,
+  frame: Frame,
+  e: Emit
+): void {
+  if (target.escaped) {
+    put(e, transformed);
+  } else {
+    put(e, target.quote);
+    put(e, transformed);
+    put(e, target.quote);
+  }
+  if (prelude.type !== 'Sequence') {
+    return;
+  }
+  for (let index = 1; index < prelude.parts.length; index++) {
+    put(e, ' ');
+    put(e, evalQueryPreludeSync(prelude.parts[index]!, frame, e));
+  }
+}
+
+function emitAtRuleStatementRaw(
+  node: AtRuleStatement,
+  frame: Frame,
+  e: Emit,
+  quotedImport: Quoted | null
+): void {
   const start = e.off;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
   }
-  const authored = authoredStatementWithTrivia(node, e);
+  const transformedImport = quotedImport === null
+    ? null
+    : e.context?.transformUrl(quotedImport.value, true, 'import') ?? quotedImport.value;
+  const authored = transformedImport === null || transformedImport === quotedImport?.value
+    ? authoredStatementWithTrivia(node, e)
+    : null;
   if (authored !== null) {
     put(e, authored);
     put(e, '\n');
@@ -12504,10 +12559,15 @@ function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): v
      * media feature `(min-width: @w)` is a `Block` around an `Operation` whose
      * delimiters and `: ` are structure rather than bytes.
      */
-    const p = evalQueryPreludeSync(node.prelude, frame, e).replace(/^\s+/u, '');
-    if (p.length > 0) {
+    if (quotedImport !== null && transformedImport !== null && transformedImport !== quotedImport.value) {
       put(e, ' ');
-      put(e, p);
+      emitTransformedQuotedImportPrelude(node.prelude, quotedImport, transformedImport, frame, e);
+    } else {
+      const p = evalQueryPreludeSync(node.prelude, frame, e).replace(/^\s+/u, '');
+      if (p.length > 0) {
+        put(e, ' ');
+        put(e, p);
+      }
     }
   }
   put(e, ';\n');

@@ -19,13 +19,13 @@ JESS_LESS_FIXTURE=tests-unit/ pnpm run test:less:test-data
 JESS_LESS_FIXTURE=tests-config/ pnpm run test:less:test-data
 ```
 
-## Current selection snapshot (2026-07-28)
+## Current selection snapshot (2026-08-22)
 
-Lane totals (`79 unit` / `29 config` / `108 public-route` cases) were last
-measured on 2026-07-28 and are **not** re-verified here; see
-`docs/architecture/core/HANDOFF.md` for the current measurement. Do not quote
-the totals above from this file. The registry dispositions below, by contrast,
-are derived — regenerate them rather than trusting a number.
+The executable Vitest collection contains `80 unit` / `30 config` / `110
+public-route` cases, plus the harness's own timeout-sensitivity test. These are
+test-case counts: one source fixture may select more than one configured output.
+Regenerate them from `vitest list` rather than carrying the numbers forward by
+memory. The registry dispositions below are derived the same way.
 
 ### `expectedFailureFixtures` disposition — derived, not hand-counted
 
@@ -54,16 +54,16 @@ it is not a Less-parity pass.
 **Active public-route expected-failure checks** — exercised by the commands
 above:
 
+- `tests-config/3rd-party/bootstrap4.less`
 - `tests-config/sourcemaps-basepath/sourcemaps-basepath.less`
 - `tests-config/sourcemaps-include-source/sourcemaps-include-source.less`
 - `tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less`
 - `tests-config/sourcemaps-url/sourcemaps-url.less`
 - `tests-config/static-urls/urls.less`
-- `tests-config/url-args/urls.less`
 - `tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less`
 - `tests-unit/color-functions/operations.less`
-- `tests-unit/detached-rulesets/detached-rulesets.less`
 - `tests-unit/functions/functions.less`
+- `tests-unit/import/import-inline.less`
 - `tests-unit/import/import-reference.less` (A7 reference visibility now works
   for direct and at-rule-contained rules, hidden selector ancestors, mixin pulls,
   and inline imports; the active mismatch is v5 selector compaction, explicit
@@ -118,10 +118,22 @@ The named reason beside every entry remains in
 expected `resolve/name-not-found` diagnostic code. A timeout is a harness failure,
 not parity evidence.
 `process-imports/google`, `namespacing/namespacing-8`,
-`namespacing/namespacing-functions`, and `namespacing/namespacing-media` are now
-ordinary passes; `functions/functions` is active in the alpha lane and remains
-an expected failure for the settled F5 lazy CSS-color boundary. The focused F5
+`namespacing/namespacing-functions`, `namespacing/namespacing-media`,
+`url-args/urls`, and `detached-rulesets/detached-rulesets` are now ordinary
+passes; `functions/functions` is active in the alpha lane and remains an
+expected failure for the settled F5 lazy CSS-color boundary. The focused F5
 public-semantics test remains additional evidence for the full F5 rule.
+
+### Follow-up defect surfaced by the import-path lane
+
+- A root-hoisted CSS-terminal import with parser-owned block-comment trivia in
+  its media tail currently emits the comment later in document order. The same
+  displacement occurs with and without `rootpath`, so it is not caused by the
+  N8 transformation candidate. The direct cause is the missing source-span
+  bridge for the Less `AtRuleStatement`, which prevents hoist-time trivia replay;
+  source-byte inference is not an acceptable workaround. **Owner:** the ongoing
+  Less v5 import/trivia lane, immediately after the quoted-rootpath batch. Pin the
+  real parser representation before changing serializer behavior.
 
 The remote import fixture is tracked in
 [`less-v5-release-plan.md`](../process/less-v5-release-plan.md) as a deferred
