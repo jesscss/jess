@@ -77,12 +77,16 @@ above:
   ampersand mismatch is an INTENDED DIVERGENCE, owner ruling 2026-08-22:
   `collapseNesting:false` preserves the nested boundary; explicit collapse
   matches the flattened golden, and Less `each()` is pinned as explicit rule
-  multiplication. Separate actionable residuals: nested selector-list line
-  wrapping and one-column relative-combinator indentation. Owner-maintained
-  fixture corrections are needed for the flattened final stanza and the golden
-  `foo: bar` whose quoted-case source says `foo: baz`.)
+  multiplication. Separate OPEN O8 owner decisions remain for canonical nested
+  selector-list wrapping and leading whitespace from an escaped quoted selector
+  at a header boundary. Owner-maintained fixture corrections are needed for the
+  flattened final stanza and the golden `foo: bar` whose quoted-case source says
+  `foo: baz`.)
 - `tests-unit/plugin/plugin.less`
-- `tests-unit/urls/urls.less`
+- `tests-unit/urls/urls.less` (INTENDED DIVERGENCE under §12.3b: the fully
+  interpolated `.add_an_import("file.css")` target is authored as a compile-time
+  `StyleImport`; classification does not defer until evaluation, so normal import
+  resolution reports `import/not-found` for `file.css`.)
 
 **Outside the two-level fixture glob** — nested below `legacy/`, so the harness
 never reaches them. Their Less 5 removal is documented; they are release-note
@@ -93,13 +97,24 @@ limitations, not silently passing tests:
 - `tests-unit/ie-filters-REMOVED/legacy/ie-filters.less`
 - `tests-unit/javascript-REMOVED/legacy/javascript.less`
 
-**Excluded by `invalidLess`** — the direct parser intentionally rejects a
-stricter-than-upstream syntax/fixture family; these need their own
-parser-policy coverage before becoming alpha-lane cases:
+**Excluded by `invalidLess`** — each row records why it remains outside the
+public lane. Some are intentionally rejected syntax; others are fixture-policy
+or maintained-output mismatches and must not be presented as parser gaps:
 
-- `tests-unit/parser-slashed-combinator/parser-slashed-combinator.less`
-- `tests-unit/permissive-parse/permissive-parse.less`
-- `tests-unit/property-name-interp/property-name-interp.less`
+- `tests-unit/parser-slashed-combinator/parser-slashed-combinator.less` (contains
+  only comments; `/deep/` and `/shadow/` examples are commented out. This is not
+  an outstanding parser feature. It stays excluded because Jess's empty output is
+  `""` while the maintained empty golden contains one newline.)
+- `tests-unit/permissive-parse/permissive-parse.less` (P2 permissive custom-property
+  values and selector capture are implemented. The fixture is intentionally
+  rejected earlier by P7's bare-`@var` at-rule-prelude rule and later golden rows
+  also assume bare-variable evaluation inside custom-property values.)
+- `tests-unit/property-name-interp/property-name-interp.less` (the alpha fixture
+  already replaced removed dash-only variables with `@dash`; current output is
+  otherwise byte-identical, but repeated `@{p}@{p}` drops the `/* foo */` trivia
+  carried inside each complex interpolated property-name value. This is a concrete
+  instance of OPEN ledger row F7(a), the interpolation-splice source-layout
+  boundary, and requires an owner ruling before implementation.)
 - `tests-unit/selectors/selectors.less`
 - `tests-unit/variables/variables.less`
 

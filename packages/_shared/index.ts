@@ -69,6 +69,8 @@ export const invalidLess: string[] = [
 
   'tests-unit/permissive-parse/permissive-parse.less',
   'tests-unit/permissive-parse/legacy/permissive-parse.less',
+
+  /** OPEN F7(a): repeated complex property-name interpolation drops value-owned layout trivia. */
   'tests-unit/property-name-interp/property-name-interp.less',
   // // 'tests-config/math/parens-division/new-division.less',
   // 'tests-config/math-strict/css.less',
@@ -95,7 +97,7 @@ export const invalidLess: string[] = [
   /** `*-z-${name}` splits into LegacyPropIdent + InterpolatedIdent */
   'tests-unit/parser-property-interp/parser-property-interp.less',
 
-  /** `/deep/` combinator not supported (deprecated CSS) */
+  /** Comment-only deprecated-combinator fixture; empty render differs from its one-newline golden. */
   'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
 
   /** Obsolete Less parent selectors `^` / `^^` were removed in Less v5 */

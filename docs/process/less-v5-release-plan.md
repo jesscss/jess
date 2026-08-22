@@ -123,10 +123,13 @@ upstream fixture to the public alpha lane.
   must never be cited as current. Use `docs/architecture/core/HANDOFF.md` as the
   live entry point instead.
 - **Permissive `--*` custom-property parsing** (`permissive-parse.less`) —
-  **owner-decided (2026-07-11): a real gap to FIX, not defer.** Custom-property
-  values must accept arbitrary token streams (CSS-spec `<declaration-value>`),
-  implemented at the **CSS-parser base level** so it propagates to less/scss/jess
-  via grammar composition. (Fix dispatched — active, not deferred.)
+  implemented at the **CSS-parser base level** and pinned by
+  `css-parser/test/custom-property.test.ts`; there is no remaining custom-property
+  grammar feature in this fixture. The fixture itself remains outside the v5 lane
+  because it begins with bare `@function-name` interpolation in an at-rule prelude,
+  which settled P7 rejects in favor of `@{function-name}`. Its later golden rows
+  also encode bare-variable custom-property evaluation that settled P2 leaves
+  literal unless explicitly interpolated.
 - **Bare selector capture `*[...]`** (`parse-interpolation.less`) — implemented
   in both the Jess and Less parsers; there is no remaining selector-capture
   feature work in this fixture. Its final mismatch is an **intended output-policy
@@ -134,7 +137,9 @@ upstream fixture to the public alpha lane.
   the captured parent/suffix-ampersand child boundary, while explicit collapse
   produces the golden `.fruit-cap-apple, …` branches. Less `each()` is the opt-in
   for one emitted rule per ordinary list item without changing global nesting.
-  The same fixture also exposes separate nested-header wrapping and
-  relative-combinator indentation residuals, plus a maintained-golden typo
-  (`foo: bar` for quoted-case source `foo: baz`). Those remain independently
-  inventoried; the final flattened stanza and typo need an owner fixture update.
+  The same fixture also exposes two independent OPEN O8 output-policy questions: whether
+  an interpolated multi-branch nested header keeps the canonical one-branch-per-line
+  form, and whether leading whitespace inside an escaped quoted selector is
+  preserved at the header boundary. The maintained golden also has `foo: bar`
+  where the quoted-case source says `foo: baz`. Those rows require owner
+  reconciliation; they are not remaining selector-capture implementation work.

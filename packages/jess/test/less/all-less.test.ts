@@ -236,7 +236,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/urls/urls.less',
-    'renders but CSS @import placement and multiline function formatting differ from Less'
+    'INTENDED DIVERGENCE (§12.3b): the fully interpolated target in `.add_an_import("file.css")` is authored as a compile-time StyleImport, so terminal classification does not defer until it evaluates to `file.css`; normal import resolution therefore reports the missing file'
   ],
   [
     'tests-config/static-urls/urls.less',
@@ -269,7 +269,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/property-name-interp/property-name-interp.less',
-    'deprecated dash-only @- and @{-} variable names are rejected'
+    'OPEN F7(a): property-name interpolation renders byte-identically except that repeated `@{p}@{p}` loses the `/* foo */` source layout carried inside each complex interpolated value; interpolation-splice layout preservation awaits an owner ruling'
   ],
   [
     'tests-unit/variables/variables.less',
@@ -306,15 +306,11 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/parse-interpolation/parse-interpolation.less',
-    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it; collapseNesting:true emits the golden `.fruit-cap-apple, …` branches exactly, and Less `each()` is the explicit rule-multiplication form. Separate residuals are nested selector-list line wrapping and one-column relative-combinator indentation; the maintained golden also says `foo: bar` where its quoted-case source says `foo: baz`. Owner reconciliation is required for the flattened final stanza and source/golden typo; formatting residuals remain actionable independently'
-  ],
-  [
-    'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
-    'slashed combinator not yet supported'
+    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it; collapseNesting:true emits the golden `.fruit-cap-apple, …` branches exactly, and Less `each()` is the explicit rule-multiplication form. Separate OPEN O8 owner decisions remain for canonical nested selector-list wrapping and leading whitespace from an escaped quoted selector at the header boundary; the maintained golden also says `foo: bar` where its quoted-case source says `foo: baz`. Owner reconciliation is required for those output-policy rows and the fixture typo'
   ],
   [
     'tests-unit/permissive-parse/permissive-parse.less',
-    'throws on Less permissive @variable value (@this: () => {…}, VarDeclaration hot-path — scoped) + @{selectorList} comma-list selector (selector-capture agent). --* interpolation-only + unknown-at-rule prelude @{…}/var interpolation now match; two golden lines (--custom-color, --fortran bare-@) superseded by the interpolation-only owner rule, pending owner golden update'
+    'INTENDED DIVERGENCE (P7): the fixture begins with bare `@function-name` interpolation in an at-rule prelude, which v5 rejects in favor of `@{function-name}`; permissive CSS-base `--*` declaration values and selector capture are already implemented independently'
   ],
 
   /*
@@ -369,7 +365,8 @@ const expectedFailureDiagnosticCodes = new Map<string, string>([
    * resolve failure this fixture used to surface (`resolve/name-not-found`).
    */
   ['tests-unit/import/import.less', 'parse/syntax-error'],
-  ['tests-unit/import/import-inline.less', 'parse/syntax-error']
+  ['tests-unit/import/import-inline.less', 'parse/syntax-error'],
+  ['tests-unit/urls/urls.less', 'import/not-found']
 ]);
 
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
