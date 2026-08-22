@@ -3,7 +3,7 @@ import { atRuleBlock, atRuleStatement } from '../at-rule.js';
 import type { AtRuleStatement } from '../at-rule.js';
 import type { Interpolation, List, Quoted, StyleImport, Url, ValueNode } from '../nodes.js';
 import { any, color, comment, importIsCompileTime, styleImport, spaced, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, quoted, reference, rule, sel, selist, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
-import { createTriviaMapFromRanges, withTriviaMap } from '../provenance.js';
+import { createTriviaMapFromRanges, withBodySpan, withSourceSpan, withTriviaMap } from '../provenance.js';
 import { prepareStaticImports, serialize } from '../serialize.js';
 import { Context } from '../../context.js';
 import { AbstractPlugin } from '../../plugin.js';
@@ -779,6 +779,308 @@ describe('StyleImport', () => {
     })).resolves.toEqual({
       css: '.card {\n  color: red;\n  border-color: red;\n}\n'
     });
+  });
+
+  it('keeps reference-document trivia hidden while a nested fact import executes', async () => {
+    const lead = '/* hidden document comment */\n';
+    const importedSource = `${lead}@import "facts.less";\n`;
+    const nestedImport = withSourceSpan(
+      authoredImport('@import', quoted('"facts.less"', 'facts.less', '"', false)),
+      { start: lead.length, end: importedSource.length }
+    );
+    const imported = withTriviaMap(
+      stylesheet([nestedImport]),
+      createTriviaMapFromRanges(importedSource, [{ start: 0, end: lead.length }])
+    );
+    const facts = stylesheet([
+      variableDeclaration('fact', keyword('loaded'), { mode: 'declare' })
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      )
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : specifier === 'facts.less'
+          ? { document: facts, key: 'facts.less' }
+          : undefined)
+    })).resolves.toEqual({ css: '' });
+  });
+
+  it('drops leading reference-document trivia but retains a pulled rule body comment', async () => {
+    const lead = '/* hidden document comment */\n';
+    const importedSource = `${lead}.target { /* pulled body */ color: blue; }\n`;
+    const selectorStart = lead.length;
+    const bodyStart = importedSource.indexOf('{', selectorStart) + 1;
+    const declarationStart = importedSource.indexOf('color:', bodyStart);
+    const declarationEnd = importedSource.indexOf(';', declarationStart) + 1;
+    const bodyEnd = importedSource.indexOf('}', declarationEnd);
+    const targetSelector = withSourceSpan(selist(sel('.target')), {
+      start: selectorStart,
+      end: selectorStart + '.target'.length
+    });
+    const targetDeclaration = withSourceSpan(decl('color', keyword('blue')), {
+      start: declarationStart,
+      end: declarationEnd
+    });
+    const target = withBodySpan(
+      withSourceSpan(rule(targetSelector, [targetDeclaration]), {
+        start: selectorStart,
+        end: bodyEnd + 1
+      }),
+      { start: bodyStart, end: bodyEnd }
+    );
+    const imported = withTriviaMap(
+      stylesheet([target]),
+      createTriviaMapFromRanges(importedSource, [
+        { start: 0, end: lead.length },
+        { start: bodyStart, end: declarationStart }
+      ])
+    );
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.target')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      collapseNesting: true,
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '.visible {\n  /* pulled body */\n  color: blue;\n}\n'
+    });
+  });
+
+  it('emits only a visibly extended rule from a reference-imported at-rule', async () => {
+    const imported = stylesheet([
+      atRuleBlock('@media', keyword('print'), [
+        rule('.target', [decl('color', keyword('blue'))]),
+        rule('.hidden-parent', [
+          decl('must-not', keyword('leak')),
+          rule('.target', [decl('border-color', keyword('blue'))])
+        ]),
+        rule('.hidden', [decl('color', keyword('red'))])
+      ])
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.target')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      collapseNesting: false,
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '@media print {\n  .visible {\n    color: blue;\n  }\n  .hidden-parent .visible {\n    border-color: blue;\n  }\n}\n'
+    });
+  });
+
+  it('suppresses emitting calls and loop leaves while retaining a visible reference loop rule', async () => {
+    const imported = stylesheet([
+      mixinDef('emit-hidden', [], [
+        rule('.from-hidden-call', [decl('must-not', keyword('leak'))])
+      ]),
+      mixinCall('emit-hidden'),
+      forNode(
+        spaced([keyword('one')]),
+        [
+          decl('must-not-loop', keyword('leak')),
+          rule('.loop-target', [decl('color', keyword('blue'))])
+        ],
+        { kind: 'single', name: 'name' }
+      )
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.loop-target')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '.visible {\n  color: blue;\n}\n'
+    });
+  });
+
+  it('suppresses emitting siblings in a visible reference at-rule loop', async () => {
+    const loopSelector = complexSelector([{
+      term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
+        { lit: '.loop-target-' }, { ref: variableReference('name', 'scoped'), unquote: true }
+      ]))])
+    }]);
+    const imported = stylesheet([
+      atRuleBlock('@media', keyword('print'), [
+        mixinDef('emit-hidden', [], [
+          rule('.from-hidden-call', [decl('must-not', keyword('leak'))])
+        ]),
+        mixinCall('emit-hidden'),
+        forNode(
+          spaced([keyword('one'), keyword('two')]),
+          [
+            decl('must-not-loop', keyword('leak')),
+            rule(loopSelector, [decl('color', keyword('blue'))])
+          ],
+          { kind: 'single', name: 'name' }
+        )
+      ])
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.loop-target-one')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '@media print {\n  .visible {\n    color: blue;\n  }\n}\n'
+    });
+  });
+
+  it('keeps planned reference-loop items in source order when one canonical loop is reused', async () => {
+    const loopSelector = complexSelector([{
+      term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
+        { lit: '.loop-target-' }, { ref: variableReference('name', 'scoped'), unquote: true }
+      ]))])
+    }]);
+    const sharedLoop = forNode(
+      variableReference('items', 'scoped'),
+      [rule(loopSelector, [decl('color', keyword('blue'))])],
+      { kind: 'single', name: 'name' }
+    );
+    const first = stylesheet([
+      variableDeclaration('items', keyword('one'), { mode: 'declare' }),
+      sharedLoop
+    ]);
+    const second = stylesheet([
+      variableDeclaration('items', keyword('two'), { mode: 'declare' }),
+      sharedLoop
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"first.less"', 'first.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      authoredImport(
+        '@import',
+        quoted('"second.less"', 'second.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.loop-target-one')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'first.less'
+        ? { document: first, key: 'first.less' }
+        : specifier === 'second.less'
+          ? { document: second, key: 'second.less' }
+          : undefined)
+    })).resolves.toEqual({
+      css: '.visible {\n  color: blue;\n}\n'
+    });
+  });
+
+  it('keeps a visible self-extend after its identical hidden branch deduplicates', async () => {
+    const imported = stylesheet([
+      rule('.class', [decl('color', keyword('blue'))])
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.class', [], [{ target: selist(sel('.class')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '.class {\n  color: blue;\n}\n'
+    });
+  });
+
+  it('keeps a byte-identical visible self-extend inside a hidden selector ancestor', async () => {
+    const imported = stylesheet([
+      atRuleBlock('@supports', keyword('feature'), [
+        rule('.hidden-parent', [
+          decl('must-not', keyword('leak')),
+          rule('.target', [decl('color', keyword('blue'))])
+        ])
+      ])
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.target', [], [{ target: selist(sel('.target')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      collapseNesting: false,
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '@supports feature {\n  .hidden-parent .target {\n    color: blue;\n  }\n}\n'
+    });
+  });
+
+  it('keeps inline bytes hidden when the containing import is reference-only', async () => {
+    const imported = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"raw.css"', 'raw.css', '"', false),
+        list([keyword('inline'), keyword('multiple')], ',')
+      )
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      )
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : specifier === 'raw.css'
+          ? { inline: 'this is hidden' }
+          : undefined)
+    })).resolves.toEqual({ css: '' });
   });
 
   it('does not expose an exact extender defined by a reference import', async () => {

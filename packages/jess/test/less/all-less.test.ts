@@ -213,7 +213,7 @@ const expectedFailureFixtures = new Map<string, string>([
    */
   [
     'tests-unit/import/import-reference.less',
-    'reference import filtering leaves extra at-rules'
+    'A7 reference visibility is implemented; remaining CSS differs in settled v5 :is() selector compaction, explicit nested output under collapseNesting:false, comment replay, and invalid-inline indentation'
   ],
 
   /*

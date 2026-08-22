@@ -139,7 +139,7 @@ import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type T
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
-import type { PlanInstruction, PlanOverlay, PlanSubject } from './extend/plan.js';
+import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import { mkBranch } from './extend/ir.js';
 import type { Context } from '../context.js';
@@ -6493,7 +6493,7 @@ interface Emit extends EvalCtx {
    * The token is selected by the execution index and placed on that iteration's
    * lexical frame; it is intentionally not stored on the immutable AST.
    */
-  plannedForExtendPlacements: WeakMap<For, readonly object[]> | null;
+  plannedForExtendPlacements: WeakMap<For, PlannedForExtendQueue> | null;
 
   /** Root CSS-terminal imports already written in the required document prelude. */
   hoistedCssImports: Set<AtRuleStatement> | null;
@@ -8125,12 +8125,17 @@ function collectPlacedExtendFacts(
   statements: readonly Statement[],
   frame: Frame,
   e: Emit,
-  overlay: { subjects: PlanSubject[]; instructions: PlanInstruction[] },
+  overlay: {
+    subjects: PlanSubject[];
+    instructions: PlanInstruction[];
+    hiddenReferenceRules: Set<Ruleset> | null;
+  },
   path: Level[] = [],
   scope: number[] = [],
   parent: PlanSubject | null = null,
   hidden = false,
-  referenceBoundary: object | null = null
+  referenceBoundary: object | null = null,
+  referenceAtRule: PlanReferenceAtRule | null = null
 ): MaybePromise<void> {
   recordAstExtendProfile?.('astExtend.preflight.collectCalls');
   const run = (start: number): MaybePromise<void> => {
@@ -8147,9 +8152,12 @@ function collectPlacedExtendFacts(
           const subject: PlanSubject = {
             rule: statement, path: rulePath, scope, ownLocal, parent,
             hidden: hidden || statement.reference === true, referenceBoundary,
-            mayMatch: false, placement: frame.extendPlacement
+            mayMatch: false, placement: frame.extendPlacement, referenceAtRule
           };
           overlay.subjects.push(subject);
+          if (subject.hidden) {
+            (overlay.hiddenReferenceRules ??= new Set()).add(statement);
+          }
           recordAstExtendProfile?.('astExtend.preflight.overlaySubjects');
           const addInstructions = (instructionIndex: number): MaybePromise<void> => {
             const instruction = statement.extendInstructions?.[instructionIndex];
@@ -8160,7 +8168,7 @@ function collectPlacedExtendFacts(
                 statements: statement.rules,
                 ...(frame.extendPlacement ? { extendPlacement: frame.extendPlacement } : {})
               };
-              const nested = collectPlacedExtendFacts(statement.rules, childFrame, e, overlay, rulePath, scope, subject, hidden, referenceBoundary);
+              const nested = collectPlacedExtendFacts(statement.rules, childFrame, e, overlay, rulePath, scope, subject, hidden, referenceBoundary, referenceAtRule);
               return isThenable(nested) ? nested.then(() => run(index + 1)) : run(index + 1);
             }
 
@@ -8192,16 +8200,32 @@ function collectPlacedExtendFacts(
         return placed;
       }
       if (statement.type === 'AtRuleBlock') {
-        const nested = collectPlacedExtendFacts(statement.rules, frame, e, overlay, path, scope, parent, hidden, referenceBoundary);
+        let owner = referenceAtRule;
+        if (hidden) {
+          owner = {
+            node: statement,
+            parent: referenceAtRule,
+            placement: frame.extendPlacement
+          };
+        }
+        const nested = collectPlacedExtendFacts(statement.rules, frame, e, overlay, path, scope, parent, hidden, referenceBoundary, owner);
         if (isThenable(nested)) {
           return nested.then(() => run(index + 1));
         }
         continue;
       }
-      if (statement.type === 'For' && bodyMayPlanExtend(statement.rules)) {
+      if (statement.type === 'For' && (hidden || bodyMayPlanExtend(statement.rules))) {
         return mapMaybe(forItems(statement.iterable, frame, e), (items) => {
           const tokens = items.map(() => ({}));
-          (e.plannedForExtendPlacements ??= new WeakMap()).set(statement, tokens);
+          const planned: PlannedForExtendPlacement = { tokens, items, next: null };
+          const plans = e.plannedForExtendPlacements ??= new WeakMap();
+          const queue = plans.get(statement);
+          if (queue === undefined) {
+            plans.set(statement, { tail: planned, cursor: planned });
+          } else {
+            queue.tail.next = planned;
+            queue.tail = planned;
+          }
           recordAstExtendProfile?.('astExtend.preflight.loopBodies');
           recordAstExtendProfile?.('astExtend.preflight.loopPlacements', items.length);
           const iterations = (itemIndex: number): MaybePromise<void> => {
@@ -8213,7 +8237,7 @@ function collectPlacedExtendFacts(
                 declIndex: collectDeclIndex(statement.rules, bindings), cells: cellsForParams(bindings), reassign: null,
                 statements: statement.rules, extendPlacement: tokens[i]!
               };
-              const nested = collectPlacedExtendFacts(statement.rules, loopFrame, e, overlay, path, scope, parent, hidden, referenceBoundary);
+              const nested = collectPlacedExtendFacts(statement.rules, loopFrame, e, overlay, path, scope, parent, hidden, referenceBoundary, referenceAtRule);
               if (isThenable(nested)) {
                 return nested.then(() => iterations(i + 1));
               }
@@ -8263,10 +8287,27 @@ function planImportedExtends(
     || !importDocument
     || (!documentHasExtend(root) && !root.rules.some(child => child.type === 'StyleImport'))) {
     recordAstExtendProfile?.('astExtend.preflight.noFeatureBypasses');
-    return { root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay: { subjects: [], instructions: [] } };
+    return {
+      root,
+      hiddenRules: new Set(),
+      referenceBoundaries: new Map(),
+      overlay: {
+        subjects: [],
+        instructions: [],
+        hiddenReferenceRules: null
+      }
+    };
   }
   const seen = new Set<string>();
-  const overlay: { subjects: PlanSubject[]; instructions: PlanInstruction[] } = { subjects: [], instructions: [] };
+  const overlay: {
+    subjects: PlanSubject[];
+    instructions: PlanInstruction[];
+    hiddenReferenceRules: Set<Ruleset> | null;
+  } = {
+    subjects: [],
+    instructions: [],
+    hiddenReferenceRules: null
+  };
   const visit = async (statements: readonly Statement[], scope: Frame): Promise<void> => {
     const deferred: StyleImport[] = [];
     const visitImport = async (st: StyleImport): Promise<void> => {
@@ -8673,6 +8714,11 @@ function emitDocumentStatements(
   let documentTriviaCursor = 0;
   let documentTriviaSuppressedByDefinition = false;
   const emitBeforeDocumentStatement = (child: Statement): void => {
+    if (e.referenceImportDepth !== 0) {
+      documentTriviaCursor = statementStartOf(child) ?? documentTriviaCursor;
+      documentTriviaSuppressedByDefinition = false;
+      return;
+    }
     if (documentTriviaSuppressedByDefinition) {
       documentTriviaCursor = statementStartOf(child) ?? documentTriviaCursor;
       documentTriviaSuppressedByDefinition = false;
@@ -8707,7 +8753,9 @@ function emitDocumentStatements(
          * Let the existing visibility projection decide that case; do not
          * publish or otherwise render reference rules unconditionally.
          */
-        if (e.referenceImportDepth === 0 || e.extends?.hiddenByRule.get(child)?.some(hidden => !hidden) === true) {
+        if (e.referenceImportDepth === 0
+          || referenceRuleIsVisible(child, frame, e)
+          || extendProjection(frame, e)?.visibleReferenceRuleAncestors?.has(child) === true) {
           emitBeforeDocumentStatement(child);
           const emitted = flatten(child, null, null, frame, e);
           markAfterDocumentStatement(child);
@@ -8735,6 +8783,9 @@ function emitDocumentStatements(
         }
         break;
       case 'MixinCall': {
+        if (e.referenceImportDepth !== 0) {
+          break;
+        }
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => {
           if (group.length) {
@@ -8746,6 +8797,9 @@ function emitDocumentStatements(
         return mapMaybe(expandCall(child, null, null, frame, group, flush, null, e), flush);
       }
       case 'Apply': {
+        if (e.referenceImportDepth !== 0) {
+          break;
+        }
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => {
           if (group.length) {
@@ -8757,6 +8811,9 @@ function emitDocumentStatements(
         return mapMaybe(expandApply(child, null, null, frame, group, flush, null, e), flush);
       }
       case 'Reference': {
+        if (e.referenceImportDepth !== 0) {
+          break;
+        }
         // A final call step can splice a detached ruleset at document level.
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => {
@@ -8769,6 +8826,9 @@ function emitDocumentStatements(
         return mapMaybe(expandReferenceCall(child, null, null, frame, group, flush, null, e), flush);
       }
       case 'For': {
+        if (e.referenceImportDepth !== 0) {
+          return expandReferenceAncestorFor(child, null, null, frame, e, false, false);
+        }
         // a top-level `each(...)` loop — its body emits at the document level.
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => {
@@ -8781,6 +8841,9 @@ function emitDocumentStatements(
         return mapMaybe(expandFor(child, null, null, frame, group, flush, null, e), flush);
       }
       case 'If': {
+        if (e.referenceImportDepth !== 0) {
+          break;
+        }
         const body = selectIfBodyForRender(child, frame, e);
         if (!body) {
           break;
@@ -8796,6 +8859,9 @@ function emitDocumentStatements(
         return mapMaybe(walkBody(body, null, null, frame, group, flush, null, e), flush);
       }
       case 'While': {
+        if (e.referenceImportDepth !== 0) {
+          break;
+        }
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => {
           if (group.length) {
@@ -8820,7 +8886,8 @@ function emitDocumentStatements(
 
       // [atrule] top-level at-rules
       case 'AtRuleBlock':
-        if (e.referenceImportDepth === 0) {
+        if (e.referenceImportDepth === 0
+          || extendProjection(frame, e)?.visibleReferenceAtRules?.has(child) === true) {
           emitBeforeDocumentStatement(child);
           const emitted = emitAtRuleBlock(child, frame, e);
           markAfterDocumentStatement(child);
@@ -8848,18 +8915,25 @@ function emitDocumentStatements(
           return emitted;
         }
       case 'ModuleImport':
-        emitBeforeDocumentStatement(child);
-        emitModuleImport(child, frame, e);
-        markAfterDocumentStatement(child);
+        if (e.referenceImportDepth === 0) {
+          emitBeforeDocumentStatement(child);
+          emitModuleImport(child, frame, e);
+          markAfterDocumentStatement(child);
+        }
         break;
       case 'OpaqueAtRuleBlock':
-        emitBeforeDocumentStatement(child);
-        emitOpaqueAtRuleBlock(child, e);
-        markAfterDocumentStatement(child);
+        if (e.referenceImportDepth === 0) {
+          emitBeforeDocumentStatement(child);
+          emitOpaqueAtRuleBlock(child, e);
+          markAfterDocumentStatement(child);
+        }
         break;
 
       // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
       case 'FunctionCall':
+        if (e.referenceImportDepth !== 0) {
+          break;
+        }
         emitBeforeDocumentStatement(child);
         {
           const emitted = emitCallStatement(child, frame, e);
@@ -9177,10 +9251,31 @@ function visibleHeader(rule: Ruleset, header: string[], frame: Frame, e: Emit): 
     const vis = header.filter((_, i) => mask[i] !== true);
     return vis.length > 0 ? withoutPlaceholders(vis) : null;
   }
-  if (rule.reference === true && ext?.flatByRule.has(rule) !== true) {
+  if ((rule.reference === true || e.extends?.hiddenReferenceRules?.has(rule) === true)
+    && ext?.flatByRule.has(rule) !== true) {
     return null;
   }
   return withoutPlaceholders(header);
+}
+
+/** A hidden reference subject emits only when its current extend projection has
+ * at least one visible branch. A missing mask on a projected rule means every
+ * surviving branch is visible (not that visibility information is absent). */
+function referenceRuleIsVisible(rule: Ruleset, frame: Frame, e: Emit): boolean {
+  const ext = extendProjection(frame, e);
+  if (ext?.flatByRule.has(rule) !== true) {
+    return false;
+  }
+  const mask = ext.hiddenByRule.get(rule);
+  if (mask === undefined) {
+    return true;
+  }
+  for (let index = 0; index < mask.length; index++) {
+    if (!mask[index]) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function flatten(
@@ -9313,7 +9408,9 @@ function flattenWithHeader(
    * still emits when the rule is pulled in as a mixin — a separate expansion path).
    */
   const header = visibleHeader(rule, header0, frame, e);
-  if (header === null) {
+  const referenceAncestor = header === null
+    && projection?.visibleReferenceRuleAncestors?.has(rule) === true;
+  if (header === null && !referenceAncestor) {
     return;
   }
   const priorPlacement = frame.rulePlacements?.get(rule);
@@ -9332,6 +9429,32 @@ function flattenWithHeader(
    * child frame and become visible to a later namespace descent through Ruleset.
    */
   (frame.rulePlacements ??= new Map()).set(rule, childFrame);
+
+  /*
+   * [import:reference] A hidden parent selector can be structurally necessary
+   * even though none of its own branches or leaves is visible: `.parent .target`
+   * must compose before a visible `.target` extender can emit. Walk only the
+   * constructs admitted by the typed extend preflight (rules, at-rules and
+   * concrete `$for` placements); direct declarations and calls remain hidden.
+   */
+  if (referenceAncestor) {
+    const executeReferenceAncestor = () => mapMaybe(
+      prepareBodyPlugins(rule.rules, childFrame, e),
+      () => walkReferenceAncestorBody(
+        rule.rules,
+        childComposed,
+        childComposed === null ? null : childAncestor,
+        childFrame,
+        e,
+        imp,
+        expandBubbledSelectorList
+      )
+    );
+    return withSourceOwner(e, childFrame.sourceOwner, executeReferenceAncestor);
+  }
+
+  /* `header` is non-null below; the reference-ancestor lane returned above. */
+  const visible = header!;
   const group: Leaf[] = [];
   const flush = (): MaybePromise<void> => {
     if (group.length || hasPendingLeafBlockComments(group)) {
@@ -9340,7 +9463,7 @@ function flattenWithHeader(
        * against) keys sibling merges: two nested rulesets with the same parent ref
        * and header merge; top-level rules (`parent === null`) never do.
        */
-      return mapMaybe(flushBlock(header, group, e, rule.selector, parent, rule), () => {
+      return mapMaybe(flushBlock(visible, group, e, rule.selector, parent, rule), () => {
         group.length = 0;
       });
     }
@@ -9354,7 +9477,7 @@ function flattenWithHeader(
    */
   const emitBlock = (leaves: Leaf[]): MaybePromise<void> => {
     if (leaves.length || hasPendingLeafBlockComments(leaves)) {
-      return flushBlock(header, leaves, e, rule.selector, parent, rule);
+      return flushBlock(visible, leaves, e, rule.selector, parent, rule);
     }
   };
   const partition: Partition = {
@@ -9374,7 +9497,7 @@ function flattenWithHeader(
     };
     if (!partition.encounteredContainer) {
       if (group.length === 0 && !hasPendingLeafBlockComments(group) && hasBodyBlockCommentTrivia(rule, e)) {
-        return flushBlock(header, [], e, rule.selector, parent, rule);
+        return flushBlock(visible, [], e, rule.selector, parent, rule);
       }
       return flush();
     }
@@ -10036,6 +10159,157 @@ function walkBody(
         break;
     }
   }
+}
+
+/**
+ * [import:reference] Traverse a hidden selector container solely as typed
+ * structure for a visible descendant. This deliberately mirrors the extend
+ * preflight's admission surface: Ruleset, AtRuleBlock and concrete For
+ * placements, plus the silent declarations needed to resolve their selectors
+ * and values. Everything that could emit the hidden container's own bytes is
+ * skipped.
+ */
+function walkReferenceAncestorBody(
+  statements: readonly Statement[],
+  composed: string[] | null,
+  ancestor: string | null,
+  frame: Frame,
+  e: Emit,
+  imp: boolean,
+  expandBubbledSelectorList: boolean
+): MaybePromise<void> {
+  const run = (start: number): MaybePromise<void> => {
+    for (let index = start; index < statements.length; index++) {
+      const node = statements[index]!;
+      let emitted: MaybePromise<void>;
+      switch (node.type) {
+        case 'Ruleset':
+          emitted = flatten(node, composed, ancestor, frame, e, imp, expandBubbledSelectorList);
+          break;
+        case 'AtRuleBlock':
+          emitted = extendProjection(frame, e)?.visibleReferenceAtRules?.has(node) === true
+            ? emitAtRuleBlock(node, frame, e, composed)
+            : undefined;
+          break;
+        case 'For':
+          emitted = expandReferenceAncestorFor(
+            node,
+            composed,
+            ancestor,
+            frame,
+            e,
+            imp,
+            expandBubbledSelectorList
+          );
+          break;
+        case 'MixinDefinition':
+          publishSelectedMixinDefinition(frame, node);
+          emitted = undefined;
+          break;
+        case 'VariableDeclaration':
+          activateVariableDeclaration(node, frame, e);
+          markSilentStatementBlockCommentTrivia(node, e);
+          emitted = undefined;
+          break;
+        default:
+          emitted = undefined;
+          break;
+      }
+      if (isThenable(emitted)) {
+        return emitted.then(() => run(index + 1));
+      }
+    }
+  };
+  return run(0);
+}
+
+/** Concrete `$for` placements for the cold reference-ancestor traversal. */
+function expandReferenceAncestorFor(
+  node: For,
+  composed: string[] | null,
+  ancestor: string | null,
+  frame: Frame,
+  e: Emit,
+  imp: boolean,
+  expandBubbledSelectorList: boolean
+): MaybePromise<void> {
+  const queue = e.plannedForExtendPlacements?.get(node);
+  const planned = queue?.cursor ?? null;
+  if (queue !== undefined && planned !== null) {
+    queue.cursor = planned.next;
+  }
+  return mapMaybe(planned?.items ?? forItems(node.iterable, frame, e), (items) => {
+    const run = (start: number): MaybePromise<void> => {
+      for (let index = start; index < items.length; index++) {
+        const item = items[index]!;
+        const bindingIndex = dimension(index + 1);
+        const bindings = bindForEntry(node, item.value, item.key, bindingIndex);
+        const bindingValueFrames = bindingValueFramesForItem(bindings, item);
+        const extendPlacement = planned?.tokens[index];
+        const loopFrame: Frame = {
+          parent: frame,
+          mixins: collectMixins(node.rules),
+          declIndex: collectDeclIndex(node.rules, bindings),
+          cells: cellsForParams(bindings, bindingValueFrames),
+          reassign: null,
+          statements: node.rules,
+          sourceOwner: frame.sourceOwner ?? null,
+          ...(bindingValueFrames ? { bindingValueFrames } : {}),
+          ...(extendPlacement ? { extendPlacement } : {})
+        };
+        bindForDetached(loopFrame, bindings, item);
+        const emitted = walkReferenceAncestorBody(
+          node.rules,
+          composed,
+          ancestor,
+          loopFrame,
+          e,
+          imp,
+          expandBubbledSelectorList
+        );
+        if (isThenable(emitted)) {
+          return emitted.then(() => run(index + 1));
+        }
+      }
+    };
+    return run(0);
+  });
+}
+
+/** Enter one at-rule body level around a structural reference-only loop. */
+function expandNestedReferenceAncestorFor(
+  node: For,
+  composed: string[] | null,
+  ancestor: string | null,
+  frame: Frame,
+  e: Emit,
+  expandBubbledSelectorList: boolean
+): MaybePromise<void> {
+  e.depth++;
+  let emitted: MaybePromise<void>;
+  try {
+    emitted = expandReferenceAncestorFor(
+      node,
+      composed,
+      ancestor,
+      frame,
+      e,
+      false,
+      expandBubbledSelectorList
+    );
+  } catch (error) {
+    e.depth--;
+    throw error;
+  }
+  if (isThenable(emitted)) {
+    return emitted.then(() => {
+      e.depth--;
+    }, (error) => {
+      e.depth--;
+      throw error;
+    });
+  }
+  e.depth--;
 }
 
 /**
@@ -10822,6 +11096,19 @@ interface ForItem {
   detached?: DetachedBinding;
 }
 
+/** One preflight evaluation reused by the matching emission placement. */
+interface PlannedForExtendPlacement {
+  tokens: readonly object[];
+  items: readonly ForItem[];
+  next: PlannedForExtendPlacement | null;
+}
+
+/** Source-order occurrence queue for one reused canonical loop node. */
+interface PlannedForExtendQueue {
+  tail: PlannedForExtendPlacement;
+  cursor: PlannedForExtendPlacement | null;
+}
+
 /**
  * Split `text` at the TOP level on `,` (comma list) else a whitespace run (space
  * list), skipping anything nested in `()[]{}` or inside a quoted string. Mirrors
@@ -11214,7 +11501,12 @@ function expandFor(
   propertyScope: Frame = frame,
   applyExpansion = false
 ): MaybePromise<void> {
-  return mapMaybe(forItems(node.iterable, frame, e), (items) => {
+  const queue = e.plannedForExtendPlacements?.get(node);
+  const planned = queue?.cursor ?? null;
+  if (queue !== undefined && planned !== null) {
+    queue.cursor = planned.next;
+  }
+  return mapMaybe(planned?.items ?? forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
       for (let i = start; i < items.length; i++) {
         const item = items[i]!;
@@ -11222,7 +11514,7 @@ function expandFor(
         const index = dimension(i + 1);
         const bindings = bindForEntry(node, value, key, index);
         const bindingValueFrames = bindingValueFramesForItem(bindings, item);
-        const extendPlacement = e.plannedForExtendPlacements?.get(node)?.[i];
+        const extendPlacement = planned?.tokens[i];
         const loopFrame: Frame = {
           parent: frame,
           mixins: collectMixins(node.rules),
@@ -12260,7 +12552,9 @@ function emitStyleImport(
     return mapMaybe(loadedRequest, (loaded) => {
       if (loaded !== undefined) {
         if ('inline' in loaded) {
-          emitRawInline(loaded.inline, e);
+          if (e.referenceImportDepth === 0 && !importHasOption(request.options, 'reference')) {
+            emitRawInline(loaded.inline, e);
+          }
           return;
         }
         if (request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
@@ -12402,7 +12696,9 @@ function emitStyleImport(
           return loaded.withinDocument ? loaded.withinDocument(emitWithPlugins) : emitWithPlugins();
         });
       }
-      emitCssImportAtRule(node, frame, e);
+      if (e.referenceImportDepth === 0) {
+        emitCssImportAtRule(node, frame, e);
+      }
     });
   }
   emitCssImportAtRule(node, frame, e);
@@ -13280,41 +13576,65 @@ function emitAtRuleBody(
       case 'Declaration':
       case 'Comment':
       case 'FunctionCall':
-        group.push({ node, frame });
+        if (e.referenceImportDepth === 0) {
+          group.push({ node, frame });
+        }
         return undefined;
       case 'Ruleset':
         return nested(node, () => flatten(node, null, null, frame, e));
       case 'AtRuleBlock':
-        return nested(node, () => emitAtRuleBlock(node, frame, e));
+        return e.referenceImportDepth === 0
+          || extendProjection(frame, e)?.visibleReferenceAtRules?.has(node) === true
+          ? nested(node, () => emitAtRuleBlock(node, frame, e))
+          : undefined;
       case 'AtRuleStatement':
-        return nested(node, () => emitAtRuleStatement(node, frame, e));
+        return e.referenceImportDepth === 0
+          ? nested(node, () => emitAtRuleStatement(node, frame, e))
+          : undefined;
       case 'Plugin':
         return undefined;
       case 'StyleImport':
         return nested(node, () => emitStyleImport(node, frame, e, e.importDocument));
       case 'ModuleImport':
-        return nested(node, () => {
-          emitModuleImport(node, frame, e);
-        });
+        return e.referenceImportDepth === 0
+          ? nested(node, () => {
+              emitModuleImport(node, frame, e);
+            })
+          : undefined;
       case 'OpaqueAtRuleBlock':
-        return nested(node, () => {
-          emitOpaqueAtRuleBlock(node, e);
-        });
+        return e.referenceImportDepth === 0
+          ? nested(node, () => {
+              emitOpaqueAtRuleBlock(node, e);
+            })
+          : undefined;
       case 'MixinCall':
         // Best-effort: expand into the direct-declaration group.
-        return expandCall(node, null, null, frame, group, flushDirect, null, e);
+        return e.referenceImportDepth === 0
+          ? expandCall(node, null, null, frame, group, flushDirect, null, e)
+          : undefined;
       case 'Apply':
-        return expandApply(node, null, null, frame, group, flushDirect, null, e);
+        return e.referenceImportDepth === 0
+          ? expandApply(node, null, null, frame, group, flushDirect, null, e)
+          : undefined;
       case 'Reference':
-        return expandReferenceCall(node, null, null, frame, group, flushDirect, null, e);
+        return e.referenceImportDepth === 0
+          ? expandReferenceCall(node, null, null, frame, group, flushDirect, null, e)
+          : undefined;
       case 'For':
-        return expandFor(node, null, null, frame, group, flushDirect, null, e);
+        return e.referenceImportDepth === 0
+          ? expandFor(node, null, null, frame, group, flushDirect, null, e)
+          : expandNestedReferenceAncestorFor(node, null, null, frame, e, false);
       case 'If': {
+        if (e.referenceImportDepth !== 0) {
+          return undefined;
+        }
         const body = selectIfBodyForRender(node, frame, e);
         return body ? emitAtRuleBody(body, frame, e) : undefined;
       }
       case 'While':
-        return runWhile(node, frame, e, rules => emitAtRuleBody(rules, frame, e));
+        return e.referenceImportDepth === 0
+          ? runWhile(node, frame, e, rules => emitAtRuleBody(rules, frame, e))
+          : undefined;
 
       case 'MixinDefinition':
         publishSelectedMixinDefinition(frame, node);
@@ -13430,7 +13750,9 @@ function emitBubbleBody(
         case 'Declaration':
         case 'Comment':
         case 'FunctionCall':
-          group.push({ node, frame });
+          if (e.referenceImportDepth === 0) {
+            group.push({ node, frame });
+          }
           break;
         case 'Ruleset':
           if (deferStaticChildren) {
@@ -13489,6 +13811,10 @@ function emitBubbleBody(
           }
           break;
         case 'AtRuleBlock':
+          if (e.referenceImportDepth !== 0
+            && extendProjection(frame, e)?.visibleReferenceAtRules?.has(node) !== true) {
+            break;
+          }
           if (deferStaticChildren) {
             deferredChildren!.push(() => {
               e.depth++;
@@ -13543,6 +13869,9 @@ function emitBubbleBody(
           }
           break;
         case 'AtRuleStatement':
+          if (e.referenceImportDepth !== 0) {
+            break;
+          }
           if (deferStaticChildren) {
             deferredChildren!.push(() => {
               e.depth++;
@@ -13655,6 +13984,9 @@ function emitBubbleBody(
           break;
         }
         case 'ModuleImport': {
+          if (e.referenceImportDepth !== 0) {
+            break;
+          }
           const flushed = flushDirect();
           if (isThenable(flushed)) {
             return flushed.then(() => {
@@ -13670,6 +14002,9 @@ function emitBubbleBody(
           break;
         }
         case 'OpaqueAtRuleBlock': {
+          if (e.referenceImportDepth !== 0) {
+            break;
+          }
           const flushed = flushDirect();
           if (isThenable(flushed)) {
             return flushed.then(() => {
@@ -13685,6 +14020,9 @@ function emitBubbleBody(
           break;
         }
         case 'MixinCall':
+          if (e.referenceImportDepth !== 0) {
+            break;
+          }
           {
             const expanded = expandCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
             if (isThenable(expanded)) {
@@ -13693,6 +14031,9 @@ function emitBubbleBody(
           }
           break;
         case 'Apply':
+          if (e.referenceImportDepth !== 0) {
+            break;
+          }
           {
             const expanded = expandApply(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
             if (isThenable(expanded)) {
@@ -13701,6 +14042,9 @@ function emitBubbleBody(
           }
           break;
         case 'Reference':
+          if (e.referenceImportDepth !== 0) {
+            break;
+          }
           {
             const expanded = expandReferenceCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
             if (isThenable(expanded)) {
@@ -13709,13 +14053,18 @@ function emitBubbleBody(
           }
           break;
         case 'For': {
-          const expanded = expandFor(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+          const expanded = e.referenceImportDepth === 0
+            ? expandFor(node, ctx, ctxAncestor, frame, group, flushDirect, null, e)
+            : expandNestedReferenceAncestorFor(node, ctx, ctxAncestor, frame, e, ctx !== null);
           if (isThenable(expanded)) {
             return expanded.then(() => run(index + 1));
           }
           break;
         }
         case 'If': {
+          if (e.referenceImportDepth !== 0) {
+            break;
+          }
           const body = selectIfBodyForRender(node, frame, e);
           if (body) {
             const emitted = emitBubbleBody(body, ctx, frame, e);
@@ -13726,6 +14075,9 @@ function emitBubbleBody(
           break;
         }
         case 'While': {
+          if (e.referenceImportDepth !== 0) {
+            break;
+          }
           const emitted = runWhile(node, frame, e, rules => emitBubbleBody(rules, ctx, frame, e));
           if (isThenable(emitted)) {
             return emitted.then(() => run(index + 1));
@@ -14854,7 +15206,12 @@ function expandNestedFor(
   sharedLeaves?: NestedLeafBuffer,
   applyExpansion = false
 ): MaybePromise<void> {
-  return mapMaybe(forItems(node.iterable, frame, e), (items) => {
+  const queue = e.plannedForExtendPlacements?.get(node);
+  const planned = queue?.cursor ?? null;
+  if (queue !== undefined && planned !== null) {
+    queue.cursor = planned.next;
+  }
+  return mapMaybe(planned?.items ?? forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
       for (let i = start; i < items.length; i++) {
         const item = items[i]!;
@@ -14862,7 +15219,7 @@ function expandNestedFor(
         const index = dimension(i + 1);
         const bindings = bindForEntry(node, value, key, index);
         const bindingValueFrames = bindingValueFramesForItem(bindings, item);
-        const extendPlacement = e.plannedForExtendPlacements?.get(node)?.[i];
+        const extendPlacement = planned?.tokens[i];
         const loopFrame: Frame = {
           parent: frame,
           mixins: collectMixins(node.rules),

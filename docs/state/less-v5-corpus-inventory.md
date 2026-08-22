@@ -64,7 +64,10 @@ above:
 - `tests-unit/color-functions/operations.less`
 - `tests-unit/detached-rulesets/detached-rulesets.less`
 - `tests-unit/functions/functions.less`
-- `tests-unit/import/import-reference.less`
+- `tests-unit/import/import-reference.less` (A7 reference visibility now works
+  for direct and at-rule-contained rules, hidden selector ancestors, mixin pulls,
+  and inline imports; the active mismatch is v5 selector compaction, explicit
+  nested output, comment replay, and invalid-inline indentation)
 - `tests-unit/import/import.less`
 - `tests-unit/media/media.less`
 - `tests-unit/mixins/mixins.less` (fixture-local nested output vs flattened

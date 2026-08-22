@@ -52,6 +52,7 @@ import { buildContribs, runFixpoint, solveComposed } from './solve.js';
 import type { ContribMap } from './solve.js';
 import type { Stylesheet, Ruleset, Statement } from '../nodes.js';
 import { branchTextIsPlaceholder } from '../nodes.js';
+import type { AtRuleBlock } from '../at-rule.js';
 
 export interface NestedRulePlan {
   /** Emit this rule (and its descendants) via the flat path at top level. */
@@ -105,6 +106,8 @@ export interface ExtendPlacementResults {
   hiddenByRule: Map<Ruleset, boolean[]>;
   nestedPlan: Map<Ruleset, NestedRulePlan>;
   hoistHeader: Map<Ruleset, string[]>;
+  visibleReferenceAtRules: Set<AtRuleBlock> | null;
+  visibleReferenceRuleAncestors: Set<Ruleset> | null;
 }
 
 export interface ExtendResults {
@@ -123,6 +126,15 @@ export interface ExtendResults {
    * hidden branch (the common case). A rule whose mask is all-`true` emits nothing.
    */
   hiddenByRule: Map<Ruleset, boolean[]>;
+
+  /** Hidden reference subjects, retained separately from canonical AST nodes. */
+  hiddenReferenceRules: ReadonlySet<Ruleset> | null;
+
+  /** Reference-imported at-rule containers with at least one visible descendant. */
+  visibleReferenceAtRules: Set<AtRuleBlock> | null;
+
+  /** Hidden selector containers needed only to compose a visible descendant. */
+  visibleReferenceRuleAncestors: Set<Ruleset> | null;
 
   /** NESTED mode: per-rule projection (flatten / rewritten header / splits). */
   nestedPlan: Map<Ruleset, NestedRulePlan>;
@@ -270,6 +282,15 @@ function siblingCompact(branches: Branch[], allowMultiSeg: boolean): Branch[] {
  * differ in structure or in more than one compound. Multi-segment rows only merge
  * when `allowMultiSeg` (see {@link siblingCompact}). */
 function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch | null {
+  /*
+   * [import:reference] Visibility is branch provenance, not selector syntax.
+   * Combining one hidden and one visible branch into a shared `:is()` would make
+   * the hidden selector observable because the serializer can filter only whole
+   * projected branches. Keep mixed-visibility siblings separate.
+   */
+  if ((a.hidden === true) !== (b.hidden === true)) {
+    return null;
+  }
   if (a.segments.length !== b.segments.length) {
     return null;
   }
@@ -306,13 +327,9 @@ function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch 
   }
   const segments = a.segments.map((s, i) => (i === diff ? { combinator: s.combinator, compound: merged } : cloneSeg(s)));
 
-  /*
-   * [import:reference] the merged branch is visible if EITHER source is visible (an
-   * `:is(a, b)` emits its whole group). Only two hidden branches merge to hidden
-   * (stamped after the factory, exactly as `cloneBranch` carries provenance).
-   */
+  /* Both sources have identical visibility (mixed provenance returned above). */
   const out = mkBranch(segments);
-  if (a.hidden && b.hidden) {
+  if (a.hidden === true) {
     out.hidden = true;
   }
   return out;
@@ -424,22 +441,37 @@ export function computeExtends(
   const hiddenByRule = new Map<Ruleset, boolean[]>();
   const nestedPlan = new Map<Ruleset, NestedRulePlan>();
   const hoistHeader = new Map<Ruleset, string[]>();
-  const staticProjection: ExtendPlacementResults = { flatByRule, hiddenByRule, nestedPlan, hoistHeader };
+  const hiddenReferenceRules = overlay?.hiddenReferenceRules ?? null;
+  const staticProjection: ExtendPlacementResults = {
+    flatByRule,
+    hiddenByRule,
+    nestedPlan,
+    hoistHeader,
+    visibleReferenceAtRules: null,
+    visibleReferenceRuleAncestors: null
+  };
   let byPlacement: WeakMap<object, ExtendPlacementResults> | null = null;
-  const projectionFor = (subject: PlanSubject): ExtendPlacementResults => {
-    if (!subject.placement) {
+  const projectionForPlacement = (placement?: object): ExtendPlacementResults => {
+    if (!placement) {
       return staticProjection;
     }
     const all = byPlacement ??= new WeakMap<object, ExtendPlacementResults>();
-    let projection = all.get(subject.placement);
+    let projection = all.get(placement);
     if (!projection) {
       projection = {
-        flatByRule: new Map(), hiddenByRule: new Map(), nestedPlan: new Map(), hoistHeader: new Map()
+        flatByRule: new Map(),
+        hiddenByRule: new Map(),
+        nestedPlan: new Map(),
+        hoistHeader: new Map(),
+        visibleReferenceAtRules: null,
+        visibleReferenceRuleAncestors: null
       };
-      all.set(subject.placement, projection);
+      all.set(placement, projection);
     }
     return projection;
   };
+  const projectionFor = (subject: PlanSubject): ExtendPlacementResults =>
+    projectionForPlacement(subject.placement);
 
   /*
    * LAZY + MEMOIZED composePath. `composePath(s.path)` (full ancestor fold + Branch-
@@ -601,14 +633,58 @@ export function computeExtends(
      */
     if (changed) {
       const compacted = siblingCompact(flat, false);
-      projectionFor(s).flatByRule.set(s.rule, compacted.map(branchText));
+      const projection = projectionFor(s);
 
       /*
        * [import:reference] carry the per-branch visibility mask only when some branch
        * is hidden — a document with no reference imports never allocates it.
        */
-      if (compacted.some(b => b.hidden)) {
-        projectionFor(s).hiddenByRule.set(s.rule, compacted.map(b => b.hidden === true));
+      let hiddenMask: boolean[] | null = null;
+      let hasVisibleBranch = false;
+      const headerTexts: string[] = [];
+      for (let index = 0; index < compacted.length; index++) {
+        const branch = compacted[index]!;
+        headerTexts.push(branchText(branch));
+        if (branch.hidden === true) {
+          if (hiddenMask === null) {
+            hiddenMask = [];
+            for (let prior = 0; prior < index; prior++) {
+              hiddenMask.push(false);
+            }
+          }
+          hiddenMask.push(true);
+        } else {
+          hasVisibleBranch = true;
+          if (hiddenMask !== null) {
+            hiddenMask.push(false);
+          }
+        }
+      }
+      projection.flatByRule.set(s.rule, headerTexts);
+      if (hiddenMask !== null) {
+        projection.hiddenByRule.set(s.rule, hiddenMask);
+      }
+      if (s.hidden && hasVisibleBranch) {
+        let parent = s.parent;
+        while (parent !== null) {
+          const parentProjection = projectionFor(parent);
+          const ancestors = parentProjection.visibleReferenceRuleAncestors ??= new Set();
+          if (ancestors.has(parent.rule)) {
+            break;
+          }
+          ancestors.add(parent.rule);
+          parent = parent.parent;
+        }
+        let owner = s.referenceAtRule;
+        while (owner !== null) {
+          const ownerProjection = projectionForPlacement(owner.placement);
+          const atRules = ownerProjection.visibleReferenceAtRules ??= new Set();
+          if (atRules.has(owner.node)) {
+            break;
+          }
+          atRules.add(owner.node);
+          owner = owner.parent;
+        }
       }
     }
   }
@@ -918,5 +994,14 @@ export function computeExtends(
     });
   }
 
-  return { flatByRule, hiddenByRule, nestedPlan, hoistHeader, byPlacement };
+  return {
+    flatByRule,
+    hiddenByRule,
+    hiddenReferenceRules,
+    visibleReferenceAtRules: staticProjection.visibleReferenceAtRules,
+    visibleReferenceRuleAncestors: staticProjection.visibleReferenceRuleAncestors,
+    nestedPlan,
+    hoistHeader,
+    byPlacement
+  };
 }

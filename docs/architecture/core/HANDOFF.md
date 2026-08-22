@@ -3789,7 +3789,117 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-22 Less common `@plugin` ABI fixed-parameter typed-list
+- Latest pass: 2026-08-22 Less A7 `(reference)` import visibility through
+  extend, including hidden selector ancestry and at-rule containment. This is a
+  compatibility correction, not a performance result.
+- Architecture surface: canonical AST-v2 import preflight, extend IR/fixpoint,
+  and flat serializer only. Parser-owned Ruleset/AtRuleBlock structure remains
+  authoritative; no CSS text is scanned or reparsed and no fixture CSS changes.
+- Separation/duplication: each hidden planner subject carries its nearest typed
+  `PlanReferenceAtRule` occurrence (`node`, parent occurrence, placement token).
+  This preserves both `AtRule > For` and `For > AtRule` without canonical-node
+  ownership Maps. Extend projection records visible containers in the matching
+  static or concrete-placement projection. Emission consumes those facts; it
+  does not rediscover ancestry from bytes or introduce a second matcher.
+- Cumulative node weight: unchanged. No AST/CST node, canonical selector,
+  declaration, or imported document is copied. Visibility remains render-local
+  planner state.
+- New traversal: subject collection records every hidden rule, including `$for`
+  bodies without an imported `:extend()` because a visible external extender may
+  target them. For each hidden subject that gains a visible branch, parent
+  Ruleset/AtRuleBlock occurrences are marked in their own placement projection
+  until an already-marked ancestor. Emission walks only Ruleset, visible
+  AtRuleBlock, and concrete `$for` structure; all direct leaves, calls, control
+  blocks, modules, and opaque output remain hidden. Preflight's typed `ForItem[]`
+  and placement tokens are queued by execution occurrence and reused by emission,
+  so the iterable is evaluated once even when one canonical loop node is reused.
+- New node/materialization: reference imports lazily allocate one hidden-rule Set
+  plus one small occurrence record per visited hidden at-rule placement and one
+  source-order queue record per planned canonical-loop occurrence. A
+  successful pull lazily allocates rule-ancestor/at-rule Sets only in the static
+  or concrete-placement projection that needs them. The ordinary no-reference
+  overlay and projections retain fixed nullable slots and allocate none of these
+  collections. Whole-branch dedup still allocates one presence index;
+  its Set became a Map to retain the existing survivor and promote hidden to
+  visible without adding a duplicate branch. Promotion clones that one render-IR
+  branch rather than mutating a prior fixpoint list. The Map is filled by a loop,
+  not tuple-array materialization.
+- Render path: hidden imported rules and at-rule leaves remain output-silent.
+  A visible extend projection emits only visible branches; a hidden selector
+  ancestor contributes composition context but none of its own declarations.
+  Mixed hidden/visible siblings never compact into one `:is()` branch. A
+  byte-identical self-extend changes visibility even when selector text does not.
+  Loaded `(inline)` bytes and CSS-import fallbacks remain suppressed only while
+  nested in a reference import; an ordinary top-level driver-declined import keeps
+  its established CSS fallback. Reference-document trivia advances its cursor
+  without emitting; trivia inside a surfaced rule body remains visible.
+- Helper/API surface: private reference-ancestor body/loop walkers and private
+  visibility predicates only. `PlanOverlay`/`ExtendResults` gain internal nullable
+  typed collections; no package export or public API changes.
+- Metadata mutations: none on canonical nodes. Branch visibility is the existing
+  extend-IR bit; promoting an identical survivor replaces its render-local branch
+  with a visible clone. Imported AST parents/source spans are untouched.
+- Review-flagged diff tokens: [loop/traversal] hidden-loop preflight collection,
+  placement-owned stop-on-seen ancestor marking, and a cold structural emission
+  walk; [side map/set] one reference-only hidden Set, occurrence records, the
+  existing placement WeakMap, and success-only per-projection visibility Sets;
+  [materialization] one cached typed `ForItem[]` per planned loop, no AST node/body/canonical
+  selector copy, one rare render-IR visibility clone, and no per-entry tuple
+  arrays in the dedup Map; [materialized array/object] placement projections and
+  occurrence records exist only on the admitted reference/extend lane; [node
+  construction] new Maps/Sets/records are lazy and render-local; [routine error
+  control] the structural loop wrapper's `try/catch` only restores indentation
+  before rethrowing an exceptional failure; [array spread/materialization] the three changed
+  selector-option arrays preserve the existing ordinary replacement shape and
+  omit the matched hidden seed only on the reference lane; [behavior] hidden reference
+  rules become visible only through A7 extend projection, with direct leaves,
+  hidden siblings, root trivia, and inline bytes pinned output-silent.
+- Evidence: focused import/extend/preflight/op-budget tests pass 102/102 after a
+  fresh core build; the full core suite passes 212 files / 3357 tests / 9 skipped
+  / 2 todo. The
+  real owner-maintained `import-reference.less` now emits direct and nested
+  at-rule-contained pulls (including `.nestedToo .class`) and no hidden sibling;
+  focused tests additionally pin a hidden loop with no own extend, direct hidden
+  leaves/calls, source-order reuse of one canonical loop, two interpolated
+  placements where only one becomes visible, hidden root trivia, retained pulled
+  body trivia, and explicit `collapseNesting:true`;
+  its remaining expected-failure diff is independently classified v5 `:is()`
+  selector compaction, explicit nested output, comment replay, and invalid-inline
+  indentation. The Less corpus passes 111/111, the AST-v2 production ratchet
+  passes 4/4, macro and compose-integrity both report zero interpreter
+  fallbacks, and the aggressive-cutting, semantics, and performance reviews
+  pass with evidence against their full invariant sets.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "SETTLED A7 requires reference-imported rules to stay hidden until a visible extend or mixin pulls them. Typed planner facts carry branch visibility and structural ancestry so serializer output can retain only the necessary containers without parsing selector or import bytes again.",
+    "dangerTokensJustification": "All new collections are lazy and reference-import-only; ordinary overlays/projections retain fixed null slots. Occurrence-owned ancestor walks stop within each placement, the cold body walk admits only typed preflight constructs, cached ForItem facts prevent a second iterable evaluation, and branch dedup fills one Map directly without pair arrays. No AST copy, source scan, reparse, error-control lane, or timing claim is introduced.",
+    "behaviorEvidence": "The registry-owned semantic-runtime command passes 130/130; focused import/extend/preflight/op-budget coverage passes 102/102, full core passes 3357 tests, and the real import-reference fixture emits direct and nested A7 pulls while hidden siblings/root trivia remain absent. The repaired AST operation-count smoke records 94 subjects, 2 instructions, 66 branch comparisons, and 90 imported overlay subjects.",
+    "buildEvidence": "The dependency-order build:release passes. Full core passes 3357 tests; all-less passes 111/111; the AST-v2 production ratchet passes 4/4; check:macro and verify:compose-integrity report zero interpreter fallbacks; verify:aggressive-cutting-review, verify:materialization-frontier, verify:render-buffer-frontier, and check:guardrails pass.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 45.6, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+  },
+  {
+    "id": "ast-extend-import-preflight",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "why": "A Context-loaded import is the first authoritative typed source for hidden reference selectors and concrete loop placements; these facts cannot be carried before resolution, and without this source-order preflight the root extend plan would be complete before imported subjects were known.",
+    "dangerTokensJustification": "The false path enters preflight once and performs zero collector, overlay, instruction, or loop-placement work. The feature path walks the loaded typed body once; reference-only Sets/occurrence records are lazy, ancestry is placement-owned, and cached typed loop items are reused by emission. No source scan, reparse, AST copy, tuple array, or speed claim is introduced.",
+    "falsePath": {"fixture": "extend-preflight-contract:no-extend", "counters": {"calls": 1, "collectorCalls": 0, "overlaySubjects": 0, "overlayInstructions": 0, "loopPlacements": 0}},
+    "featurePath": {"fixture": "extend-preflight-contract:imported-loop", "counters": {"importsVisited": 1, "loopPlacements": 2, "overlaySubjects": 2}},
+    "baseline": {"fixture": "benchmark.less", "phase": "parse-render", "currentMedianMs": 45.6, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+  }
+]
+```
+- Verdict: accepted A7 compatibility batch; no speed or neutrality claim.
+  The named full gates and both required invariant-by-invariant reviews pass.
+
+- Prior landed pass: 2026-08-22 Less common `@plugin` ABI fixed-parameter typed-list
   carry. This is an A9 compatibility correction, not a performance result.
 - Architecture surface: canonical AST-v2 mixin binding and raw plugin argument
   projection only. Ordinary mixin bindings retain their established eager Less

@@ -53,6 +53,7 @@ export function applyInstruction(
   const out: Branch[] = [];
   const appends: Branch[] = [];
   let changed = false;
+  let exactSelfExtender: boolean | undefined;
 
   /*
    * When this list sits INSIDE an `:is()` graft (`outerSurrounding` non-empty), a
@@ -138,10 +139,34 @@ export function applyInstruction(
        * as authored (never rewritten into `:is(span, hidden-ext)`, which would leak
        * the hidden extender's text). Skip the in-place substitution for this branch;
        * the net visible effect of a hidden extender's sub-match is nothing.
-       */
+      */
       if (!effHidden) {
-        const rewritten = rewriteBranchPartial(b, target, extenders, partial, extenderKeys, targetAtoms, outerSurrounding);
+        const retainMatched = b.hidden !== true;
+        if (!retainMatched && exactSelfExtender === undefined) {
+          exactSelfExtender = false;
+          for (let index = 0; index < extenders.length; index++) {
+            if (branchWholeMatch(extenders[index]!, target, false)) {
+              exactSelfExtender = true;
+              break;
+            }
+          }
+        }
+        const rewritten = rewriteBranchPartial(
+          b,
+          target,
+          extenders,
+          partial,
+          extenderKeys,
+          targetAtoms,
+          outerSurrounding,
+          retainMatched,
+          exactSelfExtender === true
+        );
         if (rewritten) {
+          if (!retainMatched) {
+            /* Keep the authored hidden seed for chaining, beside its visible product. */
+            out.push(b);
+          }
           out.push(rewritten);
           changed = true;
           continue;
@@ -157,7 +182,10 @@ export function applyInstruction(
      * fold collapses a target's N instructions into one call), not once per queued
      * extender. `appendDeduped` then folds every whole-branch append through it.
      */
-    const present = new Set(out.map(branchText));
+    const present = new Map<string, number>();
+    for (let index = 0; index < out.length; index++) {
+      present.set(branchText(out[index]!), index);
+    }
     if (appendDeduped(out, appends, present)) {
       changed = true;
     }
@@ -168,20 +196,28 @@ export function applyInstruction(
 /**
  * Append `appends` onto `out`, skipping any branch whose text already occurs in
  * `out` (the whole-branch self-avoidance dedup). `present` is the caller-owned
- * presence index, seeded once from `out` so a folded group's appends dedup in a
- * single pass instead of rebuilding the set per extender. Mutates `out`/`present`;
- * returns whether any branch was actually added. */
-export function appendDeduped(out: Branch[], appends: Branch[], present: Set<string>): boolean {
-  let added = false;
+ * text-to-output-index map, seeded once from `out` so a folded group's appends
+ * dedup in a single pass and can replace an identical hidden survivor with a
+ * visible clone. Mutates `out`/`present`; returns whether output or visibility
+ * changed. */
+export function appendDeduped(out: Branch[], appends: Branch[], present: Map<string, number>): boolean {
+  let changed = false;
   for (const e of appends) {
     const k = branchText(e);
-    if (!present.has(k)) {
+    const existingIndex = present.get(k);
+    if (existingIndex === undefined) {
       out.push(e);
-      present.add(k);
-      added = true;
+      present.set(k, out.length - 1);
+      changed = true;
+    } else if (out[existingIndex]!.hidden === true && e.hidden !== true) {
+      /* A visible extender identical to a hidden seed makes the survivor visible. */
+      const visible = cloneBranch(out[existingIndex]!);
+      visible.hidden = false;
+      out[existingIndex] = visible;
+      changed = true;
     }
   }
-  return added;
+  return changed;
 }
 
 /**
@@ -641,7 +677,9 @@ function rewriteBranchPartial(
   partial: boolean,
   extenderKeys: Set<string>,
   targetAtoms: Set<string>,
-  outerSurrounding: readonly string[]
+  outerSurrounding: readonly string[],
+  retainMatched: boolean,
+  promoteIdentical: boolean
 ): Branch | null {
   const before = branchText(b);
   let work = cloneBranch(b);
@@ -650,13 +688,24 @@ function rewriteBranchPartial(
   work = recurseIntoGrafts(work, target, extenders, partial, extenderKeys, targetAtoms, outerSurrounding);
 
   // (2) span substitution against the (possibly graft-updated) branch.
+  const beforeSubstitution = work;
   if (target.segments.length === 1) {
-    work = substituteSingleCompound(work, target.segments[0]!.compound, extenders, outerSurrounding);
+    work = substituteSingleCompound(
+      work,
+      target.segments[0]!.compound,
+      extenders,
+      outerSurrounding,
+      retainMatched
+    );
   } else {
-    work = substituteMultiCompound(work, target, extenders);
+    work = substituteMultiCompound(work, target, extenders, retainMatched);
   }
 
-  return branchText(work) !== before ? work : null;
+  const changedText = branchText(work) !== before;
+  if (changedText || (work !== beforeSubstitution && promoteIdentical)) {
+    return work;
+  }
+  return null;
 }
 
 /** Recurse an instruction into every `:is()` graft simple in the branch. A graft
@@ -737,9 +786,16 @@ function surroundingOf(compound: Compound, needSet: Set<string>, outerSurroundin
 }
 
 /** Substitute a single-compound target inside every matching compound. */
-function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders: Branch[], outerSurrounding: readonly string[]): Branch {
+function substituteSingleCompound(
+  b: Branch,
+  targetCompound: Compound,
+  extenders: Branch[],
+  outerSurrounding: readonly string[],
+  retainMatched: boolean
+): Branch {
   const need = textSimpleTokens(targetCompound);
   const needSet = new Set(need);
+  let matched = false;
   const segments = b.segments.map((seg) => {
     const have = textSimpleTokens(seg.compound);
     if (!multisetSubset(need, have)) {
@@ -755,8 +811,12 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
     if (kept.length === 0) {
       return seg;
     }
+    matched = true;
     if (need.length > 1) {
-      return { combinator: seg.combinator, compound: collapseMatchedAtoms(seg.compound, needSet, targetCompound, kept) };
+      return {
+        combinator: seg.combinator,
+        compound: collapseMatchedAtoms(seg.compound, needSet, targetCompound, kept, retainMatched)
+      };
     }
 
     /*
@@ -768,12 +828,14 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
       compound: {
         value: seg.compound.value.flatMap((s): Simple[] =>
           s.t === 'text' && needSet.has(s.text)
-            ? isOrPlainSimpleTokens([descendantBranch([cloneSimple(s)]), ...kept])
+            ? isOrPlainSimpleTokens(retainMatched
+                ? [descendantBranch([cloneSimple(s)]), ...kept]
+                : kept)
             : [cloneSimple(s)])
       }
     };
   });
-  return mkBranch(segments);
+  return matched ? mkBranch(segments) : b;
 }
 
 /** Collapse contiguous matched atoms into one `:is(<matched>, ext)`, keep the rest. */
@@ -781,7 +843,8 @@ function collapseMatchedAtoms(
   compound: Compound,
   needSet: Set<string>,
   targetCompound: Compound,
-  extenders: Branch[]
+  extenders: Branch[],
+  retainMatched: boolean
 ): Compound {
   const matchedBranch = descendantBranch([{ t: 'text', text: compoundText(targetCompound) }]);
   const out: Simple[] = [];
@@ -789,7 +852,7 @@ function collapseMatchedAtoms(
   for (const s of compound.value) {
     if (s.t === 'text' && needSet.has(s.text)) {
       if (!placed) {
-        out.push(...isOrPlainSimpleTokens([matchedBranch, ...extenders]));
+        out.push(...isOrPlainSimpleTokens(retainMatched ? [matchedBranch, ...extenders] : extenders));
         placed = true;
       }
 
@@ -806,7 +869,12 @@ function collapseMatchedAtoms(
  * segment run whose compounds each superset the target compounds and whose
  * internal combinators align; collapses the span into one `:is(span, ext)`.
  */
-function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[]): Branch {
+function substituteMultiCompound(
+  b: Branch,
+  target: Branch,
+  extenders: Branch[],
+  retainMatched: boolean
+): Branch {
   const P = target.segments.length;
   const segments = b.segments;
   for (let start = 0; start + P <= segments.length; start++) {
@@ -835,7 +903,9 @@ function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[])
     }
     const isSeg: SelectorPart = {
       combinator: start === 0 ? ' ' : segments[start]!.combinator,
-      compound: { value: isOrPlainSimpleTokens([mkBranch(spanSegs), ...extenders]) }
+      compound: {
+        value: isOrPlainSimpleTokens(retainMatched ? [mkBranch(spanSegs), ...extenders] : extenders)
+      }
     };
     const outSegs: SelectorPart[] = [];
     for (let i = 0; i < segments.length; i++) {

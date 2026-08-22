@@ -8,6 +8,7 @@
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, levelFromSelectorList } from './ir.js';
 import type { Branch, Level } from './ir.js';
 import type { ExtendInstruction, Stylesheet, Ruleset, Statement } from '../nodes.js';
+import type { AtRuleBlock } from '../at-rule.js';
 
 /**
  * Opt-in, import-time-captured counters for the AST extend planner. Production
@@ -63,6 +64,9 @@ export interface PlanSubject {
   /** Concrete render placement for a repeated canonical body (`$for`/`each`). */
   placement?: object;
 
+  /** Nearest hidden at-rule occurrence, retaining its concrete placement chain. */
+  referenceAtRule: PlanReferenceAtRule | null;
+
   /**
    * FAST-REJECT: true when some level on this subject's ancestor path (own-local ∪
    * ancestors) contains an atom that is also an instruction-target atom. Computed
@@ -73,6 +77,13 @@ export interface PlanSubject {
    * `targetAtoms` is populated (i.e. the document has extends).
    */
   mayMatch: boolean;
+}
+
+/** One hidden at-rule occurrence in the render-local reference-import plan. */
+export interface PlanReferenceAtRule {
+  node: AtRuleBlock;
+  parent: PlanReferenceAtRule | null;
+  placement?: object;
 }
 
 export interface Plan {
@@ -92,6 +103,8 @@ export interface Plan {
 export interface PlanOverlay {
   readonly subjects: readonly PlanSubject[];
   readonly instructions: readonly PlanInstruction[];
+  readonly hiddenReferenceRules: ReadonlySet<Ruleset> | null;
+
 }
 
 function instructionTargets(inst: ExtendInstruction): Branch[] {
@@ -130,7 +143,8 @@ export function collectPlan(
           parent,
           mayMatch: false,
           hidden: rule.reference === true || hiddenRules?.has(rule) === true,
-          referenceBoundary: referenceBoundaries?.get(rule) ?? null
+          referenceBoundary: referenceBoundaries?.get(rule) ?? null,
+          referenceAtRule: null
         };
         subjects.push(subject);
         if (rule.extendInstructions) {

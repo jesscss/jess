@@ -137,23 +137,38 @@ describe('groupInstructions — fold by (partial, hidden, target)', () => {
 describe('appendDeduped — whole-branch append dedup', () => {
   it('appends only branches whose text is not already present, mutating out + present', () => {
     const out = [textBranch('.a')];
-    const present = new Set(out.map(branchText));
+    const present = new Map(out.map((branch, index) => [branchText(branch), index]));
     const added = appendDeduped(out, [textBranch('.b'), textBranch('.a'), textBranch('.c'), textBranch('.b')], present);
     expect(added).toBe(true);
     expect(out.map(branchText)).toEqual(['.a', '.b', '.c']);
-    expect([...present].sort()).toEqual(['.a', '.b', '.c']);
+    expect([...present.keys()].sort()).toEqual(['.a', '.b', '.c']);
   });
 
   it('returns false and leaves out unchanged when every append is already present', () => {
     const out = [textBranch('.a'), textBranch('.b')];
-    const present = new Set(out.map(branchText));
+    const present = new Map(out.map((branch, index) => [branchText(branch), index]));
     expect(appendDeduped(out, [textBranch('.a'), textBranch('.b')], present)).toBe(false);
     expect(out.map(branchText)).toEqual(['.a', '.b']);
   });
 
   it('returns false for an empty append list', () => {
     const out = [textBranch('.a')];
-    expect(appendDeduped(out, [], new Set(['.a']))).toBe(false);
+    expect(appendDeduped(out, [], new Map([['.a', 0]]))).toBe(false);
+  });
+
+  it('promotes an identical hidden survivor when the append is visible', () => {
+    const hidden = textBranch('.a');
+    hidden.hidden = true;
+    const visible = textBranch('.a');
+    const out = [hidden];
+    const present = new Map([['.a', 0]]);
+
+    expect(appendDeduped(out, [visible], present)).toBe(true);
+    expect(out).toHaveLength(1);
+    expect(hidden.hidden).toBe(true);
+    expect(out[0]).not.toBe(hidden);
+    expect(out[0]!.hidden).toBe(false);
+    expect(present.get('.a')).toBe(0);
   });
 });
 
