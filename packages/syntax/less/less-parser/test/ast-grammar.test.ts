@@ -7,8 +7,8 @@ import { lessGrammar } from '../src/grammar.js';
 
 /*
  * `math:` is a PARSE-TIME input (ledger P1): the same bytes produce a different
- * AST under a different mode, so a caller driving the grammar through `run()`
- * has to state one. These are grammar-fact tests, so they state Less's default.
+ * AST under a different mode. Raw `run()` callers may omit it and receive Less's
+ * public default; these grammar-fact tests state that default explicitly.
  * `source` is omitted deliberately — the trivia helpers already treat it as
  * optional, and omitting it keeps these runs on the exact path they used before
  * the state existed.

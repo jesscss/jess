@@ -15,8 +15,9 @@ export interface LessParseState {
    * OPTIONAL, because the grammar already treats it so — `sourceFromState`
    * returns `undefined` when it is absent and the trivia helpers fall back to
    * structural layout. A caller that only wants grammar facts (the AST-grammar
-   * tests drive `run()` directly) may omit it. `mathMode` is not optional: it
-   * changes which AST the same bytes produce.
+   * tests drive `run()` directly) may omit it. `mathMode` remains required on
+   * this resolved internal shape; raw callers are normalized by
+   * `requireLessParseState` below.
    */
   readonly source?: string;
 
@@ -28,6 +29,14 @@ export interface LessParseState {
   readonly mathMode: MathMode;
 }
 
+/** The public Less default, shared by wrapper and raw-grammar entry points. */
+export const DEFAULT_LESS_MATH_MODE: MathMode = 'parens-division';
+
+/** Immutable raw-entry state reused by every operation in a state-free parse. */
+const DEFAULT_LESS_PARSE_STATE: LessParseState = Object.freeze({
+  mathMode: DEFAULT_LESS_MATH_MODE
+});
+
 const MATH_MODES = ['always', 'parens-division', 'parens', 'strict'] as const;
 
 const isMathMode = (value: string): value is MathMode =>
@@ -36,28 +45,29 @@ const isMathMode = (value: string): value is MathMode =>
 /**
  * Recover the typed state parseman hands reducers as `unknown`.
  *
- * It THROWS rather than falling back to a default, deliberately. A silent
- * fallback would make a broken threading path type-clean and invisible: every
- * `.less` file would quietly revert to `parens-division`, and only a non-default
- * `math:` would ever notice. `parseWith` always supplies this state, so reaching
- * the throw is a parser bug, not a user error.
+ * Missing state uses the same public default as `parseWith`, so the exported
+ * AST/CST grammars remain directly runnable. An explicitly supplied invalid
+ * mode still throws instead of hiding a broken threading path.
  */
 export function requireLessParseState(state: unknown): LessParseState {
-  if (
-    typeof state !== 'object'
-    || state === null
-    || !('mathMode' in state)
-    || typeof state.mathMode !== 'string'
-    || !isMathMode(state.mathMode)
-  ) {
+  if (state === undefined) {
+    return DEFAULT_LESS_PARSE_STATE;
+  }
+  if (typeof state !== 'object' || state === null) {
+    throw new TypeError('Less grammar parse state must be an object when supplied.');
+  }
+  const supplied = state as { readonly source?: unknown; readonly mathMode?: unknown };
+  const suppliedMathMode = supplied.mathMode;
+  if (suppliedMathMode !== undefined && (
+    typeof suppliedMathMode !== 'string' || !isMathMode(suppliedMathMode)
+  )) {
     throw new TypeError(
-      'Less grammar ran without a `mathMode` in its parse state. '
-      + '`math:` decides at parse whether an operation computes outside parens, '
-      + 'so the caller must state it — `parseWith` always does.'
+      'Less grammar received an invalid `mathMode` in its parse state.'
     );
   }
-  const source = 'source' in state && typeof state.source === 'string' ? state.source : undefined;
+  const mathMode = suppliedMathMode ?? DEFAULT_LESS_MATH_MODE;
+  const source = typeof supplied.source === 'string' ? supplied.source : undefined;
   return source === undefined
-    ? { mathMode: state.mathMode }
-    : { source, mathMode: state.mathMode };
+    ? { mathMode }
+    : { source, mathMode };
 }

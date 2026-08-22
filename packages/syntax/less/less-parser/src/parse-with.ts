@@ -9,7 +9,7 @@
 import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
 import type { ISafeParseResult, MathMode, TriviaMap } from '@jesscss/core';
-import type { LessParseState } from './parse-state.js';
+import { DEFAULT_LESS_MATH_MODE, type LessParseState } from './parse-state.js';
 /*
  * `parserDiagnostic` comes from the narrow `./diagnostics` entry, not the root:
  * the root entry pulls the evaluator, functions, and legacy tree runtime onto
@@ -52,14 +52,8 @@ export interface LessParseOptions {
   readonly mathMode?: MathMode;
 }
 
-/**
- * Less's own default, stated here rather than defaulted at each read site so
- * there is exactly one place the fallback lives.
- */
-const DEFAULT_LESS_MATH_MODE: MathMode = 'parens-division';
 const EMPTY_LAYOUT: readonly string[] = Object.freeze([]);
 const SPACE_LAYOUT: readonly string[] = Object.freeze([' ']);
-
 function isStylesheet(value: unknown): value is Stylesheet {
   return (
     typeof value === 'object'
