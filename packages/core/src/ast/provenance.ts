@@ -142,6 +142,24 @@ function gapHasCommentKind(gap: ParserRootTriviaGap): boolean {
  */
 export type ValueLayout = readonly string[];
 
+/**
+ * Canonical trivia ranges at the outside edges of a typed value layout. Each
+ * range is the identity returned by the document's existing `TriviaMap`;
+ * `null` means that boundary carried no output block comment. The fixed-shape
+ * record rides on the rare separator array retained by the existing layout
+ * store, so it adds neither node fields nor another side table.
+ */
+export interface ValueBoundaryTrivia {
+  readonly before: AstTriviaRange | null;
+  readonly between: AstTriviaRange | null;
+  readonly after: AstTriviaRange | null;
+}
+
+const valueBoundaryTriviaKey = Symbol.for('jess.ast.value-boundary-trivia');
+interface StoredValueLayout extends ReadonlyArray<string> {
+  readonly [valueBoundaryTriviaKey]?: ValueBoundaryTrivia;
+}
+
 /*
  * Value layout is the one side table that MUST stay identity-keyed: its subject
  * is a raw `ValueSlot` ARRAY, and named properties on an array are not a shape a
@@ -157,9 +175,9 @@ export type ValueLayout = readonly string[];
  */
 const layoutStoreKey = Symbol.for('jess.ast.value-layout-store');
 const layoutGlobal = globalThis as typeof globalThis & {
-  [layoutStoreKey]?: WeakMap<object, ValueLayout>;
+  [layoutStoreKey]?: WeakMap<object, StoredValueLayout>;
 };
-const layouts = layoutGlobal[layoutStoreKey] ??= new WeakMap<object, ValueLayout>();
+const layouts = layoutGlobal[layoutStoreKey] ??= new WeakMap<object, StoredValueLayout>();
 
 function rangeHasComment(src: string, start: number, end: number): boolean {
   for (let i = start; i < end; i++) {
@@ -436,7 +454,10 @@ export function bodySpanOf(node: object): AstSourceSpan | undefined {
  * The same side table can therefore preserve a comma boundary on a List while
  * keeping the semantic payload (`value` + `sep`) minimal.
  */
-export function withValueLayout<T extends object>(value: T, separators: ValueLayout): T {
+export function withValueLayout<T extends object>(
+  value: T,
+  separators: ValueLayout
+): T {
   /* The normal raw ValueSlot renderer already joins absent layout with one space,
    * so recording `[' ', …]` duplicates an implied fact. The one exception is a
    * Less top-level slash: its authored spacedness carries deferred-division
@@ -452,6 +473,22 @@ export function withValueLayout<T extends object>(value: T, separators: ValueLay
     return value;
   }
   layouts.set(value, separators);
+  return value;
+}
+
+/**
+ * Retain comment-bearing outer-boundary trivia on the separator array already
+ * stored for this rare value. The symbol is non-enumerable, so public AST and
+ * layout projections remain byte-identical.
+ */
+export function withValueBoundaryTrivia<T extends object>(
+  value: T,
+  separators: ValueLayout,
+  boundary: ValueBoundaryTrivia
+): T {
+  const stored: string[] = [...separators];
+  Object.defineProperty(stored, valueBoundaryTriviaKey, { value: boundary });
+  layouts.set(value, stored);
   return value;
 }
 
@@ -491,4 +528,9 @@ function hasTopLevelSlash(value: object): boolean {
 /** Read parser-authored separators for a raw ValueSlot array, List, or Sequence. */
 export function valueLayoutOf(value: object): ValueLayout | undefined {
   return layouts.get(value);
+}
+
+/** Read rare parser-owned trivia at the outside edges of a typed value. */
+export function valueBoundaryTriviaOf(value: object): ValueBoundaryTrivia | undefined {
+  return layouts.get(value)?.[valueBoundaryTriviaKey];
 }

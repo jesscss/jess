@@ -28,7 +28,7 @@ import {
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -2929,6 +2929,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         lessMathOutsideParens(state, ':')))
   );
   const quotedOrUrlTarget = choice(g.EscapedQuoted, g.Quoted, UrlTarget);
+  /**
+   * Keep the import target as the original typed grammar child. The enclosing
+   * import reducer owns target/tail structure; root boundary trivia stays in
+   * Parseman's sparse document index and this leaf gains no source slots.
+   */
   const ImportTarget = node(
     'ImportTarget',
     quotedOrUrlTarget,
@@ -2949,7 +2954,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => children.length === 1 ? children[0] : children
   );
-  /*
+  /**
    * There are TWO import nodes and this reducer picks between them. A plain CSS
    * `@import` is an ordinary `AtRuleStatement`; a compile-time import — one with
    * options, or with a loadable target — is a `StyleImport`. `importIsCompileTime`
@@ -2961,6 +2966,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * back out of it, and a variable-bearing media feature still has to evaluate.
    * The option clause is import machinery with no CSS meaning, so it is simply
    * absent from that statement — exactly as Less 4.x emits it.
+   * Root boundary trivia is projected later from Parseman's sparse root index;
+   * this reducer stays on its original children/fields/span ABI.
    *
    * A postlude on the COMPILE-TIME branch is rejected here rather than carried:
    * a media/layer/supports query describes a linked CSS resource, and a loaded
@@ -2993,7 +3000,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         }
         return styleImport(keyword.value, target, { options, mode: 'import' });
       }
-      return atRuleStatement(keyword.value, tail === null ? target : spaced([target, tail]));
+      return withImportSourceSpan(
+        withImportTailStart(
+          atRuleStatement(
+            keyword.value,
+            tail === null ? target : spaced([target, tail])
+          ),
+          tailField === undefined || Array.isArray(tailField) ? NO_SPAN : tailField.span.start
+        ),
+        span.start,
+        span.end
+      );
     }
   );
   // `@plugin` is a compile-time directive, not an unknown CSS at-rule. Its

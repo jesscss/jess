@@ -13,7 +13,9 @@ import {
   withBodySpan,
   withSourceSpan,
   withTriviaMap,
+  valueBoundaryTriviaOf,
   valueLayoutOf,
+  withValueBoundaryTrivia,
   withValueLayout
 } from '../../ast.js';
 
@@ -41,6 +43,20 @@ describe('canonical AST source provenance', () => {
 
     expect(withValueLayout(value, [])).toBe(value);
     expect(valueLayoutOf(value)).toEqual([]);
+  });
+
+  it('keeps rare boundary trivia in the existing value-layout store', () => {
+    const value: object[] = [];
+    const boundary = {
+      before: { start: 0, end: 13 },
+      between: { start: 13, end: 19 },
+      after: { start: 19, end: 31 }
+    } as const;
+    const separators = Object.freeze([' /* between */ ']);
+
+    expect(withValueBoundaryTrivia(value, separators, boundary)).toBe(value);
+    expect(valueLayoutOf(value)).toEqual([' /* between */ ']);
+    expect(valueBoundaryTriviaOf(value)).toBe(boundary);
   });
 
   it('retains a Parseman reduction span without changing the AST node shape', () => {

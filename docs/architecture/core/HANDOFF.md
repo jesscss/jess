@@ -3789,72 +3789,123 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-22 Less direct quoted CSS-import path transformation.
-  This is an output-resource compatibility correction, not a performance result.
-- Architecture surface: the existing `Context.transformUrl` plugin dispatch and
-  canonical AST-v2 `AtRuleStatement` serializer only. The Less plugin now
-  distinguishes a parser-classified direct quoted import from an ordinary
-  `url(...)` target, so both receive the established root-path rewrite while
-  URL-only query arguments stay on the URL lane. Resolution, loading, parsing,
-  and the parse-time CSS-terminal split remain unchanged.
-- Separation/duplication: `UrlTransformRequest.kind` is the single typed owner of
-  the URL-versus-direct-import policy at the retained plugin boundary. The
-  serializer recognizes only the parser-owned `AtRuleStatement` name and typed
-  `Quoted` first prelude part; it does not inspect the target string for an
-  extension, interpolation, query, or other semantic structure. The Less plugin
-  reuses its one existing path transformation implementation rather than adding
-  an import-specific resolver or rewrite pass.
-- Cumulative node weight: unchanged. No AST/CST node, prelude part, quoted value,
-  imported document, or source string is copied or mutated. A transformed target
-  is still the string returned by the existing plugin hook.
-- New traversal: only when a direct quoted import target actually changes, one
-  monotonic loop writes the already-typed `Sequence` tail after the transformed
-  first part. It starts at index one, evaluates every tail part once, and never
-  restarts, scans source bytes, reparses a prelude, or walks a document. Unchanged
-  imports retain whole-statement authored-trivia replay.
-- New node/materialization: none. Every Context-owned URL/import transformation
-  already allocates one `UrlTransformRequest`; its fixed Context-produced shape
-  now includes one string discriminator. The public field remains optional so an
-  older direct plugin caller keeps URL behavior. No additional request, array,
-  map, set, node, wrapper, or side table is allocated. The changed direct-import
-  lane receives only the plugin-returned string it needs to emit.
-- Render path: ordinary URLs keep their existing one Context/plugin dispatch and
-  receive `urlArgs` as before. Ordinary non-import at-rules perform exact
-  name/length checks and allocate nothing; a seven-byte case-insensitive
-  candidate uses fixed ASCII code comparisons without a predicate string. A
-  direct quoted import performs one Context/plugin dispatch. If unchanged,
-  authored bytes remain the output source; if changed, the serializer writes the
-  original quote form, the transformed target, and the typed tail without
-  evaluating the target twice.
-- Helper/API surface: one optional backwards-compatible public request field and
-  two private serializer helpers. Context always supplies `kind`; older direct
-  plugin callers that omit it retain URL behavior.
-  No package entrypoint, resolver hook, parser API, node type, or output option is
-  added.
-- Metadata mutations: none. Context continues to derive `fromFilePath` and
-  `entryFilePath` from its retained document/source provenance; no parent, source,
-  trivia, frozen, root, or placement metadata changes.
-- Review-flagged diff tokens: [loop/traversal] the transformed direct-import tail
-  loop is one forward pass over typed `Sequence.parts` beginning at one; [object
-  shape] the existing request allocation gains a fixed `kind` field on every
-  Context-created request, while the public field remains optional for older
-  callers; [predicate] fixed ASCII code comparisons classify only
-  seven-character import-name candidates without allocating a folded string,
-  while existing Less URL policy retains its data-URL and query/fragment string
-  operations; [behavior] root-path rewriting now reaches
-  direct quoted CSS-terminal imports and URL-only `urlArgs` does not.
-- Evidence: fresh focused core import coverage passes 54/54; fresh Less-plugin
-  coverage passes 13/13; the owner-maintained `static-urls` fixture lane passes
-  2/2 and renders both direct quoted targets with `folder (1)/` while its
-  remaining expected diff is accurately classified as import-hoist and authored
-  newline behavior. Full core passes 212 files / 3358 tests / 9 skipped / 2 todo;
-  full Less-plugin coverage passes 13/13; all-less passes 111/111; and the AST-v2
-  production ratchet passes 4/4. `build:release`, `check:macro`, and
-  `verify:compose-integrity` pass with zero interpreter fallbacks. The
-  aggressive-cutting, materialization-frontier, render-buffer-frontier,
-  package-export, guardrail, diff-check, performance-invariant, and
-  semantics-invariant reviews all pass. N8 remains explicitly OPEN; no fixture
-  CSS was changed.
+- Latest pass: 2026-08-22 Less CSS-import boundary-trivia retention. This is a
+  lexical-position correctness correction for the preceding N8 candidate, not a
+  performance result and not a new output-resource policy.
+- Architecture surface: the Less root-document import route, Parseman's sparse
+  root-trivia index, the existing identity-keyed `ValueLayout` provenance store,
+  and canonical AST-v2 `AtRuleStatement` serialization. Parseman still
+  classifies comments as trivia; no comment node, raw trivia-log decoder,
+  import-specific parser, resolver path, or second parse is added.
+- Separation/duplication: the ordinary `ImportStatement` reducer keeps its
+  original three-argument children/fields/span ABI and uses that already-built
+  span plus the already-captured tail-field span. It writes statement start/end
+  and typed-tail start into three fixed private symbol-keyed Smi slots on the
+  existing `AtRuleStatement`; public `_s`/`_e` provenance remains `NO_SPAN`.
+  After Parseman returns, the existing `TriviaMap` adapter answers at most four
+  exact offset lookups per root CSS import: after the keyword, before the typed
+  tail, before the semicolon, and before the right operand of the one structured
+  Less import-query feature. There is no catch-all interior-gap classification,
+  direct sparse-row decode, or second trivia representation.
+- Cumulative node weight: every `AtRuleStatement` factory result now owns the
+  same three private Smi symbol slots, avoiding conditional hidden classes at an
+  estimated 24 bytes per statement. A direct graph count for `benchmark.less`
+  finds 15,112 typed nodes / 21,035 total objects (including 4,930 arrays), but
+  only three `AtRuleStatement`s and no imports, so the measured structural
+  increment there is three fixed statements / approximately 72 bytes. Public
+  string-key enumeration, JSON shape, and source provenance are unchanged. Rare retained trivia
+  still rides as a non-enumerable symbol on a cloned separator array stored by
+  the one existing `ValueLayout` `WeakMap`; no AST child or public field is added.
+- New traversal: a parse with no selected comment has no `rootTrivia` result and
+  exits before the root-rule walk. A comment-bearing document performs one flat
+  root-rule pass; non-at-rules cost one type comparison, ordinary at-rule
+  statements read the fixed import-start sentinel, and only its non-`NO_SPAN`
+  parser-owned CSS-import marker enters the exact `TriviaMap.lookup` calls at
+  offsets. The adapter's successful lookup binary-searches Parseman's sparse
+  rows and returns one canonical `Trivia` range; the existing later comment-table
+  build reuses that `Trivia` identity. Render-time exact boundaries use one
+  binary seek into the source-ordered `CommentTable`, examine only equal-start
+  duplicates, and walk only that run's precomputed block-comment bounds plus
+  adjacent whitespace. There is no restart at index zero, recursive document
+  walk, source classifier, parse replay, or second target/tail evaluation.
+- New node/materialization: no AST/CST node, captured raw-child array, parser
+  state clone, boundary source scan, or source copy. Every at-rule statement's
+  existing object literal grows three fixed scalar properties. A successful
+  exact Parseman boundary lookup transiently materializes its adapter gap object
+  and closures; `TriviaMap` canonicalizes the resulting range object for later
+  use. Each retained outer import boundary allocates one fixed record, one cloned
+  separator array, and the descriptor used to attach the non-enumerable symbol
+  in the existing layout `WeakMap`. A structured-inner boundary allocates that
+  trio on its typed `Operation`; when it is the import's only retained boundary,
+  a second all-null boundary record, cloned layout, property descriptor, and
+  existing-`WeakMap` entry select typed emission without taxing ordinary imports
+  with a second lookup. No second side table,
+  map, set, or render carrier is added.
+- Render path: a CSS import without retained boundary comments keeps the existing
+  whole-statement authored replay. A comment-bearing import writes the original
+  at-keyword, exact parser-owned leading/inner/trailing trivia, the typed target
+  (including the existing root-path transform), its typed tail, and the semicolon
+  once. URL-form imports use the same boundary ownership while retaining their
+  existing typed URL transform; direct quotes retain the N8 candidate's import
+  transform. Mixed gaps emit block comments and adjacent whitespace, omit Less
+  line comments, and mark the exact complete run in the same pass so later
+  replay cannot duplicate it. The one typed `(name: @value)` import tail keeps
+  an exact inner comment boundary through a specialized typed writer. The
+  canonical media/container query evaluator itself is unchanged; a manually
+  emitted import's typed colon tail performs one existing-store WeakMap lookup,
+  whether that lookup hits retained inner trivia or falls back. A typed
+  CSS import without a retained outer boundary pays one existing-store
+  `WeakMap.get`; non-import at-rules perform no boundary lookup. Compile-time
+  imports retain their prior paths, and nested CSS imports carry unused fixed
+  offsets but never enter the root projection.
+- Helper/API surface: one bounded parser projection, one private exact-gap
+  chunk writer shared by outer and structured-inner boundaries, the `ValueBoundaryTrivia`
+  read/write pair, and fixed import-offset readers/writers exported through the
+  existing `@jesscss/core/ast` subpath for the parser/core boundary.
+  `withValueBoundaryTrivia` clones a caller's readonly separator array before
+  attaching metadata, so frozen public inputs remain valid. These additive alpha
+  exports add no node method, visitor, output option, Context/resolver hook, or
+  package entrypoint.
+- Metadata mutations: every at-rule statement factory initializes three private
+  symbol slots; a CSS import performs three same-map Smi stores for tail/start/end
+  and never changes its public source slots. Only a cloned rare separator array gets a
+  non-enumerable global-symbol property before entering the existing process-
+  global identity store; parents, roots, placements, and frozen caller state are
+  unchanged.
+- Review-flagged diff tokens: [loop/traversal] one comment-gated flat root pass,
+  one exact-range binary seek plus equal-start checks per retained boundary, and
+  block-bound/adjacent-whitespace loops; [array helper] outer and structured
+  boundaries write one `src.slice` per selected block comment directly through
+  the canonical output buffer; [side
+  table] reuse of the one existing process-global `ValueLayout` WeakMap, not a
+  new table; [metadata mutation] one non-enumerable symbol on a rare separator
+  cloned array plus three retained fixed private Smi slots on every factory-built
+  at-rule statement; [materialized array/object] one boundary record,
+  cloned separator array, and property descriptor only for a comment-bearing
+  import or structured inner boundary; [node construction] the existing
+  `AtRuleStatement` allocation gains three fixed scalar properties at its sole
+  factory; [public API] bounded import-offset/provenance operations exported from
+  the existing AST subpath; [behavior] quoted and URL-form import comments stay
+  attached to the hoisted import with and without root-path rewriting, and a
+  structured tail's interior comment remains inside that tail.
+- Evidence: focused core provenance coverage passes 16/16; the Less public parser
+  suite passes 104/104; focused Jess import-media coverage passes 14/14 and pins
+  quoted, URL-form, target-only, mixed block/line, no-rewrite, and rootpath exact
+  bytes. Parent-versus-current parser medians on `benchmark.less` under Node
+  25.9.0 / Parseman 0.49.0 are AST 23.5998 -> 22.9819 ms (-2.62%) and CST
+  30.4728 -> 30.2115 ms (-0.86%). The timing harness is confirmation-only and
+  lacks a same-commit null control, so the observation is inconclusive and no
+  speed or regression claim is made. The first buildable
+  fold-era anchor is `15f5b9266` (Parseman 0.41.0), at AST 19.5766 ms / CST
+  14.5749 ms; the current 17.40% / 107.28% long-range gap is inherited and
+  material. The nominal earlier fold commit `59f695d4a`
+  is not a valid anchor because its fresh artifacts import missing core exports.
+  No owner-maintained CSS fixture changed. `verify:shape-stability` remains red
+  identically at exact parent `4887a70b8` and current: its stale AST corpus-type
+  inventory and `SpacedValue` allowlist fail, while the monomorphic-node-shape
+  assertion and all five CST assertions pass. A direct V8 probe additionally
+  proves populated and ordinary `AtRuleStatement`s share one map and the same
+  eight own keys. Full named gates and reviews follow.
 - Hot-path cost contracts:
 ```json
 [
@@ -3864,29 +3915,19 @@ involved.
     "performanceClaim": "none",
     "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
-    "why": "SETTLED N7 owns the parser-classified direct quoted CSS-terminal import as an AtRuleStatement and retains the Context/plugin boundary. OPEN N8 records—but does not close—the emitted-path candidate implemented here: rootpath/rewriteUrls reach that direct target, urlArgs remains URL-only, and the typed tail/authored quote remain serializer-owned structure.",
-    "dangerTokensJustification": "The changed lane reuses one existing plugin dispatch and request allocation, then writes a changed target plus one forward scan over typed tail parts. It adds no source scan, extension classifier, resolver, parser replay, AST copy, side table, restart-at-zero loop, or timing claim; unchanged imports preserve authored whole-statement replay.",
-    "behaviorEvidence": "Focused core import coverage passes 54/54 and pins exact transformed target/tail bytes plus import/url discriminator order. The owner-maintained static-urls lane passes 2/2 and renders both direct quoted CSS targets with the configured root path without adding URL query arguments.",
-    "buildEvidence": "The dependency-order build:release passes. Full core passes 212 files / 3358 tests / 9 skipped / 2 todo; full plugin-less passes 13/13; all-less passes 111/111; the AST-v2 ratchet passes 4/4; check:macro and verify:compose-integrity report zero interpreter fallbacks; aggressive-cutting, materialization-frontier, render-buffer-frontier, package-export, guardrail, and diff-check gates pass.",
-    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 45.1, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
-  },
-  {
-    "id": "core-context-emit-selector-contract",
-    "verdict": "accepted",
-    "performanceClaim": "none",
-    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
-    "cases": ["Context-plugin-source-parser-dispatch", "emit-walk-context-output-option", "Ruleset-interpolated-selector-boundary", "selector-match-string-and-node-combinators", "extend-index-tagged-graft-atoms", "Sequence-subclass-preserving-evaluation", "callable-output-root-property-guard", "serializer-at-rule-and-selector-surface"],
-    "why": "Context already owns source/entry provenance and the active plugin's URL transform. A fixed typed discriminator lets that existing dispatch apply import-path policy without introducing a second public transform hook or moving resolution into serialization.",
-    "dangerTokensJustification": "Context still allocates one request and invokes one plugin hook per transformed URL/import target. The request has one fixed additional field; older direct callers default to URL behavior. No extra Context lookup, resolver call, document walk, error-control result, conditional node property, or plugin side object is added.",
-    "behaviorEvidence": "The core test proves one direct quoted import and one url(...) target reach the same plugin in typed order while emitting distinct exact policy bytes. The Less-plugin test proves rootpath applies to both kinds and urlArgs only to the URL kind.",
-    "buildEvidence": "The dependency-order build:release and full core/plugin tests pass. verify:package-exports confirms the optional request-field addition remains consumable by workspace packages; all-less, the AST-v2 ratchet, macro, compose-integrity, aggressive-cutting, materialization, render-buffer, guardrail, and diff-check gates pass.",
+    "why": "SETTLED G24 keeps comments in trivia, SETTLED N7 owns the parser-classified direct quoted CSS-terminal import as an AtRuleStatement, and OPEN N8 records the existing root-path candidate. This batch retains that import's classified boundary trivia through root hoisting without adding comment nodes or changing the output-resource rule.",
+    "dangerTokensJustification": "Comment-free parses return before the new flat root-rule pass. Comment-bearing parses query only exact parser-owned import offsets through the existing TriviaMap; a successful lookup may transiently materialize Parseman's adapter gap object, then reuses the canonical Trivia identity. Retained outer boundaries allocate one fixed record, cloned separator array, descriptor, and entry in the existing ValueLayout WeakMap. A structured-inner boundary allocates the same four facts on its Operation plus, only when no outer boundary exists, a second all-null prelude record, cloned layout, descriptor, and existing-WeakMap entry; this avoids a second WeakMap lookup on ordinary imports. One shared chunk writer slices each selected block comment directly into the canonical output buffer. Every AtRuleStatement has one fixed three-Smi private layout (three instances/about 72 bytes on benchmark.less), avoiding conditional shapes. Render ownership uses one binary seek per retained boundary and scans only equal-start runs plus precomputed block bounds; there is no packed-log decode, temporary aggregate string, restart-at-zero scan, recursive walk, source reparse, AST copy, or second side table.",
+    "behaviorEvidence": "Core provenance passes 16/16, the Less public parser suite passes 104/104, and focused Jess import-media coverage passes 14/14 with exact quoted, URL-form, target-only, mixed-comment, structured-tail, inner-only, no-rewrite, and rootpath bytes. The comment-free parser test proves private offsets do not leak through sourceSpanOf. Exact-parent and current oracle runs over 751 entries produce identical AST aggregate df48aacbe43b97bf946e3edc64f8b45f6c560193ca29080f689538c10fe6f209 (122 throws) and CST aggregate 3e47129d72ddb16163374100e63b4436ea7afba80930dd7d88aa41c1d3b45f06 (0 throws): zero batch movers. The committed-baseline oracle remains red identically at the parent and current commit, so this batch does not rebaseline inherited drift.",
+    "buildEvidence": "The dependency-order build:release passes. Full core passes 212 files / 3359 tests / 9 skipped / 2 todo; all-less passes 111/111; all-less-error passes 96/96; the AST-v2 production ratchet passes 4/4. check:macro reports zero interpreter fallbacks for all four parsers; verify:compose-integrity, verify:aggressive-cutting-review, verify:materialization-frontier, verify:render-buffer-frontier, verify:package-exports, and check:guardrails pass. Required grammar, performance, and semantics reviews approve with evidence per invariant. verify:shape-stability remains red identically at exact parent and current on its stale AST corpus inventory and SpacedValue allowlist; its monomorphic-node-shape assertion and all five CST assertions pass, and a direct V8 probe proves ordinary and populated AtRuleStatement instances share one map.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 45.1, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
   }
 ]
 ```
-- Verdict: accepted for landing as the explicitly OPEN N8 alpha candidate. The
-  full named gates and both invariant-by-invariant reviews pass; this does not
-  settle N8 and makes no speed or neutrality claim.
+- Verdict: implementation corrected through adversarial review; refreshed
+  exact-parent oracle, parser performance, and full named batch gates are recorded.
+  Required grammar, performance, and semantics reviews approve the exact current
+  tree with evidence per invariant. This does not settle N8 and makes no speed or
+  neutrality claim.
 
 - Prior landed pass: 2026-08-22 Less A7 `(reference)` import visibility through
   extend, including hidden selector ancestry and at-rule containment. This is a

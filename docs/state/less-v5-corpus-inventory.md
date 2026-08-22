@@ -124,16 +124,23 @@ passes; `functions/functions` is active in the alpha lane and remains an
 expected failure for the settled F5 lazy CSS-color boundary. The focused F5
 public-semantics test remains additional evidence for the full F5 rule.
 
-### Follow-up defect surfaced by the import-path lane
+### Resolved follow-up from the import-path lane
 
-- A root-hoisted CSS-terminal import with parser-owned block-comment trivia in
-  its media tail currently emits the comment later in document order. The same
-  displacement occurs with and without `rootpath`, so it is not caused by the
-  N8 transformation candidate. The direct cause is the missing source-span
-  bridge for the Less `AtRuleStatement`, which prevents hoist-time trivia replay;
-  source-byte inference is not an acceptable workaround. **Owner:** the ongoing
-  Less v5 import/trivia lane, immediately after the quoted-rootpath batch. Pin the
-  real parser representation before changing serializer behavior.
+- Root-hoisted CSS-terminal imports now retain parser-owned block-comment trivia
+  at the typed target/tail boundaries for both direct quotes and `url(...)`, with
+  and without `rootpath`. Fixed parser-owned import offsets query the canonical
+  trivia adapter only at exact typed boundaries; no import source is scanned or
+  reparsed. A mixed block/line gap emits the CSS block comment once and drops the
+  Less line comment rather than replaying either before the following rule, and
+  a structured tail retains its own interior comment instead of lending it to
+  the target/tail boundary. Focused parser coverage is 104/104 and focused import
+  emission coverage is 14/14, including inner-only quoted and URL comments with
+  and without a target rewrite. Exact-parent/current oracle digests match on all
+  751 entries; the dependency-order release build, full core, all-less,
+  all-less-error, production ratchet, macro/compose, frontier, package-export,
+  aggressive-cutting, and guardrail gates pass. Grammar, performance, and
+  semantics reviewers approve the exact redesigned carrier; landing is recorded
+  by the `dev` branch history.
 
 The remote import fixture is tracked in
 [`less-v5-release-plan.md`](../process/less-v5-release-plan.md) as a deferred

@@ -32,6 +32,16 @@
 import { NO_SPAN, type BodySpanSlots, type SpanSlots } from './provenance.js';
 import type { Interpolation, Quoted, Statement, Url, ValueNode } from './nodes.js';
 
+const importStartKey = Symbol.for('jess.ast.import-source-start');
+const importEndKey = Symbol.for('jess.ast.import-source-end');
+const importTailStartKey = Symbol.for('jess.ast.import-tail-start');
+
+interface ImportSourceSlots {
+  [importStartKey]?: number;
+  [importEndKey]?: number;
+  [importTailStartKey]?: number;
+}
+
 /** A block-bearing at-rule: `@name prelude { …body }`. */
 export interface AtRuleBlock extends SpanSlots, BodySpanSlots {
   readonly type: 'AtRuleBlock';
@@ -48,7 +58,7 @@ export interface AtRuleBlock extends SpanSlots, BodySpanSlots {
  * stays literal (Less resolves only `@{…}` in a statement prelude), so the common
  * case round-trips byte-for-byte.
  */
-export interface AtRuleStatement extends SpanSlots {
+export interface AtRuleStatement extends SpanSlots, ImportSourceSlots {
   readonly type: 'AtRuleStatement';
   readonly name: string;
   readonly prelude: ValueNode | null;
@@ -93,8 +103,61 @@ export const atRuleBlock = (
   rules: Statement[]
 ): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, rules, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
 
-export const atRuleStatement = (name: string, prelude: ValueNode | null): AtRuleStatement =>
-  ({ type: 'AtRuleStatement', name, prelude, _s: NO_SPAN, _e: NO_SPAN });
+export const atRuleStatement = (
+  name: string,
+  prelude: ValueNode | null
+): AtRuleStatement => {
+  const statement: AtRuleStatement = {
+    type: 'AtRuleStatement',
+    name,
+    prelude,
+    _s: NO_SPAN,
+    _e: NO_SPAN,
+    [importStartKey]: NO_SPAN,
+    [importEndKey]: NO_SPAN,
+    [importTailStartKey]: NO_SPAN
+  };
+  return statement;
+};
+
+/** Retain the parser-owned start of an import's typed tail in its fixed slot. */
+export function withImportTailStart<T extends AtRuleStatement>(
+  statement: T,
+  start: number
+): T {
+  statement[importTailStartKey] = start;
+  return statement;
+}
+
+/**
+ * Retain parser-owned CSS import offsets without changing public source
+ * provenance. Every AtRuleStatement factory result owns the same three Smi
+ * symbol slots, so this is a same-map store rather than a shape transition.
+ */
+export function withImportSourceSpan<T extends AtRuleStatement>(
+  statement: T,
+  start: number,
+  end: number
+): T {
+  statement[importStartKey] = start;
+  statement[importEndKey] = end;
+  return statement;
+}
+
+/** CSS import statement start, or NO_SPAN for every other at-rule statement. */
+export function importSourceStartOf(statement: AtRuleStatement): number {
+  return statement[importStartKey] ?? NO_SPAN;
+}
+
+/** CSS import statement end, or NO_SPAN for every other at-rule statement. */
+export function importSourceEndOf(statement: AtRuleStatement): number {
+  return statement[importEndKey] ?? NO_SPAN;
+}
+
+/** Typed import tail start, or NO_SPAN when the import has no tail. */
+export function importTailStartOf(statement: AtRuleStatement): number {
+  return statement[importTailStartKey] ?? NO_SPAN;
+}
 
 export const opaqueAtRuleBlock = (
   name: string,

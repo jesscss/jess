@@ -5,6 +5,7 @@ import {
   bodySpanOf,
   sourceSpanOf,
   triviaMapOf,
+  valueBoundaryTriviaOf,
   valueLayoutOf
 } from '../../../../core/src/ast/provenance.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
@@ -1151,6 +1152,91 @@ describe('public Less parse()', () => {
      */
     expect(() => parse('@import (less, multiple) "theme-@{name}.css" screen;'))
       .toThrow(LessImportPostludeError);
+  });
+
+  it('retains CSS import boundary comments outside the public AST shape', () => {
+    const source = '@import /* lead */ "theme.css" /* between */ screen;';
+    const document = parse(source);
+    const statement = document.rules[0];
+    if (statement?.type !== 'AtRuleStatement' || statement.prelude?.type !== 'Sequence') {
+      throw new Error('expected a typed CSS import prelude');
+    }
+    expect(sourceSpanOf(statement)).toBeUndefined();
+    expect(valueLayoutOf(statement.prelude)).toEqual([' ']);
+    expect(valueBoundaryTriviaOf(statement.prelude)).toMatchObject({
+      before: {
+        start: source.indexOf(' /* lead */ '),
+        end: source.indexOf(' /* lead */ ') + ' /* lead */ '.length
+      },
+      between: {
+        start: source.indexOf(' /* between */ '),
+        end: source.indexOf(' /* between */ ') + ' /* between */ '.length
+      },
+      after: null
+    });
+  });
+
+  it('does not expose private import offsets as public source provenance', () => {
+    const statement = parse('@import "theme.css";').rules[0];
+    if (statement?.type !== 'AtRuleStatement') {
+      throw new Error('expected a typed CSS import statement');
+    }
+
+    expect(sourceSpanOf(statement)).toBeUndefined();
+  });
+
+  it('distinguishes the target-tail boundary from trivia inside a typed tail', () => {
+    const source = '@import "theme.css" /* boundary */ (color: /* inside */ red);';
+    const statement = parse(source).rules[0];
+    if (statement?.type !== 'AtRuleStatement' || statement.prelude?.type !== 'Sequence') {
+      throw new Error('expected a typed CSS import prelude');
+    }
+    const start = source.indexOf(' /* boundary */ ');
+
+    expect(valueBoundaryTriviaOf(statement.prelude)).toMatchObject({
+      before: null,
+      between: { start, end: start + ' /* boundary */ '.length },
+      after: null
+    });
+  });
+
+  it('retains an inner-only typed-tail boundary and selects typed emission', () => {
+    const source = '@import "theme.css" (color: /* inside */ @x);';
+    const statement = parse(source).rules[0];
+    if (statement?.type !== 'AtRuleStatement' || statement.prelude?.type !== 'Sequence') {
+      throw new Error('expected a typed CSS import prelude');
+    }
+    const tail = statement.prelude.parts[1];
+    if (tail?.type !== 'Block' || !('type' in tail.value)
+      || tail.value.type !== 'Operation') {
+      throw new Error('expected a typed import query operation');
+    }
+    const start = source.indexOf('/* inside */');
+
+    expect(valueBoundaryTriviaOf(statement.prelude)).toMatchObject({
+      before: null,
+      between: null,
+      after: null
+    });
+    expect(valueBoundaryTriviaOf(tail.value)).toMatchObject({
+      between: { start, end: start + '/* inside */ '.length }
+    });
+  });
+
+  it('retains a target-only CSS import trailing comment as boundary trivia', () => {
+    const source = '@import "theme.css" /* trail */;';
+    const document = parse(source);
+    const statement = document.rules[0];
+    if (statement?.type !== 'AtRuleStatement' || statement.prelude?.type !== 'Quoted') {
+      throw new Error('expected a target-only CSS import prelude');
+    }
+    const start = source.indexOf(' /* trail */');
+
+    expect(valueBoundaryTriviaOf(statement.prelude)).toMatchObject({
+      before: null,
+      between: null,
+      after: { start, end: start + ' /* trail */'.length }
+    });
   });
 
   it('returns and renders one complete interpolated import tail directly', () => {

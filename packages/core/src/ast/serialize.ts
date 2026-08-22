@@ -148,7 +148,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -7390,6 +7390,18 @@ function isTriviaByte(char: number): boolean {
   return char === 32 || char === 9 || char === 10 || char === 13 || char === 12;
 }
 
+/** Exact binary lookup for one retained parser-owned boundary run. */
+function valueBoundaryRunIndex(table: CommentTable, range: AstSourceSpan): number {
+  for (let runIndex = firstRunAtOrAfter(table, range.start);
+    runIndex < table.runs.length && table.runStart[runIndex] === range.start;
+    runIndex++) {
+    if (table.runEnd[runIndex] === range.end && runHasBlockComment(table, runIndex)) {
+      return runIndex;
+    }
+  }
+  return -1;
+}
+
 function emittedTriviaRunForRange(e: Emit, start: number, end: number): Trivia | undefined {
   const trivia = e.trivia;
   if (trivia === undefined) {
@@ -7435,6 +7447,46 @@ function markTriviaRunForRange(e: Emit, start: number, end: number): void {
       return;
     }
   }
+}
+
+/** Write and own one exact parser-owned boundary gap, omitting line comments. */
+function putValueBoundaryTrivia(
+  e: Emit,
+  range: AstSourceSpan | null,
+  fallback: string
+): void {
+  if (range === null || e.trivia === undefined) {
+    put(e, fallback);
+    return;
+  }
+  const table = commentTableOf(e.trivia);
+  const src = table.src;
+  if (src === undefined) {
+    put(e, fallback);
+    return;
+  }
+  const runIndex = valueBoundaryRunIndex(table, range);
+  if (runIndex < 0) {
+    put(e, fallback);
+    return;
+  }
+  let cursor = range.start;
+  for (let comment = table.commentAt[runIndex]!;
+    comment < table.commentAt[runIndex + 1]!;
+    comment++) {
+    const commentStart = table.commentStart[comment]!;
+    let textStart = commentStart;
+    while (textStart > cursor && isTriviaByte(src.charCodeAt(textStart - 1))) {
+      textStart--;
+    }
+    let textEnd = table.commentEnd[comment]!;
+    while (textEnd < range.end && isTriviaByte(src.charCodeAt(textEnd))) {
+      textEnd++;
+    }
+    put(e, src.slice(textStart, textEnd));
+    cursor = textEnd;
+  }
+  e.emittedBlockTrivia.addIndex(table, runIndex);
 }
 
 function emitTopLevelBlockCommentsBetween(
@@ -12460,7 +12512,7 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
       continue;
     }
     seen.add(key);
-    emitAtRuleStatementRaw(child, frame, e, target.type === 'Quoted' ? target : null);
+    emitAtRuleStatementRaw(child, frame, e, target);
   }
   e.hoistedCssImports = hoisted;
 }
@@ -12474,14 +12526,13 @@ function emitAtRuleStatement(node: AtRuleStatement, frame: Frame, e: Emit): void
     return;
   }
   const target = e.context === undefined ? null : cssImportTarget(node);
-  emitAtRuleStatementRaw(node, frame, e, target?.type === 'Quoted' ? target : null);
+  emitAtRuleStatementRaw(node, frame, e, target);
 }
 
 /**
- * A direct quoted CSS import is parser-classified syntax, not an opaque prelude.
- * Return that typed target without inspecting its bytes. `url(...)` imports
- * deliberately stay on the ordinary URL path because their query-argument
- * policy differs from direct import-path rewriting.
+ * A CSS import target is parser-classified syntax, not an opaque prelude.
+ * Return the typed direct quote or `url(...)` without inspecting target bytes;
+ * their distinct transformation policies remain owned by typed evaluation.
  */
 function cssImportTarget(node: AtRuleStatement): Quoted | Url | null {
   if ((node.name !== '@import'
@@ -12500,27 +12551,58 @@ function cssImportTarget(node: AtRuleStatement): Quoted | Url | null {
   return target?.type === 'Quoted' || target?.type === 'Url' ? target : null;
 }
 
-/** Write one transformed direct import target plus its already-typed tail. */
-function emitTransformedQuotedImportPrelude(
+/**
+ * Emit the one typed Less import-query feature with its parser-owned inner
+ * comment boundary. Every other tail remains on the canonical query evaluator.
+ */
+function putImportTail(node: ValueNode, frame: Frame, e: Emit): void {
+  if (node.type !== 'Block' || isValueSlotArray(node.value)
+    || node.value.type !== 'Operation' || node.value.operator !== ':') {
+    put(e, evalQueryPreludeSync(node, frame, e));
+    return;
+  }
+  const boundary = valueBoundaryTriviaOf(node.value)?.between ?? null;
+  if (boundary === null) {
+    put(e, evalQueryPreludeSync(node, frame, e));
+    return;
+  }
+  put(e, node.delimiter === 'square' ? '[' : '(');
+  put(e, evalQueryPreludeSync(node.value.left, frame, e));
+  put(e, ': ');
+  putValueBoundaryTrivia(e, boundary, '');
+  put(e, evalQueryPreludeSync(node.value.right, frame, e));
+  put(e, node.delimiter === 'square' ? ']' : ')');
+}
+
+/** Write one direct import target plus its typed, parser-laid-out tail. */
+function emitImportPrelude(
   prelude: ValueNode,
-  target: Quoted,
-  transformed: string,
+  target: Quoted | Url,
+  transformedQuoted: string | null,
   frame: Frame,
-  e: Emit
+  e: Emit,
+  between: AstSourceSpan | null = null
 ): void {
-  if (target.escaped) {
-    put(e, transformed);
+  if (target.type === 'Url') {
+    put(e, evalQueryPreludeSync(target, frame, e));
+  } else if (target.escaped) {
+    put(e, transformedQuoted ?? target.value);
   } else {
     put(e, target.quote);
-    put(e, transformed);
+    put(e, transformedQuoted ?? target.value);
     put(e, target.quote);
   }
   if (prelude.type !== 'Sequence') {
     return;
   }
+  const separators = valueLayoutOf(prelude);
   for (let index = 1; index < prelude.parts.length; index++) {
-    put(e, ' ');
-    put(e, evalQueryPreludeSync(prelude.parts[index]!, frame, e));
+    if (index === 1 && between !== null) {
+      putValueBoundaryTrivia(e, between, ' ');
+    } else {
+      put(e, separators?.[index - 1] ?? ' ');
+    }
+    putImportTail(prelude.parts[index]!, frame, e);
   }
 }
 
@@ -12528,18 +12610,40 @@ function emitAtRuleStatementRaw(
   node: AtRuleStatement,
   frame: Frame,
   e: Emit,
-  quotedImport: Quoted | null
+  importTarget: Quoted | Url | null
 ): void {
   const start = e.off;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
   }
-  const transformedImport = quotedImport === null
+  const transformedImport = importTarget?.type !== 'Quoted'
     ? null
-    : e.context?.transformUrl(quotedImport.value, true, 'import') ?? quotedImport.value;
-  const authored = transformedImport === null || transformedImport === quotedImport?.value
-    ? authoredStatementWithTrivia(node, e)
-    : null;
+    : e.context?.transformUrl(importTarget.value, true, 'import') ?? importTarget.value;
+  const importBoundary =
+    importTarget === null || node.prelude === null
+      ? undefined
+      : valueBoundaryTriviaOf(node.prelude);
+  if (importTarget !== null && node.prelude !== null && importBoundary !== undefined) {
+    put(e, node.name);
+    putValueBoundaryTrivia(e, importBoundary.before, ' ');
+    emitImportPrelude(
+      node.prelude,
+      importTarget,
+      transformedImport,
+      frame,
+      e,
+      importBoundary.between
+    );
+    putValueBoundaryTrivia(e, importBoundary.after, '');
+    put(e, ';\n');
+    if (e.positions) {
+      e.positions.push({ node, type: node.type, start, end: e.off });
+    }
+    return;
+  }
+  const authored = importTarget?.type === 'Quoted' && transformedImport !== importTarget.value
+    ? null
+    : authoredStatementWithTrivia(node, e);
   if (authored !== null) {
     put(e, authored);
     put(e, '\n');
@@ -12559,9 +12663,9 @@ function emitAtRuleStatementRaw(
      * media feature `(min-width: @w)` is a `Block` around an `Operation` whose
      * delimiters and `: ` are structure rather than bytes.
      */
-    if (quotedImport !== null && transformedImport !== null && transformedImport !== quotedImport.value) {
+    if (importTarget?.type === 'Quoted' && transformedImport !== null && transformedImport !== importTarget.value) {
       put(e, ' ');
-      emitTransformedQuotedImportPrelude(node.prelude, quotedImport, transformedImport, frame, e);
+      emitImportPrelude(node.prelude, importTarget, transformedImport, frame, e);
     } else {
       const p = evalQueryPreludeSync(node.prelude, frame, e).replace(/^\s+/u, '');
       if (p.length > 0) {

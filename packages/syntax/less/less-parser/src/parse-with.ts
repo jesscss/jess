@@ -8,7 +8,7 @@
  */
 import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
-import type { ISafeParseResult, MathMode } from '@jesscss/core';
+import type { ISafeParseResult, MathMode, TriviaMap } from '@jesscss/core';
 import type { LessParseState } from './parse-state.js';
 /*
  * `parserDiagnostic` comes from the narrow `./diagnostics` entry, not the root:
@@ -18,9 +18,18 @@ import type { LessParseState } from './parse-state.js';
  */
 import { parserDiagnostic } from '@jesscss/core/diagnostics';
 import {
+  NO_SPAN,
   createTriviaMapFromParseman,
+  importSourceEndOf,
+  importSourceStartOf,
+  importTailStartOf,
+  isValueSlotArray,
+  sourceStartOf,
+  valueLayoutOf,
   withSourceSpan,
   withTriviaMap,
+  withValueBoundaryTrivia,
+  type AtRuleStatement,
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { lessGrammar } from './grammar/ast.js';
@@ -48,6 +57,8 @@ export interface LessParseOptions {
  * there is exactly one place the fallback lives.
  */
 const DEFAULT_LESS_MATH_MODE: MathMode = 'parens-division';
+const EMPTY_LAYOUT: readonly string[] = Object.freeze([]);
+const SPACE_LAYOUT: readonly string[] = Object.freeze([' ']);
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return (
@@ -58,6 +69,78 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && 'rules' in value
     && Array.isArray(value.rules)
   );
+}
+
+/**
+ * The one currently typed Less import-query feature is a `Block` containing a
+ * colon `Operation`. Its right operand already carries a parser source start,
+ * so an exact trivia lookup can retain the comment boundary without walking or
+ * classifying source bytes. Opaque tail forms keep their existing byte owner.
+ */
+function retainTypedImportTailTrivia(
+  statement: AtRuleStatement,
+  trivia: TriviaMap
+): boolean {
+  const prelude = statement.prelude;
+  if (prelude?.type !== 'Sequence') {
+    return false;
+  }
+  const tail = prelude.parts[1];
+  if (tail?.type !== 'Block' || isValueSlotArray(tail.value)
+    || tail.value.type !== 'Operation' || tail.value.operator !== ':') {
+    return false;
+  }
+  const rightStart = sourceStartOf(tail.value.right);
+  if (rightStart === NO_SPAN) {
+    return false;
+  }
+  const between = trivia.lookup(rightStart, 'before');
+  if (between === undefined) {
+    return false;
+  }
+  withValueBoundaryTrivia(tail.value, EMPTY_LAYOUT, {
+    before: null,
+    between,
+    after: null
+  });
+  return true;
+}
+
+/**
+ * Project only root-hoisted CSS-import boundaries through the canonical trivia
+ * adapter. The grammar carries the statement edges and typed-tail start in
+ * fixed private Smi slots, so each lookup names an exact parser-owned boundary
+ * and public source provenance, AST/CST shape, and bytes remain unchanged.
+ */
+function retainRootImportBoundaryTrivia(
+  document: Stylesheet,
+  trivia: TriviaMap | undefined
+): void {
+  if (trivia === undefined) {
+    return;
+  }
+  for (const rule of document.rules) {
+    if (rule.type !== 'AtRuleStatement') {
+      continue;
+    }
+    const start = importSourceStartOf(rule);
+    if (start === NO_SPAN) {
+      continue;
+    }
+    const tailStart = importTailStartOf(rule);
+    const before = trivia.lookup(start + rule.name.length, 'after') ?? null;
+    const between = tailStart === NO_SPAN
+      ? null
+      : trivia.lookup(tailStart, 'before') ?? null;
+    const after = trivia.lookup(importSourceEndOf(rule) - 1, 'before') ?? null;
+    const hasInnerBoundary = retainTypedImportTailTrivia(rule, trivia);
+    if (before !== null || between !== null || after !== null || hasInnerBoundary) {
+      const prelude = rule.prelude!;
+      const separators = valueLayoutOf(prelude)
+        ?? (prelude.type === 'Sequence' ? SPACE_LAYOUT : EMPTY_LAYOUT);
+      withValueBoundaryTrivia(prelude, separators, { before, between, after });
+    }
+  }
 }
 
 /**
@@ -153,9 +236,14 @@ export function parseWith(
       fix: 'Report this as a parser bug with the source that triggered it.'
     });
   }
+  const triviaMap = createTriviaMapFromParseman(input, result.rootTrivia?.index);
+  retainRootImportBoundaryTrivia(
+    result.value,
+    result.rootTrivia === undefined ? undefined : triviaMap
+  );
   return withTriviaMap(
     withSourceSpan(result.value, result.span),
-    createTriviaMapFromParseman(input, result.rootTrivia?.index)
+    triviaMap
   );
 }
 
