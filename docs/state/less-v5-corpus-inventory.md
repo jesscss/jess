@@ -147,6 +147,26 @@ passes; `functions/functions` is active in the alpha lane and remains an
 expected failure for the settled F5 lazy CSS-color boundary. The focused F5
 public-semantics test remains additional evidence for the full F5 rule.
 
+### Compatibility-work pause boundary (2026-08-22)
+
+The current clean landed boundary is `cf9111b8e`, following the focused selector
+capture evidence in `186317072`. There is no uncommitted implementation required
+to reproduce this inventory.
+
+Owner ruling, 2026-08-22: captured selector lists do not automatically distribute
+their nested rule bodies. Less `each()` and Sass `@each` are the explicit forms
+and both lower to core `For`. Accordingly, the final captured-parent stanza in
+`parse-interpolation` remains the intended non-collapsed-output divergence already
+recorded above; do not classify it as a missing global distribution function.
+
+The next investigated `import-reference` residual did not reach a landable design.
+The rejected prototype inferred parent-selector structure from `&` bytes and
+eagerly enumerated `P^A` products. That confuses opaque selector payloads such as
+`[title="&"]` with parent references and has an unbounded work/memory shape. A
+future batch should begin cleanly from `origin/dev` and establish typed parent
+occurrences plus compact, visibility-aware selector composition before changing
+the expected-failure reason.
+
 ### Resolved follow-up from the import-path lane
 
 - Root-hoisted CSS-terminal imports now retain parser-owned block-comment trivia

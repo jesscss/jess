@@ -2354,6 +2354,34 @@ the desired direct compiler/plugin dependency shape, consumes the published
 green PR-head CI. Do not publish Less until the owner authorizes the Less release
 flow.
 
+#### Less compatibility pause point — 2026-08-22
+
+- The clean landed boundary is `cf9111b8e`. The immediately preceding focused
+  commit `186317072` proves selector capture parses and renders; `cf9111b8e`
+  corrects the public-corpus classifications without changing owner-maintained
+  `.css` fixtures. The executable lane remains `all-less.test.ts`; the derived
+  release-facing partition is
+  [`docs/state/less-v5-corpus-inventory.md`](../../state/less-v5-corpus-inventory.md).
+- Owner ruling, 2026-08-22: selector-list capture does not imply automatic rule
+  distribution. Less `each()` and Sass `@each` already lower to the shared core
+  `For` node and remain the explicit rule-multiplication forms. The final
+  `parse-interpolation` captured-parent stanza is therefore an intended
+  non-collapsed-output divergence, not an unfinished implicit-distribution
+  feature. A future Sass-style selector operation may reuse internal selector
+  algebra, but must not introduce a second global distribution surface.
+- A follow-up prototype for the residual A7 `(reference)` nested-selector case
+  was intentionally not landed. It recovered visible suffixes by scanning
+  flattened selector bytes for `&` and eagerly constructing `P^A` Cartesian
+  branches. Adversarial semantics review showed that `[title="&"]` is a false
+  structural parent match; performance review showed that the eager product is
+  unbounded and can hang or exhaust memory. Resume from `origin/dev`, not from
+  that prototype. Any renewed attempt first needs a parser/AST-owned structural
+  parent occurrence and compact selector composition that preserves reference
+  visibility without materializing the Cartesian product.
+- No production change, fixture expectation, or fragile worktree is part of this
+  pause point. Remaining active expected failures stay enumerated in the corpus
+  inventory and can be taken as independent future compatibility batches.
+
 ## Router
 
 | Work | Read first |
