@@ -149,9 +149,9 @@ public-semantics test remains additional evidence for the full F5 rule.
 
 ### Compatibility-work pause boundary (2026-08-22)
 
-The current clean landed boundary is `cf9111b8e`, following the focused selector
-capture evidence in `186317072`. There is no uncommitted implementation required
-to reproduce this inventory.
+The current clean landed boundary is `d58eb0a99`, including the focused selector
+capture classification and the raw Less-grammar math-state default. There is no
+uncommitted implementation required to reproduce this inventory.
 
 Owner ruling, 2026-08-22: captured selector lists do not automatically distribute
 their nested rule bodies. Less `each()` and Sass `@each` are the explicit forms
@@ -166,6 +166,15 @@ eagerly enumerated `P^A` products. That confuses opaque selector payloads such a
 future batch should begin cleanly from `origin/dev` and establish typed parent
 occurrences plus compact, visibility-aware selector composition before changing
 the expected-failure reason.
+
+A separate discarded draft exposed one reproducible parser gap behind the earlier
+`tests-unit/urls/urls.less` import diagnostic: when the final `svg-gradient(...)`
+argument is followed by newline trivia before `)`, the raw call survives and a
+`false` value appears instead of the data URI. The narrow candidate was to let
+the existing zero-width `functionArgumentBoundaryAhead` recognize `)` after
+`functionTrivia`, alongside its existing comma/semicolon cases. That change was
+not reviewed or landed. Resume it later as an independent parser batch from the
+fixture-level negative control; no temporary patch is authoritative or required.
 
 ### Resolved follow-up from the import-path lane
 

@@ -2356,10 +2356,10 @@ flow.
 
 #### Less compatibility pause point — 2026-08-22
 
-- The clean landed boundary is `cf9111b8e`. The immediately preceding focused
-  commit `186317072` proves selector capture parses and renders; `cf9111b8e`
-  corrects the public-corpus classifications without changing owner-maintained
-  `.css` fixtures. The executable lane remains `all-less.test.ts`; the derived
+- The clean landed boundary is `d58eb0a99`. The selector-capture classification
+  and raw Less-grammar math-state default are landed without changing
+  owner-maintained `.css` fixtures. The executable lane remains
+  `all-less.test.ts`; the derived
   release-facing partition is
   [`docs/state/less-v5-corpus-inventory.md`](../../state/less-v5-corpus-inventory.md).
 - Owner ruling, 2026-08-22: selector-list capture does not imply automatic rule
@@ -2380,7 +2380,9 @@ flow.
   visibility without materializing the Cartesian product.
 - No production change, fixture expectation, or fragile worktree is part of this
   pause point. Remaining active expected failures stay enumerated in the corpus
-  inventory and can be taken as independent future compatibility batches.
+  inventory and can be taken as independent future compatibility batches. That
+  inventory also records the reproduced, unlanded final-multiline-function-argument
+  parser gap; it is a future focused batch, not retained patch state.
 
 ## Router
 
