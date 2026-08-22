@@ -199,7 +199,7 @@ const expectedFailureFixtures = new Map<string, string>([
    */
   [
     'tests-config/3rd-party/bootstrap4.less',
-    'the P29 nested relative-selector work fixed the original parse defect (`.m({ > td { … } })` now parses); it now fails later — the bootstrap-less-port `@plugin` function `breakpoint-min` throws (PluginFunctionError), yielding empty output'
+    'the common @plugin ABI now carries comma-list maps through fixed defaulted/explicit mixin params and Bootstrap renders instead of failing at breakpoint-min; remaining independent mismatches include banner-comment placement, Less selector-list expansion/extend output, media-rule nesting/indentation, numeric precision, and `-webkit-` token spelling'
   ],
 
   /*

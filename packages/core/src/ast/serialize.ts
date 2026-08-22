@@ -134,7 +134,7 @@ import { namedColor } from './color-names.js';
 import { UnitArithmeticError, calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList, makeNull, NULL } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
-import { DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
+import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
@@ -2736,6 +2736,14 @@ interface EvalCtx {
    */
   pluginHost?: PluginHost;
 
+  /*
+   * [plugin/A9] The ordinary mixin binding remains its eager Less byte snapshot.
+   * When that binding came directly from a parser-owned typed value, retain the
+   * source only for the legacy raw-plugin ABI. The map is render-local, sparse,
+   * and consulted exclusively after a plugin function has been selected.
+   */
+  pluginRawBindings: Map<Binding, Binding | null> | null;
+
   /** Runtime-only lexical homes for mixin calls carried through an argument. */
   mixinCallHomes?: WeakMap<MixinCall, Frame>;
 }
@@ -5048,11 +5056,191 @@ function pickIfValue(node: IfValue, frame: Frame | null, e: EvalCtx): MaybePromi
   return step(0);
 }
 
+/** Classify one binding root structurally and cache that render-local decision. */
+function pluginRawRoot(value: Binding, e: EvalCtx): Binding | null {
+  let typed = e.pluginRawBindings?.get(value);
+  if (typed === undefined) {
+    typed = isTypedCallValue(value) ? value : null;
+    (e.pluginRawBindings ??= new Map()).set(value, typed);
+  }
+  return typed;
+}
+
 /**
- * Project one detached ruleset only for an opted-in legacy plugin call.  The
- * normal value evaluator deliberately keeps detached rulesets out of Value;
- * this is the one cold compatibility boundary that needs their declaration map.
+ * Bind one direct variable source through the ordinary eager parameter snapshot
+ * while retaining a self-contained typed root for the legacy raw-plugin ABI.
+ * Called by `bindArgs` inside its existing fixed-parameter pass, so argument
+ * placement and the winning variable occurrence are each decided once.
  */
+function resolvePluginBoundSource(
+  source: CallValue,
+  frame: Frame,
+  e: EvalCtx,
+  retain: (key: Binding) => void,
+  candidateRoot = false
+): MaybePromise<CallValue> | undefined {
+  if (isValueSlotArray(source) || isMixinCallValue(source) || source.type !== 'Lookup'
+    || source.kind !== 'var' || typeof source.name !== 'string') {
+    return undefined;
+  }
+  const hit = resolveVarRef(frame, source.name, source.scope, e);
+  if (!hit) {
+    return mapMaybe(evalBytes(source, frame, e), any);
+  }
+  const value = hit.value;
+  if (!isValueSlotArray(value) && isValueBlock(value)) {
+    return value;
+  }
+  if (isMixinCallValue(value)) {
+    return mapMaybe(evalBytes(source, frame, e), any);
+  }
+
+  const rootWasCached = candidateRoot && e.pluginRawBindings?.has(value) === true;
+  const typed = pluginRawRoot(value, e);
+  if (candidateRoot && !rootWasCached) {
+    retain(value);
+  }
+  const snapshot = withExcluded(e, value, () => evalBytes(value, hit.frame, e));
+  return mapMaybe(snapshot, (bytes) => {
+    const bound = any(bytes);
+    if (typed !== null) {
+      e.pluginRawBindings!.set(bound, typed);
+      retain(bound);
+    }
+    return bound;
+  });
+}
+
+/**
+ * A plugin declared inside a mixin is prepared only after that definition wins
+ * dispatch. Preserve fixed-parameter provenance then, without re-evaluating a
+ * bound snapshot. This deprecated cold lane builds one last-write-wins named
+ * index and one prior-parameter index, and declines spread/rest and computed
+ * sources.
+ */
+function capturePreparedBodyPluginBindings(
+  def: MixinDefinition,
+  call: MixinCall,
+  bindings: Map<string, CallValue>,
+  caller: Frame,
+  home: Frame,
+  e: EvalCtx
+): void {
+  const named = new Map<string, CallValue>();
+  for (const arg of call.args) {
+    if (arg.spread) {
+      return;
+    }
+    if (arg.name !== undefined) {
+      named.set(arg.name, arg.value);
+    }
+  }
+  const priorParams = new Map<string, Binding>();
+  let positional = 0;
+  for (let index = 0; index < def.params.length; index++) {
+    const param = def.params[index]!;
+    if (param.rest) {
+      return;
+    }
+    let source: CallValue | undefined;
+    let defaulted = false;
+    if (param.name !== undefined && named.has(param.name)) {
+      source = named.get(param.name)!;
+    } else {
+      for (; positional < call.args.length; positional++) {
+        const arg = call.args[positional]!;
+        if (arg.name === undefined) {
+          source = arg.value;
+          positional++;
+          break;
+        }
+      }
+    }
+    if (source === undefined) {
+      source = param.default;
+      defaulted = true;
+    }
+    if (param.name === undefined || param.pattern !== undefined) {
+      continue;
+    }
+    const snapshot = bindings.get(param.name);
+    if (snapshot === undefined) {
+      continue;
+    }
+    if (source === undefined || isValueSlotArray(source) || isMixinCallValue(source)
+      || source.type !== 'Lookup' || source.kind !== 'var' || typeof source.name !== 'string') {
+      priorParams.set(param.name, snapshot);
+      continue;
+    }
+
+    let root: Binding;
+    if (defaulted && priorParams.has(source.name)) {
+      const earlier = priorParams.get(source.name)!;
+      const typed = e.pluginRawBindings?.get(earlier) ?? (isTypedCallValue(earlier) ? earlier : null);
+      if (typed !== null) {
+        e.pluginRawBindings!.set(snapshot, typed);
+      }
+      priorParams.set(param.name, snapshot);
+      continue;
+    }
+    let hit = resolveVarRef(defaulted ? home : caller, source.name, source.scope, e);
+    if (!hit && defaulted && call.path.length === 0 && home !== caller) {
+      hit = resolveVarRef(caller, source.name, source.scope, e);
+    }
+    if (!hit || isMixinCallValue(hit.value)) {
+      priorParams.set(param.name, snapshot);
+      continue;
+    }
+    root = hit.value;
+    const typed = pluginRawRoot(root, e);
+    if (typed !== null) {
+      e.pluginRawBindings!.set(snapshot, typed);
+    }
+    priorParams.set(param.name, snapshot);
+  }
+}
+
+function pluginBoundSourceTracker(
+  frame: Frame,
+  e: EvalCtx,
+  homes: Map<MixinDefinition, Frame> | undefined
+): BoundSourceTracker {
+  let candidateKeys: Binding[] | null = null;
+  const retain = (key: Binding): void => {
+    (candidateKeys ??= []).push(key);
+  };
+  const resolve: BoundSourceResolver = (value, boundSoFar, def, defaulted) => {
+    if (isValueSlotArray(value) || isMixinCallValue(value) || value.type !== 'Lookup'
+      || value.kind !== 'var' || typeof value.name !== 'string') {
+      return undefined;
+    }
+    if (!defaulted) {
+      return resolvePluginBoundSource(value, frame, e, retain);
+    }
+    const home = homes?.get(def);
+    const overlay: Frame = home && home !== frame
+      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
+      : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
+    return resolvePluginBoundSource(value, overlay, e, retain, boundSoFar.has(value.name));
+  };
+  return {
+    resolve,
+    begin: () => {
+      candidateKeys = null;
+    },
+    finish: () => {
+      const keys = candidateKeys;
+      candidateKeys = null;
+      return keys;
+    },
+    discard: (keys) => {
+      for (const key of keys) {
+        e.pluginRawBindings!.delete(key);
+      }
+    }
+  };
+}
+
 function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<PluginRawArgument> {
   if (isValueSlotArray(slot)) {
     return combineAll(slot.map(part => evalTypedSlot(part, frame, e)), values => values);
@@ -5062,6 +5250,10 @@ function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): Ma
   if (!isValueSlotArray(slot) && slot.type === 'Lookup' && slot.kind === 'var') {
     const hit = resolveVarRef(frame, literalName(slot), slot.scope, e);
     if (hit) {
+      const raw = e.pluginRawBindings?.get(hit.value);
+      if (raw && !isMixinCallValue(raw)) {
+        return evalTypedSlot(raw, hit.frame, e);
+      }
       binding = hit.value;
       bindingFrame = hit.frame;
     }
@@ -5070,9 +5262,11 @@ function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): Ma
 }
 
 /**
- * The declaration-map projection of a value block, or `undefined` when the
- * binding is not block-like. Shared by argument projection and by the plugin
- * variable lookup, so a legacy plugin sees the same map shape either way.
+ * Project the declaration map of one detached ruleset only for an opted-in
+ * legacy plugin call, or return `undefined` when the binding is not block-like.
+ * The normal value evaluator deliberately keeps detached rulesets out of
+ * `Value`; this shared cold boundary gives both argument projection and plugin
+ * variable lookup the same map shape.
  */
 function pluginDetachedProjection(
   binding: Binding,
@@ -6335,6 +6529,7 @@ function scratchEmit(e: EvalCtx): Emit {
     lambdaFunctionNames: e.lambdaFunctionNames, // [lambda-fn] preserve the user-`@function` gate
     fnScopeVersion: e.fnScopeVersion,
     pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
+    pluginRawBindings: e.pluginRawBindings,
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
     off: 0,
@@ -8230,6 +8425,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     lambdaFunctionNames: new Set(),
     fnScopeVersion: 0,
     pluginHost,
+    pluginRawBindings: null,
     io: options?.io
   };
   const rootFrame: Frame = {
@@ -8307,6 +8503,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     lambdaFunctionNames: new Set(), // [lambda-fn] empty idle ⇒ user-`@function` lookup skipped
     fnScopeVersion: 0,
     pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
+    pluginRawBindings: null,
     io: options?.io // [io] per-render file-read capability for the IO built-ins
   };
   const rootFrame: Frame = {
@@ -9940,6 +10137,8 @@ function expandCall(
       return;
     }
     const queueComments = queueCommentOnlyMixinBodies(candidates, call, frame, e, group);
+    const bindingsTrackedAtDispatch = e.pluginHost?.invokeRawFunction !== undefined
+      && (e.scopedFunctionNames?.size ?? 0) > 0;
     const runDispatch = (): MaybePromise<void> => mapMaybe(dispatch(candidates, call, frame, e, homes, true), (selected) => {
       if (selected.length === 0) {
         return;
@@ -10013,30 +10212,38 @@ function expandCall(
          */
         const bodyComposed = composed === null ? null : composed.slice();
         const bodyTrivia = bodyTriviaReplay(def, e);
-        const executeBody = () => mapMaybe(
-          prepareBodyPlugins(def.rules, callFrame, e),
-          () => mapMaybe(
-            walkBody(
-              def.rules,
-              bodyComposed,
-              ancestor,
-              callFrame,
-              group,
-              flush,
-              partition,
-              e,
-              bodyImp,
-              bodyForceLeading,
-              propertyScope,
-              applyExpansion,
-              false,
-              bodyTrivia
-            ),
+        const executeBody = () => {
+          const pluginVersion = e.fnScopeVersion ?? 0;
+          return mapMaybe(
+            prepareBodyPlugins(def.rules, callFrame, e),
             () => {
-              queueBodyTriviaTail(bodyTrivia, group, partition, e);
+              if (!bindingsTrackedAtDispatch && (e.fnScopeVersion ?? 0) !== pluginVersion && bindings !== null) {
+                capturePreparedBodyPluginBindings(def, call, bindings, frame, homeFrame, e);
+              }
+              return mapMaybe(
+                walkBody(
+                  def.rules,
+                  bodyComposed,
+                  ancestor,
+                  callFrame,
+                  group,
+                  flush,
+                  partition,
+                  e,
+                  bodyImp,
+                  bodyForceLeading,
+                  propertyScope,
+                  applyExpansion,
+                  false,
+                  bodyTrivia
+                ),
+                () => {
+                  queueBodyTriviaTail(bodyTrivia, group, partition, e);
+                }
+              );
             }
-          )
-        );
+          );
+        };
         const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
         return mapMaybe(emitted, () => {
           /*
@@ -11112,6 +11319,18 @@ function dispatch(
   };
 
   /*
+   * The raw-plugin adapter is absent from ordinary binding. Once a scoped plugin
+   * function exists, it folds direct variable provenance into the SAME fixed-
+   * parameter pass that chooses named/positional/default placement. The callback
+   * therefore sees the transformed call used by dispatch and never reconstructs
+   * argument placement afterward.
+   */
+  const boundSources: BoundSourceTracker | undefined = e.pluginHost?.invokeRawFunction
+    && e.scopedFunctionNames?.size
+    ? pluginBoundSourceTracker(frame, e, homes)
+    : undefined;
+
+  /*
    * [spread] `.mixin(@args...)` splats a list variable into positional args at the
    * call site (Less variadic forwarding) BEFORE binding, so overloads select on the
    * splatted arity.
@@ -11155,7 +11374,8 @@ function dispatch(
         e.modes,
         resolveDefault,
         resolveDefaultBlock,
-        errorOnNoViable ? () => unresolvedMixinCall(call2, e) : undefined
+        errorOnNoViable ? () => unresolvedMixinCall(call2, e) : undefined,
+        boundSources
       );
 
       /*
@@ -14430,6 +14650,8 @@ function expandNestedCall(
     const queueComments = sharedLeaves === undefined
       ? undefined
       : queueCommentOnlyMixinBodies(candidates, call, frame, e, sharedLeaves.leaves);
+    const bindingsTrackedAtDispatch = e.pluginHost?.invokeRawFunction !== undefined
+      && (e.scopedFunctionNames?.size ?? 0) > 0;
     const runDispatch = (): MaybePromise<void> => mapMaybe(dispatch(candidates, call, frame, e, homes, true), (selected) => {
       if (selected.length === 0) {
         return;
@@ -14462,12 +14684,18 @@ function expandNestedCall(
           const placement = def.ruleMixin === true && source !== null
             ? { source, callFrame } satisfies NestedRuleMixinPlacement
             : null;
-          const executeBody = () => mapMaybe(
-            prepareBodyPlugins(def.rules, callFrame, e),
-            () => {
-              return emitNestedBody(def.rules, callFrame, e, undefined, bodyImp, source, placement, sharedLeaves, applyExpansion);
-            }
-          );
+          const executeBody = () => {
+            const pluginVersion = e.fnScopeVersion ?? 0;
+            return mapMaybe(
+              prepareBodyPlugins(def.rules, callFrame, e),
+              () => {
+                if (!bindingsTrackedAtDispatch && (e.fnScopeVersion ?? 0) !== pluginVersion && bindings !== null) {
+                  capturePreparedBodyPluginBindings(def, call, bindings, frame, homeFrame, e);
+                }
+                return emitNestedBody(def.rules, callFrame, e, undefined, bodyImp, source, placement, sharedLeaves, applyExpansion);
+              }
+            );
+          };
           const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
           if (isThenable(emitted)) {
             return emitted.then(() => {

@@ -3789,52 +3789,153 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-08 Less atomic function-statement dispatch. This is a
-  grammar correctness and parser-boundary pass, not a performance result.
-- Architecture surface: the private Less grammar now routes statement-position
-  function openers through its existing atomic `identOrFunction` selector.
-  `each(` is an exact case-insensitive dispatch outcome whose continuation still
-  lowers to the canonical `For` AST; ordinary function openers retain the
-  existing `FunctionCall`/`If` lowering. No public AST kind or package API is
-  added.
-- Separation/duplication: the standalone `Each` choice arm and its duplicate
-  `each` + `(` recognition are removed. The same authored `token(sequence(name,
-  optional('(')))` range now owns both value-position and statement-position
-  IDENT/FUNCTION_OPEN classification.
-- Cumulative node weight: unchanged. Existing `For`, `FunctionCall`, and `If`
-  nodes are returned; no wrapper node, token object, or side map is introduced.
-- New traversal: none. Dispatch selects one continuation after recognizing the
-  existing atomic function-opener range once.
-- New node/materialization: none beyond the pre-existing AST reductions. The
-  projection discards the dispatch tuple and returns the selected statement.
-- Render path: unchanged. `each()` continues through the existing `For`
-  evaluator/lowering, and ordinary function statements retain their existing
-  serialization and terminal-boundary behavior.
-- Helper/API surface: one private `terminalFunctionBoundary` recognition helper
-  preserves terminal bare-call acceptance after the dispatch cut. The former
-  internal `Each` rule is renamed `EachFunctionStatement`; neither is a public
-  package entry.
-- Metadata mutations: none. AST provenance, trivia, and CST capture remain owned
-  by the existing Parseman node/token boundaries.
-- Review-flagged diff tokens: [node construction] two existing defensive
-  `TypeError` checks validate impossible reducer inputs; no new AST constructor,
-  parser host, source reparse, map, set, or recursive walk is introduced.
-- Evidence: the exact-key RED plant (`each(` → `eachx(`) made both the AST
-  no-fallback assertion and the one-leaf CST assertion fail, then both returned
-  green after restoration. The full `@jesscss/less-parser` suite passed 15 files
-  / 721 tests.
-- Behavior evidence: `pnpm --filter @jesscss/less-parser test` passed 721/721,
-  including case-insensitive `each(`, named/hash callbacks, flat and namespaced
-  iterables, malformed exact-route no-fallback, ordinary generic calls, and
-  terminal calls.
-- Build evidence: `pnpm --filter @jesscss/less-parser build` passed after first
-  rebuilding `@jesscss/parser-shared`; all AST/CST/tracked artifacts compiled.
-- Boundary evidence: focused AST/public/CST tests passed 378/378. The CST test
-  proves `each(` is one routed leaf (never separate `each` and `(`), while the
-  AST tests prove the result remains the canonical `For` and ordinary function
-  statements retain their established nodes.
-- Verdict: accepted as a bounded grammar correction with no speed claim. Actual
-  Parseman route-once census and timing remain separate follow-up evidence.
+- Latest pass: 2026-08-22 Less common `@plugin` ABI fixed-parameter typed-list
+  carry. This is an A9 compatibility correction, not a performance result.
+- Architecture surface: canonical AST-v2 mixin binding and raw plugin argument
+  projection only. Ordinary mixin bindings retain their established eager Less
+  byte snapshots; a selected legacy raw plugin may recover a self-contained,
+  parser-owned typed list/sequence that entered a fixed parameter through a
+  direct variable lookup. Rest parameters and computed/reference-bearing source
+  expressions remain outside this bounded carry. No parser, resolver, Context,
+  node kind, or package entrypoint changes.
+- Separation/duplication: the existing `isTypedCallValue` policy in
+  `mixin-dispatch.ts` is renamed from its guard-specific private name and reused by
+  the serializer. Typed-list classification remains structural and has one owner;
+  no emitted-byte sniff, string split, reparse, or second value classifier is added.
+- Cumulative node weight: unchanged. Canonical `List`, nested adjacency arrays,
+  `Keyword`, and `Dimension` nodes are reused by identity. No AST node or typed
+  value is copied to retain plugin provenance.
+- New traversal: after a raw plugin host has registered a scoped function, one
+  optional resolver runs inside `bindArgs`'s existing fixed-parameter pass. The
+  first occurrence of a typed root is classified structurally once; the same
+  render-local map caches positive and negative decisions, so transitive
+  placements do not re-walk list members. Candidate-local snapshot keys and
+  candidate-local negative classification keys are retained only through guard
+  selection, then one bounded cleanup pass deletes rejected keys; canonical
+  caller/definition root classifications remain until render end. A plugin first
+  prepared inside the selected mixin uses a separate deprecated cold fallback only
+  when no scoped plugin existed for the in-binding tracker at dispatch time: after
+  preparation changes the function-scope version,
+  it builds one last-write-wins named index and one prior-parameter index, then
+  advances monotonically through that selected definition's fixed parameters and
+  authored positional arguments to associate the already-bound snapshots in
+  O(A+P). It evaluates no value a second time, uses final-occurrence named
+  semantics, and declines spread/rest and computed/reference-bearing sources.
+  The ordinary no-plugin lane supplies no tracker and executes the original
+  prefilter allocation site.
+- New node/materialization: the ordinary eager `Any` parameter snapshot remains
+  the same one binding object. One render-local `Map<Binding, Binding | null>` is
+  allocated lazily after a scoped raw function exists and a direct variable source
+  is bound. It holds root classification entries and selected snapshot-to-root
+  entries. The registered-plugin lane allocates one tracker object per dispatch
+  and a key array only for a candidate that creates a positive snapshot entry;
+  nonviable and guard-rejected arrays are released immediately after their entries
+  are deleted. `bindArgs`'s existing named-argument map is reused on the registered
+  lane; the selected-body cold fallback allocates its two linear indexes and copies
+  no AST or typed value.
+- Render path: dispatch passes the already spread-expanded/closure-substituted call
+  to the one binding owner. `pluginRawArgument` performs one identity lookup after
+  resolving the plugin call's variable argument; misses take the prior path. Flat,
+  nested, and scratch emission share the same monomorphic map slot. Candidate
+  objects keep their original three-field shape; a plugin-only parallel key array
+  owns cleanup by candidate order, including a negative classification whose key
+  is an earlier bound snapshot. The two output
+  implementations both run the selected-body fallback only when the in-binding
+  tracker was absent and that body's plugin preparation changes function scope.
+  That fallback replays bounded typed
+  placement facts but neither evaluates the bound value again nor invokes a plugin
+  twice. No output pass or fallback renderer is introduced.
+- Helper/API surface: optional internal `BoundSourceResolver` and
+  `BoundSourceTracker` contracts, private root/source/cold-capture helpers, and one
+  internal module export (`isTypedCallValue`) replace no public API. The package
+  root and published declarations expose no new operation.
+- Metadata mutations: every `EvalCtx`/`Emit` constructor initializes the
+  `pluginRawBindings` slot to `null` in the same field order; the slot changes value
+  without a hidden-class transition and is threaded through `scratchEmit`. The map
+  is dropped wholesale with the render and is not a `WeakMap` or persistent graph.
+- Review-flagged diff tokens: [side map/set] one lazy render-local identity and
+  classification map on the already-gated scoped raw-plugin lane;
+  [loop/traversal] candidate-key cleanup plus the selected-body fixed-parameter,
+  argument, and prior-parameter loops described above; no source-byte scan or typed
+  root re-walk after caching; [node construction] one lazy `new Map()` plus the
+  pre-existing eager `Any` snapshot, with no AST/plugin-value construction;
+  [materialized array/object] one registered-plugin tracker, one plugin-only
+  order-indexed key array, lazy positive-key arrays, and two selected-body cold
+  indexes, while eligible default lookups build the same one overlay frame the
+  ordinary default resolver would have built and bypass that resolver;
+  [helper] private source/tracker/cold-capture helpers; [behavior] Bootstrap's
+  `breakpoint-min` now receives `tree.Value` list structure through imported,
+  fixed defaulted/explicit, and transitive variable-lookup bindings, including a
+  plugin first declared inside the selected mixin.
+- Evidence: the focused compatibility test covers separate imported variable and
+  mixin files; distinct defaulted, explicit positional, and explicit named outer
+  bindings; a second fixed-parameter mixin pass-through; both
+  `collapseNesting` modes; and the absence of an emitted `breakpoint-min(`
+  fallback. A second test runs both output modes for a plugin first declared in
+  the selected mixin and pins final-duplicate-named provenance with distinct map
+  values, positional consumption across a literal-pattern overload, and two
+  definitions selected by one initially untracked dispatch. The real Bootstrap
+  fixture renders past `breakpoint-min`; its
+  remaining expected failure is a non-plugin CSS diff. The binding-owner test
+  observes exactly three resolver events for three fixed slots—in positional,
+  defaulted, then named parameter order—with each event seeing the already-bound
+  prefix. That test pins the registered-plugin in-binding lane; the selected-body
+  capture lane is pinned separately by the body-declared-plugin regression.
+- Behavior evidence: `plugin-diagnostics.test.ts` passed 12/12; focused core mixin
+  suites passed 36/36; full Less corpus passed 111/111, including
+  `mixins-guards.less` and the real Bootstrap fixture.
+- Build evidence: dependency-ordered `pnpm run build:release` passed; core and Jess
+  TypeScript build checks passed.
+- Boundary evidence: full `@jesscss/core` passed 212 files / 3347 tests with 9
+  skipped and 2 todo; `test:jess-ast-v2-ratchet` passed 4/4; `check:macro`
+  reported 0 interpreter fallbacks for all five compiled packages; compose-integrity
+  completed its clean rebuild with no grammar degradation.
+- Semantics review: approved against all eight invariants and the full incident
+  catalogue under SETTLED rows A9, C2, C7, and O1. No fixture CSS changed and no
+  ledger action remains.
+- Performance review: approved against all eleven V8 invariants and regression
+  incidents R1-R7. The deterministic allocation, cleanup, and O(A+P) operation
+  counts support the bounded implementation; the benchmark supplies no speed or
+  neutrality claim, so `performanceClaim` remains `none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "A9 requires a selected legacy raw plugin to receive a self-contained parser-owned typed list/sequence that crossed fixed eager mixin parameters through direct variable lookups, while guards and normal output must keep their established byte snapshots. Rest parameters and computed/reference-bearing sources remain outside this bounded carry. This is a semantic compatibility correction with real sparse provenance state, not a neutral refactor, cost cut, or speed claim.",
+    "dangerTokensJustification": "The ordinary no-plugin lane supplies no provenance tracker and uses the original three-field candidate shape and prefilter allocation site. After a scoped raw function exists, the resolver runs inside the existing fixed-parameter binding pass, caches each typed-root classification in one monomorphic render-local map, and uses a plugin-only candidate-order key array to delete snapshot and candidate-local negative-classification entries for nonviable or guard-rejected candidates; canonical caller/definition root classifications remain render-local. Only when that tracker was absent at dispatch and a selected body first registers a plugin, an O(A+P) fixed-parameter placement replay uses last-write-wins named and prior-parameter indexes; it performs no second value evaluation, source-byte scan, AST copy, second plugin call, or persistent cache, and explicitly declines spread/rest and computed sources.",
+    "behaviorEvidence": "Focused plugin ABI coverage passed 12/12, including both output modes and final-duplicate-named body-plugin provenance; focused core mixin coverage passed 36/36, the full core suite passed 3347 tests, and the owner-maintained Less corpus passed 111/111 including real Bootstrap and mixins-guards.",
+    "buildEvidence": "The dependency-ordered build:release, core TypeScript build, macro no-fallback gate, compose-integrity clean rebuild, and AST-v2 production ratchet all passed.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 53.41333350000002,
+      "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85",
+      "outputBytes": 122320
+    }
+  }
+]
+```
+- Verdict: accepted as a bounded A9 common-plugin ABI correction with
+  `performanceClaim: none`; the required semantics and performance reviews both
+  approved the final code, tests, and documentation with no remaining blocker.
 
 - Latest pass: 2026-07-30 callable-body comment replay and classified Less
   mixin-signature trivia. This is a correctness batch, not a performance pass.

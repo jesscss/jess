@@ -76,6 +76,31 @@ export type DefaultResolver = (
 ) => MaybePromise<string>;
 
 /**
+ * Optional dialect adapter for a source that must retain extra binding-domain
+ * provenance. Returning `undefined` keeps the ordinary eager binding route.
+ * The callback runs inside the existing fixed-parameter pass, so it must return
+ * the same eager snapshot the parameter will bind.
+ */
+export type BoundSourceResolver = (
+  value: CallValue,
+  boundSoFar: Map<string, CallValue>,
+  def: MixinDefinition,
+  defaulted: boolean
+) => MaybePromise<CallValue> | undefined;
+
+/**
+ * Candidate-local lifetime for provenance side entries created while binding.
+ * A candidate's entries must remain available to its guard, but rejected
+ * candidates must release them before dispatch returns.
+ */
+export interface BoundSourceTracker {
+  readonly resolve: BoundSourceResolver;
+  begin(): void;
+  finish(): readonly CallValue[] | null;
+  discard(keys: readonly CallValue[]): void;
+}
+
+/**
  * Bind a call's args to a definition's params. Returns the binding map, or
  * `null` if the def cannot accept these args (arity / pattern mismatch).
  * Args are resolved in the CALLER frame (Less semantics). Typed authored
@@ -101,6 +126,7 @@ interface BindState {
   readonly resolveCaller: ValueResolver;
   readonly resolveDefault: DefaultResolver | undefined;
   readonly resolveDefaultBlock: DefaultBlockResolver | undefined;
+  readonly resolveBoundSource: BoundSourceResolver | undefined;
   pi: number;
 }
 
@@ -109,7 +135,8 @@ export function bindArgs(
   call: MixinCall,
   resolveCaller: ValueResolver,
   resolveDefault?: DefaultResolver,
-  resolveDefaultBlock?: DefaultBlockResolver
+  resolveDefaultBlock?: DefaultBlockResolver,
+  resolveBoundSource?: BoundSourceResolver
 ): MaybePromise<Map<string, CallValue> | null> {
   const params = def.params;
   const positional: CallArg[] = [];
@@ -156,9 +183,13 @@ export function bindArgs(
     const p = fixedParams[k]!;
     let argVal: MaybePromise<CallValue>;
     if (p.name !== undefined && named.has(p.name)) {
-      argVal = resolveEager(named.get(p.name)!.value, resolveCaller);
+      const source = named.get(p.name)!.value;
+      argVal = (p.pattern === undefined ? resolveBoundSource?.(source, bound, def, false) : undefined)
+        ?? resolveEager(source, resolveCaller);
     } else if (pi < positional.length) {
-      argVal = resolveEager(positional[pi++]!.value, resolveCaller);
+      const source = positional[pi++]!.value;
+      argVal = (p.pattern === undefined ? resolveBoundSource?.(source, bound, def, false) : undefined)
+        ?? resolveEager(source, resolveCaller);
     } else if (p.default !== undefined) {
       /*
        * A default value resolves with the params bound so far in scope (Less:
@@ -166,7 +197,8 @@ export function bindArgs(
        * scope (`@parameter: @parameterDefault` reads the def-scope
        * `@parameterDefault`, not a same-name caller var) — not the caller frame.
        */
-      argVal = resolveEagerDefault(p.default, bound, def, resolveCaller, resolveDefault, resolveDefaultBlock);
+      argVal = (p.pattern === undefined ? resolveBoundSource?.(p.default, bound, def, true) : undefined)
+        ?? resolveEagerDefault(p.default, bound, def, resolveCaller, resolveDefault, resolveDefaultBlock);
     } else {
       return null; // required slot unfilled
     }
@@ -174,7 +206,7 @@ export function bindArgs(
       const at = k;
       const carried: BindState = {
         def, params, fixedParams, positional, named, hasRest, restIndex,
-        bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, pi
+        bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, resolveBoundSource, pi
       };
       return argVal.then(settled => resumeFixed(carried, at, settled));
     }
@@ -186,7 +218,7 @@ export function bindArgs(
         const at = k;
         const carried: BindState = {
           def, params, fixedParams, positional, named, hasRest, restIndex,
-          bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, pi
+          bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, resolveBoundSource, pi
         };
         const settled = argVal;
         return patBytes.then(pat => (valueBytes(settled) === pat ? bindFixedFrom(carried, at + 1) : null));
@@ -215,7 +247,7 @@ export function bindArgs(
   }
   return bindRest({
     def, params, fixedParams, positional, named, hasRest, restIndex,
-    bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, pi
+    bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, resolveBoundSource, pi
   });
 }
 
@@ -249,11 +281,16 @@ function bindFixedFrom(st: BindState, from: number): MaybePromise<Map<string, Ca
     const p = st.fixedParams[k]!;
     let argVal: MaybePromise<CallValue>;
     if (p.name !== undefined && st.named.has(p.name)) {
-      argVal = resolveEager(st.named.get(p.name)!.value, st.resolveCaller);
+      const source = st.named.get(p.name)!.value;
+      argVal = (p.pattern === undefined ? st.resolveBoundSource?.(source, st.bound, st.def, false) : undefined)
+        ?? resolveEager(source, st.resolveCaller);
     } else if (st.pi < st.positional.length) {
-      argVal = resolveEager(st.positional[st.pi++]!.value, st.resolveCaller);
+      const source = st.positional[st.pi++]!.value;
+      argVal = (p.pattern === undefined ? st.resolveBoundSource?.(source, st.bound, st.def, false) : undefined)
+        ?? resolveEager(source, st.resolveCaller);
     } else if (p.default !== undefined) {
-      argVal = resolveEagerDefault(p.default, st.bound, st.def, st.resolveCaller, st.resolveDefault, st.resolveDefaultBlock);
+      argVal = (p.pattern === undefined ? st.resolveBoundSource?.(p.default, st.bound, st.def, true) : undefined)
+        ?? resolveEagerDefault(p.default, st.bound, st.def, st.resolveCaller, st.resolveDefault, st.resolveDefaultBlock);
     } else {
       return null;
     }
@@ -361,15 +398,15 @@ function resolveEager(v: CallValue, resolveCaller: ValueResolver): MaybePromise<
    * literal; any structure containing a reference or computed value still resolves
    * eagerly in the caller frame below.
    */
-  if (isTypedGuardValue(v)) {
+  if (isTypedCallValue(v)) {
     return v;
   }
   return mapMaybe(resolveCaller(v), any);
 }
 
-function isTypedGuardValue(v: CallValue): v is ValueSlot {
+export function isTypedCallValue(v: CallValue): v is ValueSlot {
   if (!('type' in v)) {
-    return v.every(isTypedGuardValue);
+    return v.every(isTypedCallValue);
   }
   if (v.type === 'MixinCall') {
     return false;
@@ -378,9 +415,9 @@ function isTypedGuardValue(v: CallValue): v is ValueSlot {
     return true;
   }
   if (v.type === 'List') {
-    return v.value.every(isTypedGuardValue);
+    return v.value.every(isTypedCallValue);
   }
-  return v.type === 'Sequence' && v.parts.every(isTypedGuardValue);
+  return v.type === 'Sequence' && v.parts.every(isTypedCallValue);
 }
 
 /** Eager-resolve a DEFAULT param value with the params-bound-so-far overlay
@@ -409,7 +446,7 @@ function resolveEagerDefault(
   if (block !== undefined) {
     return block;
   }
-  if (isTypedGuardValue(v)) {
+  if (isTypedCallValue(v)) {
     return v;
   }
   return mapMaybe(resolveDefault ? resolveDefault(v, boundSoFar, def) : resolveCaller(v), any);
@@ -443,9 +480,14 @@ export function selectDefinitions(
   modes: EvalModes,
   resolveDefault?: DefaultResolver,
   resolveDefaultBlock?: DefaultBlockResolver,
-  onNoViable?: () => void
+  onNoViable?: () => void,
+  boundSources?: BoundSourceTracker
 ): MaybePromise<Selection[]> {
-  type Viable = { def: MixinDefinition; bindings: Map<string, CallValue> | null; order: number };
+  type Viable = {
+    def: MixinDefinition;
+    bindings: Map<string, CallValue> | null;
+    order: number;
+  };
 
   const guardDeps = (def: MixinDefinition, bindings: Map<string, CallValue> | null, isDefault: () => boolean) => {
     /*
@@ -497,21 +539,51 @@ export function selectDefinitions(
    * whose arguments are all settled, which is every ordinary call.
    */
   const viable: Viable[] = [];
+  const keysByOrder: Array<readonly CallValue[] | null | undefined> | null = boundSources === undefined ? null : [];
   const prefilter = (index: number): MaybePromise<void> => {
+    if (boundSources === undefined) {
+      for (; index < candidates.length; index++) {
+        const def = candidates[index]!;
+        const bound = bindArgs(def, call, resolveCaller, resolveDefault, resolveDefaultBlock);
+        if (isThenable(bound)) {
+          const at = index;
+          return bound.then((bindings) => {
+            if (bindings !== null) {
+              viable.push({ def, bindings, order: at });
+            }
+            return prefilter(at + 1);
+          });
+        }
+        if (bound !== null) {
+          viable.push({ def, bindings: bound, order: index });
+        }
+      }
+      return undefined;
+    }
+
     for (; index < candidates.length; index++) {
       const def = candidates[index]!;
-      const bound = bindArgs(def, call, resolveCaller, resolveDefault, resolveDefaultBlock);
+      boundSources.begin();
+      const bound = bindArgs(def, call, resolveCaller, resolveDefault, resolveDefaultBlock, boundSources.resolve);
       if (isThenable(bound)) {
         const at = index;
         return bound.then((bindings) => {
+          const keys = boundSources.finish();
           if (bindings !== null) {
             viable.push({ def, bindings, order: at });
+            keysByOrder![at] = keys;
+          } else if (keys !== null) {
+            boundSources.discard(keys);
           }
           return prefilter(at + 1);
         });
       }
+      const keys = boundSources.finish();
       if (bound !== null) {
         viable.push({ def, bindings: bound, order: index });
+        keysByOrder![index] = keys;
+      } else if (keys !== null) {
+        boundSources.discard(keys);
       }
     }
     return undefined;
@@ -586,6 +658,16 @@ export function selectDefinitions(
     }
     return mapMaybe(select(), (matched) => {
       matched.sort((a, b) => a.order - b.order);
+      if (boundSources !== undefined) {
+        for (const candidate of matched) {
+          keysByOrder![candidate.order] = null;
+        }
+        for (const keys of keysByOrder!) {
+          if (keys !== undefined && keys !== null) {
+            boundSources.discard(keys);
+          }
+        }
+      }
       return matched.map(v => ({ def: v.def, bindings: v.bindings }));
     });
   });

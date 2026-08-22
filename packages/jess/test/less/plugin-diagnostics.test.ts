@@ -231,6 +231,122 @@ describe('the less-compat tree shim', () => {
     expect(result.css).toContain('width: 992px');
   }, 30000);
 
+  it('passes a comma-list map through defaulted, positional, and named mixin parameters as a tree.Value', async () => {
+    const { dir, entry } = makeProject(
+      [
+        'function listToMap({ value: list } = { value: [] }) {',
+        '  const map = {};',
+        '  list.forEach(({ value: item } = {}) => {',
+        '    if (Array.isArray(item)) {',
+        '      const [{ value: key }, value] = item;',
+        '      map[key] = value;',
+        '    }',
+        '  });',
+        '  return map;',
+        '}',
+        'functions.add(\'breakpoint-min\', function ({ value: name }, breakpoints) {',
+        '  return listToMap(breakpoints)[name];',
+        '});'
+      ].join('\n'),
+      [
+        '@import "./variables";',
+        '@import "./mixins";',
+        '#responsive();',
+        '#responsive(@explicit-breakpoints);',
+        '#responsive(@breakpoints: @named-breakpoints);'
+      ].join('\n')
+    );
+    fs.writeFileSync(path.join(dir, 'variables.less'),
+      [
+        '@grid-breakpoints: xs 0, sm 576px, md 768px;',
+        '@explicit-breakpoints: xs 0, sm 640px, md 800px;',
+        '@named-breakpoints: xs 0, sm 704px, md 896px;'
+      ].join('\n'), 'utf8');
+    fs.writeFileSync(path.join(dir, 'mixins.less'), [
+      '@plugin "./p";',
+      '#media-up(@name, @content, @breakpoints: @grid-breakpoints) {',
+      '  @min: breakpoint-min(@name, @breakpoints);',
+      '  .result { width: @min; }',
+      '}',
+      '#responsive(@breakpoints: @grid-breakpoints) {',
+      '  #media-up(sm, { color: red; }, @breakpoints);',
+      '  #media-up(md, { color: blue; }, @breakpoints);',
+      '}'
+    ].join('\n'), 'utf8');
+    for (const collapseNesting of [false, true]) {
+      const result = await makeCompiler(dir).renderToResult(entry, {
+        suppressWarnings: true,
+        breakOnError: false,
+        output: { collapseNesting }
+      });
+
+      expect(result.errors).toEqual([]);
+      expect(result.warnings.find(w => w.code === 'plugin/function-threw')).toBeUndefined();
+      expect(result.css).toContain('width: 576px');
+      expect(result.css).toContain('width: 768px');
+      expect(result.css).toContain('width: 640px');
+      expect(result.css).toContain('width: 800px');
+      expect(result.css).toContain('width: 704px');
+      expect(result.css).toContain('width: 896px');
+      expect(result.css).not.toContain('breakpoint-min(');
+    }
+  }, 30000);
+
+  it('retains a defaulted comma-list map for the first plugin declared inside the selected mixin', async () => {
+    const { dir, entry } = makeProject(
+      [
+        'functions.add(\'breakpoint-min\', function ({ value: name }, { value: list }) {',
+        '  for (const { value: item } of list) {',
+        '    if (item[0].value === name) { return item[1]; }',
+        '  }',
+        '});'
+      ].join('\n'),
+      [
+        '@grid-breakpoints: xs 0, sm 576px;',
+        '@first-breakpoints: xs 0, sm 640px;',
+        '@final-breakpoints: xs 0, sm 704px;',
+        '@pattern-breakpoints: xs 0, sm 896px;',
+        '@multi-breakpoints: xs 0, sm 1024px;',
+        '.media-up(@breakpoints: @grid-breakpoints) {',
+        '  @plugin "./p";',
+        '  .result { width: breakpoint-min(sm, @breakpoints); }',
+        '}',
+        '.media-up();',
+        '.media-up(@breakpoints: @first-breakpoints, @breakpoints: @final-breakpoints);',
+        '.pattern(red, @breakpoints) {',
+        '  @plugin "./p";',
+        '  .pattern-result { width: breakpoint-min(sm, @breakpoints); }',
+        '}',
+        '.pattern(red, @pattern-breakpoints);',
+        '.multi(@breakpoints) {',
+        '  @plugin "./p";',
+        '  .multi-one { width: breakpoint-min(sm, @breakpoints); }',
+        '}',
+        '.multi(@breakpoints) {',
+        '  @plugin "./p";',
+        '  .multi-two { width: breakpoint-min(sm, @breakpoints); }',
+        '}',
+        '.multi(@multi-breakpoints);'
+      ].join('\n')
+    );
+    for (const collapseNesting of [false, true]) {
+      const result = await makeCompiler(dir).renderToResult(entry, {
+        suppressWarnings: true,
+        breakOnError: false,
+        output: { collapseNesting }
+      });
+
+      expect(result.errors).toEqual([]);
+      expect(result.warnings.find(w => w.code === 'plugin/function-threw')).toBeUndefined();
+      expect(result.css).toContain('width: 576px');
+      expect(result.css).toContain('width: 704px');
+      expect(result.css).toContain('width: 896px');
+      expect(result.css.match(/width: 1024px/g)).toHaveLength(2);
+      expect(result.css).not.toContain('width: 640px');
+      expect(result.css).not.toContain('breakpoint-min(');
+    }
+  }, 30000);
+
   it('refuses an unsupported tree member with an attributable error', async () => {
     const { dir, entry } = makeProject(
       'functions.add(\'nope\', function () { return new tree.Media(); });',

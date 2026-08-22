@@ -12,7 +12,7 @@
  * Each expectation below was captured from `npx less@4.6.3`.
  */
 import { describe, it, expect } from 'vitest';
-import { bindArgs } from '../mixin-dispatch.js';
+import { bindArgs, type BoundSourceResolver } from '../mixin-dispatch.js';
 import {
   mixinDef, mixinCall, any, isLiteralNode, keyword,
   type MixinCall, type MixinDefinition, type Param, type ValueSlot
@@ -92,6 +92,39 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
   it('(d) all-positional call is unchanged (byte-identical regression guard)', () => {
     const call = mixinCall('.mixin', [any('1px'), any('2px'), any('3px')]);
     expect(argumentsText(def, call)).toBe('1px 2px 3px');
+  });
+
+  it('offers positional, defaulted, and named sources inside the one fixed-parameter pass', () => {
+    const defaultB = any('20px');
+    const sourceA = any('1px');
+    const sourceC = any('9px');
+    const routed = mixinDef('.routed', [
+      { name: 'a' },
+      { name: 'b', default: defaultB },
+      { name: 'c' }
+    ], []);
+    const seen: Array<{ value: ValueSlot; defaulted: boolean; bound: string[] }> = [];
+    const route: BoundSourceResolver = (value, bound, _def, defaulted) => {
+      if ('type' in value && value.type !== 'MixinCall') {
+        seen.push({ value, defaulted, bound: [...bound.keys()] });
+      }
+      return undefined;
+    };
+    const bound = bindArgs(
+      routed,
+      mixinCall('.routed', [sourceA, { name: 'c', value: sourceC }]),
+      resolve,
+      undefined,
+      undefined,
+      route
+    );
+
+    expect(bound?.get('arguments')).toEqual([sourceA, defaultB, sourceC]);
+    expect(seen).toEqual([
+      { value: sourceA, defaulted: false, bound: [] },
+      { value: defaultB, defaulted: true, bound: ['a'] },
+      { value: sourceC, defaulted: false, bound: ['a', 'b'] }
+    ]);
   });
 
   it('resolves a recursive value-slot argument without treating its array as a node', () => {
