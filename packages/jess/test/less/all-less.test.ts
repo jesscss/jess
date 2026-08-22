@@ -306,7 +306,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/parse-interpolation/parse-interpolation.less',
-    'renders but interpolation formatting differs from Less'
+    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it; collapseNesting:true emits the golden `.fruit-cap-apple, …` branches exactly, and Less `each()` is the explicit rule-multiplication form. Separate residuals are nested selector-list line wrapping and one-column relative-combinator indentation; the maintained golden also says `foo: bar` where its quoted-case source says `foo: baz`. Owner reconciliation is required for the flattened final stanza and source/golden typo; formatting residuals remain actionable independently'
   ],
   [
     'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',

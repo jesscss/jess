@@ -72,7 +72,15 @@ above:
 - `tests-unit/media/media.less`
 - `tests-unit/mixins/mixins.less` (fixture-local nested output vs flattened
   golden; the `.recursion` outer-mixin lookup is covered by core)
-- `tests-unit/parse-interpolation/parse-interpolation.less`
+- `tests-unit/parse-interpolation/parse-interpolation.less` (`*[...]` capture is
+  implemented; it is no longer a feature gap. Its final captured-parent / suffix
+  ampersand mismatch is an INTENDED DIVERGENCE, owner ruling 2026-08-22:
+  `collapseNesting:false` preserves the nested boundary; explicit collapse
+  matches the flattened golden, and Less `each()` is pinned as explicit rule
+  multiplication. Separate actionable residuals: nested selector-list line
+  wrapping and one-column relative-combinator indentation. Owner-maintained
+  fixture corrections are needed for the flattened final stanza and the golden
+  `foo: bar` whose quoted-case source says `foo: baz`.)
 - `tests-unit/plugin/plugin.less`
 - `tests-unit/urls/urls.less`
 

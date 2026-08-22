@@ -127,9 +127,14 @@ upstream fixture to the public alpha lane.
   values must accept arbitrary token streams (CSS-spec `<declaration-value>`),
   implemented at the **CSS-parser base level** so it propagates to less/scss/jess
   via grammar composition. (Fix dispatched — active, not deferred.)
-- **Bare selector capture `*[...]`** (`parse-interpolation.less`) — NOT a
-  deprecation. A NEW feature already implemented in the `.jess` parser
-  (`jess-parser` `SelectorCapture` — `packages/syntax/jess/jess-parser/src/grammar.ts`,
-  find it with `grep -n "const SelectorCapture" …/grammar.ts`); being
-  **ported into `.less`**.
-  A real work item, not an owner decision. (Port dispatched.)
+- **Bare selector capture `*[...]`** (`parse-interpolation.less`) — implemented
+  in both the Jess and Less parsers; there is no remaining selector-capture
+  feature work in this fixture. Its final mismatch is an **intended output-policy
+  divergence** (owner ruling 2026-08-22): local `collapseNesting:false` preserves
+  the captured parent/suffix-ampersand child boundary, while explicit collapse
+  produces the golden `.fruit-cap-apple, …` branches. Less `each()` is the opt-in
+  for one emitted rule per ordinary list item without changing global nesting.
+  The same fixture also exposes separate nested-header wrapping and
+  relative-combinator indentation residuals, plus a maintained-golden typo
+  (`foo: bar` for quoted-case source `foo: baz`). Those remain independently
+  inventoried; the final flattened stanza and typo need an owner fixture update.
