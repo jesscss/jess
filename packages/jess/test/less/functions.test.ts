@@ -49,9 +49,11 @@ const lessHarnessFunctionsPlugin = {
   }
 };
 
-// The compatibility package accepts native AST-v2 functions.  Keep this
-// equivalent to the legacy Less registry fixture above without making the
-// public compiler route depend on a Less tree/plugin bridge.
+/*
+ * The compatibility package accepts native AST-v2 functions. Keep this
+ * equivalent to the legacy Less registry fixture above without making the
+ * public compiler route depend on a Less tree/plugin bridge.
+ */
 const lessHarnessFunctions: readonly Fn[] = [
   defineFunction('add', {
     params: [{ type: 'Dimension' }, { type: 'Dimension' }] as const,
@@ -243,15 +245,20 @@ describe('Functions', () => {
       expect(css).toContain('color:');
     });
 
-    it('should handle desaturate function', async () => {
+    it('keeps achromatic colors achromatic when desaturating', async () => {
       const lessCode = `
         .test {
-          color: desaturate(#ff0000, 20%);
+          color: desaturate(#888, 10%);
+          background: desaturate(#999, 10%);
         }
       `;
 
       const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('color:');
+      expect(css).toBe(`.test {
+  color: #888888;
+  background: #999999;
+}
+`);
     });
 
     it('should handle fade function', async () => {

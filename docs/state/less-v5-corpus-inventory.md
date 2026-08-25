@@ -198,6 +198,17 @@ The remote import fixture is tracked in
 [`less-v5-release-plan.md`](../process/less-v5-release-plan.md) as a deferred
 Phase C import/security feature, not as a flaky expected failure.
 
+### Resolved non-corpus function follow-up
+
+- Less's shared HSL adjustment kernel now clamps the written saturation or
+  lightness channel after absolute or `relative` adjustment (ledger **V14**).
+  This fixes `desaturate(#888, 10%)` and `desaturate(#999, 10%)`, which formerly
+  created negative saturation and emitted teal instead of grey. Direct function
+  tests cover both channel bounds, relative mode, and an in-range chromatic
+  control; the public compiler test pins the achromatic bytes. No owner-maintained
+  corpus fixture exercises this edge, so the expected-failure registry is
+  unchanged.
+
 Browser fixture parity is excluded from alpha.1 by design. The current browser
 contract is tracked in
 [`less-v5-browser-build-spec.md`](../architecture/less-v5-browser-build-spec.md):

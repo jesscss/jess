@@ -87,7 +87,7 @@ a `parse/*` diagnostic would give a name. Not a gap in the bar as written.
 > under two configs. Prefer its numbers to this section's. The two lanes agree
 > on `isurl`; they differ on `style()` (reconciled in the row below), and this
 > section adds two findings that lane did not have: the `style()` prelude
-> position (below) and the `desaturate()` achromatic bug (§4.6).
+> position (below) and the now-fixed `desaturate()` achromatic bug (§4.6).
 
 Less 4.x registers **89** names by source reading (every file in
 `less-4x/packages/less/lib/less/functions/` read; registry is `addMultiple`
@@ -99,20 +99,18 @@ directory).
 jess's Less dialect index registers **83** (enumerated at runtime via
 `fnsOf(await import('@jesscss/fns/less'))`, not read off a file).
 
-**All 89 were checked by rendering one call per name through both engines** — not
-sampled, and not read off an index. Result: **77 byte-identical, 12 differing.**
-The 12:
+All names were checked by rendering one call per name through both engines — not
+sampled, and not read off an index. The mutable parity count and per-function
+status now live only in
+[`../../state/less-4x-function-triage.md`](../../state/less-4x-function-triage.md).
+This broader audit still owns two position-level findings below: `isurl` remains
+missing from the typed value domain, and `style()` exposes a container-prelude
+parser gap. The achromatic `desaturate()` defect originally found here is fixed
+under ledger V14 (§4.6). The remaining colour-constructor differences are
+deliberate under F1/F5/V4, while `isdefined`/`isruleset`/`extract`/`length`
+surfaced the unrelated compact-property parser bug in §4.5.
 
-| Count | Names | Verdict |
-| --- | --- | --- |
-| 2 | `isurl`, `style` | **MISSING** — below |
-| 1 | `desaturate` | **BUG** — §4.6 |
-| 5 | `rgb`, `rgba`, `hsl`, `hsla`, `luma` | **DELIBERATE** — un-operated colour constructors stay authored (settled F5 lazy boundary, `all-less.test.ts:320-334`), plus **F1** separator spacing and **V4** numeric emit |
-| 4 | `isdefined`, `isruleset`, `extract`, `length` | not function gaps at all — artifacts of the unrelated **§4.5** parse bug; all four render correctly once a space follows the property colon |
-
-So: **85 IMPLEMENTED, 2 MISSING, 1 BUG, 1 unrelated parse bug surfaced.**
-
-### The two that are missing
+### Remaining function and position gaps
 
 | Name | Status | Evidence |
 | --- | --- | --- |
@@ -359,23 +357,25 @@ inside the call (`ceil(@v + 1)`), and of which function is called.
 
 Any minifier output, and a good deal of hand-written compact Less, hits this.
 
-### 4.6 BUG — `desaturate()` saturates an achromatic colour
+### 4.6 FIXED — `desaturate()` saturates an achromatic colour
 
 ```less
-.x { a: desaturate(#888, 10%); }  →  jess: #7c9494   less4: #888888
-.x { a: desaturate(#999, 10%); }  →  jess: #8fa3a3   less4: #999999
+.x { a: desaturate(#888, 10%); }  →  before: #7c9494   current: #888888
+.x { a: desaturate(#999, 10%); }  →  before: #8fa3a3   current: #999999
 ```
 
-Desaturating a grey must be a no-op; jess returns a *saturated* teal. Scoped by
-probe: `saturate` on the same input is correct, `desaturate` on a chromatic
-colour is correct, `desaturate(…, 0%)` is correct, and `#fff`/`#000` are correct
-(lightness 100/0). So the fault is confined to the achromatic case where hue is
-undefined — a NaN/undefined-hue path that produces a hue instead of preserving
-grey. Silent wrong colour, no diagnostic.
+Desaturating a grey must be a no-op. The shared Less HSL adjustment kernel used
+to write a negative saturation, and converting that invalid HSL value produced
+a saturated teal. It now clamps the written saturation/lightness channel to the
+normalized `[0, 1]` domain after either absolute or `relative` adjustment. Direct
+tests pin both bounds across all four adjusters and the public compiler test pins
+the two achromatic cases exactly. This was a non-corpus function gap, so no Less
+fixture status changed.
 
 ### Also recorded
 
-- **`isurl`** (§2) and **`style()`** (§2) — MISSING builtins.
+- **`isurl`** (§2) is a missing typed builtin; **`style()`** (§2) is reachable as
+  a function but still exposes the recorded container-prelude parser gap.
 - **`dumpLineNumbers`** has no effect in either option bucket. Less 4.x
   deprecates it and `packages/config/src/types.ts:225-229` marks it `@removed`,
   so this is consistent with intent — recorded, not filed.

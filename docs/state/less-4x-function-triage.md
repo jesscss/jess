@@ -75,8 +75,9 @@ So: **90 of 92 4.x names are reachable in jess.** The two absent ones are `isurl
 
 Status key: **OK** = call-verified byte-identical to 4.x; **OK\*** = call-verified,
 differs from 4.x by a SETTLED v5 ruling (evidence column names the ruling);
-**BUG** = call-verified divergence with no ruling behind it; **MISSING** = does not
-dispatch.
+**FIXED** = a previously recorded divergence now covered by a regression and a
+named ledger row; **BUG** = call-verified divergence with no ruling behind it;
+**MISSING** = does not dispatch.
 
 `file:line` is the `defineFunction` site under `packages/fns/src/`.
 
@@ -171,7 +172,7 @@ dispatch.
 | Fn | 4.x signature | Status | Evidence |
 | --- | --- | --- | --- |
 | `saturate` | `(c, amt, method?)` | OK | `less/saturate.ts:6` — absolute AND `relative` both match |
-| `desaturate` | `(c, amt, method?)` | OK | `less/desaturate.ts:6` |
+| `desaturate` | `(c, amt, method?)` | FIXED / V14 | `less/color-helper.ts` — clamps the written HSL channel; achromatic `#888`/`#999`, low-saturation, chromatic, and `relative` cases pinned |
 | `lighten` | `(c, amt, method?)` | OK | `less/lighten.ts:6` — `#b3f075` |
 | `darken` | `(c, amt, method?)` | OK | `less/darken.ts:6` — `#4d8a0f` |
 | `fadein` | `(c, amt, method?)` | OK / §7-C | `less/fadein.ts:7` — `rgba(…,0.6)` matches; result saturating to alpha 1 emits `rgb(255, 0, 0)` where 4.x emits `#ff0000` |
