@@ -26,8 +26,9 @@ Three of its function claims are corrected here, each measured:
    `%`, `~` and `_self`.
 2. **"`isurl` and `style` are the only 2 not reachable."** `style()` produces the
    **same output as 4.x** — `@v: 1; style(@v)` → `style(1)` in both — because verbatim
-   preservation lands on 4.x's own result shape (§5). The genuine second absence is
-   `_self` (§6). So the pair is `isurl` + `_self`, not `isurl` + `style`.
+   preservation lands on 4.x's own result shape (§5). The genuine second absence was
+   `_self` (§6). `isurl` is now implemented under V15, leaving only the leaked internal
+   `_self` name intentionally absent.
 3. **Presence is not the coverage question.** Six functions that ARE present reject
    argument shapes 4.x accepts, five emit `NaN` into CSS, one rounds negative halves
    the other way, and two emit the wrong colour form (§4, §7). None of these are
@@ -40,7 +41,7 @@ Three of its function claims are corrected here, each measured:
    `packages/less/lib/less-node/index.js`. **92 names.**
 2. The jess set was taken from the **built artifact's** `lessFns`
    (`packages/fns/lib/index.js`), which is what `makeLessRegistry()` registers.
-   **83 names.**
+   **84 names.**
 3. **Reachability was tested by calling each function the way a user writes it** and
    diffing the rendered CSS against `less.render()` from the 4.x checkout, same source
    string, in `a{…}`. 175 rendered cases across 5 batches. This is the part that
@@ -61,15 +62,14 @@ Three of its function claims are corrected here, each measured:
 | `default` | **IMPLEMENTED elsewhere** — `packages/core/src/ast/serialize.ts:4487`, guard-scoped. Verified working in a real mixin guard. |
 | `~` | **IMPLEMENTED elsewhere** — `~"…"` escaping is parser-level. `~(1, 2)` matches 4.x. |
 | `style` | **DELIBERATELY-DIFFERENT / effectively equivalent** — see §5. |
-| `isurl` | **MISSING.** See §6. |
 | `_self` | **MISSING.** See §6. |
 
 | In jess, absent from 4.x | Verdict |
 | --- | --- |
 | `string-format` | Intentional jess addition — `packages/fns/src/less/format.ts:60`, the sprintf spelling of `%`. `%` itself is still registered at `format.ts:67`. Both dispatch; verified. |
 
-So: **90 of 92 4.x names are reachable in jess.** The two absent ones are `isurl` and
-`_self`.
+So: **91 of 92 4.x names are reachable in jess.** The only absent name is `_self`,
+4.x's leaked internal `each()` helper.
 
 ## 3. Per-function table
 
@@ -133,7 +133,7 @@ named ledger row; **BUG** = call-verified divergence with no ruling behind it;
 | `ispixel` | `(v)` | OK | `less/types.ts:44` |
 | `ispercentage` | `(v)` | OK | `less/types.ts:50` |
 | `isem` | `(v)` | OK | `less/types.ts:56` |
-| `isurl` | `(v)` | **MISSING** | §6 |
+| `isurl` | `(v)` | **FIXED / V15** | `less/types.ts` — parser-owned `Url` projects to `UrlValue` only at a typed boundary; opaque url-shaped bytes stay false |
 
 ### Strings
 
@@ -278,11 +278,11 @@ since `style()` in `@container style(--x: true)` is real CSS. **Classified
 DELIBERATELY-DIFFERENT with no work needed**; it is recorded here so nobody
 "implements" it and breaks the CSS `style()` passthrough.
 
-## 6. The two genuinely MISSING functions
+## 6. URL typing and the one intentionally absent internal
 
 | Fn | 4.x | jess | What it needs |
 | --- | --- | --- | --- |
-| `isurl(v)` | `isa(n, URL)` → `true`/`false` | preserved verbatim: `isurl(url(a.png))` → `isurl(url(a.png))` | **Blocked by a design fact, not effort.** `packages/fns/src/less/types.ts:5` states it deliberately: `Url` is syntax, not a materialized `Value` tag, so once evaluated a `url(...)` is opaque and the predicate would have to sniff output bytes — which this layer must not do. Fixing it needs a `Url` value tag (or a `src`-carried marker) in the value domain, i.e. a core change. **There is no DESIGN-DECISIONS row for this**; it is an in-code comment only. Recommend an OPEN ledger row. |
+| `isurl(v)` | `isa(n, URL)` → `true`/`false` | `isurl(url(a.png))` → `true`; non-URL controls → `false` | **FIXED under V15.** The parser already owned the `Url` AST fact. Typed evaluation now projects it to the value-domain `UrlValue` after applying the existing URL transform, while ordinary URL emission retains its prior bare-string path. The predicate reads the type tag; it never sniffs bytes. |
 | `_self(n)` | identity, `lib/less/functions/list.js:22` | preserved verbatim: `_self(1)` → `_self(1)` | 4.x's internal helper for `each()`, exposed by accident (registered by `addMultiple` over the list module). jess's `each` works without it. **Recommend NOT implementing**; record as intentional. |
 
 ## 7. Behavioural divergences with no ruling behind them
@@ -394,9 +394,9 @@ is *not* an argument-shape rejection, which is what `preserve` was designed for.
   and V2's own premise (CSS-superset verbatim pass-through) covers it. The clause
   that survives in V2 is the historical-Less form, which is genuinely not CSS. F5
   keeps its narrower jurisdiction over the 3+-slot colour constructors.
-- `isurl`'s absence is recorded only as a source comment. It should be an OPEN ledger
-  row (§6). **Not done in this pass** — it needs a `Url` value tag, i.e. a core value-
-  domain change, and is out of scope for the four function-layer defects.
+- `isurl`'s former absence is resolved by OPEN ledger row V15. The earlier source
+  comment was wrong to call the parser's `Url` fact unusable: a typed-only value
+  projection preserves it without taxing ordinary URL output or scanning bytes.
 
 ## 9. What was NOT tested, and why
 
@@ -425,11 +425,10 @@ Stated explicitly, per the brief.
 
 ## 10. Bottom line
 
-Function coverage is in far better shape than the brief's priors suggested: 90 of
+Function coverage is in far better shape than the brief's priors suggested: 91 of
 92 4.x names dispatch, and the four "special-formed" ones plus `each` and `default`
-all work in their real positions. The two absences are `isurl` (blocked on a value-
-domain `Url` tag — needs an OPEN ledger row) and `_self` (4.x's leaked internal;
-recommend never implementing).
+all work in their real positions. The only absence is `_self`, 4.x's leaked internal
+helper; recommend never implementing it.
 
 The real finding is not a missing function. It is that **`functionMode: 'preserve'`
 makes an arity rejection, a type rejection, a file-not-found, and an unknown CSS

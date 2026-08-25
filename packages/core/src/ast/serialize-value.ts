@@ -81,6 +81,7 @@ export function serializeValue(v: ValueGroup): string {
     case 'Quoted': return serializeQuoted(v);
     case 'Keyword': return v.text;
     case 'Any': return v.bytes;
+    case 'Url': return v.bytes;
     case 'Bool': return v.value ? 'true' : 'false';
     case 'Null': return v.bytes;
     case 'List': return joinGroup(v.value, sepGlue(v.sep), serializeValue);

@@ -35,6 +35,7 @@ export type { CallArg, CallValue } from './nodes.js';
 export interface Selection {
   def: MixinDefinition;
   bindings: Map<string, CallValue> | null;
+  boundSourceKeys: readonly CallValue[] | null;
 }
 
 /** Local MaybePromise glue: importing serialize.ts's copy would cycle (it imports this module). */
@@ -50,15 +51,6 @@ export class DefaultGuardAmbiguityError extends Error {
 }
 
 /**
- * Resolve a DEFAULT param value to bytes. Unlike a call arg (resolved in the
- * caller frame), a default value is evaluated with the params bound SO FAR in
- * scope (Less semantics: `@hover-background: darken(@background, 7.5%)` reads the
- * `@background` param, not a caller variable). `boundSoFar` is the in-progress
- * binding map (params in parameter order); the callee threads it to an overlay
- * frame. Absent (dispatch without a frame context), defaults fall back to the
- * caller resolver.
- */
-/**
  * Resolves a param DEFAULT that names a value block (`@breakpoints: @grid-breakpoints`)
  * to the block itself, so it binds BY REFERENCE exactly like a block passed
  * explicitly. Returns `undefined` when the default is an ordinary value.
@@ -69,11 +61,17 @@ export type DefaultBlockResolver = (
   def: MixinDefinition
 ) => ValueSlot | undefined;
 
+/**
+ * Resolve a DEFAULT parameter to its eager {@link CallValue} snapshot. Unlike a
+ * call argument (resolved in the caller frame), a default is evaluated with the
+ * parameters bound SO FAR in scope. Returning the snapshot, rather than only
+ * its bytes, lets a dialect retain typed provenance beside that same binding.
+ */
 export type DefaultResolver = (
   v: ValueSlot,
   boundSoFar: Map<string, CallValue>,
   def: MixinDefinition,
-) => MaybePromise<string>;
+) => MaybePromise<CallValue>;
 
 /**
  * Optional dialect adapter for a source that must retain extra binding-domain
@@ -335,7 +333,9 @@ function bindRest(st: BindState): MaybePromise<Map<string, CallValue> | null> {
   const restSlots: ValueSlot[] = [];
   const take = (index: number): MaybePromise<Map<string, CallValue> | null> => {
     for (let i = index; i < st.positional.length; i++) {
-      const value = resolveEager(st.positional[i]!.value, st.resolveCaller);
+      const source = st.positional[i]!.value;
+      const value = st.resolveBoundSource?.(source, st.bound, st.def, false)
+        ?? resolveEager(source, st.resolveCaller);
       if (isThenable(value)) {
         const at = i;
         return value.then((settled) => {
@@ -449,7 +449,9 @@ function resolveEagerDefault(
   if (isTypedCallValue(v)) {
     return v;
   }
-  return mapMaybe(resolveDefault ? resolveDefault(v, boundSoFar, def) : resolveCaller(v), any);
+  return resolveDefault
+    ? resolveDefault(v, boundSoFar, def)
+    : mapMaybe(resolveCaller(v), any);
 }
 
 function valueBytes(v: CallValue): string {
@@ -457,7 +459,7 @@ function valueBytes(v: CallValue): string {
   return 'type' in v && v.type !== 'MixinCall' && isLiteralNode(v) ? v.src : '';
 }
 
-function isValueSlot(value: CallValue): value is ValueSlot {
+export function isValueSlot(value: CallValue): value is ValueSlot {
   return !('type' in value && value.type === 'MixinCall');
 }
 
@@ -658,6 +660,11 @@ export function selectDefinitions(
     }
     return mapMaybe(select(), (matched) => {
       matched.sort((a, b) => a.order - b.order);
+      const selections = matched.map(v => ({
+        def: v.def,
+        bindings: v.bindings,
+        boundSourceKeys: keysByOrder === null ? null : keysByOrder[v.order] ?? null
+      }));
       if (boundSources !== undefined) {
         for (const candidate of matched) {
           keysByOrder![candidate.order] = null;
@@ -668,7 +675,7 @@ export function selectDefinitions(
           }
         }
       }
-      return matched.map(v => ({ def: v.def, bindings: v.bindings }));
+      return selections;
     });
   });
 }

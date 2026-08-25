@@ -149,9 +149,8 @@ public-semantics test remains additional evidence for the full F5 rule.
 
 ### Compatibility-work pause boundary (2026-08-22)
 
-The current clean landed boundary is `d58eb0a99`, including the focused selector
-capture classification and the raw Less-grammar math-state default. There is no
-uncommitted implementation required to reproduce this inventory.
+This inventory assumes a clean checkout of `origin/dev`. There is no uncommitted
+implementation required to reproduce it.
 
 Owner ruling, 2026-08-22: captured selector lists do not automatically distribute
 their nested rule bodies. Less `each()` and Sass `@each` are the explicit forms
@@ -208,6 +207,13 @@ Phase C import/security feature, not as a flaky expected failure.
   control; the public compiler test pins the achromatic bytes. No owner-maintained
   corpus fixture exercises this edge, so the expected-failure registry is
   unchanged.
+
+- Less `isurl()` now reads a typed value-domain `UrlValue` projected from the
+  parser-owned `Url` AST node at function/operation boundaries (ledger **V15**).
+  Direct and variable-sourced URLs answer true; a quoted string, unknown call, or
+  keyword that merely spells `url(...)` answers false. Ordinary URL declaration
+  output retains its existing string path, so no owner-maintained corpus fixture
+  or expected-failure status changes.
 
 Browser fixture parity is excluded from alpha.1 by design. The current browser
 contract is tracked in

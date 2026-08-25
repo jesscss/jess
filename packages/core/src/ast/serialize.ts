@@ -133,9 +133,9 @@ import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { UnitArithmeticError, calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
-import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList, makeNull, NULL } from './value-factory.js'; // [calc]
+import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
-import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
+import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
@@ -690,6 +690,9 @@ export interface Frame {
 
   /** Per-activation value owners for synthetic parameter declarations. */
   bindingValueFrames?: Map<Binding, Frame>;
+
+  /** Typed URL-bearing values for eager byte snapshots owned by this activation. */
+  mixinUrlBindings?: Map<Binding, ValueGroup>;
 
   /** Opaque Context source identity that authored this activation's body. */
   sourceOwner?: object | null;
@@ -1868,8 +1871,22 @@ function findPathInScope(
          * participate before entering its body; only the terminal segment receives the
          * authored arguments.
          */
-        if (settledDispatch(dispatch([s], mixinCall(s.name), scope, e), mixinCall(s.name), e).length === 0) {
+        const namespaceCall = mixinCall(s.name);
+        const selected = settledDispatch(
+          dispatch([s], namespaceCall, scope, e),
+          namespaceCall,
+          e
+        );
+        if (selected.length === 0) {
           return;
+        }
+        for (const selection of selected) {
+          /*
+           * Namespace descent uses dispatch only as an admission test; it does
+           * not execute the selected activation. Release any typed snapshots
+           * that dispatch transferred for that otherwise-unowned binding map.
+           */
+          discardSelectedBoundSources(selection.boundSourceKeys, e);
         }
         const child: Frame = {
           parent: scope,
@@ -2745,6 +2762,15 @@ interface EvalCtx {
    */
   pluginRawBindings: Map<Binding, Binding | null> | null;
 
+  /*
+   * Less eagerly snapshots mixin arguments to bytes. URL facts cannot be
+   * reconstructed from that snapshot, including URL items inside a list. This
+   * sparse render-local map carries the already-transformed ValueGroup only
+   * across mixin calls that actually transport one; ordinary calls never
+   * allocate or consult it.
+   */
+  mixinUrlBindings: Map<Binding, ValueGroup> | null;
+
   /** Runtime-only lexical homes for mixin calls carried through an argument. */
   mixinCallHomes?: WeakMap<MixinCall, Frame>;
 }
@@ -3222,9 +3248,18 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Keyword':
     case 'Color':
     case 'Dimension':
-    case 'Any':
     case 'Comment':
       return materializeNode(node, e);
+    case 'Any':
+      /*
+       * Eager mixin binding stores evaluated bytes in the canonical Any
+       * snapshot. A URL-bearing activation keeps the typed value beside that
+       * exact snapshot, so every typed consumer (including @arguments/list
+       * traversal) observes the same URL fact without inspecting its bytes.
+       */
+      return frame?.mixinUrlBindings?.get(node)
+        ?? e.mixinUrlBindings?.get(node)
+        ?? materializeNode(node, e);
     case 'Quoted':
       /*
        * `~'…'` / `~"…"` are Less escaped strings: typed arithmetic must see
@@ -3240,7 +3275,12 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        */
       return node.escaped ? makeAny(node.value) : materializeNode(node, e);
     case 'Url':
-      return mapMaybe(evalValue(node, frame, e), v => force(e, v));
+      /*
+       * A URL becomes a typed value only when a typed consumer asks for it.
+       * Ordinary URL emission stays in evalValue's bare-string lane; function
+       * predicates receive the parser-owned Url fact without inspecting bytes.
+       */
+      return mapMaybe(evalValue(node, frame, e), v => makeUrlValue(emitValue(v)));
     case 'Lookup':
       /*
        * Only a VAR lookup resolves here. A `prop`/`entry` lookup falls through
@@ -4573,7 +4613,7 @@ function invokeValueLambda(
         meta: { where: 'lambda parameter default' }
       });
     }
-    return b;
+    return any(b);
   };
 
   /*
@@ -4581,9 +4621,10 @@ function invokeValueLambda(
    * so the callee can call it, instead of byte-flattening the block to ''. This is
    * the same substitution a named mixin call already performs on its args.
    */
+  const preparedArgs = callerFrame ? substituteClosureVarArgs(call, callerFrame, e, false) : call;
   const boundArgs = bindArgs(
     syntheticDef,
-    callerFrame ? substituteClosureVarArgs(call, callerFrame) : call,
+    preparedArgs,
     resolveCaller,
     resolveDefault
   );
@@ -5067,6 +5108,131 @@ function pluginRawRoot(value: Binding, e: EvalCtx): Binding | null {
   return typed;
 }
 
+/** Whether a source/alias can still produce the parser-owned URL value. */
+function hasMixinUrlSource(source: CallValue, frame: Frame, e: EvalCtx): boolean {
+  if (isMixinCallValue(source)) {
+    return false;
+  }
+  if (isValueSlotArray(source)) {
+    for (const item of source) {
+      if (hasMixinUrlSource(item, frame, e)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (frame.mixinUrlBindings?.has(source) === true || e.mixinUrlBindings?.has(source) === true
+    || source.type === 'Url') {
+    return true;
+  }
+  if (source.type === 'Block' || source.type === 'Expression') {
+    return hasMixinUrlSource(source.value, frame, e);
+  }
+  if (source.type === 'List') {
+    return hasMixinUrlSource(source.value, frame, e);
+  }
+  if (source.type === 'Sequence') {
+    return hasMixinUrlSource(source.parts, frame, e);
+  }
+  if (source.type === 'FunctionCall' || source.type === 'IfValue' || source.type === 'Reference') {
+    return true;
+  }
+  if (source.type === 'Lookup') {
+    if (source.kind !== 'var' || typeof source.name !== 'string') {
+      return true;
+    }
+    const hit = resolveVarRef(frame, source.name, source.scope, e);
+    if (!hit || isMixinCallValue(hit.value)) {
+      return false;
+    }
+    return withExcluded(e, hit.value, () => hasMixinUrlSource(hit.value, hit.frame, e));
+  }
+  return false;
+}
+
+/** Cheap shape gate before constructing a default-parameter overlay. */
+function mayResolveMixinUrl(source: CallValue, frame: Frame, e: EvalCtx): boolean {
+  if (isMixinCallValue(source)) {
+    return false;
+  }
+  if (isValueSlotArray(source)) {
+    for (const item of source) {
+      if (mayResolveMixinUrl(item, frame, e)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (frame.mixinUrlBindings?.has(source) === true || e.mixinUrlBindings?.has(source) === true) {
+    return true;
+  }
+  if (source.type === 'Url' || source.type === 'Lookup' || source.type === 'FunctionCall'
+    || source.type === 'IfValue' || source.type === 'Reference') {
+    return true;
+  }
+  if (source.type === 'Block' || source.type === 'Expression' || source.type === 'List') {
+    return mayResolveMixinUrl(source.value, frame, e);
+  }
+  return source.type === 'Sequence' && mayResolveMixinUrl(source.parts, frame, e);
+}
+
+/** Whether one evaluated value group contains a parser-owned URL fact. */
+function valueGroupHasUrl(value: ValueGroup): boolean {
+  if (isValueGroupArray(value)) {
+    for (const item of value) {
+      if (valueGroupHasUrl(item)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (value.type === 'Url') {
+    return true;
+  }
+  if (value.type === 'List' || value.type === 'Block') {
+    return valueGroupHasUrl(value.value);
+  }
+  if (value.type === 'Collection') {
+    if (value.base !== undefined && valueGroupHasUrl(value.base)) {
+      return true;
+    }
+    for (const entry of value.entries) {
+      if (valueGroupHasUrl(entry.key) || valueGroupHasUrl(entry.value)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Snapshot one URL-bearing argument and retain its typed fact for typed consumers. */
+function resolveMixinUrlBoundSource(
+  source: CallValue,
+  frame: Frame,
+  e: EvalCtx,
+  retain: (key: Binding) => void
+): MaybePromise<CallValue> | undefined {
+  if (isMixinCallValue(source)) {
+    return undefined;
+  }
+  return mapMaybe(evalTypedSlot(source, frame, e), value =>
+    valueGroupHasUrl(value)
+      ? snapshotMixinUrlValue(value, e, retain)
+      : any(emitValue(value)));
+}
+
+/** Bind one already-evaluated URL-bearing value through the ordinary eager Any snapshot. */
+function snapshotMixinUrlValue(
+  urlValue: ValueGroup,
+  e: EvalCtx,
+  retain: (key: Binding) => void
+): CallValue {
+  const bound = any(emitValue(urlValue));
+  (e.mixinUrlBindings ??= new Map()).set(bound, urlValue);
+  retain(bound);
+  return bound;
+}
+
 /**
  * Bind one direct variable source through the ordinary eager parameter snapshot
  * while retaining a self-contained typed root for the legacy raw-plugin ABI.
@@ -5201,28 +5367,61 @@ function capturePreparedBodyPluginBindings(
   }
 }
 
-function pluginBoundSourceTracker(
+const TRACK_PLUGIN_SOURCE = 1;
+const TRACK_URL_SOURCE = 2;
+
+function boundSourceTracker(
   frame: Frame,
   e: EvalCtx,
-  homes: Map<MixinDefinition, Frame> | undefined
+  homes: Map<MixinDefinition, Frame> | undefined,
+  trackMode: number,
+  spreadUrlBindings?: ReadonlyMap<Binding, ValueGroup>,
+  urlSource?: CallValue,
+  additionalUrlSources?: ReadonlySet<CallValue> | null
 ): BoundSourceTracker {
+  const trackPlugin = (trackMode & TRACK_PLUGIN_SOURCE) !== 0;
+  const trackUrl = (trackMode & TRACK_URL_SOURCE) !== 0;
   let candidateKeys: Binding[] | null = null;
   const retain = (key: Binding): void => {
     (candidateKeys ??= []).push(key);
   };
   const resolve: BoundSourceResolver = (value, boundSoFar, def, defaulted) => {
-    if (isValueSlotArray(value) || isMixinCallValue(value) || value.type !== 'Lookup'
-      || value.kind !== 'var' || typeof value.name !== 'string') {
+    const spreadUrl = spreadUrlBindings?.get(value);
+    const urlEligible = trackUrl && (spreadUrl !== undefined || value === urlSource
+      || additionalUrlSources?.has(value) === true
+      || (defaulted && mayResolveMixinUrl(value, frame, e)));
+    const pluginEligible = trackPlugin && !isValueSlotArray(value) && !isMixinCallValue(value)
+      && value.type === 'Lookup' && value.kind === 'var' && typeof value.name === 'string';
+    if (!urlEligible && !pluginEligible) {
       return undefined;
     }
-    if (!defaulted) {
-      return resolvePluginBoundSource(value, frame, e, retain);
+    let owner = frame;
+    if (defaulted) {
+      const home = homes?.get(def);
+      owner = home && home !== frame
+        ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
+        : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
     }
-    const home = homes?.get(def);
-    const overlay: Frame = home && home !== frame
-      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
-      : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
-    return resolvePluginBoundSource(value, overlay, e, retain, boundSoFar.has(value.name));
+    if (urlEligible) {
+      if (spreadUrl !== undefined) {
+        return snapshotMixinUrlValue(spreadUrl, e, retain);
+      }
+      const urlValue = resolveMixinUrlBoundSource(value, owner, e, retain);
+      if (urlValue !== undefined) {
+        return urlValue;
+      }
+    }
+    if (!pluginEligible || isValueSlotArray(value) || isMixinCallValue(value)
+      || value.type !== 'Lookup' || value.kind !== 'var' || typeof value.name !== 'string') {
+      return undefined;
+    }
+    return resolvePluginBoundSource(
+      value,
+      owner,
+      e,
+      retain,
+      defaulted && boundSoFar.has(value.name)
+    );
   };
   return {
     resolve,
@@ -5234,11 +5433,7 @@ function pluginBoundSourceTracker(
       candidateKeys = null;
       return keys;
     },
-    discard: (keys) => {
-      for (const key of keys) {
-        e.pluginRawBindings!.delete(key);
-      }
-    }
+    discard: keys => discardSelectedBoundSources(keys, e)
   };
 }
 
@@ -6531,6 +6726,7 @@ function scratchEmit(e: EvalCtx): Emit {
     fnScopeVersion: e.fnScopeVersion,
     pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
     pluginRawBindings: e.pluginRawBindings,
+    mixinUrlBindings: e.mixinUrlBindings,
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
     off: 0,
@@ -8520,6 +8716,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     fnScopeVersion: 0,
     pluginHost,
     pluginRawBindings: null,
+    mixinUrlBindings: null,
     io: options?.io
   };
   const rootFrame: Frame = {
@@ -8598,6 +8795,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     fnScopeVersion: 0,
     pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
     pluginRawBindings: null,
+    mixinUrlBindings: null,
     io: options?.io // [io] per-render file-read capability for the IO built-ins
   };
   const rootFrame: Frame = {
@@ -10463,10 +10661,10 @@ function expandCall(
     if (candidates.length === 0) {
       return;
     }
-    const queueComments = queueCommentOnlyMixinBodies(candidates, call, frame, e, group);
     const bindingsTrackedAtDispatch = e.pluginHost?.invokeRawFunction !== undefined
       && (e.scopedFunctionNames?.size ?? 0) > 0;
     const runDispatch = (): MaybePromise<void> => mapMaybe(dispatch(candidates, call, frame, e, homes, true), (selected) => {
+      queueCommentOnlySelectedBodies(selected, e, group);
       if (selected.length === 0) {
         return;
       }
@@ -10490,7 +10688,7 @@ function expandCall(
         if (index >= selected.length) {
           return;
         }
-        const { def, bindings } = selected[index]!;
+        const { def, bindings, boundSourceKeys } = selected[index]!;
 
         /*
          * [closure] free variables resolve in the mixin's DEFINITION scope FIRST, with
@@ -10504,13 +10702,15 @@ function expandCall(
          * to the namespace), so it takes no caller fallback.
          */
         const homeFrame = homes.get(def) ?? frame;
+        const mixinUrlBindings = takeMixinUrlBindings(boundSourceKeys, e);
         const callFrame: Frame = {
           parent: homeFrame,
           mixins: collectMixins(def.rules),
           declIndex: collectDeclIndex(def.rules, bindings), cells: cellsForParams(bindings), reassign: null,
           statements: def.rules,
           sourceOwner: sourceOwnerForBody(def.rules, frame, e),
-          ...(namespaced || homeFrame === frame ? {} : { fallback: frame })
+          ...(namespaced || homeFrame === frame ? {} : { fallback: frame }),
+          ...(mixinUrlBindings ? { mixinUrlBindings } : {})
         };
         captureArgDefFrames(bindings, frame, callFrame, e);
 
@@ -10617,43 +10817,25 @@ function expandCall(
         throw error;
       }
     });
-    return mapMaybe(queueComments, runDispatch);
+    return runDispatch();
   });
 }
 
-function queueCommentOnlyMixinBodies(
-  candidates: readonly MixinDefinition[],
-  call: MixinCall,
-  frame: Frame,
+/** Queue retained trivia from already-selected unguarded empty mixin bodies. */
+function queueCommentOnlySelectedBodies(
+  selected: readonly Selection[],
   e: Emit,
   group: Leaf[]
-): MaybePromise<void> {
-  const resolveCaller = makeResolver(frame, e);
-  const run = (index: number): MaybePromise<void> => {
-    for (let i = index; i < candidates.length; i++) {
-      const def = candidates[i]!;
-      if (def.guard !== undefined || def.rules.length !== 0) {
-        continue;
-      }
-      const comments = bodyBlockCommentTexts(def, e);
-      if (comments.length === 0) {
-        continue;
-      }
-      const bound = bindArgs(def, call, resolveCaller);
-      if (isThenable(bound)) {
-        return bound.then((bindings) => {
-          if (bindings !== null) {
-            queueLeafBlockComments(group, comments);
-          }
-          return run(i + 1);
-        });
-      }
-      if (bound !== null) {
-        queueLeafBlockComments(group, comments);
-      }
+): void {
+  for (const { def } of selected) {
+    if (def.guard !== undefined || def.rules.length !== 0) {
+      continue;
     }
-  };
-  return run(0);
+    const comments = bodyBlockCommentTexts(def, e);
+    if (comments.length !== 0) {
+      queueLeafBlockComments(group, comments);
+    }
+  }
 }
 
 /**
@@ -10800,6 +10982,79 @@ function descendNamespacePath(path: MixinCall['path'], frame: Frame): Frame | nu
     };
   }
   return scope;
+}
+
+/** Move selected typed URL snapshots onto the activation that owns their bindings. */
+function takeMixinUrlBindings(
+  keys: readonly CallValue[] | null,
+  e: EvalCtx
+): Map<Binding, ValueGroup> | undefined {
+  if (keys === null) {
+    return undefined;
+  }
+  let carried: Map<Binding, ValueGroup> | undefined;
+  for (const key of keys) {
+    const urlValue = e.mixinUrlBindings?.get(key);
+    if (urlValue !== undefined) {
+      (carried ??= new Map()).set(key, urlValue);
+      e.mixinUrlBindings!.delete(key);
+    }
+  }
+  if (e.mixinUrlBindings?.size === 0) {
+    e.mixinUrlBindings = null;
+  }
+  return carried;
+}
+
+/** Release provenance selected by a dispatch probe that executes no activation. */
+function discardSelectedBoundSources(keys: readonly CallValue[] | null, e: EvalCtx): void {
+  if (keys === null) {
+    return;
+  }
+  for (const key of keys) {
+    e.pluginRawBindings?.delete(key);
+    e.mixinUrlBindings?.delete(key);
+  }
+  if (e.mixinUrlBindings?.size === 0) {
+    e.mixinUrlBindings = null;
+  }
+}
+
+/** Delete URL-default facts belonging to candidates that dispatch did not select. */
+function cleanupDefaultMixinUrls(
+  byBindings: Map<Map<string, CallValue>, Binding[]> | null,
+  e: EvalCtx
+): void {
+  if (byBindings === null) {
+    return;
+  }
+  for (const keys of byBindings.values()) {
+    discardSelectedBoundSources(keys, e);
+  }
+}
+
+/** Attach selected URL-default keys to the Selection that owns their activation. */
+function finishDefaultMixinUrls(
+  selected: Selection[],
+  byBindings: Map<Map<string, CallValue>, Binding[]> | null,
+  e: EvalCtx
+): Selection[] {
+  if (byBindings === null) {
+    return selected;
+  }
+  for (let index = 0; index < selected.length; index++) {
+    const selection = selected[index]!;
+    const keys = selection.bindings === null ? undefined : byBindings.get(selection.bindings);
+    if (keys === undefined) {
+      continue;
+    }
+    byBindings.delete(selection.bindings!);
+    selection.boundSourceKeys = selection.boundSourceKeys === null
+      ? keys
+      : [...selection.boundSourceKeys, ...keys];
+  }
+  cleanupDefaultMixinUrls(byBindings, e);
+  return selected;
 }
 
 /** Closure-bearing args capture their literal home frame in render-local state. */
@@ -11615,6 +11870,9 @@ function dispatch(
     isDefault: () => boolean
   ): TypedResolver => {
     const home = homes?.get(def);
+    const overlay: Frame = home && home !== frame
+      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null, fallback: frame }
+      : { parent: frame, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null };
 
     /*
      * [default-fn] thread the dispatch decision into the operand-resolution ctx so a
@@ -11622,12 +11880,7 @@ function dispatch(
      * operands resolve SYNC (`makeTypedResolver` throws on async), so the spread ctx
      * never drives the async Emit machinery.
      */
-    return makeTypedResolver(
-      home && home !== frame
-        ? { parent: home, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null, fallback: frame }
-        : { parent: frame, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null },
-      { ...e, defaultFn: isDefault }
-    );
+    return makeTypedResolver(overlay, { ...e, defaultFn: isDefault });
   };
 
   /*
@@ -11638,12 +11891,29 @@ function dispatch(
    * `@parameter: @parameterDefault` reads the def-scope `@parameterDefault`, not a
    * same-name variable redeclared in the caller (`scope` fixture #allAreUsedHere).
    */
+  let defaultUrlKeys: Map<Map<string, CallValue>, Binding[]> | null = null;
   const resolveDefault: DefaultResolver = (v, boundSoFar, def) => {
     const home = homes?.get(def);
     const overlay: Frame = home && home !== frame
       ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
       : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
-    return evalBytes(v, overlay, e);
+    if (!mayResolveMixinUrl(v, overlay, e)) {
+      return mapMaybe(evalBytes(v, overlay, e), any);
+    }
+    return mapMaybe(evalTypedSlot(v, overlay, e), (value) => {
+      if (valueGroupHasUrl(value)) {
+        return snapshotMixinUrlValue(value, e, (bound) => {
+          const byBinding = defaultUrlKeys ??= new Map();
+          const keys = byBinding.get(boundSoFar);
+          if (keys === undefined) {
+            byBinding.set(boundSoFar, [bound]);
+          } else {
+            keys.push(bound);
+          }
+        });
+      }
+      return any(emitValue(value));
+    });
   };
 
   /*
@@ -11664,29 +11934,41 @@ function dispatch(
   };
 
   /*
-   * The raw-plugin adapter is absent from ordinary binding. Once a scoped plugin
-   * function exists, it folds direct variable provenance into the SAME fixed-
-   * parameter pass that chooses named/positional/default placement. The callback
-   * therefore sees the transformed call used by dispatch and never reconstructs
-   * argument placement afterward.
-   */
-  const boundSources: BoundSourceTracker | undefined = e.pluginHost?.invokeRawFunction
-    && e.scopedFunctionNames?.size
-    ? pluginBoundSourceTracker(frame, e, homes)
-    : undefined;
-
-  /*
    * [spread] `.mixin(@args...)` splats a list variable into positional args at the
    * call site (Less variadic forwarding) BEFORE binding, so overloads select on the
    * splatted arity.
    */
-  return mapMaybe(expandSpreadArgs(call, resolveCaller), (call1) => {
-  /*
-   * an arg that is a variable bound to a detached ruleset must bind BY
-   * REFERENCE (its body/closure survives); substitute the resolved node so the
-   * eager byte-resolver never tries to serialize a ruleset as a value.
-   */
-    const call2 = substituteClosureVarArgs(call1, frame);
+  return mapMaybe(expandSpreadArgs(call, resolveCaller, frame, e), (expanded) => {
+    const urlSpread = isUrlBearingSpreadCall(expanded);
+    const spreadUrlBindings = urlSpread ? expanded.urlBindings : undefined;
+    const call1 = urlSpread ? expanded.call : expanded;
+
+    /*
+     * an arg that is a variable bound to a detached ruleset must bind BY
+     * REFERENCE (its body/closure survives); substitute the resolved node so the
+     * eager byte-resolver never tries to serialize a ruleset as a value.
+     */
+    const prepared = substituteClosureVarArgs(call1, frame, e, true, spreadUrlBindings);
+    const urlBearing = isUrlBearingMixinCall(prepared);
+    const call2 = urlBearing ? prepared.call : prepared;
+    const urlSource = urlBearing ? prepared.urlSource : undefined;
+    const additionalUrlSources = urlBearing ? prepared.additionalUrlSources : undefined;
+    const trackUrl = urlSpread || urlBearing;
+    const trackPlugin = e.pluginHost?.invokeRawFunction !== undefined
+      && (e.scopedFunctionNames?.size ?? 0) > 0;
+    const trackMode = (trackPlugin ? TRACK_PLUGIN_SOURCE : 0)
+      | (trackUrl ? TRACK_URL_SOURCE : 0);
+    const boundSources: BoundSourceTracker | undefined = trackMode !== 0
+      ? boundSourceTracker(
+          frame,
+          e,
+          homes,
+          trackMode,
+          spreadUrlBindings,
+          urlSource,
+          additionalUrlSources
+        )
+      : undefined;
     const ambiguity = (error: unknown): never => {
       if (error instanceof DefaultGuardAmbiguityError) {
         throw ERR.ambiguousDefault({
@@ -11727,46 +12009,157 @@ function dispatch(
        * `default()` ambiguity can now surface on either lane, so the mapping to a
        * positioned diagnostic is attached to both.
        */
-      return isThenable(selected) ? selected.catch(ambiguity) : selected;
+      return isThenable(selected)
+        ? selected.then(
+            value => finishDefaultMixinUrls(value, defaultUrlKeys, e),
+            (error) => {
+              cleanupDefaultMixinUrls(defaultUrlKeys, e);
+              return ambiguity(error);
+            }
+          )
+        : finishDefaultMixinUrls(selected, defaultUrlKeys, e);
     } catch (error) {
+      cleanupDefaultMixinUrls(defaultUrlKeys, e);
       return ambiguity(error);
     }
   });
 }
 
-/** [spread] Replace each `@args...` spread arg with the POSITIONAL args it splats
- * to: resolve the list variable's bytes in the caller frame and split it on the
- * top-level list separator (comma, else whitespace). A spread of an empty/missing
- * value contributes no args. Non-spread args pass through unchanged. */
-function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MaybePromise<MixinCall> {
+/** [spread] Replace each `@args...` spread arg with the POSITIONAL args it splats.
+ * URL-bearing structural values are evaluated once and keep their typed facts
+ * beside generated eager snapshots; other values retain the prior byte split. */
+interface UrlBearingSpreadCall {
+  readonly call: MixinCall;
+  readonly urlBindings: ReadonlyMap<Binding, ValueGroup>;
+}
+
+type ExpandedSpreadArgs = MixinCall | UrlBearingSpreadCall;
+
+function isUrlBearingSpreadCall(value: ExpandedSpreadArgs): value is UrlBearingSpreadCall {
+  return !('type' in value);
+}
+
+function expandSpreadArgs(
+  call: MixinCall,
+  resolveCaller: ValueResolver,
+  frame: Frame,
+  e: EvalCtx
+): MaybePromise<ExpandedSpreadArgs> {
   // The overwhelmingly common call has no spread at all and leaves here untouched.
   if (!call.args.some(a => a.spread)) {
     return call;
   }
   const args: CallArg[] = [];
-  const step = (index: number): MaybePromise<MixinCall> => {
+  let urlBindings: Map<Binding, ValueGroup> | undefined;
+  const step = (index: number): MaybePromise<ExpandedSpreadArgs> => {
     for (; index < call.args.length; index++) {
       const a = call.args[index]!;
       if (!a.spread) {
         args.push(a);
         continue;
       }
-      if (isMixinCallValue(a.value)) {
+      const source = a.value;
+      if (!isValueSlot(source)) {
         throw new Error('A deferred mixin call cannot be used as a spread argument.');
       }
-      const resolved = resolveCaller(a.value);
-      if (isThenable(resolved)) {
+      if (!hasMixinUrlSource(source, frame, e)) {
+        const resolved = resolveCaller(source);
+        if (isThenable(resolved)) {
+          const at = index;
+          return resolved.then((bytes) => {
+            pushSpread(args, bytes);
+            return step(at + 1);
+          });
+        }
+        pushSpread(args, resolved);
+        continue;
+      }
+      const spreadValue = evalTypedSpread(source, frame, e);
+      if (isThenable(spreadValue)) {
         const at = index;
-        return resolved.then((bytes) => {
-          pushSpread(args, bytes);
+        return spreadValue.then((settled) => {
+          urlBindings = pushTypedSpread(args, settled, urlBindings);
           return step(at + 1);
         });
       }
-      pushSpread(args, resolved);
+      urlBindings = pushTypedSpread(args, spreadValue, urlBindings);
     }
-    return { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e };
+    const expanded: MixinCall = {
+      type: 'MixinCall', name: call.name, args, path: call.path,
+      important: call.important, content: call.content, _s: call._s, _e: call._e
+    };
+    return urlBindings === undefined ? expanded : { call: expanded, urlBindings };
   };
   return step(0);
+}
+
+/** Evaluate a URL-bearing spread while keeping preserved slash terms structural. */
+function evalTypedSpread(
+  value: ValueSlot,
+  frame: Frame,
+  e: EvalCtx
+): MaybePromise<ValueGroup> {
+  if (isValueSlotArray(value)) {
+    return combineAll(value.map(item => evalTypedSpread(item, frame, e)), items => items);
+  }
+  if (value.type === 'Lookup' && value.kind === 'var') {
+    const hit = resolveVarRef(frame, literalName(value), value.scope, e);
+    const hitValue = hit?.value;
+    if (hit && hitValue !== undefined && isValueSlot(hitValue)) {
+      return withExcluded(e, hitValue, () => evalTypedSpread(hitValue, hit.frame, e));
+    }
+  }
+  if (value.type === 'Sequence' && isSlashGroup(value)) {
+    return combineAll(value.parts.map(part => evalTyped(part, frame, e)), parts => parts);
+  }
+  return evalTypedSlot(value, frame, e);
+}
+
+/** Append one evaluated spread group, retaining URL tags on its positional items. */
+function pushTypedSpread(
+  args: CallArg[],
+  value: ValueGroup,
+  urlBindings?: Map<Binding, ValueGroup>
+): Map<Binding, ValueGroup> | undefined {
+  const items = isValueGroupArray(value)
+    ? value
+    : value.type === 'List'
+      ? value.value
+      : null;
+  if (items !== null) {
+    for (let index = 0; index < items.length; index++) {
+      if (!isValueGroupArray(value) && value.type === 'List' && value.sep === '/' && index !== 0) {
+        args.push(callArg(any('/')));
+      }
+      urlBindings = pushTypedSpreadItem(args, items[index]!, urlBindings);
+    }
+    return urlBindings;
+  }
+  if (!isValueGroupArray(value) && value.type === 'Url') {
+    return pushTypedSpreadItem(args, value, urlBindings);
+  }
+  pushSpread(args, emitValue(value));
+  return urlBindings;
+}
+
+/** Append one structural spread item as one eager snapshot. */
+function pushTypedSpreadItem(
+  args: CallArg[],
+  value: ValueGroup,
+  urlBindings?: Map<Binding, ValueGroup>
+): Map<Binding, ValueGroup> | undefined {
+  const bytes = emitValue(value).trim();
+  if (bytes === '') {
+    return urlBindings;
+  }
+  const snapshot = any(bytes);
+  args.push(callArg(snapshot));
+  if (valueGroupHasUrl(value)) {
+    const bindings = urlBindings ?? new Map();
+    bindings.set(snapshot, value);
+    return bindings;
+  }
+  return urlBindings;
 }
 
 /** Split one resolved spread argument into the positional args it splats to. */
@@ -11790,16 +12183,80 @@ function pushSpread(args: CallArg[], rawBytes: string): void {
  * other value shape. Mirrors {@link tryMixinCallIterable}, on the serializer's value
  * model rather than raw parser children.
  */
-function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
+interface UrlBearingMixinCall {
+  readonly call: MixinCall;
+  readonly urlSource: CallValue;
+  readonly additionalUrlSources: ReadonlySet<CallValue> | null;
+}
+
+type PreparedClosureArgs = MixinCall | UrlBearingMixinCall;
+
+function isUrlBearingMixinCall(value: PreparedClosureArgs): value is UrlBearingMixinCall {
+  return !('type' in value);
+}
+
+function substituteClosureVarArgs(
+  call: MixinCall,
+  frame: Frame,
+  e: EvalCtx,
+  trackUrl: false,
+  spreadUrlBindings?: ReadonlyMap<Binding, ValueGroup>
+): MixinCall;
+function substituteClosureVarArgs(
+  call: MixinCall,
+  frame: Frame,
+  e: EvalCtx,
+  trackUrl?: true,
+  spreadUrlBindings?: ReadonlyMap<Binding, ValueGroup>
+): PreparedClosureArgs;
+function substituteClosureVarArgs(
+  call: MixinCall,
+  frame: Frame,
+  e: EvalCtx,
+  trackUrl = true,
+  spreadUrlBindings?: ReadonlyMap<Binding, ValueGroup>
+): PreparedClosureArgs {
   let changed = false;
+  let urlSource: CallValue | undefined;
+  let additionalUrlSources: Set<CallValue> | undefined;
   const args = call.args.map((a) => {
+    const value = a.value;
+    const spreadCarriesUrl = spreadUrlBindings?.has(value) === true;
+    if (trackUrl && !isMixinCallValue(value) && !spreadCarriesUrl) {
+      const valueIsArray = isValueSlotArray(value);
+      if ((valueIsArray || value.type !== 'Lookup') && hasMixinUrlSource(value, frame, e)) {
+        if (urlSource === undefined) {
+          urlSource = value;
+        } else if (urlSource !== value) {
+          (additionalUrlSources ??= new Set()).add(value);
+        }
+      }
+    }
+
     /*
      * A mixin call passed directly as an arg value (`.wrapper(.something(foo))`):
      * wrap it as a detached ruleset whose body is that call, so `@another-mixin()`
      * dispatches it (its args resolve in the caller frame's runtime binding).
      */
-    if ('type' in a.value && a.value.type === 'Lookup' && a.value.kind === 'var') {
-      const bound = lookupVar(frame, literalName(a.value));
+    if ('type' in value && value.type === 'Lookup' && value.kind === 'var') {
+      const hit = lookupVarIn(frame, literalName(value));
+      const bound = hit?.value;
+      const carriesUrlSource = trackUrl && hit !== undefined && !isMixinCallValue(hit.value)
+        ? withExcluded(e, hit.value, () => hasMixinUrlSource(hit.value, hit.frame, e))
+        : false;
+      if (carriesUrlSource) {
+        /*
+         * Keep the authored lookup as the binding source. Its declaration frame
+         * is load-bearing for interpolations inside the URL; replacing it with
+         * the terminal Url node would evaluate those references in the caller.
+         */
+        if (urlSource === undefined) {
+          urlSource = a.value;
+        } else if (urlSource !== a.value) {
+          (additionalUrlSources ??= new Set()).add(a.value);
+        }
+        return a;
+      }
       if (bound && !isValueSlotArray(bound) && isValueBlock(bound)) {
         changed = true;
         return { ...a, value: bound };
@@ -11818,9 +12275,12 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
     }
     return a;
   });
-  return changed
+  const substituted: MixinCall = changed
     ? { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e }
     : call;
+  return urlSource === undefined
+    ? substituted
+    : { call: substituted, urlSource, additionalUrlSources: additionalUrlSources ?? null };
 }
 
 function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: SelectorList, parentKey?: object | null, owner?: object): MaybePromise<void> {
@@ -14711,6 +15171,7 @@ interface TransparentShell {
   readonly call: MixinCall;
   readonly def: MixinDefinition;
   readonly bindings: Map<string, CallValue> | null;
+  readonly boundSourceKeys: readonly CallValue[] | null;
   readonly home: Frame;
 }
 
@@ -14725,6 +15186,18 @@ function transparentShells(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<T
     return null;
   }
   const shells: TransparentShell[] = [];
+  const reject = (selected?: readonly Selection[]): null => {
+    if (selected !== undefined) {
+      for (const selection of selected) {
+        discardSelectedBoundSources(selection.boundSourceKeys, e);
+      }
+    }
+    for (const shell of shells) {
+      discardSelectedBoundSources(shell.boundSourceKeys, e);
+    }
+    shells.length = 0;
+    return null;
+  };
 
   /*
    * Nested output is the v5 default, so this probe carries real documents and
@@ -14735,11 +15208,11 @@ function transparentShells(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<T
     for (let i = index; i < rule.rules.length; i++) {
       const child = rule.rules[i]!;
       if (child.type !== 'Ruleset' || !selectorListHasAmpersand(child.selector) || child.rules.length !== 1) {
-        return null;
+        return reject();
       }
       const call = child.rules[0];
       if (call?.type !== 'MixinCall') {
-        return null;
+        return reject();
       }
       const shellFrame: Frame = {
         parent: frame,
@@ -14751,7 +15224,7 @@ function transparentShells(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<T
       const at = i;
       const take = (selected: Selection[]): MaybePromise<TransparentShell[] | null> => {
         if (selected.length !== 1 || selected[0]!.def.ruleMixin !== true) {
-          return null;
+          return reject(selected);
         }
         const selectedOne = selected[0]!;
         shells.push({
@@ -14759,6 +15232,7 @@ function transparentShells(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<T
           call,
           def: selectedOne.def,
           bindings: selectedOne.bindings,
+          boundSourceKeys: selectedOne.boundSourceKeys,
           home: homes.get(selectedOne.def) ?? shellFrame
         });
         return step(at + 1);
@@ -14797,12 +15271,14 @@ function emitTransparentShells(
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < shells.length; index++) {
       const shell = shells[index]!;
+      const mixinUrlBindings = takeMixinUrlBindings(shell.boundSourceKeys, e);
       const callFrame: Frame = {
         parent: shell.home,
         mixins: collectMixins(shell.def.rules),
         declIndex: collectDeclIndex(shell.def.rules, shell.bindings), cells: cellsForParams(shell.bindings), reassign: null,
         statements: shell.def.rules,
-        sourceOwner: sourceOwnerForBody(shell.def.rules, frame, e)
+        sourceOwner: sourceOwnerForBody(shell.def.rules, frame, e),
+        ...(mixinUrlBindings ? { mixinUrlBindings } : {})
       };
       captureArgDefFrames(shell.bindings, frame, callFrame, e);
       const source: NestedHeaderSource = { parent: parentSource, selector: shell.rule.selector, frame };
@@ -15163,12 +15639,12 @@ function expandNestedCall(
     if (candidates.length === 0) {
       return;
     }
-    const queueComments = sharedLeaves === undefined
-      ? undefined
-      : queueCommentOnlyMixinBodies(candidates, call, frame, e, sharedLeaves.leaves);
     const bindingsTrackedAtDispatch = e.pluginHost?.invokeRawFunction !== undefined
       && (e.scopedFunctionNames?.size ?? 0) > 0;
     const runDispatch = (): MaybePromise<void> => mapMaybe(dispatch(candidates, call, frame, e, homes, true), (selected) => {
+      if (sharedLeaves !== undefined) {
+        queueCommentOnlySelectedBodies(selected, e, sharedLeaves.leaves);
+      }
       if (selected.length === 0) {
         return;
       }
@@ -15179,7 +15655,7 @@ function expandNestedCall(
       e.mixinDepth++;
       const run = (start: number): MaybePromise<void> => {
         for (let index = start; index < selected.length; index++) {
-          const { def, bindings } = selected[index]!;
+          const { def, bindings, boundSourceKeys } = selected[index]!;
 
           /*
            * [closure] free variables resolve in the mixin's DEFINITION scope first, with
@@ -15188,13 +15664,15 @@ function expandNestedCall(
            * builds for the flat path.
            */
           const homeFrame = homes.get(def) ?? frame;
+          const mixinUrlBindings = takeMixinUrlBindings(boundSourceKeys, e);
           const callFrame: Frame = {
             parent: homeFrame,
             mixins: collectMixins(def.rules),
             declIndex: collectDeclIndex(def.rules, bindings), cells: cellsForParams(bindings), reassign: null,
             statements: def.rules,
             sourceOwner: sourceOwnerForBody(def.rules, frame, e),
-            ...(namespaced || homeFrame === frame ? {} : { fallback: frame })
+            ...(namespaced || homeFrame === frame ? {} : { fallback: frame }),
+            ...(mixinUrlBindings ? { mixinUrlBindings } : {})
           };
           captureArgDefFrames(bindings, frame, callFrame, e);
           const placement = def.ruleMixin === true && source !== null
@@ -15251,7 +15729,7 @@ function expandNestedCall(
       e.mixinDepth--;
       return emitted;
     });
-    return mapMaybe(queueComments, runDispatch);
+    return runDispatch();
   });
 }
 

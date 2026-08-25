@@ -41,7 +41,8 @@ const typeOf = defineFunction('type-of', {
        */
       case 'Keyword': return makeKeyword(namedColor(value.text) !== undefined ? 'color' : 'string');
       case 'Quoted':
-      case 'Any': return makeKeyword('string');
+      case 'Any':
+      case 'Url': return makeKeyword('string');
       case 'Color': return makeKeyword('color');
       case 'Bool': return makeKeyword('bool');
       case 'Null': return makeKeyword('null');

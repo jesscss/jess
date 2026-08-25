@@ -85,7 +85,8 @@ a `parse/*` diagnostic would give a name. Not a gap in the bar as written.
 > registry — `functionRegistry.getLocalFunctions()`, **92** names — rather than
 > by reading the source files, and calls every one of the 92 in user spelling
 > under two configs. Prefer its numbers to this section's. The two lanes agree
-> on `isurl`; they differ on `style()` (reconciled in the row below), and this
+> on the original `isurl` finding; V15 now resolves it. They differ on `style()`
+> (reconciled in the row below), and this
 > section adds two findings that lane did not have: the `style()` prelude
 > position (below) and the now-fixed `desaturate()` achromatic bug (§4.6).
 
@@ -96,17 +97,17 @@ keyed by object key, lower-cased —
 `functions/index.js:21-32`; no `functionRegistry.add*` anywhere outside that
 directory).
 
-jess's Less dialect index registers **83** (enumerated at runtime via
+jess's Less dialect index registers **84** (enumerated at runtime via
 `fnsOf(await import('@jesscss/fns/less'))`, not read off a file).
 
 All names were checked by rendering one call per name through both engines — not
 sampled, and not read off an index. The mutable parity count and per-function
 status now live only in
 [`../../state/less-4x-function-triage.md`](../../state/less-4x-function-triage.md).
-This broader audit still owns two position-level findings below: `isurl` remains
-missing from the typed value domain, and `style()` exposes a container-prelude
-parser gap. The achromatic `desaturate()` defect originally found here is fixed
-under ledger V14 (§4.6). The remaining colour-constructor differences are
+This broader audit still owns the `style()` container-prelude parser gap below.
+`isurl` is fixed through the typed value domain under V15, and the achromatic
+`desaturate()` defect originally found here is fixed under ledger V14 (§4.6).
+The remaining colour-constructor differences are
 deliberate under F1/F5/V4, while `isdefined`/`isruleset`/`extract`/`length`
 surfaced the unrelated compact-property parser bug in §4.5.
 
@@ -114,7 +115,7 @@ surfaced the unrelated compact-property parser bug in §4.5.
 
 | Name | Status | Evidence |
 | --- | --- | --- |
-| `isurl` | **MISSING** | `.x { a: isurl(url(x)); b: isurl(1); }` → less4 `a: true; b: false`; jess emits `a: isurl(url(x)); b: isurl(1)` **verbatim, with no diagnostic**. Not in the fns index and not in the core guard predicate table `packages/core/src/ast/value-guards.ts:205-225` (which has `iscolor/isnumber/isstring/iskeyword/ispixel/ispercentage/isem/isunit` — `isurl` and `isruleset` are absent from it; `isruleset` is handled elsewhere, `isurl` nowhere). Unknown calls fall through to `fallbackCall` (`packages/core/src/ast/evaluator.ts:125`), so this fails silently. **Exactly the class no fixture can catch.** |
+| `isurl` | **FIXED / V15** | `.x { a: isurl(url(x)); b: isurl(1); }` now emits `a: true; b: false`. Typed evaluation projects the parser-owned `Url` AST wrapper to `UrlValue` only for a typed consumer; ordinary URL output stays on the prior string path, and url-shaped quoted/keyword/call bytes remain false. |
 | `style` | **not a function gap — a PARSER gap** | In a declaration value, `style(@v)` renders identically in both engines, so as a *function* it is fine (`docs/state/less-4x-function-triage.md` §5). But in the position it exists for — a container style query — jess cannot parse it: `@container (style(--x: 1)) { .y { c: 1 } }` → less4 renders it unchanged; jess `parse/syntax-error: Missing closing parenthesis.` at 1:22. That doc records this prelude position as **not tested** (its §9); this row is the measurement. |
 
 ### The eight not in the fns registry that are nonetheless reachable
@@ -374,8 +375,8 @@ fixture status changed.
 
 ### Also recorded
 
-- **`isurl`** (§2) is a missing typed builtin; **`style()`** (§2) is reachable as
-  a function but still exposes the recorded container-prelude parser gap.
+- **`isurl`** (§2) is fixed under V15; **`style()`** (§2) is reachable as a
+  function but still exposes the recorded container-prelude parser gap.
 - **`dumpLineNumbers`** has no effect in either option bucket. Less 4.x
   deprecates it and `packages/config/src/types.ts:225-229` marks it `@removed`,
   so this is consistent with intent — recorded, not filed.

@@ -3819,7 +3819,163 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-22 Less CSS-import boundary-trivia retention. This is a
+- Latest pass: 2026-08-25 typed URL value projection and Less `isurl()`.
+  This is a bounded compatibility correction under OPEN ledger row V15, not a
+  speed or neutrality claim.
+- Architecture surface: canonical AST-v2 typed evaluation, the shared public
+  value-domain union, eager mixin binding/dispatch, Less function and guard type
+  predicates, and Sass `type-of`'s exhaustive shared-value switch. No grammar,
+  parser node, Context, URL-transform policy, import path, source metadata, or
+  legacy-tree path changes.
+- Separation/duplication: the parser already owns `Url`. `evalTyped` projects
+  that exact node to `{ type: 'Url', bytes }` after the existing `evalValue`
+  transform. Ordinary emission stays on the prior string path. Both predicate
+  owners read the same discriminant; no consumer name enables transport and no
+  byte scan, lowercase, regex, split, or reparse decides URL-ness.
+- Mixin transport: Less requires eager byte snapshots, so selected activations
+  keep a sparse snapshot-to-`ValueGroup` fact only when a parameter carries a
+  URL or a structural group containing one. The existing dispatch binding pass
+  creates candidate-local snapshots, guard evaluation reads them through the
+  canonical `evalTyped(Any)` path, rejected candidates delete them, and selected
+  candidates transfer them to the activation frame. Namespace admission probes,
+  transparent shells, nested calls, defaults, rest args, and `@arguments` use
+  the same ownership protocol. The legacy unguarded comment-only prequeue
+  consumes the already-selected dispatch result instead of running a preliminary
+  `bindArgs` pass; guarded bodies retain their existing normal expansion route.
+  No AST node is mutated.
+- Ordinary-lane cost: an ordinary declaration URL is unchanged and allocates no
+  new value object. A call with no spread retains the existing `call.args.some`
+  fast exit, then argument substitution performs one URL-eligibility pass over
+  each source: direct lists/sequences are walked structurally and variable roots
+  are resolved/walked without evaluation. A URL-ineligible spread performs that
+  same eligibility walk, then the old caller-byte evaluation and top-level byte
+  split;
+  it does not materialize a typed group. Every `Selection` has one fixed nullable
+  `boundSourceKeys` field; ordinary values still bind as the same `Any`
+  snapshots. `evalTyped(Any)` checks the activation's optional URL map and then
+  the fixed nullable render-context map before ordinary materialization. Guard
+  and default overlays do not copy that map or change their `Frame` shapes.
+- URL-bearing dispatch cost: argument substitution retains the first positive
+  non-spread source directly in the exceptional carrier and allocates a Set only
+  for a second distinct source. Spread snapshots already use their exceptional
+  Map and do not enter that Set. Candidate binding uses direct identity plus the
+  optional Set lookup rather than repeating the structural walk per overload.
+  A tracked dispatch allocates one tracker object with five closures and one
+  selection-index array. Each URL-bearing candidate allocates the semantic
+  `UrlValue`/group already required by typed evaluation, one candidate-local Any
+  snapshot, one render-map entry, and (on first fact) one key array. A selected
+  activation allocates one local Map; losing entries are deleted synchronously
+  and the render Map is dropped when empty. No WeakMap or Error is added.
+- Defaults and forwarding: a URL-capable computed/default source is evaluated
+  once through `evalTypedSlot`; a negative result becomes the ordinary eager Any,
+  while a URL-bearing result is stored beside that same snapshot. A dispatch
+  with no URL-bearing authored argument creates its default-key Map only after a
+  default actually evaluates URL-bearing. Forwarding reuses the activation fact,
+  so rootpath/custom transformation is not applied again.
+- Conservative computed lane: `FunctionCall`, `IfValue`, and `Reference` are
+  URL-capable because a registered function or selected branch may return a
+  public `UrlValue`. A runtime-negative occurrence therefore still allocates the
+  exceptional carrier/tracker/selection-index; an additional-source Set starts
+  only at a second distinct source. It evaluates once through the typed
+  lane before collapsing to the ordinary eager `Any` snapshot. This is an
+  explicit compatibility cost, not an ordinary-lane fast-path claim; the named
+  mixin A/B and deterministic occurrence counts below measure it.
+- Spread cost/shape: URL-ineligible spreads retain the old byte split. A URL-positive
+  spread is typed once, then structural comma/space items become the positional
+  snapshots the old splitter already created. A slash group also retains `/` as
+  its own untagged positional snapshot. The exceptional spread carrier owns one
+  snapshot-to-ValueGroup Map; overload candidates deliberately receive distinct
+  snapshots so rejection cleanup cannot delete another candidate's fact.
+- Cumulative/API weight: canonical AST/CST shapes are unchanged. The public
+  alpha `Value`/`Kind` unions gain `UrlValue`/`'Url'` through both core exports;
+  `makeUrlValue` stays private. `Selection` gains one fixed nullable pointer,
+  `EvalCtx` one fixed nullable render Map, and `Frame` one optional activation
+  Map. The Less index adds one `defineFunction`; no entrypoint or compatibility
+  alias is added.
+- Helper/API inventory: `hasMixinUrlSource` owns the pre-evaluation structural
+  gate; `mayResolveMixinUrl` owns the cheaper default-source gate;
+  `valueGroupHasUrl` inspects one evaluated group; `resolveMixinUrlBoundSource`
+  and `snapshotMixinUrlValue` create the eager snapshot/fact pair;
+  `boundSourceTracker`, `takeMixinUrlBindings`,
+  `discardSelectedBoundSources`, `cleanupDefaultMixinUrls`, and
+  `finishDefaultMixinUrls` own candidate lifetime and deterministic cleanup;
+  `expandSpreadArgs`, `evalTypedSpread`, `pushTypedSpread`, and
+  `pushTypedSpreadItem` own exceptional structural splatting; the named
+  exceptional carrier interfaces distinguish URL-bearing prepared calls from
+  ordinary `MixinCall`; and `queueCommentOnlySelectedBodies` consumes dispatch
+  output without rebinding. `DefaultResolver` now returns the already-required
+  eager `CallValue`; internal `isValueSlot` is reused across core files but is
+  not package-exported. Each helper maps to one recognition, projection,
+  lifetime, or cleanup stage; none is a compatibility alias.
+- Materialization classification: `UrlValue`/URL-bearing `ValueGroup` and the
+  activation Map are semantic retained state for the selected call; the nullable
+  `EvalCtx` Map is render-lifetime ownership; source Sets, trackers, selection
+  key arrays, default-key Maps, and spread carriers are dispatch-lifetime state;
+  typed negative results and losing snapshots are transient and synchronously
+  discarded. Avoided materialization includes AST copies, byte-derived URL
+  nodes, WeakMaps, Error control values, comment-only rebindings, and overlay
+  Frame maps.
+- Metadata/render paths: no source span, root index, AST/CST node, or provenance
+  table is written. `Selection.boundSourceKeys` and `EvalCtx.mixinUrlBindings`
+  are fixed fields; only selected activation Frames receive the optional map.
+  Ordinary declarations still render through the existing URL/string writer;
+  only typed consumers of an eager mixin snapshot consult the sparse fact.
+- Review-flagged diff tokens: [semantic value] one typed UrlValue; [recursive
+  walks] URL-source preflight and post-evaluation ValueGroup inspection, gated to
+  mixin/spread/default transport; [collections] exceptional Set, render/local
+  Maps, candidate key arrays, and named carriers detailed above; [loops] spread
+  item projection and deterministic rejected-key cleanup; [shape] fixed
+  Selection/EvalCtx fields plus optional cold Frame field; [byte classification]
+  none; [second transform/evaluation] none in dispatch, including comment-only
+  bodies, which reuse the selected bindings.
+- Evidence: focused core guard coverage 4/4; focused Less/Sass function coverage
+  10/10; public Less function coverage 24 active / 21 pre-existing todo; Less
+  corpus 111/111. Public cases pin direct/variable/control predicates, guards,
+  computed/default values, comma/space/slash spread, rest, whole-list
+  `extract()`, forwarding, `@arguments`, namespace/nested activations, and one
+  rootpath application. Dependency-order core/fns/Less-plugin/jess builds pass;
+  targeted changed-surface lint has zero errors; the whole serializer still
+  reports eight inherited lint errors outside this diff.
+  Full suite and adversarial review evidence will replace this focused evidence.
+- Deterministic mixin workload: `scripts/fixtures/less-hotpath/isurl-mixin.less`
+  executes 600 one-argument `.exercise()` calls: 200 plain aliases that never
+  create a URL carrier, 200 conservative `if(...)` sources that create the
+  single-source carrier/tracker but evaluate URL-negative, and 200 URL aliases
+  that create one typed snapshot/fact. Because every call has only one positive
+  source, the new additional-source Set allocation count is exactly zero. The
+  workload also executes the 200-step recursion that generates those calls; its
+  numeric argument is URL-negative.
+- Fixed-build A/B (Node 24.11.1, Parseman 0.49.0, both roots resolved to their
+  own `packages/**/lib` artifacts; 20 warmups / 45 alternating pairs): canonical
+  `benchmark.less` parse-render 37.0692 ms before / 36.9627 ms after (-0.29%,
+  20/45 wins) and render 14.9462 / 14.7488 ms (-1.32%, 24/45 wins), byte-identical
+  at 122,320 bytes / `dbf75658…`. Targeted `isurl-mixin.less` parse-render 9.8258 /
+  10.0116 ms (+1.89%, 14/45 wins, inside the documented noise band) and render
+  9.3541 / 9.2808 ms (-0.78%, 33/45 wins), byte-identical at 58 bytes /
+  `ebc5c4a4…`. Timings are confirmation-only; the allocation/occurrence counts
+  above are the load-bearing cost evidence.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "OPEN V15 records that parser-owned URL syntax remains a URL at every typed consumer while byte-shaped lookalikes do not. Ordinary URL output and transforms retain their owner; eager mixin snapshots use sparse candidate-owned typed facts because their bytes cannot reconstruct URL item types.",
+    "dangerTokensJustification": "Ordinary declaration URLs are unchanged. Mixin argument substitution adds one structural URL-eligibility pass; URL-ineligible spreads then retain the old byte route. URL-bearing dispatch retains its first source directly and allocates an additional-source Set only from the second distinct source, plus the explicitly inventoried tracker/closures, Maps, key arrays, carriers, ValueGroups and candidate Any snapshots; rejected entries are synchronously deleted. The named 600-call workload allocates zero additional-source Sets and records the conservative negative lane. There is no raw-source scan, reparse, byte classification, WeakMap, Error control flow, AST copy, repeated per-candidate structural scan, or second URL transform.",
+    "behaviorEvidence": "Focused core guard coverage 4/4, Less/Sass direct coverage 10/10, public Less functions 24 active/21 todo, and all-less 111/111. Public exact tests cover guards, computed/default, list/forward/@arguments, namespace/nested, comma/space/slash spread, transform-once behavior, and inherited guarded comment-only output.",
+    "buildEvidence": "Dependency-order @jesscss/core, @jesscss/fns, @jesscss/plugin-less and jess builds pass; targeted changed-surface lint has zero errors and git diff --check passes.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 14.748791, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+  }
+]
+```
+- Verdict: focused implementation is review-ready; no speed claim. Required
+  performance, semantics, API-surface, full-suite, macro/compose, and landing
+  gates remain pending and must replace this provisional verdict.
+
+- Prior landed pass: 2026-08-22 Less CSS-import boundary-trivia retention. This is a
   lexical-position correctness correction for the preceding N8 candidate, not a
   performance result and not a new output-resource policy.
 - Architecture surface: the Less root-document import route, Parseman's sparse

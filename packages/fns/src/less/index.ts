@@ -110,7 +110,7 @@ export { e } from './e.js';
 
 /** Type-introspection predicates. */
 export {
-  iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem
+  iscolor, isnumber, isstring, iskeyword, isurl, isunit, ispixel, ispercentage, isem
 } from './types.js';
 
 /** URL / IO producers. */

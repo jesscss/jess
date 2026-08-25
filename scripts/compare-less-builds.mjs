@@ -44,12 +44,13 @@ function parseArgs(argv) {
 
 async function loadBuild(root) {
   const module = relative => import(pathToFileURL(path.resolve(root, relative)).href);
-  const [{ Context, createRenderBuffer, finalizeFlatRenderBuffer }, { default: lessPlugin }, { lessCompatPlugin }] = await Promise.all([
+  const [{ serialize }, { Compiler }, { default: lessPlugin }, { lessCompatPlugin }] = await Promise.all([
     module('packages/core/lib/index.js'),
+    module('packages/compiler/lib/index.js'),
     module('packages/syntax/less/jess-plugin-less/lib/index.js'),
     module('packages/syntax/less/jess-plugin-less-compat/lib/index.js')
   ]);
-  return { Context, createRenderBuffer, finalizeFlatRenderBuffer, lessPlugin, lessCompatPlugin };
+  return { Compiler, serialize, lessPlugin, lessCompatPlugin };
 }
 
 function summarize(values) {
@@ -72,22 +73,25 @@ function outputDigest(output) {
 }
 
 async function measure(build, fixture, phase) {
-  const context = new build.Context({ output: { collapseNesting: true } }, [
-    build.lessPlugin(),
-    build.lessCompatPlugin()
-  ]);
-  const started = performance.now();
-  const parsed = await context.getTree(fixture);
-  if (!parsed.node) {
-    throw new Error(`Parse failed: ${fixture}`);
+  const compiler = new build.Compiler({
+    output: { collapseNesting: true },
+    compile: { plugins: [build.lessPlugin(), build.lessCompatPlugin()] },
+    suppressWarnings: true
+  });
+  if (phase === 'parse-render') {
+    const started = performance.now();
+    const output = await compiler.render(fixture, { suppressWarnings: true });
+    return { elapsedMs: performance.now() - started, output: outputDigest(output) };
   }
-  context.root = parsed.node;
-  const renderStarted = phase === 'render' ? performance.now() : started;
-  const buffer = build.createRenderBuffer('flat');
-  buffer.shareWriter = true;
-  await parsed.node.render(context, buffer, { context, collapseNesting: true });
-  const output = build.finalizeFlatRenderBuffer(buffer);
-  return { elapsedMs: performance.now() - renderStarted, output: outputDigest(output) };
+  const { document, context } = await compiler.compile(fixture, { suppressWarnings: true });
+  const started = performance.now();
+  const result = await context.withDocument(document, () => build.serialize(document, {
+    collapseNesting: true,
+    context,
+    pluginHost: context.pluginHost,
+    io: { readFile: specifier => context.readBinary(specifier).catch(() => null) }
+  }));
+  return { elapsedMs: performance.now() - started, output: outputDigest(result.css) };
 }
 
 const options = parseArgs(process.argv.slice(2));

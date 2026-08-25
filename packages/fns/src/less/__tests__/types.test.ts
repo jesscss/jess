@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { emitValue, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core';
-import type { Fn, FnCtx, ValueGroup } from '@jesscss/core';
+import type { Fn, FnCtx, UrlValue, ValueGroup } from '@jesscss/core';
 import {
   iscolor,
   isem,
@@ -9,6 +9,7 @@ import {
   ispercentage,
   ispixel,
   isstring,
+  isurl,
   isunit
 } from '../types.js';
 
@@ -20,12 +21,16 @@ describe('types()', () => {
     const em = makeDimension(3, 'em');
     const pct = makeDimension(3, '%');
     const color = makeColorRgb([255, 0, 0], 1, HEX);
+    const url: UrlValue = { type: 'Url', bytes: 'url("test.png")' };
     const context: FnCtx = { modes: { unitMode: 'preserve' }, stringify: emitValue };
 
     expect(bool(iscolor, color, context)).toBe(true);
     expect(bool(isnumber, px, context)).toBe(true);
     expect(bool(isstring, quoted, context)).toBe(true);
     expect(bool(iskeyword, keyword, context)).toBe(true);
+    expect(bool(iskeyword, url, context)).toBe(false);
+    expect(bool(isurl, url, context)).toBe(true);
+    expect(bool(isurl, makeKeyword('url("test.png")'), context)).toBe(false);
     expect(bool(ispixel, px, context)).toBe(true);
     expect(bool(ispercentage, pct, context)).toBe(true);
     expect(bool(isem, em, context)).toBe(true);
@@ -42,6 +47,7 @@ describe('types()', () => {
     expect(bool(isnumber, makeList([group], ','), context)).toBe(false);
     expect(bool(isstring, makeList([group], ','), context)).toBe(false);
     expect(bool(iskeyword, makeList([group], ','), context)).toBe(false);
+    expect(bool(isurl, makeList([group], ','), context)).toBe(false);
     expect(bool(ispixel, makeList([group], ','), context)).toBe(false);
     expect(bool(isunit, makeList([group, makeKeyword('px')], ','), context)).toBe(false);
   });

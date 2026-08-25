@@ -522,6 +522,7 @@ export function typeCheck(name: string, args: readonly Value[]): boolean {
     case 'isnumber': return a.type === 'Dimension';
     case 'isstring': return a.type === 'Quoted';
     case 'iskeyword': return a.type === 'Keyword' && asColor(a) === undefined;
+    case 'isurl': return a.type === 'Url';
     case 'ispixel': return a.type === 'Dimension' && a.unit === 'px';
     case 'ispercentage': return a.type === 'Dimension' && a.unit === '%';
     case 'isem': return a.type === 'Dimension' && a.unit === 'em';

@@ -43,6 +43,7 @@ const VALUE_TYPES: ReadonlySet<string> = new Set([
   'Quoted',
   'Keyword',
   'Any',
+  'Url',
   'List',
   'Block',
   'Bool',

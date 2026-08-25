@@ -1,5 +1,5 @@
 import { makeBool, defineFunction, isValueGroupArray, namedColor } from '@jesscss/core';
-import type { Fn, ValueGroup, Value } from '@jesscss/core';
+import type { Fn, ValueGroup } from '@jesscss/core';
 
 /**
  * A materialized value counts as a color for a type predicate when it is a
@@ -11,13 +11,6 @@ function isColorLike(value: ValueGroup): boolean {
   return !isValueGroupArray(value)
     && (value.type === 'Color' || (value.type === 'Keyword' && namedColor(value.text) !== undefined));
 }
-
-/*
- * `isurl()` deliberately has no AST-v2 value-domain export. `Url` is syntax,
- * not a materialized Value tag; once evaluated its rendered `url(...)` form is
- * intentionally opaque. Recreating the legacy predicate would require sniffing
- * output bytes, which this function layer must not do.
- */
 
 /** Less `iscolor()` — true for a colour value or a named-color keyword. */
 const iscolor: Fn = defineFunction('iscolor', {
@@ -42,6 +35,12 @@ const isstring: Fn = defineFunction('isstring', {
 const iskeyword: Fn = defineFunction('iskeyword', {
   params: [{ type: 'any' }],
   body: value => makeBool(!isValueGroupArray(value) && value.type === 'Keyword' && namedColor(value.text) === undefined)
+});
+
+/** Less `isurl()` — true only for a parser-owned `url(...)` value. */
+const isurl: Fn = defineFunction('isurl', {
+  params: [{ type: 'any' }],
+  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Url')
 });
 
 /** Less `isunit()` — true for a dimension with a case-insensitive matching unit. */
@@ -87,4 +86,4 @@ function isDimUnit(value: ValueGroup, unit: string): boolean {
   return !isValueGroupArray(value) && value.type === 'Dimension' && value.unit.toLowerCase() === unit;
 }
 
-export { iscolor, isnumber, isstring, iskeyword, ispixel, ispercentage, isem, isunit };
+export { iscolor, isnumber, isstring, iskeyword, isurl, ispixel, ispercentage, isem, isunit };

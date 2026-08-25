@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import { Context } from '@jesscss/core';
-import { defineFunction, makeDimension, makeKeyword, type Fn } from '@jesscss/core';
+import { defineFunction, makeDimension, makeKeyword, makeList, type Fn } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -533,6 +533,213 @@ describe('Functions', () => {
     });
   });
 
+  describe('Less type predicates', () => {
+    it('recognizes typed url values without classifying url-shaped bytes', async () => {
+      const css = await compiler.renderString(`
+        @asset: "test";
+        @image: url("@{asset}.png");
+        @alias: @image;
+        @comma-pair: url("comma-a.png"), url("comma-b.png");
+        @space-pair: url("space-a.png") url("space-b.png");
+        @slash-pair: url("slash-a.png") / url("slash-b.png");
+        @url-list: url("list-a.png"), url("list-b.png");
+        @forward-url-list: url("forward-a.png"), url("forward-b.png");
+        .url-only(@value) when (isurl(@value)) {
+          guarded: true;
+        }
+        .body-check(@value) {
+          body-check: isurl(@value);
+        }
+        .forward(@value) {
+          .url-only(@value);
+          .body-check(@value);
+        }
+        .default-url(@value: @alias) when (ISURL(@value)) {
+          default-guarded: true;
+          default-body-check: isurl(@value);
+        }
+        .spread-fixed(@value) {
+          spread-fixed: isurl(@value);
+        }
+        .spread-rest(@values...) {
+          spread-rest: isurl(extract(@values, 1));
+        }
+        .computed(@explicit, @defaulted: if(true, url("default.png"), plain)) {
+          computed-explicit: isurl(@explicit);
+          computed-default: isurl(@defaulted);
+        }
+        .spread-pair(@first, @second) {
+          spread-pair-first: isurl(@first);
+          spread-pair-second: isurl(@second);
+        }
+        .spread-slash(@first, @separator, @third) {
+          spread-slash-first: isurl(@first);
+          spread-slash-separator: @separator;
+          spread-slash-third: isurl(@third);
+        }
+        .list-items(@values) {
+          list-first: isurl(extract(@values, 1));
+          list-second: isurl(extract(@values, 2));
+        }
+        .forward-list(@values) {
+          .list-items(@values);
+        }
+        .arguments-list(@values) {
+          arguments-first: isurl(extract(extract(@arguments, 1), 1));
+          arguments-second: isurl(extract(extract(@arguments, 1), 2));
+        }
+        #url-space {
+          .nested(@value) {
+            namespace: isurl(@value);
+          }
+        }
+        .outer(@value) {
+          .inner(@nested) {
+            nested: isurl(@nested);
+          }
+          .inner(@value);
+        }
+        .test {
+          direct: isurl(url("test.png"));
+          variable: isurl(@image);
+          keyword: iskeyword(url("test.png"));
+          call: isurl(foo());
+          quoted: isurl("url(test.png)");
+          .forward(@alias);
+          .default-url();
+          .spread-fixed(@alias...);
+          .spread-rest(@alias...);
+          .computed(if(true, url("computed.png"), plain));
+          .spread-pair(@comma-pair...);
+          .spread-pair(@space-pair...);
+          .spread-slash(@slash-pair...);
+          .list-items(@url-list);
+          .forward-list(@forward-url-list);
+          .arguments-list(@url-list);
+          #url-space > .nested(@alias);
+          .outer(@alias);
+        }
+      `, { language: 'less' });
+
+      expect(css).toBe(`.test {
+  direct: true;
+  variable: true;
+  keyword: false;
+  call: false;
+  quoted: false;
+  guarded: true;
+  body-check: true;
+  default-guarded: true;
+  default-body-check: true;
+  spread-fixed: true;
+  spread-rest: true;
+  computed-explicit: true;
+  computed-default: true;
+  spread-pair-first: true;
+  spread-pair-second: true;
+  spread-pair-first: true;
+  spread-pair-second: true;
+  spread-slash-first: true;
+  spread-slash-separator: /;
+  spread-slash-third: true;
+  list-first: true;
+  list-second: true;
+  list-first: true;
+  list-second: true;
+  arguments-first: true;
+  arguments-second: true;
+  namespace: true;
+  nested: true;
+}
+`);
+    });
+
+    it('preserves URL items and the separator from a function-produced slash list spread', async () => {
+      const typedUrlCompiler = new Compiler({
+        compile: {
+          plugins: [
+            lessPlugin(),
+            lessCompatPlugin({
+              functions: [defineFunction('slash-pair', {
+                params: [{ type: 'Url' }, { type: 'Url' }] as const,
+                body: (first, second) => makeList([first, second], '/')
+              })]
+            })
+          ]
+        }
+      });
+      const css = await typedUrlCompiler.renderString(`
+        @values: slash-pair(url("a.png"), url("b.png"));
+        .spread(@first, @separator, @third) {
+          first: isurl(@first);
+          separator: @separator;
+          third: isurl(@third);
+        }
+        .test { .spread(@values...); }
+      `, { language: 'less' });
+
+      expect(css).toBe(`.test {
+  first: true;
+  separator: /;
+  third: true;
+}
+`);
+    });
+
+    it('applies URL transforms once before forwarding typed URL values', async () => {
+      const transformedCompiler = new Compiler({
+        compile: { plugins: [lessPlugin({ rootpath: 'root/' })] }
+      });
+      const css = await transformedCompiler.renderString(`
+        @image: url("image.png");
+        .emit(@value) {
+          emitted: @value;
+        }
+        .forward(@value) {
+          .emit(@value);
+        }
+        .default(@value: @image) {
+          defaulted: @value;
+        }
+        .spread(@value) {
+          spread: @value;
+        }
+        .test {
+          .forward(@image);
+          .default();
+          .spread(@image...);
+        }
+      `, { language: 'less' });
+
+      expect(css).toBe(`.test {
+  emitted: url("root/image.png");
+  defaulted: url("root/image.png");
+  spread: url("root/image.png");
+}
+`);
+    });
+
+    it('preserves guarded comment-only mixin output after dispatch reuse', async () => {
+      const css = await compiler.renderString(`
+        .comments(@selected) when (@selected = true) {
+          /* selected */
+        }
+        .comments(@selected) when (@selected = false) {
+          /* rejected */
+        }
+        .test {
+          color: red;
+          .comments(true);
+        }
+      `, { language: 'less' });
+
+      expect(css).toBe(`.test {
+  color: red;
+}
+`);
+    });
+  });
+
   describe.todo('Built-in Type Functions', () => {
     it('should handle isnumber function', async () => {
       const lessCode = `
@@ -571,17 +778,6 @@ describe('Functions', () => {
       const lessCode = `
         .test {
           result: iskeyword(red);
-        }
-      `;
-
-      const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('result:');
-    });
-
-    it('should handle isurl function', async () => {
-      const lessCode = `
-        .test {
-          result: isurl(url("test.png"));
         }
       `;
 

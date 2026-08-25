@@ -5,7 +5,7 @@
  *
  *  1. The runtime value nodes (`Value`) — the typed *results* an evaluation
  *     produces and hands to functions/visitors (`Dimension`/`Color`/`Quoted`/
- *     `Keyword`/`Any`/`List`/`Bool`/`Null`), distinct from the value AST
+ *     `Keyword`/`Any`/`UrlValue`/`List`/`Bool`/`Null`), distinct from the value AST
  *     (`Operation`/`FunctionCall`/…) that describes HOW to compute. A value
  *     `Color` has semantic fields such as `rgb` and `alpha`; a value
  *     `Dimension` has `number` and `unit`.
@@ -265,7 +265,17 @@ export interface Collection {
   readonly bytes: string;
 }
 
-export type Value = Dimension | Color | Quoted | Keyword | Any | List | Block | Bool | Null | Collection;
+/**
+ * A `url(...)` consumed through the typed value boundary. The parser-owned AST
+ * wrapper is projected here without exposing its inner syntax to functions;
+ * `bytes` already includes the wrapper and any configured URL transform.
+ */
+export interface UrlValue {
+  readonly type: 'Url';
+  readonly bytes: string;
+}
+
+export type Value = Dimension | Color | Quoted | Keyword | Any | UrlValue | List | Block | Bool | Null | Collection;
 
 /**
  * The canonical structural value carrier. A raw array is a default
