@@ -13009,7 +13009,7 @@ function mergeFoldMixedOwners(
   idt: string,
   emitOne: (leaf: Leaf, emit: Emit) => void
 ): void {
-  const names: (string | null)[] = new Array(group.length).fill(null);
+  const names = new Array<string | null>(group.length);
 
   for (let index = 0; index < group.length;) {
     const sourceOwner = group[index]!.frame.sourceOwner;
