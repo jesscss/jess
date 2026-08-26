@@ -144,7 +144,7 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
           continue;
         }
         for (let index = 0; index < structuredParent!.length; index++) {
-          value.push(cloneSimple(structuredParent![index]!));
+          value.push(structuredParent![index]!);
         }
       }
     }

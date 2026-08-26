@@ -753,19 +753,17 @@ function recurseIntoGrafts(
         continue;
       }
       let visibleCount = 0;
-      let soleVisible: Branch | null = null;
       for (let branchIndex = 0; branchIndex < inner.length; branchIndex++) {
         const branch = inner[branchIndex]!;
         if (branch.hidden !== true) {
           inner[visibleCount++] = branch;
-          soleVisible = branch;
         }
       }
       inner.length = visibleCount;
-      if (visibleCount === 1 && soleVisible!.segments.length === 1) {
-        const visibleValue = soleVisible!.segments[0]!.compound.value;
+      if (visibleCount === 1 && inner[0]!.segments.length === 1) {
+        const visibleValue = inner[0]!.segments[0]!.compound.value;
         for (let simple = 0; simple < visibleValue.length; simple++) {
-          value.push(cloneSimple(visibleValue[simple]!));
+          value.push(visibleValue[simple]!);
         }
       } else if (visibleCount > 0) {
         value.push({ t: 'is', branches: inner });

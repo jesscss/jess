@@ -3853,19 +3853,23 @@ involved.
   extend-bearing document.
 - New traversal: every admitted composed level performs one `hidden` scalar
   check; only an extend-bearing hidden subject stamps one branch visibility bit
-  per composed level while those alternatives remain structural. A fused
+  per branch at that level (exactly `sum(B_i)` stores across the composed
+  levels) while those alternatives remain structural. A fused
   single-compound ampersand checks the small parent compound for an existing graft
   before choosing typed substitution; text-only parents retain their prior string
   substitution. A successful hidden-graft rewrite compacts its returned arm array
-  once in place, retaining visible arms only. Work is O(L + S + A), with no
-  Cartesian branch product or restart-at-zero loop.
+  once in place with exactly `A` arm inspections and `V` visible-arm stores. Work
+  is `O(sum(B_i) + S + A)`, with no Cartesian branch product or restart-at-zero
+  loop.
 - New node/materialization: the extend-free gate still returns before composition.
   Text-only and multi-segment parents allocate no new carrier. A typed
-  single-compound parent clones the semantic graft simples that the old path
-  flattened into one temporary selector string; this is the required matchable IR,
-  not a parallel tree. Hidden-arm filtering reuses the matcher result array in
-  place and allocates no filter array, map, set, tuple, or side table. Collapsing a
-  sole visible single-segment arm clones only its semantic Simple tokens.
+  single-compound parent transfers the immutable semantic graft Simple pointers
+  that the old path flattened into one temporary selector string; no recursive
+  Branch/segment/value clone is needed. Hidden-arm filtering reuses the matcher
+  result array in place and allocates no filter array, map, set, tuple, or side
+  table. Collapsing a sole visible single-segment arm likewise transfers its
+  immutable Simple pointers from the fresh matcher result before that result is
+  discarded.
 - Render path: a hidden parent list such as `.hidden, .target` still compacts to
   one `:is()` internally. Extending `.target` with `.visible` through nested
   `&:hover` now emits only `.visible:hover`; hidden siblings remain absent.
@@ -3883,9 +3887,9 @@ involved.
   one fused-parent structured-simple scan, and one success-only in-place visible-arm
   compaction; [array spread/materialization] none; [array helper] none on the new
   path; [side map/set] none; [node construction] no AST/CST nodes and only required
-  render-IR Simple clones; [materialized array/object] the
+  render-IR Simple objects; [materialized array/object] the
   pre-existing composed-segment value array is still built once and receives typed
-  Simple clones instead of one opaque text simple on the matched graft lane;
+  Simple pointers instead of one opaque text simple on the matched graft lane;
   [source scan/reparse] none; [behavior] SETTLED A7
   reference visibility now crosses the existing X3 `:is()` graft without implicit
   selector-list distribution.
