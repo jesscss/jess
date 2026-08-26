@@ -3917,7 +3917,7 @@ involved.
   import-once, option-bearing occurrence alignment, `(multiple)`, `(reference)`,
   nested at-rule retention, and deferred insertion. The real `static-urls` fixture now places both imported CSS terminals
   first and retains only the separately ruled multiline-value spelling residual.
-  The dependency-order release build, full core suite (212 files, 3362 tests),
+  The dependency-order release build, full core suite (212 files, 3363 tests),
   all-less (111/111), all-less-error (96/96), AST-v2 production ratchet (4/4),
   macro compilation with zero interpreter fallbacks, compose-integrity,
   materialization-frontier, render-buffer-frontier, guardrails, and the
@@ -3925,7 +3925,12 @@ involved.
   red on the inherited stale AST inventory (`BracketLookup`, `ImportAtRule`,
   `SpacedValue`, `VarIndirect`, and `VariableReference`); its CST inventory and
   monomorphic node-shape checks pass, and this batch changes no node factory or
-  node shape. Invariant-by-invariant adversarial reviews remain pending.
+  node shape. The final semantics review of `d53902409..f595c0cf1` reports all
+  eight semantic invariants and incidents S1-S8 clean, with N9 deliberately
+  remaining OPEN for owner settlement. The final performance-architecture
+  review of `d53902409..9d3268218` reports V8 invariants 1-11 and regression
+  checks R1-R7 clean, with the calibrated timing result retained as UNVERIFIED
+  rather than evidence for or against speed.
 - Performance evidence: no speed claim; wall-clock attribution is UNVERIFIED.
   Fixed-build A/B compared final code candidate `f595c0cf1` with parent
   `d53902409` under Node 24.11.1, using identical
@@ -3955,7 +3960,7 @@ involved.
     "why": "OPEN N9 records the candidate that parser-classified document-root CSS terminals from executed non-reference Less imports join the output prelude while compile-time documents retain lexical execution.",
     "dangerTokensJustification": "The existing import walk carries unique terminals in five lazy parallel arrays with integer next links and no per-terminal record objects; duplicates add only their node identity to the lazy output-suppression Set. Planner admission mirrors render: only optionless imports consume the existing import-once identity, while option-bearing and transitive multiple occurrences remain independent. Output consumes the integer chain once through the canonical buffer. The no-feature bypass is unchanged, deferred insertion relinks scalar indexes in O(1) without a segment object, and target suffix regexes plus tail slice/map/some materialization are deleted. No second import traversal, AST copy, byte reclassification, WeakMap, Error control lane, or speed claim is introduced.",
     "behaviorEvidence": "Focused core import coverage passes 57/57; the owner static-urls case now has only its intentional multiline-value residual.",
-    "buildEvidence": "Dependency-order release build; full core; all-less; all-less-error; AST-v2 production ratchet; macro compilation with zero fallbacks; compose-integrity; materialization-frontier; render-buffer-frontier; guardrails; and aggressive-cutting contract pass. Shape stability remains red only on the inherited stale AST type inventory; CST inventory and the monomorphic node-shape check pass.",
+    "buildEvidence": "Dependency-order release build; full core (212 files / 3363 tests); all-less (111/111); all-less-error (96/96); AST-v2 production ratchet (4/4); macro compilation with zero fallbacks; compose-integrity; materialization-frontier; render-buffer-frontier; guardrails; aggressive-cutting contract; and git diff --check pass. Invariant-by-invariant semantic and performance-architecture reviews report no blockers. Shape stability remains red only on the inherited stale AST type inventory; CST inventory and the monomorphic node-shape check pass.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 14.573459, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
   },
   {
@@ -3972,9 +3977,10 @@ involved.
   }
 ]
 ```
-- Verdict: provisional pending invariant-by-invariant semantics and performance
-  reviews; the named build, correctness, frontier, corpus, and contract gates are
-  complete.
+- Verdict: accepted as an OPEN N9 candidate for landing. The invariant-by-
+  invariant semantic and performance-architecture reviews report no blockers,
+  and the named build, correctness, frontier, corpus, contract, and diff gates
+  are complete. N9 remains OPEN pending owner settlement.
 
 - Prior landed pass: 2026-08-25 typed URL value projection and Less `isurl()`.
   This is a bounded compatibility correction under OPEN ledger row V15, not a
