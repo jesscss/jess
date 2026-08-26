@@ -3834,33 +3834,35 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-26 Less final function-argument boundary ownership. This
-  is a parser semantic correction under OPEN V16, not a byte-neutral refactor or
-  a speed claim.
-- Architecture surface: one Less grammar production, its AST/CST contract test,
-  and one public Less function regression. Core AST nodes, reducers, evaluator,
-  serializer, output buffer, package exports, and owner-maintained fixture bytes
-  are unchanged.
-- Separation/duplication: `ArgumentValueSequence` keeps its existing greedy
-  typed value-piece continuation and the existing `functionConditionStop`
-  policy that already separates values from comparison/logical syntax. It no
-  longer asks `functionArgumentBoundaryAhead` to parse the parent delimiter a
-  second time. `FunctionArguments` remains the sole consumer of comma,
-  semicolon, close, and their `functionTrivia`; `FunctionScalarArgument` retains
-  its separate boundary guard because scalar math must not claim a prefix of a
-  larger value sequence.
-- New traversal and complexity: none. The value-sequence success path replaces
-  one positive delimiter/trivia lookahead with one terminal negative condition
-  check. That check is the same fixed condition-token recognizer already used by
-  each value continuation; it performs no source reparse, sibling scan, list
-  walk, restart-at-zero loop, or recursive traversal. The enclosing list then
-  consumes its delimiter once on its existing path.
-- New node/materialization: none. No empty literal, delimiter token, CST leaf,
-  span, trivia row, rollback array, wrapper node, side map/set, or Error is added.
-  Relative to the parent generated tables, the exact built AST artifact is 807
-  bytes smaller and the CST artifact is 983 bytes smaller. The earlier rejected
-  zero-width trivia design created speculative empty/delimiter leaves and then
-  rolled them back; this implementation contains no such authored combinator.
+- Latest pass: 2026-08-26 Less scalar function-argument boundary hot-path
+  correction. The emitted-CSS rule remains OPEN V16; this follow-up removes
+  parser work that the already-landed semantic correction left behind. It is
+  not a speed claim.
+- Architecture surface: one private Less grammar assertion, its AST/CST contract
+  matrix, and the parser/performance architecture records. Core AST nodes,
+  reducers, evaluator, serializer, output buffer, package exports, public Less
+  behavior, and owner-maintained fixture bytes are unchanged.
+- Separation/duplication: `ArgumentValueSequence` already stops at its typed
+  condition boundary and lets `FunctionArguments` consume the delimiter.
+  `FunctionScalarArgument` still needs a boundary assertion so `MathSum` cannot
+  claim a prefix of a larger value sequence, but it no longer positively parses
+  comma, semicolon, close, or their trivia. The enclosing call's ambient
+  `functionTrivia` reaches the assertion first; the assertion rejects one
+  non-boundary code unit or end-of-input; `FunctionArguments` remains the sole
+  delimiter owner.
+- New traversal and complexity: none. On a successful scalar boundary the exact
+  parent generated parser entered a positive lookahead call ladder, published
+  one delimiter terminal, and rolled it back. The candidate performs one
+  capture-free recognizer call after the enclosing trivia scan. The enclosing
+  list then consumes its delimiter once on its existing path. There is no source
+  reparse, sibling scan, list walk, restart-at-zero loop, or recursive traversal.
+- New node/materialization: negative. The parent successful assertion allocated
+  one throwaway delimiter CST leaf plus its `{start,end}` span inside the active
+  node capture, then rolled that publication back. The candidate assertion
+  allocates neither object and publishes no trivia or child row. Relative to
+  exact parent `85a793530`, the built AST artifact is 11,399 bytes smaller and
+  the CST artifact is 563 bytes smaller. No empty token, wrapper node, side
+  map/set, copied array, or Error is added.
 - Parser/output path: the AST/CST matrix covers comma, semicolon, and close
   across adjacent, newline, block-comment, and line-comment trivia. The
   upstream-shaped multiline `svg-gradient` final stop is a
@@ -3869,42 +3871,54 @@ involved.
   remain on their prior routes.
 - Helper/API/metadata surface: no helper, export, public type, AST/CST field,
   source span, layout table, or metadata mutation is introduced. One existing
-  const changes its combinator suffix and receives complete JSDoc.
-- Review-flagged diff tokens: [grammar term removal] the child-owned
-  `functionArgumentBoundaryAhead` reference is deleted; [lookahead] one existing
-  `not(functionConditionStop)` fixed-token rejection is added at the value
-  sequence's semantic split; [node/materialization] none; [source scan/reparse]
-  none; [public API] none.
-- Behavior evidence: focused Less AST/CST grammar tests pass 217/217 and
-  focused public Less function semantics pass 18/18. A same-install,
-  same-757-entry named parent/candidate oracle keeps both throw sets unchanged
-  (AST 122, CST 0) and moves exactly two files on both surfaces: the two physical
-  copies of `svg-gradient-mixin.less`. The checked-in oracle baseline is stale by
-  42 corpus entries and reports unrelated movement, so it is recorded as red
-  but is not used to attribute this change. `build:release`,
+  private const changes implementation and receives complete JSDoc.
+- Review-flagged diff tokens: [grammar assertion] positive `peek`/delimiter
+  tables become `not(regex(/[^,;)]|$/))`, a fixed one-code-unit-or-end negative
+  recognizer; [node/materialization] one terminal leaf/span publication and
+  rollback are deleted from each successful scalar assertion; [source
+  scan/reparse] none; [public API] none.
+- Behavior evidence: focused Less AST/CST grammar tests pass 219/219, including
+  direct exported-rule AST and CST rejection at end-of-input, and the
+  unchanged focused public Less function semantics pass 18/18. A same-install,
+  same-757-entry exact-parent/candidate oracle is byte-identical with unchanged
+  throw sets (AST 122, CST 0), AST aggregate
+  `d664b71097eb3bb253aca0e5e4c6c405b1357c1135eb1d42e4616065e2cb45a8`, CST
+  aggregate `b64abe78d7495b7fb2502eb6650aa510031d8957d767224106cb10a7f0206301`,
+  and zero named movers. The one-sided source marker is present once only in the
+  candidate (`not(regex(/[^,;)]|$/))`) while the retired positive delimiter table
+  is present once only in the parent, proving the comparison is not vacuous. The
+  checked-in oracle baseline is stale by 42 corpus entries and reports unrelated
+  movement, so it is recorded as red but is not used to attribute this change.
+  `build:release`,
   `check:macro` (zero fallbacks for all four parsers),
   `verify:compose-integrity`, `verify:aggressive-cutting-review`,
   `check:guardrails`, `git diff --check`, `all-less` 111/111, and the AST-v2
   production ratchet 4/4 pass. The full Less parser suite has one inherited red
-  test and 737 passing tests: the public dynamic-import assertion expects lexical
+  test and 739 passing tests: the public dynamic-import assertion expects lexical
   placement while current `origin/dev` hoists that CSS terminal. A fresh clean
   parent build reproduces the identical failure, so it is not charged to V16.
 - Performance evidence: no speed claim. Exact generated artifact sizes and
-  deterministic operation/allocation counts above are load-bearing. A committed,
+  deterministic operation/allocation counts above are load-bearing. A final
   same-directory interleaved parent A/B (`4` rounds x `3` processes, warmup `8`,
-  timed `25`) is inconclusive: `benchmark.less` AST `23.066 -> 22.846 ms`
-  (`-0.9%`) and CST `29.976 -> 30.073 ms` (`+0.3%`); Bootstrap AST/CST
-  `+0.9%/+2.0%`; unit corpus `+0.6%/+1.5%`; CSS controls range from `+0.8%`
-  to `+2.5%`, so the unfavorable readings do not separate from control drift.
-  The July 31 cleanup reference `131cd9d1b` is no longer buildable against the
-  current canonical AST factories (`SpacedValue` and old factory signatures).
-  The oldest buildable cleanup source is `4fb05c560` (2026-08-12). Against it,
-  the candidate is `+0.8%/+0.7%` on `benchmark.less`, `-1.1%/+4.1%` on
-  Bootstrap, and `+0.6%/+4.9%` on the unit corpus (AST/CST); historical CSS
-  controls are also `+0.1%` to `+1.4%`. That mixed long-range drift is reported,
-  not attributed to this one-const correction. Environment: Node `v25.9.0`,
-  Parseman `0.49.0`, built Less parser from this worktree's
-  `packages/syntax/less/less-parser/lib`.
+  timed `25`) is inconclusive: `benchmark.less` AST `22.957 -> 22.951 ms`
+  (`-0.0%`) and CST `29.985 -> 29.641 ms` (`-1.1%`); Bootstrap AST/CST
+  `-1.6%/-2.0%`; the available CSS controls move from `-2.1%` to `0.0%`.
+  The optional linked unit corpus was unavailable in the disposable final
+  measurement worktree and is therefore not claimed. The uniform direction of
+  the controls shows run-order/environment bias rather than an attributable
+  parser win, so timing supplies no verdict. The July 31 cleanup reference
+  `131cd9d1b` remains unbuildable
+  against the current canonical AST factories. The oldest buildable cleanup
+  source is `4fb05c560` (2026-08-12); a fresh reference tree required
+  `awaitable-pipe`/core before parser builds so `@jesscss/core/ast` declarations
+  existed. Against it, `benchmark.less` is `+2.3%/-1.7%` and the unit corpus is
+  `-0.3%/-2.5%` (AST/CST). The unchanged historical CSS surface reads
+  `+11.6%/+8.2%` on its large corpus, proving accumulated toolchain/worktree
+  drift rather than attributing that movement to this Less-only const. The
+  candidate uses Parseman `0.49.0`; the reference uses `0.48.1`; both use Node
+  `v25.9.0` and identical Less/CSS corpus hashes. The same-process current ratio
+  is Jess AST / lessc 4.6.3 `4.03x` (15 samples, p05 `3.397`, p95 `4.357`). No
+  long-range speed claim is made.
 - Prior landed pass: 2026-08-25 imported reference-mixin body trivia ownership. This
   is a bounded emitted-CSS correction under SETTLED A7, G28, and N6, not a speed
   or neutrality claim.

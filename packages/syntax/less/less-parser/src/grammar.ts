@@ -3251,13 +3251,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return condition(fact.guard, fact.src);
     }
   );
-  // A math expression may claim a function argument only at an actual argument
-  // boundary. It stays zero-width so the delimiter and surrounding trivia
-  // remain owned by the enclosing function call, not a value/CST child.
-  const functionArgumentBoundaryAhead = choice(
-    peek(choice(literal(','), literal(';'), literal(')'))),
-    peek(parser({ trivia: functionTrivia }, choice(literal(','), literal(';'))))
-  );
+  /**
+   * A math expression may claim a function argument only at an actual argument
+   * boundary. The enclosing call's ambient `functionTrivia` reaches this
+   * sequence boundary first; this one-code-unit-or-end rejection then proves
+   * that the next non-trivia byte is comma, semicolon, or close. The enclosing
+   * call still consumes the real delimiter, while Parseman's negative assertion
+   * lowers to a capture-free recognizer instead of creating and rolling back
+   * speculative delimiter CST leaves.
+   */
+  const functionArgumentBoundaryAhead = not(regex(/[^,;)]|$/));
   const FunctionScalarArgument = node(
     'FunctionScalarArgument',
     sequence(g.MathSum, functionArgumentBoundaryAhead),
