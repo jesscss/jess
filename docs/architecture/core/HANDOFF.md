@@ -3834,7 +3834,172 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-26 reference-import nested pseudo visibility. SETTLED
+- Latest pass: 2026-08-26 document-root static import fact publication under
+  OPEN N10. This is a Less compatibility correction with no speed claim.
+- Architecture surface: the existing AST-v2 static import planner and lexical
+  import emitter in `serialize.ts`, the opaque `PreparedImports` token, focused
+  import tests, the N10 ledger row, and Less corpus classification. Grammar,
+  parser artifacts, AST/CST schemas, Context resolution, canonical output
+  buffers, and owner-maintained CSS fixtures are unchanged.
+- Separation/duplication: one private `publishImportedDocumentFacts` owner now
+  replaces the duplicated planner/emitter classification loops. Planning still
+  publishes direct facts into its isolated evaluation frame, and the same graph
+  walk publishes those facts into the render root before output evaluation.
+  Lexical emission skips that exact occurrence's already-published facts but
+  remains the sole owner of the imported body and CSS. Imports nested inside an
+  at-rule body retain their nested lexical frame and do not take the root edge.
+- New traversal: no import-graph, document, or AST traversal is added. Across
+  admitted import occurrences `M`, distinct root-propagated `StyleImport`
+  identities `D`, and lexical executions `L`, exact direct-statement work is
+  `sum(M_i * S_i)` in the existing planner, plus `sum(D_i * S_i)` for first-visit
+  root publication, plus `sum(unmarked_i * S_i)` for lexical publication. The
+  render performs one occurrence claim for each root occurrence, one fact claim
+  for each of the `sum(D_i * F_i)` callable/value/ruleset facts, and one scalar/
+  Set membership check at each lexical execution. A direct authored `(multiple)`
+  occurrence with its own node identity remains `2S`; one nested import node
+  executed `M` times through a multiple parent is `(M + 1)S`, because its first
+  visit prepublishes once and every lexical execution sees the same marker.
+  There is no restart-at-zero nested loop, source scan, reparse, sort, filter, or
+  second graph walk.
+- New node/materialization: zero AST/CST nodes, wrappers, copies, source strings,
+  arrays, tuples, WeakMaps, or per-entry objects. Every `Emit` gains one fixed
+  nullable `prepublishedImportFacts` pointer, preserving its single construction
+  shape. The first render-local identity is stored directly. A strong
+  `Set<Statement>` is allocated only when a second distinct occurrence/fact
+  identity exists, is shared across that render, and is dropped wholesale at
+  render completion. A fact-free imported document stores only its occurrence
+  identity and allocates no collection. Each `PreparedImports` result is one
+  escaping closure plus its captured environment over the existing document map,
+  instead of an inspectable graph object. A prepared render performs one O(1)
+  private reader call and one monomorphic token invocation; a render without a
+  prepared token performs neither. The same callable token crosses the package's
+  ESM/CJS format boundary without a global registry key or named payload field.
+- Render path: imported bodies and CSS still write once through the canonical
+  output buffer at each authored splice. `(multiple)` bodies still repeat;
+  `(reference)` bodies remain output-hidden. Only lookup-map/array publication
+  moves earlier. No value is materialized merely to stringify or classify.
+- Helper/API surface: the shared publication helper deletes the parallel lexical
+  implementation. Two private scalar/Set identity helpers make the ownership
+  test explicit. The exported alpha `PlannedImportDocument` record is removed;
+  `PreparedImports` is now a nominally branded reusable token. The brand is
+  private in the generated declaration, while the concrete callable reader and
+  mutable map remain private to the serializer. This is API opacity, not a
+  cryptographic boundary: untyped JavaScript can violate any TypeScript contract.
+  No global registry key, compatibility alias, or public fallback is retained.
+- Metadata mutations: canonical Stylesheets and Statements are untouched. The
+  render-local Frame receives the same mixin/declaration/ruleset facts it
+  previously received at lexical import execution. The prepared graph is never
+  annotated with a render Frame, so concurrent renders cannot overwrite each
+  other's ownership marker. Only the render-local scalar/Set and existing Frame
+  lookup collections mutate.
+- Review-flagged diff tokens: [loop/traversal] the shared direct-statement loop
+  replaces two prior copies and retains the exact direct-authored `2S` total;
+  repeated canonical occurrences follow the `M*S + S` count above; [side set] one
+  positive-feature render-local Set after the second distinct identity, with a
+  scalar first-identity fast path; [object shape] one fixed nullable Emit slot;
+  [token materialization] one escaping closure plus its captured environment per
+  prepared result replaces the prior one-property carrier object, and one O(1)
+  reader invocation occurs per prepared render; the no-prepared lane performs
+  zero reader work; [node/materialization] none;
+  [source scan/reparse] none; [behavior] OPEN N10 makes later document-root import
+  facts available before output while bodies remain lexical.
+- Evidence: focused core import coverage passes 61/61 and focused public import
+  coverage passes 3/3 after dependency-ordered core/Jess builds. Exact tests pin
+  transitive later-import mixin/variable access in both output modes, root
+  ruleset-as-mixin lookup, reference-before-import visibility, concurrent reuse
+  of one prepared token, `(multiple)` fact dedupe with repeated body output, and
+  the negative boundary that keeps an at-rule import out of the document root
+  while making it visible to following statements inside that at-rule.
+  Full core passes 213 files / 3372 tests / 9 skipped / 2 todo; the combined
+  all-less and all-less-error gate passes 208/208; the AST-v2 production ratchet
+  passes 4/4; release build, macro compilation with zero interpreter fallbacks,
+  compose-integrity, aggressive-cutting, package exports, the blocking public
+  type consumer, guardrails, render/materialization/binding/diagnostic frontiers,
+  and diff-check pass. The node-copy frontier remains inherited-red on
+  `packages/core/src/util/bitset.ts`'s existing `super.clone()` site. Shape
+  stability remains inherited-red on the stale AST type inventory/`SpacedValue`
+  allowlist while its monomorphic-node assertion and all CST checks pass. A clean
+  `origin/dev` worktree reproduces the same seven unrelated broad Jess test
+  failures; this diff adds none. The committed-candidate
+  `measure:less:hotpath` run is unavailable before timing because the maintained
+  functions fixture still rejects numeric-leading `@1`; no benchmark speed or
+  neutrality claim is made.
+- Verdict: accepted after exact semantic, performance-architecture, API/reuse,
+  and test-sensitivity review. The implementation is the smallest render-local
+  N10 ownership edge found; it deliberately rejects a shared-plan Frame pointer,
+  per-entry wrapper objects, an always-allocated dedupe collection, and a public
+  or globally keyed prepared-import graph.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "OPEN N10 changes when the canonical AST-v2 import owner publishes direct lookup facts: the document-root static graph becomes visible before output evaluation, while imported bodies and CSS remain lexical. This is semantic compatibility work, not a neutral refactor or optimization claim.",
+    "dangerTokensJustification": "For a direct authored import identity the existing planner scan plus first-visit root publication remain 2S and lexical publication is skipped. More generally the exact work is planner sum(M_i*S_i) + first root-publication sum(D_i*S_i) + lexical sum(unmarked_i*S_i), with M_root occurrence claims, sum(D_i*F_i) fact claims, and L lexical membership checks. A canonical nested import executed M times is (M+1)S, not 2MS. The first render-local identity is scalar and only a second distinct occurrence or fact allocates one strong render-local Set. No AST/CST node, source string, array, WeakMap, per-entry tuple, reparse, graph traversal, or parallel output path is added.",
+    "behaviorEvidence": "Focused core import coverage passes 61/61 and focused public import coverage passes 3/3. The cases cover both output modes, a transitive later import, variable and mixin facts, root ruleset-as-mixin lookup, reference-before-import visibility, concurrent prepared-plan reuse, repeated `(multiple)` bodies with one canonical fact publication, and the negative/positive boundary for a nested at-rule import.",
+    "buildEvidence": "Release build passes. Full core passes 3372 tests; combined all-less/all-less-error passes 208/208; AST-v2 production ratchet passes 4/4; macro and compose-integrity report zero interpreter fallbacks; aggressive-cutting, package exports, public type consumer, guardrails, render/materialization/binding/diagnostic frontiers, and diff-check pass. Node-copy and AST shape-inventory checks retain their named inherited reds; monomorphic-node and CST shape checks pass. Committed-candidate measure:less:hotpath is unavailable before timing on the inherited numeric-leading @1 fixture rejection, so no speed claim is made. Exact semantic, performance-architecture, API/reuse, and test-sensitivity reviews approve.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 53.41333350000002,
+      "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85",
+      "outputBytes": 122320
+    }
+  },
+  {
+    "id": "ast-extend-import-preflight",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "why": "A loaded typed document remains the earliest authoritative source for imported extend placements and document-root lookup facts. Publishing those facts during the existing source-order graph visit is necessary because the root evaluator must see them before output begins; they cannot be carried before import resolution loads the canonical document.",
+    "dangerTokensJustification": "The no-import/no-extend false path still returns before collection or allocation. The feature path retains the existing import graph and extend collectors. A direct authored import retains two direct-statement scans; repeated canonical occurrences use one first-visit root publication plus the existing per-occurrence planner scan, while lexical execution pays only one identity membership check. The added ownership is scalar-first with one strong Set after a second distinct identity. It creates no source scan, reparse, AST copy, per-entry tuple, WeakMap, or output buffer.",
+    "behaviorEvidence": "The extend preflight contract retains one false-path call with zero collector/overlay/loop counters and one imported-loop feature path with two concrete loop placements and two overlay subjects. Focused import tests add transitive N10 fact visibility without changing those extend-plan facts.",
+    "buildEvidence": "The focused extend-preflight test, release build, full core, combined Less corpora, macro/compose, ratchet, aggressive-cutting, package/type/guardrail, and applicable frontier gates pass. The named inherited node-copy and AST inventory reds are unchanged by this diff.",
+    "falsePath": {
+      "fixture": "extend-preflight-contract:no-extend",
+      "counters": {
+        "calls": 1,
+        "collectorCalls": 0,
+        "overlaySubjects": 0,
+        "overlayInstructions": 0,
+        "loopPlacements": 0
+      }
+    },
+    "featurePath": {
+      "fixture": "extend-preflight-contract:imported-loop",
+      "counters": {
+        "importsVisited": 1,
+        "loopPlacements": 2,
+        "overlaySubjects": 2
+      }
+    },
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "parse-render",
+      "currentMedianMs": 45.6,
+      "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85",
+      "outputBytes": 122320
+    }
+  }
+]
+```
+- Previous pass: 2026-08-26 reference-import nested pseudo visibility. SETTLED
   A7 and X3 require a visible extender to cross a structurally compacted parent
   selector arm without exposing its hidden reference siblings. This is a semantic
   repair with no speed claim.

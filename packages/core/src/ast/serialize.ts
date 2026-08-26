@@ -305,13 +305,29 @@ export interface ImportDocumentInline {
 
 export type ImportDocument = ImportDocumentTree | ImportDocumentInline;
 
-export interface PlannedImportDocument {
+interface PlannedImportDocument {
   request: ImportDocumentRequest;
   loaded: ImportDocument | undefined;
 }
 
+declare const PREPARED_IMPORTS_BRAND: unique symbol;
+
+/** Opaque compile-time import plan. Its mutable document records are internal
+ * render machinery, not a public graph for callers to inspect or modify. */
 export interface PreparedImports {
-  readonly documents: WeakMap<StyleImport, PlannedImportDocument>;
+  readonly [PREPARED_IMPORTS_BRAND]: true;
+}
+
+type PreparedImportsReader = () => WeakMap<StyleImport, PlannedImportDocument>;
+
+function makePreparedImports(documents: WeakMap<StyleImport, PlannedImportDocument>): PreparedImports {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the callable is the private runtime carrier for this nominal token.
+  return (() => documents) as PreparedImportsReader & PreparedImports;
+}
+
+function preparedImportDocuments(prepared: PreparedImports): WeakMap<StyleImport, PlannedImportDocument> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- only makePreparedImports constructs this nominal token.
+  return (prepared as unknown as PreparedImportsReader)();
 }
 
 /**
@@ -603,13 +619,13 @@ export interface Frame {
    */
   rulesets?: Map<string, Ruleset[]> | null;
 
-  /** Root rulesets spliced by already-executed imports, in import/source order. */
+  /** Root rulesets published from the static import graph, in import/source order. */
   importedRules?: Ruleset[] | null;
 
   /**
-   * Imported callable statements in their source order. Namespaced descent must
-   * see imported mixin definitions as well as rulesets; ordinary call lookup
-   * already receives the definitions through `mixins`.
+   * Imported callable statements in import/source order. Static planning makes
+   * document-root import facts visible before output evaluation; namespaced
+   * descent must see imported definitions as well as rulesets.
    */
   importedCallables?: Array<MixinDefinition | Ruleset> | null;
 
@@ -1393,12 +1409,9 @@ function publishSelectedMixinDefinition(frame: Frame, definition: MixinDefinitio
   list.splice(index, 0, candidate);
 }
 
-/**
- * An imported document is a lexical splice, not a new evaluator root. Its
- * definitions become visible only after the import has executed; keep that
- * fact on the existing frame map rather than creating a wrapper document or a
- * second lookup path.
- */
+/** Publish an imported definition into the importing frame's existing lookup
+ * map. Static planning exposes document-root facts before output evaluation;
+ * lexical import execution still owns the imported document's body and CSS. */
 function publishImportedMixinDefinition(frame: Frame, definition: MixinDefinition, recordCallable = true): void {
   const mixins = frame.mixins ??= new Map();
   const candidates = mixins.get(definition.name);
@@ -1423,9 +1436,8 @@ function publishImportedVariableDeclaration(frame: Frame, declaration: VariableD
   }
 }
 
-/** Publish an imported root ruleset for namespace-path descent. Import rules are
- * ordered before the importing document's own source facts, matching lexical
- * splice order for an import that has executed at this point. */
+/** Publish an imported root ruleset for namespace-path descent. Import rules
+ * retain import/source order ahead of the importing document's own facts. */
 function publishImportedRuleset(frame: Frame, rule: Ruleset): void {
   (frame.importedRules ??= []).push(rule);
   (frame.importedCallables ??= []).push(rule);
@@ -1435,6 +1447,84 @@ function publishImportedRuleset(frame: Frame, rule: Ruleset): void {
    * newly published import prefix on the next namespace lookup.
    */
   frame.rulesets = undefined;
+}
+
+type PrepublishedImportFacts = Statement | Set<Statement> | null;
+
+function hasPrepublishedImportFact(e: Emit, statement: Statement): boolean {
+  const facts = e.prepublishedImportFacts;
+  return facts === statement || (facts instanceof Set && facts.has(statement));
+}
+
+/** Claim one render-local import fact without allocating a collection until a
+ * second distinct fact exists. Canonical statement identity makes repeated
+ * `(multiple)` document occurrences publish definitions once while their bodies
+ * and CSS still execute at every authored splice. */
+function claimPrepublishedImportFact(e: Emit, statement: Statement): boolean {
+  const facts = e.prepublishedImportFacts;
+  if (facts === statement || (facts instanceof Set && facts.has(statement))) {
+    return false;
+  }
+  if (facts === null) {
+    e.prepublishedImportFacts = statement;
+  } else if (facts instanceof Set) {
+    facts.add(statement);
+  } else {
+    const set = new Set<Statement>();
+    set.add(facts);
+    set.add(statement);
+    e.prepublishedImportFacts = set;
+  }
+  return true;
+}
+
+/** Publish one imported document's direct lookup facts without executing or
+ * copying its body. Static planning and lexical emission share this owner so a
+ * definition is never classified through two different paths. */
+function publishImportedDocumentFacts(
+  statements: readonly Statement[],
+  frame: Frame,
+  e: Emit,
+  prepublish = false,
+  from = 0
+): MaybePromise<void> {
+  for (let index = from; index < statements.length; index++) {
+    const child = statements[index]!;
+    if (child.type === 'MixinDefinition') {
+      if (prepublish && !claimPrepublishedImportFact(e, child)) {
+        continue;
+      }
+      publishImportedMixinDefinition(frame, child);
+      continue;
+    }
+    if (child.type === 'VariableDeclaration') {
+      if (prepublish && !claimPrepublishedImportFact(e, child)) {
+        continue;
+      }
+      publishImportedVariableDeclaration(frame, child);
+      continue;
+    }
+    if (child.type !== 'Ruleset') {
+      continue;
+    }
+    if (prepublish && !claimPrepublishedImportFact(e, child)) {
+      continue;
+    }
+    publishImportedRuleset(frame, child);
+
+    /* A plain imported ruleset is also a zero-argument Less mixin. Its
+     * canonical Ruleset remains the namespace fact; publish only its
+     * synthesized callable fact for bare `.name()` lookup. */
+    const built = orderedMixinsForStatements([child], frame, e);
+    if (isThenable(built)) {
+      const next = index + 1;
+      return built.then((mixins) => {
+        publishOrderedMixins(frame, mixins, frame);
+        return publishImportedDocumentFacts(statements, frame, e, prepublish, next);
+      });
+    }
+    publishOrderedMixins(frame, built, frame);
+  }
 }
 
 /**
@@ -7003,6 +7093,13 @@ interface Emit extends EvalCtx {
   preparedImportsOwnedByCaller: boolean;
 
   /**
+   * Render-local document-root import facts already published before output
+   * evaluation. The first identity is stored directly; a strong Set appears
+   * only at the second distinct identity and dies with this render.
+   */
+  prepublishedImportFacts: PrepublishedImportFacts;
+
+  /**
    * Planner-issued identity tokens for each concrete `$for`/`each()` iteration.
    * The token is selected by the execution index and placed on that iteration's
    * lexical frame; it is intentionally not stored on the immutable AST.
@@ -7064,6 +7161,7 @@ function scratchEmit(e: EvalCtx): Emit {
     atRuleBodyDepth: 0,
     plannedImportDocuments: null,
     preparedImportsOwnedByCaller: false,
+    prepublishedImportFacts: null,
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia()
@@ -8883,6 +8981,13 @@ interface CssImportPlan {
   next: number[] | null;
 }
 
+const IMPORT_PLAN_PREPARE = 0;
+const IMPORT_PLAN_RENDER_EXPLICIT = 1;
+const IMPORT_PLAN_RENDER_CONTEXT = 2;
+type ImportPlanMode = typeof IMPORT_PLAN_PREPARE
+  | typeof IMPORT_PLAN_RENDER_EXPLICIT
+  | typeof IMPORT_PLAN_RENDER_CONTEXT;
+
 function appendCssImportPlan(
   plan: CssImportPlan,
   node: AtRuleStatement | null,
@@ -8915,10 +9020,12 @@ function planImportedFacts(
   frame: Frame,
   e: Emit,
   importDocument: SerializeOptions['importDocument'] | undefined,
-  deferUnreadyImports = false,
-  collectCssImports = false
+  mode: ImportPlanMode,
+  prepublishFrame: Frame | null = null
 ): MaybePromise<ImportPlannerInput> {
   recordAstExtendProfile?.('astExtend.preflight.calls');
+  const deferUnreadyImports = mode === IMPORT_PLAN_PREPARE;
+  const collectCssImports = mode === IMPORT_PLAN_RENDER_CONTEXT;
 
   /*
    * A Context-owned import route is already MaybePromise at the document boundary,
@@ -8971,7 +9078,8 @@ function planImportedFacts(
     scope: Frame,
     cssPlan: CssImportPlan | null,
     withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null,
-    multipleImportDepth: boolean
+    multipleImportDepth: boolean,
+    publishFrame: Frame | null
   ): Promise<void> => {
     const deferred: StyleImport[] = [];
     let deferredAnchors: number[] | null = null;
@@ -9008,22 +9116,14 @@ function planImportedFacts(
        * Match the importer: a loaded document is a lexical splice and publishes
        * its direct facts into the importing frame before its body is walked.
        */
-      for (const child of loaded.document.rules) {
-        if (child.type === 'MixinDefinition') {
-          publishImportedMixinDefinition(scope, child);
-        }
-        if (child.type === 'VariableDeclaration') {
-          publishImportedVariableDeclaration(scope, child);
-        }
-        if (child.type === 'Ruleset') {
-          publishImportedRuleset(scope, child);
-
-          /*
-           * A plain imported ruleset is also a zero-argument Less mixin. Its
-           * canonical Ruleset remains the namespace fact; publish only its
-           * synthesized callable fact for bare `.name()` lookup.
-           */
-          publishOrderedMixins(scope, await orderedMixinsForStatements([child], scope, e), scope);
+      const published = publishImportedDocumentFacts(loaded.document.rules, scope, e);
+      if (isThenable(published)) {
+        await published;
+      }
+      if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
+        const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true);
+        if (isThenable(prepublished)) {
+          await prepublished;
         }
       }
       const childFrame: Frame = { parent: scope, mixins: collectMixins(loaded.document.rules), declIndex: collectDeclIndex(loaded.document.rules), cells: null, reassign: null, statements: loaded.document.rules };
@@ -9053,7 +9153,8 @@ function planImportedFacts(
           childFrame,
           reference ? null : importCssPlan,
           loaded.withinDocument ?? withinDocument,
-          multipleImportDepth || importHasOption(options, 'multiple')
+          multipleImportDepth || importHasOption(options, 'multiple'),
+          publishFrame
         );
       };
       if (loaded.withinDocument) {
@@ -9097,7 +9198,7 @@ function planImportedFacts(
           }
         }
       } else if (st.type === 'AtRuleBlock') {
-        await visit(st.rules, scope, null, withinDocument, multipleImportDepth);
+        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, null);
       }
     }
     for (let index = 0; index < deferred.length; index++) {
@@ -9127,7 +9228,7 @@ function planImportedFacts(
       }
     }
   };
-  return visit(root.rules, frame, cssImports, null, false).then(() => {
+  return visit(root.rules, frame, cssImports, null, false, prepublishFrame).then(() => {
     let plannedCssImports: CssImportPlan | null | undefined;
     if (cssImports === null) {
       plannedCssImports = undefined;
@@ -9179,6 +9280,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     importDocument,
     plannedImportDocuments: documents,
     preparedImportsOwnedByCaller: false,
+    prepublishedImportFacts: null,
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
@@ -9221,10 +9323,10 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
   const prepare = prepareBodyPlugins(root.rules, rootFrame, e);
   const plan = (): MaybePromise<PreparedImports> => {
     if (!importDocument) {
-      return { documents };
+      return makePreparedImports(documents);
     }
-    const planned = planImportedFacts(root, plannerRootFrame, e, importDocument, true);
-    return mapMaybe(planned, () => ({ documents }));
+    const planned = planImportedFacts(root, plannerRootFrame, e, importDocument, IMPORT_PLAN_PREPARE);
+    return mapMaybe(planned, () => makePreparedImports(documents));
   };
   return mapMaybe(prepare, plan);
 }
@@ -9257,8 +9359,11 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     referenceImportDepth: 0,
     atRuleBodyDepth: 0,
     importDocument,
-    plannedImportDocuments: options?.preparedImports?.documents ?? (importDocument ? new WeakMap() : null),
+    plannedImportDocuments: options?.preparedImports === undefined
+      ? (importDocument ? new WeakMap() : null)
+      : preparedImportDocuments(options.preparedImports),
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined,
+    prepublishedImportFacts: null,
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
@@ -9346,8 +9451,10 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
   };
 
   /*
-   * The import-fact planner owns an isolated lexical frame: planning must
-   * never publish variables/mixins/rules into the later render frame.
+   * Planner-only evaluation remains isolated on this lexical frame. Direct
+   * document-root import lookup facts also flow through the explicit root-frame
+   * publication edge passed to `planImportedFacts`; imported bodies and CSS do
+   * not execute until their authored lexical splice.
    */
   const plannerRootFrame: Frame = {
     parent: null,
@@ -9362,7 +9469,10 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
   }
   const prepare = prepareBodyPlugins(root.rules, rootFrame, e);
   const plan = (): SerializeReturn => {
-    const planned = planImportedFacts(root, plannerRootFrame, e, importDocument, false, !options?.importDocument);
+    const mode = options?.importDocument
+      ? IMPORT_PLAN_RENDER_EXPLICIT
+      : IMPORT_PLAN_RENDER_CONTEXT;
+    const planned = planImportedFacts(root, plannerRootFrame, e, importDocument, mode, rootFrame);
     return isThenable(planned) ? planned.then(continueRender) : continueRender(planned);
   };
   return mapMaybe(prepare, plan);
@@ -14088,44 +14198,10 @@ function emitStyleImport(
           seen.add(loaded.key);
         }
 
-        /*
-         * Imported facts publish IN SOURCE ORDER, interleaved exactly as authored:
-         * a `MixinDefinition` and a rule-mixin both land in the same per-name list, so
-         * batching the rule-mixins to the end would silently sort every imported
-         * `MixinDefinition` ahead of them. An interpolated rule key can only be built by
-         * awaiting, so the walk suspends there rather than deferring the publish.
-         */
         const children = loaded.document?.rules ?? [];
-        const publishChildren = (from: number): MaybePromise<void> => {
-          for (let index = from; index < children.length; index++) {
-            const child = children[index]!;
-            if (child.type === 'MixinDefinition') {
-              publishImportedMixinDefinition(frame, child);
-            }
-            if (child.type === 'VariableDeclaration') {
-              publishImportedVariableDeclaration(frame, child);
-            }
-            if (child.type === 'Ruleset') {
-              publishImportedRuleset(frame, child);
-
-              /*
-               * Keep bare ruleset-mixin lookup aligned with namespace lookup for
-               * an executed lexical import. This is a render-frame callable fact,
-               * not an AST copy or an alternate import path.
-               */
-              const built = orderedMixinsForStatements([child], frame, e);
-              if (isThenable(built)) {
-                const at = index;
-                return built.then((idx) => {
-                  publishOrderedMixins(frame, idx, frame);
-                  return publishChildren(at + 1);
-                });
-              }
-              publishOrderedMixins(frame, built, frame);
-            }
-          }
-          return undefined;
-        };
+        const publishChildren = hasPrepublishedImportFact(e, node)
+          ? undefined
+          : publishImportedDocumentFacts(children, frame, e);
 
         /*
          * Published UNCONDITIONALLY here, before the document is remembered and
@@ -14133,7 +14209,7 @@ function emitStyleImport(
          * The driver's `withinDocument` callback is not a place to put facts the
          * import must publish exactly once.
          */
-        return mapMaybe(publishChildren(0), () => {
+        return mapMaybe(publishChildren, () => {
           if (loaded.document === null) {
             return;
           }

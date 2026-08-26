@@ -151,6 +151,103 @@ describe('StyleImport', () => {
     expect(plugin.parseCalls).toBe(2);
   });
 
+  it('republishes prepared later-import facts into each fresh render frame', async () => {
+    const imported = stylesheet([
+      mixinDef('later', [], [decl('value', keyword('ready'))]),
+      rule('.later-rule', [decl('rule-value', keyword('ready'))])
+    ]);
+    const entry = stylesheet([
+      rule('.before', [mixinCall('later', []), mixinCall('.later-rule', [])]),
+      authoredImport('@import', quoted('"library.less"', 'library.less', '"', false)),
+      rule('.after', [decl('order', keyword('last'))])
+    ]);
+    const importDocument = vi.fn(({ specifier }) => Promise.resolve(
+      specifier === 'library.less'
+        ? { document: imported, key: 'library.less' }
+        : undefined
+    ));
+    const preparedImports = await prepareStaticImports(entry, { importDocument });
+
+    const render = () => Promise.resolve(serialize(entry, { importDocument, preparedImports }));
+    const expected = {
+      css: '.before {\n  value: ready;\n  rule-value: ready;\n}\n'
+        + '.later-rule {\n  rule-value: ready;\n}\n'
+        + '.after {\n  order: last;\n}\n'
+    };
+    await expect(Promise.all([render(), render()])).resolves.toEqual([expected, expected]);
+    expect(importDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it('publishes repeated multiple-import facts once while executing each body', async () => {
+    const imported = stylesheet([
+      mixinDef('later', [], [decl('value', keyword('ready'))]),
+      rule('.imported', [decl('order', keyword('middle'))])
+    ]);
+    const multiple = () => authoredImport(
+      '@import',
+      quoted('"library.less"', 'library.less', '"', false),
+      list([keyword('multiple')], ',')
+    );
+    const entry = stylesheet([
+      rule('.before', [mixinCall('later', [])]),
+      multiple(),
+      multiple(),
+      rule('.after', [mixinCall('later', [])])
+    ]);
+
+    await expect(Promise.resolve(serialize(entry, {
+      importDocument: ({ specifier }) => specifier === 'library.less'
+        ? { document: imported, key: 'library.less' }
+        : undefined
+    }))).resolves.toEqual({
+      css: '.before {\n  value: ready;\n}\n'
+        + '.imported {\n  order: middle;\n}\n'
+        + '.imported {\n  order: middle;\n}\n'
+        + '.after {\n  value: ready;\n}\n'
+    });
+  });
+
+  it('keeps an at-rule import fact inside its nested lexical scope', async () => {
+    const imported = stylesheet([
+      mixinDef('.nested', [], [decl('value', keyword('ready'))])
+    ]);
+    const empty = stylesheet([]);
+    const load = ({ specifier }: { specifier: string }) => {
+      if (specifier === 'nested.less') {
+        return { document: imported, key: 'nested.less' };
+      }
+      return specifier === 'planner.less'
+        ? { document: empty, key: 'planner.less' }
+        : undefined;
+    };
+    const nestedImport = () => authoredImport(
+      '@import',
+      quoted('"nested.less"', 'nested.less', '"', false)
+    );
+    const plannerImport = () => authoredImport(
+      '@import',
+      quoted('"planner.less"', 'planner.less', '"', false)
+    );
+
+    await expect(Promise.resolve(serialize(stylesheet([
+      rule('.before', [mixinCall('.nested', [])]),
+      atRuleBlock('@media', keyword('screen'), [nestedImport()]),
+      plannerImport()
+    ]), { importDocument: load }))).rejects.toMatchObject({
+      code: 'resolve/name-not-found'
+    });
+
+    await expect(Promise.resolve(serialize(stylesheet([
+      atRuleBlock('@media', keyword('screen'), [
+        nestedImport(),
+        rule('.inside', [mixinCall('.nested', [])])
+      ]),
+      plannerImport()
+    ]), { importDocument: load }))).resolves.toEqual({
+      css: '@media screen {\n  .inside {\n    value: ready;\n  }\n}\n'
+    });
+  });
+
   it('loads duplicate static imports once during prepare and render', async () => {
     const entryPath = '/virtual/entry.less';
     const tokensPath = '/virtual/tokens.less';
@@ -985,15 +1082,15 @@ describe('StyleImport', () => {
       rule('.hidden', [decl('color', keyword('red'))])
     ]);
     const document = stylesheet([
+      rule('.card', [
+        decl('color', variableReference('tone', 'scoped')),
+        mixinCall('accent')
+      ]),
       authoredImport(
         '@import',
         quoted('"tokens.less"', 'tokens.less', '"', false),
         list([keyword('reference')], ',')
-      ),
-      rule('.card', [
-        decl('color', variableReference('tone', 'scoped')),
-        mixinCall('accent')
-      ])
+      )
     ]);
 
     await expect(serialize(document, {

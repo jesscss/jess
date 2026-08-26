@@ -75,9 +75,12 @@ above:
 - `tests-unit/color-functions/operations.less`
 - `tests-unit/extract-and-length/extract-and-length.less` (OPEN V17 structural
   mixin binding is implemented: fixed/rest/default/forwarding/spread and
-  `@arguments` preserve nested list grouping. The active mismatch is now only
-  source-layout spacing on `--empty-value:   extract(~'', 1)`; Jess emits one
-  space after the custom-property colon.)
+  `@arguments` preserve nested list grouping. The active mismatch is only the
+  maintained golden's three spaces after `--empty-value:` for
+  `extract(~'', 1)`; the current Less v5 public runtime and every neighboring
+  custom-property row canonicalize that boundary to one. This isolated layout
+  discrepancy is an owner-fixture reconciliation question, not evidence for a
+  missing structural `extract()`/`length()` feature.)
 - `tests-unit/functions/functions.less`
 - `tests-unit/import/import-inline.less`
 - `tests-unit/import/import-reference.less` (A7 reference visibility now works
@@ -88,7 +91,10 @@ above:
   settled v5 selector compaction and direct-self declaration coalescing, explicit
   nested output, the alpha golden's omission of a source-asserted surviving inline
   comment, and invalid-inline indentation)
-- `tests-unit/import/import.less`
+- `tests-unit/import/import.less` (OPEN N10 now makes the definition imported at
+  line 18 visible to the line-12 mixin call before output evaluation. The sole
+  active blocker is the maintained 4.x media-postlude form rejected by v5
+  §12.3b.)
 - `tests-unit/media/media.less`
 - `tests-unit/mixins/mixins.less` (fixture-local nested output vs flattened
   golden; the `.recursion` outer-mixin lookup is covered by core)
@@ -229,6 +235,26 @@ oracle moves only the two physical copies of the upstream svg-gradient fixture.
 The remote import fixture is tracked in
 [`less-v5-release-plan.md`](../process/less-v5-release-plan.md) as a deferred
 Phase C import/security feature, not as a flaky expected failure.
+
+### OPEN N10 document-root import facts
+
+- Static planning now publishes direct variables, mixin definitions, and root
+  ruleset/namespace facts from the complete document-root import graph before
+  output evaluation. A call or variable read can therefore precede the import
+  that supplies it, including through a transitive import and a `(reference)`
+  document. Imported bodies and CSS still execute at their authored splice.
+- Canonical statement identity prevents repeated `(multiple)` occurrences of one
+  loaded document from duplicating its callable/value facts, while the imported
+  body still emits once per occurrence. Reusing one opaque `PreparedImports`
+  result across concurrent renders republishes into each render's fresh root
+  frame without mutating the shared plan.
+- Focused public coverage pins both output modes and the transitive graph; core
+  coverage pins prepared-plan reuse, concurrent renders, `(multiple)` body/fact
+  separation, reference-before-call visibility, and the negative boundary that
+  keeps an at-rule import out of the document root while exposing it to later
+  statements inside that at-rule. No owner-maintained CSS fixture changed.
+  `tests-unit/import/import.less` stays expected-failure only because its
+  compile-time import postludes remain intentionally rejected under §12.3b.
 
 ### Resolved non-corpus function follow-up
 
