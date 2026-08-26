@@ -3851,7 +3851,8 @@ involved.
 - Cumulative node weight: unchanged. No AST/CST node is copied or mutated. The
   change is confined to render-local Branch/Simple IR already required by an
   extend-bearing document.
-- New traversal: an extend-bearing hidden subject stamps one branch visibility bit
+- New traversal: every admitted composed level performs one `hidden` scalar
+  check; only an extend-bearing hidden subject stamps one branch visibility bit
   per composed level while those alternatives remain structural. A fused
   single-compound ampersand checks the small parent compound for an existing graft
   before choosing typed substitution; text-only parents retain their prior string
@@ -3888,16 +3889,29 @@ involved.
   [source scan/reparse] none; [behavior] SETTLED A7
   reference visibility now crosses the existing X3 `:is()` graft without implicit
   selector-list distribution.
-- Evidence: fresh core build passes; focused import/amp/extend/op-budget coverage
+- Evidence: the dependency-order release build passes; focused
+  import/amp/extend/op-budget coverage
   passes 75/75; focused reference corpus selection passes 3/3; full core passes
   212 files / 3,368 tests / 9 skipped / 2 todo; full all-less passes 112/112.
   The real `import-reference.less` output now contains both top-level and nested
   `.visible:hover`, and the exact diff no longer contains the classified trailing
   pseudo loss. Targeted ESLint has zero errors and only inherited extend-file
-  warnings; `git diff --check` passes.
+  warnings; the AST-v2 production ratchet passes 4/4; `check:macro` reports zero
+  interpreter fallbacks for all four grammars; `verify:compose-integrity`,
+  `verify:aggressive-cutting-review`, `check:guardrails`, and `git diff --check`
+  pass. Matched committed-build `import-reference.less` runs used 20 warmups and
+  45 samples: parent `692df4241` emitted 1,476 bytes at SHA-256
+  `cc2a155ec10b96ad2a78719fb74e68ed68c88bacc36c68c3491dad128e415750`
+  with a 6.401 ms median; candidate `1540ee1f1` emitted the corrected 1,378 bytes
+  at SHA-256 `c9215746b5c726287ee79e85626a27018f70756659836afce8e0d46791dba60a`
+  with a 6.312 ms median. Planning/preflight counters are identical
+  (`subjects=94`, `instructions=2`, `overlaySubjects=90`, zero overlay
+  instructions/loop placements); branch comparisons rise 66 -> 73 because the
+  formerly dropped nested pseudo is now matched. The timing delta is below the
+  harness noise band and is not a speed claim.
 - Verdict: accepted provisionally as the smallest typed A7/X3 correction with
-  `performanceClaim: none`; final macro/compose, aggressive-cutting, semantic,
-  and performance reviews remain required before landing.
+  `performanceClaim: none`; exact-commit semantic and performance adversarial
+  reviews remain required before landing.
 - Hot-path cost contracts:
 ```json
 [
@@ -3922,14 +3936,14 @@ involved.
     ],
     "why": "SETTLED A7 requires a visible extender to surface the matched branch of a hidden reference selector, and SETTLED X3 makes the existing structured :is() graft the canonical partial-match boundary. Preserving that graft through fused ampersand composition fixes the missing nested pseudo without a distribution surface.",
     "dangerTokensJustification": "The extend-free gate is unchanged. The admitted path performs bounded structural loops over composed levels, one parent compound, and one successful graft result; it reuses the matcher result array, creates no AST node, side table, predicate string, source scan, reparse, Cartesian product, or second matcher.",
-    "behaviorEvidence": "Focused core coverage passes 75/75, the reference corpus selection passes 3/3, full core passes 3368 tests, and all-less passes 112/112. Exact collapse-mode assertions retain authored :is() conditions while excluding hidden selector-list siblings.",
-    "buildEvidence": "@jesscss/core build passes; final release/macro/compose and adversarial review evidence is pending the batch boundary.",
+    "behaviorEvidence": "Focused core coverage passes 75/75, the reference corpus selection passes 3/3, full core passes 3368 tests, all-less passes 112/112, and the AST-v2 production ratchet passes 4/4. Exact collapse-mode assertions retain authored :is() conditions while excluding hidden selector-list siblings. Matched import-reference builds keep plan/preflight counts identical; comparisons rise 66 to 73 because the corrected nested pseudo now enters matching.",
+    "buildEvidence": "The dependency-order release build, zero-fallback check:macro, verify:compose-integrity, verify:aggressive-cutting-review, check:guardrails, and git diff --check pass. Exact-commit adversarial reviews remain pending.",
     "baseline": {
-      "fixture": "benchmark.less",
+      "fixture": "@less/test-data/tests-unit/import/import-reference.less",
       "phase": "render",
-      "currentMedianMs": 53.41333350000002,
-      "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85",
-      "outputBytes": 122320
+      "currentMedianMs": 6.312,
+      "outputSha256": "c9215746b5c726287ee79e85626a27018f70756659836afce8e0d46791dba60a",
+      "outputBytes": 1378
     }
   }
 ]
