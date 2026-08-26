@@ -43,7 +43,7 @@ baseline only and never as a performance acceptance claim.
   `pnpm run verify:compose-integrity` pass with 0 interpreter fallbacks; and
   `pnpm run verify:less-alpha` passes. The full strict-type release chain still
   belongs to `pnpm run release:alpha:check` before publishing.
-- Alpha closure: `scripts/release/alpha-allowlist.json` contains **21
+- Alpha closure: `scripts/release/alpha-allowlist.json` contains **22
   allowlisted runtime packages**, including `@jesscss/compiler`.
   `rollup-plugin-jess` is intentionally excluded because it depends on `jess`
   and is not part of the runtime closure. Current `dev` validates this publish

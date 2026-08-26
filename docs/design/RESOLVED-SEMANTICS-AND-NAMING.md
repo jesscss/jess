@@ -1256,8 +1256,9 @@ extended so adjacent terms may be joined by a math operator.** The deciding
 question is adjacency — ledger **G24** already settles how to spell it.
 
 Other corrections: renaming `Calc*` is **not inert** (all five are public CST
-node types, measured); a shared table cannot live in `parser-shared` (private,
-macro-only, asserted absent from every compiled artifact by four gates);
+node types, measured); a shared semantic table belongs in `core/ast`, not in
+`parser-shared` (that package publishes grammar facts for cross-package
+composition, not core value reducers);
 `Operation.src` is **refuted by ledger F1**, which makes normalized operator
 spacing correct.
 

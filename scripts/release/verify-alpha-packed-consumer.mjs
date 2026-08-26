@@ -115,18 +115,10 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
     }
   }
 
-  /*
-   * This private workspace package supplies Parseman macro inputs while the
-   * parser package is built. Macro expansion leaves no runtime import of it,
-   * so it must never become a consumer dependency. It can remain a development
-   * dependency: pnpm rewrites its workspace specifier in packed metadata, and
-   * consumers do not install it.
-   */
-  for (const sectionName of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
-    const section = manifest[sectionName];
+  if (pkg.name === '@jesscss/css-parser') {
     assert(
-      !section?.['@jesscss/parser-shared'],
-      `${pkg.name}: private macro input leaked into packed ${sectionName}`
+      manifest.dependencies?.['@jesscss/parser-shared'] === expectedVersion,
+      `${pkg.name}: packed dependencies must carry @jesscss/parser-shared@${expectedVersion}`
     );
   }
 }
@@ -181,12 +173,24 @@ import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 
 const require = createRequire(import.meta.url);
-const names = ${JSON.stringify(packageNames, null, 2)};
-for (const name of names) {
-  const cjs = require(name);
-  const esm = await import(name);
-  assert.ok(cjs, \`CJS import returned nothing for \${name}\`);
-  assert.ok(esm, \`ESM import returned nothing for \${name}\`);
+const specifiers = ${JSON.stringify(packageNames.flatMap((name) => {
+  if (name === '@jesscss/parser-shared') {
+    return [
+      '@jesscss/parser-shared/recognition',
+      '@jesscss/parser-shared/opaque-at-rule',
+      '@jesscss/parser-shared/pseudo-consts'
+    ];
+  }
+  if (name === '@jesscss/css-parser') {
+    return [name, '@jesscss/css-parser/grammar'];
+  }
+  return [name];
+}), null, 2)};
+for (const specifier of specifiers) {
+  const cjs = require(specifier);
+  const esm = await import(specifier);
+  assert.ok(cjs, \`CJS import returned nothing for \${specifier}\`);
+  assert.ok(esm, \`ESM import returned nothing for \${specifier}\`);
 }
 
 const cjsJess = require('jess');
@@ -194,7 +198,7 @@ const esmJess = await import('jess');
 assert.equal(typeof cjsJess.Compiler, 'function');
 assert.equal(typeof esmJess.Compiler, 'function');
 
-console.log(\`ESM/CJS roots ok for \${names.length} packed packages\`);
+console.log(\`ESM/CJS entrypoints ok for \${specifiers.length} packed specifiers\`);
 `.trimStart());
 
   writeFileSync(cli, `
