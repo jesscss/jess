@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { atRuleBlock, atRuleStatement } from '../at-rule.js';
 import type { AtRuleStatement } from '../at-rule.js';
 import type { Interpolation, List, Quoted, StyleImport, Url, ValueNode } from '../nodes.js';
-import { any, color, comment, importIsCompileTime, styleImport, spaced, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, quoted, reference, rule, sel, selist, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
+import { any, block, color, comment, importIsCompileTime, styleImport, spaced, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, operation, quoted, reference, rule, sel, selist, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
 import { createTriviaMapFromRanges, withBodySpan, withSourceSpan, withTriviaMap } from '../provenance.js';
 import { prepareStaticImports, serialize } from '../serialize.js';
 import { Context } from '../../context.js';
@@ -671,8 +671,14 @@ describe('StyleImport', () => {
     ]);
     const child = stylesheet([
       rule('.child-before', [decl('color', keyword('green'))]),
-      authoredImport('@import', quoted('"child.css"', 'child.css', '"', false)),
-      authoredImport('@import', quoted('"child.css"', 'child.css', '"', false)),
+      variableDeclaration('width', dimension(1, 'px'), { mode: 'declare' }),
+      authoredImport(
+        '@import',
+        quoted('"child.css"', 'child.css', '"', false),
+        null,
+        null,
+        block(operation(':', keyword('min-width'), variableReference('width', 'scoped'), false, false))
+      ),
       atRuleBlock('@media', keyword('screen'), [
         authoredImport('@import', quoted('"nested.css"', 'nested.css', '"', false))
       ]),
@@ -710,9 +716,9 @@ describe('StyleImport', () => {
     const loadedEntry = await context.getTree(entryPath);
     await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context }))).resolves.toEqual({
       css: '@import "entry.less:entry.css";\n'
-        + '@import "child.less:child.css";\n'
+        + '@import "child.less:child.css" (min-width: 1px);\n'
         + '@import "entry.less:entry-after.css";\n'
-        + '@import "child.less:child.css";\n'
+        + '@import "child.less:child.css" (min-width: 1px);\n'
         + '.entry-before {\n  color: red;\n}\n'
         + '.child-before {\n  color: green;\n}\n'
         + '@media screen {\n  @import "child.less:nested.css";\n}\n'

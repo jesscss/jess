@@ -3882,6 +3882,9 @@ involved.
   slices a tail array, or builds `some`/`map` callback carriers. The parser-owned
   statement classification is authoritative; one indexed tail validation/build
   constructs only the semantic dedupe key that the existing root rule required.
+  A typed/dynamic tail that cannot supply that static key is still hoisted from
+  parser classification and remains a distinct occurrence; keyability never
+  controls placement.
 - Render path: `emitPlannedCssImports` writes the original typed statement
   through `emitAtRuleStatementRaw` and the canonical chunk buffer. Its source
   callback preserves each imported file's rootpath/rewrite scope. The existing

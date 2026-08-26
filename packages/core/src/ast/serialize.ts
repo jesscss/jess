@@ -8719,17 +8719,18 @@ function planImportedFacts(
         const target = cssImportTarget(st);
         if (target !== null) {
           const key = cssImportKey(st, target);
+          let duplicate = false;
           if (key !== null) {
-            const duplicate = key === firstCssImportKey || furtherCssImportKeys?.has(key) === true;
+            duplicate = key === firstCssImportKey || furtherCssImportKeys?.has(key) === true;
             if (firstCssImportKey === null) {
               firstCssImportKey = key;
             } else if (!duplicate) {
               (furtherCssImportKeys ??= new Set()).add(key);
             }
-            (e.hoistedCssImports ??= new Set()).add(st);
-            if (!duplicate) {
-              appendCssImportPlan(cssPlan, st, target, scope, withinDocument);
-            }
+          }
+          (e.hoistedCssImports ??= new Set()).add(st);
+          if (!duplicate) {
+            appendCssImportPlan(cssPlan, st, target, scope, withinDocument);
           }
         }
       } else if (st.type === 'StyleImport') {
@@ -13132,14 +13133,13 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
       continue;
     }
     const key = cssImportKey(child, target);
-    if (key === null) {
-      continue;
-    }
     (hoisted ??= new Set()).add(child);
-    if (seen.has(key)) {
-      continue;
+    if (key !== null) {
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
     }
-    seen.add(key);
     emitAtRuleStatementRaw(child, frame, e, target);
   }
   e.hoistedCssImports = hoisted;
