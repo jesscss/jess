@@ -67,8 +67,12 @@ above:
 - `tests-unit/import/import-inline.less`
 - `tests-unit/import/import-reference.less` (A7 reference visibility now works
   for direct and at-rule-contained rules, hidden selector ancestors, mixin pulls,
-  and inline imports; the active mismatch is v5 selector compaction, explicit
-  nested output, comment replay, and invalid-inline indentation)
+  and inline imports; selected reference-mixin bodies now replay their parser-owned
+  inline and block-interior trivia in both output modes. The active mismatch is
+  settled v5 selector compaction, an existing selector-composition defect that
+  drops the trailing `:hover`, explicit nested output, the alpha golden's
+  omission of a source-asserted surviving inline comment, and invalid-inline
+  indentation)
 - `tests-unit/import/import.less`
 - `tests-unit/media/media.less`
 - `tests-unit/mixins/mixins.less` (fixture-local nested output vs flattened
@@ -159,13 +163,12 @@ and both lower to core `For`. Accordingly, the final captured-parent stanza in
 `parse-interpolation` remains the intended non-collapsed-output divergence already
 recorded above; do not classify it as a missing global distribution function.
 
-The next investigated `import-reference` residual did not reach a landable design.
-The rejected prototype inferred parent-selector structure from `&` bytes and
-eagerly enumerated `P^A` products. That confuses opaque selector payloads such as
-`[title="&"]` with parent references and has an unbounded work/memory shape. A
-future batch should begin cleanly from `origin/dev` and establish typed parent
-occurrences plus compact, visibility-aware selector composition before changing
-the expected-failure reason.
+The separate `import-reference` selector differential is not an actionable
+distribution feature. The rejected prototype inferred parent-selector structure
+from `&` bytes and eagerly enumerated `P^A` products; it confused opaque selector
+payloads such as `[title="&"]` with parent references and had an unbounded
+work/memory shape. Under the owner ruling above, do not resume that lane as an
+implicit selector-list distribution mechanism.
 
 A separate discarded draft exposed one reproducible parser gap behind the earlier
 `tests-unit/urls/urls.less` import diagnostic: when the final `svg-gradient(...)`

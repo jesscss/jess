@@ -213,7 +213,7 @@ const expectedFailureFixtures = new Map<string, string>([
    */
   [
     'tests-unit/import/import-reference.less',
-    'A7 reference visibility is implemented; remaining CSS differs in settled v5 :is() selector compaction, explicit nested output under collapseNesting:false, comment replay, and invalid-inline indentation'
+    'A7 reference visibility and selected callable-body comment replay are implemented; remaining CSS differs in settled v5 :is() selector compaction, an existing selector-composition defect that drops the trailing :hover, explicit nested output under collapseNesting:false, preservation of the source-asserted inline comment omitted by the alpha golden, and invalid-inline indentation'
   ],
 
   /*

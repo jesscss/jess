@@ -57,4 +57,36 @@ describe('Context canonical document provenance', () => {
     expect(transitions).toHaveLength(5);
     expect(context.currentSourceOwner()).toBeNull();
   });
+
+  it('refreshes remembered document options after live plugin reconfiguration', async () => {
+    const parser: PluginInterface = {
+      name: 'test',
+      supportedExtensions: ['.test'],
+      safeParse: () => ({ document: stylesheet([]), errors: [], warnings: [] })
+    };
+    const context = new Context({}, [parser]);
+    const root = (await context.parseString('', { filePath: '/project/root.test' })).node;
+    const imported = (await context.parseString('', { filePath: '/project/imported.test' })).node;
+    const importedOwner = await context.withDocument(
+      imported,
+      async () => context.currentSourceOwner()
+    );
+
+    await context.withDocument(root, async () => {
+      expect(context.options.mathMode).toBe('parens-division');
+      await context.withSourceOwner(importedOwner, async () => {
+        context.setOption('mathMode', 'always');
+        expect(context.options.mathMode).toBe('always');
+      });
+      expect(context.options.mathMode).toBe('always');
+    });
+
+    expect(context.options.mathMode).toBe('always');
+    await context.withDocument(imported, async () => {
+      expect(context.options.mathMode).toBe('always');
+    });
+    await context.withDocument(root, async () => {
+      expect(context.options.mathMode).toBe('always');
+    });
+  });
 });

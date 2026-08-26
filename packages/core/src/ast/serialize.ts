@@ -143,7 +143,7 @@ import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; //
 import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import { mkBranch } from './extend/ir.js';
-import type { Context } from '../context.js';
+import { DocumentContext, documentTriviaOf, type Context } from '../context.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
@@ -702,8 +702,30 @@ function sourceOwnerForBody(rules: object, frame: Frame, e: EvalCtx): object | n
   return e.context?.sourceOwnerForBody?.(rules) ?? frame.sourceOwner ?? null;
 }
 
+function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: () => T): T;
+function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: () => Promise<T>): Promise<T>;
+function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: () => T | Promise<T>): T | Promise<T>;
 function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: () => T | Promise<T>): T | Promise<T> {
-  return e.context?.withSourceOwner ? e.context.withSourceOwner(owner, run) : run();
+  const context = e.context;
+  if (!context?.withSourceOwner) {
+    return run();
+  }
+
+  /* The overwhelmingly common case needs no Context option recomputation. */
+  if (owner === context.documentContext) {
+    return run();
+  }
+
+  /* Context owns resolver/plugin identity; the same document identity now
+   * restores its parser-owned trivia for output deferred beyond expansion. */
+  if (!(owner instanceof DocumentContext)) {
+    return context.withSourceOwner(owner, run);
+  }
+  const trivia = documentTriviaOf(owner);
+  if (trivia === e.trivia) {
+    return context.withSourceOwner(owner, run);
+  }
+  return withTrivia(e, trivia, () => context.withSourceOwner(owner, run));
 }
 
 function bindDetached(frame: Frame, value: Binding, lexicalFrame: Frame, sourceOwner: object | null): void {
@@ -5530,14 +5552,21 @@ function pluginVariableHit(name: string, frame: Frame | null, e: EvalCtx): Plugi
  * value-domain `FnCtx`, it is bound to this call's frame and source position so
  * the plugin can read scope, reach built-ins, and attribute its own logging.
  */
-function pluginFnContext(node: FunctionCall, frame: Frame | null, e: EvalCtx): PluginCallCtx {
-  const file = e.context?.sourceContext?.file;
+function pluginFnContext(
+  node: FunctionCall,
+  frame: Frame | null,
+  e: EvalCtx,
+  sourceOwner: object | null
+): PluginCallCtx {
+  const file = sourceOwner instanceof DocumentContext
+    ? sourceOwner.file
+    : e.context?.sourceContext?.file;
   return {
     modes: e.modes,
     stringify: value => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value),
     ...(e.io === undefined ? {} : { io: e.io }),
-    lookupVariable: name => pluginVariableHit(name, frame, e),
-    callFunction: (name, args) => {
+    lookupVariable: name => withSourceOwner(e, sourceOwner, () => pluginVariableHit(name, frame, e)),
+    callFunction: (name, args) => withSourceOwner(e, sourceOwner, () => {
       if (!e.ev) {
         return undefined;
       }
@@ -5547,12 +5576,12 @@ function pluginFnContext(node: FunctionCall, frame: Frame | null, e: EvalCtx): P
         return undefined;
       }
       return result;
-    },
+    }),
     currentFileInfo: {
       filename: file?.fullPath ?? '',
       entryPath: e.context?.entryFilePath ?? ''
     },
-    log: record => reportPluginLog(node, record, e),
+    log: record => withSourceOwner(e, sourceOwner, () => reportPluginLog(node, record, e)),
     markImportant: () => {
       if (e.importantSink) {
         e.importantSink.hit = true;
@@ -5729,10 +5758,15 @@ function evalCall(
   if (selected && rawInvoker) {
     const raw = node.args.map(arg => pluginRawArgument(arg.value, frame, e));
     return combineAll(raw, (args) => {
+      const sourceOwner = frame?.sourceOwner ?? e.context?.currentSourceOwner?.() ?? null;
       try {
-        const result = rawInvoker(selected, args, pluginFnContext(node, frame, e));
+        const result = rawInvoker(selected, args, pluginFnContext(node, frame, e, sourceOwner));
         const settled = isThenable(result)
-          ? result.catch((error: unknown) => pluginCallFailure(node, error, frame, e))
+          ? result.catch((error: unknown) => withSourceOwner(
+              e,
+              sourceOwner,
+              () => pluginCallFailure(node, error, frame, e)
+            ))
           : result;
         if (isThenable(settled)) {
           observeRejectedThenable(settled);
@@ -5741,7 +5775,7 @@ function evalCall(
           ? evalCall(node, frame, { ...e, pluginHost: undefined }, demanded)
           : value);
       } catch (error) {
-        return pluginCallFailure(node, error, frame, e);
+        return withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e));
       }
     });
   }
@@ -7008,44 +7042,45 @@ class EmittedTrivia {
   }
 }
 
-function inlineBlockCommentText(run: Trivia, trimLeadingWhitespace = false): string {
+function inlineBlockCommentText(
+  table: CommentTable,
+  runIndex: number,
+  trimLeadingWhitespace = false
+): string {
+  const source = table.src;
+  if (source === undefined) {
+    return '';
+  }
   let out = '';
-  let pos = run.start;
-  let first = true;
-  while (pos < run.end) {
-    const start = run.src.indexOf('/*', pos);
-    if (start < 0 || start >= run.end) {
-      break;
-    }
-    const end = run.src.indexOf('*/', start + 2);
-    if (end < 0 || end + 2 > run.end) {
-      break;
-    }
-
+  let pos = table.runStart[runIndex]!;
+  const firstComment = table.commentAt[runIndex]!;
+  const commentEnd = table.commentAt[runIndex + 1]!;
+  for (let comment = firstComment; comment < commentEnd; comment++) {
+    const start = table.commentStart[comment]!;
     let textStart = start;
     while (textStart > pos) {
-      const char = run.src.charCodeAt(textStart - 1);
+      const char = source.charCodeAt(textStart - 1);
       if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
         break;
       }
       textStart--;
     }
-    if (first && trimLeadingWhitespace) {
+    if (comment === firstComment && trimLeadingWhitespace) {
       textStart = start;
     }
 
-    let textEnd = end + 2;
-    while (textEnd < run.end) {
-      const char = run.src.charCodeAt(textEnd);
+    let textEnd = table.commentEnd[comment]!;
+    const runEnd = table.runEnd[runIndex]!;
+    while (textEnd < runEnd) {
+      const char = source.charCodeAt(textEnd);
       if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
         break;
       }
       textEnd++;
     }
 
-    out += run.src.slice(textStart, textEnd);
+    out += source.slice(textStart, textEnd);
     pos = textEnd;
-    first = false;
   }
   return out;
 }
@@ -7148,78 +7183,106 @@ function commentRunStartingAt(table: CommentTable, offset: number): number {
   return at < table.runs.length && table.runStart[at] === offset ? at : -1;
 }
 
-function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
+/** Take the indexed inline comment run owned by a statement's value boundary. */
+function takeIndexedInlineBlockCommentTriviaAfter(node: Statement, e: Emit): string | null {
   const trivia = e.trivia;
   if (trivia === undefined) {
-    return;
+    return null;
   }
   const table = commentTableOf(trivia);
   const source = table.src;
   if (source === undefined) {
-    return;
+    return null;
   }
   const spanStart = sourceStartOf(node);
   if (spanStart === NO_SPAN) {
-    return;
+    return null;
   }
-  const span = { start: spanStart, end: sourceEndOf(node) };
+  const spanEnd = sourceEndOf(node);
 
   /* This path only emits comments. A general trivia-boundary lookup forces a
    * legacy Parseman root map for all whitespace gaps; comment runs are already
    * sparse and source ordered. */
-  const trailing = commentRunStartingAt(table, span.end);
+  const trailing = commentRunStartingAt(table, spanEnd);
   if (trailing >= 0 && !e.emittedBlockTrivia.hasIndex(table, trailing) && runHasBlockComment(table, trailing)) {
     e.emittedBlockTrivia.addIndex(table, trailing);
-    put(e, inlineBlockCommentText(table.runs[trailing]!));
-    return;
+    return inlineBlockCommentText(table, trailing);
   }
-  for (let i = firstRunAtOrAfter(table, span.start); i < table.runs.length; i++) {
-    if (table.runStart[i]! > span.end) {
+  for (let i = firstRunAtOrAfter(table, spanStart); i < table.runs.length; i++) {
+    if (table.runStart[i]! > spanEnd) {
       break;
     }
     const runEnd = table.runEnd[i]!;
-    if (runEnd > span.end || e.emittedBlockTrivia.hasIndex(table, i) || !runHasBlockComment(table, i)) {
+    if (runEnd > spanEnd || e.emittedBlockTrivia.hasIndex(table, i) || !runHasBlockComment(table, i)) {
       continue;
     }
     let index = runEnd;
-    while (index < span.end) {
+    while (index < spanEnd) {
       const char = source.charCodeAt(index);
       if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
         break;
       }
       index++;
     }
-    if (index !== span.end) {
+    if (index !== spanEnd) {
       continue;
     }
     e.emittedBlockTrivia.addIndex(table, i);
-    put(e, inlineBlockCommentText(table.runs[i]!));
-    return;
+    return inlineBlockCommentText(table, i);
   }
-  let end = span.end;
-  while (end > span.start) {
+  return null;
+}
+
+/** Take the one inline comment run owned by a statement's value boundary. */
+function takeInlineBlockCommentTriviaAfter(node: Statement, e: Emit): string | null {
+  const indexed = takeIndexedInlineBlockCommentTriviaAfter(node, e);
+  if (indexed !== null) {
+    return indexed;
+  }
+  const trivia = e.trivia;
+  if (trivia === undefined) {
+    return null;
+  }
+  const source = commentTableOf(trivia).src;
+  if (source === undefined) {
+    return null;
+  }
+  const spanStart = sourceStartOf(node);
+  if (spanStart === NO_SPAN) {
+    return null;
+  }
+  const spanEnd = sourceEndOf(node);
+  let end = spanEnd;
+  while (end > spanStart) {
     const char = source.charCodeAt(end - 1);
     if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
       break;
     }
     end--;
   }
-  if (source.slice(end - 2, end) !== '*/') {
-    return;
+  if (end - spanStart < 2 || source.charCodeAt(end - 2) !== 42 || source.charCodeAt(end - 1) !== 47) {
+    return null;
   }
-  const open = lastIndexInSourceRange(source, '/*', span.start, end);
+  const open = lastIndexInSourceRange(source, '/*', spanStart, end);
   if (open < 0) {
-    return;
+    return null;
   }
   let start = open;
-  while (start > span.start) {
+  while (start > spanStart) {
     const char = source.charCodeAt(start - 1);
     if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
       break;
     }
     start--;
   }
-  put(e, source.slice(start, end));
+  return source.slice(start, end);
+}
+
+function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
+  const text = takeInlineBlockCommentTriviaAfter(node, e);
+  if (text !== null) {
+    put(e, text);
+  }
 }
 
 /** Find one literal only inside the AST-owned source range; never scan a file prefix/suffix. */
@@ -7791,12 +7854,8 @@ function emitTopLevelBlockCommentsBetween(
   return emitted;
 }
 
-function withDocumentTrivia<T>(e: Emit, document: Stylesheet, run: () => MaybePromise<T>): MaybePromise<T> {
+function withTrivia<T>(e: EvalCtx, next: TriviaMap | undefined, run: () => MaybePromise<T>): MaybePromise<T> {
   const previous = e.trivia;
-  const next = triviaMapOf(document);
-  if (next === undefined) {
-    return run();
-  }
   e.trivia = next;
   try {
     const result = run();
@@ -7811,6 +7870,11 @@ function withDocumentTrivia<T>(e: Emit, document: Stylesheet, run: () => MaybePr
     e.trivia = previous;
     throw error;
   }
+}
+
+function withDocumentTrivia<T>(e: Emit, document: Stylesheet, run: () => MaybePromise<T>): MaybePromise<T> {
+  const next = triviaMapOf(document);
+  return next === undefined ? run() : withTrivia(e, next, run);
 }
 
 function authoredStatementWithTrivia(node: AtRuleStatement, e: Emit): string | null {
@@ -7948,9 +8012,9 @@ function authoredSelectorHeaderWithTrivia(node: SelectorList, rendered: readonly
     for (let i = first; i < table.runs.length && table.runStart[i]! <= gapEnd; i++) {
       if (table.runEnd[i]! <= gapEnd) {
         if (comma >= 0 && table.runEnd[i]! <= comma) {
-          beforeCommaComments += inlineBlockCommentText(table.runs[i]!);
+          beforeCommaComments += inlineBlockCommentText(table, i);
         } else {
-          afterCommaComments += inlineBlockCommentText(table.runs[i]!, true);
+          afterCommaComments += inlineBlockCommentText(table, i, true);
         }
       }
     }
@@ -7997,6 +8061,7 @@ interface Leaf {
 }
 
 const pendingLeafBlockComments = new WeakMap<Leaf[], string[]>();
+const EMPTY_LEAF_BLOCK_COMMENTS: readonly string[] = Object.freeze([]);
 
 function hasPendingLeafBlockComments(group: Leaf[]): boolean {
   return (pendingLeafBlockComments.get(group)?.length ?? 0) !== 0;
@@ -8005,19 +8070,19 @@ function hasPendingLeafBlockComments(group: Leaf[]): boolean {
 function takePendingLeafBlockComments(group: Leaf[]): readonly string[] {
   const pending = pendingLeafBlockComments.get(group);
   if (pending === undefined) {
-    return [];
+    return EMPTY_LEAF_BLOCK_COMMENTS;
   }
   pendingLeafBlockComments.delete(group);
   return pending;
 }
 
-function queueLeafBlockComments(group: Leaf[], comments: readonly string[]): void {
+function queueLeafBlockComments(group: Leaf[], comments: string[]): void {
   if (comments.length === 0) {
     return;
   }
   const pending = pendingLeafBlockComments.get(group);
   if (pending === undefined) {
-    pendingLeafBlockComments.set(group, [...comments]);
+    pendingLeafBlockComments.set(group, comments);
   } else {
     pending.push(...comments);
   }
@@ -9957,18 +10022,29 @@ interface BodyTriviaReplay {
 }
 
 function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined {
-  const body = bodySpanForTriviaReplay(owner, e);
   const trivia = e.trivia;
-  if (body === undefined || trivia === undefined) {
+  if (trivia === undefined) {
     return undefined;
   }
   const table = commentTableOf(trivia);
   if (table.runs.length === 0) {
     return undefined;
   }
-  const low = firstRunAtOrAfter(table, body.start);
-  return low < table.runs.length && table.runStart[low]! < body.end
-    ? { table, end: body.end, index: low }
+  let start = bodyStartOf(owner);
+  let end: number;
+  if (start === NO_SPAN) {
+    const body = bodySpanForTriviaReplay(owner, e);
+    if (body === undefined) {
+      return undefined;
+    }
+    start = body.start;
+    end = body.end;
+  } else {
+    end = bodyEndOf(owner);
+  }
+  const low = firstRunAtOrAfter(table, start);
+  return low < table.runs.length && table.runStart[low]! < end
+    ? { table, end, index: low }
     : undefined;
 }
 
@@ -9978,23 +10054,38 @@ function queueBodyTriviaBefore(
   group: Leaf[],
   e: Emit
 ): void {
-  const end = statementStartOf(before);
-  if (replay === undefined || end === undefined) {
+  if (replay === undefined) {
     return;
   }
-  const comments: string[] = [];
+  const end = statementStartOf(before);
+  if (end === undefined) {
+    return;
+  }
+  let comments: string[] | undefined;
   const table = replay.table;
+  const previousLeaf = group[group.length - 1];
+  const inlineStart = previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node);
   while (replay.index < table.runs.length) {
     const i = replay.index;
     if (table.runStart[i]! >= end || table.runStart[i]! >= replay.end) {
       break;
     }
     replay.index++;
-    if (table.runEnd[i]! <= replay.end && !e.emittedBlockTrivia.hasIndex(table, i)) {
-      pushRunComments(table, i, comments, e);
+
+    /* An exact declaration-tail run remains leaf-owned so it keeps inline
+     * placement when this callable's leaves are emitted after expansion. */
+    if (
+      table.runStart[i] !== inlineStart
+      && table.runEnd[i]! <= replay.end
+      && !e.emittedBlockTrivia.hasIndex(table, i)
+      && runHasBlockComment(table, i)
+    ) {
+      pushRunComments(table, i, comments ??= [], e);
     }
   }
-  queueLeafBlockComments(group, comments);
+  if (comments !== undefined) {
+    queueLeafBlockComments(group, comments);
+  }
 }
 
 /** Append run `i`'s comment texts and take ownership, if it carries any. */
@@ -10020,22 +10111,34 @@ function queueBodyTriviaTail(
   if (replay === undefined) {
     return;
   }
-  const comments: string[] = [];
+  const target = partition?.encounteredContainer === true && partition.lastLeadingGroup !== undefined
+    ? partition.lastLeadingGroup
+    : group;
+  let comments: string[] | undefined;
   const table = replay.table;
+  const previousLeaf = target[target.length - 1];
+  const inlineStart = previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node);
   while (replay.index < table.runs.length) {
     const i = replay.index;
     if (table.runStart[i]! >= replay.end) {
       break;
     }
     replay.index++;
-    if (table.runEnd[i]! <= replay.end && !e.emittedBlockTrivia.hasIndex(table, i)) {
-      pushRunComments(table, i, comments, e);
+
+    /* See queueBodyTriviaBefore: the canonical leaf writer owns this exact
+     * declaration-tail boundary; this cursor owns the remaining body tail. */
+    if (
+      table.runStart[i] !== inlineStart
+      && table.runEnd[i]! <= replay.end
+      && !e.emittedBlockTrivia.hasIndex(table, i)
+      && runHasBlockComment(table, i)
+    ) {
+      pushRunComments(table, i, comments ??= [], e);
     }
   }
-  const target = partition?.encounteredContainer === true && partition.lastLeadingGroup !== undefined
-    ? partition.lastLeadingGroup
-    : group;
-  queueLeafBlockComments(target, comments);
+  if (comments !== undefined) {
+    queueLeafBlockComments(target, comments);
+  }
 }
 
 /**
@@ -10863,8 +10966,8 @@ function expandCall(
          * share it and merge.
          */
         const bodyComposed = composed === null ? null : composed.slice();
-        const bodyTrivia = bodyTriviaReplay(def, e);
         const executeBody = () => {
+          const bodyTrivia = def.rules.length === 0 ? undefined : bodyTriviaReplay(def, e);
           const pluginVersion = e.fnScopeVersion ?? 0;
           return mapMaybe(
             prepareBodyPlugins(def.rules, callFrame, e),
@@ -10947,6 +11050,13 @@ function expandCall(
 }
 
 /** Queue retained trivia from already-selected unguarded empty mixin bodies. */
+function queueCommentOnlyBody(def: MixinDefinition, e: Emit, group: Leaf[]): void {
+  const comments = bodyBlockCommentTexts(def, e);
+  if (comments.length !== 0) {
+    queueLeafBlockComments(group, comments);
+  }
+}
+
 function queueCommentOnlySelectedBodies(
   selected: readonly Selection[],
   e: Emit,
@@ -10956,9 +11066,11 @@ function queueCommentOnlySelectedBodies(
     if (def.guard !== undefined || def.rules.length !== 0) {
       continue;
     }
-    const comments = bodyBlockCommentTexts(def, e);
-    if (comments.length !== 0) {
-      queueLeafBlockComments(group, comments);
+    const owner = e.context?.sourceOwnerForBody?.(def.rules) ?? null;
+    if (owner !== null && owner !== e.context?.documentContext) {
+      settledEmission(withSourceOwner(e, owner, () => queueCommentOnlyBody(def, e, group)), def, e);
+    } else {
+      queueCommentOnlyBody(def, e, group);
     }
   }
 }
@@ -12428,7 +12540,7 @@ function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: Select
       }
     }
   }
-  const emit = (kept: Leaf[], merged = false): void => {
+  const emit = (kept: Leaf[], mergeMode: MergeGroupMode = MERGE_NONE): void => {
     const trailingBlockComments = takePendingLeafBlockComments(group);
 
     // [atrule] indent by the current block depth (0 at top level == prior behavior).
@@ -12464,14 +12576,45 @@ function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: Select
     if (owner !== undefined && kept.length === 0 && trailingBlockComments.length === 0) {
       emitBodyBlockCommentTrivia(owner, e, e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT);
     }
-    if (merged) {
-      mergeFold(kept, e, INDENT.repeat(e.depth + 1));
+    if (mergeMode !== MERGE_NONE) {
+      mergeFold(kept, e, INDENT.repeat(e.depth + 1), emitLeaf, mergeMode);
     } else {
       const bodyOwner = owner;
       const bodyStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
       const hasBody = bodyStart !== NO_SPAN;
       let bodyTriviaCursor = hasBody ? bodyStart : 0;
-      for (const leaf of kept) {
+      for (let index = 0; index < kept.length;) {
+        const leaf = kept[index]!;
+        const sourceOwner = leaf.frame.sourceOwner;
+        if (
+          sourceOwner !== null
+          && sourceOwner !== undefined
+          && e.context !== undefined
+          && sourceOwner !== e.context.documentContext
+        ) {
+          let end = index + 1;
+          while (end < kept.length && kept[end]!.frame.sourceOwner === sourceOwner) {
+            end++;
+          }
+          const start = index;
+          settledEmission(withSourceOwner(e, sourceOwner, () => {
+            for (let at = start; at < end; at++) {
+              const owned = kept[at]!;
+              if (hasBody) {
+                emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(owned.node), INDENT.repeat(e.depth + 1));
+                bodyTriviaCursor = statementEndOf(owned.node) ?? bodyTriviaCursor;
+              }
+              for (const comment of owned.leadingBlockComments ?? []) {
+                put(e, INDENT.repeat(e.depth + 1));
+                put(e, comment);
+                put(e, '\n');
+              }
+              emitLeafOwned(owned, e);
+            }
+          }), leaf.node, e);
+          index = end;
+          continue;
+        }
         if (hasBody) {
           emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(leaf.node), INDENT.repeat(e.depth + 1));
           bodyTriviaCursor = statementEndOf(leaf.node) ?? bodyTriviaCursor;
@@ -12481,7 +12624,8 @@ function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: Select
           put(e, comment);
           put(e, '\n');
         }
-        emitLeaf(leaf, e);
+        emitLeafOwned(leaf, e);
+        index++;
       }
       if (hasBody) {
         emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyOwner === undefined ? bodyTriviaCursor : bodyEndOf(bodyOwner), INDENT.repeat(e.depth + 1));
@@ -12503,8 +12647,9 @@ function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: Select
     lb.depth = e.depth;
     lb.endChunks = e.chunks.length;
   };
-  if (groupHasMerge(group)) {
-    return emit(group, true);
+  const mergeMode = mergeGroupMode(group);
+  if (mergeMode !== MERGE_NONE) {
+    return emit(group, mergeMode);
   }
   return mapMaybe(dedupGroup(group, e), emit);
 }
@@ -12617,13 +12762,29 @@ function dedupGroup(group: Leaf[], e: Emit): MaybePromise<Leaf[]> {
 
 /* --------------------------------------------------------------- merge */
 
-function groupHasMerge(group: Leaf[]): boolean {
-  for (const l of group) {
-    if (l.node.type === 'Declaration' && l.node.merge !== null) {
-      return true;
+const MERGE_NONE = 0;
+const MERGE_UNIFORM = 1;
+const MERGE_MIXED = 2;
+type MergeGroupMode = typeof MERGE_NONE | typeof MERGE_UNIFORM | typeof MERGE_MIXED;
+
+function mergeGroupMode(group: Leaf[]): MergeGroupMode {
+  const firstOwner = group[0]?.frame.sourceOwner;
+  for (let index = 0; index < group.length; index++) {
+    const leaf = group[index]!;
+    if (leaf.node.type !== 'Declaration' || leaf.node.merge === null) {
+      continue;
     }
+
+    /* Match the old no-merge/early-hit node checks exactly. Once a merge is
+     * known, classify the admitted merge group's owners in one pass. */
+    for (let ownerIndex = 1; ownerIndex < group.length; ownerIndex++) {
+      if (group[ownerIndex]!.frame.sourceOwner !== firstOwner) {
+        return MERGE_MIXED;
+      }
+    }
+    return MERGE_UNIFORM;
   }
-  return false;
+  return MERGE_NONE;
 }
 
 /**
@@ -12634,7 +12795,34 @@ function groupHasMerge(group: Leaf[]): boolean {
  * indentation of the enclosing block. Deliberate v5 divergence from less.js
  * `_mergeRules` (which anchors FIRST); see CUTOVER-STATUS.md.
  */
-function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Emit) => void = emitLeaf): void {
+function mergeFold(
+  group: Leaf[],
+  e: Emit,
+  idt: string,
+  emitOne: (l: Leaf, e: Emit) => void = emitLeaf,
+  mode: MergeGroupMode = MERGE_UNIFORM
+): void {
+  if (mode === MERGE_MIXED) {
+    mergeFoldMixedOwners(group, e, idt, emitOne);
+    return;
+  }
+  const first = group[0];
+  const sourceOwner = first?.frame.sourceOwner;
+  if (
+    first !== undefined
+    && sourceOwner !== null
+    && sourceOwner !== undefined
+    && e.context !== undefined
+    && sourceOwner !== e.context.documentContext
+  ) {
+    settledEmission(withSourceOwner(e, sourceOwner, () => mergeFoldOwned(group, e, idt, emitOne)), first.node, e);
+    return;
+  }
+  mergeFoldOwned(group, e, idt, emitOne);
+}
+
+/** Fold a merge group after any uniform source owner has been activated. */
+function mergeFoldOwned(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Emit) => void): void {
   // Resolve each declaration's name once.
   const names: (string | null)[] = group.map(l =>
     l.node.type === 'Declaration' ? declName(l.node, l.frame, e) : null);
@@ -12657,6 +12845,11 @@ function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Em
     const leaf = group[i]!;
     const n = leaf.node;
     if (n.type === 'Declaration' && n.merge !== null) {
+      for (const comment of leaf.leadingBlockComments ?? []) {
+        put(e, idt);
+        put(e, comment);
+        put(e, '\n');
+      }
       const indices = mergeGroups.get(names[i]!)!;
       if (i !== indices[indices.length - 1]) {
         continue;
@@ -12675,23 +12868,210 @@ function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Em
          * Match ordinary declaration emission: an Important wrapper may sit
          * behind a variable reference, and promotes this whole merged line.
          * Keep that one-bit signal on the existing emit context: merged output
-         * already takes this path only after `groupHasMerge` admitted the group.
+         * already takes this path only after `mergeGroupMode` admitted the group.
          */
         const previousImportant = e.mergeImportant;
         e.mergeImportant = false;
         const bytes = evalBytesSync(dn.value, group[idx]!.frame, e);
+        const inlineComment = takeIndexedInlineBlockCommentTriviaAfter(dn, e) ?? '';
         important ||= dn.important || group[idx]!.important === true || e.mergeImportant;
         e.mergeImportant = previousImportant;
         if (k === 0) {
-          combined = bytes;
+          combined = bytes + inlineComment;
         } else {
-          combined += (dn.merge === ',' ? ', ' : ' ') + bytes;
+          combined += (dn.merge === ',' ? ', ' : ' ') + bytes + inlineComment;
         }
       }
       emitMergedLine(e, names[i]!, combined, important, idt);
     } else {
       emitOne(leaf, e);
     }
+  }
+}
+
+/** Resolve mixed-source merge names while each contiguous run owns Context. */
+function captureMixedMergeNames(
+  group: Leaf[],
+  names: (string | null)[],
+  start: number,
+  end: number,
+  e: Emit
+): void {
+  for (let index = start; index < end; index++) {
+    const leaf = group[index]!;
+    const node = leaf.node;
+    if (node.type !== 'Declaration' || node.merge === null) {
+      continue;
+    }
+    names[index] = declName(node, leaf.frame, e);
+  }
+}
+
+/** Append one contiguous merge-member owner run without allocating a callback. */
+function appendMixedMergeMemberRun(
+  group: Leaf[],
+  indices: number[],
+  start: number,
+  end: number,
+  combined: string,
+  e: Emit
+): string {
+  for (let at = start; at < end; at++) {
+    const memberIndex = indices[at]!;
+    const memberLeaf = group[memberIndex]!;
+    const memberNode = memberLeaf.node;
+    if (memberNode.type !== 'Declaration') {
+      throw new TypeError('Expected declaration merge member');
+    }
+    const memberImportant = e.mergeImportant;
+    e.mergeImportant = false;
+    const bytes = evalBytesSync(memberNode.value, memberLeaf.frame, e);
+    const inlineComment = takeIndexedInlineBlockCommentTriviaAfter(memberNode, e) ?? '';
+    combined += at === 0
+      ? bytes + inlineComment
+      : (memberNode.merge === ',' ? ', ' : ' ') + bytes + inlineComment;
+    e.mergeImportant = memberImportant === true
+      || memberNode.important
+      || memberLeaf.important === true
+      || e.mergeImportant;
+  }
+  return combined;
+}
+
+/** Emit one already-resolved mixed-source merge run under its active owner. */
+function emitMixedMergeMembers(
+  group: Leaf[],
+  names: (string | null)[],
+  mergeGroups: Map<string, number[]>,
+  start: number,
+  end: number,
+  e: Emit,
+  idt: string,
+  emitOne: (leaf: Leaf, emit: Emit) => void
+): void {
+  for (let index = start; index < end; index++) {
+    const leaf = group[index]!;
+    const node = leaf.node;
+    if (node.type !== 'Declaration' || node.merge === null) {
+      emitOne(leaf, e);
+      continue;
+    }
+    for (const comment of leaf.leadingBlockComments ?? []) {
+      put(e, idt);
+      put(e, comment);
+      put(e, '\n');
+    }
+    const indices = mergeGroups.get(names[index]!)!;
+    if (index !== indices[indices.length - 1]) {
+      continue;
+    }
+    let combined = '';
+    const previousImportant = e.mergeImportant;
+    e.mergeImportant = false;
+    for (let member = 0; member < indices.length;) {
+      const sourceOwner = group[indices[member]!]!.frame.sourceOwner;
+      let memberEnd = member + 1;
+      while (
+        memberEnd < indices.length
+        && group[indices[memberEnd]!]!.frame.sourceOwner === sourceOwner
+      ) {
+        memberEnd++;
+      }
+      if (
+        sourceOwner !== null
+        && sourceOwner !== undefined
+        && e.context !== undefined
+        && sourceOwner !== e.context.documentContext
+      ) {
+        const start = member;
+        withSourceOwner(e, sourceOwner, () => {
+          combined = appendMixedMergeMemberRun(
+            group, indices, start, memberEnd, combined, e
+          );
+        });
+      } else {
+        combined = appendMixedMergeMemberRun(
+          group, indices, member, memberEnd, combined, e
+        );
+      }
+      member = memberEnd;
+    }
+    const mergedImportant = Boolean(e.mergeImportant);
+    e.mergeImportant = previousImportant;
+    emitMergedLine(e, names[index]!, combined, mergedImportant, idt);
+  }
+}
+
+/** Fold a merge group whose leaves come from more than one source document. */
+function mergeFoldMixedOwners(
+  group: Leaf[],
+  e: Emit,
+  idt: string,
+  emitOne: (leaf: Leaf, emit: Emit) => void
+): void {
+  const names: (string | null)[] = new Array(group.length).fill(null);
+
+  for (let index = 0; index < group.length;) {
+    const sourceOwner = group[index]!.frame.sourceOwner;
+    let end = index + 1;
+    while (end < group.length && group[end]!.frame.sourceOwner === sourceOwner) {
+      end++;
+    }
+    if (
+      sourceOwner !== null
+      && sourceOwner !== undefined
+      && e.context !== undefined
+      && sourceOwner !== e.context.documentContext
+    ) {
+      const start = index;
+      withSourceOwner(e, sourceOwner, () => {
+        captureMixedMergeNames(group, names, start, end, e);
+      });
+    } else {
+      captureMixedMergeNames(group, names, index, end, e);
+    }
+    index = end;
+  }
+
+  const mergeGroups = new Map<string, number[]>();
+  for (let index = 0; index < group.length; index++) {
+    const node = group[index]!.node;
+    if (node.type !== 'Declaration' || node.merge === null) {
+      continue;
+    }
+    const name = names[index]!;
+    const members = mergeGroups.get(name);
+    if (members === undefined) {
+      mergeGroups.set(name, [index]);
+    } else {
+      members.push(index);
+    }
+  }
+
+  for (let index = 0; index < group.length;) {
+    const sourceOwner = group[index]!.frame.sourceOwner;
+    let end = index + 1;
+    while (end < group.length && group[end]!.frame.sourceOwner === sourceOwner) {
+      end++;
+    }
+    if (
+      sourceOwner !== null
+      && sourceOwner !== undefined
+      && e.context !== undefined
+      && sourceOwner !== e.context.documentContext
+    ) {
+      const start = index;
+      withSourceOwner(e, sourceOwner, () => {
+        emitMixedMergeMembers(
+          group, names, mergeGroups, start, end, e, idt, emitOne
+        );
+      });
+    } else {
+      emitMixedMergeMembers(
+        group, names, mergeGroups, index, end, e, idt, emitOne
+      );
+    }
+    index = end;
   }
 }
 
@@ -12884,6 +13264,24 @@ function finishDrop(e: Emit, mark: DropMark, deferred: boolean): void {
 }
 
 function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
+  const sourceOwner = leaf.frame.sourceOwner;
+  const context = e.context;
+  if (
+    sourceOwner !== null
+    && sourceOwner !== undefined
+    && context !== undefined
+    && sourceOwner !== context.documentContext
+  ) {
+    /* Mixin expansion can outlive its source-scope callback because leaves are
+     * grouped for dedup/merge. Re-enter only on that exceptional mismatch. */
+    settledEmission(withSourceOwner(e, sourceOwner, () => emitLeafOwned(leaf, e, atRoot)), leaf.node, e);
+    return;
+  }
+  emitLeafOwned(leaf, e, atRoot);
+}
+
+/** Emit one leaf after its source owner/trivia are already active. */
+function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
   const { node, frame } = leaf;
   const start = e.off;
 
@@ -14316,8 +14714,9 @@ function emitAtRuleBody(
   let bodyTriviaCursor = ownerBodyStart === NO_SPAN ? 0 : ownerBodyStart;
   const flushDirect = (): void => {
     if (group.length > 0) {
-      if (groupHasMerge(group)) {
-        mergeFold(group, e, INDENT.repeat(e.depth + 1));
+      const mergeMode = mergeGroupMode(group);
+      if (mergeMode !== MERGE_NONE) {
+        mergeFold(group, e, INDENT.repeat(e.depth + 1), emitLeaf, mergeMode);
       } else {
         for (const leaf of group) {
           if (owner !== undefined) {
@@ -14524,11 +14923,14 @@ function emitBubbleBody(
         );
       }
       e.depth--;
-    } else if (groupHasMerge(group)) {
-      mergeFold(group, e, INDENT.repeat(e.depth + 1));
     } else {
-      for (const leaf of group) {
-        emitLeaf(leaf, e);
+      const mergeMode = mergeGroupMode(group);
+      if (mergeMode !== MERGE_NONE) {
+        mergeFold(group, e, INDENT.repeat(e.depth + 1), emitLeaf, mergeMode);
+      } else {
+        for (const leaf of group) {
+          emitLeaf(leaf, e);
+        }
       }
     }
     group.length = 0;
@@ -14961,7 +15363,8 @@ function emitNestedBody(
    * compile. Left undefined for a SHARED leaf buffer, where the body being
    * emitted is not this call's to anchor against.
    */
-  owner?: object
+  owner?: object,
+  bodyTrivia?: BodyTriviaReplay
 ): MaybePromise<void> {
   /*
    * buffer consecutive DIRECT leaves so a `+`/`+_` merge group can fold at
@@ -14988,15 +15391,57 @@ function emitNestedBody(
     bodyTriviaCursor = end === NO_SPAN ? bodyTriviaCursor : end;
   };
   const flushBuf = sharedLeaves?.flush ?? (() => {
-    if (buf.length === 0) {
+    if (buf.length === 0 && !hasPendingLeafBlockComments(buf)) {
       return;
     }
-    if (groupHasMerge(buf)) {
-      mergeFold(buf, e, e.depth > 0 ? INDENT.repeat(e.depth) : '', emitNestedLeaf);
+    const trailingBlockComments = takePendingLeafBlockComments(buf);
+    const mergeMode = mergeGroupMode(buf);
+    if (mergeMode !== MERGE_NONE) {
+      mergeFold(
+        buf,
+        e,
+        e.depth > 0 ? INDENT.repeat(e.depth) : '',
+        emitNestedLeaf,
+        mergeMode
+      );
     } else {
-      for (const leaf of buf) {
+      for (let index = 0; index < buf.length;) {
+        const leaf = buf[index]!;
+        const sourceOwner = leaf.frame.sourceOwner;
+        if (
+          sourceOwner !== null
+          && sourceOwner !== undefined
+          && e.context !== undefined
+          && sourceOwner !== e.context.documentContext
+        ) {
+          let end = index + 1;
+          while (end < buf.length && buf[end]!.frame.sourceOwner === sourceOwner) {
+            end++;
+          }
+          const start = index;
+          settledEmission(withSourceOwner(e, sourceOwner, () => {
+            for (let at = start; at < end; at++) {
+              const owned = buf[at]!;
+              replayBodyCommentsBefore(owned.node);
+              emitNestedLeafOwned(owned, e);
+            }
+          }), leaf.node, e);
+          index = end;
+          continue;
+        }
         replayBodyCommentsBefore(leaf.node);
-        emitNestedLeaf(leaf, e);
+        emitNestedLeafOwned(leaf, e);
+        index++;
+      }
+    }
+    if (trailingBlockComments.length !== 0) {
+      const indent = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+      for (const comment of trailingBlockComments) {
+        if (indent) {
+          put(e, indent);
+        }
+        put(e, comment);
+        put(e, '\n');
       }
     }
     buf.length = 0;
@@ -15038,6 +15483,10 @@ function emitNestedBody(
     for (let index = start; index < statements.length; index++) {
       const node = statements[index]!;
 
+      if (node.type !== 'Declaration' && node.type !== 'Comment') {
+        queueBodyTriviaBefore(bodyTrivia, node, buf, e);
+      }
+
       /*
        * Root sibling grouping is source-adjacent only. Any non-Ruleset—including a
        * silent declaration/definition—forms a hard boundary.
@@ -15051,6 +15500,7 @@ function emitNestedBody(
           if (e.referenceImportDepth > 0) {
             break;
           }
+          queueBodyTriviaBefore(bodyTrivia, node, buf, e);
           const pushLeaf = (leafNode: Declaration | Comment): void => {
             const leaf = attachPendingLeafBlockComments(buf, {
               node: leafNode,
@@ -15257,6 +15707,7 @@ function emitNestedBody(
           break;
       }
     }
+    queueBodyTriviaTail(bodyTrivia, buf, null, e);
     if (!sharedLeaves) {
       flushBuf();
 
@@ -15276,6 +15727,24 @@ function emitNestedBody(
 
 /** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
 function emitNestedLeaf(leaf: Leaf, e: Emit): void {
+  const sourceOwner = leaf.frame.sourceOwner;
+  const context = e.context;
+  if (
+    sourceOwner !== null
+    && sourceOwner !== undefined
+    && context !== undefined
+    && sourceOwner !== context.documentContext
+  ) {
+    /* Shared nested-leaf buffers have the same deferred source-owner boundary
+     * as collapsed leaf groups; the ordinary identity-equal lane stays direct. */
+    settledEmission(withSourceOwner(e, sourceOwner, () => emitNestedLeafOwned(leaf, e)), leaf.node, e);
+    return;
+  }
+  emitNestedLeafOwned(leaf, e);
+}
+
+/** Emit one nested leaf after its source owner/trivia are already active. */
+function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
   const { node, frame } = leaf;
   const start = e.off;
   const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
@@ -15851,6 +16320,8 @@ function expandNestedCall(
             ? { source, callFrame } satisfies NestedRuleMixinPlacement
             : null;
           const executeBody = () => {
+            /* The selected-body prequeue is the sole owner of comment-only bodies. */
+            const bodyTrivia = def.rules.length === 0 ? undefined : bodyTriviaReplay(def, e);
             const pluginVersion = e.fnScopeVersion ?? 0;
             return mapMaybe(
               prepareBodyPlugins(def.rules, callFrame, e),
@@ -15858,7 +16329,19 @@ function expandNestedCall(
                 if (!bindingsTrackedAtDispatch && (e.fnScopeVersion ?? 0) !== pluginVersion && bindings !== null) {
                   capturePreparedBodyPluginBindings(def, call, bindings, frame, homeFrame, e);
                 }
-                return emitNestedBody(def.rules, callFrame, e, undefined, bodyImp, source, placement, sharedLeaves, applyExpansion);
+                return emitNestedBody(
+                  def.rules,
+                  callFrame,
+                  e,
+                  undefined,
+                  bodyImp,
+                  source,
+                  placement,
+                  sharedLeaves,
+                  applyExpansion,
+                  undefined,
+                  bodyTrivia
+                );
               }
             );
           };

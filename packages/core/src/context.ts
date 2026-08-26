@@ -22,7 +22,7 @@ import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
-import { NO_SPAN, sourceStartOf } from './ast/provenance.js';
+import { NO_SPAN, sourceStartOf, triviaMapOf } from './ast/provenance.js';
 import { extractRelevantLines, lineColAt } from './error/code-frame.js';
 import { type JessErrorCode, type Phase, resolveTemplate } from './error/codes.js';
 import type { Deprecation } from './deprecation.js';
@@ -297,6 +297,12 @@ export interface DocumentContextOptions extends ContextOptions {
   plugin?: PluginInterface;
 }
 
+/** Private parser-provenance slot on the exported document identity. */
+const DOCUMENT_TRIVIA: unique symbol = Symbol('jess.context.document-trivia');
+
+/** Private compile-option version for lazy refresh after live reconfiguration. */
+const DOCUMENT_OPTIONS_VERSION: unique symbol = Symbol('jess.context.document-options-version');
+
 /**
  * Source identity carried by canonical AST documents for one Context session.
  * It intentionally has no legacy node scope, selector cache, or placement state.
@@ -313,6 +319,41 @@ export class DocumentContext {
     this.file = opts.file;
     this.plugin = opts.plugin;
   }
+}
+
+/** Attach canonical-document trivia without changing the public class declaration. */
+function attachDocumentFacts(
+  context: DocumentContext,
+  trivia: TriviaMap | undefined,
+  optionsVersion: number
+): void {
+  Object.defineProperty(context, DOCUMENT_TRIVIA, { value: trivia });
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- canonical contexts receive both module-private slots together.
+  (context as DocumentContext & { [DOCUMENT_OPTIONS_VERSION]: number })[DOCUMENT_OPTIONS_VERSION] = optionsVersion;
+}
+
+/** Core-internal access; intentionally absent from the package-root exports. */
+export function documentTriviaOf(context: DocumentContext): TriviaMap | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- canonical contexts receive this module-private slot in rememberDocumentContext.
+  return (context as DocumentContext & {
+    readonly [DOCUMENT_TRIVIA]: TriviaMap | undefined;
+  })[DOCUMENT_TRIVIA];
+}
+
+/** Read the version of compile options folded into one canonical document. */
+function documentOptionsVersionOf(context: DocumentContext): number {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- only canonical contexts enter the document-owner path.
+  return (context as DocumentContext & {
+    readonly [DOCUMENT_OPTIONS_VERSION]: number;
+  })[DOCUMENT_OPTIONS_VERSION];
+}
+
+/** Mark one canonical document's option pointer current after a lazy refresh. */
+function setDocumentOptionsVersion(context: DocumentContext, version: number): void {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- only canonical contexts enter the document-owner path.
+  (context as DocumentContext & {
+    [DOCUMENT_OPTIONS_VERSION]: number;
+  })[DOCUMENT_OPTIONS_VERSION] = version;
 }
 
 /** The source facts shared by canonical documents and retained legacy trees. */
@@ -426,13 +467,14 @@ export class Context {
   private readonly moduleCache = new Map<string, Promise<LoadedModuleResult> | LoadedModuleResult>();
   private readonly pluginCacheIds = new WeakMap<PluginInterface, number>();
   private nextPluginCacheId = 0;
+  private documentOptionsVersion = 0;
 
   /**
-   * Flat, fully-resolved options for the currently-active tree context — the one
+   * Flat, fully-resolved options for the currently-active source context — the one
    * place to read a resolved option (`context.options.unitMode`). Every field is
-   * present, so there is no `??` and no per-read merge. Written only by the
-   * `treeContext` setter (and shared with that tree context); do not assign it
-   * directly. See {@link ResolvedOptions}.
+   * present, so there is no `??` and no per-read merge. Context source switches
+   * and {@link setOption} keep it shared with the active tree/document context;
+   * consumers must not assign it directly. See {@link ResolvedOptions}.
    */
   options: ResolvedOptions;
 
@@ -495,14 +537,6 @@ export class Context {
     return entry?.file?.fullPath ?? '';
   }
 
-  private setDocumentContext(dc: DocumentContext | undefined): void {
-    this._documentContext = dc;
-    this.options = resolveOptions(this.opts, dc?.options ?? this._treeContext?.options);
-    if (dc) {
-      dc.options = this.options;
-    }
-  }
-
   /** Active source facts for resolver, diagnostics, and file-reading consumers. */
   get sourceContext(): SourceContext | undefined {
     return this._documentContext ?? this._treeContext;
@@ -557,7 +591,44 @@ export class Context {
    */
   setOption<K extends keyof ResolvedOptions>(key: K, value: ResolvedOptions[K]): void {
     this.opts[key] = value;
+    this.documentOptionsVersion++;
     this.options = resolveOptions(this.opts, this._documentContext?.options ?? this._treeContext?.options);
+    if (this._documentContext) {
+      this._documentContext.options = this.options;
+      setDocumentOptionsVersion(this._documentContext, this.documentOptionsVersion);
+    }
+  }
+
+  /** Activate cached canonical options, refreshing once after a live option change. */
+  private activateDocumentContext(context: DocumentContext): void {
+    if (documentOptionsVersionOf(context) !== this.documentOptionsVersion) {
+      context.options = resolveOptions(this.opts, context.options);
+      setDocumentOptionsVersion(context, this.documentOptionsVersion);
+    }
+    this._documentContext = context;
+    this.options = context.options;
+  }
+
+  /** Restore a source scope, refreshing only when setOption changed its version. */
+  private restoreDocumentContext(
+    context: DocumentContext | undefined,
+    options: ResolvedOptions,
+    optionsVersion: number
+  ): void {
+    if (optionsVersion === this.documentOptionsVersion) {
+      this._documentContext = context;
+      this.options = options;
+      return;
+    }
+    if (context) {
+      this.activateDocumentContext(context);
+      return;
+    }
+    this._documentContext = undefined;
+    this.options = resolveOptions(this.opts, options);
+    if (this._treeContext) {
+      this._treeContext.options = this.options;
+    }
   }
 
   /**
@@ -1236,7 +1307,7 @@ export class Context {
     source: string | undefined,
     plugin: PluginInterface
   ): void {
-    this.documentContexts.set(document, new DocumentContext({
+    const documentContext = new DocumentContext({
       file: {
         name: path.basename(filePath),
         path: path.dirname(filePath),
@@ -1244,7 +1315,14 @@ export class Context {
         ...(source === undefined ? {} : { source })
       },
       plugin
-    }));
+    });
+    documentContext.options = resolveOptions(this.opts, documentContext.options);
+    attachDocumentFacts(
+      documentContext,
+      triviaMapOf(document),
+      this.documentOptionsVersion
+    );
+    this.documentContexts.set(document, documentContext);
   }
 
   /**
@@ -1259,18 +1337,20 @@ export class Context {
       return run();
     }
     const previous = this._documentContext;
-    this.setDocumentContext(next);
+    const previousOptions = this.options;
+    const previousOptionsVersion = this.documentOptionsVersion;
+    this.activateDocumentContext(next);
     try {
       const result = run();
       if (isAsyncDocumentWork(result)) {
         return result.finally(() => {
-          this.setDocumentContext(previous);
+          this.restoreDocumentContext(previous, previousOptions, previousOptionsVersion);
         });
       }
-      this.setDocumentContext(previous);
+      this.restoreDocumentContext(previous, previousOptions, previousOptionsVersion);
       return result;
     } catch (error) {
-      this.setDocumentContext(previous);
+      this.restoreDocumentContext(previous, previousOptions, previousOptionsVersion);
       throw error;
     }
   }
@@ -1321,18 +1401,20 @@ export class Context {
       return run();
     }
     const previous = this._documentContext;
-    this.setDocumentContext(next);
+    const previousOptions = this.options;
+    const previousOptionsVersion = this.documentOptionsVersion;
+    this.activateDocumentContext(next);
     try {
       const result = run();
       if (isAsyncDocumentWork(result)) {
         return result.finally(() => {
-          this.setDocumentContext(previous);
+          this.restoreDocumentContext(previous, previousOptions, previousOptionsVersion);
         });
       }
-      this.setDocumentContext(previous);
+      this.restoreDocumentContext(previous, previousOptions, previousOptionsVersion);
       return result;
     } catch (error) {
-      this.setDocumentContext(previous);
+      this.restoreDocumentContext(previous, previousOptions, previousOptionsVersion);
       throw error;
     }
   }
@@ -1348,18 +1430,20 @@ export class Context {
       return run();
     }
     const previous = this._documentContext;
-    this.setDocumentContext(owner);
+    const previousOptions = this.options;
+    const previousOptionsVersion = this.documentOptionsVersion;
+    this.activateDocumentContext(owner);
     try {
       const result = run();
       if (isAsyncDocumentWork(result)) {
         return result.finally(() => {
-          this.setDocumentContext(previous);
+          this.restoreDocumentContext(previous, previousOptions, previousOptionsVersion);
         });
       }
-      this.setDocumentContext(previous);
+      this.restoreDocumentContext(previous, previousOptions, previousOptionsVersion);
       return result;
     } catch (error) {
-      this.setDocumentContext(previous);
+      this.restoreDocumentContext(previous, previousOptions, previousOptionsVersion);
       throw error;
     }
   }

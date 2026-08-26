@@ -1,0 +1,11 @@
+@plugin "./p";
+@import (reference) "nested/async-library.less";
+
+.consumer {
+  .async-library();
+}
+
+.after {
+  image: url("after.png");
+  /* caller trailing */
+}

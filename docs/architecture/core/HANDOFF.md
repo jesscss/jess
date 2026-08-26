@@ -3832,7 +3832,192 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-25 imported CSS-terminal document-prelude planning.
+- Latest pass: 2026-08-25 imported reference-mixin body trivia ownership. This
+  is a bounded emitted-CSS correction under SETTLED A7, G28, and N6, not a speed
+  or neutrality claim.
+- Architecture surface: canonical AST-v2 Context source identity, callable-body
+  trivia replay, and the collapsed/nested leaf writers. Parser grammar, AST/CST
+  nodes and spans, import resolution/admission, selector composition, plugin
+  result semantics, legacy-tree rendering, and owner-maintained CSS fixtures are
+  unchanged. Delayed source-reading plugin capabilities and failures now
+  deliberately re-enter the imported call site's source owner; `markImportant`
+  remains a render-local sink mutation and needs no source switch.
+- Separation/duplication: each parsed canonical document already owns one
+  `TriviaMap`. `rememberDocumentContext` now reads that existing side-table fact
+  once and retains its pointer plus one compile-option version scalar in two
+  private-symbol slots attached only to the canonical document's existing
+  `DocumentContext`; legacy `TreeContext` instances gain no duplicate slot. The
+  class declaration is unchanged, and the core-internal accessor is not
+  re-exported from the package root.
+  The existing render `Frame.sourceOwner` pointer remains the only per-activation
+  provenance carrier; no leaf field or parallel owner map is added. A selected
+  callable enters its recorded source owner before constructing the existing
+  sparse body cursor, and a grouped leaf re-enters only when its frame owner
+  differs from Context's active document. Contiguous leaves with one imported
+  owner re-enter once as a run. Uniform merge groups re-enter once; a mixed-source
+  merge captures and emits each contiguous owner run under that owner while
+  preserving one logical accumulator. The existing admission scan retains its
+  no-merge early exit; an admitted merge then performs one owner-classification
+  pass and exits on the first mismatch. Exact declaration-tail runs remain owned
+  by the canonical leaf/merge writer, while the callable cursor owns true
+  before/between/tail body runs. Comment-only bodies enter their owner before
+  reading trivia and remain solely owned by the existing empty-body queue.
+- New traversal: the collapsed emitter's existing monotonic callable-body
+  cursor is reused by the nested emitter. It performs one binary seek into the
+  existing sparse comment table and visits each comment-bearing run inside the
+  selected body at most once. Mixed-source merge capture and emission each make
+  one monotonic pass over their existing leaf group and group contiguous owners
+  without restarting. The only new output loop writes the already-sliced trailing
+  comment strings once. There is no new document/tree walk, source scan, parser
+  replay, restart-at-zero scan, selector walk, or value-group traversal. Merge
+  members use the comment table's exact indexed run and comment bounds; the
+  pre-existing compatibility source fallback remains confined to the ordinary
+  declaration writer.
+- Complexity and ordinary lane: only a canonical AST `DocumentContext` gains one
+  fixed trivia pointer and one numeric option-version slot; exported class
+  declarations and legacy `TreeContext` instances are unchanged. Remembering a
+  canonical document adds exactly one `triviaMapOf(document)` lookup, one scalar
+  version store, and no collection. Each ordinary collapsed
+  or nested leaf adds local reads of `frame.sourceOwner` and `e.context`, followed
+  by null/context-identity checks; identity-equal leaves call the prior writer
+  directly. Each ordinary source-owner activation adds one document-identity
+  comparison and now calls its work directly, without re-setting identical
+  Context options or allocating a closure. Only a genuine cross-document
+  mismatch performs `instanceof`, one trivia-identity comparison, direct saved
+  pointer swaps for the already-resolved document options/source identity/trivia,
+  and callback wrappers around the existing Context source-owner callback.
+  Registration retains one compile-folded `ResolvedOptions` object after the
+  `DocumentContext` constructor's initial resolved object. Ordinary source re-entry
+  reads the matching version and allocates no replacement `ResolvedOptions` object.
+  The public `setOption` reconfiguration lane increments
+  one Context scalar and lazily refreshes each stale document once; restoration
+  refreshes the caller only when that version changed inside the entered scope.
+  Collapsed and nested buffers coalesce consecutive mismatched leaves,
+  so that cost is once per contiguous owner run rather than once per declaration.
+  A uniform merge retains that one-run cost. A mixed-source merge reuses the
+  existing group-length name array, name-to-member `Map`, and per-name index
+  arrays; the existing merge-admission scan is followed by one admitted-group
+  owner-classification pass, then one name-capture and one emission pass. Each
+  foreign contiguous name/output run re-enters once, and an anchored merged value
+  re-enters each contiguous member-owner run once while preserving evaluation
+  at the existing last-member anchor. Identity-equal member runs call the
+  indexed append helper directly; only genuine mismatches allocate a
+  source-owner callback.
+- New node/materialization: no AST/CST node, copied body, wrapper Rules, source
+  string, per-leaf carrier, Map, Set, WeakMap, or Error on the ordinary and
+  uniform-source lanes. Each canonical AST `DocumentContext` object gains two
+  hidden fixed slots; its public declaration and every legacy-tree instance are
+  unchanged. Canonical-document registration allocates the constructor's initial
+  `ResolvedOptions`, one replacement compile-folded `ResolvedOptions`, and the
+  `{ value: trivia }` descriptor used to attach the hidden trivia pointer; these
+  are cold once-per-document facts, not source-re-entry allocations. The
+  mixed-source merge uses the same name array, merge `Map`, and
+  member-index arrays already required by merge folding, without another
+  per-member carrier. A nested selected statement-bearing callable whose body
+  actually intersects a comment run allocates the same three-field
+  `BodyTriviaReplay` record already used by the collapsed emitter. Empty tables
+  reject before body-span materialization or per-statement span reads. Comment
+  arrays remain lazy, are transferred directly into pending ownership without a
+  pass-through clone, and exist only when a block comment becomes output. One
+  module-once frozen empty array replaces the former fresh empty array returned
+  by every pending-comment miss; empty nested flushes also skip indentation
+  construction. Cross-document owner runs and delayed legacy-plugin capability
+  calls exceptionally allocate callback closures; no closure is added to
+  identity-equal leaf output.
+- Render path: comments are sliced only when they become required output and are
+  written through the canonical chunk buffer. Declaration values stay on the
+  existing typed writer. No array/node/string is constructed merely to classify
+  a comment; exact parser-owned source offsets and document-owned comment columns
+  decide whether the leaf or body cursor owns a run and delimit its output text.
+- Helper/API surface: one private `withTrivia` helper factors the exact save,
+  async-finally, and restore behavior formerly embedded in `withDocumentTrivia`;
+  it also lets source-owner re-entry restore the same render pointer. The nested
+  emitter accepts one private optional `BodyTriviaReplay` argument. One
+  core-internal `documentTriviaOf` accessor reads a non-exported-symbol slot;
+  `@jesscss/core`'s public `DocumentContext` declaration and package entrypoints
+  gain no field, export alias, compatibility facade, option, or node type.
+- Metadata mutations: canonical AST/CST nodes, source spans, body spans, trivia
+  tables, parents, and roots are never mutated. The private document-trivia slot
+  is defined once when a canonical document enters Context; the private option
+  version advances only after explicit live `setOption` reconfiguration. On a
+  cross-document callback, `e.trivia`
+  is restored in both sync, async, and throwing exits. Existing
+  `EmittedTrivia` bits remain the single per-render ownership guard.
+- Review-flagged diff tokens: [loop/traversal] one trailing semantic-comment
+  output loop plus the existing sparse monotonic cursor on the newly admitted
+  nested selected-body lane, the existing merge-admission scan followed by one
+  admitted-group owner scan, and two
+  mixed-source merge passes; [materialized
+  object/array] one fixed canonical-document source pointer and numeric version,
+  one cold body cursor,
+  lazy semantic comment arrays, one module empty singleton, and mismatch-only
+  callback closures; [side map/set] only the merge
+  lane's existing name-to-member map is present;
+  [node construction/copy] none; [source scan/reparse] none; [routine Error]
+  none; [public API] none—the source fact is hidden behind a module-private
+  symbol and a core-internal relative import.
+- Behavior evidence: the public reference-mixin fixture passes in both
+  `collapseNesting` modes and pins a declaration-tail comment inline plus a
+  trailing selected-body comment as its own line, an imported comment-only body,
+  and inline comments on imported and caller members of one mixed-source merge.
+  Async legacy-plugin probes pin imported URL rebasing, delayed built-in function
+  dispatch, every replayed logger record's attribution, outer-function
+  `currentFileInfo` after an async raw argument, rejection file/line attribution,
+  and caller-source restoration across worker round-trips. Focused block-comment
+  and Less function controls pass 37 active tests with 21 pre-existing todo; the
+  filtered owner `import-reference.less` expected-failure lane passes and its
+  exact remaining diff contains the pulled body comment. The dependency-order
+  release build; full core suite (212 files / 3364 tests / 9 skipped / 2 todo);
+  all-less (111/111); all-less-error (96/96); AST-v2 production ratchet (4/4);
+  package exports; macro compilation with zero interpreter fallbacks;
+  compose-integrity; materialization-frontier; render-buffer-frontier;
+  guardrails; aggressive-cutting contract; and `git diff --check` pass.
+  `verify:shape-stability` retains its inherited two stale AST-inventory failures
+  (`BracketLookup`, `ImportAtRule`, `SpacedValue`, `VarIndirect`, and
+  `VariableReference` versus current `Lookup`, `LookupStep`, `Sequence`, and
+  `StyleImport`); CST shape inventory and the AST monomorphic-shape assertion pass,
+  and this batch changes no AST/CST factory or node shape. The owner fixture's
+  lost trailing `:hover` is recorded separately as an existing selector-composition
+  defect, not misclassified as settled `:is()` compaction or distribution.
+- Performance evidence: no speed claim. Deterministic operation/allocation
+  counts above are load-bearing. The committed-state
+  `measure:less:hotpath` sanity run is UNVERIFIED / inherited red: it exits
+  before timing on the upstream Less `functions.less` numeric-leading `@1`
+  diagnostic, the same pre-timing failure recorded for clean `origin/dev`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "SETTLED A7 makes a reference-imported callable visible only when selected, SETTLED G28 requires both emitters to replay block-interior comments, and SETTLED N6 keeps authored comments and spacing in parser-owned side-table provenance. The selected body therefore reuses its document's existing TriviaMap rather than copying nodes or deriving placement from bytes.",
+    "dangerTokensJustification": "The existing sourceOwner pointer selects one existing document trivia table. One sparse cursor consumes each admitted body run monotonically; exact statement-end offsets leave declaration-tail comments to the indexed leaf or merge writer. Empty tables reject before span reads/materialization, pending comment arrays transfer ownership without cloning, empty flushes reuse one singleton and skip indentation, and contiguous cross-document leaves re-enter Context once per owner run using already-resolved option pointers. Canonical-document registration has one initial and one replacement compile-folded ResolvedOptions object plus one hidden-trivia property descriptor; ordinary unchanged-version re-entry allocates no replacement options object. A mixed-source merge retains the existing early-exit admission scan, then classifies the admitted group's owners in one pass with an immediate mismatch exit; it reuses its existing name array/map/member indexes and makes one name-capture plus one emission pass. Anchored values re-enter only mismatched contiguous member-owner runs, use indexed comment bounds, and preserve evaluation order. Delayed source-reading legacy-plugin capabilities and failures capture and re-enter that same owner when the worker calls back. No AST copy, source-delimiter rescan, reparse, new per-member carrier, Error control lane, or speed claim is introduced.",
+    "behaviorEvidence": "Focused public reference-mixin, block-interior-comment, and function controls pass, including both output modes, comment-only and mixed-source merge bodies, delayed variable/built-in/logger success, async-raw-argument currentFileInfo, rejection file/line attribution, and caller restoration; filtered import-reference remains an expected failure only for separately classified residuals.",
+    "buildEvidence": "Dependency-order build:release; full core (212 files / 3364 tests); all-less (111/111); all-less-error (96/96); AST-v2 production ratchet (4/4); package exports; macro zero-fallback; compose-integrity; materialization-frontier; render-buffer-frontier; guardrails; aggressive-cutting; and git diff --check pass. Shape stability is inherited red only on the stale AST inventory; CST inventory and AST monomorphic-shape assertion pass. The committed-state Less hot-path sanity harness is unverified because candidate and clean origin/dev fail before timing on the inherited numeric-leading @1 diagnostic; no timing conclusion is drawn.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 14.573459, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": ["Context-plugin-source-parser-dispatch", "emit-walk-context-output-option", "Ruleset-interpolated-selector-boundary", "selector-match-string-and-node-combinators", "extend-index-tagged-graft-atoms", "Sequence-subclass-preserving-evaluation", "callable-output-root-property-guard", "serializer-at-rule-and-selector-surface"],
+    "why": "A deferred callable already restores its parser/plugin/file DocumentContext. Retaining that same document's parser-owned trivia pointer in a private slot makes comment provenance follow the established source-owner boundary without changing resolution, loading, options, selector policy, emitted value semantics, or the public Context declaration.",
+    "dangerTokensJustification": "One hidden readonly trivia pointer and one numeric option version are populated only when a canonical document context is remembered; the public class declaration and legacy TreeContext shape remain unchanged. Registration retains one compile-folded replacement after the DocumentContext constructor's initial resolved options. The common identity-equal callback invokes its work directly; ordinary cross-document owner runs and delayed source-reading plugin capabilities save and restore matching Context option/source pointers plus the render trivia pointer. Only explicit live setOption reconfiguration increments the Context version and lazily rebuilds each stale document's options once, including version-aware caller restoration. No ordinary source-reentry replacement options object, new Context collection, import walk, parser host, node materialization, selector traversal, or output buffer is introduced.",
+    "behaviorEvidence": "Both output modes preserve imported statement-bearing, comment-only, mixed-source merge-inline, and trailing comments exactly; delayed plugin variable/built-in/logger success, async-raw-argument currentFileInfo, rejection file/line attribution, and caller restoration are pinned; focused import and comment controls pass.",
+    "buildEvidence": "Dependency-order build:release and package-export verification pass, together with the full correctness/corpus/frontier/contract gates in the companion record.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 14.573459, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+  }
+]
+```
+- Verdict: accepted as the bounded A7/G28/N6 correction. The named full gates
+  pass, and the invariant-by-invariant semantic, performance-architecture, and
+  API reviews report no blockers.
+
+- Prior landed pass: 2026-08-25 imported CSS-terminal document-prelude planning.
   This is a bounded output-placement correction under OPEN ledger row N9, not a
   speed or neutrality claim.
 - Architecture surface: canonical AST-v2 import planning and statement output
