@@ -8596,7 +8596,6 @@ function planImportedFacts(
     };
   }
   const seen = new Set<string>();
-  let seenReferences: Set<string> | null = null;
   const overlay: {
     subjects: PlanSubject[];
     instructions: PlanInstruction[];
@@ -8621,7 +8620,8 @@ function planImportedFacts(
     statements: readonly Statement[],
     scope: Frame,
     cssPlan: CssImportPlan | null,
-    withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null
+    withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null,
+    multipleImportDepth: boolean
   ): Promise<void> => {
     const deferred: StyleImport[] = [];
     let deferredAnchors: number[] | null = null;
@@ -8646,18 +8646,11 @@ function planImportedFacts(
         return;
       }
       recordAstExtendProfile?.('astExtend.preflight.importsLoaded');
-      if (!importHasOption(options, 'multiple') && loaded.key !== undefined) {
-        if (reference) {
-          if (seen.has(loaded.key) || seenReferences?.has(loaded.key) === true) {
-            return;
-          }
-          (seenReferences ??= new Set()).add(loaded.key);
-        } else {
-          if (seen.has(loaded.key)) {
-            return;
-          }
-          seen.add(loaded.key);
+      if (options === null && !multipleImportDepth && loaded.key !== undefined) {
+        if (seen.has(loaded.key)) {
+          return;
         }
+        seen.add(loaded.key);
       }
       rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
@@ -8709,7 +8702,8 @@ function planImportedFacts(
           loaded.document!.rules,
           childFrame,
           reference ? null : importCssPlan,
-          loaded.withinDocument ?? withinDocument
+          loaded.withinDocument ?? withinDocument,
+          multipleImportDepth || importHasOption(options, 'multiple')
         );
       };
       if (loaded.withinDocument) {
@@ -8752,7 +8746,7 @@ function planImportedFacts(
           }
         }
       } else if (st.type === 'AtRuleBlock') {
-        await visit(st.rules, scope, null, withinDocument);
+        await visit(st.rules, scope, null, withinDocument, multipleImportDepth);
       }
     }
     for (let index = 0; index < deferred.length; index++) {
@@ -8782,7 +8776,7 @@ function planImportedFacts(
       }
     }
   };
-  return visit(root.rules, frame, cssImports, null).then(() => {
+  return visit(root.rules, frame, cssImports, null, false).then(() => {
     let plannedCssImports: CssImportPlan | null | undefined;
     if (cssImports === null) {
       plannedCssImports = undefined;

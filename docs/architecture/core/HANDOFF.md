@@ -3860,8 +3860,10 @@ involved.
   its one later retry appends through the same plan and relinks scalar integer
   indexes in O(1), so later imports never need a sort, splice-array copy, path
   vector, per-deferred segment object, or restart-at-zero scan. At-rule-contained imports receive no root collector.
-  Reference imports receive no output collector. Import-once and `(multiple)`
-  reuse the planner's existing occurrence admission.
+  Reference imports receive no output collector. The planner mirrors render's
+  established occurrence admission: only optionless imports consume import-once
+  identity, while option-bearing and transitive `(multiple)` occurrences remain
+  independent.
 - New node/materialization: no AST/CST node, node copy, wrapper `Rules`, public
   materialization, or source metadata. An admitted collector allocates one fixed
   plan object with `head`/`tail` and five nullable array slots. Those five arrays
@@ -3873,10 +3875,9 @@ involved.
   key Set. A deferred import exceptionally adds one all-null row and one lazy
   anchor array beside the already-existing deferred-import array; scalar local
   indexes relink any later result. If it resolves to no terminal, the returned
-  output plan is null and no output walk runs. The existing visible import-once identity
-  Set remains the ordinary admission owner; a reference-bearing graph lazily
-  adds one separate identity Set so a hidden occurrence cannot consume a later
-  visible occurrence of the same document.
+  output plan is null and no output walk runs. The existing import-once identity
+  Set remains the optionless admission owner; reference and other option-bearing
+  occurrences do not consume it.
 - Deleted work: `cssImportKey` no longer scans target text with two RegExp tests,
   slices a tail array, or builds `some`/`map` callback carriers. The parser-owned
   statement classification is authoritative; one indexed tail validation/build
@@ -3902,17 +3903,15 @@ involved.
   walk plus one integer-link output walk; [materialized object/array] one admitted
   plan, five lazy parallel arrays, one cell per array per unique terminal, and
   the rare deferred anchor array above—no per-terminal or per-deferred segment object; [side
-  set] one existing output identity Set, one reference-only import identity Set
-  allocated only when a reference import is admitted, plus a per-document
-  duplicate Set only from the second distinct key; [callback] one driver-required
-  source callback
+  set] one existing output identity Set plus a per-document duplicate Set only
+  from the second distinct key; [callback] one driver-required source callback
   per contiguous document run; [byte scan/reparse] deleted suffix regexes and no
   replacement target scan; [node construction/copy] none; [routine Error] none
   added.
-- Behavior evidence: focused core import coverage passes 56/56, including exact
+- Behavior evidence: focused core import coverage passes 57/57, including exact
   lexical prelude order, authoring source transform, per-document dedupe,
-  import-once, `(multiple)`, `(reference)`, nested at-rule retention, and deferred
-  insertion. The real `static-urls` fixture now places both imported CSS terminals
+  import-once, option-bearing occurrence alignment, `(multiple)`, `(reference)`,
+  nested at-rule retention, and deferred insertion. The real `static-urls` fixture now places both imported CSS terminals
   first and retains only the separately ruled multiline-value spelling residual.
   The dependency-order release build, full core suite (212 files, 3362 tests),
   all-less (111/111), all-less-error (96/96), AST-v2 production ratchet (4/4),
@@ -3944,8 +3943,8 @@ involved.
     "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
     "why": "OPEN N9 records the candidate that parser-classified document-root CSS terminals from executed non-reference Less imports join the output prelude while compile-time documents retain lexical execution.",
-    "dangerTokensJustification": "The existing import walk carries unique terminals in five lazy parallel arrays with integer next links and no per-terminal record objects; duplicates add only their node identity to the lazy output-suppression Set. A reference-bearing graph lazily allocates one separate import-identity Set so a hidden occurrence cannot consume a later visible occurrence. Output consumes the integer chain once through the canonical buffer. The no-feature bypass is unchanged, deferred insertion relinks scalar indexes in O(1) without a segment object, and target suffix regexes plus tail slice/map/some materialization are deleted. No second import traversal, AST copy, byte reclassification, WeakMap, Error control lane, or speed claim is introduced.",
-    "behaviorEvidence": "Focused core import coverage passes 56/56; the owner static-urls case now has only its intentional multiline-value residual.",
+    "dangerTokensJustification": "The existing import walk carries unique terminals in five lazy parallel arrays with integer next links and no per-terminal record objects; duplicates add only their node identity to the lazy output-suppression Set. Planner admission mirrors render: only optionless imports consume the existing import-once identity, while option-bearing and transitive multiple occurrences remain independent. Output consumes the integer chain once through the canonical buffer. The no-feature bypass is unchanged, deferred insertion relinks scalar indexes in O(1) without a segment object, and target suffix regexes plus tail slice/map/some materialization are deleted. No second import traversal, AST copy, byte reclassification, WeakMap, Error control lane, or speed claim is introduced.",
+    "behaviorEvidence": "Focused core import coverage passes 57/57; the owner static-urls case now has only its intentional multiline-value residual.",
     "buildEvidence": "Dependency-order release build; full core; all-less; all-less-error; AST-v2 production ratchet; macro compilation with zero fallbacks; compose-integrity; materialization-frontier; render-buffer-frontier; guardrails; and aggressive-cutting contract pass. Shape stability remains red only on the inherited stale AST type inventory; CST inventory and the monomorphic node-shape check pass.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 15.337438, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
   },
@@ -3956,7 +3955,7 @@ involved.
     "why": "The loaded typed document remains the earliest authoritative source for imported extend placements and now also carries parser-classified CSS terminals during that same graph visit.",
     "dangerTokensJustification": "The false path still returns before collection. The admitted path adds one typed AtRuleStatement branch and flat-array rows for unique output terminals without a second graph walk or per-terminal object; existing extend collectors, overlays, and loop-placement tokens are unchanged.",
     "behaviorEvidence": "Focused import/preflight coverage passes, including no-extend imported bodies, reference visibility, source-order terminals, and deferred insertion.",
-    "buildEvidence": "Dependency-order release build and the named correctness/frontier gates in the companion contract pass; focused import coverage is 56/56.",
+    "buildEvidence": "Dependency-order release build and the named correctness/frontier gates in the companion contract pass; focused import coverage is 57/57.",
     "falsePath": {"fixture": "extend-preflight-contract:no-extend", "counters": {"calls": 1, "collectorCalls": 0, "overlaySubjects": 0, "overlayInstructions": 0, "loopPlacements": 0}},
     "featurePath": {"fixture": "extend-preflight-contract:imported-loop", "counters": {"importsVisited": 1, "loopPlacements": 2, "overlaySubjects": 2}},
     "baseline": {"fixture": "benchmark.less", "phase": "parse-render", "currentMedianMs": 40.6637495, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}

@@ -724,6 +724,50 @@ describe('StyleImport', () => {
     });
   });
 
+  it('keeps option-bearing import occurrences aligned between their CSS terminals and bodies', async () => {
+    const entryPath = '/virtual/entry.less';
+    const childPath = '/virtual/child.less';
+    const imported = stylesheet([
+      authoredImport('@import', quoted('"child.css"', 'child.css', '"', false)),
+      rule('.child', [decl('color', keyword('green'))])
+    ]);
+    for (const option of ['less', 'optional']) {
+      const entry = stylesheet([
+        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list([keyword(option)], ',')),
+        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list([keyword(option)], ','))
+      ]);
+      const documents = new Map([
+        [entryPath, entry],
+        [childPath, imported]
+      ]);
+
+      class OptionImportPlugin extends AbstractPlugin {
+        name = 'less';
+        supportedExtensions = ['.less'];
+
+        override locate(paths: string[]) {
+          return paths.find(candidate => documents.has(candidate)) ?? null;
+        }
+
+        override async getSource(filePath: string) {
+          return filePath;
+        }
+
+        override safeParse(filePath: string) {
+          const document = documents.get(filePath);
+          return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+        }
+      }
+
+      const context = new Context({}, [new OptionImportPlugin()]);
+      const loadedEntry = await context.getTree(entryPath);
+      await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context }))).resolves.toEqual({
+        css: '@import "child.css";\n@import "child.css";\n'
+          + '.child {\n  color: green;\n}\n.child {\n  color: green;\n}\n'
+      });
+    }
+  });
+
   it('keeps a deferred imported CSS prelude at its original lexical position', async () => {
     const entryPath = '/virtual/entry.less';
     const providerPath = '/virtual/providers.less';
