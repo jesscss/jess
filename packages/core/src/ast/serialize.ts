@@ -8600,6 +8600,7 @@ function planImportedFacts(
     };
   }
   const seen = new Set<string>();
+  let seenReferences: Set<string> | null = null;
   const overlay: {
     subjects: PlanSubject[];
     instructions: PlanInstruction[];
@@ -8639,6 +8640,7 @@ function planImportedFacts(
       }
       recordAstExtendProfile?.('astExtend.preflight.importsLoadable');
       const request: ImportDocumentRequest = { node: st, specifier, options };
+      const reference = importHasOption(options, 'reference');
       const prepared = e.plannedImportDocuments?.get(st);
       const loaded = prepared === undefined ? await importDocument(request) : prepared.loaded;
       if (prepared === undefined) {
@@ -8649,10 +8651,17 @@ function planImportedFacts(
       }
       recordAstExtendProfile?.('astExtend.preflight.importsLoaded');
       if (!importHasOption(options, 'multiple') && loaded.key !== undefined) {
-        if (seen.has(loaded.key)) {
-          return;
+        if (reference) {
+          if (seen.has(loaded.key) || seenReferences?.has(loaded.key) === true) {
+            return;
+          }
+          (seenReferences ??= new Set()).add(loaded.key);
+        } else {
+          if (seen.has(loaded.key)) {
+            return;
+          }
+          seen.add(loaded.key);
         }
-        seen.add(loaded.key);
       }
       rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
@@ -8691,9 +8700,9 @@ function planImportedFacts(
        * feature-bearing admission gate and avoid planner work when no extend facts
        * can participate.
        */
-      if (bodyMayPlanExtend(loaded.document.rules) || importHasOption(options, 'reference')) {
+      if (bodyMayPlanExtend(loaded.document.rules) || reference) {
         recordAstExtendProfile?.('astExtend.preflight.importsFeatureBearing');
-        const referenceBoundary = importHasOption(options, 'reference') ? {} : null;
+        const referenceBoundary = reference ? {} : null;
         const placed = collectPlacedExtendFacts(loaded.document.rules, childFrame, e, overlay, [], [], null, referenceBoundary !== null, referenceBoundary);
         if (isThenable(placed)) {
           await placed;
@@ -8703,7 +8712,7 @@ function planImportedFacts(
         await visit(
           loaded.document!.rules,
           childFrame,
-          importHasOption(options, 'reference') ? null : importCssSegment,
+          reference ? null : importCssSegment,
           loaded.withinDocument ?? withinDocument
         );
       };

@@ -3873,7 +3873,10 @@ involved.
   key Set. A deferred import exceptionally adds one all-null row, one lazy anchor
   array beside the already-existing deferred-import array, and one two-index
   insertion segment object; if it resolves to no terminal, the returned output
-  plan is null and no output walk runs.
+  plan is null and no output walk runs. The existing visible import-once identity
+  Set remains the ordinary admission owner; a reference-bearing graph lazily
+  adds one separate identity Set so a hidden occurrence cannot consume a later
+  visible occurrence of the same document.
 - Deleted work: `cssImportKey` no longer scans target text with two RegExp tests,
   slices a tail array, or builds `some`/`map` callback carriers. The parser-owned
   statement classification is authoritative; one indexed tail validation/build
@@ -3899,8 +3902,10 @@ involved.
   walk plus one integer-link output walk; [materialized object/array] one admitted
   plan, five lazy parallel arrays, one cell per array per unique terminal, and
   the rare deferred anchor/segment records above—no per-terminal object; [side
-  set] one existing output identity Set plus a per-document duplicate Set only
-  from the second distinct key; [callback] one driver-required source callback
+  set] one existing output identity Set, one reference-only import identity Set
+  allocated only when a reference import is admitted, plus a per-document
+  duplicate Set only from the second distinct key; [callback] one driver-required
+  source callback
   per contiguous document run; [byte scan/reparse] deleted suffix regexes and no
   replacement target scan; [node construction/copy] none; [routine Error] none
   added.
@@ -3939,7 +3944,7 @@ involved.
     "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
     "why": "OPEN N9 records the candidate that parser-classified document-root CSS terminals from executed non-reference Less imports join the output prelude while compile-time documents retain lexical execution.",
-    "dangerTokensJustification": "The existing import walk carries unique terminals in five lazy parallel arrays with integer next links and no per-terminal record objects; duplicates add only their node identity to the lazy output-suppression Set. Output consumes the integer chain once through the canonical buffer. The no-feature bypass is unchanged, deferred insertion is O(1), and target suffix regexes plus tail slice/map/some materialization are deleted. No second import traversal, AST copy, byte reclassification, WeakMap, Error control lane, or speed claim is introduced.",
+    "dangerTokensJustification": "The existing import walk carries unique terminals in five lazy parallel arrays with integer next links and no per-terminal record objects; duplicates add only their node identity to the lazy output-suppression Set. A reference-bearing graph lazily allocates one separate import-identity Set so a hidden occurrence cannot consume a later visible occurrence. Output consumes the integer chain once through the canonical buffer. The no-feature bypass is unchanged, deferred insertion is O(1), and target suffix regexes plus tail slice/map/some materialization are deleted. No second import traversal, AST copy, byte reclassification, WeakMap, Error control lane, or speed claim is introduced.",
     "behaviorEvidence": "Focused core import coverage passes 56/56; the owner static-urls case now has only its intentional multiline-value residual.",
     "buildEvidence": "Dependency-order release build; full core; all-less; all-less-error; AST-v2 production ratchet; macro compilation with zero fallbacks; compose-integrity; materialization-frontier; render-buffer-frontier; guardrails; and aggressive-cutting contract pass. Shape stability remains red only on the inherited stale AST type inventory; CST inventory and the monomorphic node-shape check pass.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 15.337438, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}

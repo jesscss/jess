@@ -648,19 +648,18 @@ describe('StyleImport', () => {
     });
   });
 
-  it('hoists imported CSS terminals in document order and their authoring source scope', async () => {
+  it('hoists imported CSS terminals after a reference-first occurrence in their authoring source scope', async () => {
     const entryPath = '/virtual/entry.less';
     const childPath = '/virtual/child.less';
-    const referencePath = '/virtual/reference.less';
     const entry = stylesheet([
       rule('.entry-before', [decl('color', keyword('red'))]),
       authoredImport('@import', quoted('"entry.css"', 'entry.css', '"', false)),
-      authoredImport('@import', quoted('"child.less"', 'child.less', '"', false)),
       authoredImport(
         '@import',
-        quoted('"reference.less"', 'reference.less', '"', false),
+        quoted('"child.less"', 'child.less', '"', false),
         list([keyword('reference')], ',')
       ),
+      authoredImport('@import', quoted('"child.less"', 'child.less', '"', false)),
       authoredImport('@import', quoted('"entry-after.css"', 'entry-after.css', '"', false)),
       authoredImport('@import', quoted('"child.less"', 'child.less', '"', false)),
       authoredImport(
@@ -679,13 +678,9 @@ describe('StyleImport', () => {
       ]),
       rule('.child-after', [decl('color', keyword('purple'))])
     ]);
-    const referenceDocument = stylesheet([
-      authoredImport('@import', quoted('"hidden.css"', 'hidden.css', '"', false))
-    ]);
     const documents = new Map([
       [entryPath, entry],
-      [childPath, child],
-      [referencePath, referenceDocument]
+      [childPath, child]
     ]);
 
     class ScopedImportPlugin extends AbstractPlugin {
